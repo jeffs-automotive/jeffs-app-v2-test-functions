@@ -454,3 +454,18 @@ entrypoint = "./functions/tekmetric-find-ro-by-keytag/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/tekmetric-find-ro-by-keytag/*.html" ]
+
+[functions.orchestrator-mcp]
+enabled = true
+# MCP endpoint hit by Claude Desktop's Custom Connector. Claude Desktop sends a Bearer
+# token in the Authorization header but it's not a Supabase JWT — it's our shared MCP
+# token (env var MCP_BEARER_TOKEN), validated inside the function. Disabling Supabase's
+# JWT verification lets the function see the request and do its own auth check.
+verify_jwt = false
+import_map = "./functions/orchestrator-mcp/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/orchestrator-mcp/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/orchestrator-mcp/*.html" ]
