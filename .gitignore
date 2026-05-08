@@ -1,0 +1,33 @@
+# .claude is a junction to dotfiles-v2-test-data — that content lives in its own repo.
+# Never track from this repo: would duplicate the dotfiles repo's content.
+.claude/
+.claude
+
+# Per-folder Supabase CLI local state — never commit, all machine-specific
+supabase/.temp/         # link state (project ref, temp creds)
+supabase/.branches/     # `supabase db branches` local pointer
+supabase/snippets/      # SQL snippets synced from dashboard (local cache)
+
+# Supabase functions Deno cache (generated)
+supabase/functions/**/.cache/
+
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Node / npm
+node_modules/
+*.log
+npm-debug.log*
+
+# OS noise
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor noise (we DO track .vscode/settings.json for Deno setup; only personal preferences excluded)
+*.swp
+*.swo
+*~
+.idea/
