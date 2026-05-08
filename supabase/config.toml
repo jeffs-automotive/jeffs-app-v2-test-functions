@@ -419,3 +419,38 @@ entrypoint = "./functions/tekmetric-bootstrap/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/tekmetric-bootstrap/*.html" ]
+
+[functions.keytag-tekmetric-webhook]
+enabled = true
+# Tekmetric webhook receiver — Tekmetric cannot send JWT/Authorization headers.
+# Auth is via ?token=<TEKMETRIC_WEBHOOK_TOKEN> query param, validated in the function.
+verify_jwt = false
+import_map = "./functions/keytag-tekmetric-webhook/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/keytag-tekmetric-webhook/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/keytag-tekmetric-webhook/*.html" ]
+
+[functions.tekmetric-list-wip-keytags]
+enabled = true
+verify_jwt = true
+import_map = "./functions/tekmetric-list-wip-keytags/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/tekmetric-list-wip-keytags/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/tekmetric-list-wip-keytags/*.html" ]
+
+[functions.tekmetric-find-ro-by-keytag]
+enabled = true
+verify_jwt = true
+import_map = "./functions/tekmetric-find-ro-by-keytag/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/tekmetric-find-ro-by-keytag/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/tekmetric-find-ro-by-keytag/*.html" ]
