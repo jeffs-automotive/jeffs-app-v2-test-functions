@@ -54,9 +54,31 @@ interface SeedResult {
     reason: string;
     tag_number?: number;
     raw_keytag?: unknown;
+    winner_ro_number?: number;
     error?: string;
   }>;
   error?: string;
+}
+
+/**
+ * Comparator for "most recent RO" used to resolve duplicate-keytag conflicts.
+ *
+ * Tekmetric's `keytag` field on an RO is a free-text marker that doesn't auto-
+ * clear when the physical tag moves to another car. As a result the same
+ * keytag value can appear on multiple WIP/AR ROs simultaneously: the oldest
+ * RO has stale data; the newest is the actual current holder.
+ *
+ * Recency signal preference (most reliable first):
+ *   1. appointmentStartTime — when the car came in for this work
+ *   2. repairOrderNumber    — Tekmetric assigns these monotonically; higher = newer
+ *
+ * Returns true if `a` is more recent than `b`.
+ */
+function isMoreRecent(a: TekmetricRepairOrder, b: TekmetricRepairOrder): boolean {
+  const ta = a.appointmentStartTime ? Date.parse(a.appointmentStartTime) : 0;
+  const tb = b.appointmentStartTime ? Date.parse(b.appointmentStartTime) : 0;
+  if (Number.isFinite(ta) && Number.isFinite(tb) && ta !== tb) return ta > tb;
+  return a.repairOrderNumber > b.repairOrderNumber;
 }
 
 /** Parses Tekmetric's `keytag` field into a number, or null if missing/invalid. */
@@ -120,28 +142,65 @@ Deno.serve(async (req) => {
   result.scanned.wip = wipRos.length;
   result.scanned.ar = arRos.length;
 
-  // ── 2. Process each RO and reserve its keytag if applicable ─────────────
-  // Pair each RO with the status we want to write into our table.
-  const targets: Array<{ ro: TekmetricRepairOrder; targetStatus: "assigned" | "posted_ar" }> = [
+  // ── 2. Build (RO, target_status) targets and dedupe by keytag ──────────
+  // Tekmetric leaves the keytag field on an RO even when the physical tag
+  // moves to another car. So multiple ROs can carry the same keytag value
+  // simultaneously — the oldest is stale, the newest is real. We resolve by
+  // grouping on keytag and keeping the most recent RO per group; the rest
+  // are reported under skipped with reason 'stale_keytag_in_tekmetric'.
+
+  type Target = { ro: TekmetricRepairOrder; targetStatus: "assigned" | "posted_ar" };
+  const allTargets: Target[] = [
     ...wipRos.map((ro) => ({ ro, targetStatus: "assigned" as const })),
     ...arRos.map((ro) => ({ ro, targetStatus: "posted_ar" as const })),
   ];
 
-  for (const { ro, targetStatus } of targets) {
-    const tag = parseKeyTag(ro.keytag);
-    if (tag === null) {
-      // RO is in WIP/AR but has no keytag — nothing to seed for this row
-      continue;
-    }
+  const winnerByTag = new Map<number, Target>();
+  const losers: Array<{ target: Target; tag: number; winner: Target }> = [];
+
+  for (const t of allTargets) {
+    const tag = parseKeyTag(t.ro.keytag);
+    if (tag === null) continue; // RO has no keytag — skip silently (nothing to seed)
     if (tag < 1 || tag > 100) {
       result.skipped.push({
-        ro_id: ro.id,
-        ro_number: ro.repairOrderNumber,
-        raw_keytag: ro.keytag,
+        ro_id: t.ro.id,
+        ro_number: t.ro.repairOrderNumber,
+        raw_keytag: t.ro.keytag,
         reason: "keytag_out_of_range",
       });
       continue;
     }
+
+    const existingWinner = winnerByTag.get(tag);
+    if (!existingWinner) {
+      winnerByTag.set(tag, t);
+    } else if (isMoreRecent(t.ro, existingWinner.ro)) {
+      // New target beats current winner → previous winner becomes a loser
+      losers.push({ target: existingWinner, tag, winner: t });
+      winnerByTag.set(tag, t);
+    } else {
+      // Current winner stays → this target is a loser
+      losers.push({ target: t, tag, winner: existingWinner });
+    }
+  }
+
+  // Report losers (stale Tekmetric records) up front
+  for (const { target, tag, winner } of losers) {
+    result.skipped.push({
+      ro_id: target.ro.id,
+      ro_number: target.ro.repairOrderNumber,
+      tag_number: tag,
+      reason: "stale_keytag_in_tekmetric",
+      winner_ro_number: winner.ro.repairOrderNumber,
+      error: `RO ${target.ro.repairOrderNumber} carries keytag ${tag} in Tekmetric, but RO ${winner.ro.repairOrderNumber} is the more recent holder. RO ${target.ro.repairOrderNumber}'s keytag value is likely stale (physical tag moved). Consider clearing it manually in Tekmetric.`,
+    });
+  }
+
+  // ── 3. Attempt to seed each winner ──────────────────────────────────────
+  for (const t of winnerByTag.values()) {
+    const ro = t.ro;
+    const targetStatus = t.targetStatus;
+    const tag = parseKeyTag(ro.keytag)!; // verified above when populating winnerByTag
 
     const now = new Date().toISOString();
 
