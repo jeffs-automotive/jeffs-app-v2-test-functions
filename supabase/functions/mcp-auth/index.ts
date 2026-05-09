@@ -68,20 +68,40 @@ function oauthError(error: string, description?: string, status = 400): Response
   return json({ error, ...(description ? { error_description: description } : {}) }, status);
 }
 
-// ─── Route: GET /.well-known/oauth-authorization-server ─────────────────────
+// ─── Route: GET /.well-known/{oauth-authorization-server | openid-configuration}
+// We serve the same body at both paths. Per MCP auth spec, clients try OIDC
+// discovery (openid-configuration) FIRST, falling back to OAuth 2.0 metadata.
+// Some clients (incl. Anthropic's connector backend) treat a 404 on OIDC as
+// "this server doesn't support standardized auth" and bail before checking the
+// OAuth path. Aliasing both keeps every spec-compliant client happy.
+//
+// We're not strictly an OIDC provider (no id_tokens), but the response is a
+// valid superset for OAuth 2.0 clients and tolerable for OIDC clients that
+// only need authorization_endpoint + token_endpoint + registration_endpoint.
 
 function handleDiscovery(): Response {
   const issuer = functionUrl(FUNCTION_NAME);
-  const metadata: AuthServerMetadata = {
+  const metadata: AuthServerMetadata & {
+    response_modes_supported: string[];
+    /** OIDC compat — present so OIDC clients stop bailing on missing fields. */
+    subject_types_supported?: string[];
+    id_token_signing_alg_values_supported?: string[];
+  } = {
     issuer,
     authorization_endpoint: `${issuer}/authorize`,
     token_endpoint: `${issuer}/token`,
     registration_endpoint: `${issuer}/register`,
     scopes_supported: ["mcp"],
     response_types_supported: ["code"],
+    response_modes_supported: ["query"],
     grant_types_supported: ["authorization_code"],
     code_challenge_methods_supported: ["S256"],
     token_endpoint_auth_methods_supported: ["client_secret_post", "client_secret_basic", "none"],
+    // OIDC fields included for client compatibility — we don't actually issue
+    // id_tokens or run OIDC subject resolution. Listing RS256 + public is the
+    // minimum that gets OIDC clients past their "missing required field" check.
+    subject_types_supported: ["public"],
+    id_token_signing_alg_values_supported: ["RS256"],
   };
   return json(metadata);
 }
@@ -478,7 +498,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const path = stripFunctionPrefix(req, FUNCTION_NAME);
 
   try {
-    if (req.method === "GET" && path === "/.well-known/oauth-authorization-server") {
+    if (
+      req.method === "GET" &&
+      (path === "/.well-known/oauth-authorization-server" ||
+        path === "/.well-known/openid-configuration")
+    ) {
       return handleDiscovery();
     }
     if (req.method === "POST" && path === "/register") {
