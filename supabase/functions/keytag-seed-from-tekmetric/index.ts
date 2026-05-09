@@ -29,6 +29,7 @@ import {
   type TekmetricRepairOrder,
   tekmetricGetJson,
 } from "../_shared/tekmetric-client.ts";
+import { parseKeytag } from "../_shared/keytag-format.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -43,15 +44,18 @@ interface SeedResult {
   shop_id: number;
   scanned: { wip: number; ar: number };
   seeded: Array<{
+    tag_color: "red" | "yellow";
     tag_number: number;
     ro_id: number;
     ro_number: number;
     status: "assigned" | "posted_ar";
+    legacy_format?: boolean;
   }>;
   skipped: Array<{
     ro_id: number;
     ro_number: number;
     reason: string;
+    tag_color?: "red" | "yellow";
     tag_number?: number;
     raw_keytag?: unknown;
     winner_ro_number?: number;
@@ -79,13 +83,6 @@ function isMoreRecent(a: TekmetricRepairOrder, b: TekmetricRepairOrder): boolean
   const tb = b.appointmentStartTime ? Date.parse(b.appointmentStartTime) : 0;
   if (Number.isFinite(ta) && Number.isFinite(tb) && ta !== tb) return ta > tb;
   return a.repairOrderNumber > b.repairOrderNumber;
-}
-
-/** Parses Tekmetric's `keytag` field into a number, or null if missing/invalid. */
-function parseKeyTag(raw: string | number | null | undefined): number | null {
-  if (raw === null || raw === undefined || raw === "") return null;
-  const n = typeof raw === "number" ? raw : parseInt(String(raw), 10);
-  return Number.isFinite(n) ? n : null;
 }
 
 /** Fetches every RO in a given status, paginating through all pages (size=100). */
@@ -149,64 +146,89 @@ Deno.serve(async (req) => {
   // grouping on keytag and keeping the most recent RO per group; the rest
   // are reported under skipped with reason 'stale_keytag_in_tekmetric'.
 
-  type Target = { ro: TekmetricRepairOrder; targetStatus: "assigned" | "posted_ar" };
-  const allTargets: Target[] = [
-    ...wipRos.map((ro) => ({ ro, targetStatus: "assigned" as const })),
-    ...arRos.map((ro) => ({ ro, targetStatus: "posted_ar" as const })),
-  ];
+  type Target = {
+    ro: TekmetricRepairOrder;
+    targetStatus: "assigned" | "posted_ar";
+    color: "red" | "yellow";
+    number: number;
+    legacy: boolean;
+  };
+  const allTargets: Target[] = [];
 
-  const winnerByTag = new Map<number, Target>();
-  const losers: Array<{ target: Target; tag: number; winner: Target }> = [];
-
-  for (const t of allTargets) {
-    const tag = parseKeyTag(t.ro.keytag);
-    if (tag === null) continue; // RO has no keytag — skip silently (nothing to seed)
-    if (tag < 1 || tag > 100) {
-      result.skipped.push({
-        ro_id: t.ro.id,
-        ro_number: t.ro.repairOrderNumber,
-        raw_keytag: t.ro.keytag,
-        reason: "keytag_out_of_range",
-      });
+  // First pass: parse + validate keytag for every RO. Out-of-range / unparseable
+  // values land in skipped immediately.
+  for (const ro of wipRos) {
+    const parsed = parseKeytag(ro.keytag);
+    if (parsed === null) {
+      // Either no keytag or unparseable. We only flag unparseable (raw value present
+      // but not in our format) — missing keytags on WIP ROs are fine, they just
+      // haven't been tagged yet.
+      if (ro.keytag !== null && ro.keytag !== undefined && String(ro.keytag).trim() !== "") {
+        result.skipped.push({
+          ro_id: ro.id,
+          ro_number: ro.repairOrderNumber,
+          raw_keytag: ro.keytag,
+          reason: "keytag_unparseable",
+        });
+      }
       continue;
     }
+    allTargets.push({ ro, targetStatus: "assigned", color: parsed.color, number: parsed.number, legacy: parsed.legacy });
+  }
+  for (const ro of arRos) {
+    const parsed = parseKeytag(ro.keytag);
+    if (parsed === null) {
+      if (ro.keytag !== null && ro.keytag !== undefined && String(ro.keytag).trim() !== "") {
+        result.skipped.push({
+          ro_id: ro.id,
+          ro_number: ro.repairOrderNumber,
+          raw_keytag: ro.keytag,
+          reason: "keytag_unparseable",
+        });
+      }
+      continue;
+    }
+    allTargets.push({ ro, targetStatus: "posted_ar", color: parsed.color, number: parsed.number, legacy: parsed.legacy });
+  }
 
-    const existingWinner = winnerByTag.get(tag);
+  // Dedupe by (color, number). When multiple ROs claim the same tag (Tekmetric
+  // doesn't auto-clear keytag fields when physical tags move), the most recent
+  // RO wins; older ones are reported as stale.
+  const tagKey = (c: "red" | "yellow", n: number) => `${c}-${n}`;
+  const winnerByTag = new Map<string, Target>();
+  const losers: Array<{ target: Target; winner: Target }> = [];
+
+  for (const t of allTargets) {
+    const k = tagKey(t.color, t.number);
+    const existingWinner = winnerByTag.get(k);
     if (!existingWinner) {
-      winnerByTag.set(tag, t);
+      winnerByTag.set(k, t);
     } else if (isMoreRecent(t.ro, existingWinner.ro)) {
-      // New target beats current winner → previous winner becomes a loser
-      losers.push({ target: existingWinner, tag, winner: t });
-      winnerByTag.set(tag, t);
+      losers.push({ target: existingWinner, winner: t });
+      winnerByTag.set(k, t);
     } else {
-      // Current winner stays → this target is a loser
-      losers.push({ target: t, tag, winner: existingWinner });
+      losers.push({ target: t, winner: existingWinner });
     }
   }
 
-  // Report losers (stale Tekmetric records) up front
-  for (const { target, tag, winner } of losers) {
+  for (const { target, winner } of losers) {
     result.skipped.push({
       ro_id: target.ro.id,
       ro_number: target.ro.repairOrderNumber,
-      tag_number: tag,
+      tag_color: target.color,
+      tag_number: target.number,
       reason: "stale_keytag_in_tekmetric",
       winner_ro_number: winner.ro.repairOrderNumber,
-      error: `RO ${target.ro.repairOrderNumber} carries keytag ${tag} in Tekmetric, but RO ${winner.ro.repairOrderNumber} is the more recent holder. RO ${target.ro.repairOrderNumber}'s keytag value is likely stale (physical tag moved). Consider clearing it manually in Tekmetric.`,
+      error: `RO ${target.ro.repairOrderNumber} carries keytag ${target.color}-${target.number} in Tekmetric, but RO ${winner.ro.repairOrderNumber} is the more recent holder. The value on RO ${target.ro.repairOrderNumber} is likely stale (physical tag moved). Consider clearing it manually in Tekmetric.`,
     });
   }
 
   // ── 3. Attempt to seed each winner ──────────────────────────────────────
   for (const t of winnerByTag.values()) {
-    const ro = t.ro;
-    const targetStatus = t.targetStatus;
-    const tag = parseKeyTag(ro.keytag)!; // verified above when populating winnerByTag
-
+    const { ro, targetStatus, color, number, legacy } = t;
     const now = new Date().toISOString();
 
     // Conditional update: only write if the tag is currently 'available'.
-    // This makes the function idempotent — running it twice doesn't overwrite
-    // assignments made by webhook traffic in between.
     const { data, error } = await sb
       .from("keytags")
       .update({
@@ -222,16 +244,18 @@ Deno.serve(async (req) => {
         released_at: null,
         updated_at: now,
       })
-      .eq("tag_number", tag)
+      .eq("tag_color", color)
+      .eq("tag_number", number)
       .eq("status", "available")
-      .select("tag_number")
+      .select("tag_color, tag_number")
       .maybeSingle();
 
     if (error) {
       result.skipped.push({
         ro_id: ro.id,
         ro_number: ro.repairOrderNumber,
-        tag_number: tag,
+        tag_color: color,
+        tag_number: number,
         reason: "db_error",
         error: error.message,
       });
@@ -239,28 +263,30 @@ Deno.serve(async (req) => {
     }
 
     if (!data) {
-      // Tag was already non-available (assigned to another RO, or seeded earlier).
-      // Look up who currently holds it, for the report.
       const { data: holder } = await sb
         .from("keytags")
         .select("status, ro_id, ro_number")
-        .eq("tag_number", tag)
+        .eq("tag_color", color)
+        .eq("tag_number", number)
         .maybeSingle();
       result.skipped.push({
         ro_id: ro.id,
         ro_number: ro.repairOrderNumber,
-        tag_number: tag,
+        tag_color: color,
+        tag_number: number,
         reason: "tag_already_held",
-        ...(holder ? { error: `tag ${tag} already held by RO ${holder.ro_number} (${holder.status})` } : {}),
+        ...(holder ? { error: `${color}-${number} already held by RO ${holder.ro_number} (${holder.status})` } : {}),
       });
       continue;
     }
 
     result.seeded.push({
-      tag_number: tag,
+      tag_color: color,
+      tag_number: number,
       ro_id: ro.id,
       ro_number: ro.repairOrderNumber,
       status: targetStatus,
+      ...(legacy ? { legacy_format: true } : {}),
     });
   }
 

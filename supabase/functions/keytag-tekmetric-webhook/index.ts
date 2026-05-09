@@ -39,6 +39,7 @@ import {
   ENV_NAMES,
 } from "../_shared/tekmetric.ts";
 import { getRepairOrderById } from "../_shared/tools/repair-orders.ts";
+import { formatKeytag } from "../_shared/keytag-format.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -77,17 +78,20 @@ function isSelfAuthored(eventText: string | null | undefined): boolean {
 // ─── DB helpers ──────────────────────────────────────────────────────────────
 
 /** Returns the keytag currently assigned to a given Tekmetric RO id, or null. */
-async function getAssignedKeytag(roId: number): Promise<number | null> {
+async function getAssignedKeytag(
+  roId: number,
+): Promise<{ color: "red" | "yellow"; number: number } | null> {
   const { data, error } = await sb
     .from("keytags")
-    .select("tag_number")
+    .select("tag_color, tag_number")
     .eq("ro_id", roId)
     .maybeSingle();
   if (error) {
     console.error("keytags lookup failed:", error.message);
     return null;
   }
-  return (data?.tag_number as number | undefined) ?? null;
+  if (!data) return null;
+  return { color: data.tag_color as "red" | "yellow", number: data.tag_number as number };
 }
 
 // ─── Tekmetric API helpers ──────────────────────────────────────────────────
@@ -107,7 +111,7 @@ async function getAccessToken(): Promise<string> {
 
 async function patchKeytagToTekmetric(
   roId: number,
-  keyTag: number,
+  keyTagString: string,
 ): Promise<{ ok: boolean; error?: string }> {
   try {
     const token = await getAccessToken();
@@ -119,7 +123,8 @@ async function patchKeytagToTekmetric(
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ keyTag }),
+        // Tekmetric's keyTag field accepts text; we send the encoded color form ("R5", "Y45").
+        body: JSON.stringify({ keyTag: keyTagString }),
       },
     );
     if (!res.ok) {
@@ -254,10 +259,17 @@ Deno.serve(async (req: Request) => {
       if (existing !== null) {
         await markProcessed(eventId, "skipped_already_assigned", {
           ro_id: roId,
-          tag_number: existing,
+          tag_color: existing.color,
+          tag_number: existing.number,
         });
         return new Response(
-          JSON.stringify({ ok: true, action: "skipped_already_assigned", tag: existing, ro_id: roId }),
+          JSON.stringify({
+            ok: true,
+            action: "skipped_already_assigned",
+            tag_color: existing.color,
+            tag_number: existing.number,
+            ro_id: roId,
+          }),
           { status: 200 },
         );
       }
@@ -290,7 +302,7 @@ Deno.serve(async (req: Request) => {
         );
       }
 
-      // Step 3: assign the lowest-available tag and PATCH Tekmetric
+      // Step 3: round-robin assign + PATCH Tekmetric
       const { data: tagData, error: assignErr } = await sb.rpc("assign_next_keytag", {
         p_ro_id: roId,
         p_ro_number: ro.repairOrderNumber,
@@ -303,13 +315,18 @@ Deno.serve(async (req: Request) => {
         await markProcessed(eventId, "error", { stage: "assign_rpc" }, assignErr.message);
         return new Response(JSON.stringify({ ok: false, error: assignErr.message }), { status: 200 });
       }
-      const tag = tagData as number | null;
-      if (tag === null) {
-        await markProcessed(eventId, "error", { reason: "pool_exhausted" }, "All 100 key tags in use");
+      // RPC returns a table; supabase-js gives an array. Empty array = pool exhausted.
+      const assigned = Array.isArray(tagData) ? tagData[0] : tagData;
+      if (!assigned || !assigned.tag_color) {
+        await markProcessed(eventId, "error", { reason: "pool_exhausted" }, "All 180 key tags in use");
         return new Response(JSON.stringify({ ok: false, error: "pool exhausted" }), { status: 200 });
       }
 
-      const patchResult = await patchKeytagToTekmetric(roId, tag);
+      const tagColor = assigned.tag_color as "red" | "yellow";
+      const tagNumber = assigned.tag_number as number;
+      const wireValue = formatKeytag(tagColor, tagNumber);
+
+      const patchResult = await patchKeytagToTekmetric(roId, wireValue);
       await sb.rpc("record_keytag_patched", {
         p_ro_id: roId,
         p_success: patchResult.ok,
@@ -320,13 +337,22 @@ Deno.serve(async (req: Request) => {
         eventId,
         patchResult.ok ? "assigned" : "assigned_patch_failed",
         {
-          tag_number: tag,
+          tag_color: tagColor,
+          tag_number: tagNumber,
+          tag_string: wireValue,
           patch_ok: patchResult.ok,
           patch_error: patchResult.error ?? null,
         },
       );
       return new Response(
-        JSON.stringify({ ok: true, action: "assigned", tag, ro_id: roId }),
+        JSON.stringify({
+          ok: true,
+          action: "assigned",
+          tag_color: tagColor,
+          tag_number: tagNumber,
+          tag_string: wireValue,
+          ro_id: roId,
+        }),
         { status: 200 },
       );
     }
@@ -334,29 +360,43 @@ Deno.serve(async (req: Request) => {
     // ── Branch 2: ro_posted (status 5 = POSTED_PAID, 6 = POSTED_AR) ──────
     if (eventKind === "ro_posted") {
       if (statusId === TEKMETRIC_RO_STATUS.POSTED_PAID) {
-        const { data: releasedTag } = await sb.rpc("release_keytag_for_ro", {
+        const { data: releasedRows } = await sb.rpc("release_keytag_for_ro", {
           p_ro_id: roId,
           p_reason: "posted_paid",
         });
+        const released = Array.isArray(releasedRows) ? releasedRows[0] : releasedRows;
         await markProcessed(
           eventId,
-          releasedTag ? "released" : "noop",
-          { tag_number: releasedTag, reason: "posted_paid" },
+          released ? "released" : "noop",
+          released
+            ? { tag_color: released.tag_color, tag_number: released.tag_number, reason: "posted_paid" }
+            : { reason: "posted_paid_no_tag_held" },
         );
         return new Response(
-          JSON.stringify({ ok: true, action: "released", tag: releasedTag }),
+          JSON.stringify({
+            ok: true,
+            action: released ? "released" : "noop",
+            ...(released ? { tag_color: released.tag_color, tag_number: released.tag_number } : {}),
+          }),
           { status: 200 },
         );
       }
       if (statusId === TEKMETRIC_RO_STATUS.POSTED_AR) {
-        const { data: postedTag } = await sb.rpc("mark_keytag_posted", { p_ro_id: roId });
+        const { data: postedRows } = await sb.rpc("mark_keytag_posted", { p_ro_id: roId });
+        const posted = Array.isArray(postedRows) ? postedRows[0] : postedRows;
         await markProcessed(
           eventId,
-          postedTag ? "posted_marked" : "noop",
-          { tag_number: postedTag, reason: "posted_ar_balance_due" },
+          posted ? "posted_marked" : "noop",
+          posted
+            ? { tag_color: posted.tag_color, tag_number: posted.tag_number, reason: "posted_ar_balance_due" }
+            : { reason: "posted_ar_no_tag_held" },
         );
         return new Response(
-          JSON.stringify({ ok: true, action: "posted_marked", tag: postedTag }),
+          JSON.stringify({
+            ok: true,
+            action: posted ? "posted_marked" : "noop",
+            ...(posted ? { tag_color: posted.tag_color, tag_number: posted.tag_number } : {}),
+          }),
           { status: 200 },
         );
       }
@@ -385,17 +425,24 @@ Deno.serve(async (req: Request) => {
         return new Response(JSON.stringify({ ok: true, action: "noop" }), { status: 200 });
       }
 
-      const { data: releasedTag } = await sb.rpc("release_keytag_for_ro", {
+      const { data: releasedRows } = await sb.rpc("release_keytag_for_ro", {
         p_ro_id: roId,
         p_reason: "payment_webhook",
       });
+      const released = Array.isArray(releasedRows) ? releasedRows[0] : releasedRows;
       await markProcessed(
         eventId,
-        releasedTag ? "released" : "noop",
-        { tag_number: releasedTag, reason: "payment_webhook", payment_id: paymentId },
+        released ? "released" : "noop",
+        released
+          ? { tag_color: released.tag_color, tag_number: released.tag_number, reason: "payment_webhook", payment_id: paymentId }
+          : { reason: "payment_webhook_no_tag_held", payment_id: paymentId },
       );
       return new Response(
-        JSON.stringify({ ok: true, action: "released", tag: releasedTag }),
+        JSON.stringify({
+          ok: true,
+          action: released ? "released" : "noop",
+          ...(released ? { tag_color: released.tag_color, tag_number: released.tag_number } : {}),
+        }),
         { status: 200 },
       );
     }
