@@ -26,7 +26,6 @@ import {
   ACCESS_TOKEN_TTL_SEC,
   AUTH_CODE_TTL_SEC,
   type AuthServerMetadata,
-  escapeHtml,
   functionUrl,
   randomToken,
   sha256Base64Url,
@@ -54,13 +53,6 @@ function json(body: unknown, status = 200, extra: Record<string, string> = {}): 
   return new Response(JSON.stringify(body), {
     status,
     headers: { "Content-Type": "application/json", ...CORS_HEADERS, ...extra },
-  });
-}
-
-function html(body: string, status = 200): Response {
-  return new Response(body, {
-    status,
-    headers: { "Content-Type": "text/html; charset=utf-8", ...CORS_HEADERS },
   });
 }
 
@@ -188,7 +180,23 @@ async function handleRegister(req: Request): Promise<Response> {
   );
 }
 
-// ─── Route: GET /authorize (consent page) ───────────────────────────────────
+// ─── Route: GET /authorize (auto-approve — no HTML consent page) ────────────
+//
+// Why no HTML consent UI: Supabase Edge Functions force `Content-Type: text/plain`
+// AND attach `Content-Security-Policy: default-src 'none'; sandbox` to all responses.
+// That CSP blocks form submission AND the wrong Content-Type makes the browser
+// render the HTML as source. Supabase deliberately treats edge functions as API
+// endpoints, not HTML hosts. Workarounds (host consent page on Cloudflare Pages /
+// Vercel / GitHub Pages) all add a separate-host moving piece for Phase 1 sandbox
+// and don't actually buy anything we need yet.
+//
+// Phase 1 trade-off: auto-approve every authorize request that passes client +
+// redirect_uri validation. The audit label is derived from the OAuth client (each
+// Claude Desktop install registers its own DCR client → unique label per install).
+//
+// Phase 2 (when we wire real per-user identity): replace this with a Supabase Auth
+// login redirect. Supabase Auth UI is already designed for browser flows and does
+// not have the edge-function CSP problem.
 
 async function handleAuthorizeGet(req: Request): Promise<Response> {
   const url = new URL(req.url);
@@ -198,7 +206,7 @@ async function handleAuthorizeGet(req: Request): Promise<Response> {
   const redirectUri = params.get("redirect_uri");
   const responseType = params.get("response_type");
   const codeChallenge = params.get("code_challenge");
-  const codeChallengeMethod = params.get("code_challenge_method") ?? "S256";
+  const codeChallengeMethod = (params.get("code_challenge_method") ?? "S256") as "S256" | "plain";
   const scope = params.get("scope") ?? "mcp";
   const state = params.get("state") ?? "";
   const resource = params.get("resource") ?? "";
@@ -215,7 +223,7 @@ async function handleAuthorizeGet(req: Request): Promise<Response> {
 
   const { data: client, error: clientErr } = await sb
     .from("oauth_clients")
-    .select("id, redirect_uris, scope, active")
+    .select("id, redirect_uris, scope, active, client_name")
     .eq("id", clientId)
     .maybeSingle();
 
@@ -225,118 +233,12 @@ async function handleAuthorizeGet(req: Request): Promise<Response> {
     return oauthError("invalid_redirect_uri", "redirect_uri is not registered for this client");
   }
 
-  return html(renderConsentPage({
-    clientId,
-    redirectUri,
-    codeChallenge,
-    codeChallengeMethod,
-    scope,
-    state,
-    resource,
-  }));
-}
+  // Derive audit label. client_name comes from DCR; falls back to client_id if absent.
+  const userLabel = (client.client_name && client.client_name !== "unknown")
+    ? client.client_name
+    : `client:${clientId.slice(0, 16)}`;
 
-interface ConsentParams {
-  clientId: string;
-  redirectUri: string;
-  codeChallenge: string;
-  codeChallengeMethod: string;
-  scope: string;
-  state: string;
-  resource: string;
-}
-
-function renderConsentPage(p: ConsentParams): string {
-  const formAction = `${functionUrl(FUNCTION_NAME)}/authorize`;
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Authorize Jeff's Auto Orchestrator</title>
-  <style>
-    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; max-width: 480px; margin: 60px auto; padding: 0 20px; color: #1a1a1a; }
-    h1 { font-size: 22px; margin-bottom: 4px; }
-    .sub { color: #666; font-size: 14px; margin-bottom: 28px; }
-    .card { border: 1px solid #ddd; border-radius: 8px; padding: 24px; }
-    label { display: block; font-size: 14px; font-weight: 500; margin-bottom: 6px; }
-    input[type=text] { width: 100%; padding: 10px 12px; font-size: 15px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; }
-    .hint { font-size: 13px; color: #777; margin-top: 6px; }
-    .scope { background: #f5f5f5; padding: 12px; border-radius: 6px; font-size: 13px; margin: 16px 0; }
-    button { width: 100%; padding: 12px; font-size: 15px; font-weight: 500; border: 0; border-radius: 6px; background: #2563eb; color: white; cursor: pointer; margin-top: 16px; }
-    button:hover { background: #1d4ed8; }
-    button.cancel { background: white; color: #555; border: 1px solid #ccc; margin-top: 8px; }
-    button.cancel:hover { background: #f5f5f5; }
-  </style>
-</head>
-<body>
-  <h1>Authorize MCP access</h1>
-  <p class="sub">Client <strong>${escapeHtml(p.clientId)}</strong> is requesting access to Jeff's Auto Orchestrator.</p>
-  <div class="card">
-    <form method="POST" action="${escapeHtml(formAction)}">
-      <input type="hidden" name="client_id"             value="${escapeHtml(p.clientId)}">
-      <input type="hidden" name="redirect_uri"          value="${escapeHtml(p.redirectUri)}">
-      <input type="hidden" name="code_challenge"        value="${escapeHtml(p.codeChallenge)}">
-      <input type="hidden" name="code_challenge_method" value="${escapeHtml(p.codeChallengeMethod)}">
-      <input type="hidden" name="scope"                 value="${escapeHtml(p.scope)}">
-      <input type="hidden" name="state"                 value="${escapeHtml(p.state)}">
-      <input type="hidden" name="resource"              value="${escapeHtml(p.resource)}">
-
-      <label for="user_label">Your name or email</label>
-      <input type="text" id="user_label" name="user_label" required autofocus
-             placeholder="e.g. chris@jeffsautomotive.com">
-      <p class="hint">Used in the audit trail. All your tool calls will be logged under this label.</p>
-
-      <div class="scope"><strong>Scope:</strong> ${escapeHtml(p.scope)}</div>
-
-      <button type="submit" name="action" value="approve">Authorize</button>
-      <button type="submit" name="action" value="deny" class="cancel">Cancel</button>
-    </form>
-  </div>
-</body>
-</html>`;
-}
-
-// ─── Route: POST /authorize (consent submitted) ─────────────────────────────
-
-async function handleAuthorizePost(req: Request): Promise<Response> {
-  const form = await req.formData();
-  const clientId = String(form.get("client_id") ?? "");
-  const redirectUri = String(form.get("redirect_uri") ?? "");
-  const codeChallenge = String(form.get("code_challenge") ?? "");
-  const codeChallengeMethod = String(form.get("code_challenge_method") ?? "S256") as "S256" | "plain";
-  const scope = String(form.get("scope") ?? "mcp");
-  const state = String(form.get("state") ?? "");
-  const resource = String(form.get("resource") ?? "");
-  const userLabel = String(form.get("user_label") ?? "").trim();
-  const action = String(form.get("action") ?? "");
-
-  if (!clientId || !redirectUri || !codeChallenge) {
-    return oauthError("invalid_request", "Missing form fields");
-  }
-
-  if (action === "deny") {
-    const u = new URL(redirectUri);
-    u.searchParams.set("error", "access_denied");
-    if (state) u.searchParams.set("state", state);
-    return Response.redirect(u.toString(), 302);
-  }
-
-  if (!userLabel) {
-    return oauthError("invalid_request", "user_label is required");
-  }
-
-  const { data: client, error: clientErr } = await sb
-    .from("oauth_clients")
-    .select("id, redirect_uris, active")
-    .eq("id", clientId)
-    .maybeSingle();
-  if (clientErr) return oauthError("server_error", clientErr.message, 500);
-  if (!client || !client.active) return oauthError("invalid_client", "Unknown or inactive client_id");
-  if (!client.redirect_uris.includes(redirectUri)) {
-    return oauthError("invalid_redirect_uri", "redirect_uri is not registered for this client");
-  }
-
+  // Mint single-use auth code, store hashed
   const code = randomToken(32);
   const codeHash = await sha256Base64Url(code);
   const expiresAt = new Date(Date.now() + AUTH_CODE_TTL_SEC * 1000).toISOString();
@@ -358,10 +260,11 @@ async function handleAuthorizePost(req: Request): Promise<Response> {
     return oauthError("server_error", insertErr.message, 500);
   }
 
-  const u = new URL(redirectUri);
-  u.searchParams.set("code", code);
-  if (state) u.searchParams.set("state", state);
-  return Response.redirect(u.toString(), 302);
+  // Redirect back to the client with the code (and state, if provided)
+  const redirect = new URL(redirectUri);
+  redirect.searchParams.set("code", code);
+  if (state) redirect.searchParams.set("state", state);
+  return Response.redirect(redirect.toString(), 302);
 }
 
 // ─── Route: POST /token (code exchange) ─────────────────────────────────────
@@ -510,9 +413,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
     if (req.method === "GET" && path === "/authorize") {
       return await handleAuthorizeGet(req);
-    }
-    if (req.method === "POST" && path === "/authorize") {
-      return await handleAuthorizePost(req);
     }
     if (req.method === "POST" && path === "/token") {
       return await handleToken(req);
