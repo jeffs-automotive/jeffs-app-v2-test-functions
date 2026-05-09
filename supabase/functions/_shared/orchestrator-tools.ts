@@ -26,6 +26,7 @@ import { tool } from "npm:ai@^5";
 import { z } from "npm:zod@^4";
 
 import { listWipKeyTags, findRoByKeyTag } from "./tools/repair-orders.ts";
+import { assignKeytagToRo, releaseKeytagFromRo } from "./tools/keytag-management.ts";
 
 // ─── Tool-call recorder (writes to public.tool_calls) ────────────────────────
 
@@ -147,6 +148,89 @@ export function getOrchestratorTools(args: {
         });
         try {
           const result = await findRoByKeyTag(sb, shopId, key_tag);
+          await recorder.recordEnd({ toolCallId: callId, output: result });
+          return result;
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          await recorder.recordEnd({ toolCallId: callId, error: msg });
+          throw e;
+        }
+      },
+    }),
+
+    assignKeytagToRo: tool({
+      description:
+        "Assigns a key tag to a repair order. Use this when a service advisor says any of: " +
+        "'put red 5 on RO 152222', 'give RO 152222 a key tag', 'I just used yellow 12 for RO 152300', " +
+        "'add a key tag to repair order 152222'. " +
+        "Two modes: (1) if the user names a SPECIFIC tag (color + number), pass color and tag_number — " +
+        "we force-assign that exact tag and PATCH Tekmetric. (2) if the user says 'give it a tag' / 'auto " +
+        "assign' / no specific tag mentioned, OMIT color and tag_number — we round-robin pick the next " +
+        "available tag. " +
+        "Errors to surface to the user verbatim: 'tag_in_use_by_other_ro' (suggest a different tag), " +
+        "'ro_already_has_tag' (mention which tag is already on it), 'pool_exhausted' (all 180 in use). " +
+        "On success, tell the user which tag was assigned and include the ro_url.",
+      inputSchema: z.object({
+        ro_number: z.number().int().positive().describe(
+          "The repair order number (the shop-facing RO #). Required.",
+        ),
+        color: z.enum(["red", "yellow"]).optional().describe(
+          "Tag color, only when the user named a specific tag. Omit for auto round-robin.",
+        ),
+        tag_number: z.number().int().min(1).max(90).optional().describe(
+          "Tag number 1-90, only when the user named a specific tag. Omit for auto round-robin. Must be paired with `color`.",
+        ),
+      }).refine(
+        (v) => (v.color === undefined) === (v.tag_number === undefined),
+        { message: "color and tag_number must both be provided or both omitted" },
+      ),
+      execute: async ({ ro_number, color, tag_number }) => {
+        const input = { ro_number, color, tag_number };
+        const callId = await recorder.recordStart({
+          toolName: "assignKeytagToRo",
+          input,
+          stepNumber: 0,
+        });
+        try {
+          const result = await assignKeytagToRo(sb, shopId, {
+            roNumber: ro_number,
+            color,
+            tagNumber: tag_number,
+          });
+          await recorder.recordEnd({ toolCallId: callId, output: result });
+          return result;
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          await recorder.recordEnd({ toolCallId: callId, error: msg });
+          throw e;
+        }
+      },
+    }),
+
+    releaseKeytagFromRo: tool({
+      description:
+        "Releases the key tag currently held by a repair order, returning it to the available pool AND " +
+        "clearing the keyTag field in Tekmetric. Use this when a service advisor says any of: " +
+        "'release the tag from RO 152222', 'the keys are off RO 152300', 'free up RO 152222's tag', " +
+        "'remove the key tag from repair order 152222', 'take the tag off RO 152222'. " +
+        "Common case: fleet vehicles (Carmax etc.) that stay in A/R for ~30 days — the keys leave the " +
+        "shop long before the RO closes, so the advisor manually releases the tag. " +
+        "If the RO didn't have a tag in our records, the tool returns ok:true with released_tag:null and " +
+        "a clear message — relay that to the user as 'no tag was assigned to that RO'. " +
+        "On success, tell the user which tag was freed (e.g. 'Released Red 5 from RO 152222').",
+      inputSchema: z.object({
+        ro_number: z.number().int().positive().describe(
+          "The repair order number to free. Required.",
+        ),
+      }),
+      execute: async ({ ro_number }) => {
+        const callId = await recorder.recordStart({
+          toolName: "releaseKeytagFromRo",
+          input: { ro_number },
+          stepNumber: 0,
+        });
+        try {
+          const result = await releaseKeytagFromRo(sb, shopId, { roNumber: ro_number });
           await recorder.recordEnd({ toolCallId: callId, output: result });
           return result;
         } catch (e) {

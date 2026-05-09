@@ -20,7 +20,45 @@ import {
 } from "../tekmetric-client.ts";
 import { TEKMETRIC_RO_STATUS, buildTekmetricRoUrl } from "../tekmetric.ts";
 
-// ─── Helper: GET a single repair order by ID ────────────────────────────────
+// ─── Helper: GET a single repair order by RO number (what users say) ────────
+
+/**
+ * Fetches a single repair order from Tekmetric by its repairOrderNumber (the
+ * shop-facing number users actually use, e.g. "RO 152222"). Tekmetric's list
+ * endpoint supports `?repairOrderNumber=N` as a filter; we expect exactly one
+ * match (RO numbers are unique per shop).
+ *
+ * Returns null if the RO is not found OR if multiple results come back (which
+ * shouldn't happen but is treated as a lookup failure rather than a guess).
+ */
+export async function getRepairOrderByNumber(
+  sb: SupabaseClient,
+  shopId: number,
+  roNumber: number,
+): Promise<TekmetricRepairOrder | null> {
+  try {
+    const page = await tekmetricGetJson<TekmetricPage<TekmetricRepairOrder>>(
+      sb,
+      "/repair-orders",
+      { shop: shopId, repairOrderNumber: roNumber, size: 5 },
+    );
+    if (page.content.length === 0) return null;
+    if (page.content.length > 1) {
+      // Defensive — RO numbers should be unique per shop. If we get more than
+      // one, something is off; refuse to guess which to use.
+      console.warn(
+        `getRepairOrderByNumber: ${page.content.length} ROs matched repairOrderNumber=${roNumber}; refusing to pick one.`,
+      );
+      return null;
+    }
+    return page.content[0];
+  } catch (e) {
+    console.error("getRepairOrderByNumber failed:", e instanceof Error ? e.message : String(e));
+    return null;
+  }
+}
+
+// ─── Helper: GET a single repair order by Tekmetric ID ──────────────────────
 
 /**
  * Fetches a single repair order from Tekmetric by ID. Used by the keytag webhook
