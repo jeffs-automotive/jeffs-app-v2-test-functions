@@ -1,0 +1,136 @@
+// Shared OAuth 2.1 helpers used by mcp-auth (server-side flow) and orchestrator-mcp
+// (token validation on each request).
+//
+// Token storage rule: we hash with SHA-256 + url-safe base64 before any DB write.
+// Raw tokens never land in the DB; if the table is leaked, attackers can't replay.
+
+// ─── Crypto primitives ──────────────────────────────────────────────────────
+
+const encoder = new TextEncoder();
+
+/** Generates a cryptographically random url-safe string of `bytes` random bytes. */
+export function randomToken(bytes = 32): string {
+  const buf = new Uint8Array(bytes);
+  crypto.getRandomValues(buf);
+  return base64UrlEncode(buf);
+}
+
+/** Base64url-encodes a Uint8Array (no padding, URL-safe alphabet). */
+export function base64UrlEncode(buf: Uint8Array): string {
+  // btoa expects a binary string
+  let bin = "";
+  for (const b of buf) bin += String.fromCharCode(b);
+  return btoa(bin)
+    .replace(/=+$/g, "")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_");
+}
+
+/** SHA-256 hash of a string, base64url-encoded — used for token-at-rest storage. */
+export async function sha256Base64Url(input: string): Promise<string> {
+  const data = encoder.encode(input);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return base64UrlEncode(new Uint8Array(digest));
+}
+
+/**
+ * PKCE verifier check.
+ *   method=S256: stored challenge == sha256Base64Url(verifier)
+ *   method=plain: stored challenge == verifier (we accept but discourage)
+ */
+export async function verifyPkce(
+  verifier: string,
+  challenge: string,
+  method: "S256" | "plain",
+): Promise<boolean> {
+  if (method === "plain") return verifier === challenge;
+  const computed = await sha256Base64Url(verifier);
+  return computed === challenge;
+}
+
+// ─── HTML rendering for the consent page (no template engine — keep tiny) ───
+
+/**
+ * Escapes user-supplied values before injecting into HTML. Anything that came
+ * from the network (client_id, redirect_uri, state, scope) MUST go through this
+ * before being put in attribute values or text — protects against reflected XSS
+ * if a malicious client uses crafted params.
+ */
+export function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+// ─── URL helpers ────────────────────────────────────────────────────────────
+
+/**
+ * Strips the `/functions/v1/<function-name>` prefix from a Supabase Edge Function
+ * URL so we can do internal path routing on the remainder.
+ *
+ * Example:
+ *   In:  https://x.supabase.co/functions/v1/mcp-auth/.well-known/oauth-authorization-server
+ *   Out: /.well-known/oauth-authorization-server
+ *
+ * If the prefix doesn't match (running locally, or unexpected layout), returns
+ * the untouched pathname so the caller can still match it.
+ */
+export function stripFunctionPrefix(req: Request, functionName: string): string {
+  const url = new URL(req.url);
+  const prefix = `/functions/v1/${functionName}`;
+  if (url.pathname === prefix) return "/";
+  if (url.pathname.startsWith(prefix + "/")) {
+    return url.pathname.slice(prefix.length) || "/";
+  }
+  // Local serve under `supabase functions serve` mounts at /<function-name>
+  if (url.pathname === `/${functionName}`) return "/";
+  if (url.pathname.startsWith(`/${functionName}/`)) {
+    return url.pathname.slice(`/${functionName}`.length) || "/";
+  }
+  return url.pathname;
+}
+
+/** Reads the canonical issuer / external base URL for this deployment. */
+export function getIssuerUrl(): string {
+  // SUPABASE_URL points at the project (https://<ref>.supabase.co); the function
+  // base lives at /functions/v1/<name>. We let callers append the function name.
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  if (!supabaseUrl) throw new Error("SUPABASE_URL not set in edge runtime env");
+  return supabaseUrl.replace(/\/+$/, "");
+}
+
+export function functionUrl(functionName: string): string {
+  return `${getIssuerUrl()}/functions/v1/${functionName}`;
+}
+
+// ─── Constants ──────────────────────────────────────────────────────────────
+
+/** Authorization-code TTL — single-use codes, narrow window per OAuth 2.1 guidance. */
+export const AUTH_CODE_TTL_SEC = 10 * 60; // 10 minutes
+
+/** Access-token TTL for Phase 1. We don't issue refresh tokens yet. */
+export const ACCESS_TOKEN_TTL_SEC = 24 * 60 * 60; // 24 hours
+
+/** What we serve for the /.well-known/oauth-authorization-server discovery doc. */
+export interface AuthServerMetadata {
+  issuer: string;
+  authorization_endpoint: string;
+  token_endpoint: string;
+  registration_endpoint: string;
+  scopes_supported: string[];
+  response_types_supported: string[];
+  grant_types_supported: string[];
+  code_challenge_methods_supported: string[];
+  token_endpoint_auth_methods_supported: string[];
+}
+
+/** What we serve for /.well-known/oauth-protected-resource on orchestrator-mcp. */
+export interface ProtectedResourceMetadata {
+  resource: string;
+  authorization_servers: string[];
+  scopes_supported: string[];
+  bearer_methods_supported: string[];
+}

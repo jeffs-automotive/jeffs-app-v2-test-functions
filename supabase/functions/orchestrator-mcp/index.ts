@@ -1,41 +1,45 @@
 // orchestrator-mcp
 //
-// Custom MCP server hit by Claude Desktop's Custom Connector. Implements the MCP
-// JSON-RPC 2.0 protocol over HTTP directly (no SDK) — the surface we need is small:
-//   - initialize     handshake; advertise tools capability
-//   - tools/list     return our single tool: run_orchestrator
-//   - tools/call     dispatch to runOrchestrator(...) and return curated JSON
-//   - ping           empty response (good citizen)
+// Custom MCP server hit by Claude Desktop's Custom Connector. Implements:
+//   - the MCP JSON-RPC 2.0 protocol over HTTP (initialize, tools/list,
+//     tools/call, ping) on POST/GET /
+//   - Protected Resource Metadata discovery on
+//     GET /.well-known/oauth-protected-resource
+//
+// Auth: OAuth 2.1 + PKCE with the mcp-auth function as the authorization server.
+// On unauthenticated calls we return 401 + WWW-Authenticate header pointing at
+// our PRM endpoint, kicking off Claude Desktop's discovery / DCR / PKCE flow.
+// All MCP calls require a valid Bearer access_token issued by mcp-auth and
+// stored hashed in public.oauth_access_tokens.
 //
 // Phase 1 architecture:
 //   Claude Desktop (Haiku) → MCP run_orchestrator(intent) → THIS FUNCTION
-//   → runOrchestrator (Vercel AI SDK + Sonnet 4.5 + tools) → JSON back to Claude Desktop
-//   → Haiku formats for the user.
-//
-// Auth: shared bearer token (MCP_BEARER_TOKEN env var). Each team member configures
-// the same token in their Claude Desktop Custom Connector. Phase 2: per-user tokens
-// mapped to team_members.tekmetric_employee_id.
-//
-// References:
-//   MCP spec:  https://modelcontextprotocol.io/specification/
-//   JSON-RPC:  https://www.jsonrpc.org/specification
+//   → runOrchestrator (Vercel AI SDK + Sonnet 4.6 + tools) → JSON back to
+//   Claude Desktop → Haiku formats for the user.
 
 import "@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { runOrchestrator } from "../_shared/orchestrator.ts";
 import { ENV_NAMES } from "../_shared/tekmetric.ts";
+import {
+  functionUrl,
+  type ProtectedResourceMetadata,
+  sha256Base64Url,
+  stripFunctionPrefix,
+} from "../_shared/oauth.ts";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
+const FUNCTION_NAME = "orchestrator-mcp";
+const AUTH_FUNCTION_NAME = "mcp-auth";
+
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const MCP_BEARER_TOKEN = Deno.env.get("MCP_BEARER_TOKEN");
 const SHOP_ID = parseInt(Deno.env.get(ENV_NAMES.TEKMETRIC_SHOP_ID) ?? "7476", 10);
-const DEFAULT_USER_LABEL = Deno.env.get("MCP_DEFAULT_USER_LABEL") ?? "shared-test";
 
-const PROTOCOL_VERSION = "2025-06-18";   // current MCP spec version supported by Claude Desktop
+const PROTOCOL_VERSION = "2025-11-25";   // current MCP spec version
 const SERVER_NAME = "jeffs-app-orchestrator";
-const SERVER_VERSION = "0.1.0";
+const SERVER_VERSION = "0.2.0";
 
 const sb = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
@@ -65,10 +69,16 @@ const RPC_ERR = {
   INTERNAL: -32603,
 };
 
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+  "Access-Control-Allow-Headers": "Authorization, Content-Type, mcp-session-id, mcp-protocol-version",
+};
+
 function jsonRpcResponse(body: JsonRpcResponse, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...CORS_HEADERS },
   });
 }
 
@@ -76,18 +86,78 @@ function jsonRpcError(id: string | number | null, code: number, message: string,
   return jsonRpcResponse({ jsonrpc: "2.0", id, error: { code, message, ...(data !== undefined ? { data } : {}) } });
 }
 
-// ─── Auth ────────────────────────────────────────────────────────────────────
+function json(body: unknown, status = 200, extra: Record<string, string> = {}): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json", ...CORS_HEADERS, ...extra },
+  });
+}
 
-function checkAuth(req: Request): { ok: true } | { ok: false; reason: string } {
-  if (!MCP_BEARER_TOKEN) {
-    return { ok: false, reason: "Server misconfigured — MCP_BEARER_TOKEN is not set." };
+// ─── Auth: OAuth bearer validation ────────────────────────────────────────
+
+interface AuthOk { ok: true; userLabel: string; scope: string; clientId: string; }
+interface AuthErr { ok: false; reason: string; }
+
+async function authenticateRequest(req: Request): Promise<AuthOk | AuthErr> {
+  const authHeader = req.headers.get("Authorization") ?? req.headers.get("authorization");
+  if (!authHeader) return { ok: false, reason: "missing_token" };
+  const m = authHeader.match(/^Bearer\s+(.+)$/i);
+  if (!m) return { ok: false, reason: "invalid_token" };
+
+  const token = m[1].trim();
+  if (!token) return { ok: false, reason: "invalid_token" };
+
+  const tokenHash = await sha256Base64Url(token);
+  const { data, error } = await sb.rpc("oauth_validate_access_token", { p_token_hash: tokenHash });
+  if (error) {
+    console.error("oauth_validate_access_token RPC failed:", error.message);
+    return { ok: false, reason: "server_error" };
   }
-  const auth = req.headers.get("Authorization") ?? req.headers.get("authorization");
-  if (!auth) return { ok: false, reason: "Missing Authorization header" };
-  const m = auth.match(/^Bearer\s+(.+)$/i);
-  if (!m) return { ok: false, reason: "Authorization header is not 'Bearer <token>'" };
-  if (m[1].trim() !== MCP_BEARER_TOKEN) return { ok: false, reason: "Invalid bearer token" };
-  return { ok: true };
+  // The RPC returns a table; supabase-js gives an array
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row || !row.user_label) return { ok: false, reason: "invalid_token" };
+
+  return {
+    ok: true,
+    userLabel: row.user_label as string,
+    scope: row.scope as string,
+    clientId: row.client_id as string,
+  };
+}
+
+/** Build the WWW-Authenticate header that points clients at our PRM endpoint. */
+function wwwAuthenticate(error: "missing_token" | "invalid_token" | "server_error"): string {
+  const prmUrl = `${functionUrl(FUNCTION_NAME)}/.well-known/oauth-protected-resource`;
+  const errorMap: Record<string, { code: string; description: string }> = {
+    missing_token: { code: "invalid_token", description: "Bearer token required" },
+    invalid_token: { code: "invalid_token", description: "Bearer token is invalid or expired" },
+    server_error:  { code: "invalid_token", description: "Token validation failed (server error)" },
+  };
+  const e = errorMap[error];
+  return `Bearer realm="MCP", error="${e.code}", error_description="${e.description}", resource_metadata="${prmUrl}"`;
+}
+
+function unauthorized(reason: AuthErr["reason"]): Response {
+  return new Response(JSON.stringify({ error: "unauthorized", reason }), {
+    status: 401,
+    headers: {
+      "Content-Type": "application/json",
+      "WWW-Authenticate": wwwAuthenticate(reason),
+      ...CORS_HEADERS,
+    },
+  });
+}
+
+// ─── Route: GET /.well-known/oauth-protected-resource ───────────────────────
+
+function handleProtectedResourceMetadata(): Response {
+  const metadata: ProtectedResourceMetadata = {
+    resource: functionUrl(FUNCTION_NAME),
+    authorization_servers: [functionUrl(AUTH_FUNCTION_NAME)],
+    scopes_supported: ["mcp"],
+    bearer_methods_supported: ["header"],
+  };
+  return json(metadata);
 }
 
 // ─── MCP method handlers ─────────────────────────────────────────────────────
@@ -95,13 +165,8 @@ function checkAuth(req: Request): { ok: true } | { ok: false; reason: string } {
 function handleInitialize(): unknown {
   return {
     protocolVersion: PROTOCOL_VERSION,
-    capabilities: {
-      tools: {},        // we expose tools; no resources/prompts/sampling for now
-    },
-    serverInfo: {
-      name: SERVER_NAME,
-      version: SERVER_VERSION,
-    },
+    capabilities: { tools: {} },
+    serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
   };
 }
 
@@ -124,12 +189,8 @@ function handleToolsList(): unknown {
             },
             params: {
               type: "object",
-              description: "Optional structured parameters parsed from the user's message (orchestrator may use or ignore).",
+              description: "Optional structured parameters parsed from the user's message.",
               additionalProperties: true,
-            },
-            user_label: {
-              type: "string",
-              description: "Optional team-member label for session/audit grouping. Defaults to 'shared-test' in Phase 1.",
             },
           },
           required: ["intent"],
@@ -139,7 +200,10 @@ function handleToolsList(): unknown {
   };
 }
 
-async function handleToolsCall(params: unknown): Promise<unknown> {
+class RpcInvalidParams extends Error {}
+class RpcMethodNotFound extends Error {}
+
+async function handleToolsCall(params: unknown, userLabel: string): Promise<unknown> {
   if (!params || typeof params !== "object") {
     throw new RpcInvalidParams("tools/call: params must be an object with name + arguments");
   }
@@ -156,16 +220,15 @@ async function handleToolsCall(params: unknown): Promise<unknown> {
     throw new RpcInvalidParams("run_orchestrator: 'intent' (non-empty string) is required");
   }
   const userParams = (args as { params?: Record<string, unknown> }).params;
-  const userLabel = ((args as { user_label?: unknown }).user_label as string | undefined) ?? DEFAULT_USER_LABEL;
 
+  // user_label comes from the OAuth token's bound identity, NOT from the tool's
+  // arguments — the Claude-Desktop-side caller can't override audit trail.
   const orchestratorResult = await runOrchestrator(sb, SHOP_ID, {
     intent,
     params: userParams,
     user_label: userLabel,
   });
 
-  // MCP `tools/call` responses must have `content: [{type, text|json|...}]`. The model
-  // reading this gets the JSON-stringified payload as the tool result text.
   const text = JSON.stringify(orchestratorResult);
   return {
     content: [{ type: "text", text }],
@@ -173,44 +236,31 @@ async function handleToolsCall(params: unknown): Promise<unknown> {
   };
 }
 
-// ─── Internal RPC error types ────────────────────────────────────────────────
-class RpcInvalidParams extends Error {}
-class RpcMethodNotFound extends Error {}
-
 // ─── Main entrypoint ─────────────────────────────────────────────────────────
 
 Deno.serve(async (req: Request): Promise<Response> => {
-  // CORS preflight (Claude Desktop sends OPTIONS in some flows)
   if (req.method === "OPTIONS") {
-    return new Response(null, {
-      status: 204,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
-        "Access-Control-Allow-Headers": "Authorization, Content-Type, mcp-session-id, mcp-protocol-version",
-      },
-    });
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
   }
 
-  // Auth gate (applies to POST and GET)
-  const auth = checkAuth(req);
-  if (!auth.ok) {
-    return new Response(
-      JSON.stringify({ error: auth.reason }),
-      {
-        status: 401,
-        headers: { "Content-Type": "application/json", "WWW-Authenticate": "Bearer" },
-      },
-    );
+  const path = stripFunctionPrefix(req, FUNCTION_NAME);
+
+  // PRM discovery — public, no auth required (it's the lookup that tells
+  // unauthenticated clients HOW to authenticate).
+  if (req.method === "GET" && path === "/.well-known/oauth-protected-resource") {
+    return handleProtectedResourceMetadata();
   }
 
-  // Health check via GET (Claude Desktop pings the URL when adding the connector)
-  if (req.method === "GET") {
-    return new Response(
-      JSON.stringify({ ok: true, server: SERVER_NAME, version: SERVER_VERSION }),
-      { status: 200, headers: { "Content-Type": "application/json" } },
-    );
+  // Health check via GET (Claude Desktop pings the URL when adding the connector).
+  // We respond OK without auth so the dialog can verify the URL is reachable;
+  // any actual MCP call still requires a token.
+  if (req.method === "GET" && (path === "/" || path === "")) {
+    return json({ ok: true, server: SERVER_NAME, version: SERVER_VERSION });
   }
+
+  // Everything else requires auth
+  const auth = await authenticateRequest(req);
+  if (!auth.ok) return unauthorized(auth.reason);
 
   if (req.method !== "POST") {
     return new Response(
@@ -230,9 +280,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return jsonRpcError(rpcReq?.id ?? null, RPC_ERR.INVALID_REQUEST, "Not a valid JSON-RPC 2.0 request");
   }
   const id = rpcReq.id ?? null;
-
-  // Notification (no id) — just 200 with empty body. Claude Desktop sends
-  // `notifications/initialized` after the initialize handshake.
   const isNotification = rpcReq.id === undefined || rpcReq.id === null;
 
   try {
@@ -247,11 +294,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
         return jsonRpcResponse({ jsonrpc: "2.0", id, result: handleToolsList() });
 
       case "tools/call": {
-        const result = await handleToolsCall(rpcReq.params);
+        const result = await handleToolsCall(rpcReq.params, auth.userLabel);
         return jsonRpcResponse({ jsonrpc: "2.0", id, result });
       }
 
-      // Notifications — accept silently
       case "notifications/initialized":
       case "notifications/cancelled":
         if (isNotification) return new Response(null, { status: 202 });
