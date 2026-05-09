@@ -1,42 +1,34 @@
-// keytag-tekmetric-webhook (v6 — port of v5 to jeffs-app-v2-test-functions)
+// keytag-tekmetric-webhook (v7 — DB-first + GET-verify pattern)
 //
-// Tekmetric webhooks: URL-only configuration. Auth via ?token=<secret> query param.
+// Tekmetric webhooks: URL-only configuration. Auth via ?token=<secret> query
+// param (Tekmetric doesn't support custom headers; the token IS the URL secret).
 //
-// Three flows:
-//   1. RO status -> 2 (WIP)         : assign next keytag, PATCH to Tekmetric (only if needed)
-//   2. RO status -> 5 (Posted/paid) : release tag
-//   3. RO status -> 6 (A/R)         : keep tag, stamp posted_at
-//   4. Payment made (arPayment+ok)  : release tag
+// Flows:
+//   1. RO status_updated webhook       : if our DB shows no tag for this RO,
+//                                        GET the RO from Tekmetric to re-verify
+//                                        status. If status=WIP, assign a tag
+//                                        (lowest available 1..100) and PATCH
+//                                        Tekmetric. If our DB already has a tag
+//                                        for this RO, do nothing.
+//   2. RO posted (status=POSTED_PAID)  : release the tag
+//   3. RO posted (status=POSTED_AR)    : keep tag, mark posted_at
+//   4. Payment made (arPayment+ok)     : release the tag
 //
-// LOOP PREVENTION (carried forward from v5 after the v3 outage):
-//   Tekmetric fires `status_updated` on ANY field change to an RO, including the keyTag
-//   field PATCHed by this very function. Without guards, that PATCH triggers another
-//   inbound webhook with status_id=2, which triggers another PATCH, ad infinitum. We have
-//   no way to scope the Tekmetric subscription, so we filter in-house with two guards:
-//
-//   #1 (idempotent PATCH): the webhook body includes the RO's current keytag value as
-//      `data.keytag` (lowercase string, e.g. "5"). After computing the tag we want to
-//      assign, we compare to the body value. If equal, we skip the PATCH entirely.
-//      This is the primary loop-breaker.
-//
-//   #2 (DB idempotency): assign_next_keytag() returns the same tag if the RO already
-//      holds one (FOR UPDATE SKIP LOCKED + early-return). Even if guard #1 fails, the
-//      DB won't double-assign.
-//
-//   #3 (self-authored gate): events triggered by our service-account API token have a
-//      blank actor in event_text ("...status updated by " with nothing after "by").
-//      We early-exit on these as a belt-and-suspenders defense in case #1 ever regresses.
+// LOOP PREVENTION:
+//   Tekmetric fires `status_updated` on ANY field change to an RO, including
+//   the keyTag field PATCHed by this very function. The previous v3 outage
+//   was a feedback loop where every PATCH triggered another webhook → another
+//   PATCH. v5 fixed it with two guards (idempotent PATCH + self-authored event
+//   filter). v7 simplifies the loop story by making the OUR DB the source of
+//   truth for "does this RO have a tag":
+//     - If our keytags table says yes → skip (no GET, no PATCH)
+//     - If our keytags table says no  → GET to verify status, then assign+PATCH
+//   The loop-back webhook from our own PATCH lands in case "yes already has
+//   tag" → skipped → no PATCH → no further webhook. Loop broken at the DB
+//   layer. Self-authored event filter retained as belt-and-suspenders.
 //
 // All raw events are logged to keytag_webhook_events for audit/replay.
 // Returns 200 unconditionally after logging (so Tekmetric won't retry).
-//
-// Differences from v5:
-//   - Vault read RPC renamed: read_secret_by_name → tekmetric_get_secret (project convention)
-//   - Tekmetric base URL imported from _shared/tekmetric.ts (not env var) so flipping
-//     sandbox/prod is a code change, deployed atomically with the rest of the function set
-//   - Status IDs imported from _shared/tekmetric.ts as named constants
-//   - SHOP_ID still read from env var (TEKMETRIC_SHOP_ID) for now; falls back to 7476
-//     (Jeff's). When we go multi-shop, route by webhook body's shop scope.
 
 import "@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -46,6 +38,7 @@ import {
   VAULT_NAMES,
   ENV_NAMES,
 } from "../_shared/tekmetric.ts";
+import { getRepairOrderById } from "../_shared/tools/repair-orders.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -67,9 +60,12 @@ function classifyEvent(eventText: string | undefined): EventKind {
   return "unknown";
 }
 
-// Tekmetric appends the actor's email after "by". When the change is triggered by our
-// service-account API token, the actor is empty -> trailing "by " with nothing after.
-// That's the fingerprint of a self-authored (loop) event.
+/**
+ * Tekmetric appends the actor's email after "by" in event_text. When the change is
+ * triggered by our service-account API token (i.e., our own PATCH), the actor field
+ * is empty — trailing "by " with nothing after. We treat that as a self-authored
+ * loop event and skip processing as a defensive measure.
+ */
 function isSelfAuthored(eventText: string | null | undefined): boolean {
   if (!eventText) return false;
   const idx = eventText.lastIndexOf(" by ");
@@ -78,21 +74,34 @@ function isSelfAuthored(eventText: string | null | undefined): boolean {
   return actor.length === 0;
 }
 
-// Webhook body returns the keytag as a lowercase string field (e.g. "keytag": "5").
-// The PATCH endpoint accepts the camelCase numeric field `keyTag`. Coerce for compare.
-function readBodyKeytag(data: Record<string, unknown>): number | null {
-  const raw = data.keytag;
-  if (raw === null || raw === undefined || raw === "") return null;
-  const n = typeof raw === "number" ? raw : parseInt(String(raw), 10);
-  return Number.isFinite(n) ? n : null;
+// ─── DB helpers ──────────────────────────────────────────────────────────────
+
+/** Returns the keytag currently assigned to a given Tekmetric RO id, or null. */
+async function getAssignedKeytag(roId: number): Promise<number | null> {
+  const { data, error } = await sb
+    .from("keytags")
+    .select("tag_number")
+    .eq("ro_id", roId)
+    .maybeSingle();
+  if (error) {
+    console.error("keytags lookup failed:", error.message);
+    return null;
+  }
+  return (data?.tag_number as number | undefined) ?? null;
 }
+
+// ─── Tekmetric API helpers ──────────────────────────────────────────────────
 
 async function getAccessToken(): Promise<string> {
   const { data, error } = await sb.rpc("tekmetric_get_secret", {
     p_name: VAULT_NAMES.ACCESS_TOKEN,
   });
   if (error) throw new Error(`tekmetric_get_secret RPC failed: ${error.message}`);
-  if (!data) throw new Error(`Vault has no value for ${VAULT_NAMES.ACCESS_TOKEN}. Run tekmetric-bootstrap first.`);
+  if (!data) {
+    throw new Error(
+      `Vault has no value for ${VAULT_NAMES.ACCESS_TOKEN}. Run tekmetric-bootstrap first.`,
+    );
+  }
   return data as string;
 }
 
@@ -122,6 +131,8 @@ async function patchKeytagToTekmetric(
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
 }
+
+// ─── Audit logging ──────────────────────────────────────────────────────────
 
 interface LogEventInput {
   event_text: string | null;
@@ -159,6 +170,8 @@ async function markProcessed(
     })
     .eq("id", eventId);
 }
+
+// ─── Main entry ─────────────────────────────────────────────────────────────
 
 Deno.serve(async (req: Request) => {
   // ── Auth via query param (Tekmetric doesn't support custom headers) ──
@@ -217,9 +230,9 @@ Deno.serve(async (req: Request) => {
     return new Response(JSON.stringify({ ok: false, logged: false }), { status: 200 });
   }
 
-  // ── GUARD #3: drop self-authored webhooks at the door ──
-  // These are echoes of our own PATCH calls. Processing them would trigger another PATCH,
-  // perpetuating the loop that took us out in v3.
+  // ── Self-authored event filter (defensive) ──
+  // Echoes of our own PATCH calls. The DB-first flow below already prevents the
+  // loop, but skipping at the door saves a DB lookup + Tekmetric GET.
   if (isSelfAuthored(eventText)) {
     await markProcessed(eventId, "skipped_self_authored", { event_text: eventText });
     return new Response(
@@ -230,68 +243,70 @@ Deno.serve(async (req: Request) => {
 
   try {
     if (!roId) {
-      await markProcessed(eventId, "noop", { reason: "no ro id" });
+      await markProcessed(eventId, "noop", { reason: "no ro id in webhook body" });
       return new Response(JSON.stringify({ ok: true, action: "noop" }), { status: 200 });
     }
 
-    // === RO status updated -> WIP ===
-    if (eventKind === "ro_status_updated" && statusId === TEKMETRIC_RO_STATUS.WIP) {
-      const customerId   = (data.customerId       as number) ?? null;
-      const vehicleId    = (data.vehicleId        as number) ?? null;
-      const advisorId    = (data.serviceWriterId  as number) ?? null;
-      const technicianId = (data.technicianId     as number) ?? null;
-      const roNumber     = (data.repairOrderNumber as number) ?? null;
-
-      const { data: tagData, error } = await sb.rpc("assign_next_keytag", {
-        p_ro_id: roId,
-        p_ro_number: roNumber,
-        p_customer_id: customerId,
-        p_vehicle_id: vehicleId,
-        p_advisor_id: advisorId,
-        p_technician_id: technicianId,
-      });
-
-      if (error) {
-        await markProcessed(eventId, "error", { stage: "assign_rpc" }, error.message);
-        return new Response(
-          JSON.stringify({ ok: false, error: error.message }),
-          { status: 200 },
-        );
-      }
-
-      const tag = tagData as number | null;
-      if (tag === null) {
-        await markProcessed(
-          eventId,
-          "error",
-          { reason: "pool_exhausted" },
-          "All 100 key tags in use",
-        );
-        return new Response(
-          JSON.stringify({ ok: false, error: "pool exhausted" }),
-          { status: 200 },
-        );
-      }
-
-      // ── GUARD #1: idempotent PATCH (the actual loop-breaker) ──
-      // If Tekmetric already has the tag we'd be PATCHing, the PATCH would be a no-op
-      // for them and a feedback-loop generator for us. Skip it.
-      const tekmetricKeytag = readBodyKeytag(data);
-      if (tekmetricKeytag === tag) {
-        await markProcessed(eventId, "assigned_no_patch_needed", {
-          tag_number: tag,
-          tekmetric_keytag: tekmetricKeytag,
-          reason: "already_in_sync",
+    // ── Branch 1: status_updated ─────────────────────────────────────────
+    if (eventKind === "ro_status_updated") {
+      // Step 1: do we already have a tag for this RO?
+      const existing = await getAssignedKeytag(roId);
+      if (existing !== null) {
+        await markProcessed(eventId, "skipped_already_assigned", {
+          ro_id: roId,
+          tag_number: existing,
         });
         return new Response(
-          JSON.stringify({
-            ok: true,
-            action: "assigned_no_patch_needed",
-            tag,
-            ro_id: roId,
-          }),
+          JSON.stringify({ ok: true, action: "skipped_already_assigned", tag: existing, ro_id: roId }),
           { status: 200 },
         );
+      }
+
+      // Step 2: GET the RO from Tekmetric to verify status (defensive — don't trust webhook payload)
+      let ro;
+      try {
+        ro = await getRepairOrderById(sb, SHOP_ID, roId);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        await markProcessed(eventId, "error", { stage: "tekmetric_get" }, msg);
+        return new Response(JSON.stringify({ ok: false, error: msg }), { status: 200 });
+      }
+      if (!ro) {
+        await markProcessed(eventId, "error", { stage: "tekmetric_get", reason: "ro_not_found" }, `RO ${roId} not found in Tekmetric`);
+        return new Response(JSON.stringify({ ok: false, error: "RO not found" }), { status: 200 });
+      }
+
+      const verifiedStatusId = ro.repairOrderStatus?.id;
+      if (verifiedStatusId !== TEKMETRIC_RO_STATUS.WIP) {
+        await markProcessed(eventId, "skipped_not_wip", {
+          ro_id: roId,
+          webhook_status_id: statusId,
+          verified_status_id: verifiedStatusId,
+          verified_status_name: ro.repairOrderStatus?.name,
+        });
+        return new Response(
+          JSON.stringify({ ok: true, action: "skipped_not_wip", ro_id: roId }),
+          { status: 200 },
+        );
+      }
+
+      // Step 3: assign the lowest-available tag and PATCH Tekmetric
+      const { data: tagData, error: assignErr } = await sb.rpc("assign_next_keytag", {
+        p_ro_id: roId,
+        p_ro_number: ro.repairOrderNumber,
+        p_customer_id: ro.customerId,
+        p_vehicle_id: ro.vehicleId,
+        p_advisor_id: ro.serviceWriterId,
+        p_technician_id: ro.technicianId,
+      });
+      if (assignErr) {
+        await markProcessed(eventId, "error", { stage: "assign_rpc" }, assignErr.message);
+        return new Response(JSON.stringify({ ok: false, error: assignErr.message }), { status: 200 });
+      }
+      const tag = tagData as number | null;
+      if (tag === null) {
+        await markProcessed(eventId, "error", { reason: "pool_exhausted" }, "All 100 key tags in use");
+        return new Response(JSON.stringify({ ok: false, error: "pool exhausted" }), { status: 200 });
       }
 
       const patchResult = await patchKeytagToTekmetric(roId, tag);
@@ -306,19 +321,17 @@ Deno.serve(async (req: Request) => {
         patchResult.ok ? "assigned" : "assigned_patch_failed",
         {
           tag_number: tag,
-          tekmetric_keytag_before: tekmetricKeytag,
           patch_ok: patchResult.ok,
           patch_error: patchResult.error ?? null,
         },
       );
-
       return new Response(
         JSON.stringify({ ok: true, action: "assigned", tag, ro_id: roId }),
         { status: 200 },
       );
     }
 
-    // === RO posted (status 5 = paid, 6 = A/R) ===
+    // ── Branch 2: ro_posted (status 5 = POSTED_PAID, 6 = POSTED_AR) ──────
     if (eventKind === "ro_posted") {
       if (statusId === TEKMETRIC_RO_STATUS.POSTED_PAID) {
         const { data: releasedTag } = await sb.rpc("release_keytag_for_ro", {
@@ -336,9 +349,7 @@ Deno.serve(async (req: Request) => {
         );
       }
       if (statusId === TEKMETRIC_RO_STATUS.POSTED_AR) {
-        const { data: postedTag } = await sb.rpc("mark_keytag_posted", {
-          p_ro_id: roId,
-        });
+        const { data: postedTag } = await sb.rpc("mark_keytag_posted", { p_ro_id: roId });
         await markProcessed(
           eventId,
           postedTag ? "posted_marked" : "noop",
@@ -356,12 +367,12 @@ Deno.serve(async (req: Request) => {
       return new Response(JSON.stringify({ ok: true, action: "noop" }), { status: 200 });
     }
 
-    // === Payment made ===
+    // ── Branch 3: payment_made ───────────────────────────────────────────
     if (eventKind === "payment_made") {
       const arPayment = data.arPayment === true;
       const succeeded = data.paymentStatus === "SUCCEEDED";
-      const voided    = data.voided === true;
-      const refund    = data.refund === true;
+      const voided = data.voided === true;
+      const refund = data.refund === true;
 
       if (!arPayment || !succeeded || voided || refund) {
         await markProcessed(eventId, "noop", {

@@ -20,6 +20,32 @@ import {
 } from "../tekmetric-client.ts";
 import { TEKMETRIC_RO_STATUS, buildTekmetricRoUrl } from "../tekmetric.ts";
 
+// ─── Helper: GET a single repair order by ID ────────────────────────────────
+
+/**
+ * Fetches a single repair order from Tekmetric by ID. Used by the keytag webhook
+ * handler to defensively re-verify status before assigning a tag (rather than
+ * trusting the webhook payload's status field).
+ */
+export async function getRepairOrderById(
+  sb: SupabaseClient,
+  shopId: number,
+  roId: number,
+): Promise<TekmetricRepairOrder | null> {
+  try {
+    return await tekmetricGetJson<TekmetricRepairOrder>(
+      sb,
+      `/repair-orders/${roId}`,
+      { shop: shopId },
+    );
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    // Tekmetric returns 404 when the RO doesn't exist (or isn't in our shop's scope).
+    if (msg.includes("HTTP 404")) return null;
+    throw e;
+  }
+}
+
 // ─── Tool 1: list all WIP repair orders that have a keytag assigned ──────────
 
 export interface WipKeyTagsResult {
