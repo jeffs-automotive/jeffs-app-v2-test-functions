@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   consultOrchestrator,
   OrchestratorError,
+  resolveServiceRoleKey,
 } from "@/lib/scheduler/orchestrator-client";
 
 describe("consultOrchestrator", () => {
@@ -11,6 +12,10 @@ describe("consultOrchestrator", () => {
   beforeEach(() => {
     process.env.ORCHESTRATOR_URL =
       "https://test-project.supabase.co/functions/v1/orchestrator-direct";
+    // Clear all 3 secret-env names + start with the canonical 2026 plural form
+    delete process.env.SUPABASE_SECRET_KEYS;
+    delete process.env.SUPABASE_SECRET_KEY;
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
     process.env.SUPABASE_SECRET_KEY = "sb_secret_test_key";
     fetchSpy = vi.spyOn(globalThis, "fetch");
   });
@@ -81,12 +86,14 @@ describe("consultOrchestrator", () => {
     ).rejects.toThrow(/ORCHESTRATOR_URL/);
   });
 
-  it("throws OrchestratorError on missing SUPABASE_SECRET_KEY env", async () => {
+  it("throws OrchestratorError when no service-role bearer env is set", async () => {
+    delete process.env.SUPABASE_SECRET_KEYS;
     delete process.env.SUPABASE_SECRET_KEY;
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     await expect(
       consultOrchestrator({ session_id: "x", context: "y" }),
-    ).rejects.toThrow(/SUPABASE_SECRET_KEY/);
+    ).rejects.toThrow(/service-role bearer/);
   });
 
   it("throws OrchestratorError on network failure (fetch rejects)", async () => {
@@ -131,6 +138,64 @@ describe("consultOrchestrator", () => {
     expect(e).toBeInstanceOf(Error);
     expect(e.name).toBe("OrchestratorError");
     expect(e.status).toBe(502);
+  });
+
+  describe("resolveServiceRoleKey (2026 env-naming resolver)", () => {
+    it("prefers SUPABASE_SECRET_KEYS (JSON dict) over singular envs", () => {
+      const env = {
+        SUPABASE_SECRET_KEYS: JSON.stringify({
+          service_role: "sb_secret_FROM_DICT",
+        }),
+        SUPABASE_SECRET_KEY: "sb_secret_FROM_SINGULAR",
+        SUPABASE_SERVICE_ROLE_KEY: "legacy_jwt_value",
+      } as unknown as NodeJS.ProcessEnv;
+      expect(resolveServiceRoleKey(env)).toBe("sb_secret_FROM_DICT");
+    });
+
+    it("parses a SUPABASE_SECRET_KEYS array of strings", () => {
+      const env = {
+        SUPABASE_SECRET_KEYS: JSON.stringify([
+          "sb_secret_A",
+          "sb_secret_B",
+        ]),
+      } as unknown as NodeJS.ProcessEnv;
+      expect(resolveServiceRoleKey(env)).toBe("sb_secret_A");
+    });
+
+    it("parses a SUPABASE_SECRET_KEYS array of {value} objects", () => {
+      const env = {
+        SUPABASE_SECRET_KEYS: JSON.stringify([
+          { name: "service_role", value: "sb_secret_FROM_ARRAY_VALUE" },
+        ]),
+      } as unknown as NodeJS.ProcessEnv;
+      expect(resolveServiceRoleKey(env)).toBe("sb_secret_FROM_ARRAY_VALUE");
+    });
+
+    it("falls back to SUPABASE_SECRET_KEY when dict is missing", () => {
+      const env = {
+        SUPABASE_SECRET_KEY: "sb_secret_FROM_SINGULAR",
+      } as unknown as NodeJS.ProcessEnv;
+      expect(resolveServiceRoleKey(env)).toBe("sb_secret_FROM_SINGULAR");
+    });
+
+    it("falls back to SUPABASE_SERVICE_ROLE_KEY as last resort", () => {
+      const env = {
+        SUPABASE_SERVICE_ROLE_KEY: "legacy_jwt_value",
+      } as unknown as NodeJS.ProcessEnv;
+      expect(resolveServiceRoleKey(env)).toBe("legacy_jwt_value");
+    });
+
+    it("returns null when no env is set", () => {
+      expect(resolveServiceRoleKey({} as unknown as NodeJS.ProcessEnv)).toBeNull();
+    });
+
+    it("falls through to singular envs when SUPABASE_SECRET_KEYS is unparseable", () => {
+      const env = {
+        SUPABASE_SECRET_KEYS: "not-json-{",
+        SUPABASE_SECRET_KEY: "sb_secret_FALLBACK",
+      } as unknown as NodeJS.ProcessEnv;
+      expect(resolveServiceRoleKey(env)).toBe("sb_secret_FALLBACK");
+    });
   });
 
   it("does not include hints in body when not provided", async () => {

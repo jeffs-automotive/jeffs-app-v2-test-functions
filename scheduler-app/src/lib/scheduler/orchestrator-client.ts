@@ -47,6 +47,64 @@ export class OrchestratorError extends Error {
 }
 
 /**
+ * Resolve the service-role bearer from the Vercel side's Supabase env surface.
+ *
+ * 2026 Supabase env naming has multiple variants depending on integration
+ * version + project age. We try them in order of preference:
+ *
+ *   1. SUPABASE_SECRET_KEYS — canonical 2026 (JSON dict of secret keys
+ *      issued via JWT Signing Keys; "Default Secrets" panel in Dashboard)
+ *   2. SUPABASE_SECRET_KEY  — older singular env (transition-period)
+ *   3. SUPABASE_SERVICE_ROLE_KEY — DEPRECATED legacy single value
+ *
+ * Returns the first value found, or null if none are set.
+ */
+export function resolveServiceRoleKey(env: NodeJS.ProcessEnv = process.env): string | null {
+  const dictRaw = env.SUPABASE_SECRET_KEYS;
+  if (dictRaw) {
+    try {
+      const parsed = JSON.parse(dictRaw) as unknown;
+      const candidates: string[] = [];
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        for (const v of Object.values(parsed as Record<string, unknown>)) {
+          if (typeof v === "string" && v.length > 0) candidates.push(v);
+          else if (
+            v &&
+            typeof v === "object" &&
+            "value" in (v as Record<string, unknown>) &&
+            typeof (v as { value: unknown }).value === "string"
+          ) {
+            candidates.push((v as { value: string }).value);
+          }
+        }
+      } else if (Array.isArray(parsed)) {
+        for (const entry of parsed) {
+          if (typeof entry === "string" && entry.length > 0) {
+            candidates.push(entry);
+          } else if (
+            entry &&
+            typeof entry === "object" &&
+            "value" in entry &&
+            typeof (entry as { value: unknown }).value === "string"
+          ) {
+            candidates.push((entry as { value: string }).value);
+          }
+        }
+      }
+      // Prefer the first non-empty
+      if (candidates.length > 0) return candidates[0]!;
+    } catch {
+      // Fall through to singular envs
+    }
+  }
+  const singular = env.SUPABASE_SECRET_KEY;
+  if (singular && singular.length > 0) return singular;
+  const legacy = env.SUPABASE_SERVICE_ROLE_KEY;
+  if (legacy && legacy.length > 0) return legacy;
+  return null;
+}
+
+/**
  * Call orchestrator-direct with a structured request. Throws OrchestratorError
  * on transport failure or non-2xx response — the caller (consult_orchestrator
  * tool's execute) decides whether to surface as an in-chat error or escalate.
@@ -55,7 +113,7 @@ export async function consultOrchestrator(
   req: ConsultOrchestratorRequest,
 ): Promise<ConsultOrchestratorResponse> {
   const url = process.env.ORCHESTRATOR_URL;
-  const secretKey = process.env.SUPABASE_SECRET_KEY;
+  const secretKey = resolveServiceRoleKey();
 
   if (!url) {
     throw new OrchestratorError(
@@ -65,7 +123,8 @@ export async function consultOrchestrator(
   }
   if (!secretKey) {
     throw new OrchestratorError(
-      "Missing SUPABASE_SECRET_KEY env var. Required for service-role bearer.",
+      "Missing service-role bearer. Set one of: SUPABASE_SECRET_KEYS (JSON dict), " +
+        "SUPABASE_SECRET_KEY (singular), or SUPABASE_SERVICE_ROLE_KEY (legacy).",
     );
   }
 
