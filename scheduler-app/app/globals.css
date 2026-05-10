@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+/*
+ * Brand tokens for Jeff's Automotive (per appointments_design.md §3.1).
+ * Tailwind v4 uses CSS-first theme variables; @theme inline declares them.
+ *
+ * Burgundy primary: #96003C
+ * Gold accent:      #D2B487
+ */
+@theme inline {
+  --color-brand-burgundy: #96003C;
+  --color-brand-burgundy-50: #fdf2f5;
+  --color-brand-burgundy-100: #fbe5eb;
+  --color-brand-burgundy-200: #f6c8d4;
+  --color-brand-burgundy-300: #ed9aaf;
+  --color-brand-burgundy-400: #df6182;
+  --color-brand-burgundy-500: #cb3a5d;
+  --color-brand-burgundy-600: #b62548;
+  --color-brand-burgundy-700: #96003C;
+  --color-brand-burgundy-800: #7d0033;
+  --color-brand-burgundy-900: #66002a;
+
+  --color-brand-gold: #D2B487;
+  --color-brand-gold-50: #fbf7ee;
+  --color-brand-gold-100: #f4ecd5;
+  --color-brand-gold-200: #ead8ac;
+  --color-brand-gold-300: #D2B487;
+  --color-brand-gold-400: #c79964;
+  --color-brand-gold-500: #b6814a;
+  --color-brand-gold-600: #94633b;
+
+  --font-sans: system-ui, -apple-system, "Segoe UI", "Roboto", sans-serif;
+}
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  background: #ffffff;
+  color: #111827;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
