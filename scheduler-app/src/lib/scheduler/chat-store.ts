@@ -182,9 +182,17 @@ export async function loadChat(chatId: string): Promise<UIMessage[]> {
  * Called from streamText().toUIMessageStreamResponse({ onFinish:
  * ({ messages }) => saveChat({ chatId, messages }) }).
  *
- * Idempotent on message.id (server-generated via generateMessageId in
- * the route handler) — re-running a save with the same messages is a no-op
- * thanks to ON CONFLICT (id) DO NOTHING semantics via .upsert().
+ * Message IDs come from AI SDK v5's id generators:
+ *   - User messages: client-side nanoid (~16-char alphanumeric) from useChat
+ *   - Assistant messages: server-side via toUIMessageStreamResponse's
+ *     generateMessageId option (we use crypto.randomUUID())
+ *
+ * Because the user-side id can be a nanoid (NOT a UUID), the
+ * customer_chat_messages.id column is TEXT, not UUID — see migration
+ * 20260510225759_chat_messages_id_to_text.sql for the why.
+ *
+ * Idempotent on message.id — re-running a save with the same messages
+ * is a no-op thanks to ON CONFLICT (id) DO NOTHING semantics via .upsert().
  *
  * Touches last_active_at on the parent session.
  */
