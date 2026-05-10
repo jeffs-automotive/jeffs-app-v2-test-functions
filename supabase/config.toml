@@ -507,3 +507,31 @@ entrypoint = "./functions/tekmetric-webhook/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/tekmetric-webhook/*.html" ]
+
+[functions.orchestrator-direct]
+enabled = true
+# Plain JSON in/out endpoint hit by the scheduler-app's Vercel Server Action.
+# Auth: Pattern A — Authorization: Bearer <SUPABASE_SECRET_KEY> manually verified
+# in the function. verify_jwt=false so we can do our own bearer check rather
+# than letting Supabase's JWT verifier accept any project-signed JWT.
+verify_jwt = false
+import_map = "./functions/orchestrator-direct/deno.json"
+entrypoint = "./functions/orchestrator-direct/index.ts"
+
+[functions.transcript-dispatcher]
+enabled = true
+# Cron-driven backstop + on-demand dispatcher. Triggered by Supabase Cron and by
+# direct invocation from the scheduler-app's chat route handler (Vercel after()).
+# Auth: same Pattern A bearer check as orchestrator-direct.
+verify_jwt = false
+import_map = "./functions/transcript-dispatcher/deno.json"
+entrypoint = "./functions/transcript-dispatcher/index.ts"
+
+[functions.appointments-sync]
+enabled = true
+# Cron-driven 7-day rolling sync from Tekmetric into our local appointments
+# shadow. Triggered every 10 min during shop hours, every 1h overnight.
+# Auth: same Pattern A bearer check.
+verify_jwt = false
+import_map = "./functions/appointments-sync/deno.json"
+entrypoint = "./functions/appointments-sync/index.ts"

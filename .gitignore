@@ -31,3 +31,11 @@ desktop.ini
 *.swo
 *~
 .idea/
+
+# Claude Code sub-agent staging area (per .claude/rules/orchestration.md transfer pattern)
+# Sub-agents stage to .tmp/agent-output/; orchestrator copies to canonical paths.
+# Never commit raw staging output — committed copies live under .claude/work/...
+.tmp/
+
+# Stray root-level npm lockfile (the real one lives in scheduler-app/)
+/package-lock.json

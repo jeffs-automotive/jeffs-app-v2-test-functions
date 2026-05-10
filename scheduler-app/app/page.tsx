@@ -1,17 +1,17 @@
 /**
  * Landing page for appointments.jeffsautomotive.com.
  *
- * Phase 1 scaffolding: minimal landing with brand + trust signals + a
- * placeholder where the chat agent will mount once <Chat /> ships.
- *
  * Per appointments_design.md §3.1:
  * - Brand: burgundy primary, gold accent
  * - Trust signals: AAA-approved, 3yr/36k, free loaners, family-owned since
  *   1976, hybrid/EV capable
  * - Mobile-first
  *
- * The chat component itself is built in Story 1 of the implementation plan.
+ * Mounts the chat via ChatBootstrap (client component) — that handles the
+ * chatId picking + persistence to localStorage and renders <Chat />.
  */
+import { ChatBootstrap } from "@/components/scheduler/ChatBootstrap";
+
 export default function HomePage() {
   return (
     <main className="mx-auto flex min-h-dvh max-w-3xl flex-col px-4 py-8">
@@ -47,12 +47,9 @@ export default function HomePage() {
 
       <section
         aria-label="Schedule chat"
-        className="flex-1 rounded-lg border border-gray-200 bg-white p-4 shadow-sm"
+        className="flex min-h-[60vh] flex-1 flex-col rounded-lg border border-gray-200 bg-white p-4 shadow-sm"
       >
-        <p className="text-sm text-gray-500">
-          Chat scaffolding pending — <code>&lt;Chat /&gt;</code> mounts here once
-          Story 1 of the implementation plan ships. This page is a placeholder.
-        </p>
+        <ChatBootstrap />
       </section>
 
       <footer className="mt-8 text-center text-xs text-gray-500">

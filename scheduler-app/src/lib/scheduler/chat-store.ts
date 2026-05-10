@@ -19,18 +19,19 @@
  * App-level auth must enforce session/shop scoping (we hardcode shop_id =
  * 7476 Phase 1 per design §6).
  *
- * Type story: until the migration applies + we regen `database.types.ts`,
- * we hand-roll the row shapes here. Replace with `Database['public']['Tables']`
- * imports once `npx supabase gen types typescript` produces the canonical
- * file. (TODO: tracked in design §17.)
+ * Type story: imports canonical row types from database.types.ts (generated
+ * via `supabase gen types`). The DB column shapes are TEXT with CHECK
+ * constraints, so the generated `Row.channel: string` is widened to our
+ * Channel union for type-safety on insert.
  */
 import type { UIMessage } from "ai";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import type { Database } from "@/lib/database.types";
 
 // Phase 1 shop scope (per design §6)
 const SHOP_ID = 7476;
 
-// -------- Hand-rolled row types — replace with database.types.ts after regen --------
+// -------- Domain enums (CHECK constraints in DB; widened in generated types) --------
 
 export type Channel = "web" | "sms";
 export type SessionStatus =
@@ -48,33 +49,37 @@ export type CustomerSelfIdentified = "returning" | "new" | "unsure";
 export type Sentiment = "positive" | "neutral" | "negative";
 export type MessageRole = "user" | "assistant" | "system" | "tool";
 
-export interface SessionRow {
-  id: string;
-  shop_id: number;
+// -------- Generated row types (from supabase gen types) --------
+
+type SessionRowDb =
+  Database["public"]["Tables"]["customer_chat_sessions"]["Row"];
+type MessageRowDb =
+  Database["public"]["Tables"]["customer_chat_messages"]["Row"];
+
+/**
+ * Re-export the session row but narrow the open string fields to our
+ * domain unions for ergonomic downstream use. The DB enforces the same
+ * via CHECK constraints, so this widening is sound.
+ */
+export type SessionRow = Omit<
+  SessionRowDb,
+  | "channel"
+  | "status"
+  | "outcome"
+  | "customer_self_identified"
+  | "sentiment"
+> & {
   channel: Channel;
-  phone_e164: string | null;
-  customer_self_identified: CustomerSelfIdentified | null;
-  customer_id: number | null;
-  vehicle_id: number | null;
-  cookie_session: string | null;
   status: SessionStatus;
   outcome: SessionOutcome | null;
-  appointment_id: number | null;
-  opted_out_at: string | null;
+  customer_self_identified: CustomerSelfIdentified | null;
   sentiment: Sentiment | null;
-  started_at: string;
-  last_active_at: string;
-  ended_at: string | null;
-}
+};
 
-export interface MessageRow {
-  id: string;
-  session_id: string;
-  shop_id: number;
+export type MessageRow = Omit<MessageRowDb, "role" | "parts"> & {
   role: MessageRole;
   parts: UIMessage["parts"];
-  created_at: string;
-}
+};
 
 // -------- DAL functions --------
 
@@ -104,6 +109,41 @@ export async function createChat(args: {
     );
   }
   return data.id as string;
+}
+
+/**
+ * Ensure a chat session row exists for `chatId`. INSERTs one if missing,
+ * no-ops if present. Used by the /api/chat route handler at the start of
+ * every request so client-side-generated chatIds (Phase 1 localStorage
+ * pattern, before HttpOnly cookies are wired) get a valid session row to
+ * attach messages to.
+ *
+ * The id is provided by the caller (must be a valid UUID) so it matches
+ * the chatId useChat is using.
+ */
+export async function ensureSessionExists(args: {
+  chatId: string;
+  channel: Channel;
+  cookie_session?: string;
+}): Promise<void> {
+  const supabase = createSupabaseAdminClient();
+  // Idempotent insert — if a row with this id already exists, do nothing.
+  const { error } = await supabase
+    .from("customer_chat_sessions")
+    .upsert(
+      {
+        id: args.chatId,
+        shop_id: SHOP_ID,
+        channel: args.channel,
+        cookie_session: args.cookie_session ?? args.chatId,
+      },
+      { onConflict: "id", ignoreDuplicates: true },
+    );
+  if (error) {
+    throw new Error(
+      `ensureSessionExists(${args.chatId}) failed: ${error.message}`,
+    );
+  }
 }
 
 /**

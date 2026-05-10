@@ -13,7 +13,7 @@
  * Request shape (per design §7.1 / "send only the last message" pattern
  * from scheduler-research):
  *   POST /api/chat
- *   Body: { id: string /* chatId */, message: UIMessage }
+ *   Body: { id: string (chatId), message: UIMessage }
  *
  * Response: a v5 UI message stream the client's useChat() consumes.
  */
@@ -24,7 +24,11 @@ import {
   type UIMessage,
 } from "ai";
 import { gateway } from "@ai-sdk/gateway";
-import { loadChat, saveChat } from "@/lib/scheduler/chat-store";
+import {
+  ensureSessionExists,
+  loadChat,
+  saveChat,
+} from "@/lib/scheduler/chat-store";
 import { makeChatAgentTools } from "@/lib/scheduler/tools";
 import { buildSystemPrompt } from "@/lib/scheduler/system-prompt";
 import { getRoutineServicesForChips } from "@/lib/scheduler/routine-services-cache";
@@ -60,6 +64,11 @@ export async function POST(req: Request) {
       { status: 400, headers: { "Content-Type": "application/json" } },
     );
   }
+
+  // Idempotent session bootstrap — Phase 1 uses client-side-generated chatIds
+  // (localStorage), so the first request for a given chatId needs to insert
+  // the customer_chat_sessions row before saveChat can attach messages to it.
+  await ensureSessionExists({ chatId, channel: "web" });
 
   // Load prior history server-side; the client only sends the last message.
   // The server is the source of truth for chat state.
