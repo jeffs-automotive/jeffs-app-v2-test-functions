@@ -75,6 +75,7 @@ vi.mock("@/lib/supabase/admin", () => ({
 
 import {
   createChat,
+  ensureSessionExists,
   loadChat,
   saveChat,
   findRecentChatByPhone,
@@ -123,6 +124,56 @@ describe("chat-store DAL", () => {
       await expect(createChat({ channel: "web" })).rejects.toThrow(
         /createChat failed.*permission denied/,
       );
+    });
+  });
+
+  describe("ensureSessionExists", () => {
+    it("upserts a customer_chat_sessions row with the provided chatId + shop_id 7476 + onConflict id ignoreDuplicates", async () => {
+      mock.setNextResult({ data: null, error: null });
+
+      await ensureSessionExists({
+        chatId: "11111111-1111-4111-8111-111111111111",
+        channel: "web",
+      });
+
+      const fromCall = mock.calls.find((c) => c.method === "from");
+      expect(fromCall?.args[0]).toBe("customer_chat_sessions");
+
+      const upsertCall = mock.calls.find((c) => c.method === "upsert");
+      expect(upsertCall).toBeDefined();
+      const row = upsertCall?.args[0] as Record<string, unknown>;
+      expect(row).toMatchObject({
+        id: "11111111-1111-4111-8111-111111111111",
+        shop_id: 7476,
+        channel: "web",
+        // cookie_session defaults to chatId when not explicitly provided
+        cookie_session: "11111111-1111-4111-8111-111111111111",
+      });
+      const opts = upsertCall?.args[1] as Record<string, unknown>;
+      expect(opts.onConflict).toBe("id");
+      expect(opts.ignoreDuplicates).toBe(true);
+    });
+
+    it("uses an explicit cookie_session over the chatId default when provided", async () => {
+      mock.setNextResult({ data: null, error: null });
+
+      await ensureSessionExists({
+        chatId: "abc-id",
+        channel: "sms",
+        cookie_session: "explicit-cookie",
+      });
+
+      const upsertCall = mock.calls.find((c) => c.method === "upsert");
+      const row = upsertCall?.args[0] as Record<string, unknown>;
+      expect(row.cookie_session).toBe("explicit-cookie");
+      expect(row.channel).toBe("sms");
+    });
+
+    it("throws a clear error when Supabase returns an error", async () => {
+      mock.setNextResult({ data: null, error: { message: "rls denied" } });
+      await expect(
+        ensureSessionExists({ chatId: "x", channel: "web" }),
+      ).rejects.toThrow(/ensureSessionExists.*rls denied/);
     });
   });
 
