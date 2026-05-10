@@ -180,38 +180,65 @@ async function runSync(): Promise<SyncResult> {
     };
   }
 
-  // Build the upsert payload
+  // Build the upsert payload, naturally deduplicating across pages.
+  //
+  // Why: Tekmetric's Spring-style offset pagination doesn't guarantee
+  // uniqueness when the underlying data shifts between page reads. If the
+  // same appointment_id appears on page 0 AND page 1, passing both rows
+  // into a single .upsert() call raises:
+  //
+  //   "ON CONFLICT DO UPDATE command cannot affect row a second time"
+  //
+  // — Postgres's cardinality-violation guard (per postgresql.org/docs/
+  // current/sql-insert.html § ON CONFLICT). The fix is to dedupe in
+  // application code so the input rows have unique conflict keys.
+  //
+  // Map<id, row> gives us last-write-wins semantics: if page 1 returns a
+  // more recent version of the appointment than page 0, the page-1 state
+  // is what ends up in the local shadow. That matches our "Tekmetric is
+  // source of truth" model.
+  //
+  // seenIds (separate Set) still records every non-deleted id we saw —
+  // used below by the "missing from window" detector for hard-delete
+  // catching.
   const seenIds = new Set<number>();
-  const upsertRows = items
-    .filter((a) => !a.deletedDate)
-    .map((a) => {
-      seenIds.add(a.id);
-      return {
-        shop_id: SHOP_ID,
-        tekmetric_appointment_id: a.id,
-        customer_id: a.customerId ?? null,
-        vehicle_id: a.vehicleId ?? null,
-        start_time: a.startTime,
-        end_time: a.endTime,
-        appointment_type: classifyAppointmentType(
-          a.startTime,
-          a.appointmentOption?.code ?? null,
-        ),
-        appointment_status: a.appointmentStatus?.code ?? "NONE",
-        title: a.title ?? null,
-        description: a.description ?? null,
-        appointment_option: a.appointmentOption?.code ?? null,
-        ride_option: a.rideOption?.code ?? null,
-        color: a.color ?? null,
-        source: "tekmetric",
-        tekmetric_synced_at: new Date().toISOString(),
-        deleted_at: null,
-        updated_at: new Date().toISOString(),
-      };
+  const upsertMap = new Map<number, Record<string, unknown>>();
+  for (const a of items) {
+    if (a.deletedDate) continue;
+    seenIds.add(a.id);
+    upsertMap.set(a.id, {
+      shop_id: SHOP_ID,
+      tekmetric_appointment_id: a.id,
+      customer_id: a.customerId ?? null,
+      vehicle_id: a.vehicleId ?? null,
+      start_time: a.startTime,
+      end_time: a.endTime,
+      appointment_type: classifyAppointmentType(
+        a.startTime,
+        a.appointmentOption?.code ?? null,
+      ),
+      appointment_status: a.appointmentStatus?.code ?? "NONE",
+      title: a.title ?? null,
+      description: a.description ?? null,
+      appointment_option: a.appointmentOption?.code ?? null,
+      ride_option: a.rideOption?.code ?? null,
+      color: a.color ?? null,
+      source: "tekmetric",
+      tekmetric_synced_at: new Date().toISOString(),
+      deleted_at: null,
+      updated_at: new Date().toISOString(),
     });
+  }
+  const upsertRows = Array.from(upsertMap.values());
 
-  // Tekmetric-deleted rows (came back with deletedDate set)
-  const deletedFromTekmetric = items.filter((a) => a.deletedDate);
+  // Tekmetric-deleted rows (came back with deletedDate set). Dedupe by
+  // id for the same pagination-overlap reason — the .in() filter would
+  // tolerate duplicates, but we keep the count accurate.
+  const deletedIds = Array.from(
+    new Set(
+      items.filter((a) => a.deletedDate).map((a) => a.id),
+    ),
+  );
 
   let upsertedCount = 0;
   if (upsertRows.length > 0) {
@@ -239,8 +266,7 @@ async function runSync(): Promise<SyncResult> {
   // Soft-delete (1) any explicitly deleted-in-Tekmetric rows AND (2) any local
   // shadow rows in the window that no longer come back from Tekmetric.
   let softDeletedCount = 0;
-  if (deletedFromTekmetric.length > 0) {
-    const ids = deletedFromTekmetric.map((a) => a.id);
+  if (deletedIds.length > 0) {
     const { error, count } = await sb
       .from("appointments")
       .update({
@@ -248,9 +274,9 @@ async function runSync(): Promise<SyncResult> {
         tekmetric_synced_at: new Date().toISOString(),
       })
       .eq("shop_id", SHOP_ID)
-      .in("tekmetric_appointment_id", ids)
+      .in("tekmetric_appointment_id", deletedIds)
       .is("deleted_at", null);
-    if (!error) softDeletedCount += count ?? ids.length;
+    if (!error) softDeletedCount += count ?? deletedIds.length;
   }
 
   // Detect "missing from window" rows (in shadow but not in Tekmetric pull).
