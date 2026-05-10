@@ -9,25 +9,91 @@
 //     'service_role_key')
 //   - Both must match the runtime-injected key env vars
 //
-// 2026 env-naming transition (per Supabase Edge Function runtime):
-//   - LEGACY: SUPABASE_SERVICE_ROLE_KEY
-//   - NEW:    SUPABASE_SECRET_KEY
-//   Both are auto-injected on legacy projects; only the new name on
-//   freshly-created functions. We accept either to be tolerant.
+// 2026 env-naming surface (per Supabase Edge Function runtime "Default
+// Secrets" panel; see Project Settings → Edge Functions → Secrets):
 //
-// Diagnostic: on auth failure, we log the FIRST 8 CHARS of the submitted
-// bearer + the first 8 chars of each expected env value. 8 chars is enough
-// to diff JWT prefixes ("eyJhbGci") from secret-key prefixes ("sb_secr_")
-// without leaking the full key. Logs are visible in Supabase Edge Function
-// Logs / Sentry via Log Drain (observability.md decision D4).
+//   NEW (canonical):
+//     SUPABASE_SECRET_KEYS        — JSON dictionary of secret API keys
+//                                   (issued via JWT Signing Keys)
+//     SUPABASE_PUBLISHABLE_KEYS   — JSON dictionary of publishable keys
+//
+//   LEGACY (deprecated; still injected for backwards-compat — currently
+//   populated with one of the new sb_secret_* values, NOT the old JWT):
+//     SUPABASE_SERVICE_ROLE_KEY   — single value
+//     SUPABASE_ANON_KEY           — single value
+//
+// We accept any string value found across:
+//   - SUPABASE_SECRET_KEYS (top-level string properties of the JSON dict)
+//   - SUPABASE_SERVICE_ROLE_KEY (legacy single value)
+//   - SUPABASE_SECRET_KEY (older transition-period singular; may not exist)
+//
+// Diagnostic: on auth failure, we log + return the FIRST 8 CHARS of the
+// submitted bearer + the first 8 chars of each expected env value. 8
+// chars is enough to diff JWT prefixes ("eyJhbGci") from secret-key
+// prefixes ("sb_secre") without leaking the full key.
 
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const SUPABASE_SECRET_KEY = Deno.env.get("SUPABASE_SECRET_KEY") ?? "";
+const SUPABASE_SECRET_KEYS_RAW = Deno.env.get("SUPABASE_SECRET_KEYS") ?? "";
 
-const VALID_BEARERS: string[] = [
-  SUPABASE_SERVICE_ROLE_KEY,
-  SUPABASE_SECRET_KEY,
-].filter((k) => k.length > 0);
+/**
+ * Parse SUPABASE_SECRET_KEYS (JSON dict) and return all top-level string
+ * values. Tolerant of:
+ *   - Object: { "service_role": "sb_secret_..." }  → ["sb_secret_..."]
+ *   - Array of strings: ["sb_secret_..."]
+ *   - Array of {value} objects: [{ "name": "...", "value": "sb_secret_..." }]
+ *   - Unparseable JSON → []
+ */
+function parseSecretKeysDict(raw: string): string[] {
+  if (!raw) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  const out: string[] = [];
+  if (Array.isArray(parsed)) {
+    for (const entry of parsed) {
+      if (typeof entry === "string") {
+        out.push(entry);
+      } else if (
+        entry &&
+        typeof entry === "object" &&
+        "value" in entry &&
+        typeof (entry as { value: unknown }).value === "string"
+      ) {
+        out.push((entry as { value: string }).value);
+      }
+    }
+  } else if (parsed && typeof parsed === "object") {
+    for (const v of Object.values(parsed as Record<string, unknown>)) {
+      if (typeof v === "string") {
+        out.push(v);
+      } else if (
+        v &&
+        typeof v === "object" &&
+        "value" in (v as Record<string, unknown>) &&
+        typeof (v as { value: unknown }).value === "string"
+      ) {
+        out.push((v as { value: string }).value);
+      }
+    }
+  }
+  return out.filter((s) => s.length > 0);
+}
+
+const SECRET_KEYS_FROM_DICT = parseSecretKeysDict(SUPABASE_SECRET_KEYS_RAW);
+
+const VALID_BEARERS: string[] = Array.from(
+  new Set(
+    [
+      ...SECRET_KEYS_FROM_DICT,
+      SUPABASE_SERVICE_ROLE_KEY,
+      SUPABASE_SECRET_KEY,
+    ].filter((k) => k.length > 0),
+  ),
+);
 
 export interface AuthCheckResult {
   ok: boolean;
@@ -49,6 +115,8 @@ export interface AuthCheckResult {
     expected_lengths: number[];
     service_role_env_set: boolean;
     secret_key_env_set: boolean;
+    /** Count of key values parsed out of SUPABASE_SECRET_KEYS (JSON dict). */
+    secret_keys_dict_count: number;
   };
 }
 
@@ -82,6 +150,7 @@ function buildDiagnostic(submitted: string | null): AuthCheckResult["diagnostic"
     expected_lengths: VALID_BEARERS.map((k) => k.length),
     service_role_env_set: SUPABASE_SERVICE_ROLE_KEY.length > 0,
     secret_key_env_set: SUPABASE_SECRET_KEY.length > 0,
+    secret_keys_dict_count: SECRET_KEYS_FROM_DICT.length,
   };
 }
 
@@ -96,7 +165,7 @@ export function checkSchedulerBearer(
         msg: "auth_no_key_configured",
         function: functionName,
         detail:
-          "Neither SUPABASE_SERVICE_ROLE_KEY nor SUPABASE_SECRET_KEY is set in this function's environment.",
+          "None of SUPABASE_SECRET_KEYS, SUPABASE_SERVICE_ROLE_KEY, or SUPABASE_SECRET_KEY is set / parseable.",
       }),
     );
     return {
