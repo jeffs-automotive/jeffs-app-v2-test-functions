@@ -29,15 +29,19 @@ import {
   type SchedulerOrchestratorInput,
 } from "../_shared/scheduler-orchestrator.ts";
 import { ENV_NAMES } from "../_shared/tekmetric.ts";
+import {
+  checkSchedulerBearer,
+  unauthorizedResponse,
+  RESOLVED_SERVICE_ROLE_KEY,
+} from "../_shared/scheduler-auth.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const SHOP_ID = parseInt(
   Deno.env.get(ENV_NAMES.TEKMETRIC_SHOP_ID) ?? "7476",
   10,
 );
 
-const sb = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+const sb = createClient(SUPABASE_URL, RESOLVED_SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
@@ -52,29 +56,6 @@ function jsonResponse(body: unknown, status = 200): Response {
     status,
     headers: { "Content-Type": "application/json", ...CORS_HEADERS },
   });
-}
-
-/**
- * Verify the Authorization bearer matches our service-role key.
- * Pattern A — service-role key IS the auth token.
- */
-function checkAuth(req: Request): { ok: true } | { ok: false; reason: string } {
-  const auth = req.headers.get("authorization") ?? "";
-  if (!auth.toLowerCase().startsWith("bearer ")) {
-    return { ok: false, reason: "missing_bearer" };
-  }
-  const submitted = auth.slice("bearer ".length).trim();
-  if (submitted.length === 0) {
-    return { ok: false, reason: "empty_bearer" };
-  }
-  // Constant-time-ish compare (string-length first then char compare).
-  if (
-    submitted.length !== SERVICE_ROLE_KEY.length ||
-    submitted !== SERVICE_ROLE_KEY
-  ) {
-    return { ok: false, reason: "bearer_mismatch" };
-  }
-  return { ok: true };
 }
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -119,9 +100,9 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: false, error: "method_not_allowed" }, 405);
   }
 
-  const auth = checkAuth(req);
+  const auth = checkSchedulerBearer(req, "orchestrator-direct");
   if (!auth.ok) {
-    return jsonResponse({ ok: false, error: auth.reason }, 401);
+    return unauthorizedResponse(auth);
   }
 
   let raw: unknown;

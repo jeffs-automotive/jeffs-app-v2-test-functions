@@ -30,9 +30,13 @@ import {
   partsToText,
   type TranscriptViewModel,
 } from "../_shared/transcript-html.ts";
+import {
+  checkSchedulerBearer,
+  unauthorizedResponse,
+  RESOLVED_SERVICE_ROLE_KEY,
+} from "../_shared/scheduler-auth.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 const SERVICE_TEAM_EMAIL =
   Deno.env.get("SERVICE_TEAM_EMAIL") ?? "service@jeffsautomotive.com";
@@ -42,7 +46,7 @@ const FROM_EMAIL =
 const SENTIMENT_MODEL =
   Deno.env.get("TRANSCRIPT_SENTIMENT_MODEL") ?? "google/gemini-3.1-flash-lite";
 
-const sb = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+const sb = createClient(SUPABASE_URL, RESOLVED_SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
@@ -57,13 +61,6 @@ function jsonResponse(body: unknown, status = 200): Response {
     status,
     headers: { "Content-Type": "application/json", ...CORS_HEADERS },
   });
-}
-
-function checkAuth(req: Request): boolean {
-  const auth = req.headers.get("authorization") ?? "";
-  if (!auth.toLowerCase().startsWith("bearer ")) return false;
-  const submitted = auth.slice("bearer ".length).trim();
-  return submitted === SERVICE_ROLE_KEY;
 }
 
 // ─── Sentiment classification (LLM judge) ────────────────────────────────────
@@ -392,8 +389,9 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: CORS_HEADERS });
   }
-  if (!checkAuth(req)) {
-    return jsonResponse({ ok: false, error: "unauthorized" }, 401);
+  const auth = checkSchedulerBearer(req, "transcript-dispatcher");
+  if (!auth.ok) {
+    return unauthorizedResponse(auth);
   }
 
   // Optional payload for single-transcript dispatch

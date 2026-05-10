@@ -33,15 +33,19 @@ import {
   type TekmetricPage,
 } from "../_shared/tekmetric-client.ts";
 import { ENV_NAMES } from "../_shared/tekmetric.ts";
+import {
+  checkSchedulerBearer,
+  unauthorizedResponse,
+  RESOLVED_SERVICE_ROLE_KEY,
+} from "../_shared/scheduler-auth.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const SHOP_ID = parseInt(
   Deno.env.get(ENV_NAMES.TEKMETRIC_SHOP_ID) ?? "7476",
   10,
 );
 
-const sb = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+const sb = createClient(SUPABASE_URL, RESOLVED_SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
@@ -56,12 +60,6 @@ function jsonResponse(body: unknown, status = 200): Response {
     status,
     headers: { "Content-Type": "application/json", ...CORS_HEADERS },
   });
-}
-
-function checkAuth(req: Request): boolean {
-  const auth = req.headers.get("authorization") ?? "";
-  if (!auth.toLowerCase().startsWith("bearer ")) return false;
-  return auth.slice("bearer ".length).trim() === SERVICE_ROLE_KEY;
 }
 
 // ─── Tekmetric appointment shape (pull) ──────────────────────────────────────
@@ -319,8 +317,9 @@ Deno.serve(async (req) => {
   if (req.method !== "GET" && req.method !== "POST") {
     return jsonResponse({ ok: false, error: "method_not_allowed" }, 405);
   }
-  if (!checkAuth(req)) {
-    return jsonResponse({ ok: false, error: "unauthorized" }, 401);
+  const auth = checkSchedulerBearer(req, "appointments-sync");
+  if (!auth.ok) {
+    return unauthorizedResponse(auth);
   }
 
   try {
