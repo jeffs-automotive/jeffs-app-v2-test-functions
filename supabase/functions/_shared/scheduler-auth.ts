@@ -36,6 +36,20 @@ export interface AuthCheckResult {
     | "empty_bearer"
     | "bearer_mismatch"
     | "no_key_configured";
+  /**
+   * Safe-to-return diagnostic on auth failure — first 8 chars of submitted
+   * bearer vs first 8 chars of each expected env value. 8 chars is enough
+   * to spot prefix-format differences (eyJhbGci vs sb_secr_) without
+   * leaking the key. Only set on `bearer_mismatch` / `no_key_configured`.
+   */
+  diagnostic?: {
+    submitted_first8: string | null;
+    submitted_length: number;
+    expected_first8_options: string[];
+    expected_lengths: number[];
+    service_role_env_set: boolean;
+    secret_key_env_set: boolean;
+  };
 }
 
 /**
@@ -60,6 +74,17 @@ function bearersEqual(submitted: string, expected: string): boolean {
  * the first 8 chars of each) so we can debug env-name mismatches from the
  * Edge Function log stream.
  */
+function buildDiagnostic(submitted: string | null): AuthCheckResult["diagnostic"] {
+  return {
+    submitted_first8: submitted ? submitted.slice(0, 8) : null,
+    submitted_length: submitted ? submitted.length : 0,
+    expected_first8_options: VALID_BEARERS.map((k) => k.slice(0, 8)),
+    expected_lengths: VALID_BEARERS.map((k) => k.length),
+    service_role_env_set: SUPABASE_SERVICE_ROLE_KEY.length > 0,
+    secret_key_env_set: SUPABASE_SECRET_KEY.length > 0,
+  };
+}
+
 export function checkSchedulerBearer(
   req: Request,
   functionName: string,
@@ -74,7 +99,11 @@ export function checkSchedulerBearer(
           "Neither SUPABASE_SERVICE_ROLE_KEY nor SUPABASE_SECRET_KEY is set in this function's environment.",
       }),
     );
-    return { ok: false, reason: "no_key_configured" };
+    return {
+      ok: false,
+      reason: "no_key_configured",
+      diagnostic: buildDiagnostic(null),
+    };
   }
 
   const auth = req.headers.get("authorization") ?? "";
@@ -95,21 +124,17 @@ export function checkSchedulerBearer(
   // Diagnostic: first 8 chars of submitted vs each expected, plus length
   // info. JWT prefixes ("eyJhbGci"), legacy secret prefixes ("sb_secr_"),
   // and project-ref-anchored prefixes all differ in the first 8 chars.
+  const diagnostic = buildDiagnostic(submitted);
   console.warn(
     JSON.stringify({
       level: "warn",
       msg: "auth_bearer_mismatch",
       function: functionName,
-      submitted_first8: submitted.slice(0, 8),
-      submitted_length: submitted.length,
-      expected_first8_options: VALID_BEARERS.map((k) => k.slice(0, 8)),
-      expected_lengths: VALID_BEARERS.map((k) => k.length),
-      service_role_env_set: SUPABASE_SERVICE_ROLE_KEY.length > 0,
-      secret_key_env_set: SUPABASE_SECRET_KEY.length > 0,
+      ...diagnostic,
     }),
   );
 
-  return { ok: false, reason: "bearer_mismatch" };
+  return { ok: false, reason: "bearer_mismatch", diagnostic };
 }
 
 /**
@@ -117,18 +142,27 @@ export function checkSchedulerBearer(
  * Callers use:
  *   const auth = checkSchedulerBearer(req, "appointments-sync");
  *   if (!auth.ok) return unauthorizedResponse(auth);
+ *
+ * Includes the safe-prefix diagnostic in the response body when present
+ * — first 8 chars of submitted vs each expected env value. This lets us
+ * debug env-name / key-format mismatches from the curl response itself
+ * without needing to chase log streams.
  */
 export function unauthorizedResponse(result: AuthCheckResult): Response {
-  return new Response(
-    JSON.stringify({ ok: false, error: result.reason ?? "unauthorized" }),
-    {
-      status: 401,
-      headers: {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
-      },
+  const body: Record<string, unknown> = {
+    ok: false,
+    error: result.reason ?? "unauthorized",
+  };
+  if (result.diagnostic) {
+    body.diagnostic = result.diagnostic;
+  }
+  return new Response(JSON.stringify(body), {
+    status: 401,
+    headers: {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
     },
-  );
+  });
 }
 
 /**
