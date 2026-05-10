@@ -14,22 +14,31 @@
  *   - Cron-triggered code (no user session)
  *   - Backfill / admin scripts
  *
- * Per the new 2026 Marketplace integration naming: the env var is
- * SUPABASE_SECRET_KEY (replaces legacy SUPABASE_SERVICE_ROLE_KEY).
+ * 2026 env naming: the service-role key surface is multi-form on Vercel
+ * + the Edge Function runtime. We use the shared `resolveServiceRoleKey`
+ * helper that accepts SUPABASE_SECRET_KEYS (JSON dict — canonical),
+ * SUPABASE_SECRET_KEY (singular), or SUPABASE_SERVICE_ROLE_KEY (legacy).
  */
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import {
+  resolveServiceRoleKey,
+  resolveSupabaseUrl,
+} from "./resolve-keys";
 
 let cachedClient: SupabaseClient | null = null;
 
 export function createSupabaseAdminClient(): SupabaseClient {
   if (cachedClient) return cachedClient;
 
-  const url = process.env.SUPABASE_URL;
-  const secretKey = process.env.SUPABASE_SECRET_KEY;
+  const url = resolveSupabaseUrl();
+  const secretKey = resolveServiceRoleKey();
 
   if (!url || !secretKey) {
     throw new Error(
-      "Missing SUPABASE_URL or SUPABASE_SECRET_KEY env vars. " +
+      "Missing Supabase admin-client env vars. Required: SUPABASE_URL " +
+        "(or NEXT_PUBLIC_SUPABASE_URL) and one of SUPABASE_SECRET_KEYS " +
+        "(JSON dict — 2026 canonical), SUPABASE_SECRET_KEY (singular), " +
+        "or SUPABASE_SERVICE_ROLE_KEY (legacy). " +
         "These are auto-injected by the Vercel Marketplace Supabase " +
         "integration; if missing in local dev, run `vercel env pull " +
         ".env.local`. See appointments_design.md §15.",

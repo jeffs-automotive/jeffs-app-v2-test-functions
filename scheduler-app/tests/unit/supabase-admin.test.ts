@@ -18,6 +18,13 @@ describe("createSupabaseAdminClient", () => {
 
   beforeEach(() => {
     __resetAdminClientForTests();
+    // Clear all 2026 env-name variants so each test sets exactly what it
+    // needs and the resolver doesn't see stale legacy values.
+    delete process.env.SUPABASE_URL;
+    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    delete process.env.SUPABASE_SECRET_KEYS;
+    delete process.env.SUPABASE_SECRET_KEY;
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
     process.env.SUPABASE_URL = "https://test-project.supabase.co";
     process.env.SUPABASE_SECRET_KEY = "sb_secret_test_key";
   });
@@ -40,14 +47,33 @@ describe("createSupabaseAdminClient", () => {
     expect(a).toBe(b);
   });
 
+  it("works with the 2026 canonical SUPABASE_SECRET_KEYS JSON dict", () => {
+    delete process.env.SUPABASE_SECRET_KEY;
+    process.env.SUPABASE_SECRET_KEYS = JSON.stringify({
+      service_role: "sb_secret_FROM_DICT",
+    });
+    const client = createSupabaseAdminClient();
+    expect(client).toBeDefined();
+    expect(typeof client.from).toBe("function");
+  });
+
+  it("falls back to legacy SUPABASE_SERVICE_ROLE_KEY when nothing else is set", () => {
+    delete process.env.SUPABASE_SECRET_KEY;
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "legacy_jwt_value";
+    const client = createSupabaseAdminClient();
+    expect(client).toBeDefined();
+  });
+
   it("throws a clear error when SUPABASE_URL is missing", () => {
     delete process.env.SUPABASE_URL;
     expect(() => createSupabaseAdminClient()).toThrow(/SUPABASE_URL/);
   });
 
-  it("throws a clear error when SUPABASE_SECRET_KEY is missing", () => {
+  it("throws a clear error when no service-role bearer env is set", () => {
+    delete process.env.SUPABASE_SECRET_KEYS;
     delete process.env.SUPABASE_SECRET_KEY;
-    expect(() => createSupabaseAdminClient()).toThrow(/SUPABASE_SECRET_KEY/);
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    expect(() => createSupabaseAdminClient()).toThrow(/SUPABASE_SECRET_KEYS/);
   });
 
   it("error message points to vercel env pull as the recovery", () => {

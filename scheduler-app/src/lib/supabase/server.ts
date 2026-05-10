@@ -16,19 +16,32 @@
  * Supabase Auth — kept here so the pattern is wired and ready.
  *
  * Note: cookies() is async in Next.js 15+ (App Router) — must await it.
+ *
+ * 2026 env naming: publishable / anon key surface is multi-form on Vercel.
+ * We use the shared `resolvePublishableKey` helper to accept
+ * SUPABASE_PUBLISHABLE_KEYS (JSON dict — canonical),
+ * NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, NEXT_PUBLIC_SUPABASE_ANON_KEY, or
+ * the non-public singular fallbacks.
  */
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import {
+  resolvePublishableKey,
+  resolveSupabaseUrl,
+} from "./resolve-keys";
 
 export async function createSupabaseServerClient() {
   const cookieStore = await cookies();
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  const url = resolveSupabaseUrl();
+  const publishableKey = resolvePublishableKey();
 
   if (!url || !publishableKey) {
     throw new Error(
-      "Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY env vars. " +
+      "Missing Supabase server-client env vars. Required: SUPABASE_URL " +
+        "(or NEXT_PUBLIC_SUPABASE_URL) and one of SUPABASE_PUBLISHABLE_KEYS " +
+        "(JSON dict — 2026 canonical), NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, " +
+        "or NEXT_PUBLIC_SUPABASE_ANON_KEY (legacy). " +
         "Did you run `vercel env pull .env.local`? See appointments_design.md §15.",
     );
   }
