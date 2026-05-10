@@ -250,8 +250,52 @@ SELECT is(
 SELECT is(
   (SELECT abbreviation FROM testing_services
     WHERE shop_id = 7476 AND service_key = 'warning_light_general'),
-  'CEL testing',
-  'testing_services.warning_light_general abbreviation = CEL testing'
+  'CEL TESTING',
+  'testing_services.warning_light_general abbreviation = CEL TESTING (per 20260510133653_abbreviations_fill.sql)'
+);
+
+-- Spot-check a few more abbreviations from the abbreviations-fill migration:
+SELECT is(
+  (SELECT abbreviation FROM routine_services
+    WHERE shop_id = 7476 AND service_key = 'tire_rotation'),
+  'ROT',
+  'routine_services.tire_rotation abbreviation = ROT'
+);
+SELECT is(
+  (SELECT abbreviation FROM routine_services
+    WHERE shop_id = 7476 AND service_key = 'rotate_balance_tires'),
+  'ROT BAL',
+  'routine_services.rotate_balance_tires abbreviation = ROT BAL'
+);
+SELECT is(
+  (SELECT abbreviation FROM routine_services
+    WHERE shop_id = 7476 AND service_key = 'alignment'),
+  'ALIGN',
+  'routine_services.alignment abbreviation = ALIGN'
+);
+SELECT is(
+  (SELECT abbreviation FROM testing_services
+    WHERE shop_id = 7476 AND service_key = 'transmission_testing'),
+  'TRANS TESTING',
+  'testing_services.transmission_testing abbreviation = TRANS TESTING'
+);
+SELECT is(
+  (SELECT abbreviation FROM testing_services
+    WHERE shop_id = 7476 AND service_key = 'brake_inspection'),
+  'BRAKE INSPECT',
+  'testing_services.brake_inspection abbreviation = BRAKE INSPECT'
+);
+
+-- Defensive: no TBD abbreviations remain anywhere
+SELECT is(
+  (SELECT COUNT(*)::INT FROM routine_services WHERE shop_id = 7476 AND abbreviation = 'TBD'),
+  0,
+  'routine_services has zero TBD abbreviations'
+);
+SELECT is(
+  (SELECT COUNT(*)::INT FROM testing_services WHERE shop_id = 7476 AND abbreviation = 'TBD'),
+  0,
+  'testing_services has zero TBD abbreviations'
 );
 
 SELECT is(
