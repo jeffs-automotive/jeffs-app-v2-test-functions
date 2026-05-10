@@ -18,7 +18,10 @@ function createSupabaseMock() {
   };
   const calls: Array<{ method: string; args: unknown[] }> = [];
 
-  const recorder: Record<string, (...args: unknown[]) => unknown> = {};
+  // Loose record so we can mix fluent methods (variadic) with the `single`
+  // terminal and the `then` thenable shape. The chainable cast below gives
+  // callers a typed surface.
+  const recorder: Record<string, unknown> = {};
   const fluent = [
     "from",
     "select",
@@ -45,6 +48,8 @@ function createSupabaseMock() {
   }
   // Terminal methods that resolve the query
   recorder.single = (..._args: unknown[]) => Promise.resolve(nextResult);
+  recorder.maybeSingle = (..._args: unknown[]) =>
+    Promise.resolve(nextResult);
   recorder.then = (
     onFulfilled: (v: { data: unknown; error: unknown }) => unknown,
   ) => Promise.resolve(nextResult).then(onFulfilled);

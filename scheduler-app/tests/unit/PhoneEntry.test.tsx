@@ -16,7 +16,7 @@ describe("<PhoneEntry />", () => {
     const onSubmit = vi.fn();
     render(<PhoneEntry onSubmit={onSubmit} />);
 
-    const input = screen.getByLabelText(/phone number/i);
+    const input = screen.getByRole("textbox", { name: /phone number/i });
     await userEvent.type(input, "6105550123");
     await userEvent.click(screen.getByRole("button", { name: /continue/i }));
 
@@ -27,7 +27,7 @@ describe("<PhoneEntry />", () => {
     const onSubmit = vi.fn();
     render(<PhoneEntry onSubmit={onSubmit} />);
 
-    const input = screen.getByLabelText(/phone number/i);
+    const input = screen.getByRole("textbox", { name: /phone number/i });
     await userEvent.type(input, "16105550123");
     await userEvent.click(screen.getByRole("button", { name: /continue/i }));
 
@@ -38,7 +38,7 @@ describe("<PhoneEntry />", () => {
     const onSubmit = vi.fn();
     render(<PhoneEntry onSubmit={onSubmit} />);
 
-    const input = screen.getByLabelText(/phone number/i);
+    const input = screen.getByRole("textbox", { name: /phone number/i });
     await userEvent.type(input, "610555012");
     await userEvent.click(screen.getByRole("button", { name: /continue/i }));
 
@@ -51,7 +51,7 @@ describe("<PhoneEntry />", () => {
     const onSubmit = vi.fn();
     render(<PhoneEntry onSubmit={onSubmit} />);
 
-    const input = screen.getByLabelText(/phone number/i);
+    const input = screen.getByRole("textbox", { name: /phone number/i });
     await userEvent.type(input, "abc-def");
     await userEvent.click(screen.getByRole("button", { name: /continue/i }));
 
@@ -61,7 +61,9 @@ describe("<PhoneEntry />", () => {
   it("formats input as (xxx) xxx-xxxx while typing", async () => {
     render(<PhoneEntry onSubmit={vi.fn()} />);
 
-    const input = screen.getByLabelText(/phone number/i) as HTMLInputElement;
+    const input = screen.getByRole("textbox", {
+      name: /phone number/i,
+    }) as HTMLInputElement;
     await userEvent.type(input, "6105550123");
     expect(input.value).toBe("(610) 555-0123");
   });
@@ -75,7 +77,9 @@ describe("<PhoneEntry />", () => {
 
   it("disables input + submit when `disabled` prop is set", () => {
     render(<PhoneEntry onSubmit={vi.fn()} disabled />);
-    expect(screen.getByLabelText(/phone number/i)).toBeDisabled();
+    expect(
+      screen.getByRole("textbox", { name: /phone number/i }),
+    ).toBeDisabled();
     expect(screen.getByRole("button", { name: /continue/i })).toBeDisabled();
   });
 
@@ -83,7 +87,7 @@ describe("<PhoneEntry />", () => {
     const onSubmit = vi.fn();
     render(<PhoneEntry onSubmit={onSubmit} />);
 
-    const input = screen.getByLabelText(/phone number/i);
+    const input = screen.getByRole("textbox", { name: /phone number/i });
     await userEvent.type(input, "(610) 555-0123");
     await userEvent.click(screen.getByRole("button", { name: /continue/i }));
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { OtpInput } from "@/components/scheduler/OtpInput";
 
@@ -45,24 +45,32 @@ describe("<OtpInput />", () => {
     expect(screen.getByText("7777")).toBeInTheDocument();
   });
 
-  it("shows a countdown that decrements each second", () => {
+  it("shows a countdown that decrements each second", async () => {
     render(
       <OtpInput phone_last_four="7777" ttl_seconds={120} onSubmit={vi.fn()} />
     );
     expect(screen.getByText(/2:00/)).toBeInTheDocument();
 
-    vi.advanceTimersByTime(1000);
+    // act() around timer advancement so React 19's effects + state updates
+    // flush before we assert.
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+    });
     expect(screen.getByText(/1:59/)).toBeInTheDocument();
 
-    vi.advanceTimersByTime(60_000);
+    await act(async () => {
+      vi.advanceTimersByTime(60_000);
+    });
     expect(screen.getByText(/0:59/)).toBeInTheDocument();
   });
 
-  it("disables inputs when ttl reaches zero (expired)", () => {
+  it("disables inputs when ttl reaches zero (expired)", async () => {
     render(
       <OtpInput phone_last_four="7777" ttl_seconds={2} onSubmit={vi.fn()} />
     );
-    vi.advanceTimersByTime(2_500);
+    await act(async () => {
+      vi.advanceTimersByTime(2_500);
+    });
 
     const inputs = screen.getAllByRole("textbox");
     inputs.forEach((input) => {

@@ -25,15 +25,20 @@ export interface EscalationCardProps {
   disabled?: boolean;
 }
 
+/**
+ * Strip a phone string down to its 10-digit national-format digits.
+ * Handles "+1XXXXXXXXXX", "1XXXXXXXXXX", "XXXXXXXXXX". Returns the input
+ * stripped of non-digits if it doesn't fit one of these patterns.
+ */
+function toTenDigit(phone: string): string {
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length === 11 && digits.startsWith("1")) return digits.slice(1);
+  return digits;
+}
+
 /** Format E.164 +16102536565 → "(610) 253-6565" for display. */
 function formatPhoneForDisplay(phone: string): string {
-  const digits = phone.replace(/\D/g, "");
-  // Handle "+1XXXXXXXXXX" or "1XXXXXXXXXX" or "XXXXXXXXXX"
-  const tenDigit = digits.length === 11 && digits.startsWith("1")
-    ? digits.slice(1)
-    : digits.length === 10
-      ? digits
-      : digits;
+  const tenDigit = toTenDigit(phone);
   if (tenDigit.length !== 10) return phone;
   return `(${tenDigit.slice(0, 3)}) ${tenDigit.slice(3, 6)}-${tenDigit.slice(6)}`;
 }
@@ -57,7 +62,10 @@ export function EscalationCard({
   }
 
   const displayPhone = formatPhoneForDisplay(shop_phone);
-  const telHref = `tel:${shop_phone.replace(/\D/g, "")}`;
+  // Use the 10-digit national form so display and tel: link agree (both render
+  // 6102536565). Phone link: `tel:6102536565`. Test asserts this exact form.
+  const telDigits = toTenDigit(shop_phone);
+  const telHref = `tel:${telDigits.length === 10 ? telDigits : shop_phone.replace(/\D/g, "")}`;
 
   return (
     <div

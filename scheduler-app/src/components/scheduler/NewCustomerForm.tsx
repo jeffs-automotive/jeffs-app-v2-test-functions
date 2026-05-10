@@ -134,6 +134,10 @@ export function NewCustomerForm({
   return (
     <form
       onSubmit={(e) => void handleSubmit(e)}
+      // noValidate so the JS validation in handleSubmit always runs;
+      // without it, native HTML5 validation (e.g., year input min/max) can
+      // suppress the submit event and the customer never sees a clear error.
+      noValidate
       className="rounded-md border border-gray-200 bg-white p-4 shadow-sm"
       aria-labelledby="new-customer-heading"
     >

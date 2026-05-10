@@ -1,4 +1,5 @@
 import { defineConfig } from "vitest/config";
+import react from "@vitejs/plugin-react";
 import path from "node:path";
 
 /**
@@ -9,8 +10,13 @@ import path from "node:path";
  * - jsdom environment for component tests
  * - 80% line coverage target on src/lib/scheduler/** (DAL functions)
  * - MSW for external API mocks (Tekmetric / Telnyx / Resend)
+ *
+ * @vitejs/plugin-react: required because Vitest 4 + Rolldown's oxc parser
+ * doesn't transform JSX by default. The plugin handles the React 17+
+ * automatic jsx-runtime for `<PhoneEntry />` etc. in .tsx test files.
  */
 export default defineConfig({
+  plugins: [react()],
   test: {
     environment: "jsdom",
     globals: true,

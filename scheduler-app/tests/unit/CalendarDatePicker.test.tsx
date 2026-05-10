@@ -3,9 +3,18 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { CalendarDatePicker } from "@/components/scheduler/CalendarDatePicker";
 
+// userEvent.setup() with advanceTimers so pointer/click sequences don't
+// hang under vi.useFakeTimers() (userEvent simulates per-event delays
+// internally — those delays use setTimeout under the hood).
+function setupUser() {
+  return userEvent.setup({ advanceTimers: vi.advanceTimersByTime.bind(vi) });
+}
+
 describe("<CalendarDatePicker />", () => {
   beforeEach(() => {
-    vi.useFakeTimers();
+    // shouldAdvanceTime so userEvent.click's internal pointer-event delays
+    // (uses setTimeout under the hood) don't hang under fake timers.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     // Pin "today" to 2026-05-10 (a Sunday) for deterministic tests
     vi.setSystemTime(new Date(2026, 4, 10, 12, 0, 0));
   });
@@ -55,7 +64,8 @@ describe("<CalendarDatePicker />", () => {
     expect(may14).toBeDisabled();
     expect(may14).toHaveAttribute("aria-disabled", "true");
 
-    await userEvent.click(may13);
+    const user = setupUser();
+    await user.click(may13);
     expect(onSubmit).toHaveBeenCalledWith({ selected_date: "2026-05-13" });
   });
 
@@ -69,7 +79,8 @@ describe("<CalendarDatePicker />", () => {
       />
     );
 
-    await userEvent.click(
+    const user = setupUser();
+    await user.click(
       screen.getByRole("gridcell", { name: /Tuesday, May 19/ })
     );
     expect(onSubmit).toHaveBeenCalledWith({ selected_date: "2026-05-19" });
@@ -90,7 +101,8 @@ describe("<CalendarDatePicker />", () => {
     const may8 = screen.getByRole("gridcell", { name: /Friday, May 8/ });
     expect(may8).toBeDisabled();
 
-    await userEvent.click(may8);
+    const user = setupUser();
+    await user.click(may8);
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
@@ -120,7 +132,8 @@ describe("<CalendarDatePicker />", () => {
     );
 
     expect(screen.getByText(/May 2026/)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /next month/i }));
+    const user = setupUser();
+    await user.click(screen.getByRole("button", { name: /next month/i }));
     expect(screen.getByText(/June 2026/)).toBeInTheDocument();
 
     // June 15 is now visible + clickable

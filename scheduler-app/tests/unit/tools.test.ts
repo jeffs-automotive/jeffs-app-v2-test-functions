@@ -15,29 +15,34 @@ vi.mock("@/lib/scheduler/orchestrator-client", () => ({
 
 import {
   makeChatAgentTools,
-  showPhoneEntry,
-  showOtpInput,
-  showVehiclePicker,
-  showServiceAndConcernPicker,
-  showCalendarDatePicker,
-  showWaiterTimePicker,
-  showNewCustomerForm,
-  showConfirmationCard,
-  showEscalationCard,
+  phoneEntrySchema,
+  otpInputSchema,
+  vehiclePickerSchema,
+  serviceAndConcernPickerSchema,
+  calendarDatePickerSchema,
+  waiterTimePickerSchema,
+  newCustomerFormSchema,
+  confirmationCardSchema,
+  escalationCardSchema,
 } from "@/lib/scheduler/tools";
 import {
   consultOrchestrator,
   OrchestratorError,
 } from "@/lib/scheduler/orchestrator-client";
 
+// We test the exported zod schemas directly. Why: AI SDK v5's tool(...) wraps
+// the schema in FlexibleSchema<T> which doesn't expose .safeParse on its
+// public surface. The schemas are exported from tools.ts as their own consts
+// alongside the tool() defs that consume them, so they stay in sync.
+
 describe("rendering tool input schemas", () => {
   it("show_phone_entry accepts empty object", () => {
-    const ok = showPhoneEntry.inputSchema.safeParse({});
+    const ok = phoneEntrySchema.safeParse({});
     expect(ok.success).toBe(true);
   });
 
   it("show_phone_entry accepts { reason: string }", () => {
-    const ok = showPhoneEntry.inputSchema.safeParse({
+    const ok = phoneEntrySchema.safeParse({
       reason: "to look up your account",
     });
     expect(ok.success).toBe(true);
@@ -45,19 +50,19 @@ describe("rendering tool input schemas", () => {
 
   it("show_otp_input requires phone_last_four (4 digits) + ttl_seconds", () => {
     expect(
-      showOtpInput.inputSchema.safeParse({ phone_last_four: "1234", ttl_seconds: 300 })
+      otpInputSchema.safeParse({ phone_last_four: "1234", ttl_seconds: 300 })
         .success,
     ).toBe(true);
 
     expect(
-      showOtpInput.inputSchema.safeParse({ phone_last_four: "12", ttl_seconds: 300 })
+      otpInputSchema.safeParse({ phone_last_four: "12", ttl_seconds: 300 })
         .success,
     ).toBe(false);
     expect(
-      showOtpInput.inputSchema.safeParse({ phone_last_four: "1234" }).success,
+      otpInputSchema.safeParse({ phone_last_four: "1234" }).success,
     ).toBe(false);
     expect(
-      showOtpInput.inputSchema.safeParse({
+      otpInputSchema.safeParse({
         phone_last_four: "1234",
         ttl_seconds: -1,
       }).success,
@@ -66,14 +71,14 @@ describe("rendering tool input schemas", () => {
 
   it("show_vehicle_picker requires vehicles[] + allow_add_new", () => {
     expect(
-      showVehiclePicker.inputSchema.safeParse({
+      vehiclePickerSchema.safeParse({
         vehicles: [{ id: "1", label: "2018 Camry" }],
         allow_add_new: true,
       }).success,
     ).toBe(true);
 
     expect(
-      showVehiclePicker.inputSchema.safeParse({
+      vehiclePickerSchema.safeParse({
         vehicles: [{ id: "1" }],
         allow_add_new: true,
       }).success,
@@ -82,7 +87,7 @@ describe("rendering tool input schemas", () => {
 
   it("show_service_and_concern_picker requires array of {service_key, display_name}", () => {
     expect(
-      showServiceAndConcernPicker.inputSchema.safeParse({
+      serviceAndConcernPickerSchema.safeParse({
         common_services: [
           { service_key: "oil_change", display_name: "Oil Change" },
         ],
@@ -90,7 +95,7 @@ describe("rendering tool input schemas", () => {
     ).toBe(true);
 
     expect(
-      showServiceAndConcernPicker.inputSchema.safeParse({
+      serviceAndConcernPickerSchema.safeParse({
         common_services: [{ service_key: "oil_change" }],
       }).success,
     ).toBe(false);
@@ -98,21 +103,21 @@ describe("rendering tool input schemas", () => {
 
   it("show_calendar_date_picker requires ISO YYYY-MM-DD dates and a type", () => {
     expect(
-      showCalendarDatePicker.inputSchema.safeParse({
+      calendarDatePickerSchema.safeParse({
         available_dates: ["2026-05-13", "2026-05-19"],
         type: "dropoff",
       }).success,
     ).toBe(true);
 
     expect(
-      showCalendarDatePicker.inputSchema.safeParse({
+      calendarDatePickerSchema.safeParse({
         available_dates: ["May 13"],
         type: "dropoff",
       }).success,
     ).toBe(false);
 
     expect(
-      showCalendarDatePicker.inputSchema.safeParse({
+      calendarDatePickerSchema.safeParse({
         available_dates: ["2026-05-13"],
         type: "invalid",
       }).success,
@@ -121,21 +126,21 @@ describe("rendering tool input schemas", () => {
 
   it("show_waiter_time_picker accepts only '08:00' or '09:00'", () => {
     expect(
-      showWaiterTimePicker.inputSchema.safeParse({
+      waiterTimePickerSchema.safeParse({
         date: "2026-05-19",
         available_times: ["08:00", "09:00"],
       }).success,
     ).toBe(true);
 
     expect(
-      showWaiterTimePicker.inputSchema.safeParse({
+      waiterTimePickerSchema.safeParse({
         date: "2026-05-19",
         available_times: ["10:00"],
       }).success,
     ).toBe(false);
 
     expect(
-      showWaiterTimePicker.inputSchema.safeParse({
+      waiterTimePickerSchema.safeParse({
         date: "2026-05-19",
         available_times: [],
       }).success,
@@ -144,19 +149,19 @@ describe("rendering tool input schemas", () => {
 
   it("show_new_customer_form requires mode 'full' or 'vehicle-only'", () => {
     expect(
-      showNewCustomerForm.inputSchema.safeParse({ mode: "full" }).success,
+      newCustomerFormSchema.safeParse({ mode: "full" }).success,
     ).toBe(true);
     expect(
-      showNewCustomerForm.inputSchema.safeParse({ mode: "vehicle-only" }).success,
+      newCustomerFormSchema.safeParse({ mode: "vehicle-only" }).success,
     ).toBe(true);
     expect(
-      showNewCustomerForm.inputSchema.safeParse({ mode: "bogus" }).success,
+      newCustomerFormSchema.safeParse({ mode: "bogus" }).success,
     ).toBe(false);
   });
 
   it("show_confirmation_card requires summary, starts_at, customer, vehicle, type", () => {
     expect(
-      showConfirmationCard.inputSchema.safeParse({
+      confirmationCardSchema.safeParse({
         summary: "Oil Change",
         starts_at: "2026-05-19T08:00:00Z",
         customer: "Vince Zulauf",
@@ -166,7 +171,7 @@ describe("rendering tool input schemas", () => {
     ).toBe(true);
 
     expect(
-      showConfirmationCard.inputSchema.safeParse({
+      confirmationCardSchema.safeParse({
         summary: "Oil Change",
         // missing starts_at
         customer: "X",
@@ -178,13 +183,13 @@ describe("rendering tool input schemas", () => {
 
   it("show_escalation_card requires reason + shop_phone", () => {
     expect(
-      showEscalationCard.inputSchema.safeParse({
+      escalationCardSchema.safeParse({
         reason: "manager keyword",
         shop_phone: "+16102536565",
       }).success,
     ).toBe(true);
     expect(
-      showEscalationCard.inputSchema.safeParse({ reason: "x" }).success,
+      escalationCardSchema.safeParse({ reason: "x" }).success,
     ).toBe(false);
   });
 });

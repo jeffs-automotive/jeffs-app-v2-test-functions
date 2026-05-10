@@ -84,42 +84,210 @@ export function makeConsultOrchestratorTool(args: {
 // =====================================================================
 // RENDERING TOOLS — no execute; UI renders + addToolResult feeds back
 // =====================================================================
+//
+// We export the raw zod schemas separately from the wrapped tool() defs.
+// Why: AI SDK v5's tool() returns a value whose .inputSchema is a wrapper
+// (FlexibleSchema<T>) that doesn't expose .safeParse / .parse directly.
+// Tests + downstream code that need to validate inputs go through the
+// raw schema. Both stay in sync because the tool() defs reference the
+// raw schemas by name.
+
+export const phoneEntrySchema = z.object({
+  reason: z
+    .string()
+    .optional()
+    .describe(
+      "Optional context shown next to the phone field — e.g., " +
+        "'to look up your account' or 'so we can send your confirmation'.",
+    ),
+});
+
+export const otpInputSchema = z.object({
+  phone_last_four: z
+    .string()
+    .regex(/^\d{4}$/)
+    .describe("Last 4 digits of the phone the code was sent to."),
+  ttl_seconds: z
+    .number()
+    .int()
+    .positive()
+    .describe(
+      "Seconds until the OTP expires — typically 300 (5 min). The UI " +
+        "shows a countdown.",
+    ),
+});
+
+export const vehiclePickerSchema = z.object({
+  vehicles: z
+    .array(
+      z.object({
+        id: z.string().describe("Tekmetric vehicle ID (stringified)."),
+        label: z
+          .string()
+          .describe("Customer-facing vehicle label, e.g., '2018 Toyota Camry'."),
+      }),
+    )
+    .describe("Vehicles on file for this customer, in the orchestrator's order."),
+  allow_add_new: z
+    .boolean()
+    .describe(
+      "If true, shows an '+ Add new vehicle' option. True for returning " +
+        "customers (they may have a new car); false in rare cases where " +
+        "the orchestrator restricts to the current set.",
+    ),
+});
+
+export const serviceAndConcernPickerSchema = z.object({
+  common_services: z
+    .array(
+      z.object({
+        service_key: z
+          .string()
+          .describe("routine_services.service_key — e.g., 'oil_change'."),
+        display_name: z
+          .string()
+          .describe("Customer-facing chip label — e.g., 'Oil Change'."),
+      }),
+    )
+    .describe(
+      "The 10 routine-service chips, in display order from the " +
+        "routine_services table.",
+    ),
+});
+
+export const calendarDatePickerSchema = z.object({
+  available_dates: z
+    .array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/))
+    .describe(
+      "ISO YYYY-MM-DD dates that have capacity. Only these are clickable.",
+    ),
+  type: z
+    .enum(["waiter", "dropoff"])
+    .describe(
+      "If 'waiter', the customer's date pick will be followed by a " +
+        "show_waiter_time_picker turn. If 'dropoff', the date pick " +
+        "is final and we proceed to confirmation.",
+    ),
+  initial_focus_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional()
+    .describe(
+      "Optional date to focus the calendar on initially (default: " +
+        "first available).",
+    ),
+  range_end: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional()
+    .describe("Optional ISO date the calendar should not show past (default: today + 60d)."),
+});
+
+export const waiterTimePickerSchema = z.object({
+  date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .describe("ISO date the customer picked."),
+  available_times: z
+    .array(z.enum(["08:00", "09:00"]))
+    .min(1)
+    .describe(
+      "Open times for that date. Only the entries here are " +
+        "clickable; pass [] if both are full (then re-render the " +
+        "calendar so the customer can pick another date).",
+    ),
+});
+
+export const newCustomerFormSchema = z.object({
+  mode: z
+    .enum(["full", "vehicle-only"])
+    .describe(
+      "'full' for new customer; 'vehicle-only' when the customer is " +
+        "matched in Tekmetric but their vehicle isn't on file.",
+    ),
+  collected_so_far: z
+    .object({
+      first_name: z.string().optional(),
+      last_name: z.string().optional(),
+      email: z.string().optional(),
+      vehicle: z
+        .object({
+          year: z.number().int().optional(),
+          make: z.string().optional(),
+          model: z.string().optional(),
+          sub_model: z.string().optional(),
+          vin: z.string().optional(),
+          license_plate: z.string().optional(),
+          state: z.string().optional(),
+        })
+        .optional(),
+    })
+    .optional()
+    .describe(
+      "Pre-fill values from earlier turns (e.g., name the orchestrator " +
+        "already captured, or vehicle year the customer mentioned).",
+    ),
+});
+
+export const confirmationCardSchema = z.object({
+  summary: z
+    .string()
+    .describe(
+      "Customer-facing service summary — e.g., 'Oil Change' or " +
+        "'State Inspection + Brake Inspection'.",
+    ),
+  starts_at: z
+    .string()
+    .describe(
+      "For waiter: ISO datetime '2026-05-19T08:00:00Z'. For dropoff: " +
+        "ISO date only '2026-05-13' (drop-offs never show a time).",
+    ),
+  customer: z.string().describe("Customer display name, e.g., 'Vince Zulauf'."),
+  vehicle: z.string().describe("Vehicle label, e.g., '2018 Toyota Camry'."),
+  type: z
+    .enum(["waiter", "dropoff"])
+    .describe(
+      "Drives whether the card displays a time (waiter) or just a " +
+        "date (dropoff per design §5).",
+    ),
+  reminders: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Service-specific reminders to surface above the confirm button. " +
+        "Drop-off → 'Please drop off your vehicle before 10 AM…'; " +
+        "State Inspection → 'Please bring up-to-date insurance and " +
+        "registration cards.' Both apply for state-inspection drop-offs.",
+    ),
+});
+
+export const escalationCardSchema = z.object({
+  reason: z
+    .string()
+    .describe(
+      "Short explanation logged for the service team (shown as italic " +
+        "small text on the card). Customer-readable but not highlighted.",
+    ),
+  shop_phone: z
+    .string()
+    .describe("Shop phone number to call (E.164 or 10-digit; component formats)."),
+});
+
+// ─── Wrapped tool defs (consume the schemas above) ───────────────────────────
 
 export const showPhoneEntry = tool({
   description:
     "Render a phone-number entry form for the customer. Use after the " +
     "customer says they want to book and you've classified self-identified " +
     "as returning/new/unsure.",
-  inputSchema: z.object({
-    reason: z
-      .string()
-      .optional()
-      .describe(
-        "Optional context shown next to the phone field — e.g., " +
-          "'to look up your account' or 'so we can send your confirmation'.",
-      ),
-  }),
-  // no execute — client-side rendering
+  inputSchema: phoneEntrySchema,
 });
 
 export const showOtpInput = tool({
   description:
     "Render a 6-digit OTP code input. Use after the orchestrator has " +
     "called send_otp and confirmed the SMS was sent.",
-  inputSchema: z.object({
-    phone_last_four: z
-      .string()
-      .regex(/^\d{4}$/)
-      .describe("Last 4 digits of the phone the code was sent to."),
-    ttl_seconds: z
-      .number()
-      .int()
-      .positive()
-      .describe(
-        "Seconds until the OTP expires — typically 300 (5 min). The UI " +
-          "shows a countdown.",
-      ),
-  }),
+  inputSchema: otpInputSchema,
 });
 
 export const showVehiclePicker = tool({
@@ -127,25 +295,7 @@ export const showVehiclePicker = tool({
     "Render a picker of the customer's existing vehicles, optionally with " +
     'an "Add new vehicle" option. Use after identity-match flow when the ' +
     "orchestrator returns the vehicle list for an identified customer.",
-  inputSchema: z.object({
-    vehicles: z
-      .array(
-        z.object({
-          id: z.string().describe("Tekmetric vehicle ID (stringified)."),
-          label: z
-            .string()
-            .describe("Customer-facing vehicle label, e.g., '2018 Toyota Camry'."),
-        }),
-      )
-      .describe("Vehicles on file for this customer, in the orchestrator's order."),
-    allow_add_new: z
-      .boolean()
-      .describe(
-        "If true, shows an '+ Add new vehicle' option. True for returning " +
-          "customers (they may have a new car); false in rare cases where " +
-          "the orchestrator restricts to the current set.",
-      ),
-  }),
+  inputSchema: vehiclePickerSchema,
 });
 
 export const showServiceAndConcernPicker = tool({
@@ -153,23 +303,7 @@ export const showServiceAndConcernPicker = tool({
     "Render the routine-service chips + concern textarea. Use as the " +
     'second turn (right after the "have you been here before?" answer) ' +
     "to capture what the customer wants done.",
-  inputSchema: z.object({
-    common_services: z
-      .array(
-        z.object({
-          service_key: z
-            .string()
-            .describe("routine_services.service_key — e.g., 'oil_change'."),
-          display_name: z
-            .string()
-            .describe("Customer-facing chip label — e.g., 'Oil Change'."),
-        }),
-      )
-      .describe(
-        "The 10 routine-service chips, in display order from the " +
-          "routine_services table.",
-      ),
-  }),
+  inputSchema: serviceAndConcernPickerSchema,
 });
 
 export const showCalendarDatePicker = tool({
@@ -178,53 +312,14 @@ export const showCalendarDatePicker = tool({
     "as clickable. Use when the customer wants a date other than the " +
     "earliest-available offering, OR when there are multiple available " +
     "options to display visually.",
-  inputSchema: z.object({
-    available_dates: z
-      .array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/))
-      .describe(
-        "ISO YYYY-MM-DD dates that have capacity. Only these are clickable.",
-      ),
-    type: z
-      .enum(["waiter", "dropoff"])
-      .describe(
-        "If 'waiter', the customer's date pick will be followed by a " +
-          "show_waiter_time_picker turn. If 'dropoff', the date pick " +
-          "is final and we proceed to confirmation.",
-      ),
-    initial_focus_date: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/)
-      .optional()
-      .describe(
-        "Optional date to focus the calendar on initially (default: " +
-          "first available).",
-      ),
-    range_end: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/)
-      .optional()
-      .describe("Optional ISO date the calendar should not show past (default: today + 60d)."),
-  }),
+  inputSchema: calendarDatePickerSchema,
 });
 
 export const showWaiterTimePicker = tool({
   description:
     "Render the waiter time-slot picker (8 AM / 9 AM). Use after the " +
     "customer picks a date for a WAITER appointment.",
-  inputSchema: z.object({
-    date: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/)
-      .describe("ISO date the customer picked."),
-    available_times: z
-      .array(z.enum(["08:00", "09:00"]))
-      .min(1)
-      .describe(
-        "Open times for that date. Only the entries here are " +
-          "clickable; pass [] if both are full (then re-render the " +
-          "calendar so the customer can pick another date).",
-      ),
-  }),
+  inputSchema: waiterTimePickerSchema,
 });
 
 export const showNewCustomerForm = tool({
@@ -232,36 +327,7 @@ export const showNewCustomerForm = tool({
     "Render a form to collect new-customer info + new-vehicle info. " +
     "Two modes: 'full' (new customer to the shop) or 'vehicle-only' " +
     "(returning customer adding a vehicle that's not on file).",
-  inputSchema: z.object({
-    mode: z
-      .enum(["full", "vehicle-only"])
-      .describe(
-        "'full' for new customer; 'vehicle-only' when the customer is " +
-          "matched in Tekmetric but their vehicle isn't on file.",
-      ),
-    collected_so_far: z
-      .object({
-        first_name: z.string().optional(),
-        last_name: z.string().optional(),
-        email: z.string().optional(),
-        vehicle: z
-          .object({
-            year: z.number().int().optional(),
-            make: z.string().optional(),
-            model: z.string().optional(),
-            sub_model: z.string().optional(),
-            vin: z.string().optional(),
-            license_plate: z.string().optional(),
-            state: z.string().optional(),
-          })
-          .optional(),
-      })
-      .optional()
-      .describe(
-        "Pre-fill values from earlier turns (e.g., name the orchestrator " +
-          "already captured, or vehicle year the customer mentioned).",
-      ),
-  }),
+  inputSchema: newCustomerFormSchema,
 });
 
 export const showConfirmationCard = tool({
@@ -269,54 +335,14 @@ export const showConfirmationCard = tool({
     "Render the final confirmation card the customer taps Confirm/Cancel " +
     "on. Use right before the orchestrator calls confirm_appointment → " +
     "Tekmetric POST.",
-  inputSchema: z.object({
-    summary: z
-      .string()
-      .describe(
-        "Customer-facing service summary — e.g., 'Oil Change' or " +
-          "'State Inspection + Brake Inspection'.",
-      ),
-    starts_at: z
-      .string()
-      .describe(
-        "For waiter: ISO datetime '2026-05-19T08:00:00Z'. For dropoff: " +
-          "ISO date only '2026-05-13' (drop-offs never show a time).",
-      ),
-    customer: z.string().describe("Customer display name, e.g., 'Vince Zulauf'."),
-    vehicle: z.string().describe("Vehicle label, e.g., '2018 Toyota Camry'."),
-    type: z
-      .enum(["waiter", "dropoff"])
-      .describe(
-        "Drives whether the card displays a time (waiter) or just a " +
-          "date (dropoff per design §5).",
-      ),
-    reminders: z
-      .array(z.string())
-      .optional()
-      .describe(
-        "Service-specific reminders to surface above the confirm button. " +
-          "Drop-off → 'Please drop off your vehicle before 10 AM…'; " +
-          "State Inspection → 'Please bring up-to-date insurance and " +
-          "registration cards.' Both apply for state-inspection drop-offs.",
-      ),
-  }),
+  inputSchema: confirmationCardSchema,
 });
 
 export const showEscalationCard = tool({
   description:
     "Render the escalation card with apology + shop phone. Use ONLY when " +
     "an escalation trigger fires per design §10.",
-  inputSchema: z.object({
-    reason: z
-      .string()
-      .describe(
-        "Short explanation logged for the service team (shown as italic " +
-          "small text on the card). Customer-readable but not highlighted.",
-      ),
-    shop_phone: z
-      .string()
-      .describe("Shop phone number to call (E.164 or 10-digit; component formats)."),
-  }),
+  inputSchema: escalationCardSchema,
 });
 
 // =====================================================================
