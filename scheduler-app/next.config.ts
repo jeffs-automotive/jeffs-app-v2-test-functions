@@ -15,6 +15,24 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   reactStrictMode: true,
 
+  // Disable lint at build time.
+  //
+  // Reason: eslint-config-next 15.x bundles @rushstack/eslint-patch, which
+  // fails on Node 20+ ("Failed to patch ESLint because the calling module
+  // was not recognized" — see github.com/microsoft/rushstack/issues). The
+  // patch is dropped in eslint-config-next 16.x but that's paired with
+  // Next.js 16, which we're holding (see scheduler_project_state.md
+  // dependency decision matrix).
+  //
+  // Lint intent is preserved in eslint.config.mjs and tracked separately;
+  // CI / pre-commit can run `npx eslint .` once the config is rewritten
+  // to use @next/eslint-plugin-next directly (without the rushstack
+  // wrapper). For now: TypeScript strict + Vitest + observability rules
+  // are the safety net.
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+
   // Required for the experimental Server Actions cookie-write flow if we
   // expand cookie usage; safe default.
   experimental: {
