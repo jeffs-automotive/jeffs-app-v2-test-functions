@@ -535,3 +535,12 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/appointments-sync/deno.json"
 entrypoint = "./functions/appointments-sync/index.ts"
+
+[functions.keytag-daily-report]
+enabled = true
+# Daily 7 AM Eastern Resend email summarizing keytag pool state +
+# stale-tag list. Triggered by pg_cron (jobname: keytag-daily-report).
+# Auth: same Pattern A bearer check.
+verify_jwt = false
+import_map = "./functions/keytag-daily-report/deno.json"
+entrypoint = "./functions/keytag-daily-report/index.ts"
