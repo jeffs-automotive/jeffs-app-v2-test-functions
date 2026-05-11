@@ -320,19 +320,28 @@ function buildReportHtml(args: {
 async function sendViaResend(args: {
   subject: string;
   html: string;
-  idempotencyKey: string;
-}): Promise<{ ok: boolean; resend_id?: string; error?: string; status: number }> {
+  idempotencyKey: string | null;
+}): Promise<{
+  ok: boolean;
+  resend_id?: string;
+  error?: string;
+  status: number;
+  deduped?: boolean;
+}> {
   if (!RESEND_API_KEY) {
     return { ok: false, status: 0, error: "RESEND_API_KEY not configured" };
   }
   try {
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    };
+    if (args.idempotencyKey) {
+      headers["Idempotency-Key"] = args.idempotencyKey;
+    }
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${RESEND_API_KEY}`,
-        "Content-Type": "application/json",
-        "Idempotency-Key": args.idempotencyKey,
-      },
+      headers,
       body: JSON.stringify({
         from: REPORT_FROM_EMAIL,
         to: [REPORT_TO_EMAIL],
@@ -341,9 +350,19 @@ async function sendViaResend(args: {
       }),
     });
     const text = await res.text();
+
+    // 409 = idempotency replay. Resend's safety check fires when the same
+    // idempotency key is used again within 24h. Treat as success (the
+    // email DID land earlier — we'd just be re-sending an updated body).
+    // Matches the transcript-dispatcher pattern (commit 9466de0).
+    if (res.status === 409) {
+      return { ok: true, status: 409, deduped: true };
+    }
+
     if (!res.ok) {
       return { ok: false, status: res.status, error: text.slice(0, 500) };
     }
+
     let resend_id: string | undefined;
     try {
       const json = JSON.parse(text);
@@ -372,6 +391,12 @@ Deno.serve(async (req) => {
   }
   const auth = checkSchedulerBearer(req, "keytag-daily-report");
   if (!auth.ok) return unauthorizedResponse(auth);
+
+  // `?force=true` bypasses Resend's idempotency-key dedup. Used for
+  // ad-hoc smoke tests when we've already sent today's email but want
+  // to verify a layout / content change. Daily cron NEVER passes this.
+  const url = new URL(req.url);
+  const force = url.searchParams.get("force") === "true";
 
   // Pull all keytags
   const { data: rows, error } = await sb
@@ -442,7 +467,7 @@ Deno.serve(async (req) => {
     staleDetails,
   });
   const subject = `Key Tags: ${inUseCount} in use, ${availableCount} available, ${staleRaw.length} stale`;
-  const idempotencyKey = `keytag-daily-report:${ymdEastern()}`;
+  const idempotencyKey = force ? null : `keytag-daily-report:${ymdEastern()}`;
 
   const send = await sendViaResend({ subject, html, idempotencyKey });
   if (!send.ok) {
@@ -471,5 +496,7 @@ Deno.serve(async (req) => {
     stale: staleRaw.length,
     resend_id: send.resend_id ?? null,
     idempotency_key: idempotencyKey,
+    forced: force,
+    deduped: send.deduped ?? false,
   });
 });
