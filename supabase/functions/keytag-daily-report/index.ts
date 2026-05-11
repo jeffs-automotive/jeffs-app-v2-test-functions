@@ -204,14 +204,20 @@ function buildReportHtml(args: {
     .filter((t) => t.tag_color === "yellow")
     .sort((a, b) => a.tag_number - b.tag_number);
 
+  // 90 tags / 15 cols = 6 even rows per color. Cells are width:auto inside a
+  // table-layout:fixed table so every row stays the same width and no cell
+  // is clipped in narrower email-client viewports (the prior 18-col layout
+  // overflowed and the rightmost tag of each row was cut off in Gmail web).
+  const GRID_COLS = 15;
+
   function tagCell(t: KeytagRow): string {
     const used = t.status !== "available";
     const bg = used ? INUSE_BG : AVAILABLE_BG;
     const fg = used ? INUSE_TEXT : AVAILABLE_TEXT;
-    return `<td style="background:${bg};color:${fg};padding:6px 4px;text-align:center;font-family:'SF Mono',Menlo,monospace;font-size:12px;border:1px solid #222;border-radius:3px;min-width:36px;font-weight:600;">${tagLabel(t.tag_color, t.tag_number)}</td>`;
+    return `<td style="background:${bg};color:${fg};padding:6px 2px;text-align:center;font-family:'SF Mono',Menlo,monospace;font-size:12px;border:1px solid #222;border-radius:3px;font-weight:600;width:${Math.floor(100 / GRID_COLS)}%;">${tagLabel(t.tag_color, t.tag_number)}</td>`;
   }
 
-  function buildGridRows(rowTags: KeytagRow[], cols = 18): string {
+  function buildGridRows(rowTags: KeytagRow[], cols = GRID_COLS): string {
     const rows: string[] = [];
     for (let i = 0; i < rowTags.length; i += cols) {
       const slice = rowTags.slice(i, i + cols);
@@ -285,10 +291,10 @@ function buildReportHtml(args: {
     ${staleSection}
 
     <h2 style="margin:32px 0 8px 0;color:${BRAND_PRIMARY};font-size:18px;border-bottom:1px solid ${BRAND_ACCENT};padding-bottom:4px;">Red tags (R1–R90)</h2>
-    <table role="presentation" style="border-collapse:separate;border-spacing:3px;width:100%;">${redGrid}</table>
+    <table role="presentation" style="border-collapse:separate;border-spacing:3px;width:100%;table-layout:fixed;">${redGrid}</table>
 
     <h2 style="margin:24px 0 8px 0;color:${BRAND_PRIMARY};font-size:18px;border-bottom:1px solid ${BRAND_ACCENT};padding-bottom:4px;">Yellow tags (Y1–Y90)</h2>
-    <table role="presentation" style="border-collapse:separate;border-spacing:3px;width:100%;">${yellowGrid}</table>
+    <table role="presentation" style="border-collapse:separate;border-spacing:3px;width:100%;table-layout:fixed;">${yellowGrid}</table>
 
     <p style="margin:16px 0 0 0;font-size:12px;color:#777;">
       <span style="background:${AVAILABLE_BG};color:${AVAILABLE_TEXT};padding:3px 10px;border-radius:3px;font-family:monospace;font-weight:600;">available</span>
