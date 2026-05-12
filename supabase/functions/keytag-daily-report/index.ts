@@ -87,6 +87,7 @@ interface KeytagRow {
   customer_id: number | null;
   assigned_at: string | null;
   posted_at: string | null;
+  last_activity_at: string | null;
 }
 
 interface StaleTagDetail {
@@ -97,17 +98,42 @@ interface StaleTagDetail {
   customer_name: string;
   days_stale: number;
   ro_url: string;
+  category: "wip" | "ar";
 }
 
 interface TekmetricCustomerSubset {
   firstName?: string | null;
   lastName?: string | null;
+  // Business customers store the company name in firstName + empty lastName,
+  // and the human contact in contactFirstName + contactLastName. Carmax,
+  // Nazareth Key, Flexicon all follow this pattern. Falling back to these
+  // contact fields covers the rare case where firstName is also blank.
+  contactFirstName?: string | null;
+  contactLastName?: string | null;
 }
 
 interface TekmetricRepairOrderSubset {
   id: number;
   customer?: TekmetricCustomerSubset | null;
   customerId?: number | null;
+}
+
+/**
+ * Coalesces a customer payload into a single display string. Priority:
+ *   1. firstName + lastName  (covers people + businesses where the company
+ *      name is in firstName, e.g. "Carmax", "Nazareth Key", "Flexicon")
+ *   2. contactFirstName + contactLastName  (rare fallback for businesses
+ *      where firstName is blank but a human contact is recorded)
+ * Returns null if no usable name could be extracted.
+ */
+function customerDisplayName(c: TekmetricCustomerSubset): string | null {
+  const first = (c.firstName ?? "").trim();
+  const last = (c.lastName ?? "").trim();
+  if (first || last) return `${first} ${last}`.trim();
+  const cFirst = (c.contactFirstName ?? "").trim();
+  const cLast = (c.contactLastName ?? "").trim();
+  if (cFirst || cLast) return `${cFirst} ${cLast}`.trim();
+  return null;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -149,40 +175,56 @@ function todayLongEastern(): string {
   });
 }
 
-async function fetchCustomerNameForRo(
-  roId: number,
-  customerId: number | null,
-): Promise<string> {
-  // Try the RO first (typically includes customer inline)
+/**
+ * Builds a Map<customerId, displayName> for every unique customer_id in the
+ * stale list. Dedupes (Carmax often appears 7+ times in a single report run)
+ * and serializes with a small inter-request delay so we stay well under
+ * Tekmetric's 600/min rate limit. The previous per-row Promise.all approach
+ * was sending 91+ simultaneous customer fetches and the 429 storm came back
+ * as silent "Unknown" rows.
+ */
+async function buildCustomerNameMap(
+  customerIds: number[],
+): Promise<Map<number, string>> {
+  const map = new Map<number, string>();
+  const unique = Array.from(new Set(customerIds.filter((id) => id !== null)));
+  // ~8/sec well under Tekmetric prod's 10/sec. Serialized for predictability.
+  const DELAY_MS = 125;
+  for (const id of unique) {
+    try {
+      const cust = await tekmetricGetJson<TekmetricCustomerSubset>(
+        sb,
+        `/customers/${id}`,
+        { shop: SHOP_ID },
+      );
+      const name = cust ? customerDisplayName(cust) : null;
+      if (name) map.set(id, name);
+    } catch {
+      // 4xx / 5xx / network — leave unmapped; caller renders "Unknown"
+    }
+    if (DELAY_MS > 0) {
+      await new Promise((r) => setTimeout(r, DELAY_MS));
+    }
+  }
+  return map;
+}
+
+/**
+ * Fallback for rows where customer_id is null in our keytags table — pull
+ * the inline customer off the RO endpoint. Called only for the rare null-
+ * customer_id case; the common path uses buildCustomerNameMap.
+ */
+async function fetchNameViaRo(roId: number): Promise<string | null> {
   try {
     const ro = await tekmetricGetJson<TekmetricRepairOrderSubset>(
       sb,
       `/repair-orders/${roId}`,
       { shop: SHOP_ID },
     );
-    const c = ro?.customer;
-    if (c && (c.firstName || c.lastName)) {
-      return `${c.firstName ?? ""} ${c.lastName ?? ""}`.trim();
-    }
-    // Fall through to direct customer lookup if RO didn't include customer
+    return ro?.customer ? customerDisplayName(ro.customer) : null;
   } catch {
-    // ignore, try fallback
+    return null;
   }
-  if (customerId) {
-    try {
-      const cust = await tekmetricGetJson<TekmetricCustomerSubset>(
-        sb,
-        `/customers/${customerId}`,
-        { shop: SHOP_ID },
-      );
-      if (cust && (cust.firstName || cust.lastName)) {
-        return `${cust.firstName ?? ""} ${cust.lastName ?? ""}`.trim();
-      }
-    } catch {
-      // ignore
-    }
-  }
-  return "Unknown";
 }
 
 // ─── Email HTML builder ──────────────────────────────────────────────────────
@@ -237,9 +279,10 @@ function buildReportHtml(args: {
           <thead>
             <tr>
               <th style="text-align:left;padding:8px;border-bottom:1px solid ${BRAND_ACCENT};color:#ddd;">Tag</th>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid ${BRAND_ACCENT};color:#ddd;">Status</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid ${BRAND_ACCENT};color:#ddd;">Customer</th>
               <th style="text-align:left;padding:8px;border-bottom:1px solid ${BRAND_ACCENT};color:#ddd;">RO #</th>
-              <th style="text-align:left;padding:8px;border-bottom:1px solid ${BRAND_ACCENT};color:#ddd;">Posted</th>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid ${BRAND_ACCENT};color:#ddd;">Last activity</th>
             </tr>
           </thead>
           <tbody>
@@ -247,6 +290,7 @@ function buildReportHtml(args: {
               .map(
                 (s) => `<tr>
                 <td style="padding:8px;border-bottom:1px solid #333;font-family:monospace;color:${INUSE_TEXT};font-weight:600;">${tagLabel(s.tag_color, s.tag_number)}</td>
+                <td style="padding:8px;border-bottom:1px solid #333;font-size:11px;color:#ddd;font-weight:600;">${s.category === "wip" ? `<span style="background:#3a3a52;color:#a8b0e3;padding:2px 8px;border-radius:3px;">WIP</span>` : `<span style="background:#52443a;color:#e3c8a8;padding:2px 8px;border-radius:3px;">A/R</span>`}</td>
                 <td style="padding:8px;border-bottom:1px solid #333;color:#e0e0e0;">${escapeHtml(s.customer_name)}</td>
                 <td style="padding:8px;border-bottom:1px solid #333;"><a href="${s.ro_url}" style="color:${BRAND_ACCENT};text-decoration:none;">RO ${s.ro_number}</a></td>
                 <td style="padding:8px;border-bottom:1px solid #333;color:#bbb;">${fmtDays(s.days_stale)} ago</td>
@@ -287,7 +331,7 @@ function buildReportHtml(args: {
     </table>
 
     <h2 style="margin:24px 0 8px 0;color:${BRAND_PRIMARY};font-size:18px;border-bottom:1px solid ${BRAND_ACCENT};padding-bottom:4px;">Stale tags</h2>
-    <p style="margin:0 0 12px 0;color:#999;font-size:13px;">Tags assigned to ROs posted more than ${STALE_DAYS} days ago that haven't been released. Investigate whether the customer picked up.</p>
+    <p style="margin:0 0 12px 0;color:#999;font-size:13px;">In-use tags (WIP or A/R) whose Tekmetric repair order hasn't had any activity in more than ${STALE_DAYS} days. WIP rows mean a car has been sitting in the shop without progress; A/R rows mean a car has been waiting on payment for too long. Investigate whether the customer picked up, or whether the RO needs to be advanced.</p>
     ${staleSection}
 
     <h2 style="margin:32px 0 8px 0;color:${BRAND_PRIMARY};font-size:18px;border-bottom:1px solid ${BRAND_ACCENT};padding-bottom:4px;">Red tags (R1–R90)</h2>
@@ -402,7 +446,7 @@ Deno.serve(async (req) => {
   const { data: rows, error } = await sb
     .from("keytags")
     .select(
-      "tag_color, tag_number, status, ro_id, ro_number, customer_id, assigned_at, posted_at",
+      "tag_color, tag_number, status, ro_id, ro_number, customer_id, assigned_at, posted_at, last_activity_at",
     )
     .order("tag_color")
     .order("tag_number");
@@ -422,42 +466,65 @@ Deno.serve(async (req) => {
   ).length;
   const availableCount = tags.filter((t) => t.status === "available").length;
 
-  // Stale: posted_ar status, posted_at > STALE_DAYS ago, not released
+  // Stale = any in-use tag (WIP or A/R) whose Tekmetric-side last activity is
+  // older than STALE_DAYS. The reconcile cron refreshes last_activity_at from
+  // Tekmetric.updatedDate (for WIP) or .postedDate (for A/R) every night, so
+  // a stuck-in-shop car shows up here within 4 days of nothing happening.
   const cutoff = new Date(Date.now() - STALE_DAYS * 24 * 60 * 60_000);
   const staleRaw = tags.filter(
     (t) =>
-      t.status === "posted_ar" &&
-      t.posted_at &&
-      new Date(t.posted_at) < cutoff,
+      (t.status === "assigned" || t.status === "posted_ar") &&
+      t.last_activity_at !== null &&
+      new Date(t.last_activity_at) < cutoff,
   );
 
-  // Resolve customer names for stale tags (in parallel to keep latency low)
-  const staleDetails: StaleTagDetail[] = await Promise.all(
-    staleRaw.map(async (t) => {
-      const customerName =
+  // Sort stale tags: oldest first (highest priority to investigate)
+  staleRaw.sort((a, b) => {
+    const aTime = a.last_activity_at ? new Date(a.last_activity_at).getTime() : 0;
+    const bTime = b.last_activity_at ? new Date(b.last_activity_at).getTime() : 0;
+    return aTime - bTime;
+  });
+
+  // Resolve customer names: dedupe customer_ids and fetch serially so we
+  // don't blow past Tekmetric's 600/min rate limit. The previous approach
+  // (Promise.all over all stale rows) was triggering 429s that silently
+  // dropped rows to "Unknown" — particularly for repeat-business customers
+  // like Carmax that show up 7+ times in a single report.
+  const uniqueCustomerIds = staleRaw
+    .map((t) => t.customer_id)
+    .filter((id): id is number => id !== null);
+  const nameMap = await buildCustomerNameMap(uniqueCustomerIds);
+
+  const staleDetails: StaleTagDetail[] = [];
+  for (const t of staleRaw) {
+    let customerName: string | null = null;
+    if (t.customer_id !== null) {
+      customerName = nameMap.get(t.customer_id) ?? null;
+    }
+    // Fallback for rows with null customer_id OR customer-endpoint miss
+    if (!customerName && t.ro_id !== null) {
+      customerName = await fetchNameViaRo(t.ro_id);
+    }
+    const daysStale = t.last_activity_at
+      ? Math.floor(
+          (Date.now() - new Date(t.last_activity_at).getTime()) /
+            (24 * 60 * 60_000),
+        )
+      : 0;
+    staleDetails.push({
+      tag_color: t.tag_color,
+      tag_number: t.tag_number,
+      ro_id: t.ro_id ?? 0,
+      ro_number: t.ro_number ?? 0,
+      customer_name: customerName ?? "Unknown",
+      days_stale: daysStale,
+      ro_url:
         t.ro_id !== null
-          ? await fetchCustomerNameForRo(t.ro_id, t.customer_id)
-          : "Unknown";
-      const daysStale = t.posted_at
-        ? Math.floor(
-            (Date.now() - new Date(t.posted_at).getTime()) /
-              (24 * 60 * 60_000),
-          )
-        : 0;
-      return {
-        tag_color: t.tag_color,
-        tag_number: t.tag_number,
-        ro_id: t.ro_id ?? 0,
-        ro_number: t.ro_number ?? 0,
-        customer_name: customerName,
-        days_stale: daysStale,
-        ro_url:
-          t.ro_id !== null
-            ? buildTekmetricRoUrl({ roId: t.ro_id, shopId: SHOP_ID })
-            : "",
-      };
-    }),
-  );
+          ? buildTekmetricRoUrl({ roId: t.ro_id, shopId: SHOP_ID })
+          : "",
+      category: t.status === "posted_ar" ? "ar" : "wip",
+    });
+  }
 
   const html = buildReportHtml({
     tags,

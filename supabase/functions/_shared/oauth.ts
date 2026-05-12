@@ -111,8 +111,20 @@ export function functionUrl(functionName: string): string {
 /** Authorization-code TTL — single-use codes, narrow window per OAuth 2.1 guidance. */
 export const AUTH_CODE_TTL_SEC = 10 * 60; // 10 minutes
 
-/** Access-token TTL for Phase 1. We don't issue refresh tokens yet. */
-export const ACCESS_TOKEN_TTL_SEC = 24 * 60 * 60; // 24 hours
+/**
+ * Access-token TTL. Short by design — refresh tokens (added 2026-05-11)
+ * handle silent renewal so this can be aggressive without UX cost.
+ * 1 hour balances "tight enough that a leaked token has limited blast
+ * radius" against "loose enough that we're not refreshing constantly".
+ */
+export const ACCESS_TOKEN_TTL_SEC = 60 * 60; // 1 hour
+
+/**
+ * Refresh-token TTL. 90 days = re-consent quarterly. Rotated on every
+ * use (per OAuth 2.1 §6.1) so the EFFECTIVE TTL is whichever comes
+ * first: 90d sliding window OR explicit revoke.
+ */
+export const REFRESH_TOKEN_TTL_SEC = 90 * 24 * 60 * 60; // 90 days
 
 /** What we serve for the /.well-known/oauth-authorization-server discovery doc. */
 export interface AuthServerMetadata {

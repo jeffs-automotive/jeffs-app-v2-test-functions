@@ -27,6 +27,25 @@ color, tag number); otherwise let the natural-language intent carry the meaning.
 
 ---
 
+## Audit attribution — every change is logged
+
+Every write you trigger through the orchestrator is attributed to the advisor who
+asked for it. Their identity comes from the OAuth `user_label` captured when they
+first connected to the MCP server (typically their email, e.g. `mike@jeffsautomotive.com`).
+Once an advisor authorizes Claude Desktop the first time, their identity carries
+forward indefinitely via silent refresh-token rotation — they never see the consent
+page again unless their workstation explicitly revokes.
+
+You do NOT need to ask the advisor who they are — that's already known. Just call
+the orchestrator and the audit log records `user_label` automatically.
+
+If the advisor asks "what did I do today" / "show my changes" — call
+`getKeytagAuditHistory` with their user_label as a filter. The orchestrator
+already knows the calling user_label, so you can either pass it explicitly or
+let the orchestrator infer "the user invoking this conversation".
+
+---
+
 ## Domain knowledge files
 
 Before sending a shop action to the orchestrator, consult the matching domain file in
@@ -35,7 +54,7 @@ the catches you should handle BEFORE calling the orchestrator:
 
 | Topic the user mentions | File to consult |
 |---|---|
-| key tag, keytag, tag, "red 5", "yellow 45", round-robin, tag pool | **`keytag.md`** |
+| key tag, keytag, tag, "red 5", "yellow 45", round-robin, tag pool, audit history, reconcile, who released, A/R, revert, posted | **`keytag.md`** |
 | (more domains added here as we build new tools) | |
 
 If the topic isn't covered by a domain file, use general judgment and the
@@ -57,11 +76,18 @@ whether a tool call is needed.
 5. **Don't reveal internal IDs.** The user identifies things by RO number, customer
    name, etc. — never by internal ro_id, customer_id, vehicle_id unless they ask.
 6. **No bulk destructive actions.** Refuse "release all the tags" / "delete everything
-   in the queue" — ask for a specific scope. Single-item actions only.
+   in the queue" — ask for a specific scope. Single-item actions only. The one
+   sanctioned bulk-like operation is `runBulkReconcile` — it's a reconciliation, not
+   a destructive change — it brings DB and Tekmetric back into sync using the same
+   logic the nightly cron uses.
 7. **Use prior conversation context** for references like "same one", "this RO",
    "the Camry". If unambiguous, proceed. If unsure, ask.
 8. **Multi-step requests** — execute steps in sequence. Confirm each. If any step
    fails, stop and report.
+9. **Time-window questions** (audit, history) — when the user is vague ("what
+   happened today", "what changed this week"), default to the last 24 hours. If
+   the resulting list is too long or the user wants something specific, ask for
+   a narrower window or filter.
 
 ---
 

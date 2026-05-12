@@ -544,3 +544,14 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/keytag-daily-report/deno.json"
 entrypoint = "./functions/keytag-daily-report/index.ts"
+
+[functions.keytag-bulk-reconcile]
+enabled = true
+# Reconciles our keytags table against Tekmetric WIP+A/R lists. Runs nightly
+# via pg_cron (jobname: keytag-bulk-reconcile) to catch missed webhooks and
+# refresh last_activity_at for the morning report. Also callable ad-hoc with
+# ?overwrite=true to mass-rewrite Tekmetric keytag fields (legacy → R/Y).
+# Auth: same Pattern A bearer check.
+verify_jwt = false
+import_map = "./functions/keytag-bulk-reconcile/deno.json"
+entrypoint = "./functions/keytag-bulk-reconcile/index.ts"

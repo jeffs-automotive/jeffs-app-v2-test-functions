@@ -32,6 +32,12 @@ import {
   type TekmetricRepairOrder,
 } from "./repair-orders.ts";
 import { getTekmetricAccessToken } from "../tekmetric-client.ts";
+import {
+  type ConfirmationRequiredResult,
+  confirmationRequiredResponse,
+  consumeConfirmationToken,
+  issueConfirmationToken,
+} from "../keytag-confirmation.ts";
 
 // ─── PATCH helper ───────────────────────────────────────────────────────────
 
@@ -87,19 +93,32 @@ export type AssignKeytagResult =
     }
   | {
       ok: false;
-      error_code: "ro_not_found" | "ro_already_has_tag" | "tag_in_use_by_other_ro" | "tag_not_found" | "pool_exhausted" | "rpc_error";
+      error_code: "ro_not_found" | "ro_already_has_tag" | "tag_in_use_by_other_ro" | "tag_not_found" | "pool_exhausted" | "rpc_error" | "confirmation_failed";
       message: string;
       ro_number: number;
       requested_tag?: { color: TagColor; number: number; label: string };
       current_tag?: { color: TagColor; number: number; label: string };
-    };
+    }
+  | ConfirmationRequiredResult;
 
 export async function assignKeytagToRo(
   sb: SupabaseClient,
   shopId: number,
-  args: { roNumber: number; color?: TagColor; tagNumber?: number },
+  args: {
+    roNumber: number;
+    color?: TagColor;
+    tagNumber?: number;
+    /**
+     * The MCP OAuth user_label of the human invoking this tool. Written
+     * into keytags.changed_by_user_label + keytag_audit_log so we can
+     * answer "who assigned R5 to RO 152222" queries.
+     */
+    userLabel?: string;
+    /** Two-step confirmation token (returned by a prior call). Required for force-assign overrides. */
+    confirmationToken?: string;
+  },
 ): Promise<AssignKeytagResult> {
-  const { roNumber, color, tagNumber } = args;
+  const { roNumber, color, tagNumber, userLabel, confirmationToken } = args;
   const specific = color !== undefined && tagNumber !== undefined;
 
   // 1. Look up the RO
@@ -111,6 +130,57 @@ export async function assignKeytagToRo(
       message: `Could not find repair order #${roNumber} in Tekmetric.`,
       ro_number: roNumber,
     };
+  }
+
+  // ── FORCE-ASSIGN CONFIRMATION GATE ───────────────────────────────────────
+  // Force-assign (specific color+number) overrides round-robin selection.
+  // This is the path advisors take when they're re-tagging an RO whose
+  // physical keys still bear a specific tag (post-drift recovery), or when
+  // they want a particular color for visibility. Both legitimate, both
+  // sensitive — require two-step confirmation. Auto-assign (no color/number
+  // specified) follows round-robin and is the standard path; no
+  // confirmation required.
+  if (specific) {
+    if (!userLabel) {
+      return {
+        ok: false,
+        error_code: "confirmation_failed",
+        message:
+          `Force-assign blocked: specifying a tag color+number requires an authenticated user (user_label missing).`,
+        ro_number: roNumber,
+        requested_tag: { color: color as TagColor, number: tagNumber as number, label: describeKeytag(color as TagColor, tagNumber as number) },
+      };
+    }
+    const scope = {
+      ro_numbers: [roNumber],
+      tag_color: color as TagColor,
+      tag_number: tagNumber as number,
+      reason: "force_assign",
+    };
+    if (!confirmationToken) {
+      const issued = await issueConfirmationToken(sb, {
+        actionKind: "force_assign",
+        scope,
+        userLabel,
+      });
+      return confirmationRequiredResponse(issued);
+    }
+    const consumed = await consumeConfirmationToken(sb, {
+      tokenId: confirmationToken,
+      actionKind: "force_assign",
+      scope,
+      userLabel,
+    });
+    if (!consumed.ok) {
+      return {
+        ok: false,
+        error_code: "confirmation_failed",
+        message:
+          `Confirmation token rejected for force-assign of ${describeKeytag(color as TagColor, tagNumber as number)} to RO #${roNumber}: ${consumed.failure_reason ?? "unknown"}. The advisor must re-request and re-confirm.`,
+        ro_number: roNumber,
+        requested_tag: { color: color as TagColor, number: tagNumber as number, label: describeKeytag(color as TagColor, tagNumber as number) },
+      };
+    }
   }
 
   // 2. Reserve the tag
@@ -212,6 +282,31 @@ export async function assignKeytagToRo(
     p_error: patchResult.error ?? null,
   });
 
+  // 4. Stamp the keytag row with who-did-it + write the audit-log entry
+  if (userLabel) {
+    await sb
+      .from("keytags")
+      .update({ changed_by_user_label: userLabel })
+      .eq("tag_color", assignedColor)
+      .eq("tag_number", assignedNumber);
+  }
+  await sb.rpc("log_keytag_audit", {
+    p_tag_color: assignedColor,
+    p_tag_number: assignedNumber,
+    p_action: autoAssigned ? "assigned" : "force_assigned",
+    p_source: "claude_desktop",
+    p_ro_id: ro.id,
+    p_ro_number: ro.repairOrderNumber,
+    p_prior_status: "available",
+    p_new_status: "assigned",
+    p_user_label: userLabel ?? null,
+    p_reason: autoAssigned
+      ? "orchestrator_auto_assign"
+      : `orchestrator_force_assign:${assignedColor}${assignedNumber}`,
+    p_tekmetric_patch_ok: patchResult.ok,
+    p_tekmetric_patch_error: patchResult.error ?? null,
+  });
+
   return {
     ok: true,
     ro_number: ro.repairOrderNumber,
@@ -260,31 +355,44 @@ export type ReleaseKeytagResult =
     }
   | {
       ok: false;
-      error_code: "ro_not_found" | "rpc_error";
+      error_code: "ro_not_found" | "rpc_error" | "confirmation_failed";
       message: string;
       ro_number: number;
-    };
+    }
+  | ConfirmationRequiredResult;
 
 export async function releaseKeytagFromRo(
   sb: SupabaseClient,
   shopId: number,
-  args: { roNumber: number },
+  args: {
+    roNumber: number;
+    /** MCP OAuth user_label of the human invoking this tool (for audit). */
+    userLabel?: string;
+    /** Two-step confirmation token (returned by a prior call). Required for A/R-status releases. */
+    confirmationToken?: string;
+  },
 ): Promise<ReleaseKeytagResult> {
-  const { roNumber } = args;
+  const { roNumber, userLabel, confirmationToken } = args;
 
-  // 1. Find the RO id. We try our keytags table first (fast, avoids a Tekmetric
-  //    GET for the common case where we know about this RO). If not found, fall
-  //    back to Tekmetric.
+  // 1. Find the RO id + current tag status. We try our keytags table first
+  //    (fast, avoids a Tekmetric GET for the common case where we know about
+  //    this RO). If not found, fall back to Tekmetric.
   let roId: number | null = null;
   let ro: TekmetricRepairOrder | null = null;
+  let dbTagColor: TagColor | null = null;
+  let dbTagNumber: number | null = null;
+  let dbTagStatus: "assigned" | "posted_ar" | "available" | null = null;
 
   const { data: dbRow } = await sb
     .from("keytags")
-    .select("ro_id")
+    .select("ro_id, tag_color, tag_number, status")
     .eq("ro_number", roNumber)
     .maybeSingle();
   if (dbRow?.ro_id) {
     roId = dbRow.ro_id as number;
+    dbTagColor = dbRow.tag_color as TagColor;
+    dbTagNumber = dbRow.tag_number as number;
+    dbTagStatus = dbRow.status as "assigned" | "posted_ar" | "available";
   } else {
     ro = await getRepairOrderByNumber(sb, shopId, roNumber);
     if (!ro) {
@@ -298,10 +406,62 @@ export async function releaseKeytagFromRo(
     roId = ro.id;
   }
 
+  // ── A/R LOCKDOWN GATE ────────────────────────────────────────────────────
+  // If the tag is currently in posted_ar status, the vehicle is in A/R and
+  // the customer hasn't paid. Tekmetric blocks PATCH on A/R ROs so any
+  // release here would silently desync DB from Tekmetric. Require explicit
+  // two-step confirmation from the same user_label that initiated the call.
+  const requiresConfirmation = dbTagStatus === "posted_ar";
+
+  if (requiresConfirmation) {
+    if (!userLabel) {
+      return {
+        ok: false,
+        error_code: "confirmation_failed",
+        message:
+          `Release blocked: RO #${roNumber} is in A/R status. A/R releases require an authenticated user (user_label missing from caller).`,
+        ro_number: roNumber,
+      };
+    }
+    const scope = {
+      ro_numbers: [roNumber],
+      tag_color: dbTagColor,
+      tag_number: dbTagNumber,
+      reason: "manual_release_ar",
+    };
+    if (!confirmationToken) {
+      // First-step: issue a fresh token, return ConfirmationRequiredResult
+      const issued = await issueConfirmationToken(sb, {
+        actionKind: "release_ar_tag",
+        scope,
+        userLabel,
+      });
+      return confirmationRequiredResponse(issued);
+    }
+    // Second-step: consume the token
+    const consumed = await consumeConfirmationToken(sb, {
+      tokenId: confirmationToken,
+      actionKind: "release_ar_tag",
+      scope,
+      userLabel,
+    });
+    if (!consumed.ok) {
+      return {
+        ok: false,
+        error_code: "confirmation_failed",
+        message:
+          `Confirmation token rejected for A/R release of RO #${roNumber}: ${consumed.failure_reason ?? "unknown"}. The advisor must re-request and re-confirm.`,
+        ro_number: roNumber,
+      };
+    }
+  }
+
   // 2. Release in our DB
   const { data: releasedRows, error } = await sb.rpc("release_keytag_for_ro", {
     p_ro_id: roId,
-    p_reason: "manual_release_via_orchestrator",
+    p_reason: requiresConfirmation
+      ? "manual_release_via_orchestrator_ar_confirmed"
+      : "manual_release_via_orchestrator",
   });
   if (error) {
     return {
@@ -334,6 +494,24 @@ export async function releaseKeytagFromRo(
 
   const tagColor = released.tag_color as TagColor;
   const tagNumber = released.tag_number as number;
+
+  // 4. Audit log entry for the release
+  await sb.rpc("log_keytag_audit", {
+    p_tag_color: tagColor,
+    p_tag_number: tagNumber,
+    p_action: "released",
+    p_source: "claude_desktop",
+    p_ro_id: roId,
+    p_ro_number: roNumber,
+    p_prior_status: dbTagStatus,
+    p_new_status: "available",
+    p_user_label: userLabel ?? null,
+    p_reason: requiresConfirmation
+      ? "orchestrator_manual_release_ar_confirmed"
+      : "orchestrator_manual_release",
+    p_tekmetric_patch_ok: patchResult.ok,
+    p_tekmetric_patch_error: patchResult.error ?? null,
+  });
 
   return {
     ok: true,

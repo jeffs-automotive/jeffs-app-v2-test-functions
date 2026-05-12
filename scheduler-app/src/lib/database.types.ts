@@ -12,8 +12,81 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
+      _bulk_keytag_backfill: {
+        Row: {
+          advisor_id: number | null
+          created_date: string | null
+          custom_label: string | null
+          customer_id: number | null
+          posted_date: string | null
+          ro_id: number | null
+          ro_number: number | null
+          status_id: number | null
+          status_name: string | null
+          technician_id: number | null
+          tekmetric_keytag: string | null
+          updated_date: string | null
+          vehicle_id: number | null
+        }
+        Insert: {
+          advisor_id?: number | null
+          created_date?: string | null
+          custom_label?: string | null
+          customer_id?: number | null
+          posted_date?: string | null
+          ro_id?: number | null
+          ro_number?: number | null
+          status_id?: number | null
+          status_name?: string | null
+          technician_id?: number | null
+          tekmetric_keytag?: string | null
+          updated_date?: string | null
+          vehicle_id?: number | null
+        }
+        Update: {
+          advisor_id?: number | null
+          created_date?: string | null
+          custom_label?: string | null
+          customer_id?: number | null
+          posted_date?: string | null
+          ro_id?: number | null
+          ro_number?: number | null
+          status_id?: number | null
+          status_name?: string | null
+          technician_id?: number | null
+          tekmetric_keytag?: string | null
+          updated_date?: string | null
+          vehicle_id?: number | null
+        }
+        Relationships: []
+      }
       agent_calls: {
         Row: {
           agent_name: string
@@ -510,6 +583,7 @@ export type Database = {
           advisor_id: number | null
           assigned_at: string | null
           customer_id: number | null
+          last_activity_at: string | null
           last_patch_at: string | null
           last_patch_error: string | null
           last_patch_success: boolean | null
@@ -528,6 +602,7 @@ export type Database = {
           advisor_id?: number | null
           assigned_at?: string | null
           customer_id?: number | null
+          last_activity_at?: string | null
           last_patch_at?: string | null
           last_patch_error?: string | null
           last_patch_success?: boolean | null
@@ -546,6 +621,7 @@ export type Database = {
           advisor_id?: number | null
           assigned_at?: string | null
           customer_id?: number | null
+          last_activity_at?: string | null
           last_patch_at?: string | null
           last_patch_error?: string | null
           last_patch_success?: boolean | null
@@ -1088,6 +1164,7 @@ export type Database = {
         Args: {
           p_advisor_id?: number
           p_customer_id?: number
+          p_last_activity_at?: string
           p_ro_id: number
           p_ro_number: number
           p_technician_id?: number
@@ -1097,6 +1174,10 @@ export type Database = {
           tag_color: string
           tag_number: number
         }[]
+      }
+      cron_unschedule_if_exists: {
+        Args: { p_jobname: string }
+        Returns: undefined
       }
       force_assign_keytag: {
         Args: {
@@ -1129,7 +1210,11 @@ export type Database = {
         Returns: string
       }
       mark_keytag_posted: {
-        Args: { p_ro_id: number }
+        Args: {
+          p_last_activity_at?: string
+          p_posted_at?: string
+          p_ro_id: number
+        }
         Returns: {
           tag_color: string
           tag_number: number
@@ -1147,6 +1232,17 @@ export type Database = {
         Args: { p_error?: string; p_ro_id: number; p_success: boolean }
         Returns: undefined
       }
+      release_keytag_as_orphan: {
+        Args: { p_reason: string; p_ro_id: number }
+        Returns: {
+          prior_customer_id: number
+          prior_ro_number: number
+          prior_status: string
+          prior_vehicle_id: number
+          tag_color: string
+          tag_number: number
+        }[]
+      }
       release_keytag_for_ro: {
         Args: { p_reason?: string; p_ro_id: number }
         Returns: {
@@ -1154,10 +1250,27 @@ export type Database = {
           tag_number: number
         }[]
       }
+      revert_keytag_to_assigned: {
+        Args: { p_last_activity_at?: string; p_ro_id: number }
+        Returns: {
+          prior_status: string
+          tag_color: string
+          tag_number: number
+        }[]
+      }
+      scheduler_get_service_role_key: { Args: never; Returns: string }
+      scheduler_invoke_edge_function: {
+        Args: { p_body?: Json; p_function_name: string }
+        Returns: number
+      }
       tekmetric_get_secret: { Args: { p_name: string }; Returns: string }
       tekmetric_set_secret: {
         Args: { p_description?: string; p_name: string; p_value: string }
         Returns: undefined
+      }
+      touch_keytag_activity: {
+        Args: { p_last_activity_at: string; p_ro_id: number }
+        Returns: boolean
       }
     }
     Enums: {
@@ -1287,6 +1400,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {},
   },

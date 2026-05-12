@@ -96,7 +96,7 @@ function json(body: unknown, status = 200, extra: Record<string, string> = {}): 
 // ─── Auth: OAuth bearer validation ────────────────────────────────────────
 
 interface AuthOk { ok: true; userLabel: string; scope: string; clientId: string; }
-interface AuthErr { ok: false; reason: string; }
+interface AuthErr { ok: false; reason: "missing_token" | "invalid_token" | "server_error"; }
 
 async function authenticateRequest(req: Request): Promise<AuthOk | AuthErr> {
   const authHeader = req.headers.get("Authorization") ?? req.headers.get("authorization");

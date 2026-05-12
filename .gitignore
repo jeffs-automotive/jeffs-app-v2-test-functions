@@ -12,9 +12,12 @@ supabase/snippets/      # SQL snippets synced from dashboard (local cache)
 supabase/functions/**/.cache/
 
 # Secrets — never commit
+# (Previously had `!.env.example` exception, but the local .env.example was
+#  found to contain LIVE secrets — convention violated, so the exception was
+#  removed 2026-05-11. If you need a tracked template again, create a
+#  .env.template with placeholder values only and add it as an exception here.)
 .env
 .env.*
-!.env.example
 
 # Node / npm
 node_modules/

@@ -20,6 +20,10 @@ import {
 } from "../tekmetric-client.ts";
 import { TEKMETRIC_RO_STATUS, buildTekmetricRoUrl } from "../tekmetric.ts";
 
+// Re-export TekmetricRepairOrder so callers that already import other names
+// from this module can grab the type from one place.
+export type { TekmetricRepairOrder };
+
 // ─── Helper: GET a single repair order by RO number (what users say) ────────
 
 /**
@@ -84,7 +88,7 @@ export async function getRepairOrderById(
   }
 }
 
-// ─── Tool 1: list all WIP repair orders that have a keytag assigned ──────────
+// ─── Tool 1: list all in-use keytags (WIP + A/R) ────────────────────────────
 
 export interface WipKeyTagsResult {
   ok: true;
@@ -93,55 +97,65 @@ export interface WipKeyTagsResult {
   results: Array<{
     ro_number: number;
     ro_id: number;
-    key_tag: number;
+    /** Wire format (e.g. "R4", "Y45") for display in chat. */
+    tag: string;
+    tag_color: "red" | "yellow";
+    tag_number: number;
+    status: "assigned" | "posted_ar";
     customer_id: number | null;
     vehicle_id: number | null;
     ro_url: string;
+    last_activity_at: string | null;
   }>;
-  /** Set when the WIP set exceeds one page (100). Truncated; orchestrator may want to warn user. */
-  truncated?: boolean;
 }
 
 /**
- * Lists all repair orders currently in WIP status (status_id = 2) for a shop.
- * Filters out ROs with no keytag (those haven't been tagged yet).
+ * Lists every in-use keytag (status='assigned' for WIP, status='posted_ar' for A/R).
  *
- * Note: Tekmetric paginates at max 100 per page. For shops with >100 active WIPs we
- * only return the first page and set `truncated: true`. The keytag pool is 100 anyway,
- * so this is the practical ceiling.
+ * Refactored 2026-05-11 to read from our keytags table instead of Tekmetric's
+ * `/repair-orders?status=WIP` list endpoint. Reasons:
+ *   1. Tekmetric stores R/Y format keytag strings ("R4", "Y45") after the color-
+ *      coded migration; the prior parseKeyTag helper used parseInt which returned
+ *      NaN for those, silently dropping every row.
+ *   2. Our keytags table is the source of truth post-reconcile — has color/number,
+ *      status, last_activity_at, customer_id, vehicle_id all in one query.
+ *   3. WIP-only is too narrow — fleet A/R tags are legitimate keytags the advisor
+ *      may want to see. Now returns both, with status distinguishing them.
  */
 export async function listWipKeyTags(
   sb: SupabaseClient,
   shopId: number,
 ): Promise<WipKeyTagsResult> {
-  const page = await tekmetricGetJson<TekmetricPage<TekmetricRepairOrder>>(
-    sb,
-    "/repair-orders",
-    {
-      shop: shopId,
-      repairOrderStatusId: TEKMETRIC_RO_STATUS.WIP,
-      size: 100,
-    },
-  );
+  const { data, error } = await sb
+    .from("keytags")
+    .select(
+      "tag_color, tag_number, status, ro_id, ro_number, customer_id, vehicle_id, last_activity_at",
+    )
+    .in("status", ["assigned", "posted_ar"])
+    .order("tag_color")
+    .order("tag_number");
+  if (error) throw new Error(`keytags query failed: ${error.message}`);
 
-  const results = page.content
-    .map((ro) => ({
-      ro_number: ro.repairOrderNumber,
-      ro_id: ro.id,
-      key_tag: parseKeyTag(ro.keytag),
-      customer_id: ro.customerId,
-      vehicle_id: ro.vehicleId,
-      ro_url: buildTekmetricRoUrl({ roId: ro.id, shopId: ro.shopId }),
-    }))
-    .filter((r): r is typeof r & { key_tag: number } => r.key_tag !== null)
-    .sort((a, b) => a.key_tag - b.key_tag);
+  const results = (data ?? [])
+    .filter((r) => r.ro_id !== null)
+    .map((r) => ({
+      ro_number: r.ro_number as number,
+      ro_id: r.ro_id as number,
+      tag: `${(r.tag_color as string) === "red" ? "R" : "Y"}${r.tag_number}`,
+      tag_color: r.tag_color as "red" | "yellow",
+      tag_number: r.tag_number as number,
+      status: r.status as "assigned" | "posted_ar",
+      customer_id: (r.customer_id as number | null) ?? null,
+      vehicle_id: (r.vehicle_id as number | null) ?? null,
+      ro_url: buildTekmetricRoUrl({ roId: r.ro_id as number, shopId }),
+      last_activity_at: (r.last_activity_at as string | null) ?? null,
+    }));
 
   return {
     ok: true,
     count: results.length,
     shop_id: shopId,
     results,
-    ...(page.totalPages > 1 ? { truncated: true } : {}),
   };
 }
 
@@ -151,87 +165,89 @@ export type FindRoByKeyTagResult =
   | {
       ok: true;
       found: true;
-      key_tag: number;
+      tag: string;
+      tag_color: "red" | "yellow";
+      tag_number: number;
       ro_number: number;
       ro_id: number;
       ro_url: string;
       customer_id: number | null;
       vehicle_id: number | null;
-      /** Always "WIP" — this tool only searches WIP. Included for clarity in the response. */
-      status: "WIP";
+      status: "assigned" | "posted_ar";
+      last_activity_at: string | null;
     }
   | {
       ok: true;
       found: false;
-      key_tag: number;
+      tag: string;
+      tag_color: "red" | "yellow";
+      tag_number: number;
       message: string;
-      /** Set if the WIP set was truncated by pagination (>100 WIPs) — we may have missed it. */
-      search_incomplete?: boolean;
     };
 
 /**
- * Looks up the WIP repair order currently holding a given key tag.
+ * Looks up the repair order currently holding a specific (color, number) tag.
  *
- * Why WIP-only:
- *   1. Tekmetric's GET /repair-orders does NOT support `keyTag` as a query filter
- *      (verified against TEKMETRIC_API_DOCS.md). An earlier version of this tool
- *      passed `keyTag=N`; Tekmetric silently ignored it and returned arbitrary ROs,
- *      e.g. querying for tag 96 returned a posted RO with tag 40 (2026-05-08).
- *   2. Posted/AR/Complete ROs may still carry a historical `keytag` value in the
- *      Tekmetric record, but the *physical tag* should already be off that car —
- *      so a "what RO has key tag N" question is really asking which WIP RO is
- *      currently using it.
+ * Refactored 2026-05-11 to query our keytags table (not Tekmetric). The prior
+ * implementation was effectively broken once Tekmetric started storing R/Y
+ * format strings.
  *
- * Implementation: delegate to listWipKeyTags (the verified-working WIP fetcher),
- * filter its results client-side. One source of truth for the WIP query.
+ * Requires color to disambiguate Red N from Yellow N — call site (orchestrator
+ * tool description in keytag.md) must extract color from the user's utterance
+ * before calling.
  */
 export async function findRoByKeyTag(
   sb: SupabaseClient,
   shopId: number,
-  keyTag: number,
+  tagColor: "red" | "yellow",
+  tagNumber: number,
 ): Promise<FindRoByKeyTagResult> {
-  if (!Number.isInteger(keyTag) || keyTag < 1 || keyTag > 100) {
+  const tagLabel = `${tagColor === "red" ? "R" : "Y"}${tagNumber}`;
+
+  if (!Number.isInteger(tagNumber) || tagNumber < 1 || tagNumber > 90) {
     return {
       ok: true,
       found: false,
-      key_tag: keyTag,
-      message: `Key tag ${keyTag} is out of range. Valid key tags are 1-100.`,
+      tag: tagLabel,
+      tag_color: tagColor,
+      tag_number: tagNumber,
+      message: `Tag ${tagLabel} is out of range. Valid tag numbers are 1-90.`,
     };
   }
 
-  const wipList = await listWipKeyTags(sb, shopId);
-  const match = wipList.results.find((r) => r.key_tag === keyTag);
+  const { data, error } = await sb
+    .from("keytags")
+    .select(
+      "status, ro_id, ro_number, customer_id, vehicle_id, last_activity_at",
+    )
+    .eq("tag_color", tagColor)
+    .eq("tag_number", tagNumber)
+    .maybeSingle();
+  if (error) throw new Error(`keytags query failed: ${error.message}`);
 
-  if (!match) {
+  if (!data || data.status === "available" || data.ro_id === null) {
     return {
       ok: true,
       found: false,
-      key_tag: keyTag,
-      message: wipList.truncated
-        ? `Key tag ${keyTag} is not in the first ${wipList.results.length} WIP repair orders. WIP set was truncated by pagination — older WIPs may still hold it.`
-        : `Key tag ${keyTag} is not currently on any WIP repair order.`,
-      ...(wipList.truncated ? { search_incomplete: true } : {}),
+      tag: tagLabel,
+      tag_color: tagColor,
+      tag_number: tagNumber,
+      message: `${tagLabel} is not currently assigned to any repair order.`,
     };
   }
 
   return {
     ok: true,
     found: true,
-    key_tag: keyTag,
-    ro_number: match.ro_number,
-    ro_id: match.ro_id,
-    ro_url: match.ro_url,
-    customer_id: match.customer_id,
-    vehicle_id: match.vehicle_id,
-    status: "WIP",
+    tag: tagLabel,
+    tag_color: tagColor,
+    tag_number: tagNumber,
+    ro_number: data.ro_number as number,
+    ro_id: data.ro_id as number,
+    ro_url: buildTekmetricRoUrl({ roId: data.ro_id as number, shopId }),
+    customer_id: (data.customer_id as number | null) ?? null,
+    vehicle_id: (data.vehicle_id as number | null) ?? null,
+    status: data.status as "assigned" | "posted_ar",
+    last_activity_at: (data.last_activity_at as string | null) ?? null,
   };
-}
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-/** Parses Tekmetric's keytag response field into a number, or null if unset/invalid. */
-function parseKeyTag(raw: string | number | null | undefined): number | null {
-  if (raw === null || raw === undefined || raw === "") return null;
-  const n = typeof raw === "number" ? raw : parseInt(String(raw), 10);
-  return Number.isFinite(n) ? n : null;
 }

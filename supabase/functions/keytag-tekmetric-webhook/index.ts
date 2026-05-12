@@ -1,18 +1,37 @@
-// keytag-tekmetric-webhook (v7 — DB-first + GET-verify pattern)
+// keytag-tekmetric-webhook (v8 — primary/backup event design)
 //
 // Tekmetric webhooks: URL-only configuration. Auth via ?token=<secret> query
 // param (Tekmetric doesn't support custom headers; the token IS the URL secret).
 //
+// Subscriptions enabled in Tekmetric (Chris configured 2026-05-11):
+//   - Work approved / declined        (PRIMARY  WIP trigger)
+//   - Sent to A/R                     (PRIMARY  A/R timestamp source)
+//   - Status updated                  (BACKUP   catch-all for missed events)
+//   - Posted                          (handles paid-at-counter + A/R via statusId)
+//   - Payment made                    (releases tag on A/R balance pay)
+//
 // Flows:
-//   1. RO status_updated webhook       : if our DB shows no tag for this RO,
-//                                        GET the RO from Tekmetric to re-verify
-//                                        status. If status=WIP, assign a tag
-//                                        (lowest available 1..100) and PATCH
-//                                        Tekmetric. If our DB already has a tag
-//                                        for this RO, do nothing.
-//   2. RO posted (status=POSTED_PAID)  : release the tag
-//   3. RO posted (status=POSTED_AR)    : keep tag, mark posted_at
-//   4. Payment made (arPayment+ok)     : release the tag
+//   1. ro_work_approved   (PRIMARY)   : DB-first check → GET verify → if WIP,
+//                                       assign tag, PATCH Tekmetric. Replaces
+//                                       relying on status_updated for the
+//                                       Estimate → WIP transition.
+//   2. ro_status_updated  (BACKUP)    : Same logic as #1. Catches WIP entries
+//                                       that work_approved missed (Tekmetric
+//                                       webhook delivery is occasionally
+//                                       unreliable).
+//   3. ro_sent_to_ar      (PRIMARY)   : Mark tag posted_ar with the REAL
+//                                       Tekmetric postedDate from body (not
+//                                       now()) — staleness clock starts at
+//                                       the actual A/R transition. If we have
+//                                       no tag (upstream events missed),
+//                                       assign one first.
+//   4. ro_posted          (BACKUP)    : Branches on statusId. 5 = POSTED_PAID
+//                                       (release tag), 6 = POSTED_AR (mark
+//                                       posted with body.postedDate, redundant
+//                                       with #3 but safe — idempotent).
+//   5. payment_made                   : arPayment + succeeded + !voided +
+//                                       !refund → release tag using
+//                                       data.repairOrderId.
 //
 // LOOP PREVENTION:
 //   Tekmetric fires `status_updated` on ANY field change to an RO, including
@@ -40,6 +59,67 @@ import {
 } from "../_shared/tekmetric.ts";
 import { getRepairOrderById } from "../_shared/tools/repair-orders.ts";
 import { formatKeytag } from "../_shared/keytag-format.ts";
+import {
+  issueManualReview,
+  type ManualReviewOption,
+} from "../_shared/manual-review.ts";
+
+// ── Manual-review option presets used by webhook detections ────────────────
+function driftOptions(roNumber: number, priorTag: string): ManualReviewOption[] {
+  return [
+    {
+      key: "use_prior_tag",
+      label: `Re-confirm ${priorTag} is on the keys`,
+      description: `The same physical tag (${priorTag}) is still on the keys. We'll re-attach it in our system AND write it to Tekmetric so everyone sees it.`,
+    },
+    {
+      key: "use_different_tag",
+      label: "A different tag is on the keys",
+      description: "Tell us the color + number that's physically on the keys for this RO. We'll record it.",
+      needs_tag_input: true,
+    },
+    {
+      key: "assign_new",
+      label: "Assign a fresh tag (round-robin)",
+      description: "The keys don't have a tag yet but need one. We'll pick the next available tag, write it to Tekmetric, and you can put it on the keys.",
+    },
+    {
+      key: "no_tag",
+      label: "Don't tag this RO",
+      description: `The keys aren't in the shop or RO #${roNumber} doesn't need a tag right now.`,
+    },
+    {
+      key: "escalate_chris",
+      label: "Escalate to Chris",
+      description: "Send to Chris — pick this if you're unsure.",
+    },
+  ];
+}
+
+function patchFailOptions(): ManualReviewOption[] {
+  return [
+    {
+      key: "retry_patch",
+      label: "Retry writing to Tekmetric",
+      description: "Try the same write again. Pick this if you suspect the failure was a temporary Tekmetric outage.",
+    },
+    {
+      key: "release_and_redo",
+      label: "Release the tag and start over",
+      description: "Release the tag in our system, then assign a fresh one (will retry the Tekmetric write). Use this if the Tekmetric record is too out-of-sync to recover cleanly.",
+    },
+    {
+      key: "accept_unsynced",
+      label: "Keep the tag in our system without Tekmetric",
+      description: "Leave our records as-is. The Tekmetric Key Tag field stays blank. Advisors will see our system's data but not Tekmetric's.",
+    },
+    {
+      key: "escalate_chris",
+      label: "Escalate to Chris",
+      description: "Send to Chris.",
+    },
+  ];
+}
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -51,10 +131,25 @@ const sb = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
 });
 
 // ─── Webhook event classification ───────────────────────────────────────────
-type EventKind = "ro_status_updated" | "ro_posted" | "payment_made" | "unknown";
+type EventKind =
+  | "ro_work_approved" // Primary WIP trigger — advisor approved work, RO -> WIP
+  | "ro_sent_to_ar"    // Primary A/R trigger — RO posted with statusId=6 (carries real postedDate)
+  | "ro_status_updated" // Backup catch-all — fires on ANY field change
+  | "ro_posted"         // Generic post event — branches on statusId in body
+  | "payment_made"      // A/R balance paid → release tag
+  | "unknown";
 
 function classifyEvent(eventText: string | undefined): EventKind {
   if (!eventText) return "unknown";
+  // Order matters: more-specific patterns first.
+  // "Michael Jacobi approved 1 job(s) and declined 0 job(s) for Repair Order #152448"
+  if (/approved \d+ job\(s\) and declined \d+ job\(s\) for Repair Order #\d+/i.test(eventText)) {
+    return "ro_work_approved";
+  }
+  // "Repair Order #150873 sent to A/R by chris@jeffsautomotive.com"
+  if (/^Repair Order #\d+ sent to A\/R by/i.test(eventText)) {
+    return "ro_sent_to_ar";
+  }
   if (/^Repair Order #\d+ status updated by/i.test(eventText)) return "ro_status_updated";
   if (/^Repair Order #\d+ posted by/i.test(eventText)) return "ro_posted";
   if (/^Payment made by/i.test(eventText)) return "payment_made";
@@ -77,13 +172,22 @@ function isSelfAuthored(eventText: string | null | undefined): boolean {
 
 // ─── DB helpers ──────────────────────────────────────────────────────────────
 
-/** Returns the keytag currently assigned to a given Tekmetric RO id, or null. */
+/** Returns the keytag currently assigned to a given Tekmetric RO id, or null.
+ *  Includes the row's `status` so callers can detect regression scenarios
+ *  (e.g. tag is `posted_ar` but the incoming status_updated webhook shows WIP). */
 async function getAssignedKeytag(
   roId: number,
-): Promise<{ color: "red" | "yellow"; number: number } | null> {
+): Promise<
+  | {
+      color: "red" | "yellow";
+      number: number;
+      status: "assigned" | "posted_ar" | "available";
+    }
+  | null
+> {
   const { data, error } = await sb
     .from("keytags")
-    .select("tag_color, tag_number")
+    .select("tag_color, tag_number, status")
     .eq("ro_id", roId)
     .maybeSingle();
   if (error) {
@@ -91,7 +195,11 @@ async function getAssignedKeytag(
     return null;
   }
   if (!data) return null;
-  return { color: data.tag_color as "red" | "yellow", number: data.tag_number as number };
+  return {
+    color: data.tag_color as "red" | "yellow",
+    number: data.tag_number as number,
+    status: data.status as "assigned" | "posted_ar" | "available",
+  };
 }
 
 // ─── Tekmetric API helpers ──────────────────────────────────────────────────
@@ -208,11 +316,28 @@ Deno.serve(async (req: Request) => {
   let roId: number | null = null;
   let statusId: number | null = null;
   let paymentId: number | null = null;
+  // Tekmetric's repair-order objects include `updatedDate` (every webhook
+  // payload reflects the post-change timestamp). Captured here so we can
+  // push it into keytags.last_activity_at on every relevant event, keeping
+  // the morning report's staleness clock fresh without waiting for the
+  // nightly reconcile.
+  let webhookUpdatedDate: string | null = null;
+  // `postedDate` is only set on the sent_to_ar / posted events. Captured
+  // separately so the A/R branch can write the REAL Tekmetric posted
+  // timestamp into keytags.posted_at (driving staleness math correctly).
+  let webhookPostedDate: string | null = null;
 
-  if (eventKind === "ro_status_updated" || eventKind === "ro_posted") {
+  if (
+    eventKind === "ro_status_updated" ||
+    eventKind === "ro_posted" ||
+    eventKind === "ro_work_approved" ||
+    eventKind === "ro_sent_to_ar"
+  ) {
     roId = (data.id as number) ?? null;
     const status = data.repairOrderStatus as Record<string, unknown> | undefined;
     statusId = (status?.id as number) ?? null;
+    webhookUpdatedDate = (data.updatedDate as string | undefined) ?? null;
+    webhookPostedDate = (data.postedDate as string | undefined) ?? null;
   } else if (eventKind === "payment_made") {
     paymentId = (data.id as number) ?? null;
     roId = (data.repairOrderId as number) ?? null;
@@ -252,15 +377,104 @@ Deno.serve(async (req: Request) => {
       return new Response(JSON.stringify({ ok: true, action: "noop" }), { status: 200 });
     }
 
-    // ── Branch 1: status_updated ─────────────────────────────────────────
-    if (eventKind === "ro_status_updated") {
+    // ── Branch 1: status_updated OR work_approved ────────────────────────
+    // Both events can transition an RO to WIP. work_approved is the PRIMARY
+    // trigger Chris configured 2026-05-11 — fires the moment an advisor
+    // approves any job on an Estimate, deterministically flipping the RO
+    // to WIP. status_updated is the BACKUP — catches any state change we
+    // would otherwise miss (e.g. Tekmetric's webhook delivery occasionally
+    // drops events; see RO 152354 investigation 2026-05-11).
+    //
+    // Both share identical processing: DB-first check (have we already
+    // tagged this RO?), then defensive Tekmetric GET to confirm the RO is
+    // actually in WIP (defends against stale webhook bodies after Tekmetric
+    // retry delays — see RO 152274 retry 48-min-late example), then
+    // assign + PATCH.
+    if (
+      eventKind === "ro_status_updated" ||
+      eventKind === "ro_work_approved"
+    ) {
+      // Inferred-from-body regression check: if the webhook body says
+      // statusId=2 (WIP) but our DB has the tag as posted_ar, the RO was
+      // un-posted from A/R. Revert the tag's status before falling through
+      // to the normal "already assigned" handling. Belt: cron also catches.
+      // Estimate-side regressions (WIP → Estimate) keep the tag assigned —
+      // the physical keys are still in the shop, so no DB change needed.
       // Step 1: do we already have a tag for this RO?
       const existing = await getAssignedKeytag(roId);
       if (existing !== null) {
+        // Regression detection: tag is posted_ar but body says WIP. This
+        // means the RO was un-posted from A/R back to WIP. Revert the tag
+        // to assigned + clear posted_at so the daily report categorizes
+        // it correctly (and the staleness clock resets to updatedDate
+        // rather than the old posted_at).
+        const bodyIsWip = statusId === TEKMETRIC_RO_STATUS.WIP;
+        if (existing.status === "posted_ar" && bodyIsWip) {
+          const { error: revertErr } = await sb.rpc(
+            "revert_keytag_to_assigned",
+            {
+              p_ro_id: roId,
+              p_last_activity_at: webhookUpdatedDate,
+            },
+          );
+          if (revertErr) {
+            await markProcessed(
+              eventId,
+              "error",
+              { stage: "revert_to_assigned" },
+              revertErr.message,
+            );
+            return new Response(
+              JSON.stringify({ ok: false, error: revertErr.message }),
+              { status: 200 },
+            );
+          }
+          // Audit-log entry for the revert
+          await sb.rpc("log_keytag_audit", {
+            p_tag_color: existing.color,
+            p_tag_number: existing.number,
+            p_action: "reverted",
+            p_source: "webhook",
+            p_ro_id: roId,
+            p_ro_number: (data.repairOrderNumber as number) ?? null,
+            p_prior_status: "posted_ar",
+            p_new_status: "assigned",
+            p_user_label: null,
+            p_reason: "webhook:ar_un_posted_back_to_wip",
+          });
+          await markProcessed(eventId, "reverted_to_assigned", {
+            ro_id: roId,
+            tag_color: existing.color,
+            tag_number: existing.number,
+            prior_status: existing.status,
+            reason: "ar_un_posted_back_to_wip",
+          });
+          return new Response(
+            JSON.stringify({
+              ok: true,
+              action: "reverted_to_assigned",
+              tag_color: existing.color,
+              tag_number: existing.number,
+              ro_id: roId,
+            }),
+            { status: 200 },
+          );
+        }
+
+        // Normal case — tag still applies; just refresh activity clock.
+        if (webhookUpdatedDate) {
+          await sb.rpc("touch_keytag_activity", {
+            p_ro_id: roId,
+            p_last_activity_at: webhookUpdatedDate,
+          });
+        }
         await markProcessed(eventId, "skipped_already_assigned", {
           ro_id: roId,
           tag_color: existing.color,
           tag_number: existing.number,
+          tag_status: existing.status,
+          body_status_id: statusId,
+          touched_activity_at: webhookUpdatedDate,
         });
         return new Response(
           JSON.stringify({
@@ -272,6 +486,129 @@ Deno.serve(async (req: Request) => {
           }),
           { status: 200 },
         );
+      }
+
+      // ── DRIFT-PREVENTION GATE (added 2026-05-11) ────────────────────────
+      // Self-heal was the root cause of physical/digital tag drift: when a
+      // tag was manually released, the next webhook on that RO would
+      // auto-assign a NEW tag — leaving the physical keys with the OLD tag
+      // number while the system tracked a different one. Two new rules:
+      //
+      //   Rule A. `ro_status_updated` NEVER auto-assigns when there's no
+      //   existing tag. status_updated fires for ANY field change on the
+      //   RO (a key tag move, a note edit, etc.) and is not a reliable
+      //   signal of "this RO needs a fresh tag." `ro_work_approved` is the
+      //   ONLY primary trigger for fresh tag assignment.
+      //
+      //   Rule B. `ro_work_approved` only auto-assigns when the RO has
+      //   NEVER had a keytag in our audit log. Once any keytag history
+      //   exists for an RO (assigned, released, etc.), subsequent work
+      //   approvals do NOT auto-assign — the advisor must explicitly
+      //   re-tag via the orchestrator (assignKeytagToRo).
+      //
+      // First-time assignment for genuinely new ROs still works: an RO
+      // that goes Estimate → WIP for the first time has no audit history,
+      // work_approved fires, we assign + PATCH + audit-log. Subsequent
+      // releases + reassignments require manual action.
+      if (eventKind === "ro_status_updated") {
+        await markProcessed(eventId, "skipped_status_updated_no_existing_tag", {
+          ro_id: roId,
+          reason: "status_updated_does_not_trigger_auto_assign",
+          drift_prevention: true,
+        });
+        return new Response(
+          JSON.stringify({ ok: true, action: "skipped_status_updated_no_existing_tag", ro_id: roId }),
+          { status: 200 },
+        );
+      }
+
+      // work_approved path — check audit log for prior history. If found,
+      // do NOT auto-assign; instead, issue a manual-review code (DRF or REG)
+      // so the service team can tell us what's physically on the keys.
+      const roNumberForHistory = (data.repairOrderNumber as number) ?? null;
+      if (roNumberForHistory !== null) {
+        const { data: priorHistoryRows } = await sb
+          .from("keytag_audit_log")
+          .select("id, action, occurred_at, tag_color, tag_number, reason")
+          .or(`ro_id.eq.${roId},ro_number.eq.${roNumberForHistory}`)
+          .neq("action", "manual_review_issued")
+          .order("occurred_at", { ascending: false })
+          .limit(3);
+        const priorHistory = priorHistoryRows?.[0];
+        if (priorHistory) {
+          // De-dup: if an unresolved DRF/REG already exists for this RO, skip
+          const { data: existingReview } = await sb
+            .from("keytag_manual_reviews")
+            .select("code")
+            .in("category", ["work_approved_drift", "ar_regression"])
+            .is("resolved_at", null)
+            .filter("context->>ro_id", "eq", String(roId))
+            .limit(1)
+            .maybeSingle();
+          if (existingReview) {
+            await markProcessed(eventId, "skipped_existing_manual_review_pending", {
+              ro_id: roId,
+              ro_number: roNumberForHistory,
+              pending_code: existingReview.code,
+            });
+            return new Response(
+              JSON.stringify({
+                ok: true,
+                action: "skipped_existing_manual_review_pending",
+                code: existingReview.code,
+              }),
+              { status: 200 },
+            );
+          }
+          // Distinguish REG (was-in-AR) from DRF (general drift)
+          const wasInAR = (priorHistoryRows ?? []).some(
+            (h) =>
+              h.action === "marked_posted" ||
+              (h.action === "released" && /ar_balance|posted_ar|ar_paid|payment_made/i.test(h.reason ?? "")),
+          );
+          const category =
+            priorHistory.action === "released" && wasInAR
+              ? "ar_regression"
+              : "work_approved_drift";
+          const priorTag = priorHistory.tag_color && priorHistory.tag_number
+            ? `${priorHistory.tag_color === "red" ? "Red" : "Yellow"} ${priorHistory.tag_number}`
+            : "the previous tag";
+          const issued = await issueManualReview({
+            sb,
+            category,
+            context: {
+              ro_id: roId,
+              ro_number: roNumberForHistory,
+              tag_color: priorHistory.tag_color,
+              tag_number: priorHistory.tag_number,
+              prior_action: priorHistory.action,
+              prior_action_at: priorHistory.occurred_at,
+            },
+            options: driftOptions(roNumberForHistory, priorTag),
+            issueSummary:
+              category === "ar_regression"
+                ? `RO #${roNumberForHistory} came back from A/R into WIP, but ${priorTag} was already released earlier.`
+                : `RO #${roNumberForHistory} is back in WIP but our records show it ${priorHistory.action} earlier (${priorTag}).`,
+            auditSource: "webhook",
+          });
+          await markProcessed(eventId, "manual_review_issued", {
+            ro_id: roId,
+            ro_number: roNumberForHistory,
+            category,
+            code: issued.code,
+            email_sent: issued.email_sent,
+          });
+          return new Response(
+            JSON.stringify({
+              ok: true,
+              action: "manual_review_issued",
+              category,
+              code: issued.code,
+              ro_id: roId,
+            }),
+            { status: 200 },
+          );
+        }
       }
 
       // Step 2: GET the RO from Tekmetric to verify status (defensive — don't trust webhook payload)
@@ -302,7 +639,13 @@ Deno.serve(async (req: Request) => {
         );
       }
 
-      // Step 3: round-robin assign + PATCH Tekmetric
+      // Step 3: round-robin assign + PATCH Tekmetric.
+      // Pass the webhook's updatedDate (or fall back to the verified RO's
+      // updatedDate) as last_activity_at so the morning report's staleness
+      // clock starts at the real Tekmetric timestamp, not now().
+      const roUpdated =
+        (ro as { updatedDate?: string | null }).updatedDate ?? null;
+      const lastActivity = webhookUpdatedDate ?? roUpdated;
       const { data: tagData, error: assignErr } = await sb.rpc("assign_next_keytag", {
         p_ro_id: roId,
         p_ro_number: ro.repairOrderNumber,
@@ -310,6 +653,7 @@ Deno.serve(async (req: Request) => {
         p_vehicle_id: ro.vehicleId,
         p_advisor_id: ro.serviceWriterId,
         p_technician_id: ro.technicianId,
+        p_last_activity_at: lastActivity,
       });
       if (assignErr) {
         await markProcessed(eventId, "error", { stage: "assign_rpc" }, assignErr.message);
@@ -333,17 +677,71 @@ Deno.serve(async (req: Request) => {
         p_error: patchResult.error ?? null,
       });
 
-      await markProcessed(
-        eventId,
-        patchResult.ok ? "assigned" : "assigned_patch_failed",
-        {
+      // Tekmetric PATCH failed: DB has the assignment but Tekmetric doesn't.
+      // Surface as a PAF manual review so the service team can decide
+      // whether to retry, release+redo, or accept the unsynced state.
+      // The DB-side assignment is KEPT (no auto-rollback) so the team has
+      // a complete picture when they resolve the code.
+      if (!patchResult.ok) {
+        const priorTag = `${tagColor === "red" ? "Red" : "Yellow"} ${tagNumber}`;
+        const issued = await issueManualReview({
+          sb,
+          category: "tekmetric_patch_fail",
+          context: {
+            ro_id: roId,
+            ro_number: ro.repairOrderNumber,
+            tag_color: tagColor,
+            tag_number: tagNumber,
+            patch_error: patchResult.error,
+          },
+          options: patchFailOptions(),
+          issueSummary: `We assigned ${priorTag} to RO #${ro.repairOrderNumber} but Tekmetric refused our write to its Key Tag field.`,
+          auditSource: "webhook",
+        });
+        await markProcessed(eventId, "assigned_patch_failed_review_issued", {
           tag_color: tagColor,
           tag_number: tagNumber,
           tag_string: wireValue,
-          patch_ok: patchResult.ok,
-          patch_error: patchResult.error ?? null,
-        },
-      );
+          patch_error: patchResult.error,
+          code: issued.code,
+          email_sent: issued.email_sent,
+        });
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            action: "assigned_patch_failed_review_issued",
+            tag_color: tagColor,
+            tag_number: tagNumber,
+            patch_error: patchResult.error,
+            ro_id: roId,
+            code: issued.code,
+          }),
+          { status: 200 },
+        );
+      }
+
+      // Audit-log entry (closes the gap — webhook assignments are now logged too)
+      await sb.rpc("log_keytag_audit", {
+        p_tag_color: tagColor,
+        p_tag_number: tagNumber,
+        p_action: "assigned",
+        p_source: "webhook",
+        p_ro_id: roId,
+        p_ro_number: ro.repairOrderNumber,
+        p_prior_status: "available",
+        p_new_status: "assigned",
+        p_user_label: null,
+        p_reason: `webhook:${eventKind}`,
+        p_tekmetric_patch_ok: patchResult.ok,
+        p_tekmetric_patch_error: patchResult.error ?? null,
+      });
+
+      await markProcessed(eventId, "assigned", {
+        tag_color: tagColor,
+        tag_number: tagNumber,
+        tag_string: wireValue,
+        patch_ok: true,
+      });
       return new Response(
         JSON.stringify({
           ok: true,
@@ -357,7 +755,106 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // ── Branch 2: ro_posted (status 5 = POSTED_PAID, 6 = POSTED_AR) ──────
+    // ── Branch 2a: sent_to_ar (PRIMARY A/R trigger — has real postedDate) ─
+    // Chris's new Tekmetric subscription added 2026-05-11. Event_text:
+    //   "Repair Order #<RO> sent to A/R by <email>"
+    // Body carries the real postedDate field, so we can write the correct
+    // A/R-transition timestamp to keytags.posted_at instead of now() — that
+    // makes the staleness clock honest from day one.
+    //
+    // Edge case: webhook may fire when we have no tag for this RO (the
+    // upstream work_approved + status_updated webhooks both missed). In
+    // that case, assign a new tag (silently skipping the WIP intermediate
+    // state) and immediately mark it posted_ar with the real postedDate.
+    if (eventKind === "ro_sent_to_ar") {
+      const existing = await getAssignedKeytag(roId);
+      if (!existing) {
+        // Tekmetric blocks PATCH on A/R ROs. If we got here without a prior
+        // tag, the upstream work_approved + status_updated webhooks both
+        // missed during the WIP window — and there's no way to write a new
+        // R/Y keytag to Tekmetric now (the RO is A/R = inactive). Skip
+        // entirely; the car/tag combination stays invisible to our system
+        // until the customer pays and the RO leaves A/R. This preserves
+        // the DB ↔ Tekmetric atomicity invariant.
+        await markProcessed(eventId, "skipped_no_prior_tag_ar_locked", {
+          ro_id: roId,
+          posted_date: webhookPostedDate,
+          reason: "upstream_webhooks_missed_and_tekmetric_blocks_ar_patch",
+        });
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            action: "skipped_no_prior_tag_ar_locked",
+            ro_id: roId,
+          }),
+          { status: 200 },
+        );
+      }
+      const tagColor = existing.color;
+      const tagNumber = existing.number;
+
+      // Mark posted_ar with the real Tekmetric postedDate
+      const { data: postedRows, error: postErr } = await sb.rpc(
+        "mark_keytag_posted",
+        {
+          p_ro_id: roId,
+          p_posted_at: webhookPostedDate,
+          p_last_activity_at: webhookPostedDate ?? webhookUpdatedDate,
+        },
+      );
+      if (postErr) {
+        await markProcessed(
+          eventId,
+          "error",
+          { stage: "mark_posted_in_sent_to_ar" },
+          postErr.message,
+        );
+        return new Response(
+          JSON.stringify({ ok: false, error: postErr.message }),
+          { status: 200 },
+        );
+      }
+      const posted = Array.isArray(postedRows) ? postedRows[0] : postedRows;
+      if (posted) {
+        await sb.rpc("log_keytag_audit", {
+          p_tag_color: posted.tag_color,
+          p_tag_number: posted.tag_number,
+          p_action: "marked_posted",
+          p_source: "webhook",
+          p_ro_id: roId,
+          p_ro_number: (data.repairOrderNumber as number) ?? null,
+          p_prior_status: "assigned",
+          p_new_status: "posted_ar",
+          p_user_label: null,
+          p_reason: "webhook:sent_to_ar",
+        });
+      }
+      await markProcessed(
+        eventId,
+        posted ? "posted_marked" : "noop",
+        posted
+          ? {
+              tag_color: posted.tag_color,
+              tag_number: posted.tag_number,
+              posted_at: webhookPostedDate,
+              reason: "sent_to_ar",
+              backfilled_assignment: !existing,
+            }
+          : { reason: "sent_to_ar_no_tag_held_after_assign_attempt" },
+      );
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          action: posted ? "posted_marked" : "noop",
+          tag_color: tagColor,
+          tag_number: tagNumber,
+          ro_id: roId,
+        }),
+        { status: 200 },
+      );
+    }
+
+    // ── Branch 2b: ro_posted (status 5 = POSTED_PAID, 6 = POSTED_AR) ─────
     if (eventKind === "ro_posted") {
       if (statusId === TEKMETRIC_RO_STATUS.POSTED_PAID) {
         const { data: releasedRows } = await sb.rpc("release_keytag_for_ro", {
@@ -365,6 +862,20 @@ Deno.serve(async (req: Request) => {
           p_reason: "posted_paid",
         });
         const released = Array.isArray(releasedRows) ? releasedRows[0] : releasedRows;
+        if (released) {
+          await sb.rpc("log_keytag_audit", {
+            p_tag_color: released.tag_color,
+            p_tag_number: released.tag_number,
+            p_action: "released",
+            p_source: "webhook",
+            p_ro_id: roId,
+            p_ro_number: (data.repairOrderNumber as number) ?? null,
+            p_prior_status: null,
+            p_new_status: "available",
+            p_user_label: null,
+            p_reason: "webhook:ro_posted_paid",
+          });
+        }
         await markProcessed(
           eventId,
           released ? "released" : "noop",
@@ -382,8 +893,32 @@ Deno.serve(async (req: Request) => {
         );
       }
       if (statusId === TEKMETRIC_RO_STATUS.POSTED_AR) {
-        const { data: postedRows } = await sb.rpc("mark_keytag_posted", { p_ro_id: roId });
+        // Use the webhook's postedDate as the staleness clock anchor for
+        // A/R tags. Falls back to updatedDate if the payload doesn't carry
+        // postedDate. The mark_keytag_posted overload accepts both — both
+        // NULL means the RPC defaults to now() (legacy single-arg behavior).
+        const postedDate =
+          (data.postedDate as string | undefined) ?? null;
+        const { data: postedRows } = await sb.rpc("mark_keytag_posted", {
+          p_ro_id: roId,
+          p_posted_at: postedDate,
+          p_last_activity_at: postedDate ?? webhookUpdatedDate,
+        });
         const posted = Array.isArray(postedRows) ? postedRows[0] : postedRows;
+        if (posted) {
+          await sb.rpc("log_keytag_audit", {
+            p_tag_color: posted.tag_color,
+            p_tag_number: posted.tag_number,
+            p_action: "marked_posted",
+            p_source: "webhook",
+            p_ro_id: roId,
+            p_ro_number: (data.repairOrderNumber as number) ?? null,
+            p_prior_status: "assigned",
+            p_new_status: "posted_ar",
+            p_user_label: null,
+            p_reason: "webhook:ro_posted_ar_balance",
+          });
+        }
         await markProcessed(
           eventId,
           posted ? "posted_marked" : "noop",
@@ -430,6 +965,20 @@ Deno.serve(async (req: Request) => {
         p_reason: "payment_webhook",
       });
       const released = Array.isArray(releasedRows) ? releasedRows[0] : releasedRows;
+      if (released) {
+        await sb.rpc("log_keytag_audit", {
+          p_tag_color: released.tag_color,
+          p_tag_number: released.tag_number,
+          p_action: "released",
+          p_source: "webhook",
+          p_ro_id: roId,
+          p_ro_number: null,
+          p_prior_status: "posted_ar",
+          p_new_status: "available",
+          p_user_label: null,
+          p_reason: "webhook:payment_made_ar_balance_paid",
+        });
+      }
       await markProcessed(
         eventId,
         released ? "released" : "noop",

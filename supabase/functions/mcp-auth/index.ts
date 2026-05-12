@@ -25,6 +25,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import {
   ACCESS_TOKEN_TTL_SEC,
   AUTH_CODE_TTL_SEC,
+  REFRESH_TOKEN_TTL_SEC,
   type AuthServerMetadata,
   functionUrl,
   randomToken,
@@ -86,7 +87,7 @@ function handleDiscovery(): Response {
     scopes_supported: ["mcp"],
     response_types_supported: ["code"],
     response_modes_supported: ["query"],
-    grant_types_supported: ["authorization_code"],
+    grant_types_supported: ["authorization_code", "refresh_token"],
     code_challenge_methods_supported: ["S256"],
     token_endpoint_auth_methods_supported: ["client_secret_post", "client_secret_basic", "none"],
     // OIDC fields included for client compatibility — we don't actually issue
@@ -267,30 +268,89 @@ async function handleAuthorizeGet(req: Request): Promise<Response> {
   return Response.redirect(redirect.toString(), 302);
 }
 
-// ─── Route: POST /token (code exchange) ─────────────────────────────────────
+// ─── Route: POST /token (code exchange OR refresh) ─────────────────────────
 
-async function handleToken(req: Request): Promise<Response> {
-  const ct = req.headers.get("Content-Type") ?? "";
-  let params: URLSearchParams;
-  if (ct.includes("application/x-www-form-urlencoded")) {
-    params = new URLSearchParams(await req.text());
-  } else if (ct.includes("application/json")) {
-    const body = (await req.json()) as Record<string, string>;
-    params = new URLSearchParams(body);
-  } else {
-    return oauthError("invalid_request", "Content-Type must be application/x-www-form-urlencoded or application/json");
+/**
+ * Atomically inserts an access_token + refresh_token pair bound to the same
+ * identity. Called from BOTH grant types — authorization_code (initial) and
+ * refresh_token (rotation). Returns the OAuth-spec response body to send to
+ * the client, or an error Response on DB failure.
+ */
+async function issueTokenPair(args: {
+  clientId: string;
+  userLabel: string;
+  scope: string;
+  resource: string | null;
+  parentRefreshTokenHash: string | null; // null on initial issue, set on rotation
+}): Promise<
+  | { ok: true; body: Record<string, unknown> }
+  | { ok: false; response: Response }
+> {
+  const { clientId, userLabel, scope, resource, parentRefreshTokenHash } = args;
+
+  const accessToken = randomToken(32);
+  const accessTokenHash = await sha256Base64Url(accessToken);
+  const accessExpiresAt = new Date(Date.now() + ACCESS_TOKEN_TTL_SEC * 1000).toISOString();
+
+  const refreshToken = randomToken(48);
+  const refreshTokenHash = await sha256Base64Url(refreshToken);
+  const refreshExpiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_SEC * 1000).toISOString();
+
+  const { error: accessErr } = await sb.from("oauth_access_tokens").insert({
+    token_hash: accessTokenHash,
+    client_id: clientId,
+    user_label: userLabel,
+    scope,
+    resource,
+    expires_at: accessExpiresAt,
+  });
+  if (accessErr) {
+    console.error("oauth_access_tokens insert failed:", accessErr.message);
+    return { ok: false, response: oauthError("server_error", accessErr.message, 500) };
   }
 
-  const grantType = params.get("grant_type");
-  if (grantType !== "authorization_code") {
-    return oauthError("unsupported_grant_type", `grant_type=${grantType} is not supported`);
+  const { error: refreshErr } = await sb.from("oauth_refresh_tokens").insert({
+    token_hash: refreshTokenHash,
+    client_id: clientId,
+    user_label: userLabel,
+    scope,
+    resource,
+    parent_token_hash: parentRefreshTokenHash,
+    expires_at: refreshExpiresAt,
+  });
+  if (refreshErr) {
+    console.error("oauth_refresh_tokens insert failed:", refreshErr.message);
+    return { ok: false, response: oauthError("server_error", refreshErr.message, 500) };
   }
 
-  const code = params.get("code") ?? "";
-  const redirectUri = params.get("redirect_uri") ?? "";
-  const codeVerifier = params.get("code_verifier") ?? "";
+  return {
+    ok: true,
+    body: {
+      access_token: accessToken,
+      token_type: "Bearer",
+      expires_in: ACCESS_TOKEN_TTL_SEC,
+      refresh_token: refreshToken,
+      scope,
+    },
+  };
+}
 
-  // Client authentication — try Basic header first, then form params.
+/**
+ * Validates the client_id (+ optional secret) on the /token endpoint.
+ * Shared between authorization_code and refresh_token grants.
+ */
+async function authenticateTokenClient(
+  req: Request,
+  params: URLSearchParams,
+): Promise<
+  | {
+      ok: true;
+      clientId: string;
+      tokenEndpointAuthMethod: string;
+      requiresSecret: boolean;
+    }
+  | { ok: false; response: Response }
+> {
   let clientIdAuth = "";
   let clientSecretAuth = "";
   const authHeader = req.headers.get("Authorization") ?? "";
@@ -308,9 +368,8 @@ async function handleToken(req: Request): Promise<Response> {
     clientIdAuth = params.get("client_id") ?? "";
     clientSecretAuth = params.get("client_secret") ?? "";
   }
-
-  if (!code || !codeVerifier || !clientIdAuth || !redirectUri) {
-    return oauthError("invalid_request", "Missing code, code_verifier, client_id, or redirect_uri");
+  if (!clientIdAuth) {
+    return { ok: false, response: oauthError("invalid_request", "Missing client_id") };
   }
 
   const { data: client, error: clientErr } = await sb
@@ -318,16 +377,68 @@ async function handleToken(req: Request): Promise<Response> {
     .select("id, client_secret_hash, redirect_uris, active, token_endpoint_auth_method")
     .eq("id", clientIdAuth)
     .maybeSingle();
-  if (clientErr) return oauthError("server_error", clientErr.message, 500);
-  if (!client || !client.active) return oauthError("invalid_client", "Unknown or inactive client_id", 401);
+  if (clientErr) {
+    return { ok: false, response: oauthError("server_error", clientErr.message, 500) };
+  }
+  if (!client || !client.active) {
+    return { ok: false, response: oauthError("invalid_client", "Unknown or inactive client_id", 401) };
+  }
 
-  if (client.client_secret_hash) {
-    if (!clientSecretAuth) return oauthError("invalid_client", "Client secret required", 401);
+  const requiresSecret = !!client.client_secret_hash;
+  if (requiresSecret) {
+    if (!clientSecretAuth) {
+      return { ok: false, response: oauthError("invalid_client", "Client secret required", 401) };
+    }
     const secretHash = await sha256Base64Url(clientSecretAuth);
     if (secretHash !== client.client_secret_hash) {
-      return oauthError("invalid_client", "Invalid client secret", 401);
+      return { ok: false, response: oauthError("invalid_client", "Invalid client secret", 401) };
     }
   }
+
+  return {
+    ok: true,
+    clientId: clientIdAuth,
+    tokenEndpointAuthMethod: client.token_endpoint_auth_method as string,
+    requiresSecret,
+  };
+}
+
+async function handleToken(req: Request): Promise<Response> {
+  const ct = req.headers.get("Content-Type") ?? "";
+  let params: URLSearchParams;
+  if (ct.includes("application/x-www-form-urlencoded")) {
+    params = new URLSearchParams(await req.text());
+  } else if (ct.includes("application/json")) {
+    const body = (await req.json()) as Record<string, string>;
+    params = new URLSearchParams(body);
+  } else {
+    return oauthError("invalid_request", "Content-Type must be application/x-www-form-urlencoded or application/json");
+  }
+
+  const grantType = params.get("grant_type");
+
+  if (grantType === "refresh_token") {
+    return handleRefreshTokenGrant(req, params);
+  }
+  if (grantType !== "authorization_code") {
+    return oauthError(
+      "unsupported_grant_type",
+      `grant_type=${grantType} is not supported (allowed: authorization_code, refresh_token)`,
+    );
+  }
+
+  const code = params.get("code") ?? "";
+  const redirectUri = params.get("redirect_uri") ?? "";
+  const codeVerifier = params.get("code_verifier") ?? "";
+
+  if (!code || !codeVerifier || !redirectUri) {
+    return oauthError("invalid_request", "Missing code, code_verifier, or redirect_uri");
+  }
+
+  // Authenticate the client (Basic header OR form params) — shared with refresh grant.
+  const clientAuth = await authenticateTokenClient(req, params);
+  if (!clientAuth.ok) return clientAuth.response;
+  const clientIdAuth = clientAuth.clientId;
 
   const codeHash = await sha256Base64Url(code);
   const { data: codeRow, error: codeErr } = await sb
@@ -366,29 +477,86 @@ async function handleToken(req: Request): Promise<Response> {
   if (markErr) return oauthError("server_error", markErr.message, 500);
   if (!marked) return oauthError("invalid_grant", "Authorization code already used (race)");
 
-  const accessToken = randomToken(32);
-  const accessTokenHash = await sha256Base64Url(accessToken);
-  const expiresAt = new Date(Date.now() + ACCESS_TOKEN_TTL_SEC * 1000).toISOString();
-
-  const { error: tokenErr } = await sb.from("oauth_access_tokens").insert({
-    token_hash: accessTokenHash,
-    client_id: clientIdAuth,
-    user_label: codeRow.user_label,
+  // Issue an access + refresh token pair bound to this consent.
+  const issued = await issueTokenPair({
+    clientId: clientIdAuth,
+    userLabel: codeRow.user_label,
     scope: codeRow.scope,
     resource: codeRow.resource,
-    expires_at: expiresAt,
+    parentRefreshTokenHash: null,
   });
-  if (tokenErr) {
-    console.error("oauth_access_tokens insert failed:", tokenErr.message);
-    return oauthError("server_error", tokenErr.message, 500);
+  if (!issued.ok) return issued.response;
+  return json(issued.body);
+}
+
+// ─── Route: POST /token grant_type=refresh_token ────────────────────────────
+//
+// Validates the presented refresh_token, atomically marks it revoked (via
+// the oauth_consume_refresh_token RPC), and issues a fresh access+refresh
+// pair. Rotation is mandatory per OAuth 2.1 §6.1 — the old refresh token
+// is dead the moment it's accepted, so a stolen replay returns invalid_grant.
+
+async function handleRefreshTokenGrant(
+  req: Request,
+  params: URLSearchParams,
+): Promise<Response> {
+  const refreshToken = params.get("refresh_token") ?? "";
+  if (!refreshToken) {
+    return oauthError("invalid_request", "Missing refresh_token");
   }
 
-  return json({
-    access_token: accessToken,
-    token_type: "Bearer",
-    expires_in: ACCESS_TOKEN_TTL_SEC,
-    scope: codeRow.scope,
+  const clientAuth = await authenticateTokenClient(req, params);
+  if (!clientAuth.ok) return clientAuth.response;
+  const clientIdAuth = clientAuth.clientId;
+
+  // Atomically validate + revoke the presented token, returning the bound
+  // identity. The RPC's WHERE clause checks expired + revoked in one shot,
+  // so a stolen-token replay can't succeed.
+  const refreshTokenHash = await sha256Base64Url(refreshToken);
+  const { data: consumeRows, error: consumeErr } = await sb.rpc(
+    "oauth_consume_refresh_token",
+    { p_token_hash: refreshTokenHash },
+  );
+  if (consumeErr) {
+    console.error("oauth_consume_refresh_token RPC failed:", consumeErr.message);
+    return oauthError("server_error", consumeErr.message, 500);
+  }
+  const consumed = Array.isArray(consumeRows) ? consumeRows[0] : consumeRows;
+  if (!consumed) {
+    return oauthError("invalid_grant", "Refresh token is unknown, expired, or revoked");
+  }
+  if (consumed.client_id !== clientIdAuth) {
+    return oauthError("invalid_grant", "Refresh token was issued to a different client");
+  }
+
+  // Per OAuth 2.1 §6, scope on refresh MUST NOT broaden. The client may
+  // request a narrower scope via the optional `scope` param; otherwise we
+  // re-issue with the original scope.
+  const requestedScope = params.get("scope");
+  const newScope =
+    requestedScope && isScopeSubset(requestedScope, consumed.scope as string)
+      ? requestedScope
+      : (consumed.scope as string);
+
+  const issued = await issueTokenPair({
+    clientId: clientIdAuth,
+    userLabel: consumed.user_label as string,
+    scope: newScope,
+    resource: (consumed.resource as string | null) ?? null,
+    parentRefreshTokenHash: refreshTokenHash,
   });
+  if (!issued.ok) return issued.response;
+  return json(issued.body);
+}
+
+/**
+ * Returns true if `requested` is a subset of `granted` (space-separated
+ * scope strings per RFC 6749). Used to enforce "refresh MUST NOT broaden".
+ */
+function isScopeSubset(requested: string, granted: string): boolean {
+  const grantedSet = new Set(granted.split(/\s+/).filter(Boolean));
+  const requestedList = requested.split(/\s+/).filter(Boolean);
+  return requestedList.every((s) => grantedSet.has(s));
 }
 
 // ─── Main entry ─────────────────────────────────────────────────────────────

@@ -39,3 +39,6 @@ next-env.d.ts
 
 # Vitest
 .vitest-result
+
+.vercel
+.env*.local
