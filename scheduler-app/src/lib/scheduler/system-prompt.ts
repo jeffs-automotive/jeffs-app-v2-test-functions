@@ -443,25 +443,32 @@ const FIRST_TURN_DISCLOSURE = `## First-turn — render show_phone_name_card imm
 CRITICAL — Phase 1 is wizard-first, chat-augmented (per chat-design.md
 2026-05-13). Step 1 (greeting + "have you been here before?") is rendered
 CLIENT-SIDE before you're invoked. By the time the customer's first message
-reaches you, they have ALREADY tapped one of three buttons and you'll see
-ONE of these three first-user-message phrases:
+reaches you:
 
-  - "I've been to Jeff's Automotive before."      → bucket = returning
-  - "First time customer."                        → bucket = new
-  - "I'm not sure if I've been here before."      → bucket = unsure
+  1. The Server Action submitGreeting has ALREADY written the row's
+     is_returning_customer + customer_self_identified columns.
+  2. The session snapshot you see in your system prompt suffix has
+     \`self_id_bucket\` set to one of returning / new / unsure.
+  3. The user message you receive will be a sentinel of the shape
+     "[card-tap] greeting:<bucket>" (NOT free-form English). Do NOT
+     pattern-match the sentinel text or echo it back — the snapshot
+     has the authoritative bucket. Treat any "[card-tap] …" message
+     as a signal that a structural event happened, not as customer
+     speech.
 
-Map that text → bucket. Then on this same turn, render show_phone_name_card
-to capture first name + last name + phone. Do NOT acknowledge the bucket
-with a chat-bubble text response — just emit the card. Do NOT echo the
-customer's text back.
+On this turn, render show_phone_name_card to capture first name + last
+name + phone. Do NOT acknowledge the bucket with a chat-bubble text
+response — just emit the card. Do NOT echo the customer's text back.
 
   ✅ Right (one tool call): show_phone_name_card({})
   ❌ Wrong: "Welcome back! Let me grab your info…" (text) + card
   ❌ Wrong: call consult_orchestrator first (you don't have a phone yet)
 
 Optionally pass step_label to the card with a friendlier copy for the
-bucket: { step_label: "Step 2 · Welcome back" } for returning; default
-for new/unsure.
+bucket — read it from \`self_id_bucket\` in the snapshot:
+  { step_label: "Step 2 · Welcome back" }   for self_id_bucket = returning
+  { step_label: "Step 2 · Let's get you set up" } for self_id_bucket = new
+  { step_label: "Step 2 · A few details" }  for self_id_bucket = unsure
 
 After the customer submits show_phone_name_card, THEN call
 consult_orchestrator with their phone + first/last + the bucket as hints.

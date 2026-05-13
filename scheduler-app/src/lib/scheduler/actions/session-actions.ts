@@ -31,6 +31,7 @@
  * the per-step audit trail. PII-sanitized event_detail.
  */
 
+import * as Sentry from "@sentry/nextjs";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   consultOrchestrator,
@@ -73,8 +74,16 @@ async function logAudit(args: {
       error_message: args.error_message ?? null,
       latency_ms: args.latency_ms ?? null,
     });
-  } catch {
-    // Silent — audit failure should not block customer flow.
+  } catch (e) {
+    // Don't block customer flow on audit failure, but DO surface to Sentry
+    // — silent catches violate .claude/rules/observability.md rule 15
+    // ("Empty .catch() ... are CI-blocked"). Warning level (not error) so
+    // it doesn't spam the issues list when the table is temporarily
+    // unavailable.
+    Sentry.captureException(e, {
+      tags: { surface: "scheduler_audit_log", wizard_step: args.step },
+      level: "warning",
+    });
   }
 }
 
@@ -101,6 +110,15 @@ async function writeSession(args: {
 }
 
 function tooErrResult(err: unknown, step: WizardStep): SessionActionResult {
+  // Every Server Action's catch path funnels through here. Capture to
+  // Sentry so the failure leaves a trace even though we return a graceful
+  // tool_error directive to the chat agent. Per observability rule 14
+  // ("Never console.log(error) in production code. Use
+  // Sentry.captureException with extra+tags").
+  Sentry.captureException(err, {
+    tags: { surface: "server_action", wizard_step: step },
+    level: "error",
+  });
   const msg = err instanceof Error ? err.message : String(err);
   return {
     ok: false,

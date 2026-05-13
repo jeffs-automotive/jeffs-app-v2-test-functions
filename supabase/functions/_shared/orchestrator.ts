@@ -532,10 +532,70 @@ async function resolveCustomerSession(
   chatSessionId: string;
   metadata: Record<string, unknown>;
 }> {
+  // Per chat-design.md locked architecture decision #1 + the design audit
+  // 2026-05-13 finding I-2: the customer_chat_sessions row is the
+  // authoritative source of wizard state. The specialist needs to see ALL
+  // wizard columns the Server Actions have written, NOT just the legacy 8.
+  // Without these, the specialist has to chain extra lookup tools to
+  // reconstruct state already on the row (slower, more tokens, can hit the
+  // MAX_STEPS=8 ceiling on multi-step flows).
   const { data: sessionRow, error: sessionErr } = await sb
     .from("customer_chat_sessions")
     .select(
-      "id, channel, customer_id, vehicle_id, customer_self_identified, phone_e164, current_step, identity_verification_level",
+      [
+        "id",
+        "channel",
+        "current_step",
+        "identity_verification_level",
+        // Identity (Step 1-3)
+        "is_returning_customer",
+        "customer_self_identified",
+        "entered_first_name",
+        "entered_last_name",
+        "phone_e164",
+        "verified_first_name",
+        "verified_last_name",
+        "customer_id",
+        "primary_email_for_description",
+        "edited_phones",
+        "edited_emails",
+        "edited_address",
+        // Vehicle (Step 6)
+        "vehicle_id",
+        "new_vehicle_info",
+        // Service + concern (Step 7)
+        "selected_simple_services",
+        "explanation_required_items",
+        "clarification_questions_pending",
+        "clarification_questions_answered",
+        "recommended_testing_services",
+        "approved_testing_services",
+        "declined_testing_services",
+        "diagnostic_processing_complete",
+        "additional_routine_services_round2",
+        // Appointment (Step 8-10)
+        "appointment_type",
+        "appointment_date",
+        "appointment_time",
+        "hold_token",
+        "appointment_id",
+        "appointment_confirmed_at",
+        // Post-confirm (Step 10.2-10.3)
+        "customer_notes_text",
+        "customer_notes_approved",
+        "customer_question",
+        "customer_question_forwarded",
+        // Counts / status
+        "otp_attempts",
+        "summary_edit_attempts",
+        "customer_notes_edit_attempts",
+        "status",
+        "outcome",
+        "escalated_at",
+        "escalation_reason",
+        "completed_at",
+        "last_active_at",
+      ].join(", "),
     )
     .eq("id", customerSessionId)
     .maybeSingle();
@@ -548,6 +608,7 @@ async function resolveCustomerSession(
   if (!sessionRow) {
     throw new Error(`session_not_found: ${customerSessionId}`);
   }
+  const row = sessionRow as Record<string, unknown>;
 
   const sessionLabel = `scheduler:${customerSessionId.slice(0, 8)}`;
   const cutoff = new Date(
@@ -586,14 +647,58 @@ async function resolveCustomerSession(
   return {
     chatSessionId,
     metadata: {
-      session_id: sessionRow.id,
-      channel: sessionRow.channel,
-      customer_id: sessionRow.customer_id,
-      vehicle_id: sessionRow.vehicle_id,
-      customer_self_identified: sessionRow.customer_self_identified,
-      phone_e164: sessionRow.phone_e164,
-      current_step: sessionRow.current_step,
-      identity_verification_level: sessionRow.identity_verification_level,
+      // Identity
+      session_id: row.id,
+      channel: row.channel,
+      current_step: row.current_step,
+      identity_verification_level: row.identity_verification_level,
+      is_returning_customer: row.is_returning_customer,
+      customer_self_identified: row.customer_self_identified,
+      entered_first_name: row.entered_first_name,
+      entered_last_name: row.entered_last_name,
+      phone_e164: row.phone_e164,
+      verified_first_name: row.verified_first_name,
+      verified_last_name: row.verified_last_name,
+      customer_id: row.customer_id,
+      primary_email_for_description: row.primary_email_for_description,
+      edited_phones: row.edited_phones,
+      edited_emails: row.edited_emails,
+      edited_address: row.edited_address,
+      // Vehicle
+      vehicle_id: row.vehicle_id,
+      new_vehicle_info: row.new_vehicle_info,
+      // Service + concern
+      selected_simple_services: row.selected_simple_services,
+      explanation_required_items: row.explanation_required_items,
+      clarification_questions_pending: row.clarification_questions_pending,
+      clarification_questions_answered: row.clarification_questions_answered,
+      recommended_testing_services: row.recommended_testing_services,
+      approved_testing_services: row.approved_testing_services,
+      declined_testing_services: row.declined_testing_services,
+      diagnostic_processing_complete: row.diagnostic_processing_complete,
+      additional_routine_services_round2: row.additional_routine_services_round2,
+      // Appointment
+      appointment_type: row.appointment_type,
+      appointment_date: row.appointment_date,
+      appointment_time: row.appointment_time,
+      hold_token: row.hold_token,
+      appointment_id: row.appointment_id,
+      appointment_confirmed_at: row.appointment_confirmed_at,
+      // Post-confirm
+      customer_notes_text: row.customer_notes_text,
+      customer_notes_approved: row.customer_notes_approved,
+      customer_question: row.customer_question,
+      customer_question_forwarded: row.customer_question_forwarded,
+      // Counts / status
+      otp_attempts: row.otp_attempts,
+      summary_edit_attempts: row.summary_edit_attempts,
+      customer_notes_edit_attempts: row.customer_notes_edit_attempts,
+      status: row.status,
+      outcome: row.outcome,
+      escalated_at: row.escalated_at,
+      escalation_reason: row.escalated_at ? row.escalation_reason : null,
+      completed_at: row.completed_at,
+      last_active_at: row.last_active_at,
     },
   };
 }

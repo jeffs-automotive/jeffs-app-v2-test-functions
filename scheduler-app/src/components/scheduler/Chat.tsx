@@ -79,6 +79,28 @@ import {
   type SessionActionResult,
 } from "@/lib/scheduler/actions/session-action-types";
 
+/**
+ * Prefix that marks a synthetic user message as a card-tap signal (NOT
+ * something the customer typed). Per chat-design.md line 343 "Phase 1 has
+ * zero free-text input except for the three explicit fields" — every other
+ * user-event into the agent is a button tap or card submit, which we
+ * model as a sentinel-prefixed message so:
+ *   1. The chat agent's LLM doesn't have to pattern-match free-form English
+ *   2. The visible chat-bubble log doesn't pollute with synthesized text
+ *      the customer never typed
+ *   3. The system prompt has an unambiguous "the customer tapped X"
+ *      contract to act on
+ *
+ * Format: `[card-tap] <card-id>:<value>` (e.g.,
+ * `[card-tap] greeting:returning`).
+ *
+ * Filtered out of the visible chat-bubble rendering by MessageBlock + by
+ * the system prompt's FIRST_TURN_DISCLOSURE section. Persists into
+ * customer_chat_messages for replay (the row already carries the
+ * authoritative state).
+ */
+export const CARD_TAP_SENTINEL_PREFIX = "[card-tap] ";
+
 export interface ChatProps {
   chatId: string;
   initialMessages?: UIMessage[];
@@ -127,16 +149,24 @@ export function Chat({ chatId, initialMessages }: ChatProps) {
       });
       return;
     }
-    // Send the SAME phrase as before so the chat agent's FIRST_TURN_DISCLOSURE
-    // logic still matches. The Server Action has already written the row;
-    // the agent's job is just to emit the directed card.
-    const text =
-      out.is_returning === "returning"
-        ? "I've been to Jeff's Automotive before."
-        : out.is_returning === "new"
-          ? "First time customer."
-          : "I'm not sure if I've been here before.";
-    void sendMessage({ text });
+    // Per chat-design.md line 343 ("Phase 1 has zero free-text input except
+    // for the three explicit fields"), we do NOT send the prior 3-variant
+    // English ("I've been to Jeff's Automotive before." / "First time
+    // customer." / "I'm not sure if I've been here before.") through
+    // sendMessage. That pattern made the LLM pattern-match three near-
+    // identical phrases on every session start AND polluted the persisted
+    // chat-bubble log with synthesized-by-the-app text the customer never
+    // typed.
+    //
+    // Instead, send a structured sentinel token. The chat agent's system
+    // prompt is updated to recognize this sentinel + trust the snapshot
+    // (which already has `self_id_bucket` and `current_step=phone_name`
+    // written by submitGreeting before this call). Chat.tsx filters
+    // CARD_TAP_SENTINEL_PREFIX messages from the visible bubble log so
+    // the customer never sees the sentinel text.
+    void sendMessage({
+      text: `${CARD_TAP_SENTINEL_PREFIX}greeting:${out.is_returning}`,
+    });
   }
 
   // Generic card-submit dispatcher (Stage 2 refactor 2026-05-13).
@@ -492,11 +522,30 @@ function MessageBlock({ message, onCardSubmit, disabled }: MessageBlockProps) {
   const textParts: NonNullable<UIMessage["parts"]> = [];
   const toolParts: NonNullable<UIMessage["parts"]> = [];
   for (const part of parts) {
-    if ((part as { type?: string }).type === "text") {
+    const t = part as { type?: string; text?: string };
+    if (t.type === "text") {
+      // Strip card-tap sentinels (`[card-tap] greeting:returning` etc.) from
+      // the visible log. The sentinel is structural — the customer tapped
+      // a button, not typed a phrase. The agent's system prompt + the row
+      // snapshot already carry the bucket info; rendering the sentinel
+      // text would pollute the chat-bubble surface.
+      if (
+        typeof t.text === "string" &&
+        t.text.startsWith(CARD_TAP_SENTINEL_PREFIX)
+      ) {
+        continue;
+      }
       textParts.push(part);
     } else {
       toolParts.push(part);
     }
+  }
+
+  // If a user message contained ONLY a sentinel (no tool parts either),
+  // skip rendering the entire block — otherwise we get an empty
+  // user-bubble shell.
+  if (isUser && textParts.length === 0 && toolParts.length === 0) {
+    return null;
   }
 
   return (

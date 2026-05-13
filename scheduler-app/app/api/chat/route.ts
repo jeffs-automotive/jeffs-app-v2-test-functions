@@ -118,10 +118,24 @@ export async function POST(req: Request) {
   const snapshot = await buildSessionSnapshot(chatId);
   const system = snapshot ? `${baseSystem}\n\n${snapshot}` : baseSystem;
 
+  // Per locked architecture decision #1 + the design-conformance audit
+  // 2026-05-13 finding B1: send ONLY the last message (which carries the
+  // current turn's tool calls/results) to the model. The full UIMessage[]
+  // is persisted via toUIMessageStreamResponse({ originalMessages }) below
+  // for chat-bubble replay on resume, but the model itself only sees:
+  //   - The base system prompt
+  //   - The row snapshot (current_step + structured fields + counts)
+  //   - The current turn's message (tool-call → tool-result pair after
+  //     addToolResult fires, OR the user sentinel on the first turn)
+  //
+  // The model has no view of prior chat-bubble text — that lives in the
+  // DB for the customer's eyes only. With non-zero temperature this
+  // eliminates the channel collision where the model could drift to
+  // following the verbose history over the authoritative snapshot.
   const result = streamText({
     model,
     system,
-    messages: convertToModelMessages(allMessages),
+    messages: convertToModelMessages([lastMessage]),
     tools,
     // Stop after a reasonable number of steps to bound any runaway tool
     // chain. 8 covers: consult → render tool → consult → render tool →
