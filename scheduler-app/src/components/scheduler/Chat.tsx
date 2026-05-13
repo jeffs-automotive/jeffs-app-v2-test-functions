@@ -18,7 +18,7 @@
  * compact echo of the customer's choice for context.
  */
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useChat } from "@ai-sdk/react";
 import {
   DefaultChatTransport,
@@ -42,6 +42,7 @@ import {
   ClarificationQuestionCard,
   CustomerNotesCard,
   CustomerQuestionCard,
+  GreetingCard,
   PhoneNameCard,
   SummaryCard,
   TestingServiceApprovalCard,
@@ -71,6 +72,28 @@ export function Chat({ chatId, initialMessages }: ChatProps) {
   const [draft, setDraft] = useState("");
   const isWorking = status === "submitted" || status === "streaming";
 
+  // Phase 1 wizard-first bootstrap (Chunk 6 fix 2026-05-13):
+  // The customer never types the FIRST message — the chat agent's system
+  // prompt instructs it to render show_greeting_card immediately. To trigger
+  // that, we auto-fire a hidden synthetic user message on mount when there
+  // are zero messages in the conversation. The agent's first response is the
+  // greeting card; from that point forward all interaction is card-driven.
+  //
+  // The fired text is intentionally generic ("__start__") and the chat agent
+  // is told to NOT echo it back — it's a session-bootstrap signal, not a
+  // customer utterance.
+  const didBootstrapRef = useRef(false);
+  useEffect(() => {
+    if (didBootstrapRef.current) return;
+    if (messages.length > 0) {
+      didBootstrapRef.current = true;
+      return;
+    }
+    if (isWorking) return;
+    didBootstrapRef.current = true;
+    void sendMessage({ text: "__start__" });
+  }, [messages.length, isWorking, sendMessage]);
+
   function onSend(e: FormEvent) {
     e.preventDefault();
     const text = draft.trim();
@@ -78,6 +101,13 @@ export function Chat({ chatId, initialMessages }: ChatProps) {
     setDraft("");
     void sendMessage({ text });
   }
+
+  // Phase 1: wizard-first. Hide the free-form chat input by default — the
+  // customer interacts via cards. Set NEXT_PUBLIC_SCHEDULER_SHOW_CHAT_INPUT=1
+  // in Vercel env to surface it for debug / future Phase 2 work.
+  const showChatInput =
+    typeof process !== "undefined" &&
+    process.env.NEXT_PUBLIC_SCHEDULER_SHOW_CHAT_INPUT === "1";
 
   // ─── WizardFooter handlers (Chunk 6 incremental wiring 2026-05-13) ─────────
   // Per chat-design.md: both buttons send a synthetic user message the chat
@@ -103,6 +133,21 @@ export function Chat({ chatId, initialMessages }: ChatProps) {
     });
   }
 
+  // Hide the synthetic bootstrap message from the conversation surface.
+  // The user-message "__start__" is a transport-level signal to fire the
+  // agent's first turn; the customer should never see it as a chat bubble.
+  const visibleMessages = messages.filter((m) => {
+    if (m.role !== "user") return true;
+    const parts = m.parts ?? [];
+    const text = parts
+      .filter((p): p is { type: "text"; text: string } =>
+        (p as { type?: string }).type === "text",
+      )
+      .map((p) => p.text)
+      .join("");
+    return text.trim() !== "__start__";
+  });
+
   return (
     <div className="flex h-full flex-col">
       <div
@@ -110,23 +155,13 @@ export function Chat({ chatId, initialMessages }: ChatProps) {
         aria-label="Conversation"
         className="flex-1 space-y-4 overflow-y-auto px-1 py-3"
       >
-        {messages.length === 0 ? (
+        {visibleMessages.length === 0 && isWorking ? (
           <ChatBubble role="assistant">
-            <p className="m-0">
-              Hi! 👋 I&apos;m Jeff, your AI scheduling assistant for Jeff&apos;s
-              Automotive.
-            </p>
-            <p className="mt-2">
-              Heads up — this conversation is recorded so our team can make
-              sure we&apos;re taking good care of you.
-            </p>
-            <p className="mt-2">
-              To get started — have you been to our shop before?
-            </p>
+            <p className="m-0 italic text-ink-secondary">Jeff is getting set up…</p>
           </ChatBubble>
         ) : null}
 
-        {messages.map((m) => (
+        {visibleMessages.map((m) => (
           <MessageBlock
             key={m.id}
             message={m}
@@ -135,56 +170,58 @@ export function Chat({ chatId, initialMessages }: ChatProps) {
           />
         ))}
 
-        {isWorking ? (
+        {isWorking && visibleMessages.length > 0 ? (
           <ChatBubble role="assistant">
             <p className="m-0 italic text-ink-secondary">Jeff is typing…</p>
           </ChatBubble>
         ) : null}
       </div>
 
-      <form
-        onSubmit={onSend}
-        className="mt-4 flex flex-col gap-2 border-t border-rule pt-3 sm:flex-row sm:items-end"
-      >
-        <label className="sr-only" htmlFor="chat-input">
-          Message
-        </label>
-        <textarea
-          id="chat-input"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              onSend(e as unknown as FormEvent);
-            }
-          }}
-          rows={2}
-          placeholder="Type a message…"
-          disabled={isWorking}
-          className={
-            "flex-1 resize-none rounded-[var(--radius-input)] border border-rule " +
-            "bg-paper-100 px-3.5 py-2.5 text-[15px] text-ink placeholder:text-ink-tertiary " +
-            "focus:border-brand-burgundy-500 focus:outline-none " +
-            "focus:ring-2 focus:ring-brand-burgundy-200 " +
-            "disabled:opacity-60 transition-colors"
-          }
-        />
-        <button
-          type="submit"
-          disabled={isWorking || draft.trim().length === 0}
-          className={
-            "min-h-11 rounded-[var(--radius-input)] bg-brand-burgundy-700 " +
-            "px-5 py-2.5 text-[15px] font-medium text-paper-100 " +
-            "transition-colors duration-150 ease-out " +
-            "hover:bg-brand-burgundy-800 disabled:opacity-50 disabled:cursor-not-allowed " +
-            "focus-visible:outline-2 focus-visible:outline-offset-2 " +
-            "focus-visible:outline-brand-burgundy-500"
-          }
+      {showChatInput ? (
+        <form
+          onSubmit={onSend}
+          className="mt-4 flex flex-col gap-2 border-t border-rule pt-3 sm:flex-row sm:items-end"
         >
-          {isWorking ? "…" : "Send"}
-        </button>
-      </form>
+          <label className="sr-only" htmlFor="chat-input">
+            Message
+          </label>
+          <textarea
+            id="chat-input"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                onSend(e as unknown as FormEvent);
+              }
+            }}
+            rows={2}
+            placeholder="Type a message…"
+            disabled={isWorking}
+            className={
+              "flex-1 resize-none rounded-[var(--radius-input)] border border-rule " +
+              "bg-paper-100 px-3.5 py-2.5 text-[15px] text-ink placeholder:text-ink-tertiary " +
+              "focus:border-brand-burgundy-500 focus:outline-none " +
+              "focus:ring-2 focus:ring-brand-burgundy-200 " +
+              "disabled:opacity-60 transition-colors"
+            }
+          />
+          <button
+            type="submit"
+            disabled={isWorking || draft.trim().length === 0}
+            className={
+              "min-h-11 rounded-[var(--radius-input)] bg-brand-burgundy-700 " +
+              "px-5 py-2.5 text-[15px] font-medium text-paper-100 " +
+              "transition-colors duration-150 ease-out " +
+              "hover:bg-brand-burgundy-800 disabled:opacity-50 disabled:cursor-not-allowed " +
+              "focus-visible:outline-2 focus-visible:outline-offset-2 " +
+              "focus-visible:outline-brand-burgundy-500"
+            }
+          >
+            {isWorking ? "…" : "Send"}
+          </button>
+        </form>
+      ) : null}
 
       <WizardFooter
         onStartOver={handleStartOver}
@@ -459,6 +496,23 @@ function PartRenderer({
 
     // ─── Heritage Editorial cards (Chunk 6 directives — 2026-05-13) ─────────
 
+    case "show_greeting_card": {
+      const shopName = typeof tp.input?.shop_name === "string"
+        ? tp.input.shop_name
+        : undefined;
+      const agentName = typeof tp.input?.agent_name === "string"
+        ? tp.input.agent_name
+        : undefined;
+      return (
+        <GreetingCard
+          shop_name={shopName}
+          agent_name={agentName}
+          disabled={disabled}
+          onSubmit={(out) => submit(out)}
+        />
+      );
+    }
+
     case "show_phone_name_card": {
       const stepLabel = typeof tp.input?.step_label === "string"
         ? tp.input.step_label
@@ -667,6 +721,18 @@ function SubmittedEcho({
     case "show_escalation_card":
       text = "Acknowledged";
       break;
+    case "show_greeting_card": {
+      const v = String((output as { is_returning?: string }).is_returning ?? "");
+      text =
+        v === "returning"
+          ? "Returning customer"
+          : v === "new"
+            ? "First-time visitor"
+            : v === "unsure"
+              ? "Not sure"
+              : "Greeting answered";
+      break;
+    }
     case "show_phone_name_card": {
       const fn = String((output as { first_name?: string }).first_name ?? "");
       const ln = String((output as { last_name?: string }).last_name ?? "");

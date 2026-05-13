@@ -5,6 +5,9 @@
 // and will be incrementally migrated to this folder + Heritage style as the
 // chunks roll out. New cards go HERE; refactored legacy cards move HERE.
 
+export { GreetingCard } from "./GreetingCard";
+export type { GreetingCardProps } from "./GreetingCard";
+
 export { ClarificationQuestionCard } from "./ClarificationQuestionCard";
 export type { ClarificationQuestionCardProps } from "./ClarificationQuestionCard";
 

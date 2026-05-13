@@ -273,6 +273,130 @@ export const escalationCardSchema = z.object({
     .describe("Shop phone number to call (E.164 or 10-digit; component formats)."),
 });
 
+// ─── Heritage Editorial schemas (Chunk 6 — 2026-05-13) ──────────────────────
+
+export const greetingCardSchema = z.object({
+  shop_name: z
+    .string()
+    .optional()
+    .describe(
+      "Optional override of the shop display name (default 'Jeff's Automotive').",
+    ),
+  agent_name: z
+    .string()
+    .optional()
+    .describe("Optional override of the assistant's name (default 'Jeff')."),
+});
+
+export const phoneNameCardSchema = z.object({
+  step_label: z
+    .string()
+    .optional()
+    .describe(
+      "Optional eyebrow text (default 'Step 2 · Verify it's you').",
+    ),
+});
+
+export const clarificationQuestionSchema = z.object({
+  question_id: z
+    .number()
+    .int()
+    .positive()
+    .describe("concern_questions.id from the catalog."),
+  question_text: z.string().describe("Customer-facing question text."),
+  options: z
+    .array(
+      z.object({
+        label: z.string(),
+        value: z.string(),
+      }),
+    )
+    .describe("Multiple-choice options as {label, value} pairs."),
+  service_key: z
+    .string()
+    .optional()
+    .describe("Optional service_key the question is tied to."),
+  category: z
+    .string()
+    .optional()
+    .describe("Optional concern category (noise/vibration/etc.) for eyebrow."),
+});
+
+export const testingServiceApprovalSchema = z.object({
+  services: z
+    .array(
+      z.object({
+        service_key: z.string(),
+        display_name: z.string(),
+        starting_price_cents: z.number().int().nonnegative(),
+        notes: z.string().nullable().optional(),
+      }),
+    )
+    .describe("Testing services to surface for approval, with starting prices."),
+  category: z
+    .string()
+    .optional()
+    .describe("Optional concern category label for eyebrow."),
+});
+
+export const appointmentTypeCardSchema = z.object({
+  options: z
+    .array(
+      z.object({
+        type: z.enum(["waiter", "dropoff"]),
+        available: z.boolean(),
+        unavailable_reason: z.string().optional(),
+        earliest_hint: z.string().optional(),
+      }),
+    )
+    .describe("Waiter + dropoff options with availability and earliest hints."),
+});
+
+export const customerNotesCardSchema = z.object({
+  initial_text: z
+    .string()
+    .optional()
+    .describe(
+      "Optional pre-filled text when the customer is editing a prior note.",
+    ),
+});
+
+export const customerQuestionCardSchema = z.object({});
+
+export const summaryCardSchema = z.object({
+  hold_id: z
+    .string()
+    .optional()
+    .describe("appointment_holds.id — shown small in the footnote."),
+  hold_expires_at: z
+    .string()
+    .optional()
+    .describe(
+      "ISO timestamp the 10-minute hold expires at (drives the countdown).",
+    ),
+  starts_at: z
+    .string()
+    .describe(
+      "Waiter: ISO datetime. Dropoff: ISO date only (12:00 placeholder never shown).",
+    ),
+  customer: z.string().describe("Customer display name."),
+  vehicle: z.string().describe("Vehicle label, e.g. '2018 Toyota Camry'."),
+  type: z.enum(["waiter", "dropoff"]),
+  services: z
+    .array(
+      z.object({
+        display_name: z.string(),
+        kind: z.enum(["routine", "concern", "testing"]),
+        starting_price_cents: z.number().int().nonnegative().optional(),
+        notes: z.string().optional(),
+      }),
+    )
+    .describe("Grouped service breakdown (routine + concern + testing)."),
+  reminders: z
+    .array(z.string())
+    .describe("Pre-appointment reminders (drop-off, state inspection, etc.)."),
+});
+
 // ─── Wrapped tool defs (consume the schemas above) ───────────────────────────
 
 export const showPhoneEntry = tool({
@@ -345,6 +469,80 @@ export const showEscalationCard = tool({
   inputSchema: escalationCardSchema,
 });
 
+// ─── Heritage Editorial wrapped tools (Chunk 6 — 2026-05-13) ────────────────
+
+export const showGreetingCard = tool({
+  description:
+    "STEP 1 — Render the greeting card with Yes/No/Unsure buttons. This is " +
+    "the FIRST tool you call on every new session. Do NOT send the disclosure " +
+    "+ opening question as plain text — render this card instead. The card " +
+    "includes the recorded-conversation disclosure and the 'have you been to " +
+    "our shop before?' question with three button options (returning / new / " +
+    "unsure). The output { is_returning } drives the §4.3 reconciliation flow.",
+  inputSchema: greetingCardSchema,
+});
+
+export const showPhoneNameCard = tool({
+  description:
+    "STEP 2 — Render the phone + name capture card (Heritage Editorial " +
+    "replacement for show_phone_entry). Captures first name + last name + " +
+    "phone (E.164 US/Canada) in one card so the orchestrator has enough data " +
+    "to disambiguate from the first OTP attempt. Use this AFTER the customer " +
+    "answers the greeting card.",
+  inputSchema: phoneNameCardSchema,
+});
+
+export const showClarificationQuestion = tool({
+  description:
+    "STEP 7.4 — Render ONE clarification question from the diagnostic " +
+    "specialist's queue. The customer picks one option OR taps 'I'm not sure' " +
+    "to skip. After each answer, consult_orchestrator to decide whether to " +
+    "ask another, propose testing services, or advance.",
+  inputSchema: clarificationQuestionSchema,
+});
+
+export const showTestingServiceApproval = tool({
+  description:
+    "STEP 7.5 — Render the testing-service approval card with the diagnostic " +
+    "specialist's recommendations. Pre-selects all by default; customer can " +
+    "uncheck any to decline. Returns approved[] + declined[] (both captured " +
+    "in the transcript).",
+  inputSchema: testingServiceApprovalSchema,
+});
+
+export const showAppointmentType = tool({
+  description:
+    "STEP 8 — Render the waiter-vs-dropoff appointment type picker. Each " +
+    "option carries available (boolean) and an earliest-hint date string. " +
+    "Use this AFTER services/concerns are settled but BEFORE the date picker.",
+  inputSchema: appointmentTypeCardSchema,
+});
+
+export const showCustomerNotesCard = tool({
+  description:
+    "STEP 10.2 — Render the optional notes textarea after appointment is " +
+    "confirmed. Customer can submit free-form notes (≤500 chars) or skip. " +
+    "2-edit cap enforced server-side.",
+  inputSchema: customerNotesCardSchema,
+});
+
+export const showCustomerQuestionCard = tool({
+  description:
+    "STEP 10.3 — Render the optional question card after notes. Customer can " +
+    "type a question (≤280 chars) for advisor follow-up, or skip.",
+  inputSchema: customerQuestionCardSchema,
+});
+
+export const showSummaryCard = tool({
+  description:
+    "STEP 10.1 — Render the Heritage Editorial summary card (richer than " +
+    "show_confirmation_card). Shows appointment time, customer, vehicle, " +
+    "service breakdown grouped by routine/concern/testing, reminders, and a " +
+    "10-minute hold countdown. Use as the pre-confirm review surface after " +
+    "hold_appointment_slot succeeds.",
+  inputSchema: summaryCardSchema,
+});
+
 // =====================================================================
 // Bundle the tools as a registry the route handler passes to streamText
 // =====================================================================
@@ -352,6 +550,16 @@ export const showEscalationCard = tool({
 export function makeChatAgentTools(args: { session_id: string }) {
   return {
     consult_orchestrator: makeConsultOrchestratorTool(args),
+    // Heritage Editorial cards (preferred per Chunk 6 — 2026-05-13)
+    show_greeting_card: showGreetingCard,
+    show_phone_name_card: showPhoneNameCard,
+    show_clarification_question: showClarificationQuestion,
+    show_testing_service_approval: showTestingServiceApproval,
+    show_appointment_type: showAppointmentType,
+    show_customer_notes_card: showCustomerNotesCard,
+    show_customer_question_card: showCustomerQuestionCard,
+    show_summary_card: showSummaryCard,
+    // Legacy + still-valid rendering tools
     show_phone_entry: showPhoneEntry,
     show_otp_input: showOtpInput,
     show_vehicle_picker: showVehiclePicker,
