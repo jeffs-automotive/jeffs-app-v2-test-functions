@@ -29,6 +29,14 @@ export type { SummaryCardProps } from "./SummaryCard";
 export { CompletedCard } from "./CompletedCard";
 export type { CompletedCardProps } from "./CompletedCard";
 
+export { CustomerInfoEditCard } from "./CustomerInfoEditCard";
+export type {
+  CustomerInfoEditCardProps,
+  PhoneEntry,
+  EmailEntry,
+  AddressEntry,
+} from "./CustomerInfoEditCard";
+
 export { PhoneNameCard } from "./PhoneNameCard";
 export type { PhoneNameCardProps } from "./PhoneNameCard";
 

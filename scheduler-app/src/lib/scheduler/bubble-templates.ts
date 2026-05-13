@@ -62,6 +62,12 @@ export const BUBBLE_TEMPLATES: Record<string, BubbleTemplate | BubbleTemplate[]>
     context: "Name match but phone mismatch — partial verify",
   },
 
+  // ─── Step 3 (OTP verified) → Step 5 (returning customer info edit) ─────
+  otp_to_info_edit: {
+    text: "Great — let me pull up your account. Quick check on your contact info first.",
+    context: "OTP verified for returning customer; show customer-info-edit card",
+  },
+
   // ─── Step 5 → Step 6 transitions ───────────────────────────────────────
   to_vehicle_pick: {
     text: "All set! Which vehicle are we taking care of today? 🚗",

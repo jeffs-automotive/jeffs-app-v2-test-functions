@@ -55,7 +55,8 @@ const DIRECTIVE_TO_TOOL_NAME: Record<string, string> = {
   show_new_customer_form: "show_new_customer_form",
   partial_verification_gate: "show_escalation_card",
 
-  // otp → step 5 / step 7
+  // otp → step 5 (returning customer info edit) / step 6 (vehicle pick) / step 7
+  show_customer_info_edit: "show_customer_info_edit",
   show_vehicle_picker: "show_vehicle_picker",
   show_service_and_concern_picker: "show_service_and_concern_picker",
 

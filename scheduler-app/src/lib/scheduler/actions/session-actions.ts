@@ -387,6 +387,35 @@ export async function submitOtp(args: {
         .eq("id", args.chatId);
     }
 
+    // For returning customers per chat-design.md §Step 5: after OTP
+    // verify, route to show_customer_info_edit (NOT directly to vehicle
+    // picker). The customer needs a chance to confirm/edit phones/emails/
+    // address before we lock the appointment. Only new customers / unsure
+    // bucket that fell through to NewCustomerForm skip this step.
+    const verifiedReturning =
+      result.directive === "show_vehicle_picker" &&
+      priorRow?.customer_self_identified === "returning";
+    if (verifiedReturning) {
+      return {
+        ok: true,
+        directive: "show_customer_info_edit",
+        data: {
+          // The specialist's verify_otp returned vehicles in result.data —
+          // we'll stash them for the next step and read them after the
+          // customer-info-edit submit so we don't re-call Tekmetric.
+          stashed_vehicle_data: result.data ?? null,
+          // The card itself will be hydrated by the route handler / agent
+          // via show_customer_info_edit tool with first_name + initial_*
+          // fields populated from the row + Tekmetric lookup. Server
+          // Action returns the directive shell; the chat agent fills in
+          // the card's input from the snapshot + result.data.
+        },
+        flags: result.flags,
+        bubble_copy: getBubbleCopy("otp_to_info_edit"),
+        current_step: "customer_info_edit",
+      };
+    }
+
     return {
       ok: result.directive !== "tool_error",
       directive: result.directive,
@@ -400,6 +429,82 @@ export async function submitOtp(args: {
     };
   } catch (e) {
     return tooErrResult(e, "otp_pending");
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//   STEP 5 (returning customer) — Customer info edit
+// ═════════════════════════════════════════════════════════════════════════════
+
+export async function submitCustomerInfoEdit(args: {
+  chatId: string;
+  edited_phones: Array<{ phone_e164: string; is_primary: boolean }>;
+  edited_emails: Array<{ email: string; is_primary: boolean }>;
+  edited_address: {
+    address1?: string;
+    address2?: string;
+    city?: string;
+    state?: string;
+    zip?: string;
+  } | null;
+  primary_email_for_description: string | null;
+}): Promise<SessionActionResult> {
+  try {
+    await writeSession({
+      chatId: args.chatId,
+      updates: {
+        edited_phones: args.edited_phones,
+        edited_emails: args.edited_emails,
+        edited_address: args.edited_address,
+        primary_email_for_description: args.primary_email_for_description,
+      },
+      nextStep: "vehicle_pick",
+    });
+    await logAudit({
+      session_id: args.chatId,
+      step: "customer_info_edit",
+      event_type: "card_submitted",
+      event_detail: {
+        phone_count: args.edited_phones.length,
+        email_count: args.edited_emails.length,
+        has_address: !!args.edited_address,
+        has_primary_email: !!args.primary_email_for_description,
+      },
+    });
+
+    // Now request the vehicle list from the orchestrator so the next
+    // card (show_vehicle_picker) has fresh Tekmetric vehicles. The
+    // orchestrator reads customer_id from the row.
+    const startedAt = Date.now();
+    const result = await consultOrchestrator({
+      session_id: args.chatId,
+      context:
+        `Customer confirmed their info on Step 5. Tool chain:\n` +
+        `  1. lookup_vehicles_for_customer({ customer_id: <session_metadata.customer_id> })\n` +
+        `  2. Emit directive 'show_vehicle_picker' with the vehicle list.`,
+      intent_type: "lookup_vehicles",
+    });
+    await logAudit({
+      session_id: args.chatId,
+      step: "customer_info_edit",
+      event_type: "tool_called",
+      event_detail: {
+        tool: "lookup_vehicles_for_customer",
+        directive: result.directive,
+      },
+      latency_ms: Date.now() - startedAt,
+    });
+
+    return {
+      ok: result.directive !== "tool_error",
+      directive: result.directive ?? "show_vehicle_picker",
+      data: result.data,
+      flags: result.flags,
+      bubble_copy: getBubbleCopy("to_vehicle_pick"),
+      current_step: "vehicle_pick",
+    };
+  } catch (e) {
+    return tooErrResult(e, "customer_info_edit");
   }
 }
 

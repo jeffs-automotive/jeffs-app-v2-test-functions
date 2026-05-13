@@ -41,6 +41,7 @@ import {
   ChatBubble,
   ClarificationQuestionCard,
   CompletedCard,
+  CustomerInfoEditCard,
   CustomerNotesCard,
   CustomerQuestionCard,
   GreetingCard,
@@ -57,6 +58,7 @@ import {
 import {
   submitAppointmentType,
   submitClarificationAnswer,
+  submitCustomerInfoEdit,
   submitCustomerNotes,
   submitCustomerQuestion,
   submitDate,
@@ -308,6 +310,30 @@ export function Chat({ chatId, initialMessages }: ChatProps) {
             question: cardOutput.question
               ? String(cardOutput.question)
               : null,
+          });
+          break;
+        case "show_customer_info_edit":
+          result = await submitCustomerInfoEdit({
+            chatId,
+            edited_phones: Array.isArray(cardOutput.edited_phones)
+              ? (cardOutput.edited_phones as Array<{
+                  phone_e164: string;
+                  is_primary: boolean;
+                }>)
+              : [],
+            edited_emails: Array.isArray(cardOutput.edited_emails)
+              ? (cardOutput.edited_emails as Array<{
+                  email: string;
+                  is_primary: boolean;
+                }>)
+              : [],
+            edited_address:
+              (cardOutput.edited_address as Record<string, string> | null) ??
+              null,
+            primary_email_for_description:
+              typeof cardOutput.primary_email_for_description === "string"
+                ? cardOutput.primary_email_for_description
+                : null,
           });
           break;
         case "show_completed_card": {
@@ -920,6 +946,37 @@ function PartRenderer({
         <CustomerQuestionCard
           disabled={disabled}
           onSubmit={(out) => submit(out)}
+        />
+      );
+    }
+
+    case "show_customer_info_edit": {
+      const firstName = String(tp.input?.first_name ?? "");
+      const lastName = String(tp.input?.last_name ?? "");
+      const initialPhones = Array.isArray(tp.input?.initial_phones)
+        ? (tp.input.initial_phones as Array<{
+            phone_e164: string;
+            is_primary: boolean;
+          }>)
+        : [];
+      const initialEmails = Array.isArray(tp.input?.initial_emails)
+        ? (tp.input.initial_emails as Array<{
+            email: string;
+            is_primary: boolean;
+          }>)
+        : [];
+      const initialAddress =
+        (tp.input?.initial_address as Record<string, string> | undefined) ??
+        undefined;
+      return (
+        <CustomerInfoEditCard
+          first_name={firstName}
+          last_name={lastName}
+          initial_phones={initialPhones}
+          initial_emails={initialEmails}
+          initial_address={initialAddress}
+          disabled={disabled}
+          onSubmit={(out) => submit(out as Record<string, unknown>)}
         />
       );
     }

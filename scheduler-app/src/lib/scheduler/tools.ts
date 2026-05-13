@@ -386,6 +386,55 @@ export const customerNotesCardSchema = z.object({
 
 export const customerQuestionCardSchema = z.object({});
 
+export const customerInfoEditCardSchema = z.object({
+  first_name: z
+    .string()
+    .describe("Verified first name from Tekmetric (display-only)."),
+  last_name: z
+    .string()
+    .describe("Verified last name from Tekmetric (display-only)."),
+  initial_phones: z
+    .array(
+      z.object({
+        phone_e164: z.string(),
+        is_primary: z.boolean(),
+      }),
+    )
+    .max(2)
+    .optional()
+    .describe(
+      "Current phones on Tekmetric for the matched customer (max 2). " +
+        "If empty, the card seeds an empty primary slot for the customer " +
+        "to fill in.",
+    ),
+  initial_emails: z
+    .array(
+      z.object({
+        email: z.string(),
+        is_primary: z.boolean(),
+      }),
+    )
+    .max(2)
+    .optional()
+    .describe(
+      "Current emails on Tekmetric for the matched customer (max 2). " +
+        "If empty, the card requires at least one before proceeding.",
+    ),
+  initial_address: z
+    .object({
+      address1: z.string().optional(),
+      address2: z.string().optional(),
+      city: z.string().optional(),
+      state: z.string().optional(),
+      zip: z.string().optional(),
+    })
+    .optional()
+    .describe(
+      "Current address on Tekmetric (optional). Phase 1 has no Places " +
+        "autocomplete; all fields are plain inputs.",
+    ),
+});
+
 export const completedCardSchema = z.object({
   first_name: z
     .string()
@@ -592,6 +641,17 @@ export const showSummaryCard = tool({
   inputSchema: summaryCardSchema,
 });
 
+export const showCustomerInfoEdit = tool({
+  description:
+    "STEP 5 (returning customer) — Render the customer info edit card after " +
+    "OTP verification succeeds. Surfaces current Tekmetric phones/emails/" +
+    "address and lets the customer confirm or update before vehicle pick. " +
+    "Required for spec compliance per chat-design.md §Step 5 (returning " +
+    "customer happy path was previously broken — customers skipped Step 5 " +
+    "entirely and went directly to vehicle pick).",
+  inputSchema: customerInfoEditCardSchema,
+});
+
 export const showCompletedCard = tool({
   description:
     "STEP 10.5 — Render the final 'all done' card after Step 10.3 question " +
@@ -626,6 +686,7 @@ export function makeChatAgentTools(args: { session_id: string }) {
     show_appointment_type: showAppointmentType,
     show_calendar_date_picker: showCalendarDatePicker,
     show_waiter_time_picker: showWaiterTimePicker,
+    show_customer_info_edit: showCustomerInfoEdit,
     show_summary_card: showSummaryCard,
     show_customer_notes_card: showCustomerNotesCard,
     show_customer_question_card: showCustomerQuestionCard,
