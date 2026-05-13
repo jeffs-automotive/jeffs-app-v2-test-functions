@@ -32,6 +32,7 @@ import {
 import { makeChatAgentTools } from "@/lib/scheduler/tools";
 import { buildSystemPrompt } from "@/lib/scheduler/system-prompt";
 import { getRoutineServicesForChips } from "@/lib/scheduler/routine-services-cache";
+import { buildSessionSnapshot } from "@/lib/scheduler/session-context";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -104,11 +105,18 @@ export async function POST(req: Request) {
   // is bound to this session_id).
   const tools = makeChatAgentTools({ session_id: chatId });
   const routineServices = await getRoutineServicesForChips();
-  const system = buildSystemPrompt({
+  const baseSystem = buildSystemPrompt({
     channel: "web",
     routine_services: routineServices,
     shop_phone_display: SHOP_PHONE_DISPLAY,
   });
+
+  // Stage 3 (row-as-truth refactor 2026-05-13): build a compact snapshot
+  // from customer_chat_sessions and append it to the system prompt. This
+  // gives the agent the AUTHORITATIVE wizard state without it having to
+  // parse prior message text. Locked architecture decision #1.
+  const snapshot = await buildSessionSnapshot(chatId);
+  const system = snapshot ? `${baseSystem}\n\n${snapshot}` : baseSystem;
 
   const result = streamText({
     model,

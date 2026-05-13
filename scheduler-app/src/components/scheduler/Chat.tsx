@@ -49,6 +49,31 @@ import {
   WizardFooter,
 } from "./heritage";
 
+// Row-as-truth Server Actions (Stage 2+3 refactor 2026-05-13). Each card's
+// onSubmit calls the matching Server Action which writes columns + invokes
+// orchestrator-direct as needed; the chat agent gets a structured directive
+// in the tool result instead of raw customer payloads.
+import {
+  submitAppointmentType,
+  submitClarificationAnswer,
+  submitCustomerNotes,
+  submitCustomerQuestion,
+  submitDate,
+  submitEscalate,
+  submitGreeting,
+  submitNewCustomer,
+  submitNewVehicle,
+  submitOtp,
+  submitPhoneName,
+  submitServiceAndConcernPicker,
+  submitStartOver,
+  submitSummaryConfirm,
+  submitTestingApproval,
+  submitVehiclePick,
+  submitWaiterTime,
+  type SessionActionResult,
+} from "@/lib/scheduler/actions/session-actions";
+
 export interface ChatProps {
   chatId: string;
   initialMessages?: UIMessage[];
@@ -72,22 +97,34 @@ export function Chat({ chatId, initialMessages }: ChatProps) {
   const [draft, setDraft] = useState("");
   const isWorking = status === "submitted" || status === "streaming";
 
-  // Phase 1 wizard-first (Chunk 6 fix v2 — 2026-05-13):
-  // Step 1 (greeting) is rendered CLIENT-SIDE, not by the chat agent. Rationale:
-  //   1. Step 1 is deterministic — every session starts with "have you been here
-  //      before?". There's no reason to spend an LLM call to emit a card the
-  //      wizard knows belongs at this step.
-  //   2. The auto-fire `__start__` synthetic signal approach (v1) was unreliable
-  //      — gpt-5.4-mini / gemini-3.1-flash treated the bootstrap signal as
-  //      conversational noise and returned empty text instead of the tool call,
-  //      leaving customers stuck on "Jeff is typing…".
-  // When the customer taps a button on the client-side card, we then send their
-  // actual answer as the first user message to the agent, which proceeds from
-  // there with show_phone_name_card.
+  // Phase 1 wizard-first + row-as-truth (Stage 2+3 refactor 2026-05-13).
+  //
+  // Step 1 (greeting) is rendered CLIENT-SIDE. When the customer taps a button,
+  // we call submitGreeting() — the Server Action writes is_returning_customer
+  // to the row, transitions current_step, and returns a directive (typically
+  // show_phone_name_card). We then dispatch that directive through the chat
+  // agent via sendMessage with a thin user-event so the agent renders the next
+  // card. (Stage 3 will eliminate the chat-agent round-trip entirely; for now
+  // the agent serves as a deterministic renderer reading the structured tool
+  // output it receives.)
   async function handleGreetingPick(out: {
     is_returning: "returning" | "new" | "unsure";
   }) {
     if (isWorking) return;
+    const result = await submitGreeting({
+      chatId,
+      is_returning: out.is_returning,
+    });
+    if (!result.ok) {
+      // Surface error via a synthetic user message — agent will likely escalate.
+      void sendMessage({
+        text: `[client-error] greeting submit failed: ${result.error ?? "unknown"}`,
+      });
+      return;
+    }
+    // Send the SAME phrase as before so the chat agent's FIRST_TURN_DISCLOSURE
+    // logic still matches. The Server Action has already written the row;
+    // the agent's job is just to emit the directed card.
     const text =
       out.is_returning === "returning"
         ? "I've been to Jeff's Automotive before."
@@ -95,6 +132,181 @@ export function Chat({ chatId, initialMessages }: ChatProps) {
           ? "First time customer."
           : "I'm not sure if I've been here before.";
     void sendMessage({ text });
+  }
+
+  // Generic card-submit dispatcher (Stage 2 refactor 2026-05-13).
+  // Each AI-SDK rendering tool's onSubmit funnels here. We:
+  //   1. Call the matching Server Action (writes row columns + orchestrator)
+  //   2. Pass the structured directive back through addToolResult so the chat
+  //      agent emits the next card.
+  // Cards that don't need a Server Action (e.g. show_escalation_card → just
+  // acknowledged) still go through the original `submit` path.
+  async function dispatchCardSubmit(
+    toolName: string,
+    toolCallId: string,
+    cardOutput: Record<string, unknown>,
+  ): Promise<void> {
+    let result: SessionActionResult | null = null;
+    try {
+      switch (toolName) {
+        case "show_phone_name_card":
+          result = await submitPhoneName({
+            chatId,
+            first_name: String(cardOutput.first_name ?? ""),
+            last_name: String(cardOutput.last_name ?? ""),
+            phone_e164: String(cardOutput.phone ?? ""),
+          });
+          break;
+        case "show_phone_entry":
+          // Legacy phone-only entry — call submitPhoneName with a placeholder
+          // name; the orchestrator's existing matrix handles it.
+          result = await submitPhoneName({
+            chatId,
+            first_name: "",
+            last_name: "",
+            phone_e164: String(cardOutput.phone ?? ""),
+          });
+          break;
+        case "show_otp_input":
+          result = await submitOtp({
+            chatId,
+            code: String(cardOutput.code ?? ""),
+          });
+          break;
+        case "show_vehicle_picker":
+          result = await submitVehiclePick({
+            chatId,
+            vehicle_id: String(cardOutput.vehicle_id ?? ""),
+          });
+          break;
+        case "show_new_customer_form": {
+          // Two modes: 'full' (new customer) vs 'vehicle-only' (new vehicle
+          // for returning customer). The card output shape is the same for
+          // both — just the customer fields are blank in vehicle-only mode.
+          const hasCustomerFields =
+            !!cardOutput.first_name || !!cardOutput.last_name;
+          if (hasCustomerFields) {
+            result = await submitNewCustomer({
+              chatId,
+              first_name: String(cardOutput.first_name ?? ""),
+              last_name: String(cardOutput.last_name ?? ""),
+              email: cardOutput.email
+                ? String(cardOutput.email)
+                : undefined,
+              vehicle: cardOutput.vehicle as never,
+            });
+          } else {
+            result = await submitNewVehicle({
+              chatId,
+              vehicle: cardOutput.vehicle as never,
+            });
+          }
+          break;
+        }
+        case "show_service_and_concern_picker":
+          result = await submitServiceAndConcernPicker({
+            chatId,
+            services: Array.isArray(cardOutput.services)
+              ? (cardOutput.services as string[])
+              : [],
+            concern_text: cardOutput.concern_text
+              ? String(cardOutput.concern_text)
+              : undefined,
+          });
+          break;
+        case "show_clarification_question":
+          result = await submitClarificationAnswer({
+            chatId,
+            question_id: Number(cardOutput.question_id ?? 0),
+            answer: String(cardOutput.answer ?? "skipped"),
+          });
+          break;
+        case "show_testing_service_approval":
+          result = await submitTestingApproval({
+            chatId,
+            approved: Array.isArray(cardOutput.approved)
+              ? (cardOutput.approved as string[])
+              : [],
+            declined: Array.isArray(cardOutput.declined)
+              ? (cardOutput.declined as string[])
+              : [],
+          });
+          break;
+        case "show_appointment_type":
+          result = await submitAppointmentType({
+            chatId,
+            appointment_type:
+              cardOutput.appointment_type === "waiter" ? "waiter" : "dropoff",
+          });
+          break;
+        case "show_calendar_date_picker":
+          result = await submitDate({
+            chatId,
+            selected_date: String(cardOutput.selected_date ?? ""),
+          });
+          break;
+        case "show_waiter_time_picker":
+          result = await submitWaiterTime({
+            chatId,
+            selected_time: String(cardOutput.selected_time ?? ""),
+          });
+          break;
+        case "show_summary_card":
+        case "show_confirmation_card":
+          result = await submitSummaryConfirm({
+            chatId,
+            confirmed: !!cardOutput.confirmed,
+            edit_target: cardOutput.edit_target as never,
+          });
+          break;
+        case "show_customer_notes_card":
+          result = await submitCustomerNotes({
+            chatId,
+            text: cardOutput.text ? String(cardOutput.text) : null,
+            approved: !!cardOutput.approved,
+          });
+          break;
+        case "show_customer_question_card":
+          result = await submitCustomerQuestion({
+            chatId,
+            question: cardOutput.question
+              ? String(cardOutput.question)
+              : null,
+          });
+          break;
+        case "show_escalation_card":
+          // No row change beyond acknowledgement; just thread through.
+          result = {
+            ok: true,
+            directive: "continue",
+            data: { acknowledged: !!cardOutput.acknowledged },
+          };
+          break;
+        default:
+          // Unknown tool — just pass the raw output through.
+          result = {
+            ok: true,
+            directive: "continue",
+            data: cardOutput,
+          };
+      }
+    } catch (e) {
+      result = {
+        ok: false,
+        directive: "tool_error",
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+
+    // Pass the Server Action's structured result back to the chat agent as
+    // the tool output. The agent's system prompt is updated to expect this
+    // shape: {ok, directive, data, bubble_copy?} — much easier for it to
+    // route than parsing raw card payloads.
+    addToolResult({
+      tool: toolName,
+      toolCallId,
+      output: result as unknown as Record<string, unknown>,
+    });
   }
 
   function onSend(e: FormEvent) {
@@ -112,28 +324,34 @@ export function Chat({ chatId, initialMessages }: ChatProps) {
     typeof process !== "undefined" &&
     process.env.NEXT_PUBLIC_SCHEDULER_SHOW_CHAT_INPUT === "1";
 
-  // ─── WizardFooter handlers (Chunk 6 incremental wiring 2026-05-13) ─────────
-  // Per chat-design.md: both buttons send a synthetic user message the chat
-  // agent recognizes. The orchestrator picks up intent_type via hints and
-  // routes appropriately. Confirmation UX (2-tap) is owned by WizardFooter.
+  // ─── WizardFooter handlers (Stage 2 refactor 2026-05-13) ─────────────────
+  // Both buttons now call dedicated Server Actions that write the row directly
+  // (intent_type='session_restarted' / 'escalation_triggered'). No more
+  // free-form English text through sendMessage — the previous pattern violated
+  // the design's "wizard-first; no free-form input" rule.
   async function handleStartOver() {
     if (isWorking) return;
-    // Synthetic user message that the chat agent translates into a fresh
-    // start. The agent's system prompt handles this via the "Always-visible
-    // affordances" section.
-    void sendMessage({
-      text: "I want to start over from the beginning, please.",
-    });
+    const result = await submitStartOver({ chatId });
+    if (result.ok) {
+      // Surface a "starting over" bubble + re-render greeting client-side.
+      // The page-reload approach is simplest: localStorage chatId stays, but
+      // the row state is wiped. On next render, messages.length === 0 triggers
+      // the client-side GreetingCard.
+      window.location.reload();
+    }
   }
 
   async function handleEscalate() {
     if (isWorking) return;
-    // Synthetic user message that the chat agent translates into an
-    // escalation. The orchestrator emits the escalate directive on the next
-    // turn, which renders the EscalationCard.
-    void sendMessage({
-      text: "Can I talk to a real person?",
+    const result = await submitEscalate({
+      chatId,
+      reason: "footer_button",
     });
+    if (result.ok && result.directive === "show_escalation_card") {
+      // Synthetic agent message: render escalation directly client-side.
+      // The agent doesn't need to be in the loop for this.
+      void sendMessage({ text: "Can I talk to a real person?" });
+    }
   }
 
   // First-turn check: when there are zero messages, render the GreetingCard
@@ -160,7 +378,7 @@ export function Chat({ chatId, initialMessages }: ChatProps) {
           <MessageBlock
             key={m.id}
             message={m}
-            addToolResult={addToolResult}
+            onCardSubmit={dispatchCardSubmit}
             disabled={isWorking}
           />
         ))}
@@ -229,15 +447,27 @@ export function Chat({ chatId, initialMessages }: ChatProps) {
 
 // ─── Message rendering ───────────────────────────────────────────────────────
 
-type AddToolResultFn = ReturnType<typeof useChat>["addToolResult"];
+/**
+ * Card-submit dispatcher signature (Stage 2 refactor 2026-05-13). Replaces
+ * the AI SDK's `addToolResult` direct exposure. Cards still produce a raw
+ * card payload from their `onSubmit`, but this function:
+ *   1. Calls the matching Server Action (writes row + invokes orchestrator)
+ *   2. Threads the structured `SessionActionResult` back via addToolResult
+ *      so the chat agent receives a directive instead of raw form values.
+ */
+type CardSubmitFn = (
+  toolName: string,
+  toolCallId: string,
+  cardOutput: Record<string, unknown>,
+) => Promise<void>;
 
 interface MessageBlockProps {
   message: UIMessage;
-  addToolResult: AddToolResultFn;
+  onCardSubmit: CardSubmitFn;
   disabled: boolean;
 }
 
-function MessageBlock({ message, addToolResult, disabled }: MessageBlockProps) {
+function MessageBlock({ message, onCardSubmit, disabled }: MessageBlockProps) {
   const isUser = message.role === "user";
   const parts = message.parts ?? [];
 
@@ -263,7 +493,7 @@ function MessageBlock({ message, addToolResult, disabled }: MessageBlockProps) {
               key={`text-${idx}`}
               part={part}
               messageRole={message.role}
-              addToolResult={addToolResult}
+              onCardSubmit={onCardSubmit}
               disabled={disabled}
             />
           ))}
@@ -275,7 +505,7 @@ function MessageBlock({ message, addToolResult, disabled }: MessageBlockProps) {
           key={`tool-${idx}`}
           part={part}
           messageRole={message.role}
-          addToolResult={addToolResult}
+          onCardSubmit={onCardSubmit}
           disabled={disabled}
         />
       ))}
@@ -286,14 +516,14 @@ function MessageBlock({ message, addToolResult, disabled }: MessageBlockProps) {
 interface PartRendererProps {
   part: NonNullable<UIMessage["parts"]>[number];
   messageRole: UIMessage["role"];
-  addToolResult: AddToolResultFn;
+  onCardSubmit: CardSubmitFn;
   disabled: boolean;
 }
 
 function PartRenderer({
   part,
   messageRole,
-  addToolResult,
+  onCardSubmit,
   disabled,
 }: PartRendererProps) {
   // Plain text part — render as paragraph. Parent (MessageBlock) wraps these
@@ -332,13 +562,13 @@ function PartRenderer({
 
   const toolCallId = tp.toolCallId;
 
-  // Wrap addToolResult into a stable per-tool callback the components consume
+  // Wrap the card-submit dispatcher into a stable per-tool callback.
+  // The dispatcher (Chat-level) calls the matching Server Action FIRST
+  // (writes columns + invokes orchestrator), then threads the structured
+  // result through addToolResult so the chat agent receives a directive
+  // instead of raw card payloads. Stage 2 refactor 2026-05-13.
   const submit = (output: Record<string, unknown>) =>
-    addToolResult({
-      tool: toolName,
-      toolCallId,
-      output,
-    });
+    void onCardSubmit(toolName, toolCallId, output);
 
   switch (toolName) {
     case "show_phone_entry": {
