@@ -172,6 +172,62 @@ const CLIENT_RENDERED_DIRECTIVES = new Set<string>([
   "show_escalation_card",
 ]);
 
+/**
+ * Custom sendAutomaticallyWhen predicate.
+ *
+ * Default behavior (`lastAssistantMessageIsCompleteWithToolCalls`) auto-fires
+ * the chat agent whenever the last assistant message has all tool calls
+ * complete. That's correct for the normal LLM-driven flow — but it fights
+ * our client-side card injection for wizard transitions.
+ *
+ * Problem: after addToolResult marks the prior card's tool call complete,
+ * AI SDK evaluates this predicate synchronously and fires a chat-agent
+ * fetch before our setMessages-append of the synthesized next-card
+ * assistant message lands. The chat agent then produces its own (often
+ * duplicate) bubble + tool call which streams INTO the same assistant
+ * message slot we just injected — leaving two text bubbles + two tool
+ * call parts in one assistant message.
+ *
+ * Fix: inspect the LAST tool call's output. If its `directive` lives in
+ * CLIENT_RENDERED_DIRECTIVES, we know our dispatchCardSubmit will
+ * immediately synthesize the next card client-side — so the chat agent
+ * has nothing to do. Return false to skip the auto-fetch.
+ *
+ * For all OTHER directives (e.g., orchestrator emitting natural-language
+ * follow-ups, or tools whose next state we don't determine), fall back
+ * to the default predicate.
+ */
+function shouldAutoSend({
+  messages,
+}: { messages: UIMessage[] }): boolean {
+  const last = messages[messages.length - 1];
+  if (last && last.role === "assistant" && Array.isArray(last.parts)) {
+    // Walk backwards looking for the most recent tool part.
+    for (let i = last.parts.length - 1; i >= 0; i--) {
+      const part = last.parts[i] as
+        | { type?: string; state?: string; output?: { directive?: unknown } }
+        | undefined;
+      if (
+        part &&
+        typeof part.type === "string" &&
+        part.type.startsWith("tool-")
+      ) {
+        if (part.state === "output-available") {
+          const directive = part.output?.directive;
+          if (
+            typeof directive === "string" &&
+            CLIENT_RENDERED_DIRECTIVES.has(directive)
+          ) {
+            return false;
+          }
+        }
+        break; // only inspect the most recent tool part
+      }
+    }
+  }
+  return lastAssistantMessageIsCompleteWithToolCalls({ messages });
+}
+
 export function Chat({ chatId, initialMessages, initialStep }: ChatProps) {
   const { messages, setMessages, sendMessage, addToolResult, status } = useChat({
     id: chatId,
@@ -184,7 +240,7 @@ export function Chat({ chatId, initialMessages, initialStep }: ChatProps) {
         body: { id, message: messages[messages.length - 1] },
       }),
     }),
-    sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
+    sendAutomaticallyWhen: shouldAutoSend,
   });
 
   const [draft, setDraft] = useState("");
