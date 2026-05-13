@@ -72,8 +72,30 @@ export async function POST(req: Request) {
 
   // Load prior history server-side; the client only sends the last message.
   // The server is the source of truth for chat state.
+  //
+  // MERGE BY ID, NOT APPEND (fix 2026-05-13): when the customer submits a
+  // rendering-tool card (PhoneNameCard, etc.), AI SDK v5's addToolResult
+  // appends a tool-output part to the EXISTING assistant message in the
+  // client's local state, then sendAutomaticallyWhen auto-fires sendMessage.
+  // The "last message" the client sends is the SAME assistant message —
+  // same id, but now with tool output. A naive append produces TWO copies of
+  // that assistant message in `allMessages` (old version without tool output
+  // from DB + new version with tool output from the request), which OpenAI
+  // rejects with "No tool output found for function call <id>" because it
+  // sees the first copy's tool call as unanswered.
+  //
+  // Replacing by id keeps the conversation array well-formed: each assistant
+  // message appears exactly once with the latest version of its parts.
   const previousMessages = await loadChat(chatId);
-  const allMessages: UIMessage[] = [...previousMessages, lastMessage];
+  const allMessages: UIMessage[] = (() => {
+    const existingIdx = previousMessages.findIndex((m) => m.id === lastMessage.id);
+    if (existingIdx >= 0) {
+      const copy = [...previousMessages];
+      copy[existingIdx] = lastMessage;
+      return copy;
+    }
+    return [...previousMessages, lastMessage];
+  })();
 
   // Pick model deterministically per session (simple A/B per design §2).
   const model = pickModelForSession(chatId);
