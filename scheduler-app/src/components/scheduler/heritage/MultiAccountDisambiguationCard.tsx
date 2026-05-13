@@ -17,12 +17,20 @@ import { Button, Card } from "@/components/ui";
  * (the latter routes to NoMatchChoosePathCard).
  */
 
+/**
+ * Multi-account candidate per chat-design.md spec lines 685 + 710:
+ * disambiguation MUST be by VEHICLE ONLY — never by customer name —
+ * to avoid disclosing other household members' identities to a
+ * caller who hasn't yet verified phone ownership via OTP.
+ *
+ * `recent_vehicle` is the customer's most-recently-touched vehicle
+ * (year/make/model). Required for the card to render; if the
+ * orchestrator can't find a recent vehicle, the candidate should
+ * be omitted from the picker entirely.
+ */
 export interface MultiAccountCandidate {
   customer_id: number;
-  first_name: string;
-  last_name?: string | null;
-  /** A friendly identifier — typically the customer's most-recent vehicle. */
-  recent_vehicle?: string | null;
+  recent_vehicle: string;
 }
 
 export interface MultiAccountDisambiguationCardProps {
@@ -78,6 +86,10 @@ export function MultiAccountDisambiguationCard({
       </Card.Description>
 
       <Card.Body>
+        {/* Vehicle-only picker per chat-design.md §3.5c (lines 685 + 710):
+           NEVER show names — only the vehicles each account owns. The
+           customer recognizes their own car; whoever they share the
+           number with stays anonymous. */}
         <ul className="space-y-2">
           {candidates.map((c) => (
             <li key={c.customer_id}>
@@ -86,8 +98,8 @@ export function MultiAccountDisambiguationCard({
                 disabled={pending !== null || disabled}
                 onClick={() => pickAccount(c.customer_id)}
                 className={
-                  "flex w-full flex-col items-start gap-1 rounded-[var(--radius-card)] " +
-                  "border border-rule bg-paper-100 px-4 py-3 text-left " +
+                  "flex w-full items-center gap-3 rounded-[var(--radius-card)] " +
+                  "border border-rule bg-paper-100 px-4 py-4 text-left " +
                   "transition-colors duration-150 ease-out " +
                   "hover:border-brand-burgundy-300 hover:bg-brand-burgundy-50 " +
                   "focus-visible:border-brand-burgundy-500 focus-visible:outline-2 " +
@@ -95,19 +107,10 @@ export function MultiAccountDisambiguationCard({
                   "disabled:cursor-not-allowed disabled:opacity-60"
                 }
               >
+                <span aria-hidden className="text-2xl">🚗</span>
                 <span className="text-[15px] font-medium text-ink">
-                  {c.first_name}
-                  {c.last_name ? ` ${c.last_name.charAt(0)}.` : ""}
+                  {c.recent_vehicle}
                 </span>
-                {c.recent_vehicle ? (
-                  <span className="text-[13px] text-ink-secondary">
-                    Recent vehicle: {c.recent_vehicle}
-                  </span>
-                ) : (
-                  <span className="text-[13px] italic text-ink-tertiary">
-                    No vehicle on file
-                  </span>
-                )}
               </button>
             </li>
           ))}

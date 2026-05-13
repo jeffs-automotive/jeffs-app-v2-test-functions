@@ -427,17 +427,20 @@ export const multiAccountDisambiguationCardSchema = z.object({
     .array(
       z.object({
         customer_id: z.number(),
-        first_name: z.string(),
-        last_name: z.string().nullable().optional(),
-        recent_vehicle: z.string().nullable().optional(),
+        // VEHICLE-ONLY per chat-design.md §3.5c (lines 685 + 710). Names
+        // are NEVER shown on this card — disambiguation MUST be by the
+        // customer's vehicle to avoid disclosing household members'
+        // identities pre-OTP.
+        recent_vehicle: z.string().min(1),
       }),
     )
     .min(2)
     .max(8)
     .describe(
-      "Tekmetric customers sharing the entered phone. Show each with a " +
-        "recent-vehicle hint so the customer can recognize themselves. " +
-        "Capped at 8 — if there are more, the orchestrator escalates.",
+      "Tekmetric customers sharing the entered phone, identified by " +
+        "their recent vehicle ONLY (no names). Capped at 8 — if more, " +
+        "the orchestrator escalates. Skip candidates with no vehicle " +
+        "on file (rare; they can't be disambiguated by this card).",
     ),
   attempted_phone_last_four: z.string().nullable().optional(),
 });

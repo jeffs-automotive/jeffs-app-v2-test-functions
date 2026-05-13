@@ -1156,13 +1156,17 @@ function PartRenderer({
     }
 
     case "show_multi_account_disambiguation": {
+      // Vehicle-only per chat-design.md §3.5c — drop any candidate that
+      // lacks a recent_vehicle (the card has nothing to render for them).
       const candidates = Array.isArray(tp.input?.candidates)
         ? (tp.input.candidates as Array<{
             customer_id: number;
-            first_name: string;
-            last_name?: string | null;
-            recent_vehicle?: string | null;
-          }>)
+            recent_vehicle: string;
+          }>).filter(
+            (c) =>
+              typeof c.recent_vehicle === "string" &&
+              c.recent_vehicle.trim().length > 0,
+          )
         : [];
       const attemptedLast4 =
         typeof tp.input?.attempted_phone_last_four === "string"

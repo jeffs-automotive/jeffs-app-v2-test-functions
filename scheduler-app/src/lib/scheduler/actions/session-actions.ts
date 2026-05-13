@@ -908,21 +908,55 @@ export async function submitPartialVerificationChoice(args: {
       };
     }
 
-    // proceed_as_partial — mark identity_verification_level=partial and
-    // continue through vehicle pick. The orchestrator's downstream
-    // sensitive-action gates can see this flag and require a more
-    // careful handoff (e.g., disable hard-delete-pending appointments).
+    // proceed_as_partial — per chat-design.md spec line 217 + 285 + 918:
+    //   "partial = no phone match BUT name match found (PII suppressed;
+    //    no edits allowed; appointment-only access)"
+    //   "Tekmetric PATCH on customer: BLOCKED (no customer-record writes)"
+    //   "blocked_actions: ['edit_customer_info', 'patch_customer']"
+    //
+    // So partial users SKIP CustomerInfoEditCard entirely and go straight
+    // to vehicle_pick (Step 6). The orchestrator's downstream sensitive-
+    // action gates read identity_verification_level='partial' and refuse
+    // any PATCH or edit operation.
+    //
+    // We need a vehicles list before rendering show_vehicle_picker, so
+    // invoke the orchestrator with intent_type=lookup_vehicles. customer_id
+    // was stashed onto the row earlier by scheduler-step2-direct when it
+    // emitted the partial gate.
     await writeSession({
       chatId: args.chatId,
       updates: { identity_verification_level: "partial" },
-      nextStep: "customer_info_edit",
+      nextStep: "vehicle_pick",
+    });
+    const startedAt = Date.now();
+    const result = await consultOrchestrator({
+      session_id: args.chatId,
+      context:
+        `Customer accepted the partial-verification gate. Their\n` +
+        `identity_verification_level is 'partial' — PII suppressed, no\n` +
+        `Tekmetric PATCH allowed (spec line 285). Tool chain:\n` +
+        `  1. lookup_vehicles_for_customer({ customer_id: <session_metadata.customer_id> })\n` +
+        `  2. Emit directive 'show_vehicle_picker' with the vehicle list.`,
+      intent_type: "lookup_vehicles",
+    });
+    await logAudit({
+      session_id: args.chatId,
+      step: "vehicle_pick",
+      event_type: "tool_called",
+      event_detail: {
+        tool: "lookup_vehicles_for_customer",
+        partial_verification: true,
+        directive: result.directive,
+      },
+      latency_ms: Date.now() - startedAt,
     });
     return {
-      ok: true,
-      directive: "show_customer_info_edit",
-      data: {},
-      bubble_copy: getBubbleCopy("otp_to_info_edit"),
-      current_step: "customer_info_edit",
+      ok: result.directive !== "tool_error",
+      directive: result.directive ?? "show_vehicle_picker",
+      data: result.data,
+      flags: result.flags,
+      bubble_copy: getBubbleCopy("to_vehicle_pick"),
+      current_step: "vehicle_pick",
     };
   } catch (e) {
     return tooErrResult(e, "partial_verification_gate");

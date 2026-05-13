@@ -116,30 +116,27 @@ export function PartialVerificationGateCard({
     );
   }
 
-  // matched_axis === 'phone' — the phone is on file but the name didn't
-  // match. Could be a household member or guest.
-  const onFileName = matched_first_name?.trim();
+  // matched_axis === 'phone' — Per chat-design.md spec, this branch
+  // shouldn't reach the card anymore (scheduler-step2-direct now sends
+  // OTP for any phone hit; name-mismatch is verified by OTP, not by
+  // surfacing a partial gate). Leaving the branch as a safety net in
+  // case orchestrator-side logic ever surfaces matched_axis='phone'.
   return (
     <Card aria-labelledby="partial-verify-title">
       <Card.Eyebrow>Step 3.5 · Quick check</Card.Eyebrow>
       <Card.Title id="partial-verify-title">
-        {onFileName
-          ? `That number's on file for ${onFileName} — is that you?`
-          : "We found that number — but the name doesn't match."}
+        We can&apos;t fully verify this combination from here.
       </Card.Title>
       <Card.Description>
-        {echoName
-          ? `You said your name's ${echoName}. `
-          : ""}
-        If you&apos;re someone else from the same household or a guest
-        booking on a friend&apos;s phone, just let us know — we&apos;ll set
-        you up fresh.
+        {echoName ? `You said your name's ${echoName}. ` : ""}
+        To protect everyone&apos;s information, we&apos;ll need a different
+        phone or to call us directly.
       </Card.Description>
 
       <Card.Body>
         {attempted_phone_last_four ? (
           <p className="text-[13px] italic text-ink-tertiary">
-            Phone on file: ending in {attempted_phone_last_four}
+            Phone ending in {attempted_phone_last_four}
           </p>
         ) : null}
       </Card.Body>

@@ -43,7 +43,6 @@ import {
   type TekmetricCustomer,
 } from "../_shared/tools/scheduler-customer.ts";
 import { sendOtp } from "../_shared/tools/scheduler-otp.ts";
-import { isFuzzyNameMatch } from "../_shared/levenshtein.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SHOP_ID = parseInt(
@@ -131,25 +130,6 @@ async function recentVehicleLabel(
   }
 }
 
-function customerNameMatches(
-  customer: TekmetricCustomer,
-  firstName: string,
-  lastName: string,
-): { firstMatches: boolean; lastMatches: boolean } {
-  const cFirst = (customer.firstName ?? "").trim();
-  const cLast = (customer.lastName ?? "").trim();
-  return {
-    firstMatches:
-      firstName.trim().length > 0 &&
-      cFirst.length > 0 &&
-      isFuzzyNameMatch(firstName, cFirst, 2),
-    lastMatches:
-      lastName.trim().length > 0 &&
-      cLast.length > 0 &&
-      isFuzzyNameMatch(lastName, cLast, 2),
-  };
-}
-
 interface Decision {
   directive: string;
   data: Record<string, unknown>;
@@ -157,8 +137,23 @@ interface Decision {
 }
 
 /**
- * Apply the §4.3 reconciliation matrix deterministically.
- * Branches based on (phone-hit count) × (self-id bucket) × (name match).
+ * Apply the §4.3 reconciliation matrix deterministically per chat-design.md
+ * lines 680-690.
+ *
+ *   phone hits >= 1  → 'full' verification (OTP). Name mismatch is OK at
+ *                      this layer — the OTP IS the proof of phone ownership.
+ *     - 1 hit  → send_otp_first directly (load that customer on success)
+ *     - 2+ hits → show_multi_account_disambiguation (vehicle-only per spec
+ *                 line 685 + 710 — "VEHICLES only", "by VEHICLE, not by
+ *                 customer name"; PII-protective)
+ *
+ *   phone hits == 0  → try fuzzy name lookup as typo-tolerant fallback
+ *     - 1 name match (returning/unsure bucket) → 'partial' verification gate
+ *       (no OTP; name-only match means appointment-only access per spec
+ *       line 217)
+ *     - 2+ name matches → escalate (security risk to disclose; spec line 687)
+ *     - 0 name matches + returning → no-match choose path
+ *     - 0 name matches + new/unsure → new customer form
  */
 async function decide(
   input: RequestBody,
@@ -167,10 +162,8 @@ async function decide(
   const { first_name, last_name, customer_self_identified } = input;
   const count = hits.length;
 
-  // 0 phone hits — branch on bucket
+  // 0 phone hits — try fuzzy name lookup, then branch on bucket
   if (count === 0) {
-    // For 'returning' or 'unsure' buckets, try fuzzy name lookup as a
-    // typo-tolerant fallback (§4.3 — "Jefery" → "Jeffrey").
     if (
       customer_self_identified !== "new" &&
       first_name.trim().length > 0 &&
@@ -182,20 +175,22 @@ async function decide(
           max_distance: 2,
         });
         if (byName.count === 1) {
-          // Found by name, phone mismatch → partial verify gate.
+          // Phone=0, Name=1 → 'partial' verification per spec line 217.
           return {
             directive: "show_partial_verification_gate",
             data: {
               matched_axis: "name",
               attempted_first_name: first_name,
               attempted_phone_last_four: input.phone_e164.slice(-4),
-              matched_first_name: byName.customers[0]?.firstName ?? null,
+              // matched_first_name suppressed: spec line 217 says PII
+              // suppressed at partial-verification. The card knows it's
+              // matched but doesn't expose the other customer's name.
             },
             match_customer_id: byName.customers[0]?.id,
           };
         }
         if (byName.count > 1) {
-          // Multiple name matches → escalate (suspicious + ambiguous).
+          // Multiple name matches with no phone → escalate (spec line 687).
           return {
             directive: "show_escalation_card",
             data: {
@@ -205,7 +200,7 @@ async function decide(
           };
         }
       } catch {
-        // Tekmetric lookup failed — fall through to the no-match path below.
+        // Tekmetric lookup failed — fall through.
       }
     }
 
@@ -218,69 +213,31 @@ async function decide(
         },
       };
     }
-    // 'new' or 'unsure' + 0 hits → new customer form
     return {
       directive: "show_new_customer_form",
       data: { mode: "full" },
     };
   }
 
-  // 1 phone hit — check name match for partial-verify edge case
+  // 1 phone hit → full verification. Send OTP. Name mismatch irrelevant
+  // — the OTP is the proof. Customer might type "John" when Tekmetric
+  // has "Jonathan"; that's fine. After OTP success the row binds to the
+  // Tekmetric customer_id regardless of the typed name.
   if (count === 1) {
-    const c = hits[0]!;
-    const { firstMatches, lastMatches } = customerNameMatches(
-      c,
-      first_name,
-      last_name,
-    );
-    const namePartial =
-      first_name.trim().length > 0 || last_name.trim().length > 0;
-
-    // Phone matches; name matches (or no name to compare) → send OTP.
-    if (!namePartial || (firstMatches && lastMatches)) {
-      return {
-        directive: "send_otp_first",
-        data: {},
-        match_customer_id: c.id,
-      };
-    }
-    // Phone matches but name doesn't → partial verify gate.
-    return {
-      directive: "show_partial_verification_gate",
-      data: {
-        matched_axis: "phone",
-        attempted_first_name: first_name,
-        attempted_phone_last_four: input.phone_e164.slice(-4),
-        matched_first_name: c.firstName,
-      },
-      match_customer_id: c.id,
-    };
-  }
-
-  // 2+ phone hits — multi-account disambig (or send OTP if exactly one
-  // name-matches; rare but happens with married couples)
-  const nameMatched = hits.filter((c) => {
-    const { firstMatches, lastMatches } = customerNameMatches(
-      c,
-      first_name,
-      last_name,
-    );
-    return firstMatches && lastMatches;
-  });
-  if (nameMatched.length === 1) {
     return {
       directive: "send_otp_first",
       data: {},
-      match_customer_id: nameMatched[0]!.id,
+      match_customer_id: hits[0]!.id,
     };
   }
 
-  // Build the candidate list for the picker (capped at 8 per the card schema).
+  // 2+ phone hits → vehicle-only disambig (spec line 685, 710).
+  // Drop names entirely from the candidate output to avoid leaking
+  // other household members' identities.
   const candidates = await Promise.all(
     hits.slice(0, 8).map(async (c) => ({
       customer_id: c.id,
-      first_name: c.firstName ?? "",
-      last_name: c.lastName ?? "",
+      // Vehicle is the disambiguation handle per spec; no name fields.
       recent_vehicle: await recentVehicleLabel(c.id),
     })),
   );
