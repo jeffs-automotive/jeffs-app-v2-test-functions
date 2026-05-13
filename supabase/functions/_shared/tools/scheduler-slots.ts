@@ -679,8 +679,30 @@ export async function holdAppointmentSlot(
       }
       throw new Error(`hold_waiter_slot RPC failed: ${error.message}`);
     }
-    const holdId = data as string;
-    const expiresAt = new Date(Date.now() + 10 * 60_000).toISOString();
+    // hold_waiter_slot RETURNS TABLE(hold_id, expires_at, ok, reason).
+    // PostgREST returns this as an array of rows (always — even for
+    // single-row results). The prior code cast `data as string` directly,
+    // which made holdId the whole array; the edge function then tried to
+    // store the array into customer_chat_sessions.hold_token (TEXT column)
+    // and the value silently dropped to NULL. Verified live 2026-05-13
+    // via the hold_slot_result audit event showing hold_id=[{...}].
+    const rows = Array.isArray(data) ? data : data ? [data] : [];
+    const row = rows[0] as
+      | { hold_id?: string; expires_at?: string; ok?: boolean; reason?: string | null }
+      | undefined;
+    if (!row || row.ok === false) {
+      const reason = row?.reason ?? "hold_failed";
+      if (reason === "slot_full") throw new Error("slot_just_taken");
+      throw new Error(`hold_waiter_slot RPC returned not-ok: ${reason}`);
+    }
+    if (typeof row.hold_id !== "string") {
+      throw new Error("hold_waiter_slot RPC returned no hold_id");
+    }
+    const holdId = row.hold_id;
+    const expiresAt =
+      typeof row.expires_at === "string"
+        ? row.expires_at
+        : new Date(Date.now() + 10 * 60_000).toISOString();
     return { hold_id: holdId, expires_at: expiresAt };
   }
 
