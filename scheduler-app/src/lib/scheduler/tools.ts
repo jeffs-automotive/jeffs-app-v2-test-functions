@@ -386,6 +386,32 @@ export const customerNotesCardSchema = z.object({
 
 export const customerQuestionCardSchema = z.object({});
 
+export const completedCardSchema = z.object({
+  first_name: z
+    .string()
+    .nullable()
+    .optional()
+    .describe(
+      "Customer's verified or entered first name for the warm greeting " +
+        '("You\'re all set, <name>.").',
+    ),
+  appointment_label: z
+    .string()
+    .nullable()
+    .optional()
+    .describe(
+      "Human-readable date+time recap, e.g. 'Tue, May 14 at 9:00 AM'. " +
+        "Optional; the card falls back to 'soon' if missing.",
+    ),
+  allow_schedule_another: z
+    .boolean()
+    .optional()
+    .describe(
+      "Defaults true. Pass false to hide the 'Schedule another' CTA " +
+        "(e.g. terminal session that should not loop).",
+    ),
+});
+
 export const summaryCardSchema = z.object({
   hold_id: z
     .string()
@@ -566,6 +592,15 @@ export const showSummaryCard = tool({
   inputSchema: summaryCardSchema,
 });
 
+export const showCompletedCard = tool({
+  description:
+    "STEP 10.5 — Render the final 'all done' card after Step 10.3 question " +
+    "submit. Warm Jeff-voice thanks + appointment recap + 'Schedule another' " +
+    "CTA per chat-design.md §10.5. Terminal state — DO NOT render again on " +
+    "the same session.",
+  inputSchema: completedCardSchema,
+});
+
 // =====================================================================
 // Bundle the tools as a registry the route handler passes to streamText
 // =====================================================================
@@ -594,6 +629,7 @@ export function makeChatAgentTools(args: { session_id: string }) {
     show_summary_card: showSummaryCard,
     show_customer_notes_card: showCustomerNotesCard,
     show_customer_question_card: showCustomerQuestionCard,
+    show_completed_card: showCompletedCard,
     show_escalation_card: showEscalationCard,
   } as const;
 }

@@ -310,15 +310,22 @@ export async function sendOtp(
 
   const sendResult = await sendOtpViaSmsProvider(args.phone_e164, code);
   if (!sendResult.ok) {
-    // Real-send failure: mark the row consumed so it doesn't count against
-    // the rate-limit window AND so a retry triggers a fresh code generation
-    // rather than letting the customer try to verify against an undelivered
-    // code. The customer (or chat agent) is told to retry via the
-    // 'send_failed' error.
-    await sb
-      .from("otp_codes")
-      .update({ consumed_at: new Date().toISOString() })
-      .eq("id", insertedRow.id as string);
+    // Per audit I-4 (2026-05-13): differentiate provider failure types.
+    // - 'auth' / 'config' / 'network' / 'provider_error' / 'rate_limit' are
+    //   transient OR our-side problems. Consume the row so a retry generates
+    //   a fresh code (matches prior behavior). Customer hourly quota is NOT
+    //   penalized — this is a system issue, not customer behavior.
+    // - 'invalid_number' is a customer-side issue (bad phone) AND letting it
+    //   loop without consuming would allow infinite retries burning Telnyx
+    //   budget. Keep the row + log; downstream rate limit kicks in after
+    //   MAX_ACTIVE_CODES_PER_HOUR=3 attempts.
+    const isCustomerSideFailure = sendResult.error_code === "invalid_number";
+    if (!isCustomerSideFailure) {
+      await sb
+        .from("otp_codes")
+        .update({ consumed_at: new Date().toISOString() })
+        .eq("id", insertedRow.id as string);
+    }
     console.error(
       JSON.stringify({
         level: "error",
@@ -326,6 +333,7 @@ export async function sendOtp(
         provider_error_code: sendResult.error_code,
         detail: sendResult.detail,
         to_last_four: args.phone_e164.slice(-4),
+        consumed: !isCustomerSideFailure,
       }),
     );
     return {

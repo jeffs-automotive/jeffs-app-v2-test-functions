@@ -79,6 +79,8 @@ const DIRECTIVE_TO_TOOL_NAME: Record<string, string> = {
   // post-confirmation
   show_customer_notes_card: "show_customer_notes_card",
   show_customer_question_card: "show_customer_question_card",
+  show_completed_card: "show_completed_card",
+  session_complete: "show_completed_card",
 
   // terminal / error
   escalate: "show_escalation_card",

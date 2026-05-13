@@ -219,14 +219,37 @@ export async function submitPhoneName(args: {
     // Invoke orchestrator: do Tekmetric lookup + reconciliation matrix +
     // send OTP. Orchestrator-direct picks the right directive based on
     // (phone hits) × (self-id bucket) per chat-design.md §4.3.
+    //
+    // NOTE — design audit B-1 (2026-05-13) recommends inlining the
+    // Telnyx OTP send + Tekmetric lookup directly in this Server Action
+    // (NO LLM hop on Step 2, per locked design §605). That's a Phase 1.5
+    // refactor — it requires either duplicating Telnyx env vars to Vercel
+    // OR creating a deterministic `scheduler-step2-direct` edge function.
+    // For now we strengthen the specialist contract via explicit tool-
+    // chain instructions in `context` + structured `hints` so Haiku 4.5
+    // doesn't have to infer what to do. Closes edge-audit I-1 partially.
     const startedAt = Date.now();
     const result = await consultOrchestrator({
       session_id: args.chatId,
       context:
-        `Customer submitted Step 2 (phone+name). Entered ` +
-        `${args.first_name} ${args.last_name} at ${args.phone_e164}. Run ` +
-        `the §4.3 reconciliation: lookup_customer_by_phone, then decide ` +
-        `(send_otp_first / identity_match_required / show_new_customer_form).`,
+        `Customer submitted Step 2 (phone+name). The row already has\n` +
+        `entered_first_name + entered_last_name + phone_e164 + self_id_bucket\n` +
+        `written by submitPhoneName — see the session_metadata in your\n` +
+        `system prompt for the authoritative values. Tool chain:\n` +
+        `  1. lookup_customer_by_phone({ phone_e164: <session_metadata.phone_e164> })\n` +
+        `  2. Apply §4.3 reconciliation matrix:\n` +
+        `       returning + 1 hit  → send_otp → emit 'send_otp_first'\n` +
+        `       returning + 0 hits → emit 'identity_match_required'\n` +
+        `       new       + 0 hits → emit 'show_new_customer_form'\n` +
+        `       new       + N hits → emit 'identity_match_required'\n` +
+        `                            (treat as suspicious; escalate)\n` +
+        `       unsure    + 1 hit  → send_otp → emit 'send_otp_first'\n` +
+        `                            (verify, then disambiguate)\n` +
+        `       unsure    + 0 hits → emit 'show_new_customer_form'\n` +
+        `       N hits + name match→ send_otp → emit 'send_otp_first'\n` +
+        `       N hits + no match  → emit 'identity_match_required'\n` +
+        `  3. NEVER emit 'send_otp_first' without first calling send_otp —\n` +
+        `     the directive is only valid AFTER the SMS is actually queued.`,
       hints: {
         first_name: args.first_name,
         last_name: args.last_name,
@@ -289,8 +312,6 @@ export async function submitOtp(args: {
   code: string;
 }): Promise<SessionActionResult> {
   try {
-    // Note: attempts column is incremented by the orchestrator/verify_otp
-    // tool, not here. We only log + invoke.
     await logAudit({
       session_id: args.chatId,
       step: "otp_pending",
@@ -298,11 +319,39 @@ export async function submitOtp(args: {
       event_detail: { code_length: args.code.length },
     });
 
+    // Pre-read the session row so the orchestrator/specialist context can
+    // be enriched (closes edge audit finding I-3). The specialist
+    // previously got "Customer submitted Step 3 OTP code. Verify it." +
+    // hints.code — it had to figure out phone_e164 + the next-step tool
+    // chain from a one-sentence context. Now we hand it the explicit
+    // tool chain to execute.
+    const supabase = createSupabaseAdminClient();
+    const { data: priorRow } = await supabase
+      .from("customer_chat_sessions")
+      .select("phone_e164, customer_self_identified, otp_attempts")
+      .eq("id", args.chatId)
+      .maybeSingle();
+
     const startedAt = Date.now();
     const result = await consultOrchestrator({
       session_id: args.chatId,
-      context: `Customer submitted Step 3 OTP code. Verify it.`,
-      hints: { code: args.code },
+      context:
+        `Customer submitted Step 3 OTP code (6 digits). Tool chain:\n` +
+        `  1. verify_otp({ phone_e164: <from session_metadata>, code: <hints.code> })\n` +
+        `  2. If verified=true → get_appointment_eligibility → lookup_vehicles_for_customer\n` +
+        `     → emit directive 'show_vehicle_picker' with vehicles+ineligibility.\n` +
+        `  3. If verified=false and error='invalid_code' → emit 'show_otp_input'\n` +
+        `     with attempts_remaining in data. After 3 cumulative failures\n` +
+        `     across the session, emit 'show_escalation_card'.\n` +
+        `  4. If verified=false and error='expired' → emit 'show_otp_input'\n` +
+        `     with a fresh send_otp call first.`,
+      hints: {
+        code: args.code,
+        phone_e164: priorRow?.phone_e164 ?? null,
+        customer_self_identified:
+          priorRow?.customer_self_identified ?? null,
+        session_otp_attempts_before: priorRow?.otp_attempts ?? 0,
+      },
       intent_type: "verify_otp",
     });
     await logAudit({
@@ -312,6 +361,31 @@ export async function submitOtp(args: {
       event_detail: { tool: "verify_otp", directive: result.directive },
       latency_ms: Date.now() - startedAt,
     });
+
+    // Per chat-design.md §3 (Step 3 OTP) + audit M-3: bump the
+    // session-level otp_attempts counter on a wrong/expired/no-active
+    // result. otp_codes.attempts counts per-code; customer_chat_sessions
+    // .otp_attempts counts per-session, which is what the 3-strike
+    // escalation logic and the customer-facing "X tries left" UX read.
+    // The specialist already increments otp_codes via verify_otp; we
+    // mirror at session level here.
+    const failedDirectives = new Set([
+      "tool_error",
+      "show_escalation_card",
+      "escalate",
+    ]);
+    const stayedAtOtp = result.directive === "show_otp_input";
+    const escalated = failedDirectives.has(result.directive ?? "");
+    if (stayedAtOtp || escalated) {
+      const nextAttempts = (priorRow?.otp_attempts ?? 0) + 1;
+      await supabase
+        .from("customer_chat_sessions")
+        .update({
+          otp_attempts: nextAttempts,
+          last_active_at: new Date().toISOString(),
+        })
+        .eq("id", args.chatId);
+    }
 
     return {
       ok: result.directive !== "tool_error",
@@ -957,10 +1031,58 @@ export async function submitCustomerQuestion(args: {
       latency_ms: Date.now() - startedAt,
     });
 
+    // Read confirmed appointment details for the completed card's recap.
+    // Best-effort — if the row read fails the card still renders, just
+    // without the friendly date/time recap.
+    const supabase = createSupabaseAdminClient();
+    const { data: row } = await supabase
+      .from("customer_chat_sessions")
+      .select(
+        "verified_first_name, entered_first_name, appointment_date, appointment_time, appointment_type",
+      )
+      .eq("id", args.chatId)
+      .maybeSingle();
+
+    const firstName =
+      (row?.verified_first_name as string | null) ??
+      (row?.entered_first_name as string | null) ??
+      null;
+    const dateStr = row?.appointment_date as string | null | undefined;
+    const timeStr = row?.appointment_time as string | null | undefined;
+    const apptType = row?.appointment_type as string | null | undefined;
+
+    let appointmentLabel: string | null = null;
+    if (dateStr) {
+      try {
+        const d = new Date(`${dateStr}T${timeStr ?? "12:00"}:00`);
+        const dayLabel = d.toLocaleDateString("en-US", {
+          weekday: "short",
+          month: "short",
+          day: "numeric",
+        });
+        // Hide time for dropoff per chat-design.md §10 (no time on drop-off).
+        if (apptType === "waiter" && timeStr) {
+          const timeLabel = d.toLocaleTimeString("en-US", {
+            hour: "numeric",
+            minute: "2-digit",
+          });
+          appointmentLabel = `${dayLabel} at ${timeLabel}`;
+        } else {
+          appointmentLabel = dayLabel;
+        }
+      } catch {
+        appointmentLabel = null;
+      }
+    }
+
     return {
       ok: true,
-      directive: "continue",
-      data: { message: "session_complete" },
+      directive: "show_completed_card",
+      data: {
+        first_name: firstName,
+        appointment_label: appointmentLabel,
+        allow_schedule_another: true,
+      },
       bubble_copy: getBubbleCopy("session_complete"),
       current_step: "completed",
     };

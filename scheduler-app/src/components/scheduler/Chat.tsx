@@ -40,6 +40,7 @@ import {
   AppointmentTypeCard,
   ChatBubble,
   ClarificationQuestionCard,
+  CompletedCard,
   CustomerNotesCard,
   CustomerQuestionCard,
   GreetingCard,
@@ -309,6 +310,22 @@ export function Chat({ chatId, initialMessages }: ChatProps) {
               : null,
           });
           break;
+        case "show_completed_card": {
+          // Terminal state — two actions: "schedule_another" (restart via
+          // submitStartOver, which clears the row + reloads) or "close"
+          // (no-op acknowledgement; the customer typically just closes the
+          // tab). No orchestrator call needed.
+          if (cardOutput.action === "schedule_another") {
+            result = await submitStartOver({ chatId });
+          } else {
+            result = {
+              ok: true,
+              directive: "continue",
+              data: { action: cardOutput.action ?? "close" },
+            };
+          }
+          break;
+        }
         case "show_escalation_card":
           // No row change beyond acknowledgement; just thread through.
           result = {
@@ -903,6 +920,37 @@ function PartRenderer({
         <CustomerQuestionCard
           disabled={disabled}
           onSubmit={(out) => submit(out)}
+        />
+      );
+    }
+
+    case "show_completed_card": {
+      const firstName =
+        typeof tp.input?.first_name === "string"
+          ? tp.input.first_name
+          : tp.input?.first_name === null
+            ? null
+            : undefined;
+      const apptLabel =
+        typeof tp.input?.appointment_label === "string"
+          ? tp.input.appointment_label
+          : tp.input?.appointment_label === null
+            ? null
+            : undefined;
+      const allowAnother =
+        tp.input?.allow_schedule_another === false ? false : true;
+      return (
+        <CompletedCard
+          first_name={firstName}
+          appointment_label={apptLabel}
+          allow_schedule_another={allowAnother}
+          disabled={disabled}
+          onScheduleAnother={() =>
+            submit({ action: "schedule_another" } as Record<string, unknown>)
+          }
+          onClose={() =>
+            submit({ action: "close" } as Record<string, unknown>)
+          }
         />
       );
     }

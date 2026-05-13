@@ -26,6 +26,9 @@ export type { CustomerQuestionCardProps } from "./CustomerQuestionCard";
 export { SummaryCard } from "./SummaryCard";
 export type { SummaryCardProps } from "./SummaryCard";
 
+export { CompletedCard } from "./CompletedCard";
+export type { CompletedCardProps } from "./CompletedCard";
+
 export { PhoneNameCard } from "./PhoneNameCard";
 export type { PhoneNameCardProps } from "./PhoneNameCard";
 
