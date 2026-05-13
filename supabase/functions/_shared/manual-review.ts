@@ -68,9 +68,10 @@ export interface IssuedManualReview {
   email_error?: string;
   /**
    * True when this call INSERTED a new row + sent a fresh email.
-   * False when a prior review existed for this `context.ro_id` and the call
-   * short-circuited per the dedup gate below. Caller should log differently
-   * in each case (e.g. action="manual_review_issued" vs action="noop").
+   * False when a prior review for the SAME category + SAME ro_id existed
+   * and the call short-circuited per the dedup gate below. Caller should
+   * log differently in each case (e.g. action="manual_review_issued" vs
+   * action="noop").
    */
   created: boolean;
   /**
@@ -85,25 +86,35 @@ export interface IssuedManualReview {
 
 /**
  * Atomic: insert keytag_manual_reviews row + write audit log + send email,
- * OR short-circuit (no insert, no email) if a prior review already exists
- * for the same `context.ro_id`.
+ * OR short-circuit (no insert, no email) if a prior review of the SAME
+ * category already exists for the same `context.ro_id`.
  *
- * Dedup gate (added 2026-05-13 per Chris's directive after a 96-row daily
- * email blast):
+ * Dedup gate (2026-05-13, category-aware per Chris's directive):
  *
  *   1. If `context.ro_id` is provided AND any prior `keytag_manual_reviews`
- *      row exists for that ro_id (ANY category, resolved or unresolved),
+ *      row exists for THIS ro_id AND THIS category (resolved or pending),
  *      this function returns the prior row's code with `created: false`
  *      and does NOT insert a new row, does NOT send an email.
  *
- *   2. The check is by ro_id only — not category — so cross-category
- *      duplicates are also suppressed. (Example: an ARN issued yesterday
- *      and a DRF detected today for the same RO would dedup. That's
- *      intentional — once the team has touched a RO once, the cron
- *      shouldn't pile on with a new email for a different anomaly facet
- *      until the prior review is reviewed/resolved.)
+ *   2. The check is scoped to (ro_id, category) — cross-category anomalies
+ *      for the same RO are NOT suppressed. Each of the 5 categories
+ *      represents a structurally different anomaly with a different
+ *      resolution semantic, so each gets its own dedup namespace:
+ *        - ARN (`ar_no_prior_tag`)     : "what tag is on these A/R keys"
+ *        - ORP (`orphan_release`)      : "should we release this tag"
+ *        - DRF (`work_approved_drift`) : "what tag for this WIP re-entry"
+ *        - REG (`ar_regression`)       : "RO went A/R → WIP, what tag"
+ *        - PAF (`tekmetric_patch_fail`): "DB↔Tekmetric sync drift"
+ *      An RO that's had its ARN resolved can still legitimately need a
+ *      DRF or PAF review later — those represent NEW anomalies, not
+ *      duplicates of the resolved one.
  *
- *   3. Callers that need to know "was this a fresh issuance or a kept
+ *   3. Within a category, "resolved" means permanent — no auto re-issuance
+ *      for the same RO + same category, regardless of how long ago the
+ *      resolution happened. To re-open, an operator must either UPDATE
+ *      resolved_at back to NULL or insert a new row manually.
+ *
+ *   4. Callers that need to know "was this a fresh issuance or a kept
  *      existing one?" check `result.created`. The existing 7 call sites
  *      log `manual_review_issued` when created=true and `noop` (or a
  *      "kept existing review" detail string) when created=false.
@@ -112,17 +123,30 @@ export interface IssuedManualReview {
  * categories that don't bind to a specific RO), the dedup is skipped and
  * a fresh row is always created. There are no such categories today, but
  * the gate is defensively conditional.
+ *
+ * Performance: the dedup query is supported by the composite functional
+ * index `keytag_manual_reviews_category_ro_id_idx` on
+ * `(category, (context->>'ro_id'), issued_at DESC)` — see migration
+ * `20260513XXXXXX_keytag_manual_reviews_category_ro_id_index.sql`.
+ *
+ * Known limitation (not addressed here): between the INSERT (step 2) and
+ * the Resend send (step 3), the row exists with `email_sent_at = NULL`.
+ * If an advisor manages to resolve the row in that ~ms window via Claude
+ * Desktop, the email still sends. Practically impossible in normal ops;
+ * a bulletproof fix would re-query resolved_at right before the Resend
+ * POST. Not worth the extra roundtrip today.
  */
 export async function issueManualReview(args: IssueManualReviewArgs): Promise<IssuedManualReview> {
   const { sb, category, context, options, issueSummary, auditSource } = args;
   const prefix = CATEGORY_PREFIX[category];
 
-  // ── Dedup gate by ro_id ───────────────────────────────────────────────
+  // ── Dedup gate by (category, ro_id) ────────────────────────────────────
   const roId = context.ro_id ?? null;
   if (roId !== null) {
     const { data: existing, error: dedupErr } = await sb
       .from("keytag_manual_reviews")
       .select("id, code, resolved_at, resolution_audit_log_id, category")
+      .eq("category", category)
       .filter("context->>ro_id", "eq", String(roId))
       .order("issued_at", { ascending: false })
       .limit(1)
@@ -131,9 +155,9 @@ export async function issueManualReview(args: IssueManualReviewArgs): Promise<Is
       throw new Error(`keytag_manual_reviews dedup lookup failed: ${dedupErr.message}`);
     }
     if (existing) {
-      // Prior review exists for this RO. Short-circuit: no INSERT, no email.
-      // The original row's email was sent at its issuance time; the team
-      // already has it in their inbox or has resolved it.
+      // Prior review for this (category, ro_id) exists. Short-circuit: no
+      // INSERT, no email. The original row's email was sent at its issuance
+      // time; the team already has it in their inbox or has resolved it.
       return {
         code: existing.code as string,
         review_id: existing.id as number,
