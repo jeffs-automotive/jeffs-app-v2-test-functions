@@ -1936,6 +1936,16 @@ export async function submitWaiterTime(args: {
       vehicle_id:
         typeof row?.vehicle_id === "number" ? row.vehicle_id : undefined,
     });
+    await logAudit({
+      session_id: args.chatId,
+      step: "waiter_time_pick",
+      event_type: "hold_slot_result",
+      event_detail: {
+        ok: hold.ok,
+        hold_id: hold.hold_id ?? null,
+        error: hold.error ?? null,
+      },
+    });
     if (!hold.ok) {
       // 'slot_just_taken' → re-show waiter time picker with refreshed list.
       const refreshed = await bookingListWaiterTimes({
