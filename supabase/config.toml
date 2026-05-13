@@ -533,6 +533,18 @@ verify_jwt = false
 import_map = "./functions/scheduler-step2-direct/deno.json"
 entrypoint = "./functions/scheduler-step2-direct/index.ts"
 
+[functions.scheduler-booking-direct]
+enabled = true
+# Deterministic booking-ladder endpoint per F5-full refactor 2026-05-13 round 2.
+# Covers list_waiter_times + hold_slot + confirm_booking — same shape as
+# scheduler-step2-direct but for the rest of the wizard. Replaces the brittle
+# scheduler-specialist generateText+Output.object path that timed out at 30s
+# during submitDate (Sentry JEFFS-APP-V2-TEST-FUNCTIONS-2).
+# Auth: same Pattern A bearer + verify_jwt=false rationale as step2-direct.
+verify_jwt = false
+import_map = "./functions/scheduler-booking-direct/deno.json"
+entrypoint = "./functions/scheduler-booking-direct/index.ts"
+
 [functions.transcript-dispatcher]
 enabled = true
 # Cron-driven backstop + on-demand dispatcher. Triggered by Supabase Cron and by

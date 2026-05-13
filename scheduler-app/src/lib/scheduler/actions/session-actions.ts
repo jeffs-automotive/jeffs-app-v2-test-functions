@@ -39,6 +39,13 @@ import {
   OrchestratorError,
 } from "@/lib/scheduler/orchestrator-client";
 import {
+  listWaiterTimes as bookingListWaiterTimes,
+  holdSlot as bookingHoldSlot,
+  confirmBooking as bookingConfirmBooking,
+  type NewCustomerPayload,
+  type NewVehiclePayload,
+} from "@/lib/scheduler/booking-direct-client";
+import {
   callStep2Direct,
   Step2DirectError,
 } from "@/lib/scheduler/step2-direct-client";
@@ -1799,7 +1806,7 @@ export async function submitDate(args: {
     const supabase = createSupabaseAdminClient();
     const { data: row } = await supabase
       .from("customer_chat_sessions")
-      .select("appointment_type")
+      .select("appointment_type, customer_id, vehicle_id")
       .eq("id", args.chatId)
       .maybeSingle();
     const type = (row?.appointment_type ?? "dropoff") as "waiter" | "dropoff";
@@ -1817,33 +1824,66 @@ export async function submitDate(args: {
     });
 
     if (type === "waiter") {
-      // Ask orchestrator for available times on this date.
-      const result = await consultOrchestrator({
+      // Deterministic waiter-time fetch via the booking-direct edge function.
+      // Replaces the prior consultOrchestrator call that timed out at 30 s
+      // (Sentry JEFFS-APP-V2-TEST-FUNCTIONS-2 2026-05-13).
+      const wt = await bookingListWaiterTimes({
+        op: "list_waiter_times",
         session_id: args.chatId,
-        context: `Customer picked date ${args.selected_date} for waiter. Fetch times.`,
-        hints: { date: args.selected_date },
-        intent_type: "fetch_slots",
+        date: args.selected_date,
       });
       return {
         ok: true,
-        directive: result.directive ?? "show_waiter_time_picker",
-        data: result.data ?? { date: args.selected_date, available_times: ["08:00", "09:00"] },
-        bubble_copy: getBubbleCopy("to_waiter_time_pick", { date: args.selected_date }),
+        directive: "show_waiter_time_picker",
+        data: {
+          date: args.selected_date,
+          available_times: wt.available_times,
+        },
+        bubble_copy: getBubbleCopy("to_waiter_time_pick", {
+          date: args.selected_date,
+        }),
         current_step: "waiter_time_pick",
       };
     }
 
     // Dropoff — skip time pick and go directly to placing the hold + summary.
-    const holdResult = await consultOrchestrator({
-      session_id: args.chatId,
-      context: `Customer picked dropoff date ${args.selected_date}. Place the hold.`,
-      hints: { date: args.selected_date, type: "dropoff" },
-      intent_type: "hold_slot",
+    // Service summary is captured at confirm time; for the hold we just need
+    // a placeholder so the hold row passes its NOT-NULL service_summary check.
+    const serviceSummary = await buildServiceSummary({
+      chatId: args.chatId,
     });
+    const hold = await bookingHoldSlot({
+      op: "hold_slot",
+      session_id: args.chatId,
+      date: args.selected_date,
+      type: "dropoff",
+      service_summary: serviceSummary,
+      customer_id:
+        typeof row?.customer_id === "number" ? row.customer_id : undefined,
+      vehicle_id:
+        typeof row?.vehicle_id === "number" ? row.vehicle_id : undefined,
+    });
+    if (!hold.ok) {
+      // 'slot_just_taken' → re-show the calendar picker; capacity changed.
+      return {
+        ok: true,
+        directive: "show_calendar_date_picker",
+        data: {
+          available_dates: await computeAvailableDates({
+            chatId: args.chatId,
+            appointment_type: "dropoff",
+            days_ahead: 30,
+          }),
+          type: "dropoff",
+        },
+        bubble_copy: "That slot was just taken — please pick another day.",
+        current_step: "date_pick",
+      };
+    }
     return {
-      ok: holdResult.directive !== "tool_error",
-      directive: holdResult.directive ?? "show_summary_card",
-      data: holdResult.data,
+      ok: true,
+      directive: "show_summary_card",
+      data: await buildSummaryCardData({ chatId: args.chatId }),
       bubble_copy: getBubbleCopy("to_summary"),
       current_step: "summary",
     };
@@ -1869,17 +1909,55 @@ export async function submitWaiterTime(args: {
       event_detail: { time: args.selected_time },
     });
 
-    // Place the hold.
-    const holdResult = await consultOrchestrator({
-      session_id: args.chatId,
-      context: `Customer picked waiter time ${args.selected_time}. Place the hold.`,
-      hints: { time: args.selected_time, type: "waiter" },
-      intent_type: "hold_slot",
+    // Read the row to get the chosen date + any existing customer/vehicle IDs.
+    const supabase = createSupabaseAdminClient();
+    const { data: row } = await supabase
+      .from("customer_chat_sessions")
+      .select("appointment_date, customer_id, vehicle_id")
+      .eq("id", args.chatId)
+      .maybeSingle();
+    const date = String(row?.appointment_date ?? "");
+    if (!date) {
+      throw new Error("appointment_date missing on session row");
+    }
+
+    const serviceSummary = await buildServiceSummary({
+      chatId: args.chatId,
     });
+    const hold = await bookingHoldSlot({
+      op: "hold_slot",
+      session_id: args.chatId,
+      date,
+      time: args.selected_time,
+      type: "waiter",
+      service_summary: serviceSummary,
+      customer_id:
+        typeof row?.customer_id === "number" ? row.customer_id : undefined,
+      vehicle_id:
+        typeof row?.vehicle_id === "number" ? row.vehicle_id : undefined,
+    });
+    if (!hold.ok) {
+      // 'slot_just_taken' → re-show waiter time picker with refreshed list.
+      const refreshed = await bookingListWaiterTimes({
+        op: "list_waiter_times",
+        session_id: args.chatId,
+        date,
+      });
+      return {
+        ok: true,
+        directive: "show_waiter_time_picker",
+        data: {
+          date,
+          available_times: refreshed.available_times,
+        },
+        bubble_copy: "That time was just taken — please pick another.",
+        current_step: "waiter_time_pick",
+      };
+    }
     return {
-      ok: holdResult.directive !== "tool_error",
-      directive: holdResult.directive ?? "show_summary_card",
-      data: holdResult.data,
+      ok: true,
+      directive: "show_summary_card",
+      data: await buildSummaryCardData({ chatId: args.chatId }),
       bubble_copy: getBubbleCopy("to_summary"),
       current_step: "summary",
     };
@@ -1945,187 +2023,310 @@ export async function submitSummaryConfirm(args: {
       };
     }
 
-    // Customer confirmed → invoke orchestrator confirm_appointment.
-    //
-    // For NEW customers, the Tekmetric customer + vehicle records don't
-    // exist yet — submitNewCustomer / submitNewVehicle only wrote the
-    // session row's verified_*, new_vehicle_info, edited_emails, etc. Per
-    // chat-design.md §10 + audit I-5, the orchestrator's confirm_appointment
-    // path must call create_new_customer + create_new_vehicle FIRST (before
-    // the appointment POST). The specialist now sees the new-customer
-    // signals in sessionMetadata (per F12 widen-SELECT fix) — we wire the
-    // explicit tool chain in the context so it knows what to do without
-    // having to infer it.
+    // Customer confirmed → call the deterministic booking-direct
+    // confirm_booking op. Replaces the prior consultOrchestrator(
+    // intent_type='confirm_appointment') path which suffered the same
+    // generateText+Output.object fragility as fetch_slots.
     const supabaseConfirm = createSupabaseAdminClient();
-    const { data: confirmRow } = await supabaseConfirm
+    const { data: confirmRowRaw } = await supabaseConfirm
       .from("customer_chat_sessions")
-      .select("customer_id, vehicle_id, new_vehicle_info")
+      .select("*")
       .eq("id", args.chatId)
       .maybeSingle();
+    const confirmRow = confirmRowRaw as Record<string, unknown> | null;
 
-    const isNewCustomer = !confirmRow?.customer_id;
-    const isNewVehicle = !confirmRow?.vehicle_id && !!confirmRow?.new_vehicle_info;
+    if (!confirmRow?.hold_token) {
+      throw new Error("hold_token missing on session row — cannot confirm");
+    }
 
-    // SCHEMA-CORRECT confirm context for the scheduler specialist.
-    // Earlier I-5 commit (eaccf56) used wrong field names ('phones',
-    // 'emails' arrays). The actual create_new_customer tool schema
-    // (scheduler-tools.ts lines 506-528) expects SCALAR fields:
-    //   - phone_e164: string (E.164)
-    //   - email: string (optional)
-    //   - address: { streetAddress?, city?, state?, zip? }
-    //
-    // The session row has:
-    //   - phone_e164 (singular, scalar) — set at Step 2
-    //   - verified_first_name, verified_last_name — set at Step 4
-    //   - primary_email_for_description (singular) — set at Step 4
-    //   - edited_address: { address1, address2, city, state, zip } — needs
-    //     transform to Tekmetric shape (concat address1 + address2 → streetAddress)
-    //
-    // Spelling this out for the specialist explicitly.
-    const confirmContext = isNewCustomer
-      ? `Customer confirmed the summary. This is a NEW customer (session_metadata.customer_id is null). Tool chain:\n` +
-        `  1. create_new_customer({\n` +
-        `       first_name: session_metadata.verified_first_name,\n` +
-        `       last_name: session_metadata.verified_last_name,\n` +
-        `       phone_e164: session_metadata.phone_e164,  // SCALAR string\n` +
-        `       email: session_metadata.primary_email_for_description,  // SCALAR string\n` +
-        `       address: {\n` +
-        `         // Concat address1 + address2 into a single streetAddress line:\n` +
-        `         streetAddress: <session_metadata.edited_address.address1 + ' ' + edited_address.address2?>,\n` +
-        `         city:  session_metadata.edited_address.city,\n` +
-        `         state: session_metadata.edited_address.state,\n` +
-        `         zip:   session_metadata.edited_address.zip,\n` +
-        `       },\n` +
-        `     })\n` +
-        `     → returns { customer_id }\n` +
-        `  2. create_new_vehicle({\n` +
-        `       customer_id: <from step 1>,\n` +
-        `       year:   session_metadata.new_vehicle_info.year,\n` +
-        `       make:   session_metadata.new_vehicle_info.make,\n` +
-        `       model:  session_metadata.new_vehicle_info.model,\n` +
-        `       sub_model:     session_metadata.new_vehicle_info.sub_model,    // optional\n` +
-        `       vin:           session_metadata.new_vehicle_info.vin,          // optional\n` +
-        `       license_plate: session_metadata.new_vehicle_info.license_plate, // optional\n` +
-        `     })\n` +
-        `     → returns { vehicle_id }\n` +
-        `  3. hold_appointment_slot if not already held + confirm_appointment with the\n` +
-        `     resulting customer_id + vehicle_id + appointment details from session_metadata.\n` +
-        `  4. Emit 'appointment_booked' with the appointment_id + starts_at +\n` +
-        `     tekmetric_customer_id + tekmetric_vehicle_id so the Server\n` +
-        `     Action can persist the new IDs onto the session row.\n` +
-        `  If create_new_customer or create_new_vehicle fails → emit\n` +
-        `  'tool_error' with flags.tekmetric_error=true and a data.reason\n` +
-        `  describing which step failed. Do NOT silently fall back to\n` +
-        `  confirm_appointment with null IDs.`
-      : isNewVehicle
-        ? `Customer confirmed the summary. Returning customer adding a NEW vehicle. Tool chain:\n` +
-          `  1. create_new_vehicle({\n` +
-          `       customer_id: session_metadata.customer_id,\n` +
-          `       year:  session_metadata.new_vehicle_info.year,\n` +
-          `       make:  session_metadata.new_vehicle_info.make,\n` +
-          `       model: session_metadata.new_vehicle_info.model,\n` +
-          `       sub_model: session_metadata.new_vehicle_info.sub_model,        // optional\n` +
-          `       vin:       session_metadata.new_vehicle_info.vin,              // optional\n` +
-          `       license_plate: session_metadata.new_vehicle_info.license_plate, // optional\n` +
-          `     })\n` +
-          `     → returns { vehicle_id }\n` +
-          `  2. confirm_appointment with the resulting vehicle_id.\n` +
-          `  3. Emit 'appointment_booked' on success with tekmetric_vehicle_id\n` +
-          `     in result.data.`
-        : `Customer confirmed the summary. Both customer + vehicle exist in Tekmetric. Tool chain:\n` +
-          `  1. confirm_appointment({\n` +
-          `       customer_id: session_metadata.customer_id,\n` +
-          `       vehicle_id: session_metadata.vehicle_id,\n` +
-          `       ...appointment + services from session_metadata,\n` +
-          `     })\n` +
-          `  2. Emit 'appointment_booked' on success.`;
+    const isNewCustomer = !confirmRow.customer_id;
+    const isNewVehicle =
+      !confirmRow.vehicle_id && !!confirmRow.new_vehicle_info;
+
+    // Build new_customer payload if needed.
+    const newCustomer: NewCustomerPayload | undefined = isNewCustomer
+      ? {
+          first_name: String(confirmRow.verified_first_name ?? "").trim(),
+          last_name: String(confirmRow.verified_last_name ?? "").trim(),
+          phone_e164: String(confirmRow.phone_e164 ?? "").trim(),
+          email: confirmRow.primary_email_for_description
+            ? String(confirmRow.primary_email_for_description)
+            : undefined,
+          address: confirmRow.edited_address
+            ? (() => {
+                const ea = confirmRow.edited_address as Record<string, unknown>;
+                const a1 = String(ea.address1 ?? "").trim();
+                const a2 = String(ea.address2 ?? "").trim();
+                const street = [a1, a2].filter(Boolean).join(" ");
+                return {
+                  streetAddress: street || undefined,
+                  city:
+                    typeof ea.city === "string" ? ea.city : undefined,
+                  state:
+                    typeof ea.state === "string" ? ea.state : undefined,
+                  zip: typeof ea.zip === "string" ? ea.zip : undefined,
+                };
+              })()
+            : undefined,
+        }
+      : undefined;
+
+    // Build new_vehicle payload if needed (new customer always needs one;
+    // returning customer adding a vehicle also).
+    const newVehicle: NewVehiclePayload | undefined =
+      (isNewCustomer || isNewVehicle) && confirmRow.new_vehicle_info
+        ? (() => {
+            const nvi = confirmRow.new_vehicle_info as Record<string, unknown>;
+            return {
+              year: Number(nvi.year),
+              make: String(nvi.make ?? "").trim(),
+              model: String(nvi.model ?? "").trim(),
+              sub_model: nvi.sub_model
+                ? String(nvi.sub_model)
+                : undefined,
+              vin: nvi.vin ? String(nvi.vin) : undefined,
+              license_plate: nvi.license_plate
+                ? String(nvi.license_plate)
+                : undefined,
+              color: nvi.color ? String(nvi.color) : undefined,
+            };
+          })()
+        : undefined;
+
+    const title = await buildAppointmentTitle({ chatId: args.chatId });
+    const description = await buildServiceSummary({ chatId: args.chatId });
+    const apptOption =
+      confirmRow.appointment_type === "waiter"
+        ? "WAITER"
+        : "PICKUP_DROPOFF";
 
     const startedAt = Date.now();
-    const result = await consultOrchestrator({
+    const confirmResult = await bookingConfirmBooking({
+      op: "confirm_booking",
       session_id: args.chatId,
-      context: confirmContext,
-      hints: {
-        new_customer_flow: isNewCustomer,
-        new_vehicle_flow: isNewVehicle,
-      },
-      intent_type: "confirm_appointment",
+      hold_id: String(confirmRow.hold_token),
+      customer_id:
+        typeof confirmRow.customer_id === "number"
+          ? confirmRow.customer_id
+          : undefined,
+      vehicle_id:
+        typeof confirmRow.vehicle_id === "number"
+          ? confirmRow.vehicle_id
+          : undefined,
+      title,
+      description,
+      appointment_option: apptOption,
+      new_customer: newCustomer,
+      new_vehicle: newVehicle,
     });
     await logAudit({
       session_id: args.chatId,
       step: "summary",
       event_type: "tool_called",
-      event_detail: { tool: "confirm_appointment", directive: result.directive },
+      event_detail: {
+        tool: "scheduler-booking-direct:confirm_booking",
+        ok: confirmResult.ok,
+        error: confirmResult.error ?? null,
+        new_customer_flow: isNewCustomer,
+        new_vehicle_flow: isNewVehicle,
+      },
       latency_ms: Date.now() - startedAt,
     });
 
-    if (result.directive === "appointment_booked") {
-      // Capture any newly-created Tekmetric IDs the orchestrator returned
-      // (per the I-5 fix, new-customer + new-vehicle flows go through
-      // create_new_customer + create_new_vehicle BEFORE confirm_appointment
-      // and the specialist passes the resulting Tekmetric IDs back in
-      // result.data). Write them onto the row so downstream reads (audit,
-      // resume, future post-appointment follow-up) have the IDs.
-      const updates: Record<string, unknown> = {
-        appointment_confirmed_at: new Date().toISOString(),
-      };
-      const data = (result.data ?? {}) as Record<string, unknown>;
-      // The LLM specialist may emit the ID fields under either the
-      // tool's return-shape names (customer_id, vehicle_id) or the
-      // "tekmetric_*" prefixed names from earlier prompt versions.
-      // Accept both since Haiku 4.5 has been observed to use either.
-      const newCustomerId =
-        typeof data.customer_id === "number"
-          ? data.customer_id
-          : typeof data.tekmetric_customer_id === "number"
-            ? data.tekmetric_customer_id
-            : null;
-      const newVehicleId =
-        typeof data.vehicle_id === "number"
-          ? data.vehicle_id
-          : typeof data.tekmetric_vehicle_id === "number"
-            ? data.tekmetric_vehicle_id
-            : null;
-      const newAppointmentId =
-        typeof data.appointment_id === "number"
-          ? data.appointment_id
-          : typeof data.tekmetric_appointment_id === "number"
-            ? data.tekmetric_appointment_id
-            : null;
-      if (isNewCustomer && newCustomerId !== null) {
-        updates.customer_id = newCustomerId;
-      }
-      if ((isNewCustomer || isNewVehicle) && newVehicleId !== null) {
-        updates.vehicle_id = newVehicleId;
-      }
-      if (newAppointmentId !== null) {
-        updates.appointment_id = newAppointmentId;
-      }
-      await writeSession({
-        chatId: args.chatId,
-        updates,
-        nextStep: "customer_notes",
-      });
+    if (!confirmResult.ok) {
+      // Bubble up a graceful tool_error; chat agent escalates on this.
       return {
-        ok: true,
-        directive: "show_customer_notes_card",
-        data: { result_data: result.data },
-        bubble_copy: getBubbleCopy("appointment_confirmed", {
-          starts_at_friendly: String(
-            (result.data?.["starts_at"] as string) ?? "",
-          ),
-        }),
-        current_step: "customer_notes",
+        ok: false,
+        directive: "tool_error",
+        flags: { tekmetric_error: true },
+        bubble_copy: getBubbleCopy("tool_error"),
+        error: confirmResult.error,
+        current_step: "summary",
       };
     }
+
+    const updates: Record<string, unknown> = {
+      appointment_confirmed_at: new Date().toISOString(),
+    };
+    if (typeof confirmResult.appointment_id === "number") {
+      updates.appointment_id = confirmResult.appointment_id;
+    }
+    if (isNewCustomer && typeof confirmResult.customer_id === "number") {
+      updates.customer_id = confirmResult.customer_id;
+    }
+    if (
+      (isNewCustomer || isNewVehicle) &&
+      typeof confirmResult.vehicle_id === "number"
+    ) {
+      updates.vehicle_id = confirmResult.vehicle_id;
+    }
+    await writeSession({
+      chatId: args.chatId,
+      updates,
+      nextStep: "customer_notes",
+    });
     return {
-      ok: result.directive !== "tool_error",
-      directive: result.directive,
-      data: result.data,
-      flags: result.flags,
+      ok: true,
+      directive: "show_customer_notes_card",
+      data: {
+        appointment_id: confirmResult.appointment_id,
+        starts_at: confirmResult.start_time,
+      },
+      bubble_copy: getBubbleCopy("appointment_confirmed", {
+        starts_at_friendly: String(confirmResult.start_time ?? ""),
+      }),
+      current_step: "customer_notes",
     };
   } catch (e) {
     return tooErrResult(e, "summary");
   }
+}
+
+// ─── Helpers used by the F5-full booking ladder ──────────────────────────────
+
+/**
+ * Compose a one-line service summary from the session row's accumulated
+ * service + concern signals. Used as the `service_summary` field of
+ * `appointment_holds` and the `description` field of the Tekmetric
+ * appointment.
+ */
+async function buildServiceSummary(args: {
+  chatId: string;
+}): Promise<string> {
+  const supabase = createSupabaseAdminClient();
+  const { data: rowRaw } = await supabase
+    .from("customer_chat_sessions")
+    .select("*")
+    .eq("id", args.chatId)
+    .maybeSingle();
+  const row = rowRaw as Record<string, unknown> | null;
+  const services = Array.isArray(row?.selected_simple_services)
+    ? (row?.selected_simple_services as string[])
+    : [];
+  const explanations = Array.isArray(row?.explanation_required_items)
+    ? (row?.explanation_required_items as Array<{
+        service_key?: string;
+        explanation_text?: string;
+      }>)
+    : [];
+  const approvedTesting = Array.isArray(row?.approved_testing_services)
+    ? (row?.approved_testing_services as string[])
+    : [];
+
+  const parts: string[] = [];
+  if (services.length > 0) {
+    parts.push(`Routine: ${services.join(", ")}`);
+  }
+  for (const ex of explanations) {
+    if (ex?.explanation_text) {
+      parts.push(`Concern: ${ex.explanation_text}`);
+    }
+  }
+  if (approvedTesting.length > 0) {
+    parts.push(`Testing approved: ${approvedTesting.join(", ")}`);
+  }
+  return parts.length > 0 ? parts.join(" · ") : "General appointment";
+}
+
+/**
+ * Build the Tekmetric appointment title per chat-design rule:
+ *   '<first> <last> <year> <make> <model> <abbreviation>'
+ * Falls back gracefully when some fields are absent.
+ */
+async function buildAppointmentTitle(args: {
+  chatId: string;
+}): Promise<string> {
+  const supabase = createSupabaseAdminClient();
+  const { data: rowRaw } = await supabase
+    .from("customer_chat_sessions")
+    .select("*")
+    .eq("id", args.chatId)
+    .maybeSingle();
+  const row = rowRaw as Record<string, unknown> | null;
+  const first = String(row?.verified_first_name ?? "").trim();
+  const last = String(row?.verified_last_name ?? "").trim();
+  const nvi = (row?.new_vehicle_info ?? {}) as Record<string, unknown>;
+  const year = nvi.year ? String(nvi.year) : "";
+  const make = nvi.make ? String(nvi.make).trim() : "";
+  const model = nvi.model ? String(nvi.model).trim() : "";
+
+  // Pick the first service abbreviation. Routine takes precedence over
+  // testing per spec; falls back to a generic tag.
+  const services = Array.isArray(row?.selected_simple_services)
+    ? (row?.selected_simple_services as string[])
+    : [];
+  const approvedTesting = Array.isArray(row?.approved_testing_services)
+    ? (row?.approved_testing_services as string[])
+    : [];
+  let abbreviation = "APPT";
+  if (services.length > 0 || approvedTesting.length > 0) {
+    const allKeys = [...services, ...approvedTesting];
+    const lookup = await supabase
+      .from("routine_services")
+      .select("service_key, abbreviation")
+      .in("service_key", allKeys);
+    const routineMap = new Map(
+      (lookup.data ?? []).map(
+        (r) => [r.service_key as string, r.abbreviation as string],
+      ),
+    );
+    const testingLookup = await supabase
+      .from("testing_services")
+      .select("service_key, abbreviation")
+      .in("service_key", allKeys);
+    const testingMap = new Map(
+      (testingLookup.data ?? []).map(
+        (r) => [r.service_key as string, r.abbreviation as string],
+      ),
+    );
+    for (const k of allKeys) {
+      const a = routineMap.get(k) ?? testingMap.get(k);
+      if (a && a !== "TBD") {
+        abbreviation = a;
+        break;
+      }
+    }
+  }
+  return [first, last, year, make, model, abbreviation]
+    .filter(Boolean)
+    .join(" ");
+}
+
+/**
+ * Build the data payload for SummaryCard so the Card has everything it
+ * needs without another round-trip. The SummaryCard reads these fields
+ * to render the confirmation preview before the customer taps Confirm.
+ */
+async function buildSummaryCardData(args: {
+  chatId: string;
+}): Promise<Record<string, unknown>> {
+  const supabase = createSupabaseAdminClient();
+  const { data: rowRaw } = await supabase
+    .from("customer_chat_sessions")
+    .select("*")
+    .eq("id", args.chatId)
+    .maybeSingle();
+  const row = rowRaw as Record<string, unknown> | null;
+  return {
+    customer: {
+      first_name: row?.verified_first_name ?? "",
+      last_name: row?.verified_last_name ?? "",
+      customer_id: row?.customer_id ?? null,
+    },
+    vehicle: row?.new_vehicle_info ?? null,
+    vehicle_id: row?.vehicle_id ?? null,
+    appointment: {
+      type: row?.appointment_type ?? null,
+      date: row?.appointment_date ?? null,
+      time: row?.appointment_time ?? null,
+    },
+    services: {
+      routine: row?.selected_simple_services ?? [],
+      concerns: row?.explanation_required_items ?? [],
+      testing_approved: row?.approved_testing_services ?? [],
+    },
+    summary_text: await buildServiceSummary({ chatId: args.chatId }),
+  };
 }
 
 export async function submitCustomerNotes(args: {
