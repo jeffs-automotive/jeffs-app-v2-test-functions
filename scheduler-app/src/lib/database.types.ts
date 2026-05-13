@@ -87,6 +87,36 @@ export type Database = {
         }
         Relationships: []
       }
+      _smoke_test_run: {
+        Row: {
+          bucket: string
+          description: string
+          inserted_at: string
+          intent: string
+          request_id: number
+          test_id: string
+          tool: string
+        }
+        Insert: {
+          bucket: string
+          description: string
+          inserted_at?: string
+          intent: string
+          request_id: number
+          test_id: string
+          tool: string
+        }
+        Update: {
+          bucket?: string
+          description?: string
+          inserted_at?: string
+          intent?: string
+          request_id?: number
+          test_id?: string
+          tool?: string
+        }
+        Relationships: []
+      }
       agent_calls: {
         Row: {
           agent_name: string
@@ -219,6 +249,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      appointment_default_limits: {
+        Row: {
+          day_of_week: number
+          dropoff_total: number
+          is_closed: boolean
+          notes: string | null
+          shop_id: number
+          updated_at: string
+          updated_by_name: string | null
+          updated_by_oauth_client_id: string | null
+          waiter_8am_slots: number
+          waiter_9am_slots: number
+        }
+        Insert: {
+          day_of_week: number
+          dropoff_total?: number
+          is_closed?: boolean
+          notes?: string | null
+          shop_id: number
+          updated_at?: string
+          updated_by_name?: string | null
+          updated_by_oauth_client_id?: string | null
+          waiter_8am_slots?: number
+          waiter_9am_slots?: number
+        }
+        Update: {
+          day_of_week?: number
+          dropoff_total?: number
+          is_closed?: boolean
+          notes?: string | null
+          shop_id?: number
+          updated_at?: string
+          updated_by_name?: string | null
+          updated_by_oauth_client_id?: string | null
+          waiter_8am_slots?: number
+          waiter_9am_slots?: number
+        }
+        Relationships: []
       }
       appointment_holds: {
         Row: {
@@ -417,6 +486,48 @@ export type Database = {
         }
         Relationships: []
       }
+      concern_questions: {
+        Row: {
+          active: boolean
+          category: string
+          created_at: string
+          display_order: number
+          id: number
+          options: Json
+          question_text: string
+          shop_id: number
+          updated_at: string
+          updated_by_name: string | null
+          updated_by_oauth_client_id: string | null
+        }
+        Insert: {
+          active?: boolean
+          category: string
+          created_at?: string
+          display_order?: number
+          id?: number
+          options: Json
+          question_text: string
+          shop_id: number
+          updated_at?: string
+          updated_by_name?: string | null
+          updated_by_oauth_client_id?: string | null
+        }
+        Update: {
+          active?: boolean
+          category?: string
+          created_at?: string
+          display_order?: number
+          id?: number
+          options?: Json
+          question_text?: string
+          shop_id?: number
+          updated_at?: string
+          updated_by_name?: string | null
+          updated_by_oauth_client_id?: string | null
+        }
+        Relationships: []
+      }
       customer_chat_messages: {
         Row: {
           created_at: string
@@ -454,58 +565,265 @@ export type Database = {
       }
       customer_chat_sessions: {
         Row: {
+          abandoned_at: string | null
+          additional_routine_services_round2: string[] | null
+          appointment_confirmed_at: string | null
+          appointment_date: string | null
           appointment_id: number | null
+          appointment_time: string | null
+          appointment_type: string | null
+          approved_testing_services: string[] | null
           channel: string
+          clarification_questions_answered: Json | null
+          clarification_questions_pending: Json | null
+          completed_at: string | null
           cookie_session: string | null
+          current_step: string | null
           customer_id: number | null
+          customer_notes_approved: boolean | null
+          customer_notes_edit_attempts: number
+          customer_notes_text: string | null
+          customer_question: string | null
+          customer_question_forwarded: boolean
           customer_self_identified: string | null
+          declined_testing_services: string[] | null
+          diagnostic_processing_complete: boolean
+          edited_address: Json | null
+          edited_emails: Json | null
+          edited_phones: Json | null
           ended_at: string | null
+          entered_first_name: string | null
+          entered_last_name: string | null
+          escalated_at: string | null
+          escalation_reason: string | null
+          explanation_required_items: Json | null
+          greeting_answered_at: string | null
+          hold_token: string | null
           id: string
+          identity_verification_level: string | null
+          is_returning_customer: boolean | null
           last_active_at: string
+          new_vehicle_info: Json | null
           opted_out_at: string | null
+          otp_attempts: number
+          otp_sent_at: string | null
+          otp_verified_at: string | null
           outcome: string | null
           phone_e164: string | null
+          primary_email_for_description: string | null
+          recommended_testing_services: Json | null
+          selected_simple_services: string[] | null
           sentiment: string | null
           shop_id: number
           started_at: string
           status: string
+          summary_edit_attempts: number
           vehicle_id: number | null
+          verified_first_name: string | null
+          verified_last_name: string | null
         }
         Insert: {
+          abandoned_at?: string | null
+          additional_routine_services_round2?: string[] | null
+          appointment_confirmed_at?: string | null
+          appointment_date?: string | null
           appointment_id?: number | null
+          appointment_time?: string | null
+          appointment_type?: string | null
+          approved_testing_services?: string[] | null
           channel: string
+          clarification_questions_answered?: Json | null
+          clarification_questions_pending?: Json | null
+          completed_at?: string | null
           cookie_session?: string | null
+          current_step?: string | null
           customer_id?: number | null
+          customer_notes_approved?: boolean | null
+          customer_notes_edit_attempts?: number
+          customer_notes_text?: string | null
+          customer_question?: string | null
+          customer_question_forwarded?: boolean
           customer_self_identified?: string | null
+          declined_testing_services?: string[] | null
+          diagnostic_processing_complete?: boolean
+          edited_address?: Json | null
+          edited_emails?: Json | null
+          edited_phones?: Json | null
           ended_at?: string | null
+          entered_first_name?: string | null
+          entered_last_name?: string | null
+          escalated_at?: string | null
+          escalation_reason?: string | null
+          explanation_required_items?: Json | null
+          greeting_answered_at?: string | null
+          hold_token?: string | null
           id?: string
+          identity_verification_level?: string | null
+          is_returning_customer?: boolean | null
           last_active_at?: string
+          new_vehicle_info?: Json | null
           opted_out_at?: string | null
+          otp_attempts?: number
+          otp_sent_at?: string | null
+          otp_verified_at?: string | null
           outcome?: string | null
           phone_e164?: string | null
+          primary_email_for_description?: string | null
+          recommended_testing_services?: Json | null
+          selected_simple_services?: string[] | null
           sentiment?: string | null
           shop_id: number
           started_at?: string
           status?: string
+          summary_edit_attempts?: number
           vehicle_id?: number | null
+          verified_first_name?: string | null
+          verified_last_name?: string | null
         }
         Update: {
+          abandoned_at?: string | null
+          additional_routine_services_round2?: string[] | null
+          appointment_confirmed_at?: string | null
+          appointment_date?: string | null
           appointment_id?: number | null
+          appointment_time?: string | null
+          appointment_type?: string | null
+          approved_testing_services?: string[] | null
           channel?: string
+          clarification_questions_answered?: Json | null
+          clarification_questions_pending?: Json | null
+          completed_at?: string | null
           cookie_session?: string | null
+          current_step?: string | null
           customer_id?: number | null
+          customer_notes_approved?: boolean | null
+          customer_notes_edit_attempts?: number
+          customer_notes_text?: string | null
+          customer_question?: string | null
+          customer_question_forwarded?: boolean
           customer_self_identified?: string | null
+          declined_testing_services?: string[] | null
+          diagnostic_processing_complete?: boolean
+          edited_address?: Json | null
+          edited_emails?: Json | null
+          edited_phones?: Json | null
           ended_at?: string | null
+          entered_first_name?: string | null
+          entered_last_name?: string | null
+          escalated_at?: string | null
+          escalation_reason?: string | null
+          explanation_required_items?: Json | null
+          greeting_answered_at?: string | null
+          hold_token?: string | null
           id?: string
+          identity_verification_level?: string | null
+          is_returning_customer?: boolean | null
           last_active_at?: string
+          new_vehicle_info?: Json | null
           opted_out_at?: string | null
+          otp_attempts?: number
+          otp_sent_at?: string | null
+          otp_verified_at?: string | null
           outcome?: string | null
           phone_e164?: string | null
+          primary_email_for_description?: string | null
+          recommended_testing_services?: Json | null
+          selected_simple_services?: string[] | null
           sentiment?: string | null
           shop_id?: number
           started_at?: string
           status?: string
+          summary_edit_attempts?: number
           vehicle_id?: number | null
+          verified_first_name?: string | null
+          verified_last_name?: string | null
+        }
+        Relationships: []
+      }
+      keytag_audit_log: {
+        Row: {
+          action: string
+          id: number
+          manual_review_code: string | null
+          new_status: string | null
+          occurred_at: string
+          prior_status: string | null
+          reason: string | null
+          ro_id: number | null
+          ro_number: number | null
+          source: string
+          tag_color: string | null
+          tag_number: number | null
+          tekmetric_patch_error: string | null
+          tekmetric_patch_ok: boolean | null
+          user_label: string | null
+        }
+        Insert: {
+          action: string
+          id?: number
+          manual_review_code?: string | null
+          new_status?: string | null
+          occurred_at?: string
+          prior_status?: string | null
+          reason?: string | null
+          ro_id?: number | null
+          ro_number?: number | null
+          source: string
+          tag_color?: string | null
+          tag_number?: number | null
+          tekmetric_patch_error?: string | null
+          tekmetric_patch_ok?: boolean | null
+          user_label?: string | null
+        }
+        Update: {
+          action?: string
+          id?: number
+          manual_review_code?: string | null
+          new_status?: string | null
+          occurred_at?: string
+          prior_status?: string | null
+          reason?: string | null
+          ro_id?: number | null
+          ro_number?: number | null
+          source?: string
+          tag_color?: string | null
+          tag_number?: number | null
+          tekmetric_patch_error?: string | null
+          tekmetric_patch_ok?: boolean | null
+          user_label?: string | null
+        }
+        Relationships: []
+      }
+      keytag_confirmation_tokens: {
+        Row: {
+          action_kind: string
+          consumed_at: string | null
+          created_at: string
+          expires_at: string
+          id: string
+          scope_hash: string
+          scope_summary: string
+          user_label: string
+        }
+        Insert: {
+          action_kind: string
+          consumed_at?: string | null
+          created_at?: string
+          expires_at: string
+          id?: string
+          scope_hash: string
+          scope_summary: string
+          user_label: string
+        }
+        Update: {
+          action_kind?: string
+          consumed_at?: string | null
+          created_at?: string
+          expires_at?: string
+          id?: string
+          scope_hash?: string
+          scope_summary?: string
+          user_label?: string
         }
         Relationships: []
       }
@@ -529,6 +847,98 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      keytag_manual_review_attempts: {
+        Row: {
+          attempted_at: string
+          attempted_code: string
+          failure_reason: string | null
+          id: number
+          success: boolean
+          user_label: string
+        }
+        Insert: {
+          attempted_at?: string
+          attempted_code: string
+          failure_reason?: string | null
+          id?: number
+          success: boolean
+          user_label: string
+        }
+        Update: {
+          attempted_at?: string
+          attempted_code?: string
+          failure_reason?: string | null
+          id?: number
+          success?: boolean
+          user_label?: string
+        }
+        Relationships: []
+      }
+      keytag_manual_reviews: {
+        Row: {
+          category: string
+          code: string
+          context: Json
+          email_error: string | null
+          email_sent_at: string | null
+          id: number
+          issue_summary: string
+          issued_at: string
+          options: Json
+          resolution_audit_log_id: number | null
+          resolution_notes: string | null
+          resolved_at: string | null
+          resolved_by_user_label: string | null
+          resolved_choice: string | null
+          resolved_color: string | null
+          resolved_tag_number: number | null
+        }
+        Insert: {
+          category: string
+          code: string
+          context: Json
+          email_error?: string | null
+          email_sent_at?: string | null
+          id?: number
+          issue_summary: string
+          issued_at?: string
+          options: Json
+          resolution_audit_log_id?: number | null
+          resolution_notes?: string | null
+          resolved_at?: string | null
+          resolved_by_user_label?: string | null
+          resolved_choice?: string | null
+          resolved_color?: string | null
+          resolved_tag_number?: number | null
+        }
+        Update: {
+          category?: string
+          code?: string
+          context?: Json
+          email_error?: string | null
+          email_sent_at?: string | null
+          id?: number
+          issue_summary?: string
+          issued_at?: string
+          options?: Json
+          resolution_audit_log_id?: number | null
+          resolution_notes?: string | null
+          resolved_at?: string | null
+          resolved_by_user_label?: string | null
+          resolved_choice?: string | null
+          resolved_color?: string | null
+          resolved_tag_number?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "keytag_manual_reviews_resolution_audit_log_id_fkey"
+            columns: ["resolution_audit_log_id"]
+            isOneToOne: false
+            referencedRelation: "keytag_audit_log"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       keytag_webhook_events: {
         Row: {
@@ -582,6 +992,7 @@ export type Database = {
         Row: {
           advisor_id: number | null
           assigned_at: string | null
+          changed_by_user_label: string | null
           customer_id: number | null
           last_activity_at: string | null
           last_patch_at: string | null
@@ -601,6 +1012,7 @@ export type Database = {
         Insert: {
           advisor_id?: number | null
           assigned_at?: string | null
+          changed_by_user_label?: string | null
           customer_id?: number | null
           last_activity_at?: string | null
           last_patch_at?: string | null
@@ -620,6 +1032,7 @@ export type Database = {
         Update: {
           advisor_id?: number | null
           assigned_at?: string | null
+          changed_by_user_label?: string | null
           customer_id?: number | null
           last_activity_at?: string | null
           last_patch_at?: string | null
@@ -777,6 +1190,60 @@ export type Database = {
         }
         Relationships: []
       }
+      oauth_refresh_tokens: {
+        Row: {
+          client_id: string
+          expires_at: string
+          issued_at: string
+          last_used_at: string | null
+          parent_token_hash: string | null
+          resource: string | null
+          revoked_at: string | null
+          scope: string
+          token_hash: string
+          user_label: string
+        }
+        Insert: {
+          client_id: string
+          expires_at: string
+          issued_at?: string
+          last_used_at?: string | null
+          parent_token_hash?: string | null
+          resource?: string | null
+          revoked_at?: string | null
+          scope: string
+          token_hash: string
+          user_label: string
+        }
+        Update: {
+          client_id?: string
+          expires_at?: string
+          issued_at?: string
+          last_used_at?: string | null
+          parent_token_hash?: string | null
+          resource?: string | null
+          revoked_at?: string | null
+          scope?: string
+          token_hash?: string
+          user_label?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "oauth_refresh_tokens_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "oauth_clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "oauth_refresh_tokens_parent_token_hash_fkey"
+            columns: ["parent_token_hash"]
+            isOneToOne: false
+            referencedRelation: "oauth_refresh_tokens"
+            referencedColumns: ["token_hash"]
+          },
+        ]
+      }
       orchestrator_runs: {
         Row: {
           ended_at: string | null
@@ -883,11 +1350,13 @@ export type Database = {
           display_name: string
           display_order: number
           id: string
+          requires_explanation: boolean
           service_key: string
           shop_id: number
           updated_at: string
           updated_by_name: string | null
           updated_by_oauth_client_id: string | null
+          wait_eligible: boolean
         }
         Insert: {
           abbreviation: string
@@ -896,11 +1365,13 @@ export type Database = {
           display_name: string
           display_order: number
           id?: string
+          requires_explanation?: boolean
           service_key: string
           shop_id: number
           updated_at?: string
           updated_by_name?: string | null
           updated_by_oauth_client_id?: string | null
+          wait_eligible?: boolean
         }
         Update: {
           abbreviation?: string
@@ -909,13 +1380,113 @@ export type Database = {
           display_name?: string
           display_order?: number
           id?: string
+          requires_explanation?: boolean
           service_key?: string
           shop_id?: number
           updated_at?: string
           updated_by_name?: string | null
           updated_by_oauth_client_id?: string | null
+          wait_eligible?: boolean
         }
         Relationships: []
+      }
+      scheduler_admin_audit_log: {
+        Row: {
+          diff_summary: Json | null
+          error_message: string | null
+          id: number
+          md_content_hash: string | null
+          oauth_client_id: string | null
+          occurred_at: string
+          operation: string
+          rows_added: number
+          rows_deactivated: number
+          rows_modified: number
+          table_name: string
+          user_label: string | null
+        }
+        Insert: {
+          diff_summary?: Json | null
+          error_message?: string | null
+          id?: number
+          md_content_hash?: string | null
+          oauth_client_id?: string | null
+          occurred_at?: string
+          operation: string
+          rows_added?: number
+          rows_deactivated?: number
+          rows_modified?: number
+          table_name: string
+          user_label?: string | null
+        }
+        Update: {
+          diff_summary?: Json | null
+          error_message?: string | null
+          id?: number
+          md_content_hash?: string | null
+          oauth_client_id?: string | null
+          occurred_at?: string
+          operation?: string
+          rows_added?: number
+          rows_deactivated?: number
+          rows_modified?: number
+          table_name?: string
+          user_label?: string | null
+        }
+        Relationships: []
+      }
+      scheduler_audit_log: {
+        Row: {
+          error_message: string | null
+          event_detail: Json | null
+          event_type: string
+          id: number
+          input_tokens: number | null
+          latency_ms: number | null
+          model_used: string | null
+          occurred_at: string
+          output_tokens: number | null
+          router_decision: string | null
+          session_id: string
+          step: string
+        }
+        Insert: {
+          error_message?: string | null
+          event_detail?: Json | null
+          event_type: string
+          id?: number
+          input_tokens?: number | null
+          latency_ms?: number | null
+          model_used?: string | null
+          occurred_at?: string
+          output_tokens?: number | null
+          router_decision?: string | null
+          session_id: string
+          step: string
+        }
+        Update: {
+          error_message?: string | null
+          event_detail?: Json | null
+          event_type?: string
+          id?: number
+          input_tokens?: number | null
+          latency_ms?: number | null
+          model_used?: string | null
+          occurred_at?: string
+          output_tokens?: number | null
+          router_decision?: string | null
+          session_id?: string
+          step?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduler_audit_log_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "customer_chat_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       service_dept_users: {
         Row: {
@@ -1022,6 +1593,7 @@ export type Database = {
           active: boolean
           concern_categories: string[] | null
           created_at: string
+          description: string | null
           display_name: string
           id: string
           notes: string | null
@@ -1037,6 +1609,7 @@ export type Database = {
           active?: boolean
           concern_categories?: string[] | null
           created_at?: string
+          description?: string | null
           display_name: string
           id?: string
           notes?: string | null
@@ -1052,6 +1625,7 @@ export type Database = {
           active?: boolean
           concern_categories?: string[] | null
           created_at?: string
+          description?: string | null
           display_name?: string
           id?: string
           notes?: string | null
@@ -1160,6 +1734,16 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      _smoke_fire2: {
+        Args: {
+          p_bucket: string
+          p_desc: string
+          p_intent: string
+          p_test_id: string
+          p_tool: string
+        }
+        Returns: number
+      }
       assign_next_keytag: {
         Args: {
           p_advisor_id?: number
@@ -1173,6 +1757,58 @@ export type Database = {
         Returns: {
           tag_color: string
           tag_number: number
+        }[]
+      }
+      attach_resolution_audit_log: {
+        Args: { p_audit_log_id: number; p_review_id: number }
+        Returns: undefined
+      }
+      check_manual_review_lockout: {
+        Args: { p_user_label: string }
+        Returns: boolean
+      }
+      consume_keytag_confirmation_token: {
+        Args: {
+          p_action_kind: string
+          p_scope_hash: string
+          p_token_id: string
+          p_user_label: string
+        }
+        Returns: {
+          failure_reason: string
+          ok: boolean
+          scope_summary: string
+        }[]
+      }
+      create_keytag_confirmation_token: {
+        Args: {
+          p_action_kind: string
+          p_scope_hash: string
+          p_scope_summary: string
+          p_user_label: string
+        }
+        Returns: {
+          expires_at: string
+          token_id: string
+        }[]
+      }
+      create_manual_review: {
+        Args: {
+          p_audit_source?: string
+          p_category: string
+          p_context: Json
+          p_issue_summary: string
+          p_options: Json
+          p_prefix: string
+          p_ro_id?: number
+          p_ro_number?: number
+          p_tag_color?: string
+          p_tag_number?: number
+        }
+        Returns: {
+          audit_log_id: number
+          code: string
+          review_id: number
         }[]
       }
       cron_unschedule_if_exists: {
@@ -1196,9 +1832,13 @@ export type Database = {
           tag_number: number
         }[]
       }
+      generate_manual_review_code: {
+        Args: { p_prefix: string }
+        Returns: string
+      }
       hold_waiter_slot: {
         Args: {
-          p_active_tekmetric_appts: number
+          p_appointment_type: string
           p_customer_id: number
           p_scheduled_date: string
           p_scheduled_time: string
@@ -1207,7 +1847,43 @@ export type Database = {
           p_shop_id: number
           p_vehicle_id: number
         }
-        Returns: string
+        Returns: {
+          expires_at: string
+          hold_id: string
+          ok: boolean
+          reason: string
+        }[]
+      }
+      log_keytag_audit: {
+        Args: {
+          p_action: string
+          p_new_status?: string
+          p_prior_status?: string
+          p_reason?: string
+          p_ro_id?: number
+          p_ro_number?: number
+          p_source: string
+          p_tag_color: string
+          p_tag_number: number
+          p_tekmetric_patch_error?: string
+          p_tekmetric_patch_ok?: boolean
+          p_user_label?: string
+        }
+        Returns: number
+      }
+      lookup_manual_review: {
+        Args: { p_code: string; p_user_label: string }
+        Returns: {
+          category: string
+          context: Json
+          failure_reason: string
+          issue_summary: string
+          issued_at: string
+          ok: boolean
+          options: Json
+          resolved_at: string
+          resolved_choice: string
+        }[]
       }
       mark_keytag_posted: {
         Args: {
@@ -1218,6 +1894,19 @@ export type Database = {
         Returns: {
           tag_color: string
           tag_number: number
+        }[]
+      }
+      mark_manual_review_email_sent: {
+        Args: { p_error?: string; p_review_id: number }
+        Returns: undefined
+      }
+      oauth_consume_refresh_token: {
+        Args: { p_token_hash: string }
+        Returns: {
+          client_id: string
+          resource: string
+          scope: string
+          user_label: string
         }[]
       }
       oauth_validate_access_token: {
@@ -1248,6 +1937,24 @@ export type Database = {
         Returns: {
           tag_color: string
           tag_number: number
+        }[]
+      }
+      resolve_manual_review: {
+        Args: {
+          p_choice: string
+          p_code: string
+          p_color?: string
+          p_notes?: string
+          p_tag_number?: number
+          p_user_label: string
+        }
+        Returns: {
+          category: string
+          chosen_option: Json
+          context: Json
+          failure_reason: string
+          ok: boolean
+          review_id: number
         }[]
       }
       revert_keytag_to_assigned: {
