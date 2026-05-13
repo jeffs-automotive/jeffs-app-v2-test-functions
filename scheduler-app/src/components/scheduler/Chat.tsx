@@ -32,7 +32,6 @@ import { VehiclePicker } from "./VehiclePicker";
 import { ServiceAndConcernPicker } from "./ServiceAndConcernPicker";
 import { CalendarDatePicker } from "./CalendarDatePicker";
 import { WaiterTimePicker } from "./WaiterTimePicker";
-import { NewCustomerForm } from "./NewCustomerForm";
 import { ConfirmationCard } from "./ConfirmationCard";
 import { EscalationCard } from "./EscalationCard";
 // Heritage Editorial cards (Chunk 6 — 2026-05-13). New directives route here.
@@ -46,6 +45,8 @@ import {
   CustomerQuestionCard,
   GreetingCard,
   MultiAccountDisambiguationCard,
+  NewCustomerInfoCard,
+  NewVehicleCard,
   NoMatchChoosePathCard,
   PartialVerificationGateCard,
   PhoneNameCard,
@@ -70,7 +71,7 @@ import {
   submitEscalate,
   submitGreeting,
   submitMultiAccountChoice,
-  submitNewCustomer,
+  submitNewCustomerInfo,
   submitNewVehicle,
   submitNoMatchChoice,
   submitOtp,
@@ -154,7 +155,9 @@ const CLIENT_RENDERED_DIRECTIVES = new Set<string>([
   "show_phone_name_card",
   "show_otp_input",
   "show_vehicle_picker",
-  "show_new_customer_form",
+  // Spec-aligned new-client cards (replaces show_new_customer_form):
+  "show_new_customer_info_card",
+  "show_new_vehicle_form",
   "show_customer_info_edit",
   "show_no_match_choose_path",
   "show_partial_verification_gate",
@@ -399,35 +402,48 @@ export function Chat({ chatId, initialMessages, initialStep }: ChatProps) {
             vehicle_id: String(cardOutput.vehicle_id ?? ""),
           });
           break;
-        case "show_new_customer_form": {
-          // Two modes: 'full' (new customer) vs 'vehicle-only' (new vehicle
-          // for returning customer). The card output shape is the same for
-          // both — just the customer fields are blank in vehicle-only mode.
-          const hasCustomerFields =
-            !!cardOutput.first_name || !!cardOutput.last_name;
-          if (hasCustomerFields) {
-            result = await submitNewCustomer({
-              chatId,
-              first_name: String(cardOutput.first_name ?? ""),
-              last_name: String(cardOutput.last_name ?? ""),
-              email: String(cardOutput.email ?? ""),
-              address: cardOutput.address as
-                | {
-                    address1: string;
-                    address2?: string;
-                    city: string;
-                    state: string;
-                    zip: string;
-                  }
-                | undefined,
-              vehicle: cardOutput.vehicle as never,
-            });
-          } else {
-            result = await submitNewVehicle({
-              chatId,
-              vehicle: cardOutput.vehicle as never,
-            });
-          }
+        case "show_new_customer_info_card": {
+          // Step 4 new client per chat-design.md §2595-2683. Output shape
+          // matches submitNewCustomerInfo: edited_phones, edited_emails,
+          // edited_address, primary_email_for_description.
+          result = await submitNewCustomerInfo({
+            chatId,
+            edited_phones: (cardOutput.edited_phones as Array<{
+              phone_e164: string;
+              is_primary: boolean;
+            }>) ?? [],
+            edited_emails: (cardOutput.edited_emails as Array<{
+              email: string;
+              is_primary: boolean;
+            }>) ?? [],
+            edited_address: cardOutput.edited_address as {
+              address1: string;
+              address2?: string;
+              city: string;
+              state: string;
+              zip: string;
+            },
+            primary_email_for_description: String(
+              cardOutput.primary_email_for_description ?? "",
+            ),
+          });
+          break;
+        }
+        case "show_new_vehicle_form": {
+          // Step 5 new client (§2684-2753) AND Step 6 returning add-new
+          // drill-down (§1248-1306). Both use the same payload shape.
+          result = await submitNewVehicle({
+            chatId,
+            vehicle: {
+              year: Number(cardOutput.year ?? 0),
+              make: String(cardOutput.make ?? ""),
+              model: String(cardOutput.model ?? ""),
+              license_plate: cardOutput.license_plate
+                ? String(cardOutput.license_plate)
+                : undefined,
+              notes: cardOutput.notes ? String(cardOutput.notes) : undefined,
+            },
+          });
           break;
         }
         case "show_service_and_concern_picker":
@@ -1118,16 +1134,42 @@ function PartRenderer({
       );
     }
 
-    case "show_new_customer_form": {
-      const mode =
-        tp.input?.mode === "vehicle-only" ? "vehicle-only" : "full";
-      const collected = (tp.input?.collected_so_far ?? undefined) as
-        | Record<string, unknown>
-        | undefined;
+    case "show_new_customer_info_card": {
+      // Step 4 new client per chat-design.md §2595-2683.
+      // Inputs: first_name, last_name, verified_phone_e164.
+      const fn = String(tp.input?.first_name ?? "");
+      const ln = String(tp.input?.last_name ?? "");
+      const verifiedPhone = String(tp.input?.verified_phone_e164 ?? "");
+      if (!verifiedPhone) return null;
       return (
-        <NewCustomerForm
-          mode={mode}
-          collected_so_far={collected as never}
+        <NewCustomerInfoCard
+          first_name={fn}
+          last_name={ln}
+          verified_phone_e164={verifiedPhone}
+          disabled={disabled}
+          onSubmit={(out) => submit(out as Record<string, unknown>)}
+        />
+      );
+    }
+
+    case "show_new_vehicle_form": {
+      // Step 5 new client (§2684-2753) OR Step 6 add-new drill-down
+      // (§1248-1306). Optional inputs: step_label, title, server_error.
+      const stepLabel =
+        typeof tp.input?.step_label === "string"
+          ? tp.input.step_label
+          : undefined;
+      const titleProp =
+        typeof tp.input?.title === "string" ? tp.input.title : undefined;
+      const serverError =
+        typeof tp.input?.server_error === "string"
+          ? tp.input.server_error
+          : undefined;
+      return (
+        <NewVehicleCard
+          step_label={stepLabel}
+          title={titleProp}
+          server_error={serverError}
           disabled={disabled}
           onSubmit={(out) => submit(out as Record<string, unknown>)}
         />
@@ -1525,10 +1567,16 @@ function SubmittedEcho({
     case "show_waiter_time_picker":
       text = `Time: ${String(output.selected_time ?? "")}`;
       break;
-    case "show_new_customer_form": {
-      const first = String((output as { first_name?: string }).first_name ?? "");
-      const last = String((output as { last_name?: string }).last_name ?? "");
-      text = `Customer info submitted${first ? ` (${first} ${last})` : ""}`;
+    case "show_new_customer_info_card": {
+      text = "Account info submitted";
+      break;
+    }
+    case "show_new_vehicle_form": {
+      const year = output.year ? String(output.year) : "";
+      const make = String(output.make ?? "");
+      const model = String(output.model ?? "");
+      const label = [year, make, model].filter(Boolean).join(" ");
+      text = label ? `Vehicle added: ${label}` : "Vehicle added";
       break;
     }
     case "show_confirmation_card":

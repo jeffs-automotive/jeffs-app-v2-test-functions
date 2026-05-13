@@ -57,3 +57,11 @@ export type { ChatBubbleProps } from "./ChatBubble";
 
 export { WizardFooter } from "./WizardFooter";
 export type { WizardFooterProps } from "./WizardFooter";
+
+// Spec-aligned new-client cards (chat-design.md §2595-2755).
+// Replace the legacy combined NewCustomerForm.
+export { NewCustomerInfoCard } from "./NewCustomerInfoCard";
+export type { NewCustomerInfoCardProps } from "./NewCustomerInfoCard";
+
+export { NewVehicleCard } from "./NewVehicleCard";
+export type { NewVehicleCardProps } from "./NewVehicleCard";

@@ -42,6 +42,8 @@ import {
   listWaiterTimes as bookingListWaiterTimes,
   holdSlot as bookingHoldSlot,
   confirmBooking as bookingConfirmBooking,
+  createCustomer as bookingCreateCustomer,
+  createVehicle as bookingCreateVehicle,
   type NewCustomerPayload,
   type NewVehiclePayload,
 } from "@/lib/scheduler/booking-direct-client";
@@ -801,65 +803,185 @@ export async function submitCustomerInfoEdit(args: {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-//   STEP 5 — New customer info
+//   STEP 4 (NEW CLIENT) — New customer info
 // ═════════════════════════════════════════════════════════════════════════════
 
-export async function submitNewCustomer(args: {
+/**
+ * Spec-aligned new-customer info submit per chat-design.md §2595-2683.
+ *
+ * Replaces the legacy combined-card `submitNewCustomer`. This Server
+ * Action receives Step 4 form output (emails + address; phone already
+ * verified at Step 3, name carried from Step 2), persists the edited
+ * fields onto the row, then calls Tekmetric POST /customers
+ * IMMEDIATELY via scheduler-booking-direct's `create_customer` op.
+ *
+ * On success: customer_id + identity_verification_level='full' are
+ * persisted by the edge function; this Server Action just advances the
+ * wizard to `new_vehicle_form` and returns the show_new_vehicle_form
+ * directive.
+ *
+ * Failure modes per spec §2651-§2654:
+ *   - Tekmetric 409 phone-duplicate → friendly bubble + restart at
+ *     Step 1 with `is_returning_customer=true` (the spec's intended UX).
+ *   - Tekmetric 4xx (validation) → surface as a graceful tool_error
+ *     so the card shows the error inline. Phase 1 minimal: we
+ *     return the directive `show_escalation_card` so the customer
+ *     can call. A later refinement will pipe Tekmetric errors back
+ *     into the inline FormMessage on the right field.
+ *   - Tekmetric 5xx → same escalation path. Spec §2651 calls for one
+ *     retry with 1s backoff; that's TODO on the edge function side.
+ */
+export async function submitNewCustomerInfo(args: {
   chatId: string;
-  first_name: string;
-  last_name: string;
-  /** Required per chat-design.md §New Client Step 4 (was optional pre-fix). */
-  email: string;
-  /** Required address per spec (was missing entirely pre-fix). */
-  address?: {
+  edited_phones: Array<{ phone_e164: string; is_primary: boolean }>;
+  edited_emails: Array<{ email: string; is_primary: boolean }>;
+  edited_address: {
     address1: string;
     address2?: string;
     city: string;
     state: string;
     zip: string;
   };
-  vehicle: {
-    year: number;
-    make: string;
-    model: string;
-    sub_model?: string;
-    vin?: string;
-    license_plate?: string;
-    state?: string;
-  };
+  primary_email_for_description: string;
 }): Promise<SessionActionResult> {
   try {
+    // Persist the edited fields to the row BEFORE the Tekmetric call —
+    // ensures resume works correctly if the network drops mid-POST.
     await writeSession({
       chatId: args.chatId,
       updates: {
-        verified_first_name: args.first_name,
-        verified_last_name: args.last_name,
-        edited_emails: [{ email: args.email, is_primary: true }],
-        primary_email_for_description: args.email,
-        edited_address: args.address ?? null,
-        new_vehicle_info: args.vehicle,
+        edited_phones: args.edited_phones,
+        edited_emails: args.edited_emails,
+        edited_address: args.edited_address,
+        primary_email_for_description: args.primary_email_for_description,
       },
-      nextStep: "service_concern_picker",
     });
     await logAudit({
       session_id: args.chatId,
       step: "new_customer_info",
       event_type: "card_submitted",
       event_detail: {
-        has_email: true,
-        has_address: !!args.address,
-        vehicle_year: args.vehicle.year,
-        vehicle_make: args.vehicle.make,
+        phone_count: args.edited_phones.length,
+        email_count: args.edited_emails.length,
+        has_address: true,
       },
     });
 
-    // Orchestrator will create the customer + vehicle in Tekmetric on confirm.
+    // Look up the verified phone + name (Step 2 saved verified_*).
+    const supabase = createSupabaseAdminClient();
+    const { data: rowRaw } = await supabase
+      .from("customer_chat_sessions")
+      .select("*")
+      .eq("id", args.chatId)
+      .maybeSingle();
+    const row = rowRaw as Record<string, unknown> | null;
+    const firstName = String(row?.verified_first_name ?? "").trim();
+    const lastName = String(row?.verified_last_name ?? "").trim();
+    const verifiedPhone = String(row?.phone_e164 ?? "").trim();
+    if (!firstName || !lastName) {
+      throw new Error(
+        "verified_first_name / verified_last_name missing on row (Step 2 did not persist)",
+      );
+    }
+    if (!/^\+1\d{10}$/.test(verifiedPhone)) {
+      throw new Error("phone_e164 missing or malformed on row");
+    }
+
+    // Pick the primary email for the Tekmetric customer record.
+    const primaryEmail =
+      args.edited_emails.find((e) => e.is_primary)?.email
+        ?? args.edited_emails[0]?.email
+        ?? args.primary_email_for_description;
+
+    // Address shape: Tekmetric wants { streetAddress, city, state, zip }.
+    // We collected address1 + address2 separately; concat them.
+    const addressBlock: NewCustomerPayload["address"] = {
+      streetAddress: [args.edited_address.address1, args.edited_address.address2]
+        .filter((s) => s && s.trim().length > 0)
+        .join(" ")
+        .trim(),
+      city: args.edited_address.city,
+      state: args.edited_address.state,
+      zip: args.edited_address.zip,
+    };
+
+    const startedAt = Date.now();
+    const result = await bookingCreateCustomer({
+      op: "create_customer",
+      session_id: args.chatId,
+      payload: {
+        first_name: firstName,
+        last_name: lastName,
+        phone_e164: verifiedPhone,
+        email: primaryEmail,
+        address: addressBlock,
+      },
+    });
+
+    if (!result.ok) {
+      await logAudit({
+        session_id: args.chatId,
+        step: "new_customer_info",
+        event_type: "tool_failed",
+        event_detail: {
+          tool: "createCustomer",
+          error: result.error,
+          tekmetric_error_text: result.tekmetric_error_text ?? null,
+        },
+        latency_ms: Date.now() - startedAt,
+      });
+      // 409 phone-duplicate: per spec §2653, route back to Step 1 with
+      // returning-customer flow. Phase 1 minimal — we use the
+      // show_no_match_choose_path card to let them pick "try returning"
+      // or "use a different phone".
+      if (result.error === "phone_duplicate") {
+        return {
+          ok: true,
+          directive: "show_no_match_choose_path",
+          data: {
+            attempted_phone_last_four: verifiedPhone.slice(-4),
+            attempted_first_name: firstName,
+          },
+          bubble_copy:
+            "Hmm — that phone number is already on file with us. Want to try as a returning customer?",
+          current_step: "phone_name",
+        };
+      }
+      // 4xx / 5xx — surface as a graceful escalation. Future refinement:
+      // surface the Tekmetric error inline on the relevant field.
+      return {
+        ok: false,
+        directive: "tool_error",
+        flags: { tekmetric_error: true },
+        bubble_copy: getBubbleCopy("tool_error"),
+        error: result.tekmetric_error_text ?? result.error,
+        current_step: "new_customer_info",
+      };
+    }
+
+    // Success — customer_id + identity_verification_level='full' are
+    // already persisted by the edge function. Advance to Step 5.
+    await writeSession({
+      chatId: args.chatId,
+      updates: {},
+      nextStep: "new_vehicle_form",
+    });
+    await logAudit({
+      session_id: args.chatId,
+      step: "new_customer_info",
+      event_type: "tool_succeeded",
+      event_detail: { tool: "createCustomer", customer_id: result.customer_id },
+      latency_ms: Date.now() - startedAt,
+    });
     return {
       ok: true,
-      directive: "show_service_and_concern_picker",
-      data: {},
-      bubble_copy: getBubbleCopy("to_service_picker"),
-      current_step: "service_concern_picker",
+      directive: "show_new_vehicle_form",
+      data: {
+        step_label: "Step 5 · Add your vehicle",
+        title: "Now tell me about your ride! 🚗",
+      },
+      bubble_copy: "Account set up! 🎉",
+      current_step: "new_vehicle_form",
     };
   } catch (e) {
     return tooErrResult(e, "new_customer_info");
@@ -1193,38 +1315,128 @@ export async function submitVehiclePick(args: {
   }
 }
 
+/**
+ * Spec-aligned new-vehicle submit per chat-design.md §2684-2753 (new
+ * client Step 5) + §1248-1306 (returning client Step 6 add-new
+ * drill-down).
+ *
+ * Both flows reach this Server Action with the same payload shape:
+ *   year (required, 1980-2027)
+ *   make (required, 1-50)
+ *   model (required, 1-50)
+ *   license_plate (optional, ≤15)
+ *   notes (optional, ≤200)
+ *
+ * Calls Tekmetric POST /vehicles IMMEDIATELY via the booking-direct
+ * `create_vehicle` op. customer_id is read from the row (set at
+ * Step 4 for new client, or pre-existing for returning).
+ *
+ * On success: vehicle_id is persisted by the edge function; this
+ * Server Action advances the wizard to `service_concern_picker`.
+ */
 export async function submitNewVehicle(args: {
   chatId: string;
   vehicle: {
     year: number;
     make: string;
     model: string;
-    sub_model?: string;
-    vin?: string;
     license_plate?: string;
-    state?: string;
+    notes?: string;
   };
 }): Promise<SessionActionResult> {
   try {
+    // Persist the form values to the row BEFORE the Tekmetric call —
+    // resume safety. Use new_vehicle_info as the storage column.
     await writeSession({
       chatId: args.chatId,
-      updates: { new_vehicle_info: args.vehicle },
-      nextStep: "service_concern_picker",
+      updates: {
+        new_vehicle_info: args.vehicle as unknown as Json,
+      },
     });
     await logAudit({
       session_id: args.chatId,
       step: "new_vehicle_form",
       event_type: "card_submitted",
       event_detail: {
-        vehicle_year: args.vehicle.year,
-        vehicle_make: args.vehicle.make,
+        year: args.vehicle.year,
+        make: args.vehicle.make,
+        model: args.vehicle.model,
+        has_plate: !!args.vehicle.license_plate,
+        has_notes: !!args.vehicle.notes,
       },
+    });
+
+    const supabase = createSupabaseAdminClient();
+    const { data: rowRaw } = await supabase
+      .from("customer_chat_sessions")
+      .select("*")
+      .eq("id", args.chatId)
+      .maybeSingle();
+    const row = rowRaw as Record<string, unknown> | null;
+    const customerId =
+      typeof row?.customer_id === "number" ? row.customer_id : null;
+    if (customerId == null) {
+      throw new Error(
+        "customer_id missing on row — Step 4 must complete before Step 5",
+      );
+    }
+
+    const startedAt = Date.now();
+    const result = await bookingCreateVehicle({
+      op: "create_vehicle",
+      session_id: args.chatId,
+      customer_id: customerId,
+      payload: {
+        year: args.vehicle.year,
+        make: args.vehicle.make,
+        model: args.vehicle.model,
+        license_plate: args.vehicle.license_plate,
+        // notes stored only in new_vehicle_info for Phase 1 — spec §1281
+        // "Phase 1 = stored verbatim, no AI parsing"; Tekmetric POST
+        // /vehicles doesn't take a notes/comment field.
+      },
+    });
+
+    if (!result.ok) {
+      await logAudit({
+        session_id: args.chatId,
+        step: "new_vehicle_form",
+        event_type: "tool_failed",
+        event_detail: {
+          tool: "createVehicle",
+          error: result.error,
+          tekmetric_error_text: result.tekmetric_error_text ?? null,
+        },
+        latency_ms: Date.now() - startedAt,
+      });
+      return {
+        ok: false,
+        directive: "tool_error",
+        flags: { tekmetric_error: true },
+        bubble_copy: getBubbleCopy("tool_error"),
+        error: result.tekmetric_error_text ?? result.error,
+        current_step: "new_vehicle_form",
+      };
+    }
+
+    // Success — vehicle_id is persisted by the edge function. Advance.
+    await writeSession({
+      chatId: args.chatId,
+      updates: {},
+      nextStep: "service_concern_picker",
+    });
+    await logAudit({
+      session_id: args.chatId,
+      step: "new_vehicle_form",
+      event_type: "tool_succeeded",
+      event_detail: { tool: "createVehicle", vehicle_id: result.vehicle_id },
+      latency_ms: Date.now() - startedAt,
     });
     return {
       ok: true,
       directive: "show_service_and_concern_picker",
       data: {},
-      bubble_copy: getBubbleCopy("vehicle_added"),
+      bubble_copy: `Got it — added your ${args.vehicle.year} ${args.vehicle.make} ${args.vehicle.model}! 🚗 ✨`,
       current_step: "service_concern_picker",
     };
   } catch (e) {
@@ -2066,9 +2278,11 @@ export async function submitSummaryConfirm(args: {
     }
 
     // Customer confirmed → call the deterministic booking-direct
-    // confirm_booking op. Replaces the prior consultOrchestrator(
-    // intent_type='confirm_appointment') path which suffered the same
-    // generateText+Output.object fragility as fetch_slots.
+    // confirm_booking op. Per spec §2589-2755 (new client) + §1178-1408
+    // (returning), customer_id + vehicle_id are ALREADY on the row by
+    // this point — created at Step 4 / 5 / 6 respectively. confirm_booking
+    // just runs confirmAppointment with the existing IDs (no inline
+    // createCustomer / createVehicle chaining).
     const supabaseConfirm = createSupabaseAdminClient();
     const { data: confirmRowRaw } = await supabaseConfirm
       .from("customer_chat_sessions")
@@ -2080,60 +2294,16 @@ export async function submitSummaryConfirm(args: {
     if (!confirmRow?.hold_token) {
       throw new Error("hold_token missing on session row — cannot confirm");
     }
-
-    const isNewCustomer = !confirmRow.customer_id;
-    const isNewVehicle =
-      !confirmRow.vehicle_id && !!confirmRow.new_vehicle_info;
-
-    // Build new_customer payload if needed.
-    const newCustomer: NewCustomerPayload | undefined = isNewCustomer
-      ? {
-          first_name: String(confirmRow.verified_first_name ?? "").trim(),
-          last_name: String(confirmRow.verified_last_name ?? "").trim(),
-          phone_e164: String(confirmRow.phone_e164 ?? "").trim(),
-          email: confirmRow.primary_email_for_description
-            ? String(confirmRow.primary_email_for_description)
-            : undefined,
-          address: confirmRow.edited_address
-            ? (() => {
-                const ea = confirmRow.edited_address as Record<string, unknown>;
-                const a1 = String(ea.address1 ?? "").trim();
-                const a2 = String(ea.address2 ?? "").trim();
-                const street = [a1, a2].filter(Boolean).join(" ");
-                return {
-                  streetAddress: street || undefined,
-                  city:
-                    typeof ea.city === "string" ? ea.city : undefined,
-                  state:
-                    typeof ea.state === "string" ? ea.state : undefined,
-                  zip: typeof ea.zip === "string" ? ea.zip : undefined,
-                };
-              })()
-            : undefined,
-        }
-      : undefined;
-
-    // Build new_vehicle payload if needed (new customer always needs one;
-    // returning customer adding a vehicle also).
-    const newVehicle: NewVehiclePayload | undefined =
-      (isNewCustomer || isNewVehicle) && confirmRow.new_vehicle_info
-        ? (() => {
-            const nvi = confirmRow.new_vehicle_info as Record<string, unknown>;
-            return {
-              year: Number(nvi.year),
-              make: String(nvi.make ?? "").trim(),
-              model: String(nvi.model ?? "").trim(),
-              sub_model: nvi.sub_model
-                ? String(nvi.sub_model)
-                : undefined,
-              vin: nvi.vin ? String(nvi.vin) : undefined,
-              license_plate: nvi.license_plate
-                ? String(nvi.license_plate)
-                : undefined,
-              color: nvi.color ? String(nvi.color) : undefined,
-            };
-          })()
-        : undefined;
+    if (typeof confirmRow.customer_id !== "number") {
+      throw new Error(
+        "customer_id missing on row at summary confirm — Step 4 must have run",
+      );
+    }
+    if (typeof confirmRow.vehicle_id !== "number") {
+      throw new Error(
+        "vehicle_id missing on row at summary confirm — Step 5/6 must have run",
+      );
+    }
 
     const title = await buildAppointmentTitle({ chatId: args.chatId });
     const description = await buildServiceSummary({ chatId: args.chatId });
@@ -2143,40 +2313,17 @@ export async function submitSummaryConfirm(args: {
         : "PICKUP_DROPOFF";
 
     const startedAt = Date.now();
-    await logAudit({
-      session_id: args.chatId,
-      step: "summary",
-      event_type: "pre_confirm_call",
-      event_detail: {
-        is_new_customer: isNewCustomer,
-        is_new_vehicle: isNewVehicle,
-        has_new_customer_data: !!newCustomer,
-        has_new_vehicle_data: !!newVehicle,
-        title_len: title.length,
-        description_len: description.length,
-        appointment_option: apptOption,
-        hold_id: String(confirmRow.hold_token),
-      },
-    });
     let confirmResult: Awaited<ReturnType<typeof bookingConfirmBooking>>;
     try {
       confirmResult = await bookingConfirmBooking({
         op: "confirm_booking",
         session_id: args.chatId,
         hold_id: String(confirmRow.hold_token),
-        customer_id:
-          typeof confirmRow.customer_id === "number"
-            ? confirmRow.customer_id
-            : undefined,
-        vehicle_id:
-          typeof confirmRow.vehicle_id === "number"
-            ? confirmRow.vehicle_id
-            : undefined,
+        customer_id: confirmRow.customer_id,
+        vehicle_id: confirmRow.vehicle_id,
         title,
         description,
         appointment_option: apptOption,
-        new_customer: newCustomer,
-        new_vehicle: newVehicle,
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -2184,7 +2331,7 @@ export async function submitSummaryConfirm(args: {
         session_id: args.chatId,
         step: "summary",
         event_type: "confirm_threw",
-        event_detail: { error: msg.slice(0, 500) },
+        event_detail: { error: msg.slice(0, 2000) },
       });
       throw e;
     }
@@ -2196,14 +2343,11 @@ export async function submitSummaryConfirm(args: {
         tool: "scheduler-booking-direct:confirm_booking",
         ok: confirmResult.ok,
         error: confirmResult.error ?? null,
-        new_customer_flow: isNewCustomer,
-        new_vehicle_flow: isNewVehicle,
       },
       latency_ms: Date.now() - startedAt,
     });
 
     if (!confirmResult.ok) {
-      // Bubble up a graceful tool_error; chat agent escalates on this.
       return {
         ok: false,
         directive: "tool_error",
@@ -2219,15 +2363,6 @@ export async function submitSummaryConfirm(args: {
     };
     if (typeof confirmResult.appointment_id === "number") {
       updates.appointment_id = confirmResult.appointment_id;
-    }
-    if (isNewCustomer && typeof confirmResult.customer_id === "number") {
-      updates.customer_id = confirmResult.customer_id;
-    }
-    if (
-      (isNewCustomer || isNewVehicle) &&
-      typeof confirmResult.vehicle_id === "number"
-    ) {
-      updates.vehicle_id = confirmResult.vehicle_id;
     }
     await writeSession({
       chatId: args.chatId,

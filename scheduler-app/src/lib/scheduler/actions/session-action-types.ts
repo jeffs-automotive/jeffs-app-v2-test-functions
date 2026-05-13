@@ -51,7 +51,14 @@ const DIRECTIVE_TO_TOOL_NAME: Record<string, string> = {
   // phone_name → step 3 / step 4
   send_otp_first: "show_otp_input",
   show_otp_input: "show_otp_input",
-  show_new_customer_form: "show_new_customer_form",
+  // New-client Step 4 / Step 5 — spec-aligned cards (replaces the legacy
+  // show_new_customer_form combined card per chat-design.md §2589-2755).
+  show_new_customer_info_card: "show_new_customer_info_card",
+  show_new_vehicle_form: "show_new_vehicle_form",
+  // Legacy alias — Tekmetric duplicate / mid-migration sessions may still
+  // emit the old name. Route it to the new Step 4 card; the Server Action
+  // payload validator catches shape mismatches.
+  show_new_customer_form: "show_new_customer_info_card",
   // Step 3.5 reconciliation forks — now have dedicated cards (2026-05-13)
   identity_match_required: "show_multi_account_disambiguation",
   show_multi_account_disambiguation: "show_multi_account_disambiguation",

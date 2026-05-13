@@ -117,16 +117,32 @@ interface ConfirmBookingInput {
   op: "confirm_booking";
   session_id: string;
   hold_id: string;
-  customer_id?: number;
-  vehicle_id?: number;
+  customer_id: number;
+  vehicle_id: number;
   title: string;
   description: string;
   appointment_option?: "WAITER" | "PICKUP_DROPOFF" | "TOWED" | "NONE";
-  new_customer?: NewCustomerPayload;
-  new_vehicle?: NewVehiclePayload;
 }
 
-type RequestBody = ListWaiterTimesInput | HoldSlotInput | ConfirmBookingInput;
+interface CreateCustomerInput {
+  op: "create_customer";
+  session_id: string;
+  payload: NewCustomerPayload;
+}
+
+interface CreateVehicleInput {
+  op: "create_vehicle";
+  session_id: string;
+  customer_id: number;
+  payload: NewVehiclePayload;
+}
+
+type RequestBody =
+  | ListWaiterTimesInput
+  | HoldSlotInput
+  | ConfirmBookingInput
+  | CreateCustomerInput
+  | CreateVehicleInput;
 
 function parseBody(raw: unknown):
   | { ok: true; input: RequestBody }
@@ -186,16 +202,31 @@ function parseBody(raw: unknown):
     if (typeof r.description !== "string") {
       return { ok: false, error: "description required" };
     }
+    // Per chat-design.md §10 and the New Client flow §2589-2755, the
+    // customer + vehicle MUST already exist in Tekmetric by the time
+    // we hit confirm_booking — created at Step 4 (new client) /
+    // Step 5 (new vehicle) / Step 6 (vehicle picker add-new). This op
+    // no longer accepts new_customer / new_vehicle payloads.
+    if (typeof r.customer_id !== "number") {
+      return {
+        ok: false,
+        error: "customer_id required (must be created at Step 4 before confirm)",
+      };
+    }
+    if (typeof r.vehicle_id !== "number") {
+      return {
+        ok: false,
+        error: "vehicle_id required (must be created at Step 5/6 before confirm)",
+      };
+    }
     return {
       ok: true,
       input: {
         op: "confirm_booking",
         session_id: r.session_id,
         hold_id: r.hold_id,
-        customer_id:
-          typeof r.customer_id === "number" ? r.customer_id : undefined,
-        vehicle_id:
-          typeof r.vehicle_id === "number" ? r.vehicle_id : undefined,
+        customer_id: r.customer_id,
+        vehicle_id: r.vehicle_id,
         title: r.title,
         description: r.description,
         appointment_option:
@@ -205,18 +236,82 @@ function parseBody(raw: unknown):
           r.appointment_option === "NONE"
             ? r.appointment_option
             : undefined,
-        new_customer: (r.new_customer ?? undefined) as
-          | NewCustomerPayload
-          | undefined,
-        new_vehicle: (r.new_vehicle ?? undefined) as
-          | NewVehiclePayload
-          | undefined,
+      },
+    };
+  }
+  if (r.op === "create_customer") {
+    if (!r.payload || typeof r.payload !== "object") {
+      return { ok: false, error: "payload required (new customer fields)" };
+    }
+    const p = r.payload as Record<string, unknown>;
+    if (typeof p.first_name !== "string" || !p.first_name) {
+      return { ok: false, error: "payload.first_name required" };
+    }
+    if (typeof p.last_name !== "string" || !p.last_name) {
+      return { ok: false, error: "payload.last_name required" };
+    }
+    if (typeof p.phone_e164 !== "string" || !/^\+1\d{10}$/.test(p.phone_e164)) {
+      return { ok: false, error: "payload.phone_e164 required (+1XXXXXXXXXX)" };
+    }
+    return {
+      ok: true,
+      input: {
+        op: "create_customer",
+        session_id: r.session_id,
+        payload: {
+          first_name: p.first_name,
+          last_name: p.last_name,
+          phone_e164: p.phone_e164,
+          email: typeof p.email === "string" ? p.email : undefined,
+          address:
+            p.address && typeof p.address === "object"
+              ? (p.address as NewCustomerPayload["address"])
+              : undefined,
+        },
+      },
+    };
+  }
+  if (r.op === "create_vehicle") {
+    if (typeof r.customer_id !== "number") {
+      return { ok: false, error: "customer_id required" };
+    }
+    if (!r.payload || typeof r.payload !== "object") {
+      return { ok: false, error: "payload required (new vehicle fields)" };
+    }
+    const p = r.payload as Record<string, unknown>;
+    if (typeof p.year !== "number" || !Number.isFinite(p.year)) {
+      return { ok: false, error: "payload.year required (number)" };
+    }
+    if (typeof p.make !== "string" || !p.make) {
+      return { ok: false, error: "payload.make required" };
+    }
+    if (typeof p.model !== "string" || !p.model) {
+      return { ok: false, error: "payload.model required" };
+    }
+    return {
+      ok: true,
+      input: {
+        op: "create_vehicle",
+        session_id: r.session_id,
+        customer_id: r.customer_id,
+        payload: {
+          year: p.year,
+          make: p.make,
+          model: p.model,
+          sub_model:
+            typeof p.sub_model === "string" ? p.sub_model : undefined,
+          vin: typeof p.vin === "string" ? p.vin : undefined,
+          license_plate:
+            typeof p.license_plate === "string" ? p.license_plate : undefined,
+          color: typeof p.color === "string" ? p.color : undefined,
+        },
       },
     };
   }
   return {
     ok: false,
-    error: "op must be 'list_waiter_times' | 'hold_slot' | 'confirm_booking'",
+    error:
+      "op must be 'list_waiter_times' | 'hold_slot' | 'confirm_booking' | 'create_customer' | 'create_vehicle'",
   };
 }
 
@@ -377,63 +472,140 @@ async function handleRequest(req: Request): Promise<Response> {
       }
     }
 
-    if (input.op === "confirm_booking") {
-      let customerId = input.customer_id ?? null;
-      let vehicleId = input.vehicle_id ?? null;
-
-      // New-customer path: create Tekmetric customer + vehicle before confirm.
-      if (!customerId && input.new_customer) {
-        const created = await createNewCustomer(sb, SHOP_ID, {
-          first_name: input.new_customer.first_name,
-          last_name: input.new_customer.last_name,
-          phone_e164: input.new_customer.phone_e164,
-          email: input.new_customer.email,
-          address: input.new_customer.address,
+    if (input.op === "create_customer") {
+      // Per chat-design.md §2638-§2682 (New Client Step 4): Server Action
+      // calls Tekmetric POST /customers IMMEDIATELY on form submit. Caller
+      // (submitNewCustomerInfo) handles row persistence + error routing.
+      //
+      // Failure-mode policy per spec §2651-§2654:
+      //   - 5xx → retry once with 1s backoff (handled by Server Action's
+      //     consumer of this response — we just return ok:false on second
+      //     failure here)
+      //   - 4xx (validation) → ok:false with the Tekmetric error text
+      //   - 409 phone-duplicate → ok:false + error tag 'phone_duplicate'
+      //     so the Server Action can route back to Step 1 returning flow
+      let result: { customer_id: number };
+      try {
+        result = await createNewCustomer(sb, SHOP_ID, {
+          first_name: input.payload.first_name,
+          last_name: input.payload.last_name,
+          phone_e164: input.payload.phone_e164,
+          email: input.payload.email,
+          address: input.payload.address,
         });
-        customerId = created.customer_id;
-      }
-      if (!customerId) {
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        // Tekmetric 409 body includes "Customer(s) with the same email
+        // and/or phone exist" — surface as a structured error tag.
+        if (msg.includes("HTTP 409") || msg.includes("same email and/or phone")) {
+          return jsonResponse({
+            ok: false,
+            op: "create_customer",
+            error: "phone_duplicate",
+            tekmetric_error_text: msg.slice(0, 500),
+            meta: { latency_ms: Date.now() - startedAt },
+          });
+        }
+        // 4xx validation
+        if (/HTTP 4\d\d/.test(msg)) {
+          return jsonResponse({
+            ok: false,
+            op: "create_customer",
+            error: "tekmetric_4xx",
+            tekmetric_error_text: msg.slice(0, 500),
+            meta: { latency_ms: Date.now() - startedAt },
+          });
+        }
+        // 5xx / network — bubble up as tekmetric_5xx
         return jsonResponse({
           ok: false,
-          op: "confirm_booking",
-          error: "missing_customer_id_and_new_customer_data",
-        }, 400);
-      }
-      if (!vehicleId && input.new_vehicle) {
-        const createdVeh = await createNewVehicle(sb, SHOP_ID, {
-          customer_id: customerId,
-          year: input.new_vehicle.year,
-          make: input.new_vehicle.make,
-          model: input.new_vehicle.model,
-          sub_model: input.new_vehicle.sub_model,
-          vin: input.new_vehicle.vin,
-          license_plate: input.new_vehicle.license_plate,
-          color: input.new_vehicle.color,
+          op: "create_customer",
+          error: "tekmetric_5xx",
+          tekmetric_error_text: msg.slice(0, 500),
+          meta: { latency_ms: Date.now() - startedAt },
         });
-        vehicleId = createdVeh.vehicle_id;
-      }
-      if (!vehicleId) {
-        return jsonResponse({
-          ok: false,
-          op: "confirm_booking",
-          error: "missing_vehicle_id_and_new_vehicle_data",
-        }, 400);
       }
 
-      // Persist resolved IDs onto the session so downstream readers find them.
+      // Persist the new customer_id + verification level onto the row.
       await sb
         .from("customer_chat_sessions")
         .update({
-          customer_id: customerId,
-          vehicle_id: vehicleId,
+          customer_id: result.customer_id,
+          identity_verification_level: "full",
           last_active_at: new Date().toISOString(),
         })
         .eq("id", input.session_id);
 
+      return jsonResponse({
+        ok: true,
+        op: "create_customer",
+        customer_id: result.customer_id,
+        meta: { latency_ms: Date.now() - startedAt },
+      });
+    }
+
+    if (input.op === "create_vehicle") {
+      // Per chat-design.md §2712-§2752 (New Client Step 5) and §1285-§1306
+      // (Returning Client Step 6 add-new drill-down): Server Action calls
+      // Tekmetric POST /vehicles IMMEDIATELY on form submit.
+      let result: { vehicle_id: number };
+      try {
+        result = await createNewVehicle(sb, SHOP_ID, {
+          customer_id: input.customer_id,
+          year: input.payload.year,
+          make: input.payload.make,
+          model: input.payload.model,
+          sub_model: input.payload.sub_model,
+          vin: input.payload.vin,
+          license_plate: input.payload.license_plate,
+          color: input.payload.color,
+        });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (/HTTP 4\d\d/.test(msg)) {
+          return jsonResponse({
+            ok: false,
+            op: "create_vehicle",
+            error: "tekmetric_4xx",
+            tekmetric_error_text: msg.slice(0, 500),
+            meta: { latency_ms: Date.now() - startedAt },
+          });
+        }
+        return jsonResponse({
+          ok: false,
+          op: "create_vehicle",
+          error: "tekmetric_5xx",
+          tekmetric_error_text: msg.slice(0, 500),
+          meta: { latency_ms: Date.now() - startedAt },
+        });
+      }
+
+      // Persist the new vehicle_id onto the row.
+      await sb
+        .from("customer_chat_sessions")
+        .update({
+          vehicle_id: result.vehicle_id,
+          last_active_at: new Date().toISOString(),
+        })
+        .eq("id", input.session_id);
+
+      return jsonResponse({
+        ok: true,
+        op: "create_vehicle",
+        vehicle_id: result.vehicle_id,
+        meta: { latency_ms: Date.now() - startedAt },
+      });
+    }
+
+    if (input.op === "confirm_booking") {
+      // Per the spec-aligned refactor 2026-05-13: customer + vehicle MUST
+      // already exist in Tekmetric. parseBody enforces customer_id +
+      // vehicle_id are numbers. confirm_booking just runs
+      // confirmAppointment with the existing IDs.
       const result = await confirmAppointment(sb, SHOP_ID, {
         hold_id: input.hold_id,
-        customer_id: customerId,
-        vehicle_id: vehicleId,
+        customer_id: input.customer_id,
+        vehicle_id: input.vehicle_id,
         title: input.title,
         description: input.description,
         appointment_option: input.appointment_option,
@@ -445,8 +617,8 @@ async function handleRequest(req: Request): Promise<Response> {
         appointment_id: result.appointment_id,
         status: result.status,
         start_time: result.start_time,
-        customer_id: customerId,
-        vehicle_id: vehicleId,
+        customer_id: input.customer_id,
+        vehicle_id: input.vehicle_id,
         meta: { latency_ms: Date.now() - startedAt },
       });
     }

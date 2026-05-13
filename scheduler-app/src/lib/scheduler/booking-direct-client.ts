@@ -20,7 +20,9 @@ import { resolveServiceRoleKey } from "@/lib/supabase/resolve-keys";
 export type BookingDirectOp =
   | "list_waiter_times"
   | "hold_slot"
-  | "confirm_booking";
+  | "confirm_booking"
+  | "create_customer"
+  | "create_vehicle";
 
 export interface ListWaiterTimesRequest {
   op: "list_waiter_times";
@@ -82,13 +84,13 @@ export interface ConfirmBookingRequest {
   op: "confirm_booking";
   session_id: string;
   hold_id: string;
-  customer_id?: number;
-  vehicle_id?: number;
+  /** REQUIRED — created at Step 4 (new client) or already on row (returning). */
+  customer_id: number;
+  /** REQUIRED — created at Step 5 (new) or Step 6 (returning add or pick). */
+  vehicle_id: number;
   title: string;
   description: string;
   appointment_option?: "WAITER" | "PICKUP_DROPOFF" | "TOWED" | "NONE";
-  new_customer?: NewCustomerPayload;
-  new_vehicle?: NewVehiclePayload;
 }
 
 export interface ConfirmBookingResponse {
@@ -103,15 +105,51 @@ export interface ConfirmBookingResponse {
   meta?: { latency_ms?: number };
 }
 
+export interface CreateCustomerRequest {
+  op: "create_customer";
+  session_id: string;
+  payload: NewCustomerPayload;
+}
+
+export interface CreateCustomerResponse {
+  ok: boolean;
+  op: "create_customer";
+  customer_id?: number;
+  /** One of: 'phone_duplicate' | 'tekmetric_4xx' | 'tekmetric_5xx'. */
+  error?: string;
+  tekmetric_error_text?: string;
+  meta?: { latency_ms?: number };
+}
+
+export interface CreateVehicleRequest {
+  op: "create_vehicle";
+  session_id: string;
+  customer_id: number;
+  payload: NewVehiclePayload;
+}
+
+export interface CreateVehicleResponse {
+  ok: boolean;
+  op: "create_vehicle";
+  vehicle_id?: number;
+  error?: string;
+  tekmetric_error_text?: string;
+  meta?: { latency_ms?: number };
+}
+
 export type BookingDirectRequest =
   | ListWaiterTimesRequest
   | HoldSlotRequest
-  | ConfirmBookingRequest;
+  | ConfirmBookingRequest
+  | CreateCustomerRequest
+  | CreateVehicleRequest;
 
 export type BookingDirectResponse =
   | ListWaiterTimesResponse
   | HoldSlotResponse
-  | ConfirmBookingResponse;
+  | ConfirmBookingResponse
+  | CreateCustomerResponse
+  | CreateVehicleResponse;
 
 export class BookingDirectError extends Error {
   constructor(
@@ -233,6 +271,30 @@ export async function confirmBooking(
   if (r.op !== "confirm_booking") {
     throw new BookingDirectError(
       `scheduler-booking-direct returned wrong op (${r.op}) for confirm_booking`,
+    );
+  }
+  return r;
+}
+
+export async function createCustomer(
+  req: CreateCustomerRequest,
+): Promise<CreateCustomerResponse> {
+  const r = await call(req);
+  if (r.op !== "create_customer") {
+    throw new BookingDirectError(
+      `scheduler-booking-direct returned wrong op (${r.op}) for create_customer`,
+    );
+  }
+  return r;
+}
+
+export async function createVehicle(
+  req: CreateVehicleRequest,
+): Promise<CreateVehicleResponse> {
+  const r = await call(req);
+  if (r.op !== "create_vehicle") {
+    throw new BookingDirectError(
+      `scheduler-booking-direct returned wrong op (${r.op}) for create_vehicle`,
     );
   }
   return r;
