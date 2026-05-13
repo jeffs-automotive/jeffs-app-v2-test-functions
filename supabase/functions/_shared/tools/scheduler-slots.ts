@@ -648,7 +648,14 @@ export async function holdAppointmentSlot(
     if (!time) {
       throw new Error("waiter hold requires `time` ('08:00' or '09:00')");
     }
-    // Call hold_waiter_slot RPC
+    // Call hold_waiter_slot RPC.
+    //
+    // The RPC's actual signature is (p_shop_id, p_session_id, p_customer_id,
+    // p_vehicle_id, p_scheduled_date, p_scheduled_time, p_appointment_type,
+    // p_service_summary) — the 7th positional arg is `p_appointment_type`,
+    // NOT `p_active_tekmetric_appts` as an earlier version of this caller
+    // assumed. Verified live 2026-05-13 against information_schema.parameters
+    // after a "Could not find the function" PGRST202 came back from PostgREST.
     const { data, error } = await sb.rpc("hold_waiter_slot", {
       p_shop_id: shopId,
       p_session_id: args.session_id,
@@ -656,9 +663,15 @@ export async function holdAppointmentSlot(
       p_vehicle_id: args.vehicle_id ?? null,
       p_scheduled_date: date,
       p_scheduled_time: time,
+      p_appointment_type: "waiter",
       p_service_summary: args.service_summary,
-      p_active_tekmetric_appts: tekmetricSlotCount,
     });
+    // tekmetricSlotCount is no longer passed to the RPC (the RPC's own
+    // SELECT counts current holds + appointments). Reference it here to
+    // keep the surrounding pre-check code's "we already verified Tekmetric"
+    // signal — useful for future logging hooks; remove if it ever causes
+    // an unused-var lint error.
+    void tekmetricSlotCount;
     if (error) {
       // P0001 'slot_full' is the race-safe "already taken" signal
       if (error.message?.includes("slot_full")) {
