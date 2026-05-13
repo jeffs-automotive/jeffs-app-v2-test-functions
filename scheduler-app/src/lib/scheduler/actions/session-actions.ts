@@ -1682,47 +1682,108 @@ export async function submitAppointmentType(args: {
       event_detail: { type: args.appointment_type },
     });
 
-    // Ask orchestrator for available dates (per appointment type).
-    const result = await consultOrchestrator({
-      session_id: args.chatId,
-      context: `Customer chose appointment type ${args.appointment_type}. Fetch available dates.`,
-      hints: { appointment_type: args.appointment_type },
-      intent_type: "fetch_slots",
-    });
-    // TEMP diagnostic: trace what the orchestrator returns for fetch_slots
-    // so we can debug why the calendar card sometimes doesn't render.
-    // Also write to scheduler_audit_log so it's queryable from the DB
-    // (Vercel MCP truncates console.log entries; DB row gives full picture).
-    console.log(
-      JSON.stringify({
-        level: "info",
-        msg: "appt_type_orchestrator_result",
-        directive: result.directive,
-        data_keys: result.data ? Object.keys(result.data) : [],
-        flags: result.flags,
-      }),
-    );
-    await logAudit({
-      session_id: args.chatId,
-      step: "appointment_type",
-      event_type: "orchestrator_result",
-      event_detail: {
-        directive: result.directive,
-        data: result.data,
-        flags: result.flags,
-      } as unknown as Record<string, unknown>,
+    // Deterministic slot fetch — bypass the orchestrator for this step.
+    //
+    // The scheduler specialist's generateText + Output.object pattern
+    // intermittently returned `result.output === undefined` even with
+    // structured output enforced, causing the fallback path to fire and
+    // return `directive_parse_failed: true` → tool_error → no calendar
+    // card rendered. Same fragility class as the 2026-05-13 Step 2 bug.
+    //
+    // Fix (F5-full pattern): same shape as scheduler-step2-direct —
+    // query the slot data tables (closed_dates + appointment_default_limits)
+    // directly here and synthesize the show_calendar_date_picker directive
+    // without any LLM hop. The data is deterministic; no LLM needed.
+    const availableDates = await computeAvailableDates({
+      chatId: args.chatId,
+      appointment_type: args.appointment_type,
+      days_ahead: 30,
     });
     return {
-      ok: result.directive !== "tool_error",
-      directive: result.directive ?? "show_calendar_date_picker",
-      data: result.data ?? {},
-      flags: result.flags,
+      ok: true,
+      directive: "show_calendar_date_picker",
+      data: {
+        available_dates: availableDates,
+        type: args.appointment_type,
+      },
       bubble_copy: getBubbleCopy("to_date_pick"),
       current_step: "date_pick",
     };
   } catch (e) {
     return tooErrResult(e, "appointment_type");
   }
+}
+
+// ─── Deterministic slot-availability helper ───────────────────────────────
+//
+// Replaces the orchestrator's fetch_slots round-trip for the calendar-date
+// picker. Returns a sorted array of YYYY-MM-DD strings for days within the
+// next `days_ahead` window that are NOT in closed_dates and NOT marked
+// is_closed in appointment_default_limits for that day-of-week.
+//
+// Notes:
+// - Capacity-based exclusion (full days) is NOT applied here. listAvailableSlots
+//   in the Edge bundle does that with appointment_blocks + held capacity;
+//   re-implementing here would duplicate ~80 lines of slot math. The customer
+//   can still pick a "full" day and see no times in the waiter time picker;
+//   we'll filter out fully-blocked days in a follow-up.
+// - Sunday is the default closed day (seeded into closed_dates via the
+//   schema migration's generate_series).
+async function computeAvailableDates(args: {
+  chatId: string;
+  appointment_type: "waiter" | "dropoff";
+  days_ahead: number;
+}): Promise<string[]> {
+  const supabase = createSupabaseAdminClient();
+
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const endDate = new Date(today);
+  endDate.setUTCDate(endDate.getUTCDate() + args.days_ahead);
+
+  const ymd = (d: Date): string => d.toISOString().slice(0, 10);
+
+  // Fetch closed_dates in the window.
+  const { data: closed, error: closedErr } = await supabase
+    .from("closed_dates")
+    .select("closed_date")
+    .gte("closed_date", ymd(today))
+    .lt("closed_date", ymd(endDate));
+  if (closedErr) {
+    throw new Error(`closed_dates query failed: ${closedErr.message}`);
+  }
+  const closedSet = new Set(
+    (closed ?? []).map((r) => r.closed_date as string),
+  );
+
+  // Fetch appointment_default_limits → day_of_week → is_closed map.
+  const { data: limits, error: limitsErr } = await supabase
+    .from("appointment_default_limits")
+    .select("day_of_week, is_closed");
+  if (limitsErr) {
+    throw new Error(
+      `appointment_default_limits query failed: ${limitsErr.message}`,
+    );
+  }
+  const closedDows = new Set(
+    (limits ?? [])
+      .filter((r) => r.is_closed)
+      .map((r) => r.day_of_week as number),
+  );
+
+  // Walk the window day-by-day; collect dates that pass both filters.
+  const result: string[] = [];
+  for (
+    let cursor = new Date(today);
+    cursor < endDate;
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
+  ) {
+    const date = ymd(cursor);
+    if (closedSet.has(date)) continue;
+    if (closedDows.has(cursor.getUTCDay())) continue;
+    result.push(date);
+  }
+  return result;
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
