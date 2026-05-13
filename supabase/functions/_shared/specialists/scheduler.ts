@@ -57,6 +57,9 @@ export interface SchedulerSpecialistArgs {
   includeAdminTools?: boolean;
   /** Required when includeAdminTools is true; denormalized into audit columns. */
   audit?: SchedulerToolsArgs["audit"];
+  /** Threaded to admin tools that hit other Edge Functions (run_appointments_sync). */
+  supabaseUrl?: string;
+  serviceRoleKey?: string;
 }
 
 export interface SchedulerSpecialistResult {
@@ -243,6 +246,8 @@ export async function runSchedulerSpecialist(
     sessionId: args.sessionId,
     includeAdminTools: !!args.includeAdminTools,
     audit: args.audit,
+    supabaseUrl: args.supabaseUrl,
+    serviceRoleKey: args.serviceRoleKey,
   });
 
   // Compose the prompt: context + hints + session metadata + optional intent_type hint

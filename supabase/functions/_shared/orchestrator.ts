@@ -412,6 +412,11 @@ async function dispatchSpecialist(
       includeAdminTools: input.caller_context === "advisor" &&
         !!input.include_admin_tools,
       audit: input.admin_audit,
+      // Threaded only for admin-tool paths (run_appointments_sync). Customer
+      // path never has admin tools, so these are no-ops there.
+      supabaseUrl: Deno.env.get("SUPABASE_URL") ?? undefined,
+      serviceRoleKey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
+        Deno.env.get("SUPABASE_SECRET_KEY") ?? undefined,
     });
     return { kind: "scheduler", value: result };
   }

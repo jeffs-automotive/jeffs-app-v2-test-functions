@@ -67,6 +67,20 @@ import {
   upsertRoutineService,
   deactivateRoutineService,
 } from "./tools/scheduler-pricing.ts";
+import {
+  uploadRoutineServicesMd,
+  uploadTestingServicesMd,
+  uploadConcernQuestionsMd,
+  uploadAppointmentDefaultLimitsMd,
+  uploadClosedDatesMd,
+  exportRoutineServicesMd,
+  exportTestingServicesMd,
+  exportConcernQuestionsMd,
+  exportAppointmentDefaultLimitsMd,
+  exportClosedDatesMd,
+  runAppointmentsSync,
+  findOrphanCustomers,
+} from "./tools/scheduler-admin.ts";
 
 import type { ToolCallRecorder } from "./orchestrator-tools.ts";
 
@@ -79,13 +93,18 @@ export interface SchedulerToolsArgs {
   recorder: ToolCallRecorder;
   /** The scheduler session this orchestrator run is scoped to. */
   sessionId: string;
-  /** When true, exposes admin tools (block/unblock + upsert/deactivate). */
+  /** When true, exposes admin tools (block/unblock + upsert/deactivate + MD-upload + helpers). */
   includeAdminTools?: boolean;
   /** Required when includeAdminTools is true; denormalized into audit columns. */
   audit?: {
     oauth_client_id: string;
     display_name: string;
   };
+  /** Required when admin tools that call other Edge Functions are exposed
+   *  (e.g. run_appointments_sync hits the appointments-sync function). When
+   *  omitted, those tools are skipped from the registry. */
+  supabaseUrl?: string;
+  serviceRoleKey?: string;
 }
 
 // Helper: wraps tool execution with the recorder, mirroring the pattern in
@@ -114,7 +133,17 @@ function recorded<TInput, TOutput>(
 }
 
 export function getSchedulerTools(args: SchedulerToolsArgs) {
-  const { sb, shopId, recorder, sessionId, includeAdminTools, audit } = args;
+  const {
+    sb,
+    shopId,
+    recorder,
+    sessionId,
+    includeAdminTools,
+    audit,
+    supabaseUrl,
+    serviceRoleKey,
+  } = args;
+  void sessionId; // reserved for per-session admin-action tagging in future chunks
 
   if (includeAdminTools && !audit) {
     throw new Error(
@@ -798,7 +827,211 @@ export function getSchedulerTools(args: SchedulerToolsArgs) {
           deactivateRoutineService(sb, shopId, input),
         ),
       }),
+
+      // ─── MD-upload tools (bulk edit + export) ──────────────────────────────
+
+      upload_routine_services_md: tool({
+        description:
+          "Bulk-update the routine_services catalog from a markdown table. " +
+          "Required columns: service_key, display_name, abbreviation, " +
+          "display_order, wait_eligible, requires_explanation, active. " +
+          "Diff-based: rows present in MD = upsert; rows in DB but missing " +
+          "from MD = soft-delete (set active=false). Idempotent on identical " +
+          "uploads (md_content_hash check). Logs to scheduler_admin_audit_log " +
+          "with structured diff_summary. Returns: { ok, rows_added, " +
+          "rows_modified, rows_deactivated, diff_summary, parse_errors?, " +
+          "validation_errors?, error_message? }.",
+        inputSchema: z.object({
+          md_content: z
+            .string()
+            .min(1)
+            .describe("Full markdown file content as a string."),
+        }),
+        execute: recorded(recorder, "upload_routine_services_md", (input) =>
+          uploadRoutineServicesMd(sb, shopId, { md_content: input.md_content, audit }),
+        ),
+      }),
+
+      upload_testing_services_md: tool({
+        description:
+          "Bulk-update the testing_services catalog from a markdown table. " +
+          "Required columns: service_key, display_name, abbreviation, " +
+          "starting_price_cents, notes, concern_categories (comma-separated), " +
+          "active. Diff-based with auto-soft-delete (same shape as " +
+          "upload_routine_services_md). starting_price_cents is integer cents " +
+          "(4995 = $49.95). concern_categories MUST be drawn from the 14 valid " +
+          "categories. Returns: { ok, rows_added, rows_modified, " +
+          "rows_deactivated, diff_summary, … }.",
+        inputSchema: z.object({
+          md_content: z.string().min(1),
+        }),
+        execute: recorded(recorder, "upload_testing_services_md", (input) =>
+          uploadTestingServicesMd(sb, shopId, { md_content: input.md_content, audit }),
+        ),
+      }),
+
+      upload_concern_questions_md: tool({
+        description:
+          "Bulk-update the concern_questions catalog from a markdown table. " +
+          "Required columns: category, question_text, options, display_order, " +
+          "active. category must be one of the 14 valid values. options is the " +
+          "JSON array (e.g. '[{\"label\":\"Front\",\"value\":\"front\"}]') OR " +
+          "the shorthand 'value:label; value2:label2'. Natural-key matching " +
+          "is by (category, question_text) since rows have no service_key. " +
+          "Returns: { ok, rows_added, rows_modified, rows_deactivated, … }.",
+        inputSchema: z.object({
+          md_content: z.string().min(1),
+        }),
+        execute: recorded(recorder, "upload_concern_questions_md", (input) =>
+          uploadConcernQuestionsMd(sb, shopId, { md_content: input.md_content, audit }),
+        ),
+      }),
+
+      upload_appointment_default_limits_md: tool({
+        description:
+          "Bulk-update the appointment_default_limits table from a markdown " +
+          "table. Required columns: day_of_week (0=Sun..6=Sat), is_closed, " +
+          "waiter_8am_slots, waiter_9am_slots, dropoff_total, notes. Phase 1 " +
+          "expects exactly 7 rows (one per day of week). Returns: { ok, " +
+          "rows_added, rows_modified, … }.",
+        inputSchema: z.object({
+          md_content: z.string().min(1),
+        }),
+        execute: recorded(
+          recorder,
+          "upload_appointment_default_limits_md",
+          (input) =>
+            uploadAppointmentDefaultLimitsMd(sb, shopId, {
+              md_content: input.md_content,
+              audit,
+            }),
+        ),
+      }),
+
+      upload_closed_dates_md: tool({
+        description:
+          "Replace the FUTURE closed_dates set from a markdown table. " +
+          "Required columns: closed_date (YYYY-MM-DD), reason. Past " +
+          "closed_dates are NEVER touched (immutable history). Rows in DB " +
+          "but missing from MD (and ≥ today) are deleted. Idempotent on " +
+          "duplicate uploads. Returns: { ok, rows_added, rows_modified, " +
+          "rows_deactivated, … }.",
+        inputSchema: z.object({
+          md_content: z.string().min(1),
+        }),
+        execute: recorded(recorder, "upload_closed_dates_md", (input) =>
+          uploadClosedDatesMd(sb, shopId, { md_content: input.md_content, audit }),
+        ),
+      }),
+
+      export_routine_services_md: tool({
+        description:
+          "Export the current routine_services catalog as a markdown table " +
+          "(round-trippable through upload_routine_services_md). Useful for " +
+          "advisors to download, edit locally, then upload back. Returns: " +
+          "{ md_content, row_count }.",
+        inputSchema: z.object({}),
+        execute: recorded(recorder, "export_routine_services_md", () =>
+          exportRoutineServicesMd(sb, shopId),
+        ),
+      }),
+
+      export_testing_services_md: tool({
+        description:
+          "Export the current testing_services catalog as a markdown table. " +
+          "Returns: { md_content, row_count }.",
+        inputSchema: z.object({}),
+        execute: recorded(recorder, "export_testing_services_md", () =>
+          exportTestingServicesMd(sb, shopId),
+        ),
+      }),
+
+      export_concern_questions_md: tool({
+        description:
+          "Export the current concern_questions catalog as a markdown table. " +
+          "Returns: { md_content, row_count }.",
+        inputSchema: z.object({}),
+        execute: recorded(recorder, "export_concern_questions_md", () =>
+          exportConcernQuestionsMd(sb, shopId),
+        ),
+      }),
+
+      export_appointment_default_limits_md: tool({
+        description:
+          "Export the current appointment_default_limits as a markdown table " +
+          "(one row per day of week). Returns: { md_content, row_count }.",
+        inputSchema: z.object({}),
+        execute: recorded(
+          recorder,
+          "export_appointment_default_limits_md",
+          () => exportAppointmentDefaultLimitsMd(sb, shopId),
+        ),
+      }),
+
+      export_closed_dates_md: tool({
+        description:
+          "Export FUTURE closed_dates as a markdown table (past dates are " +
+          "immutable history, excluded). Returns: { md_content, row_count }.",
+        inputSchema: z.object({}),
+        execute: recorded(recorder, "export_closed_dates_md", () =>
+          exportClosedDatesMd(sb, shopId),
+        ),
+      }),
+
+      find_orphan_customers: tool({
+        description:
+          "Find appointments in the local shadow whose last_synced_at is " +
+          "stale (>24h) AND deleted_at is null — these are likely Tekmetric " +
+          "deletions our sync missed, OR sync was paused for a window. " +
+          "Same shape as the keytag orphan-release flow. Returns: { orphans: " +
+          "[...], count, lookback_days }. Phase 1: 30-day default lookback; " +
+          "advisor verifies in Tekmetric before acting.",
+        inputSchema: z.object({
+          lookback_days: z
+            .number()
+            .int()
+            .min(1)
+            .max(180)
+            .optional()
+            .describe("How far back to scan. Default 30 days; max 180."),
+        }),
+        execute: recorded(recorder, "find_orphan_customers", (input) =>
+          findOrphanCustomers(sb, shopId, input),
+        ),
+      }),
     };
+
+    // run_appointments_sync requires the SUPABASE_URL + service-role-key to
+    // invoke the appointments-sync function. Skipped from registry if those
+    // aren't supplied (defense in depth — the function-internal admin path
+    // always supplies them; tests may not).
+    if (supabaseUrl && serviceRoleKey) {
+      Object.assign(adminTools, {
+        run_appointments_sync: tool({
+          description:
+            "Trigger an on-demand call to appointments-sync (same job the cron " +
+            "runs every 5 min). Use when the advisor knows Tekmetric just changed " +
+            "and wants the local shadow refreshed now. Optional full_backfill=true " +
+            "re-pulls the entire rolling window from scratch rather than the " +
+            "incremental delta. Returns: { ok, status, summary }.",
+          inputSchema: z.object({
+            full_backfill: z
+              .boolean()
+              .optional()
+              .describe(
+                "If true, re-pull the entire rolling 7-day window from Tekmetric. Default false (incremental delta).",
+              ),
+          }),
+          execute: recorded(recorder, "run_appointments_sync", (input) =>
+            runAppointmentsSync({
+              supabaseUrl,
+              serviceRoleKey,
+              full_backfill: input.full_backfill,
+            }),
+          ),
+        }),
+      });
+    }
     result = { ...result, ...adminTools };
   }
 
