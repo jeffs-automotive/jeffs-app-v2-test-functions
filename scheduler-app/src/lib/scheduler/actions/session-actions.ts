@@ -1324,8 +1324,41 @@ export async function submitServiceAndConcernPicker(args: {
       };
     }
 
-    // propose_testing_services / continue / tool_error all flow through
-    // unchanged; the orchestrator owns those response shapes already.
+    // propose_testing_services: specialist returns
+    // `recommended_testing_services` key but the UI reads `services`.
+    // Rename so the TestingServiceApprovalCard actually renders the
+    // list. Same shape gymnastics as the queue-drain path in
+    // advanceClarificationQueue.
+    if (result.directive === "propose_testing_services") {
+      const rawData = (result.data ?? {}) as Record<string, unknown>;
+      const services = Array.isArray(rawData.recommended_testing_services)
+        ? rawData.recommended_testing_services
+        : Array.isArray(rawData.services)
+          ? rawData.services
+          : [];
+      const category = typeof rawData.category === "string"
+        ? rawData.category
+        : "";
+      // Persist the deferred list so SummaryCard / downstream readers
+      // can replay the recommendation set without re-asking the LLM.
+      await writeSession({
+        chatId: args.chatId,
+        updates: {
+          recommended_testing_services: services as unknown as Json,
+          diagnostic_processing_complete: true,
+        },
+        nextStep: "testing_service_approval",
+      });
+      return {
+        ok: true,
+        directive: "propose_testing_services",
+        data: { category, services },
+        flags: result.flags,
+        bubble_copy: getBubbleCopy("concern_to_diagnostic_loading"),
+      };
+    }
+
+    // continue / tool_error / anything else flows through unchanged.
     return {
       ok: result.directive !== "tool_error",
       directive: result.directive,
@@ -1411,9 +1444,11 @@ async function shapeClarificationDirective(args: {
   if (questions.length === 0) {
     // No questions to ask — go straight to testing proposal (or continue).
     if (testingServices.length > 0) {
+      // Use `services` key — that's what the
+      // TestingServiceApprovalCard renderer reads (Chat.tsx ~1237).
       return {
         directive: "propose_testing_services",
-        data: { category, recommended_testing_services: testingServices },
+        data: { category, services: testingServices },
       };
     }
     return { directive: "continue", data: { category } };
@@ -1530,7 +1565,12 @@ async function advanceClarificationQueue(args: {
       directive: "propose_testing_services",
       data: {
         category,
-        recommended_testing_services: deferredTesting,
+        // The UI's TestingServiceApprovalCard renderer reads
+        // `tp.input.services` (Chat.tsx line ~1237). The diagnostic
+        // specialist's `recommended_testing_services` key was getting
+        // stripped to empty by the array-check fallback. Match the
+        // card's expected key name.
+        services: deferredTesting,
       },
     };
   }
