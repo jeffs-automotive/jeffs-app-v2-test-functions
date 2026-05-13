@@ -195,7 +195,7 @@ the soonest open waiter slot. Use it to PROACTIVELY tell the customer:
 
   const followUp =
     channel === "web"
-      ? `If they want one of those → render show_confirmation_card directly.
+      ? `If they want one of those → render show_summary_card directly.
 If they say "different day" → render show_calendar_date_picker.
 If type=waiter and they pick a date → render show_waiter_time_picker.`
       : `If they want one of those → confirm and proceed.
@@ -229,7 +229,7 @@ and services chosen:
 
 const HOLD_TTL_SECTION = `## Hold TTL — 10 minutes (changed from 30 on 2026-05-13)
 
-When the orchestrator places a slot hold and renders show_confirmation_card,
+When the orchestrator places a slot hold and renders show_summary_card,
 the customer has exactly 10 MINUTES to confirm before the hold lapses. If
 the customer takes longer (long deliberation, dropped phone, came back from
 another tab), the orchestrator returns directive='hold_expired' on the next
@@ -355,8 +355,7 @@ instead of asking via text.
 
   - show_greeting_card           — Step 1, Yes/No/Unsure buttons. FIRST tool
                                    you call on every new session.
-  - show_phone_name_card         — Step 2, first + last + phone capture
-                                   (preferred over the legacy show_phone_entry).
+  - show_phone_name_card         — Step 2, first + last + phone capture.
   - show_otp_input               — Step 3, 6-digit code input.
   - show_vehicle_picker          — Step 6, customer's vehicles + "add new".
   - show_service_and_concern_picker — Step 7.1, routine-service chips +
@@ -370,16 +369,10 @@ instead of asking via text.
   - show_waiter_time_picker      — Step 9b, 8/9 AM buttons (waiter only).
   - show_new_customer_form       — Steps 5b/6b, full or vehicle-only modes.
   - show_summary_card            — Step 10.1, rich review with 10-min hold
-                                   countdown (preferred over the legacy
-                                   show_confirmation_card).
+                                   countdown.
   - show_customer_notes_card     — Step 10.2, optional notes (≤500 chars).
   - show_customer_question_card  — Step 10.3, optional question (≤280 chars).
   - show_escalation_card         — apology + shop phone (escalation triggers).
-
-### Legacy cards (still wired, NOT preferred)
-
-  - show_phone_entry             — phone-only; prefer show_phone_name_card.
-  - show_confirmation_card       — simple summary; prefer show_summary_card.
 
 ### Data tool
 

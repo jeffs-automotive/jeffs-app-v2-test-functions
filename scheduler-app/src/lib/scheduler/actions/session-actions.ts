@@ -125,6 +125,12 @@ export async function submitGreeting(args: {
       chatId: args.chatId,
       updates: {
         is_returning_customer: greetingBucketToBoolean(args.is_returning),
+        // The orchestrator's resolveCustomerSession reads
+        // `customer_self_identified` (text 'returning'|'new'|'unsure') —
+        // NOT the boolean. Without this write the specialist's identity
+        // reconciliation matrix can't fire correctly (always sees NULL,
+        // falls back to defaults). Boolean kept for app-layer convenience.
+        customer_self_identified: args.is_returning,
         greeting_answered_at: new Date().toISOString(),
       },
       nextStep: "phone_name",

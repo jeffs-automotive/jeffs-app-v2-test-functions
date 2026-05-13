@@ -49,13 +49,36 @@ export function makeConsultOrchestratorTool(args: {
             "customer_self_identified, picked_service_keys, ... }. The " +
             "orchestrator merges these into its session view.",
         ),
+      intent_type: z
+        .enum([
+          "verify_and_lookup",
+          "verify_otp",
+          "lookup_vehicles",
+          "lookup_services",
+          "diagnostic_clarify",
+          "diagnostic_propose_testing",
+          "appointment_eligibility",
+          "hold_slot",
+          "confirm_appointment",
+          "customer_question",
+        ])
+        .optional()
+        .describe(
+          "Optional short-circuit hint. When present AND in the allowed " +
+            "set for caller_context='customer', the orchestrator skips " +
+            "the LLM router and dispatches directly to the matching " +
+            "specialist. Use when you know exactly what the next step " +
+            "is (e.g., 'verify_otp' after the user submits a 6-digit " +
+            "code). Omit to let the router classify.",
+        ),
     }),
-    async execute({ context, hints }) {
+    async execute({ context, hints, intent_type }) {
       try {
         const result = await consultOrchestrator({
           session_id: args.session_id,
           context,
           hints,
+          intent_type,
         });
         return result;
       } catch (e) {
@@ -550,24 +573,27 @@ export const showSummaryCard = tool({
 export function makeChatAgentTools(args: { session_id: string }) {
   return {
     consult_orchestrator: makeConsultOrchestratorTool(args),
-    // Heritage Editorial cards (preferred per Chunk 6 — 2026-05-13)
+    // Heritage Editorial cards (canonical per chat-design.md §4 + Chunk 6
+    // 2026-05-13). The legacy `show_phone_entry` (phone-only, no name) and
+    // `show_confirmation_card` (pre-Heritage summary) are DELIBERATELY not
+    // registered — they're superseded by `show_phone_name_card` and
+    // `show_summary_card`. Keeping them exposed lets the chat agent pick
+    // the wrong tool (the system prompt prefers the new ones but model
+    // drift can still surface the legacy variants → broken happy path).
     show_greeting_card: showGreetingCard,
     show_phone_name_card: showPhoneNameCard,
+    show_otp_input: showOtpInput,
+    show_vehicle_picker: showVehiclePicker,
+    show_new_customer_form: showNewCustomerForm,
+    show_service_and_concern_picker: showServiceAndConcernPicker,
     show_clarification_question: showClarificationQuestion,
     show_testing_service_approval: showTestingServiceApproval,
     show_appointment_type: showAppointmentType,
-    show_customer_notes_card: showCustomerNotesCard,
-    show_customer_question_card: showCustomerQuestionCard,
-    show_summary_card: showSummaryCard,
-    // Legacy + still-valid rendering tools
-    show_phone_entry: showPhoneEntry,
-    show_otp_input: showOtpInput,
-    show_vehicle_picker: showVehiclePicker,
-    show_service_and_concern_picker: showServiceAndConcernPicker,
     show_calendar_date_picker: showCalendarDatePicker,
     show_waiter_time_picker: showWaiterTimePicker,
-    show_new_customer_form: showNewCustomerForm,
-    show_confirmation_card: showConfirmationCard,
+    show_summary_card: showSummaryCard,
+    show_customer_notes_card: showCustomerNotesCard,
+    show_customer_question_card: showCustomerQuestionCard,
     show_escalation_card: showEscalationCard,
   } as const;
 }

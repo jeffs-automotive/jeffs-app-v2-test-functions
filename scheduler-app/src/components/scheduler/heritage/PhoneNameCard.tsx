@@ -94,8 +94,11 @@ export function PhoneNameCard({
     const e164 = normalizeToE164US(phoneDisplay);
 
     const nextErrors: typeof errors = {};
-    if (fn.length < 2) nextErrors.firstName = "Please enter your first name.";
-    if (ln.length < 2) nextErrors.lastName = "Please enter your last name.";
+    // Spec (chat-design.md line 488-489): 1-50 chars after trim. Two-letter
+    // names (Bo, Al, Jo, Mo, Ed, Ty, many South + East Asian names) are
+    // valid. Empty-only rejection.
+    if (fn.length === 0) nextErrors.firstName = "Please enter your first name.";
+    if (ln.length === 0) nextErrors.lastName = "Please enter your last name.";
     if (!e164) {
       nextErrors.phone = "Please enter a 10-digit US or Canadian phone number.";
     }
