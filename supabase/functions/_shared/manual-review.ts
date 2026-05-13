@@ -66,18 +66,87 @@ export interface IssuedManualReview {
   audit_log_id: number | null;
   email_sent: boolean;
   email_error?: string;
+  /**
+   * True when this call INSERTED a new row + sent a fresh email.
+   * False when a prior review existed for this `context.ro_id` and the call
+   * short-circuited per the dedup gate below. Caller should log differently
+   * in each case (e.g. action="manual_review_issued" vs action="noop").
+   */
+  created: boolean;
+  /**
+   * When `created === false`, the `resolved_at` of the prior row at the
+   * time we looked it up. `null` means the prior review is still pending;
+   * a timestamp means it has already been resolved. Callers can use this
+   * to phrase their log message ("kept pending review X" vs "kept resolved
+   * review X"). Undefined when `created === true`.
+   */
+  existing_resolved_at?: string | null;
 }
 
 /**
- * Atomic: insert keytag_manual_reviews row + write audit log + send email.
- * Returns the code + IDs + email status. Idempotency: each call generates
- * a fresh code, so callers should de-dupe at the detection layer (e.g.,
- * bulk-reconcile shouldn't fire two ORPs for the same orphan in one run).
+ * Atomic: insert keytag_manual_reviews row + write audit log + send email,
+ * OR short-circuit (no insert, no email) if a prior review already exists
+ * for the same `context.ro_id`.
+ *
+ * Dedup gate (added 2026-05-13 per Chris's directive after a 96-row daily
+ * email blast):
+ *
+ *   1. If `context.ro_id` is provided AND any prior `keytag_manual_reviews`
+ *      row exists for that ro_id (ANY category, resolved or unresolved),
+ *      this function returns the prior row's code with `created: false`
+ *      and does NOT insert a new row, does NOT send an email.
+ *
+ *   2. The check is by ro_id only — not category — so cross-category
+ *      duplicates are also suppressed. (Example: an ARN issued yesterday
+ *      and a DRF detected today for the same RO would dedup. That's
+ *      intentional — once the team has touched a RO once, the cron
+ *      shouldn't pile on with a new email for a different anomaly facet
+ *      until the prior review is reviewed/resolved.)
+ *
+ *   3. Callers that need to know "was this a fresh issuance or a kept
+ *      existing one?" check `result.created`. The existing 7 call sites
+ *      log `manual_review_issued` when created=true and `noop` (or a
+ *      "kept existing review" detail string) when created=false.
+ *
+ * Bypassing the dedup: if the context has no `ro_id` (rare — only
+ * categories that don't bind to a specific RO), the dedup is skipped and
+ * a fresh row is always created. There are no such categories today, but
+ * the gate is defensively conditional.
  */
 export async function issueManualReview(args: IssueManualReviewArgs): Promise<IssuedManualReview> {
   const { sb, category, context, options, issueSummary, auditSource } = args;
   const prefix = CATEGORY_PREFIX[category];
 
+  // ── Dedup gate by ro_id ───────────────────────────────────────────────
+  const roId = context.ro_id ?? null;
+  if (roId !== null) {
+    const { data: existing, error: dedupErr } = await sb
+      .from("keytag_manual_reviews")
+      .select("id, code, resolved_at, resolution_audit_log_id, category")
+      .filter("context->>ro_id", "eq", String(roId))
+      .order("issued_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (dedupErr) {
+      throw new Error(`keytag_manual_reviews dedup lookup failed: ${dedupErr.message}`);
+    }
+    if (existing) {
+      // Prior review exists for this RO. Short-circuit: no INSERT, no email.
+      // The original row's email was sent at its issuance time; the team
+      // already has it in their inbox or has resolved it.
+      return {
+        code: existing.code as string,
+        review_id: existing.id as number,
+        audit_log_id: (existing.resolution_audit_log_id as number | null) ?? null,
+        email_sent: false,
+        email_error: undefined,
+        created: false,
+        existing_resolved_at: (existing.resolved_at as string | null) ?? null,
+      };
+    }
+  }
+
+  // ── No prior review — proceed with create + email ─────────────────────
   const { data, error } = await sb.rpc("create_manual_review", {
     p_category: category,
     p_prefix: prefix,
@@ -120,6 +189,7 @@ export async function issueManualReview(args: IssueManualReviewArgs): Promise<Is
     audit_log_id: (row.audit_log_id as number | null) ?? null,
     email_sent: !emailResult.error,
     email_error: emailResult.error,
+    created: true,
   };
 }
 

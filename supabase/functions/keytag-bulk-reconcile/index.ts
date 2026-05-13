@@ -472,22 +472,11 @@ async function reconcileOne(
       // service team can record what's on the keys (system-only, no
       // Tekmetric PATCH).
       if (isAR) {
-        // De-dup: only issue if no unresolved ARN exists for this RO already
-        const { data: existingArn } = await sb
-          .from("keytag_manual_reviews")
-          .select("code")
-          .eq("category", "ar_no_prior_tag")
-          .is("resolved_at", null)
-          .filter("context->>ro_id", "eq", String(ro.id))
-          .limit(1)
-          .maybeSingle();
-        if (existingArn) {
-          return {
-            ...base,
-            action: "noop",
-            detail: `existing manual review ${existingArn.code} pending for this RO`,
-          };
-        }
+        // Dedup is now enforced inside issueManualReview() per Chris's
+        // 2026-05-13 directive — any prior review for this ro_id (any
+        // category, resolved or pending) short-circuits with created=false.
+        // The prior local ARN-only dedup was a subset of that and removed
+        // with this commit.
         if (!dryRun) {
           const issued = await issueManualReview({
             sb,
@@ -501,6 +490,13 @@ async function reconcileOne(
             issueSummary: `A/R RO #${ro.repairOrderNumber} has no key tag tracked in our system. The keys may or may not have a physical tag.`,
             auditSource: "cron",
           });
+          if (!issued.created) {
+            return {
+              ...base,
+              action: "noop",
+              detail: `existing review ${issued.code} kept (${issued.existing_resolved_at ? "already resolved" : "still pending"}) — no new ARN issued`,
+            };
+          }
           return {
             ...base,
             action: "manual_review_issued",
@@ -580,6 +576,13 @@ async function reconcileOne(
                 : `RO #${ro.repairOrderNumber} is in WIP but has prior key-tag history (last: ${priorHistory.action}).`,
             auditSource: "cron",
           });
+          if (!issued.created) {
+            return {
+              ...base,
+              action: "noop",
+              detail: `existing review ${issued.code} kept (${issued.existing_resolved_at ? "already resolved" : "still pending"}) — no new ${category === "ar_regression" ? "REG" : "DRF"} issued`,
+            };
+          }
           return {
             ...base,
             action: "manual_review_issued",
@@ -667,6 +670,18 @@ async function reconcileOne(
           issueSummary: `Nightly reconcile assigned ${priorTag} to RO #${ro.repairOrderNumber} but Tekmetric refused our write to its Key Tag field.`,
           auditSource: "cron",
         });
+        if (!issued.created) {
+          return {
+            ...base,
+            action: "noop",
+            tag_color: color,
+            tag_number: number,
+            tag_string: wire,
+            patch_ok: false,
+            patch_error: patch.error,
+            detail: `existing review ${issued.code} kept (${issued.existing_resolved_at ? "already resolved" : "still pending"}) — no new PAF issued`,
+          };
+        }
         return {
           ...base,
           action: "manual_review_issued",
@@ -889,24 +904,8 @@ async function reverseReconcileOne(
           detail: "(dry run) would issue ORP manual review (RO 404)",
         };
       }
-      // De-dup: skip if an unresolved ORP already exists for this RO
-      const { data: existingOrp } = await sb
-        .from("keytag_manual_reviews")
-        .select("code")
-        .eq("category", "orphan_release")
-        .is("resolved_at", null)
-        .filter("context->>ro_id", "eq", String(tag.ro_id))
-        .limit(1)
-        .maybeSingle();
-      if (existingOrp) {
-        return {
-          ...base,
-          action: "noop",
-          tekmetric_status_id: 0,
-          tekmetric_status_name: "(deleted)",
-          detail: `existing manual review ${existingOrp.code} pending`,
-        };
-      }
+      // Dedup is now in issueManualReview (any prior review for this ro_id,
+      // any category, resolved or pending, short-circuits).
       const priorTag = `${tag.tag_color === "red" ? "Red" : "Yellow"} ${tag.tag_number}`;
       const issued = await issueManualReview({
         sb,
@@ -924,6 +923,15 @@ async function reverseReconcileOne(
         issueSummary: `${priorTag} is on RO #${tag.ro_number} in our records, but Tekmetric says the RO doesn't exist anymore.`,
         auditSource: "cron",
       });
+      if (!issued.created) {
+        return {
+          ...base,
+          action: "noop",
+          tekmetric_status_id: 0,
+          tekmetric_status_name: "(deleted)",
+          detail: `existing review ${issued.code} kept (${issued.existing_resolved_at ? "already resolved" : "still pending"}) — no new ORP issued`,
+        };
+      }
       return {
         ...base,
         action: "manual_review_issued",
@@ -951,21 +959,7 @@ async function reverseReconcileOne(
           detail: "(dry run) would issue ORP manual review (posted_paid)",
         };
       }
-      const { data: existingOrp } = await sb
-        .from("keytag_manual_reviews")
-        .select("code")
-        .eq("category", "orphan_release")
-        .is("resolved_at", null)
-        .filter("context->>ro_id", "eq", String(tag.ro_id))
-        .limit(1)
-        .maybeSingle();
-      if (existingOrp) {
-        return {
-          ...base,
-          action: "noop",
-          detail: `existing manual review ${existingOrp.code} pending`,
-        };
-      }
+      // Dedup lives in issueManualReview (universal by ro_id).
       const priorTag = `${tag.tag_color === "red" ? "Red" : "Yellow"} ${tag.tag_number}`;
       const issued = await issueManualReview({
         sb,
@@ -983,6 +977,13 @@ async function reverseReconcileOne(
         issueSummary: `${priorTag} is on RO #${tag.ro_number} in our records, but Tekmetric shows the RO as posted & paid (the payment notification never reached us).`,
         auditSource: "cron",
       });
+      if (!issued.created) {
+        return {
+          ...base,
+          action: "noop",
+          detail: `existing review ${issued.code} kept (${issued.existing_resolved_at ? "already resolved" : "still pending"}) — no new ORP issued`,
+        };
+      }
       return {
         ...base,
         action: "manual_review_issued",

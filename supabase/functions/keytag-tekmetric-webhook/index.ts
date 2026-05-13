@@ -591,6 +591,28 @@ Deno.serve(async (req: Request) => {
                 : `RO #${roNumberForHistory} is back in WIP but our records show it ${priorHistory.action} earlier (${priorTag}).`,
             auditSource: "webhook",
           });
+          if (!issued.created) {
+            // Universal dedup in issueManualReview short-circuited — a prior
+            // review for this ro_id (any category, resolved or pending)
+            // already exists. Mark the webhook event as a noop so the
+            // tekmetric_webhook_events log shows we handled it.
+            await markProcessed(eventId, "noop_existing_review", {
+              ro_id: roId,
+              ro_number: roNumberForHistory,
+              existing_code: issued.code,
+              existing_resolved_at: issued.existing_resolved_at,
+            });
+            return new Response(
+              JSON.stringify({
+                ok: true,
+                action: "noop_existing_review",
+                existing_code: issued.code,
+                existing_resolved_at: issued.existing_resolved_at,
+                ro_id: roId,
+              }),
+              { status: 200 },
+            );
+          }
           await markProcessed(eventId, "manual_review_issued", {
             ro_id: roId,
             ro_number: roNumberForHistory,
@@ -698,6 +720,33 @@ Deno.serve(async (req: Request) => {
           issueSummary: `We assigned ${priorTag} to RO #${ro.repairOrderNumber} but Tekmetric refused our write to its Key Tag field.`,
           auditSource: "webhook",
         });
+        if (!issued.created) {
+          // Prior review (any category) already exists for this ro_id.
+          // The DB has the new assignment (we just inserted via assign_next_keytag)
+          // and Tekmetric is out of sync — but we don't issue a NEW PAF since
+          // an existing one covers this RO's anomaly history.
+          await markProcessed(eventId, "assigned_patch_failed_existing_review", {
+            tag_color: tagColor,
+            tag_number: tagNumber,
+            tag_string: wireValue,
+            patch_error: patchResult.error,
+            existing_code: issued.code,
+            existing_resolved_at: issued.existing_resolved_at,
+          });
+          return new Response(
+            JSON.stringify({
+              ok: false,
+              action: "assigned_patch_failed_existing_review",
+              tag_color: tagColor,
+              tag_number: tagNumber,
+              patch_error: patchResult.error,
+              ro_id: roId,
+              existing_code: issued.code,
+              existing_resolved_at: issued.existing_resolved_at,
+            }),
+            { status: 200 },
+          );
+        }
         await markProcessed(eventId, "assigned_patch_failed_review_issued", {
           tag_color: tagColor,
           tag_number: tagNumber,
