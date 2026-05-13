@@ -62,8 +62,15 @@ export interface NewCustomerPayload {
   last_name: string;
   phone_e164: string;
   email?: string;
+  /**
+   * Address shape MUST be { address1, address2?, city, state, zip } per
+   * the Tekmetric POST /customers contract (verified 2026-05-13 against
+   * Chris's working curl example). Earlier shape `{streetAddress, ...}`
+   * was wrong and got silently dropped on the Tekmetric side.
+   */
   address?: {
-    streetAddress?: string;
+    address1?: string;
+    address2?: string;
     city?: string;
     state?: string;
     zip?: string;

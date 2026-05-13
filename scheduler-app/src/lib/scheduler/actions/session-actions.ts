@@ -915,13 +915,12 @@ export async function submitNewCustomerInfo(args: {
         ?? args.edited_emails[0]?.email
         ?? args.primary_email_for_description;
 
-    // Address shape: Tekmetric wants { streetAddress, city, state, zip }.
-    // We collected address1 + address2 separately; concat them.
+    // Address shape: Tekmetric wants { address1, address2?, city, state,
+    // zip }. (Verified 2026-05-13 against the working curl example. The
+    // prior {streetAddress, ...} shape was silently dropped server-side.)
     const addressBlock: NewCustomerPayload["address"] = {
-      streetAddress: [args.edited_address.address1, args.edited_address.address2]
-        .filter((s) => s && s.trim().length > 0)
-        .join(" ")
-        .trim(),
+      address1: args.edited_address.address1,
+      address2: args.edited_address.address2,
       city: args.edited_address.city,
       state: args.edited_address.state,
       zip: args.edited_address.zip,

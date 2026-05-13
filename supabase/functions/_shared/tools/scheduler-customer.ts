@@ -506,8 +506,37 @@ export async function getAppointmentEligibility(
  * Create a new customer in Tekmetric. NOT idempotent. Caller must first
  * lookupCustomerByPhone to dedup.
  *
- * Tekmetric POST /customers expects:
- *   { firstName, lastName, email?, phone: [{number, type?, primary?}], ... }
+ * Tekmetric POST /customers shape (verified against Chris's working
+ * curl example 2026-05-13):
+ * {
+ *   "shopId": 7476,
+ *   "firstName": "Test",
+ *   "lastName": "User",
+ *   "customerTypeId": 1,                          // 1 = Personal
+ *   "email": ["testuser@tekmetric.com"],          // ARRAY OF STRINGS
+ *   "phones": [                                   // KEY IS "phones" (plural)
+ *     {"number": "555-555-0010", "type": "Mobile", "primary": true}
+ *   ],
+ *   "address": {
+ *     "address1": "1981 Good Luck Rd.",           // address1, NOT streetAddress
+ *     "address2": "Hillway Apartments",
+ *     "city": "Lanham",
+ *     "state": "Maryland",
+ *     "zip": "20744"
+ *   }
+ * }
+ *
+ * Earlier the helper used `email: [{email, primary}]` (array of objects)
+ * which led Tekmetric to return spurious HTTP 409 "same email and/or
+ * phone exist" responses (parse-fallthrough). Fixed to array-of-strings.
+ *
+ * The address shape was also `{streetAddress, city, state, zip}` which
+ * Tekmetric silently dropped. Fixed to `{address1, address2, city,
+ * state, zip}`. The address.address2 is now a first-class field, not
+ * a manually concatenated suffix on streetAddress.
+ *
+ * Phone number is sent as "###-###-####" (dashed) per the curl example,
+ * NOT E.164 (+1#########). We strip the +1 prefix and re-format.
  */
 export async function createNewCustomer(
   sb: SupabaseClient,
@@ -518,39 +547,43 @@ export async function createNewCustomer(
     phone_e164: string;
     email?: string;
     address?: {
-      streetAddress?: string;
+      address1?: string;
+      address2?: string;
       city?: string;
       state?: string;
       zip?: string;
     };
   },
 ): Promise<{ customer_id: number }> {
-  // Tekmetric POST /customers expects `email` to be an ARRAY of
-  // {email, primary} objects — not a bare string. Verified live
-  // 2026-05-13 by the actual API error:
-  //   "Cannot construct instance of `java.util.ArrayList` ... no String-
-  //    argument constructor/factory method to deserialize from String value
-  //    ('test@example.com')"
-  // (NB: patchCustomer further down still sends `email: <string>` — that
-  // path appears to work on PATCH. If the same parse error surfaces on
-  // patch, port this array shape there too.)
-  const emailArray = args.email?.trim()
-    ? [{ email: args.email.trim(), primary: true }]
-    : [];
-  const body = {
+  // Phone: E.164 (+15555550100) → Tekmetric dashed format (555-555-0100).
+  const digits = args.phone_e164.replace(/\D/g, "").replace(/^1/, "");
+  const phoneDashed = digits.length === 10
+    ? `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`
+    : args.phone_e164; // fall through unchanged if unexpected shape
+
+  const body: Record<string, unknown> = {
     shopId,
     firstName: args.first_name.trim(),
     lastName: args.last_name.trim(),
-    email: emailArray,
-    phone: [
+    customerTypeId: 1, // 1 = Personal (consumer customer; vs Business)
+    email: args.email?.trim() ? [args.email.trim()] : [],
+    phones: [
       {
-        number: args.phone_e164,
+        number: phoneDashed,
         type: "Mobile",
         primary: true,
       },
     ],
-    address: args.address ?? null,
   };
+  if (args.address) {
+    body.address = {
+      address1: args.address.address1?.trim() || undefined,
+      address2: args.address.address2?.trim() || undefined,
+      city: args.address.city?.trim() || undefined,
+      state: args.address.state?.trim() || undefined,
+      zip: args.address.zip?.trim() || undefined,
+    };
+  }
 
   const res = await tekmetricFetch(sb, "/customers", {
     method: "POST",
