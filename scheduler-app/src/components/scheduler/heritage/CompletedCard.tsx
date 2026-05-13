@@ -69,10 +69,10 @@ export function CompletedCard({
         )}
         . If anything comes up, text or call us at{" "}
         <a
-          href="tel:6104897166"
+          href="tel:6102536565"
           className="font-medium text-brand-burgundy-700 underline-offset-2 hover:underline"
         >
-          (610) 489-7166
+          (610) 253-6565
         </a>{" "}
         and someone on our team will help you out.
       </Card.Description>

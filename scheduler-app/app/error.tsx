@@ -57,7 +57,7 @@ export default function Error({
         </h1>
         <p style={{ marginBottom: "1.5rem", lineHeight: 1.6 }}>
           Sorry about that — we hit a snag on our end. You can try again, or
-          give the shop a call at <strong>(610) 489-7166</strong> and someone
+          give the shop a call at <strong>(610) 253-6565</strong> and someone
           will get you scheduled directly.
         </p>
         {error.digest ? (

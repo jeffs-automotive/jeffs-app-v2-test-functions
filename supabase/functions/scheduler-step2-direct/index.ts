@@ -301,9 +301,16 @@ async function handleRequest(req: Request): Promise<Response> {
     return jsonResponse({ ok: false, error: "POST only" }, 405);
   }
 
-  const authCheck = checkSchedulerBearer(req);
+  // checkSchedulerBearer requires the function name for diagnostic logging,
+  // and returns the AuthCheckResult OBJECT (with `reason` field) — NOT a
+  // bare error string. Bug fix 2026-05-13 per audit:
+  //   was: checkSchedulerBearer(req) + unauthorizedResponse(authCheck.error)
+  //   now: checkSchedulerBearer(req, "...") + unauthorizedResponse(authCheck)
+  // The prior shape would have thrown TypeError on unauthorized requests
+  // since `.error` is undefined on the success-shaped result type.
+  const authCheck = checkSchedulerBearer(req, "scheduler-step2-direct");
   if (!authCheck.ok) {
-    return unauthorizedResponse(authCheck.error);
+    return unauthorizedResponse(authCheck);
   }
 
   let raw: unknown;

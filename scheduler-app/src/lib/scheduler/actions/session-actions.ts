@@ -1459,7 +1459,10 @@ export async function submitSummaryConfirm(args: {
         chatId: args.chatId,
         updates: { summary_edit_attempts: attempts },
       });
-      if (attempts >= 2) {
+      // Spec lock: allow TWO edits, escalate on the 3rd attempt.
+      // Off-by-one fix 2026-05-13 per audit synthesis: was `>= 2`
+      // which escalated on the 2nd edit (only allowed 1).
+      if (attempts >= 3) {
         // Escalate per design lock (2-edit cap).
         return {
           ok: true,

@@ -556,7 +556,7 @@ export async function holdAppointmentSlot(
       throw new Error(`hold_waiter_slot RPC failed: ${error.message}`);
     }
     const holdId = data as string;
-    const expiresAt = new Date(Date.now() + 30 * 60_000).toISOString();
+    const expiresAt = new Date(Date.now() + 10 * 60_000).toISOString();
     return { hold_id: holdId, expires_at: expiresAt };
   }
 
@@ -589,7 +589,7 @@ export async function holdAppointmentSlot(
       scheduled_time: "12:00:00", // hard-coded placeholder for drop-offs
       appointment_type: "dropoff",
       service_summary: args.service_summary,
-      expires_at: new Date(Date.now() + 30 * 60_000).toISOString(),
+      expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
     })
     .select("id, expires_at")
     .single();
