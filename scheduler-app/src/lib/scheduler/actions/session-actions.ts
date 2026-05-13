@@ -1883,7 +1883,11 @@ export async function submitDate(args: {
     return {
       ok: true,
       directive: "show_summary_card",
-      data: await buildSummaryCardData({ chatId: args.chatId }),
+      data: await buildSummaryCardData({
+        chatId: args.chatId,
+        hold_id: hold.hold_id,
+        hold_expires_at: hold.expires_at,
+      }),
       bubble_copy: getBubbleCopy("to_summary"),
       current_step: "summary",
     };
@@ -1991,7 +1995,11 @@ export async function submitWaiterTime(args: {
     return {
       ok: true,
       directive: "show_summary_card",
-      data: await buildSummaryCardData({ chatId: args.chatId }),
+      data: await buildSummaryCardData({
+        chatId: args.chatId,
+        hold_id: hold.hold_id,
+        hold_expires_at: hold.expires_at,
+      }),
       bubble_copy: getBubbleCopy("to_summary"),
       current_step: "summary",
     };
@@ -2327,12 +2335,28 @@ async function buildAppointmentTitle(args: {
 }
 
 /**
- * Build the data payload for SummaryCard so the Card has everything it
- * needs without another round-trip. The SummaryCard reads these fields
- * to render the confirmation preview before the customer taps Confirm.
+ * Build the data payload for SummaryCard. The card renderer in Chat.tsx
+ * (case "show_summary_card", line 1436) reads tp.input.{hold_id,
+ * hold_expires_at, starts_at, customer, vehicle, type, services,
+ * reminders} — flat string-shaped fields, NOT the structured objects
+ * the prior version returned. Shape matches SummaryCardProps in
+ * heritage/SummaryCard.tsx.
+ *
+ *   customer:    "First Last"
+ *   vehicle:     "Year Make Model"
+ *   starts_at:   ISO timestamp built from appointment_date +
+ *                appointment_time, EDT-anchored for Phase 1
+ *   services:    flat array of {display_name, kind, starting_price_cents?, notes?}
+ *   reminders:   string[] — dropoff cutoff + state-inspection paperwork
+ *
+ * hold_id / hold_expires_at are passed in from the caller (the hold
+ * Server Action result) so the countdown timer + confirm-side hold ID
+ * are wired up.
  */
 async function buildSummaryCardData(args: {
   chatId: string;
+  hold_id?: string;
+  hold_expires_at?: string;
 }): Promise<Record<string, unknown>> {
   const supabase = createSupabaseAdminClient();
   const { data: rowRaw } = await supabase
@@ -2341,25 +2365,130 @@ async function buildSummaryCardData(args: {
     .eq("id", args.chatId)
     .maybeSingle();
   const row = rowRaw as Record<string, unknown> | null;
+
+  // Customer name (use verified_* set at Step 5 NewCustomerForm submit).
+  const fn = String(row?.verified_first_name ?? "").trim();
+  const ln = String(row?.verified_last_name ?? "").trim();
+  const customerName = [fn, ln].filter(Boolean).join(" ");
+
+  // Vehicle string.
+  const nvi = (row?.new_vehicle_info ?? {}) as Record<string, unknown>;
+  const year = nvi.year ? String(nvi.year) : "";
+  const make = nvi.make ? String(nvi.make).trim() : "";
+  const model = nvi.model ? String(nvi.model).trim() : "";
+  const sub = nvi.sub_model ? String(nvi.sub_model).trim() : "";
+  const vehicleStr = [year, make, model, sub].filter(Boolean).join(" ");
+
+  // Appointment details.
+  const apptType =
+    row?.appointment_type === "waiter" ? "waiter" : "dropoff";
+  const apptDate = String(row?.appointment_date ?? "");
+  const apptTime = String(row?.appointment_time ?? "09:00:00");
+
+  // Compose ISO start time. EDT offset for Phase 1; revisit on DST.
+  // For dropoff, time defaults to opening (set 08:00 so SummaryCard.fmtStarts
+  // shows the date cleanly even if appointment_time is null).
+  const startsAt = apptDate
+    ? `${apptDate}T${apptType === "dropoff" ? "08:00:00" : apptTime.slice(0, 8)}-04:00`
+    : "";
+
+  // Services list — flatten routine + concerns + approved testing into
+  // the {display_name, kind, ...} shape SummaryCard expects.
+  const selectedRoutine = Array.isArray(row?.selected_simple_services)
+    ? (row?.selected_simple_services as string[])
+    : [];
+  const explanations = Array.isArray(row?.explanation_required_items)
+    ? (row?.explanation_required_items as Array<{
+        service_key?: string;
+        explanation_text?: string;
+      }>)
+    : [];
+  const approvedTesting = Array.isArray(row?.approved_testing_services)
+    ? (row?.approved_testing_services as string[])
+    : [];
+  const recommendedTesting = Array.isArray(row?.recommended_testing_services)
+    ? (row?.recommended_testing_services as Array<{
+        service_key: string;
+        display_name: string;
+        starting_price_cents?: number;
+        notes?: string | null;
+      }>)
+    : [];
+
+  // Look up display names + prices for the routine service keys.
+  const services: Array<{
+    display_name: string;
+    kind: "routine" | "concern" | "testing";
+    starting_price_cents?: number;
+    notes?: string;
+  }> = [];
+
+  if (selectedRoutine.length > 0) {
+    const { data: routineRows } = await supabase
+      .from("routine_services")
+      .select("service_key, display_name")
+      .in("service_key", selectedRoutine);
+    for (const r of routineRows ?? []) {
+      services.push({
+        display_name: String(r.display_name),
+        kind: "routine",
+        starting_price_cents: 0,
+      });
+    }
+  }
+  for (const ex of explanations) {
+    if (ex?.explanation_text) {
+      services.push({
+        display_name: `Customer states: "${ex.explanation_text}"`,
+        kind: "concern",
+        starting_price_cents: 0,
+      });
+    }
+  }
+  // Approved testing — use the recommended_testing_services array which
+  // has the display_name + starting_price_cents already populated.
+  const recByKey = new Map(
+    recommendedTesting.map((r) => [r.service_key, r]),
+  );
+  for (const key of approvedTesting) {
+    const rec = recByKey.get(key);
+    if (rec) {
+      services.push({
+        display_name: rec.display_name,
+        kind: "testing",
+        starting_price_cents:
+          typeof rec.starting_price_cents === "number"
+            ? rec.starting_price_cents
+            : 0,
+        notes: rec.notes ?? undefined,
+      });
+    }
+  }
+
+  // Reminders per chat-design.md §5 / §10:
+  //   - dropoff: "Please drop off your vehicle before 10 AM on the day..."
+  //   - includes state_inspection_emissions: "bring insurance + registration"
+  const reminders: string[] = [];
+  if (apptType === "dropoff") {
+    reminders.push(
+      "Please drop off your vehicle before 10 AM on the day of your appointment.",
+    );
+  }
+  if (selectedRoutine.includes("state_inspection_emissions")) {
+    reminders.push(
+      "Please bring up-to-date copies of your insurance and registration cards.",
+    );
+  }
+
   return {
-    customer: {
-      first_name: row?.verified_first_name ?? "",
-      last_name: row?.verified_last_name ?? "",
-      customer_id: row?.customer_id ?? null,
-    },
-    vehicle: row?.new_vehicle_info ?? null,
-    vehicle_id: row?.vehicle_id ?? null,
-    appointment: {
-      type: row?.appointment_type ?? null,
-      date: row?.appointment_date ?? null,
-      time: row?.appointment_time ?? null,
-    },
-    services: {
-      routine: row?.selected_simple_services ?? [],
-      concerns: row?.explanation_required_items ?? [],
-      testing_approved: row?.approved_testing_services ?? [],
-    },
-    summary_text: await buildServiceSummary({ chatId: args.chatId }),
+    hold_id: args.hold_id,
+    hold_expires_at: args.hold_expires_at,
+    starts_at: startsAt,
+    customer: customerName,
+    vehicle: vehicleStr,
+    type: apptType,
+    services,
+    reminders,
   };
 }
 
