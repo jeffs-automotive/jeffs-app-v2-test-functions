@@ -613,3 +613,128 @@ export async function createNewVehicle(
   }
   return { vehicle_id: created.id };
 }
+
+/**
+ * PATCH an existing Tekmetric customer's phones / emails / address per
+ * chat-design.md §Step 5 + Tekmetric §12.1.2 ARRAY-PATCH GOTCHA.
+ *
+ * §12.1.2: every PATCH that touches phone or email arrays MUST first GET
+ * the full record, MERGE the desired change into the existing array,
+ * then PATCH the COMPLETE array. NEVER PATCH a partial array — Tekmetric
+ * REPLACES (not merges) so any phone / email NOT in the body gets
+ * deleted.
+ *
+ * Caller is the scheduler specialist via the `patch_customer` tool. The
+ * scheduler-app Server Action submitCustomerInfoEdit passes the
+ * edited_phones / edited_emails / edited_address arrays from the
+ * session row.
+ *
+ * Phase 1 simplification: this REPLACES the phones + emails arrays
+ * wholesale with the customer's edits (since the spec caps both at 2
+ * entries and the edit card collects all entries). Address is patched
+ * inline.
+ *
+ * Returns the updated customer row from Tekmetric. Throws on Tekmetric
+ * error.
+ */
+export async function patchCustomer(
+  sb: SupabaseClient,
+  shopId: number,
+  args: {
+    customer_id: number;
+    /** Each phone: { phone_e164, is_primary }. Tekmetric stores `number`
+     *  (E.164) + `type` (default 'Mobile') + `primary` flag. Max 2. */
+    edited_phones?: Array<{ phone_e164: string; is_primary: boolean }>;
+    /** Each email: { email, is_primary }. Max 2. */
+    edited_emails?: Array<{ email: string; is_primary: boolean }>;
+    /** Full address replace. Pass null/undefined to leave unchanged. */
+    edited_address?: {
+      address1?: string;
+      address2?: string;
+      city?: string;
+      state?: string;
+      zip?: string;
+    } | null;
+  },
+): Promise<{ customer_id: number }> {
+  // §12.1.2 GET-first: we don't strictly need the full record since we're
+  // replacing phones + emails wholesale, but reading it lets us preserve
+  // Tekmetric internal phone-entry ids on existing entries (some
+  // Tekmetric clients expect id to round-trip; safer to include it).
+  const current = await tekmetricGetJson<TekmetricCustomer>(
+    sb,
+    `/customers/${args.customer_id}`,
+    { shop: shopId },
+  );
+  if (!current || typeof current.id !== "number") {
+    throw new Error(
+      `patchCustomer(${args.customer_id}): existing record not found at Tekmetric`,
+    );
+  }
+
+  // Build the phone array. Match each edited phone to an existing entry
+  // by E.164-digit equality so we can preserve the entry id.
+  const existingPhones = current.phone ?? [];
+  const editedPhones = args.edited_phones ?? null;
+  const phoneArray = editedPhones
+    ? editedPhones.slice(0, 2).map((p) => {
+        const digits = p.phone_e164.replace(/\D/g, "");
+        const matchedExisting = existingPhones.find(
+          (ep) => ep.number?.replace(/\D/g, "") === digits,
+        );
+        return {
+          id: matchedExisting?.id,
+          number: p.phone_e164,
+          type: matchedExisting?.type ?? "Mobile",
+          primary: p.is_primary,
+        };
+      })
+    : undefined;
+
+  // Email: Tekmetric customer.email is a single TEXT field, not an array
+  // (per generated types). Use the primary email; the secondary lives in
+  // session_row.edited_emails for app-side reference only.
+  const editedEmails = args.edited_emails ?? null;
+  const primaryEmail = editedEmails?.find((e) => e.is_primary)?.email
+    ?? editedEmails?.[0]?.email
+    ?? undefined;
+
+  // Address: Tekmetric uses streetAddress (single line) + city/state/zip.
+  // Our app collects address1 + address2 separately; concat them.
+  const addressBlock = args.edited_address
+    ? {
+        streetAddress: [
+          args.edited_address.address1?.trim() ?? "",
+          args.edited_address.address2?.trim() ?? "",
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .trim() || null,
+        city: args.edited_address.city?.trim() || null,
+        state: args.edited_address.state?.trim() || null,
+        zip: args.edited_address.zip?.trim() || null,
+      }
+    : undefined;
+
+  const body: Record<string, unknown> = {};
+  if (phoneArray) body.phone = phoneArray;
+  if (primaryEmail !== undefined) body.email = primaryEmail;
+  if (addressBlock) body.address = addressBlock;
+
+  if (Object.keys(body).length === 0) {
+    // No-op (caller's responsibility to avoid this, but defensive).
+    return { customer_id: args.customer_id };
+  }
+
+  const res = await tekmetricFetch(sb, `/customers/${args.customer_id}`, {
+    method: "PATCH",
+    body,
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(
+      `Tekmetric PATCH /customers/${args.customer_id} → HTTP ${res.status}: ${text.slice(0, 300)}`,
+    );
+  }
+  return { customer_id: args.customer_id };
+}

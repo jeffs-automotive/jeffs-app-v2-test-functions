@@ -41,6 +41,7 @@ import {
   getAppointmentEligibility,
   createNewCustomer,
   createNewVehicle,
+  patchCustomer,
 } from "./tools/scheduler-customer.ts";
 import {
   listAvailableSlots,
@@ -546,6 +547,50 @@ export function getSchedulerTools(args: SchedulerToolsArgs) {
       }),
       execute: recorded(recorder, "create_new_vehicle", (input) =>
         createNewVehicle(sb, shopId, input),
+      ),
+    }),
+
+    patch_customer: tool({
+      description:
+        "PATCH an existing Tekmetric customer's phones/emails/address. " +
+        "Used by Step 5 (customer-info edit) for FULL-verification " +
+        "customers ONLY. Partial-verification customers MUST NOT call " +
+        "this — spec line 285 says PATCH is BLOCKED for partial level. " +
+        "Tekmetric §12.1.2 array-PATCH semantics handled internally " +
+        "(GET-merge-PATCH the complete phone array). Returns: { customer_id }.",
+      inputSchema: z.object({
+        customer_id: z.number().int().positive(),
+        edited_phones: z
+          .array(
+            z.object({
+              phone_e164: z.string().regex(/^\+1\d{10}$/),
+              is_primary: z.boolean(),
+            }),
+          )
+          .max(2)
+          .optional(),
+        edited_emails: z
+          .array(
+            z.object({
+              email: z.string().email(),
+              is_primary: z.boolean(),
+            }),
+          )
+          .max(2)
+          .optional(),
+        edited_address: z
+          .object({
+            address1: z.string().optional(),
+            address2: z.string().optional(),
+            city: z.string().optional(),
+            state: z.string().optional(),
+            zip: z.string().optional(),
+          })
+          .nullable()
+          .optional(),
+      }),
+      execute: recorded(recorder, "patch_customer", (input) =>
+        patchCustomer(sb, shopId, input),
       ),
     }),
   };

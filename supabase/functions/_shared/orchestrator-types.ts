@@ -47,6 +47,8 @@ export const INTENT_TYPE_TO_SPECIALIST: Record<string, SpecialistName> = {
   send_otp: "scheduler",
   verify_otp: "scheduler",
   fetch_customer_info: "scheduler",
+  patch_customer: "scheduler",
+  lookup_vehicles: "scheduler",
   pick_vehicle: "scheduler",
   add_vehicle: "scheduler",
   list_services: "scheduler",

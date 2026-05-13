@@ -674,6 +674,84 @@ export async function submitCustomerInfoEdit(args: {
       },
     });
 
+    // Per chat-design.md spec line 946 ("Submit triggers a Tekmetric
+    // PATCH if anything changed") + lines 1015-1018 ("Server Action
+    // posts to orchestrator-direct with intent_type='patch_customer'"):
+    // patch the changes through to Tekmetric BEFORE advancing to vehicle
+    // pick. Without this, edits silently die at the session row and
+    // Tekmetric stays stale.
+    //
+    // Only full-verification customers reach this Server Action (the
+    // partial-verify path skips this step entirely per spec line 285).
+    // So we can safely PATCH without checking identity_verification_level.
+    //
+    // Best-effort: if the PATCH fails (Tekmetric outage / LLM-specialist
+    // JSON parse drift), we still proceed to vehicle_pick — the customer
+    // shouldn't be blocked from booking by a stale-data issue. Audit log
+    // captures the failure for retroactive fix-up.
+    const patchStartedAt = Date.now();
+    const hasChanges =
+      args.edited_phones.length > 0 ||
+      args.edited_emails.length > 0 ||
+      args.edited_address !== null;
+    if (hasChanges) {
+      try {
+        const patchResult = await consultOrchestrator({
+          session_id: args.chatId,
+          context:
+            `Customer submitted Step 5 customer-info edits. Tool chain:\n` +
+            `  1. patch_customer({\n` +
+            `       customer_id: <session_metadata.customer_id>,\n` +
+            `       edited_phones: <session_metadata.edited_phones>,\n` +
+            `       edited_emails: <session_metadata.edited_emails>,\n` +
+            `       edited_address: <session_metadata.edited_address>,\n` +
+            `     })\n` +
+            `     Tekmetric §12.1.2 array-PATCH semantics are handled\n` +
+            `     internally by the patch_customer tool.\n` +
+            `  2. On success → emit directive 'continue' with\n` +
+            `     data: { patched: true }.\n` +
+            `  3. On Tekmetric error → emit 'tool_error' with\n` +
+            `     flags.tekmetric_error=true and data.reason.`,
+          intent_type: "patch_customer",
+          hints: {
+            customer_id_from_row: true,
+          },
+        });
+        await logAudit({
+          session_id: args.chatId,
+          step: "customer_info_edit",
+          event_type:
+            patchResult.directive === "tool_error"
+              ? "tool_failed"
+              : "tool_succeeded",
+          event_detail: {
+            tool: "patch_customer",
+            directive: patchResult.directive,
+          },
+          latency_ms: Date.now() - patchStartedAt,
+        });
+      } catch (e) {
+        // Don't block the customer from booking on a PATCH failure —
+        // their edits remain in the row for retroactive sync. Log + carry.
+        await logAudit({
+          session_id: args.chatId,
+          step: "customer_info_edit",
+          event_type: "tool_failed",
+          event_detail: { tool: "patch_customer" },
+          error_message: e instanceof Error ? e.message : String(e),
+          latency_ms: Date.now() - patchStartedAt,
+        });
+        Sentry.captureException(e, {
+          tags: {
+            surface: "server_action",
+            wizard_step: "customer_info_edit",
+            stage: "patch_customer",
+          },
+          level: "warning",
+        });
+      }
+    }
+
     // Now request the vehicle list from the orchestrator so the next
     // card (show_vehicle_picker) has fresh Tekmetric vehicles. The
     // orchestrator reads customer_id from the row.
@@ -681,7 +759,7 @@ export async function submitCustomerInfoEdit(args: {
     const result = await consultOrchestrator({
       session_id: args.chatId,
       context:
-        `Customer confirmed their info on Step 5. Tool chain:\n` +
+        `Customer's Step 5 PATCH (if any) is complete. Tool chain:\n` +
         `  1. lookup_vehicles_for_customer({ customer_id: <session_metadata.customer_id> })\n` +
         `  2. Emit directive 'show_vehicle_picker' with the vehicle list.`,
       intent_type: "lookup_vehicles",
