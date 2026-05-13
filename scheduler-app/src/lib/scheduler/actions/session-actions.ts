@@ -1618,37 +1618,72 @@ export async function submitSummaryConfirm(args: {
     const isNewCustomer = !confirmRow?.customer_id;
     const isNewVehicle = !confirmRow?.vehicle_id && !!confirmRow?.new_vehicle_info;
 
+    // SCHEMA-CORRECT confirm context for the scheduler specialist.
+    // Earlier I-5 commit (eaccf56) used wrong field names ('phones',
+    // 'emails' arrays). The actual create_new_customer tool schema
+    // (scheduler-tools.ts lines 506-528) expects SCALAR fields:
+    //   - phone_e164: string (E.164)
+    //   - email: string (optional)
+    //   - address: { streetAddress?, city?, state?, zip? }
+    //
+    // The session row has:
+    //   - phone_e164 (singular, scalar) — set at Step 2
+    //   - verified_first_name, verified_last_name — set at Step 4
+    //   - primary_email_for_description (singular) — set at Step 4
+    //   - edited_address: { address1, address2, city, state, zip } — needs
+    //     transform to Tekmetric shape (concat address1 + address2 → streetAddress)
+    //
+    // Spelling this out for the specialist explicitly.
     const confirmContext = isNewCustomer
       ? `Customer confirmed the summary. This is a NEW customer (session_metadata.customer_id is null). Tool chain:\n` +
         `  1. create_new_customer({\n` +
         `       first_name: session_metadata.verified_first_name,\n` +
         `       last_name: session_metadata.verified_last_name,\n` +
-        `       phones: session_metadata.edited_phones (array, has primary flag),\n` +
-        `       emails: session_metadata.edited_emails (array, has primary flag),\n` +
-        `       address: session_metadata.edited_address (may be null in vehicle-only mode),\n` +
+        `       phone_e164: session_metadata.phone_e164,  // SCALAR string\n` +
+        `       email: session_metadata.primary_email_for_description,  // SCALAR string\n` +
+        `       address: {\n` +
+        `         // Concat address1 + address2 into a single streetAddress line:\n` +
+        `         streetAddress: <session_metadata.edited_address.address1 + ' ' + edited_address.address2?>,\n` +
+        `         city:  session_metadata.edited_address.city,\n` +
+        `         state: session_metadata.edited_address.state,\n` +
+        `         zip:   session_metadata.edited_address.zip,\n` +
+        `       },\n` +
         `     })\n` +
-        `     → returns { tekmetric_customer_id }\n` +
+        `     → returns { customer_id }\n` +
         `  2. create_new_vehicle({\n` +
-        `       tekmetric_customer_id: <from step 1>,\n` +
-        `       ...session_metadata.new_vehicle_info (year, make, model, sub_model?, vin?, license_plate?, state?),\n` +
+        `       customer_id: <from step 1>,\n` +
+        `       year:   session_metadata.new_vehicle_info.year,\n` +
+        `       make:   session_metadata.new_vehicle_info.make,\n` +
+        `       model:  session_metadata.new_vehicle_info.model,\n` +
+        `       sub_model:     session_metadata.new_vehicle_info.sub_model,    // optional\n` +
+        `       vin:           session_metadata.new_vehicle_info.vin,          // optional\n` +
+        `       license_plate: session_metadata.new_vehicle_info.license_plate, // optional\n` +
         `     })\n` +
-        `     → returns { tekmetric_vehicle_id }\n` +
-        `  3. confirm_appointment({\n` +
-        `       customer_id: <step 1 result>,\n` +
-        `       vehicle_id: <step 2 result>,\n` +
-        `       ...appointment + services from session_metadata,\n` +
-        `     })\n` +
-        `  4. Emit 'appointment_booked' with the appointment_id + starts_at.\n` +
-        `  If create_new_customer or create_new_vehicle fails → emit 'tool_error'\n` +
-        `  with reason='tekmetric_create_failed' and the underlying error message.`
+        `     → returns { vehicle_id }\n` +
+        `  3. hold_appointment_slot if not already held + confirm_appointment with the\n` +
+        `     resulting customer_id + vehicle_id + appointment details from session_metadata.\n` +
+        `  4. Emit 'appointment_booked' with the appointment_id + starts_at +\n` +
+        `     tekmetric_customer_id + tekmetric_vehicle_id so the Server\n` +
+        `     Action can persist the new IDs onto the session row.\n` +
+        `  If create_new_customer or create_new_vehicle fails → emit\n` +
+        `  'tool_error' with flags.tekmetric_error=true and a data.reason\n` +
+        `  describing which step failed. Do NOT silently fall back to\n` +
+        `  confirm_appointment with null IDs.`
       : isNewVehicle
         ? `Customer confirmed the summary. Returning customer adding a NEW vehicle. Tool chain:\n` +
           `  1. create_new_vehicle({\n` +
-          `       tekmetric_customer_id: session_metadata.customer_id,\n` +
-          `       ...session_metadata.new_vehicle_info,\n` +
+          `       customer_id: session_metadata.customer_id,\n` +
+          `       year:  session_metadata.new_vehicle_info.year,\n` +
+          `       make:  session_metadata.new_vehicle_info.make,\n` +
+          `       model: session_metadata.new_vehicle_info.model,\n` +
+          `       sub_model: session_metadata.new_vehicle_info.sub_model,        // optional\n` +
+          `       vin:       session_metadata.new_vehicle_info.vin,              // optional\n` +
+          `       license_plate: session_metadata.new_vehicle_info.license_plate, // optional\n` +
           `     })\n` +
+          `     → returns { vehicle_id }\n` +
           `  2. confirm_appointment with the resulting vehicle_id.\n` +
-          `  3. Emit 'appointment_booked' on success.`
+          `  3. Emit 'appointment_booked' on success with tekmetric_vehicle_id\n` +
+          `     in result.data.`
         : `Customer confirmed the summary. Both customer + vehicle exist in Tekmetric. Tool chain:\n` +
           `  1. confirm_appointment({\n` +
           `       customer_id: session_metadata.customer_id,\n` +
@@ -1686,20 +1721,36 @@ export async function submitSummaryConfirm(args: {
         appointment_confirmed_at: new Date().toISOString(),
       };
       const data = (result.data ?? {}) as Record<string, unknown>;
-      if (
-        isNewCustomer &&
-        typeof data.tekmetric_customer_id === "number"
-      ) {
-        updates.customer_id = data.tekmetric_customer_id;
+      // The LLM specialist may emit the ID fields under either the
+      // tool's return-shape names (customer_id, vehicle_id) or the
+      // "tekmetric_*" prefixed names from earlier prompt versions.
+      // Accept both since Haiku 4.5 has been observed to use either.
+      const newCustomerId =
+        typeof data.customer_id === "number"
+          ? data.customer_id
+          : typeof data.tekmetric_customer_id === "number"
+            ? data.tekmetric_customer_id
+            : null;
+      const newVehicleId =
+        typeof data.vehicle_id === "number"
+          ? data.vehicle_id
+          : typeof data.tekmetric_vehicle_id === "number"
+            ? data.tekmetric_vehicle_id
+            : null;
+      const newAppointmentId =
+        typeof data.appointment_id === "number"
+          ? data.appointment_id
+          : typeof data.tekmetric_appointment_id === "number"
+            ? data.tekmetric_appointment_id
+            : null;
+      if (isNewCustomer && newCustomerId !== null) {
+        updates.customer_id = newCustomerId;
       }
-      if (
-        (isNewCustomer || isNewVehicle) &&
-        typeof data.tekmetric_vehicle_id === "number"
-      ) {
-        updates.vehicle_id = data.tekmetric_vehicle_id;
+      if ((isNewCustomer || isNewVehicle) && newVehicleId !== null) {
+        updates.vehicle_id = newVehicleId;
       }
-      if (typeof data.tekmetric_appointment_id === "number") {
-        updates.appointment_id = data.tekmetric_appointment_id;
+      if (newAppointmentId !== null) {
+        updates.appointment_id = newAppointmentId;
       }
       await writeSession({
         chatId: args.chatId,

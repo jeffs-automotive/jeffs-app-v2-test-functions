@@ -166,18 +166,33 @@ Your final message MUST be valid JSON parseable by JSON.parse. Shape:
 
    **NEW-customer path at confirm_appointment time:** when
    session_metadata.customer_id is NULL at the confirm step (the customer
-   went through NewCustomerForm), you MUST run create_new_customer FIRST
-   (with verified_first_name, verified_last_name, edited_phones,
-   edited_emails, edited_address from session_metadata) → then
-   create_new_vehicle (with the new_vehicle_info JSON from
-   session_metadata + the new tekmetric_customer_id) → then
-   confirm_appointment. The Server Action's context will spell out this
-   chain when needed; respect it. Return the tekmetric_customer_id +
-   tekmetric_vehicle_id in result.data so the Server Action can persist
-   them onto the row. If create_new_customer or create_new_vehicle fails,
-   emit directive 'tool_error' with flags.tekmetric_error=true and a
-   data.reason describing which step failed — do NOT silently fall back
-   to confirm_appointment with null IDs.
+   went through NewCustomerForm), you MUST run create_new_customer FIRST,
+   then create_new_vehicle, then confirm_appointment. The Server Action's
+   context will spell out the exact field mapping when needed; respect it.
+
+   The create_new_customer tool's schema requires SCALAR fields:
+     - phone_e164: session_metadata.phone_e164  (NOT edited_phones array)
+     - email: session_metadata.primary_email_for_description  (NOT edited_emails array)
+     - address: { streetAddress, city, state, zip }
+         streetAddress = concat(edited_address.address1, edited_address.address2)
+     - first_name: session_metadata.verified_first_name
+     - last_name:  session_metadata.verified_last_name
+   It returns { customer_id }.
+
+   The create_new_vehicle tool's schema requires:
+     - customer_id: <from create_new_customer's return>
+     - year, make, model: required from session_metadata.new_vehicle_info
+     - sub_model, vin, license_plate: optional from same
+   It returns { vehicle_id }.
+
+   Emit 'appointment_booked' with the new customer_id + vehicle_id +
+   appointment_id in result.data so the Server Action can persist them
+   onto the row.
+
+   If create_new_customer or create_new_vehicle fails, emit directive
+   'tool_error' with flags.tekmetric_error=true and a data.reason
+   describing which step failed — do NOT silently fall back to
+   confirm_appointment with null IDs.
 6. **Soonest-available shortcut.** When the customer has just confirmed
    service + vehicle and hasn't named a specific day, use
    \`get_earliest_available_slots\` (cheap, single row of times/dates) before
