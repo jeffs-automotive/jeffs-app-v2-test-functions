@@ -12,8 +12,13 @@
  * to /book or merge them.
  */
 import { ChatBootstrap } from "@/components/scheduler/ChatBootstrap";
+import { hydrateSession } from "@/lib/scheduler/hydrate-session";
 
-export default function BookPage() {
+// Force dynamic so cookie hydration runs on every request, NOT cached.
+export const dynamic = "force-dynamic";
+
+export default async function BookPage() {
+  const { chatId, initialMessages, currentStep } = await hydrateSession();
   return (
     <main className="flex min-h-dvh flex-col bg-paper">
       {/* ─── Header — editorial, restrained ────────────────────────────────── */}
@@ -35,7 +40,11 @@ export default function BookPage() {
           aria-label="Schedule chat"
           className="flex min-h-[60vh] flex-1 flex-col"
         >
-          <ChatBootstrap />
+          <ChatBootstrap
+            chatId={chatId}
+            initialMessages={initialMessages}
+            initialStep={currentStep}
+          />
         </section>
       </div>
 

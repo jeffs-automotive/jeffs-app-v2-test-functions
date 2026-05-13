@@ -1,65 +1,63 @@
 "use client";
 
 /**
- * ChatBootstrap — client-side glue that picks/persists a chatId and mounts
- * the actual <Chat /> component.
+ * ChatBootstrap — client glue that wires the SSR-hydrated session into
+ * <Chat />.
  *
- * Phase 1 (per scheduler_project_state.md): client-side-generated chatId
- * persisted in localStorage. The /api/chat route handler upserts a
- * customer_chat_sessions row keyed on this id on first request.
+ * Phase 1 cookie-resume (2026-05-13): the page Server Component reads
+ * the `sched-chat-id` HttpOnly cookie set by middleware, loads initial
+ * messages + the wizard's current_step from the DB, and passes them all
+ * to this component. We no longer generate the chatId client-side or
+ * rely on localStorage as the source of truth.
  *
- * Future: switch to HttpOnly cookie + middleware so the chat survives a
- * device-clear and pairs with the SMS-channel re-discovery flow per
- * design §3.1.
+ * localStorage is still used as a BACKUP read for tab-restore scenarios
+ * where the cookie was somehow lost (private mode, manual clear). When
+ * cookie + localStorage disagree, COOKIE WINS — it's the durable
+ * cross-device key.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import type { UIMessage } from "ai";
 import { Chat } from "./Chat";
 
 const STORAGE_KEY = "jeffs-scheduler-chat-id";
 
-function isUuidV4(v: string | null): v is string {
-  return (
-    !!v &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
-  );
+export interface ChatBootstrapProps {
+  /** UUID from the sched-chat-id cookie (SSR-hydrated by hydrateSession). */
+  chatId: string;
+  /** Replay-ready messages from the DB (empty array for fresh sessions). */
+  initialMessages: UIMessage[];
+  /**
+   * Authoritative wizard step from the row, or null if no row exists yet.
+   * Used to decide whether to render the client-side GreetingCard (only
+   * when null/'greeting').
+   */
+  initialStep: string | null;
 }
 
-export function ChatBootstrap() {
-  const [chatId, setChatId] = useState<string | null>(null);
-
+export function ChatBootstrap({
+  chatId,
+  initialMessages,
+  initialStep,
+}: ChatBootstrapProps) {
+  // Sync localStorage as a backup pointer for environments where the cookie
+  // might be cleared (private-tab boundaries, manual clear). The cookie is
+  // still the source of truth on SSR; this just helps us recover faster on
+  // the rare cases where we lose it.
   useEffect(() => {
-    let stored: string | null = null;
     try {
-      stored = localStorage.getItem(STORAGE_KEY);
+      localStorage.setItem(STORAGE_KEY, chatId);
     } catch {
-      // localStorage unavailable (private mode) — fall through and create a
-      // fresh ephemeral id; chat won't survive page refresh in that case.
+      // Ignore — localStorage unavailable. The cookie + DB row are the real
+      // persistence.
     }
-    if (isUuidV4(stored)) {
-      setChatId(stored);
-      return;
-    }
-    const fresh = crypto.randomUUID();
-    try {
-      localStorage.setItem(STORAGE_KEY, fresh);
-    } catch {
-      // OK — ephemeral session
-    }
-    setChatId(fresh);
-  }, []);
+  }, [chatId]);
 
-  if (!chatId) {
-    return (
-      <p
-        className="text-[14px] italic text-ink-tertiary"
-        aria-live="polite"
-        role="status"
-      >
-        Loading chat…
-      </p>
-    );
-  }
-
-  return <Chat chatId={chatId} />;
+  return (
+    <Chat
+      chatId={chatId}
+      initialMessages={initialMessages}
+      initialStep={initialStep}
+    />
+  );
 }

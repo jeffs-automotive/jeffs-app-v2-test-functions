@@ -18,7 +18,7 @@
  * compact echo of the customer's choice for context.
  */
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useChat } from "@ai-sdk/react";
 import {
   DefaultChatTransport,
@@ -107,9 +107,18 @@ export const CARD_TAP_SENTINEL_PREFIX = "[card-tap] ";
 export interface ChatProps {
   chatId: string;
   initialMessages?: UIMessage[];
+  /**
+   * Server-hydrated current_step from customer_chat_sessions. When null
+   * OR 'greeting', show the client-side GreetingCard for Step 1. When
+   * any later step, the customer is mid-flow — render persisted
+   * messages + skip the greeting card. Closes GAP-1 from the codebase
+   * audit (messages.length === 0 was unreliable as a fresh-session
+   * signal).
+   */
+  initialStep?: string | null;
 }
 
-export function Chat({ chatId, initialMessages }: ChatProps) {
+export function Chat({ chatId, initialMessages, initialStep }: ChatProps) {
   const { messages, sendMessage, addToolResult, status } = useChat({
     id: chatId,
     messages: initialMessages ?? [],
@@ -126,6 +135,49 @@ export function Chat({ chatId, initialMessages }: ChatProps) {
 
   const [draft, setDraft] = useState("");
   const isWorking = status === "submitted" || status === "streaming";
+
+  // Offline detection per chat-design.md §D (Error states). When the
+  // browser reports navigator.onLine === false, surface a banner so the
+  // customer knows their last action didn't go through. The chat itself
+  // doesn't retry — that's Phase 1.1; for now we just warn.
+  const [isOnline, setIsOnline] = useState(true);
+  useEffect(() => {
+    // Initial sync (navigator.onLine is only available in browser).
+    if (typeof navigator !== "undefined" && "onLine" in navigator) {
+      setIsOnline(navigator.onLine);
+    }
+    const onOnline = () => setIsOnline(true);
+    const onOffline = () => setIsOnline(false);
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+    };
+  }, []);
+
+  // Slow-specialist timers per chat-design.md §D.2 (lines 3013-3036). When
+  // the orchestrator-direct call exceeds 15s, show a reassurance bubble;
+  // at 45s, offer escalation. Triggered off `isWorking` (covers Server
+  // Action latency PLUS the chat agent's streaming response).
+  const [workingElapsedMs, setWorkingElapsedMs] = useState(0);
+  useEffect(() => {
+    if (!isWorking) {
+      setWorkingElapsedMs(0);
+      return;
+    }
+    const startedAt = Date.now();
+    const interval = setInterval(() => {
+      setWorkingElapsedMs(Date.now() - startedAt);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isWorking]);
+  const slowStage: "fast" | "slow" | "very_slow" =
+    workingElapsedMs >= 45_000
+      ? "very_slow"
+      : workingElapsedMs >= 15_000
+        ? "slow"
+        : "fast";
 
   // Phase 1 wizard-first + row-as-truth (Stage 2+3 refactor 2026-05-13).
   //
@@ -454,10 +506,29 @@ export function Chat({ chatId, initialMessages }: ChatProps) {
   // client-side. As soon as the customer taps a button, handleGreetingPick
   // pushes their answer to the agent via sendMessage — from that point the
   // chat agent owns the flow.
-  const showClientGreeting = messages.length === 0 && !isWorking;
+  // Show GreetingCard client-side ONLY when the customer is genuinely on
+  // Step 1. Per codebase audit GAP-1: relying solely on messages.length===0
+  // breaks for customers who tap-refresh mid-flow (their messages array
+  // is empty for one render until useChat hydrates, but their row already
+  // has current_step='phone_name' or later). The cookie-resume flow's
+  // SSR hydration passes initialStep so we can gate on the authoritative
+  // row state instead of fragile message-array length.
+  const stepIsGreetingOrUnknown = !initialStep || initialStep === "greeting";
+  const showClientGreeting =
+    messages.length === 0 && stepIsGreetingOrUnknown && !isWorking;
 
   return (
     <div className="flex h-full flex-col">
+      {!isOnline ? (
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="mb-2 rounded-md border border-amber-400 bg-amber-50 px-3 py-2 text-sm text-amber-800"
+        >
+          You&apos;re offline. Your last action might not have gone through —
+          we&apos;ll pick up where you left off when the connection comes back.
+        </div>
+      ) : null}
       <div
         aria-live="polite"
         aria-label="Conversation"
@@ -481,7 +552,13 @@ export function Chat({ chatId, initialMessages }: ChatProps) {
 
         {isWorking ? (
           <ChatBubble role="assistant">
-            <p className="m-0 italic text-ink-secondary">Jeff is typing…</p>
+            <p className="m-0 italic text-ink-secondary">
+              {slowStage === "very_slow"
+                ? "This is taking longer than usual — hang tight. If it doesn't come through in a few seconds, tap 'Talk to a person' below and we'll get you scheduled directly. 📞"
+                : slowStage === "slow"
+                  ? "Still pulling things together for you…"
+                  : "Jeff is typing…"}
+            </p>
           </ChatBubble>
         ) : null}
       </div>

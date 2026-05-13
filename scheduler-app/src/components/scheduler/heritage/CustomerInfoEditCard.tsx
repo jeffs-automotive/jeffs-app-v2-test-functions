@@ -563,7 +563,7 @@ export function CustomerInfoEditCard({
             </div>
           </fieldset>
 
-          <Card.Actions align="end">
+          <Card.Actions align="right">
             <Button
               type="submit"
               variant="primary"

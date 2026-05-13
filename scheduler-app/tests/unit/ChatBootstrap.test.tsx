@@ -1,23 +1,28 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 
 /**
- * RTL tests for ChatBootstrap — the client-side chatId picker.
+ * RTL tests for ChatBootstrap — cookie-resume rewrite 2026-05-13.
  *
- * Per appointments_design.md §3.1 + scheduler_project_state.md Phase 1
- * deferred-cookie note:
- *   - Reads chatId from localStorage if a valid v4 UUID is present
- *   - Otherwise generates a fresh UUID via crypto.randomUUID() and persists
- *   - Renders <Chat chatId={...} />
+ * Pre-rewrite: ChatBootstrap was responsible for picking the chatId
+ * (read localStorage → fall back to crypto.randomUUID() → persist).
+ * Post-rewrite: ChatBootstrap is dumb. The page Server Component reads
+ * the `sched-chat-id` cookie (set by middleware) + loadChat(...) and
+ * passes both via props. ChatBootstrap just renders <Chat /> with those
+ * props and syncs localStorage as a BACKUP pointer.
  *
- * We mock Chat to a stub so we can assert the chatId prop without booting
- * the full useChat + DefaultChatTransport pipeline.
+ * We mock Chat to a stub so we can assert the passed-through props
+ * without booting the full useChat + DefaultChatTransport pipeline.
  */
 
 vi.mock("@/components/scheduler/Chat", () => ({
   Chat: vi.fn(
-    (props: { chatId: string }) => (
-      <div data-testid="chat-mounted" data-chat-id={props.chatId} />
+    (props: { chatId: string; initialStep: string | null }) => (
+      <div
+        data-testid="chat-mounted"
+        data-chat-id={props.chatId}
+        data-initial-step={props.initialStep ?? ""}
+      />
     ),
   ),
 }));
@@ -37,79 +42,82 @@ describe("<ChatBootstrap />", () => {
     vi.restoreAllMocks();
   });
 
-  it("reuses a valid v4 UUID already in localStorage", async () => {
-    localStorage.setItem(STORAGE_KEY, VALID_UUID);
+  it("renders Chat with the server-provided chatId + initialMessages", () => {
+    render(
+      <ChatBootstrap
+        chatId={VALID_UUID}
+        initialMessages={[]}
+        initialStep={null}
+      />,
+    );
 
-    render(<ChatBootstrap />);
-
-    const mounted = await screen.findByTestId("chat-mounted");
+    const mounted = screen.getByTestId("chat-mounted");
     expect(mounted.getAttribute("data-chat-id")).toBe(VALID_UUID);
-    // localStorage should be unchanged
+  });
+
+  it("passes the server-hydrated initialStep through to Chat", () => {
+    render(
+      <ChatBootstrap
+        chatId={VALID_UUID}
+        initialMessages={[]}
+        initialStep="phone_name"
+      />,
+    );
+
+    const mounted = screen.getByTestId("chat-mounted");
+    expect(mounted.getAttribute("data-initial-step")).toBe("phone_name");
+  });
+
+  it("syncs chatId to localStorage as a backup pointer", () => {
+    render(
+      <ChatBootstrap
+        chatId={VALID_UUID}
+        initialMessages={[]}
+        initialStep={null}
+      />,
+    );
+
     expect(localStorage.getItem(STORAGE_KEY)).toBe(VALID_UUID);
   });
 
-  it("generates a fresh UUID + persists it when localStorage is empty", async () => {
-    const fresh = "99999999-9999-4999-8999-999999999999";
-    vi.spyOn(crypto, "randomUUID").mockReturnValue(
-      fresh as `${string}-${string}-${string}-${string}-${string}`,
-    );
-
-    render(<ChatBootstrap />);
-
-    const mounted = await screen.findByTestId("chat-mounted");
-    expect(mounted.getAttribute("data-chat-id")).toBe(fresh);
-    expect(localStorage.getItem(STORAGE_KEY)).toBe(fresh);
-  });
-
-  it("rejects an invalid stored value and generates a fresh UUID", async () => {
-    localStorage.setItem(STORAGE_KEY, "not-a-uuid");
-    const fresh = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-    vi.spyOn(crypto, "randomUUID").mockReturnValue(
-      fresh as `${string}-${string}-${string}-${string}-${string}`,
-    );
-
-    render(<ChatBootstrap />);
-
-    const mounted = await screen.findByTestId("chat-mounted");
-    expect(mounted.getAttribute("data-chat-id")).toBe(fresh);
-    expect(localStorage.getItem(STORAGE_KEY)).toBe(fresh);
-  });
-
-  it("falls back to an ephemeral session when localStorage throws (private mode)", async () => {
-    const fresh = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
-    vi.spyOn(crypto, "randomUUID").mockReturnValue(
-      fresh as `${string}-${string}-${string}-${string}-${string}`,
-    );
-    // Force localStorage.getItem AND setItem to throw — mimics private-mode browsers
-    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
-      throw new Error("private mode");
-    });
+  it("works even when localStorage is unavailable (private mode)", () => {
+    // Force localStorage.setItem to throw — mimics private-mode browsers.
+    // The component should still render Chat (the cookie + DB row are the
+    // real persistence; localStorage is just a backup).
     vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
       throw new Error("private mode");
     });
 
-    render(<ChatBootstrap />);
+    render(
+      <ChatBootstrap
+        chatId={VALID_UUID}
+        initialMessages={[]}
+        initialStep={null}
+      />,
+    );
 
-    const mounted = await screen.findByTestId("chat-mounted");
-    expect(mounted.getAttribute("data-chat-id")).toBe(fresh);
+    const mounted = screen.getByTestId("chat-mounted");
+    expect(mounted.getAttribute("data-chat-id")).toBe(VALID_UUID);
   });
 
-  it("shows a loading placeholder on the first synchronous render (before useEffect)", () => {
-    // ChatBootstrap returns the placeholder before useEffect resolves chatId.
-    // We render with no localStorage value + capture the synchronous output:
-    const { container } = render(<ChatBootstrap />);
-    // useEffect runs after first paint; if it hasn't picked the id yet, we
-    // see "Loading chat…". Once it lands, the chat mount appears. Both
-    // behaviors are valid — assert one of them is present.
-    const hasPlaceholder = !!container.querySelector('[aria-live="polite"]');
-    const hasMount = !!container.querySelector('[data-testid="chat-mounted"]');
-    expect(hasPlaceholder || hasMount).toBe(true);
-  });
+  it("updates localStorage when a new chatId prop arrives (cookie roll)", () => {
+    const { rerender } = render(
+      <ChatBootstrap
+        chatId={VALID_UUID}
+        initialMessages={[]}
+        initialStep={null}
+      />,
+    );
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(VALID_UUID);
 
-  it("eventually resolves to a Chat mount (post-useEffect)", async () => {
-    render(<ChatBootstrap />);
-    await waitFor(() => {
-      expect(screen.getByTestId("chat-mounted")).toBeInTheDocument();
-    });
+    const secondUuid = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    rerender(
+      <ChatBootstrap
+        chatId={secondUuid}
+        initialMessages={[]}
+        initialStep={null}
+      />,
+    );
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(secondUuid);
   });
 });

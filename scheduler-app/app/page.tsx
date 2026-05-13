@@ -10,10 +10,23 @@
  * Trust signals row was retired here per design lock (they distract from
  * the chat-first flow). They live on jeffsautomotive.com proper; the
  * scheduler subdomain focuses on the booking action.
+ *
+ * Server Component now (was implicitly server but rendered nothing
+ * dynamic). Reads the `sched-chat-id` cookie set by middleware +
+ * pre-hydrates initial messages so returning customers see their
+ * conversation immediately instead of a flash of empty state.
  */
 import { ChatBootstrap } from "@/components/scheduler/ChatBootstrap";
+import { hydrateSession } from "@/lib/scheduler/hydrate-session";
 
-export default function HomePage() {
+// Force dynamic rendering so the cookie + DB hydration happens on every
+// request (not cached at build time). The middleware-set cookie is the
+// session-identifying input; cached HTML would lock everyone to the
+// build-time-generated UUID.
+export const dynamic = "force-dynamic";
+
+export default async function HomePage() {
+  const { chatId, initialMessages, currentStep } = await hydrateSession();
   return (
     <main className="flex min-h-dvh flex-col bg-paper">
       {/* ─── Editorial header ────────────────────────────────────────────── */}
@@ -35,7 +48,11 @@ export default function HomePage() {
           aria-label="Schedule chat"
           className="flex min-h-[60vh] flex-1 flex-col"
         >
-          <ChatBootstrap />
+          <ChatBootstrap
+            chatId={chatId}
+            initialMessages={initialMessages}
+            initialStep={currentStep}
+          />
         </section>
       </div>
 
