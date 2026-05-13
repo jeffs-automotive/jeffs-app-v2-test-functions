@@ -314,17 +314,39 @@ export async function submitPhoneName(args: {
         current_step: "otp_pending",
       };
     }
-    if (step2.directive === "show_new_customer_form") {
-      // No phone hits + bucket = new/unsure → new customer form
+    if (step2.directive === "show_new_customer_info_card") {
+      // Spec-aligned new-client path (chat-design.md §2589-2755). The
+      // edge function returns the verified_phone + Step 2 name in its
+      // `data` field; we promote them to verified_* on the row so
+      // Step 5 / Step 10 helpers can read them. Phase 1 deviation
+      // flag (already documented in scheduler-step2-direct comments):
+      // OTP is currently skipped on this path. Spec §2593 wants
+      // Steps 1-3 identical for both flows — OTP restoration is a
+      // separate change.
+      const firstName = String(step2.data?.first_name ?? args.first_name ?? "");
+      const lastName = String(step2.data?.last_name ?? args.last_name ?? "");
+      const verifiedPhone = String(
+        step2.data?.verified_phone_e164 ?? args.phone_e164,
+      );
       await writeSession({
         chatId: args.chatId,
-        updates: {},
+        updates: {
+          verified_first_name: firstName,
+          verified_last_name: lastName,
+          // identity_verification_level stays null at this point; gets
+          // set to 'full' inside scheduler-booking-direct:create_customer
+          // once Tekmetric returns a customer_id.
+        },
         nextStep: "new_customer_info",
       });
       return {
         ok: true,
-        directive: "show_new_customer_form",
-        data: { mode: "full", ...(step2.data ?? {}) },
+        directive: "show_new_customer_info_card",
+        data: {
+          first_name: firstName,
+          last_name: lastName,
+          verified_phone_e164: verifiedPhone,
+        },
         bubble_copy: getBubbleCopy("show_new_customer_form"),
         current_step: "new_customer_info",
       };
