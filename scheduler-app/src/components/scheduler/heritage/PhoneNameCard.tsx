@@ -199,6 +199,24 @@ export function PhoneNameCard({
           </Field>
         </Card.Body>
 
+        {/* While pending, surface a "sending your code" reassurance line
+            above the button. The full chain takes ~4-5s end-to-end
+            (Tekmetric lookup + LLM specialist + Telnyx send) and silent
+            spinners feel broken to customers per chat-design.md §D.2. */}
+        {pending ? (
+          <p
+            role="status"
+            aria-live="polite"
+            className="-mb-2 mt-3 flex items-center gap-2 text-[13px] text-ink-secondary"
+          >
+            <span
+              aria-hidden
+              className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-brand-burgundy-300 border-t-brand-burgundy-700"
+            />
+            Texting your security code now…
+          </p>
+        ) : null}
+
         <Card.Actions>
           <Button
             type="submit"
@@ -208,7 +226,7 @@ export function PhoneNameCard({
             disabled={disabled}
             fullWidthOnMobile
           >
-            Send my code
+            {pending ? "Sending code…" : "Send my code"}
           </Button>
         </Card.Actions>
       </form>

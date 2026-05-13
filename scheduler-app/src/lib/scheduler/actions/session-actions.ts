@@ -262,10 +262,91 @@ export async function submitPhoneName(args: {
       session_id: args.chatId,
       step: "phone_name",
       event_type: "tool_called",
-      event_detail: { tool: "consultOrchestrator", intent_type: "verify_and_lookup", directive: result.directive },
+      event_detail: {
+        tool: "consultOrchestrator",
+        intent_type: "verify_and_lookup",
+        directive: result.directive,
+        // Capture the full result shape so we can debug LLM-specialist
+        // drift in the audit log (the row-as-truth fix below sidesteps
+        // any drift in result.data, but the audit log needs to record
+        // what came back).
+        data_keys: result.data ? Object.keys(result.data) : [],
+        flags: result.flags ?? null,
+      },
       latency_ms: Date.now() - startedAt,
     });
+    // Structured log so it surfaces in Vercel logs alongside the trace.
+    // Sentry breadcrumb-equivalent (we don't import Sentry helpers here
+    // since this isn't an exception — but tooErrResult will pick it up
+    // if anything throws downstream).
+    // eslint-disable-next-line no-console
+    console.log(
+      JSON.stringify({
+        level: "info",
+        msg: "phone_name_orchestrator_result",
+        session_id: args.chatId,
+        directive: result.directive,
+        data_keys: result.data ? Object.keys(result.data) : [],
+        flags: result.flags ?? null,
+        latency_ms: Date.now() - startedAt,
+      }),
+    );
 
+    // ─── ROW-AS-TRUTH DETERMINISTIC RESPONSE (2026-05-13 bug fix) ──────────
+    //
+    // The LLM specialist (Haiku 4.5) is supposed to:
+    //   1. Call lookup_customer_by_phone
+    //   2. Call send_otp on a match
+    //   3. Emit directive='send_otp_first' WITH data.phone_last_four +
+    //      data.ttl_seconds bubbled up from the send_otp tool's return
+    //
+    // Empirical failure observed 2026-05-13: SMS arrives (so send_otp ran)
+    // but the chat agent escalates with "expected directive/tool result
+    // was missing or malformed". Diagnosis: the specialist's response
+    // doesn't reliably carry the send_otp data fields, so show_otp_input
+    // gets called with empty/malformed input → Zod validation fails →
+    // chat agent generates the escalation natural-language fallback.
+    //
+    // Fix: trust the ROW. If after the orchestrator returns the row's
+    // otp_sent_at is recent (last 60s), FORCE directive='show_otp_input'
+    // with phone_last_four computed from the row's phone_e164 + a fresh
+    // 5-min ttl_seconds. This is the row-as-truth pattern from locked
+    // decision #1 — the LLM specialist's data plumbing is best-effort,
+    // the row is authoritative.
+    const verifySupabase = createSupabaseAdminClient();
+    const { data: rowAfter } = await verifySupabase
+      .from("customer_chat_sessions")
+      .select("phone_e164, otp_sent_at, customer_id")
+      .eq("id", args.chatId)
+      .maybeSingle();
+
+    const otpSentRecently =
+      rowAfter?.otp_sent_at &&
+      Date.now() - new Date(rowAfter.otp_sent_at as string).getTime() <
+        60_000;
+
+    if (otpSentRecently && rowAfter?.phone_e164) {
+      const phoneLastFour = String(rowAfter.phone_e164).slice(-4);
+      return {
+        ok: true,
+        directive: "show_otp_input",
+        data: {
+          // Spread the specialist's data FIRST so our schema-required
+          // fields below ALWAYS win — the row is the source of truth
+          // for phone_last_four + ttl_seconds, not whatever the LLM
+          // happened to bubble up.
+          ...(result.data ?? {}),
+          phone_last_four: phoneLastFour,
+          ttl_seconds: 300,
+          attempts_remaining: 3,
+        },
+        flags: result.flags,
+        bubble_copy: getBubbleCopy("phone_name_to_otp"),
+        current_step: "otp_pending",
+      };
+    }
+
+    // No OTP sent — fall through to the specialist's original directive.
     // Map the orchestrator's directive to a bubble template + step.
     const bubbleKey =
       result.directive === "send_otp_first"
