@@ -12,17 +12,22 @@
 //
 // Per-transcript steps:
 //   1. Load transcript_emails row + linked customer_chat_sessions + messages
-//   2. Build view model + classify sentiment (gemini-3.1-flash-lite via
-//      AI Gateway; cheapest sufficient option per Chris 2026-05-10)
+//      + scheduler_audit_log error events
+//   2. Build view model (sentiment classification DROPPED per design lock
+//      2026-05-13 — deferred to Phase 2)
 //   3. Send via Resend with Idempotency-Key: 'transcript:<session_id>'
 //   4. On 2xx: status='sent', resend_id, sent_at
 //      On 4xx/5xx: attempts++; status='failed' if attempts ≥ 5 else 'retry'
-//   5. If sentiment === 'negative': Sentry.captureMessage (warning level)
+//   5. Errors-section in email body (replaces the [NEG] sentiment prefix
+//      with an [ERR] prefix when scheduler_audit_log captured any errors)
+//
+// Chunk 8 changes (2026-05-13):
+//   - DROP sentiment classification (gemini-3.1-flash-lite call removed)
+//   - ADD errors section sourced from scheduler_audit_log
+//   - ADD customer_notes_text + customer_question rendering (Steps 10.2/10.3)
 
 import "@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "npm:@supabase/supabase-js@2";
-import { generateText } from "npm:ai@^5";
-import { gateway } from "npm:@ai-sdk/gateway@^2";
+import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 
 import {
   buildTranscriptHtml,
@@ -43,8 +48,9 @@ const SERVICE_TEAM_EMAIL =
 const FROM_EMAIL =
   Deno.env.get("TRANSCRIPT_FROM_EMAIL") ??
   "Jeff's Automotive Scheduler <service@jeffsautomotive.com>";
-const SENTIMENT_MODEL =
-  Deno.env.get("TRANSCRIPT_SENTIMENT_MODEL") ?? "google/gemini-3.1-flash-lite";
+// Phase 2 candidate — sentiment classification deferred per design lock 2026-05-13.
+// Kept commented for reference when we re-enable it.
+// const SENTIMENT_MODEL = Deno.env.get("TRANSCRIPT_SENTIMENT_MODEL") ?? "google/gemini-3.1-flash-lite";
 
 const sb = createClient(SUPABASE_URL, RESOLVED_SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
@@ -63,51 +69,64 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-// ─── Sentiment classification (LLM judge) ────────────────────────────────────
+// ─── Errors from scheduler_audit_log ─────────────────────────────────────────
 
-interface SentimentResult {
-  sentiment: "positive" | "neutral" | "negative";
-  confidence: number;
+interface SessionError {
+  occurred_at: string;
+  step: string;
+  event_type: string;
+  error_message: string | null;
+  event_detail: Record<string, unknown> | null;
 }
 
-async function classifySentiment(
-  messagesText: string,
-): Promise<SentimentResult> {
-  if (!messagesText.trim()) {
-    return { sentiment: "neutral", confidence: 0 };
-  }
-  const prompt = `Classify the sentiment of this customer's tone across the conversation. Output a single word: "positive", "neutral", or "negative". Then on a new line, a single number 0-1 for your confidence.
-
-CONVERSATION:
-${messagesText.slice(0, 8000)}`;
-
-  try {
-    const result = await generateText({
-      model: gateway(SENTIMENT_MODEL),
-      prompt,
-      maxOutputTokens: 64,
-    });
-    const lines = result.text.trim().split(/\r?\n/);
-    const word = lines[0]?.trim().toLowerCase() ?? "";
-    const conf = parseFloat(lines[1] ?? "0.5");
-    if (
-      word === "positive" ||
-      word === "neutral" ||
-      word === "negative"
-    ) {
-      return { sentiment: word, confidence: isFinite(conf) ? conf : 0.5 };
-    }
-    return { sentiment: "neutral", confidence: 0 };
-  } catch (e) {
+/**
+ * Pull error events for the session out of scheduler_audit_log. Filters to
+ * the event types we want to surface to advisors:
+ *   - tool_failed       — a scheduler tool threw after retry
+ *   - tekmetric_error   — Tekmetric returned 4xx/5xx
+ *   - escalation_triggered — chat agent triggered an escalation
+ *
+ * Per Chris's directive 2026-05-13: "log any errors and send it with the
+ * appointment email to service advisors."
+ */
+async function loadSessionErrors(
+  sb: SupabaseClient,
+  sessionId: string,
+): Promise<SessionError[]> {
+  const { data, error } = await sb
+    .from("scheduler_audit_log")
+    .select("occurred_at, step, event_type, error_message, event_detail")
+    .eq("session_id", sessionId)
+    .in("event_type", ["tool_failed", "tekmetric_error", "escalation_triggered"])
+    .order("occurred_at", { ascending: true });
+  if (error) {
+    // Best-effort — log + continue. Errors-section will simply be omitted.
     console.error(
       JSON.stringify({
         level: "warn",
-        msg: "sentiment_classify_failed",
-        detail: e instanceof Error ? e.message : String(e),
+        msg: "scheduler_audit_log_errors_query_failed",
+        session_id: sessionId,
+        detail: error.message,
       }),
     );
-    return { sentiment: "neutral", confidence: 0 };
+    return [];
   }
+  // Rows are typed as `any[]` against the generic SupabaseClient (no schema
+  // typegen wired up for this function). Cast through unknown for safety.
+  const rows = (data ?? []) as Array<{
+    occurred_at: string;
+    step: string;
+    event_type: string;
+    error_message: string | null;
+    event_detail: Record<string, unknown> | null;
+  }>;
+  return rows.map((r) => ({
+    occurred_at: r.occurred_at,
+    step: r.step,
+    event_type: r.event_type,
+    error_message: r.error_message ?? null,
+    event_detail: r.event_detail ?? null,
+  }));
 }
 
 // ─── Resend send ─────────────────────────────────────────────────────────────
@@ -229,11 +248,12 @@ async function dispatchOne(transcript: TranscriptRow): Promise<{
 }> {
   const { id, session_id, attempts } = transcript;
 
-  // Load session
+  // Load session (sentiment column kept selected for backwards-compat but the
+  // Chunk 8 dispatcher does NOT classify or render sentiment — Phase 2).
   const { data: session, error: sessionErr } = await sb
     .from("customer_chat_sessions")
     .select(
-      "id, channel, phone_e164, customer_id, vehicle_id, status, outcome, sentiment, appointment_id, started_at, ended_at",
+      "id, channel, phone_e164, customer_id, vehicle_id, status, outcome, sentiment, appointment_id, started_at, ended_at, customer_notes_text, customer_question",
     )
     .eq("id", session_id)
     .maybeSingle();
@@ -271,21 +291,11 @@ async function dispatchOne(transcript: TranscriptRow): Promise<{
     };
   });
 
-  // Sentiment (use stored if already set; otherwise classify)
-  let sentiment: "positive" | "neutral" | "negative" | null =
+  // Sentiment classification DROPPED per design lock 2026-05-13 (Chunk 8).
+  // Phase 2 will re-enable via classifySentiment(). For now we pass through
+  // whatever is stored (typically null) so the schema field remains compatible.
+  const sentiment: "positive" | "neutral" | "negative" | null =
     (session.sentiment as "positive" | "neutral" | "negative" | null) ?? null;
-  if (!sentiment) {
-    const customerOnly = messageViews
-      .filter((m) => m.role === "user")
-      .map((m) => m.text)
-      .join("\n\n");
-    const judged = await classifySentiment(customerOnly);
-    sentiment = judged.sentiment;
-    await sb
-      .from("customer_chat_sessions")
-      .update({ sentiment })
-      .eq("id", session_id);
-  }
 
   // Get appointment timing if booked
   let appointmentStartsAt: string | null = null;
@@ -308,6 +318,10 @@ async function dispatchOne(transcript: TranscriptRow): Promise<{
     session.phone_e164 as string | null,
   );
 
+  // Errors logged during the session — surfaced in the email per Chris's
+  // 2026-05-13 directive. Best-effort; failure to load returns [].
+  const sessionErrors = await loadSessionErrors(sb, session_id);
+
   const view: TranscriptViewModel = {
     session_id,
     channel: session.channel as "web" | "sms",
@@ -319,6 +333,9 @@ async function dispatchOne(transcript: TranscriptRow): Promise<{
     appointment_id: session.appointment_id as number | null,
     appointment_starts_at: appointmentStartsAt,
     pricing_discussed: pricingDiscussed,
+    errors: sessionErrors,
+    customer_notes_text: (session.customer_notes_text ?? null) as string | null,
+    customer_question: (session.customer_question ?? null) as string | null,
     messages: messageViews,
     started_at: session.started_at as string,
     ended_at: (session.ended_at as string) ?? new Date().toISOString(),
@@ -329,13 +346,18 @@ async function dispatchOne(transcript: TranscriptRow): Promise<{
 
   // Sentry-equivalent: log a warning entry to console (Supabase Log Drain
   // routes this to Sentry per observability.md decision D4).
-  if (sentiment === "negative") {
+  // Chunk 8 (2026-05-13): pivoted from sentiment-driven warning to
+  // errors-driven warning — sessions with logged tool_failed /
+  // tekmetric_error / escalation_triggered events get the warning ping.
+  if (sessionErrors.length > 0) {
     console.log(
       JSON.stringify({
         level: "warning",
-        msg: "negative_scheduler_conversation_sentiment",
+        msg: "scheduler_session_with_errors",
         session_id,
         outcome: view.outcome,
+        error_count: sessionErrors.length,
+        error_types: Array.from(new Set(sessionErrors.map((e) => e.event_type))),
       }),
     );
   }

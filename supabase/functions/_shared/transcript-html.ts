@@ -32,6 +32,9 @@ export interface TranscriptViewModel {
     | "escalation"
     | "incomplete"
     | "unknown";
+  /** @deprecated Sentiment classification deferred to Phase 2 per design lock
+   *  2026-05-13. Field retained for schema compatibility; new dispatcher runs
+   *  always pass null. */
   sentiment?: "positive" | "neutral" | "negative" | null;
   appointment_id?: number | null;
   appointment_starts_at?: string | null;
@@ -40,6 +43,25 @@ export interface TranscriptViewModel {
     starting_price_cents: number;
     notes?: string | null;
   }>;
+  /** Errors logged during the session (tool_failed, tekmetric_error,
+   *  escalation_triggered). Added Chunk 8 (2026-05-13) per Chris's directive:
+   *  "log any errors and send it with the appointment email to service advisors."
+   *  Sourced from scheduler_audit_log. Empty array → no errors section
+   *  rendered. */
+  errors?: Array<{
+    occurred_at: string;
+    step: string;
+    event_type: string;
+    error_message: string | null;
+    /** Brief context — keep PII-free per scheduler_audit_log convention. */
+    event_detail?: Record<string, unknown> | null;
+  }>;
+  /** Customer's optional free-form notes captured at Step 10.2 of the wizard.
+   *  Rendered above the conversation log. Added Chunk 8. */
+  customer_notes_text?: string | null;
+  /** Customer's optional free-form question captured at Step 10.3.
+   *  Rendered above the conversation log. Added Chunk 8. */
+  customer_question?: string | null;
   messages: TranscriptMessageView[];
   started_at: string;
   ended_at: string;
@@ -91,7 +113,10 @@ function roleLabel(role: TranscriptMessageView["role"]): string {
 }
 
 export function buildTranscriptSubject(view: TranscriptViewModel): string {
-  const negPrefix = view.sentiment === "negative" ? "[NEG] " : "";
+  // [ERR] prefix when the session captured any errors — replaces the legacy
+  // [NEG] sentiment prefix (sentiment classification deferred to Phase 2 per
+  // design lock 2026-05-13).
+  const errPrefix = view.errors && view.errors.length > 0 ? "[ERR] " : "";
   const outcome =
     view.outcome === "scheduled"
       ? "scheduled"
@@ -102,16 +127,60 @@ export function buildTranscriptSubject(view: TranscriptViewModel): string {
           : view.outcome === "incomplete"
             ? "incomplete"
             : view.outcome;
-  return `${negPrefix}Transcript: ${view.customer_name} — ${outcome}`;
+  return `${errPrefix}Transcript: ${view.customer_name} — ${outcome}`;
 }
 
 export function buildTranscriptHtml(view: TranscriptViewModel): string {
+  // Sentiment classification deferred to Phase 2 per design lock 2026-05-13.
+  // Legacy code path retained for backwards-compat if a caller still passes
+  // sentiment, but the new dispatcher always passes null and this block
+  // collapses to empty string.
   const sentimentBlock =
     view.sentiment === "negative"
       ? `<div style="margin:0 0 16px 0;padding:12px 16px;background:#fff3f3;border-left:4px solid #c62828;font-size:14px;color:#7a1f1f;border-radius:2px;">⚠ Sentiment flagged <strong>negative</strong> — please review.</div>`
       : view.sentiment === "positive"
         ? `<div style="margin:0 0 16px 0;padding:12px 16px;background:#f4f9f3;border-left:4px solid #2e7d32;font-size:14px;color:#1b3d1c;border-radius:2px;">Sentiment: positive.</div>`
         : "";
+
+  // Errors section — added Chunk 8 (2026-05-13) per Chris's directive
+  // "log any errors and send it with the appointment email to service advisors."
+  const errorsBlock =
+    view.errors && view.errors.length > 0
+      ? `<div style="margin:0 0 16px 0;padding:12px 16px;background:#fff7e6;border-left:4px solid #b78400;border-radius:2px;">
+           <p style="margin:0 0 8px 0;font-size:13px;font-weight:600;color:#7a5400;">⚠ ${view.errors.length} error event${view.errors.length === 1 ? "" : "s"} during this session</p>
+           <table style="width:100%;border-collapse:collapse;font-size:13px;color:#5a4000;">
+             <thead>
+               <tr>
+                 <th style="text-align:left;padding:4px 8px 4px 0;font-weight:600;">Time</th>
+                 <th style="text-align:left;padding:4px 8px;font-weight:600;">Step</th>
+                 <th style="text-align:left;padding:4px 8px;font-weight:600;">Event</th>
+                 <th style="text-align:left;padding:4px 0 4px 8px;font-weight:600;">Detail</th>
+               </tr>
+             </thead>
+             <tbody>
+               ${view.errors
+                 .map(
+                   (e) => `<tr>
+                     <td style="padding:4px 8px 4px 0;vertical-align:top;color:#7a5400;font-size:12px;">${fmtDateTime(e.occurred_at)}</td>
+                     <td style="padding:4px 8px;vertical-align:top;">${escapeHtml(e.step)}</td>
+                     <td style="padding:4px 8px;vertical-align:top;">${escapeHtml(e.event_type)}</td>
+                     <td style="padding:4px 0 4px 8px;vertical-align:top;font-family:Menlo,Monaco,monospace;font-size:12px;">${escapeHtml(e.error_message ?? "")}${e.event_detail && Object.keys(e.event_detail).length > 0 ? `<br/><span style="color:#888;font-size:11px;">${escapeHtml(JSON.stringify(e.event_detail))}</span>` : ""}</td>
+                   </tr>`,
+                 )
+                 .join("")}
+             </tbody>
+           </table>
+         </div>`
+      : "";
+
+  // Customer notes + question — Steps 10.2 + 10.3 captures. Added Chunk 8.
+  const customerCapturesBlock =
+    view.customer_notes_text || view.customer_question
+      ? `<div style="margin:0 0 16px 0;padding:12px 16px;background:#f5f1e8;border-left:4px solid ${BRAND_ACCENT};border-radius:2px;">
+           ${view.customer_notes_text ? `<p style="margin:0 0 8px 0;font-size:13px;"><strong style="color:${BRAND_PRIMARY};">Customer notes for the team:</strong></p><p style="margin:0 0 12px 0;font-size:14px;white-space:pre-wrap;">${escapeHtml(view.customer_notes_text)}</p>` : ""}
+           ${view.customer_question ? `<p style="margin:0 0 8px 0;font-size:13px;"><strong style="color:${BRAND_PRIMARY};">Customer question — please follow up:</strong></p><p style="margin:0;font-size:14px;white-space:pre-wrap;">${escapeHtml(view.customer_question)}</p>` : ""}
+         </div>`
+      : "";
 
   const pricingBlock =
     view.pricing_discussed && view.pricing_discussed.length > 0
@@ -182,6 +251,7 @@ export function buildTranscriptHtml(view: TranscriptViewModel): string {
       <p style="margin:4px 0;color:#666;font-size:14px;">Channel: ${view.channel.toUpperCase()} · Outcome: ${escapeHtml(view.outcome)}</p>
     </div>
 
+    ${errorsBlock}
     ${sentimentBlock}
 
     <div style="margin-bottom:16px;font-size:14px;">
@@ -190,6 +260,7 @@ export function buildTranscriptHtml(view: TranscriptViewModel): string {
       <p style="margin:4px 0;color:#666;">Started ${fmtDateTime(view.started_at)} · Ended ${fmtDateTime(view.ended_at)} · Session ${escapeHtml(view.session_id.slice(0, 8))}…</p>
     </div>
 
+    ${customerCapturesBlock}
     ${pricingBlock}
 
     <h3 style="margin:24px 0 8px 0;color:${BRAND_PRIMARY};font-size:14px;text-transform:uppercase;letter-spacing:0.5px;">Conversation</h3>
