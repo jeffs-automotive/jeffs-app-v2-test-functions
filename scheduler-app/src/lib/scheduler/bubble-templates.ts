@@ -151,6 +151,14 @@ export const BUBBLE_TEMPLATES: Record<string, BubbleTemplate | BubbleTemplate[]>
     text: "Let me get you over to the team. 📞",
     context: "Escalation triggered (any §10 reason)",
   },
+  back_to_scheduling: {
+    text: "OK — picking up where we left off. 🛠️",
+    context: "Customer tapped 'Back to scheduling' on the escalation card",
+  },
+  keyword_escalation: {
+    text: "I want to make sure you get the right help on that. Let me grab someone. 📞",
+    context: "Free-text keyword triggered escalation (lawyer/manager/refund/etc)",
+  },
   session_restarted: {
     text: "Sure thing — starting over. 👋",
     context: "Customer tapped Start Over from footer",

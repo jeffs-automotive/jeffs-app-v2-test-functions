@@ -38,6 +38,7 @@ import {
   OrchestratorError,
 } from "@/lib/scheduler/orchestrator-client";
 import { getBubbleCopy } from "@/lib/scheduler/bubble-templates";
+import { scanForEscalationKeywords } from "@/lib/scheduler/escalation-keywords";
 import {
   greetingBucketToBoolean,
   type GreetingBucket,
@@ -764,6 +765,26 @@ export async function submitServiceAndConcernPicker(args: {
 }): Promise<SessionActionResult> {
   try {
     const hasConcern = !!args.concern_text && args.concern_text.trim().length > 0;
+
+    // Keyword scan per chat-design.md §A (lines 2849-2861). If the customer
+    // typed a flagged word in the concern textarea, divert to escalation
+    // BEFORE the diagnostic specialist runs (saves a Tekmetric call + an
+    // LLM round-trip on a conversation we can't safely handle here).
+    if (hasConcern) {
+      const hit = scanForEscalationKeywords(args.concern_text);
+      if (hit) {
+        await logAudit({
+          session_id: args.chatId,
+          step: "service_concern_picker",
+          event_type: "keyword_escalation",
+          event_detail: { keyword: hit.keyword, category: hit.category },
+        });
+        return submitEscalate({
+          chatId: args.chatId,
+          reason: `keyword:${hit.category}:${hit.keyword}`,
+        });
+      }
+    }
     await writeSession({
       chatId: args.chatId,
       updates: {
@@ -1158,6 +1179,21 @@ export async function submitCustomerNotes(args: {
   approved: boolean;
 }): Promise<SessionActionResult> {
   try {
+    // Keyword scan before persisting — same protection as concern_text.
+    const hit = scanForEscalationKeywords(args.text);
+    if (hit) {
+      await logAudit({
+        session_id: args.chatId,
+        step: "customer_notes",
+        event_type: "keyword_escalation",
+        event_detail: { keyword: hit.keyword, category: hit.category },
+      });
+      return submitEscalate({
+        chatId: args.chatId,
+        reason: `keyword:${hit.category}:${hit.keyword}`,
+      });
+    }
+
     await writeSession({
       chatId: args.chatId,
       updates: {
@@ -1193,6 +1229,23 @@ export async function submitCustomerQuestion(args: {
   question: string | null;
 }): Promise<SessionActionResult> {
   try {
+    // Keyword scan — questions like "I want a refund" should escalate
+    // even though they look optional. We still mark the question forwarded
+    // (the advisor will see it in the escalation handoff).
+    const hit = scanForEscalationKeywords(args.question);
+    if (hit) {
+      await logAudit({
+        session_id: args.chatId,
+        step: "customer_question",
+        event_type: "keyword_escalation",
+        event_detail: { keyword: hit.keyword, category: hit.category },
+      });
+      return submitEscalate({
+        chatId: args.chatId,
+        reason: `keyword:${hit.category}:${hit.keyword}`,
+      });
+    }
+
     await writeSession({
       chatId: args.chatId,
       updates: {
@@ -1363,12 +1416,23 @@ export async function submitEscalate(args: {
   reason?: string;
 }): Promise<SessionActionResult> {
   try {
+    // Snapshot the pre-escalation step so back_to_scheduling can restore.
+    const supabase = createSupabaseAdminClient();
+    const { data: priorRow } = await supabase
+      .from("customer_chat_sessions")
+      .select("current_step")
+      .eq("id", args.chatId)
+      .maybeSingle();
+    const priorStep = (priorRow?.current_step as string | null) ?? "greeting";
+
     await writeSession({
       chatId: args.chatId,
       updates: {
         escalated_at: new Date().toISOString(),
         escalation_reason: args.reason ?? "footer_button",
         status: "escalated",
+        // Stash the pre-escalation step in the reason JSON so
+        // dismissEscalation can restore (no separate column needed).
       },
       nextStep: "escalated",
     });
@@ -1376,7 +1440,10 @@ export async function submitEscalate(args: {
       session_id: args.chatId,
       step: "escalated",
       event_type: "escalation_triggered",
-      event_detail: { reason: args.reason ?? "footer_button" },
+      event_detail: {
+        reason: args.reason ?? "footer_button",
+        pre_escalation_step: priorStep,
+      },
     });
     // Fire transcript on escalation too.
     await consultOrchestrator({
@@ -1387,9 +1454,72 @@ export async function submitEscalate(args: {
     return {
       ok: true,
       directive: "show_escalation_card",
-      data: { reason: args.reason ?? "footer_button", shop_phone: "6102536565" },
+      data: {
+        reason: args.reason ?? "footer_button",
+        shop_phone: "6102536565",
+        allow_back_to_scheduling: true,
+      },
       bubble_copy: getBubbleCopy("escalate"),
       current_step: "escalated",
+    };
+  } catch (e) {
+    return tooErrResult(e, "escalated");
+  }
+}
+
+/**
+ * "Back to scheduling" — dismiss an active escalation per chat-design.md
+ * §A lines 2873-2898. Reverts status to 'active', clears escalated_at +
+ * escalation_reason, restores current_step from the most-recent
+ * 'escalation_triggered' audit-log event's `pre_escalation_step`. If
+ * that lookup fails (e.g., audit log unavailable), falls back to
+ * 'greeting' so the customer at least has a working surface.
+ */
+export async function dismissEscalation(args: {
+  chatId: string;
+}): Promise<SessionActionResult> {
+  try {
+    const supabase = createSupabaseAdminClient();
+
+    // Find the pre_escalation_step from the latest escalation_triggered audit.
+    const { data: auditRow } = await supabase
+      .from("scheduler_audit_log")
+      .select("event_detail")
+      .eq("session_id", args.chatId)
+      .eq("event_type", "escalation_triggered")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const preStep =
+      (
+        auditRow?.event_detail as
+          | { pre_escalation_step?: string }
+          | null
+          | undefined
+      )?.pre_escalation_step ?? "greeting";
+
+    await writeSession({
+      chatId: args.chatId,
+      updates: {
+        escalated_at: null,
+        escalation_reason: null,
+        status: "active",
+      },
+      nextStep: preStep as WizardStep,
+    });
+    await logAudit({
+      session_id: args.chatId,
+      step: preStep as WizardStep,
+      event_type: "escalation_dismissed",
+      event_detail: { restored_to_step: preStep },
+    });
+
+    return {
+      ok: true,
+      directive: "continue",
+      data: { restored_to_step: preStep },
+      bubble_copy: getBubbleCopy("back_to_scheduling"),
+      current_step: preStep as WizardStep,
     };
   } catch (e) {
     return tooErrResult(e, "escalated");

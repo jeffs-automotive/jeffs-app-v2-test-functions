@@ -21,7 +21,17 @@ import { Button, Card } from "@/components/ui";
 export interface EscalationCardProps {
   reason: string;
   shop_phone: string;
-  onSubmit: (output: { acknowledged: boolean }) => void | Promise<void>;
+  /**
+   * When true (default), show the "Back to scheduling" CTA per
+   * chat-design.md §A lines 2873-2898. Some escalation contexts (terminal
+   * abandons, post-confirm complaints) hide it — pass false in those.
+   */
+  allow_back_to_scheduling?: boolean;
+  onSubmit: (
+    output:
+      | { acknowledged: boolean }
+      | { action: "back_to_scheduling" },
+  ) => void | Promise<void>;
   disabled?: boolean;
 }
 
@@ -40,18 +50,29 @@ function formatPhoneForDisplay(phone: string): string {
 export function EscalationCard({
   reason,
   shop_phone,
+  allow_back_to_scheduling = true,
   onSubmit,
   disabled = false,
 }: EscalationCardProps) {
-  const [submitting, setSubmitting] = useState(false);
+  const [submitting, setSubmitting] = useState<"ack" | "back" | null>(null);
 
   async function ack() {
-    if (disabled || submitting) return;
-    setSubmitting(true);
+    if (disabled || submitting !== null) return;
+    setSubmitting("ack");
     try {
       await onSubmit({ acknowledged: true });
     } finally {
-      setSubmitting(false);
+      setSubmitting(null);
+    }
+  }
+
+  async function backToScheduling() {
+    if (disabled || submitting !== null) return;
+    setSubmitting("back");
+    try {
+      await onSubmit({ action: "back_to_scheduling" });
+    } finally {
+      setSubmitting(null);
     }
   }
 
@@ -94,17 +115,29 @@ export function EscalationCard({
         ) : null}
       </Card.Body>
 
-      <Card.Actions align="left">
+      <Card.Actions align="between">
         <Button
           variant="ghost"
           size="md"
-          disabled={disabled || submitting}
-          loading={submitting}
+          disabled={disabled || submitting !== null}
+          loading={submitting === "ack"}
           onClick={() => void ack()}
           fullWidthOnMobile={false}
         >
-          Got it, thanks
+          I&apos;ll call — close this chat
         </Button>
+        {allow_back_to_scheduling ? (
+          <Button
+            variant="primary"
+            size="md"
+            disabled={disabled || submitting !== null}
+            loading={submitting === "back"}
+            onClick={() => void backToScheduling()}
+            fullWidthOnMobile={false}
+          >
+            Back to scheduling
+          </Button>
+        ) : null}
       </Card.Actions>
     </Card>
   );

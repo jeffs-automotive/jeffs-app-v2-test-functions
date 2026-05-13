@@ -56,6 +56,7 @@ import {
 // orchestrator-direct as needed; the chat agent gets a structured directive
 // in the tool result instead of raw customer payloads.
 import {
+  dismissEscalation,
   submitAppointmentType,
   submitClarificationAnswer,
   submitCustomerInfoEdit,
@@ -422,7 +423,25 @@ export function Chat({ chatId, initialMessages, initialStep }: ChatProps) {
           break;
         }
         case "show_escalation_card":
-          // No row change beyond acknowledgement; just thread through.
+          if (cardOutput.action === "back_to_scheduling") {
+            // Customer chose to dismiss the escalation and continue
+            // scheduling. The Server Action clears escalated_at +
+            // escalation_reason + sets status=active + restores
+            // current_step from the audit log. After the row write the
+            // page state needs to catch up — easiest is a reload so the
+            // server hydration picks up the restored step.
+            result = await dismissEscalation({ chatId });
+            if (result.ok) {
+              // Defer the reload to the next microtask so addToolResult
+              // can fire first (the agent's snapshot will reflect the new
+              // current_step on the next turn).
+              setTimeout(() => {
+                window.location.reload();
+              }, 50);
+            }
+            break;
+          }
+          // Passive acknowledgement — customer chose "I'll call".
           result = {
             ok: true,
             directive: "continue",
@@ -916,12 +935,17 @@ function PartRenderer({
     case "show_escalation_card": {
       const reason = String(tp.input?.reason ?? "");
       const shopPhone = String(tp.input?.shop_phone ?? "6102536565");
+      // Default true (per chat-design.md §A); orchestrator may set false
+      // for terminal escalations.
+      const allowBack =
+        tp.input?.allow_back_to_scheduling === false ? false : true;
       return (
         <EscalationCard
           reason={reason}
           shop_phone={shopPhone}
+          allow_back_to_scheduling={allowBack}
           disabled={disabled}
-          onSubmit={(out) => submit(out)}
+          onSubmit={(out) => submit(out as Record<string, unknown>)}
         />
       );
     }
