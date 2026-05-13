@@ -1924,18 +1924,42 @@ export async function submitWaiterTime(args: {
     const serviceSummary = await buildServiceSummary({
       chatId: args.chatId,
     });
-    const hold = await bookingHoldSlot({
-      op: "hold_slot",
+    await logAudit({
       session_id: args.chatId,
-      date,
-      time: args.selected_time,
-      type: "waiter",
-      service_summary: serviceSummary,
-      customer_id:
-        typeof row?.customer_id === "number" ? row.customer_id : undefined,
-      vehicle_id:
-        typeof row?.vehicle_id === "number" ? row.vehicle_id : undefined,
+      step: "waiter_time_pick",
+      event_type: "pre_hold_call",
+      event_detail: {
+        date,
+        time: args.selected_time,
+        service_summary_len: serviceSummary.length,
+        customer_id: typeof row?.customer_id === "number" ? row.customer_id : null,
+        vehicle_id: typeof row?.vehicle_id === "number" ? row.vehicle_id : null,
+      },
     });
+    let hold: Awaited<ReturnType<typeof bookingHoldSlot>>;
+    try {
+      hold = await bookingHoldSlot({
+        op: "hold_slot",
+        session_id: args.chatId,
+        date,
+        time: args.selected_time,
+        type: "waiter",
+        service_summary: serviceSummary,
+        customer_id:
+          typeof row?.customer_id === "number" ? row.customer_id : undefined,
+        vehicle_id:
+          typeof row?.vehicle_id === "number" ? row.vehicle_id : undefined,
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      await logAudit({
+        session_id: args.chatId,
+        step: "waiter_time_pick",
+        event_type: "hold_slot_threw",
+        event_detail: { error: msg.slice(0, 500) },
+      });
+      throw e;
+    }
     await logAudit({
       session_id: args.chatId,
       step: "waiter_time_pick",
