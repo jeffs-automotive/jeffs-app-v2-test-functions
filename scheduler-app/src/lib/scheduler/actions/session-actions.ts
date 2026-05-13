@@ -1956,10 +1956,32 @@ export async function submitStartOver(args: {
   chatId: string;
 }): Promise<SessionActionResult> {
   try {
-    // Reset the session row to greeting state. We DON'T delete the row —
-    // we wipe the wizard-state fields but keep the id so existing
-    // customer_chat_messages aren't orphaned (we want resume to load the
-    // refreshed state, not a totally new chatId).
+    // Reset the session row to greeting state. We keep the row id so the
+    // cookie-bound chatId still resolves, but we DELETE every
+    // customer_chat_messages row so the next hydrateSession() returns an
+    // empty transcript and the client renders the GreetingCard.
+    // (Earlier version intentionally left messages in place. That blocked
+    // Start Over from actually resetting the UI: hydrateSession loaded the
+    // stale dead bubble + card, showClientGreeting bailed because
+    // messages.length > 0, and the user was stuck.)
+    const supabase = createSupabaseAdminClient();
+    const { error: deleteMsgError } = await supabase
+      .from("customer_chat_messages")
+      .delete()
+      .eq("session_id", args.chatId);
+    if (deleteMsgError) {
+      console.log(
+        JSON.stringify({
+          level: "warn",
+          msg: "submit_start_over_delete_messages_failed",
+          chatId: args.chatId,
+          error: deleteMsgError.message,
+        }),
+      );
+      // Don't throw — wiping the row is the more important half. Surface
+      // via Sentry breadcrumb on the next failure if hydrate is wrong.
+    }
+
     await writeSession({
       chatId: args.chatId,
       updates: {
