@@ -54,6 +54,10 @@ import {
 // addToolResult boundary so this file can stay focused on row writes.
 import type { SessionActionResult } from "./session-action-types";
 
+// SHOP_ID copied from chat-store.ts to avoid an import cycle (chat-store
+// would import this file's types if we re-exported). Phase 1 single-shop.
+const SHOP_ID_FOR_MESSAGES = 7476;
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 interface AuditEventDetail {
@@ -2130,5 +2134,68 @@ export async function dismissEscalation(args: {
     };
   } catch (e) {
     return tooErrResult(e, "escalated");
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//   CLIENT-SIDE CARD INJECTION — persist a synthetic assistant message
+// ═════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Persist a synthetic assistant message that Chat.tsx generated client-side
+ * (via setMessages) to skip the chat-agent LLM round-trip for wizard
+ * transitions. Without this, page refresh during a transition loses the
+ * card.
+ *
+ * Called from Chat.tsx's dispatchCardSubmit AFTER addToolResult fires and
+ * setMessages appends the next card's tool-call (state='input-available').
+ * Best-effort: don't throw — UI doesn't await the result. The audit log
+ * + Sentry capture the failure if upsert breaks; customer can still
+ * re-derive state from the row on refresh.
+ */
+export async function saveAssistantCardMessage(args: {
+  chatId: string;
+  message: Record<string, unknown>;
+}): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const m = args.message;
+    if (typeof m.id !== "string" || typeof m.role !== "string") {
+      return { ok: false, error: "message shape missing id|role" };
+    }
+    const supabase = createSupabaseAdminClient();
+    const { error } = await supabase.from("customer_chat_messages").upsert(
+      {
+        id: m.id,
+        session_id: args.chatId,
+        shop_id: SHOP_ID_FOR_MESSAGES,
+        role: m.role,
+        parts: (m.parts ?? []) as unknown,
+      },
+      { onConflict: "id" },
+    );
+    if (error) {
+      Sentry.captureException(new Error(error.message), {
+        tags: {
+          surface: "save_assistant_card_message",
+        },
+        level: "warning",
+      });
+      return { ok: false, error: error.message };
+    }
+    // Bump last_active_at so resume / idle-detection sees fresh activity.
+    await supabase
+      .from("customer_chat_sessions")
+      .update({ last_active_at: new Date().toISOString() })
+      .eq("id", args.chatId);
+    return { ok: true };
+  } catch (e) {
+    Sentry.captureException(e, {
+      tags: { surface: "save_assistant_card_message" },
+      level: "warning",
+    });
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : String(e),
+    };
   }
 }

@@ -60,6 +60,7 @@ import {
 // in the tool result instead of raw customer payloads.
 import {
   dismissEscalation,
+  saveAssistantCardMessage,
   submitAppointmentType,
   submitClarificationAnswer,
   submitCustomerInfoEdit,
@@ -126,8 +127,53 @@ export interface ChatProps {
   initialStep?: string | null;
 }
 
+/**
+ * The directive → tool-name set for which we render the next card
+ * CLIENT-SIDE via setMessages instead of relying on the chat agent's
+ * LLM to call the rendering tool.
+ *
+ * Rationale (2026-05-13 test failure): gpt-5.4-mini and
+ * gemini-3.1-flash-lite (our AI Gateway chat-agent models) reliably
+ * emit the bubble_copy text after a tool result but don't reliably
+ * follow up with the directed tool call in the same turn. Customer
+ * sees the bubble but no next card. Strengthening the prompt didn't
+ * help; lite/mini models stop after text.
+ *
+ * Solution: for deterministic wizard transitions, synthesize an
+ * assistant message client-side with the next card's tool-call part
+ * (state='input-available' so the card renders + waits for customer
+ * submit). The chat agent is bypassed for these transitions.
+ *
+ * Note: addToolResult is still called on the prior card's tool-call
+ * part so AI SDK v5's tool-state tracking stays in sync. Then we
+ * setMessages-append the new synthetic message. sendAutomaticallyWhen
+ * sees the last assistant message has an incomplete tool call
+ * (input-available, no output yet) → returns false → no LLM call.
+ */
+const CLIENT_RENDERED_DIRECTIVES = new Set<string>([
+  "show_phone_name_card",
+  "show_otp_input",
+  "show_vehicle_picker",
+  "show_new_customer_form",
+  "show_customer_info_edit",
+  "show_no_match_choose_path",
+  "show_partial_verification_gate",
+  "show_multi_account_disambiguation",
+  "show_service_and_concern_picker",
+  "show_clarification_question",
+  "show_testing_service_approval",
+  "show_appointment_type",
+  "show_calendar_date_picker",
+  "show_waiter_time_picker",
+  "show_summary_card",
+  "show_customer_notes_card",
+  "show_customer_question_card",
+  "show_completed_card",
+  "show_escalation_card",
+]);
+
 export function Chat({ chatId, initialMessages, initialStep }: ChatProps) {
-  const { messages, sendMessage, addToolResult, status } = useChat({
+  const { messages, setMessages, sendMessage, addToolResult, status } = useChat({
     id: chatId,
     messages: initialMessages ?? [],
     transport: new DefaultChatTransport({
@@ -212,24 +258,35 @@ export function Chat({ chatId, initialMessages, initialStep }: ChatProps) {
       });
       return;
     }
-    // Per chat-design.md line 343 ("Phase 1 has zero free-text input except
-    // for the three explicit fields"), we do NOT send the prior 3-variant
-    // English ("I've been to Jeff's Automotive before." / "First time
-    // customer." / "I'm not sure if I've been here before.") through
-    // sendMessage. That pattern made the LLM pattern-match three near-
-    // identical phrases on every session start AND polluted the persisted
-    // chat-bubble log with synthesized-by-the-app text the customer never
-    // typed.
-    //
-    // Instead, send a structured sentinel token. The chat agent's system
-    // prompt is updated to recognize this sentinel + trust the snapshot
-    // (which already has `self_id_bucket` and `current_step=phone_name`
-    // written by submitGreeting before this call). Chat.tsx filters
-    // CARD_TAP_SENTINEL_PREFIX messages from the visible bubble log so
-    // the customer never sees the sentinel text.
-    void sendMessage({
-      text: `${CARD_TAP_SENTINEL_PREFIX}greeting:${out.is_returning}`,
-    });
+
+    // CLIENT-SIDE RENDER of the next card (PhoneNameCard) — bypass the chat
+    // agent entirely per the 2026-05-13 fix (lite/mini models don't
+    // reliably emit tool-call after text). The row is already written by
+    // submitGreeting; the directive is 'show_phone_name_card'; just
+    // synthesize the assistant message + persist async.
+    const mapped = mapDirectiveToToolName(result.directive);
+    if (mapped && CLIENT_RENDERED_DIRECTIVES.has(mapped)) {
+      const newMessage: UIMessage = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        parts: [
+          ...(result.bubble_copy?.trim()
+            ? [{ type: "text" as const, text: result.bubble_copy }]
+            : []),
+          {
+            type: `tool-${mapped}` as const,
+            toolCallId: crypto.randomUUID(),
+            state: "input-available" as const,
+            input: (result.data ?? {}) as Record<string, unknown>,
+          } as unknown as NonNullable<UIMessage["parts"]>[number],
+        ],
+      } as UIMessage;
+      setMessages((prev) => [...prev, newMessage]);
+      void saveAssistantCardMessage({
+        chatId,
+        message: newMessage as unknown as Record<string, unknown>,
+      });
+    }
   }
 
   // Generic card-submit dispatcher (Stage 2 refactor 2026-05-13).
@@ -520,6 +577,62 @@ export function Chat({ chatId, initialMessages, initialStep }: ChatProps) {
       toolCallId,
       output: normalizedResult as unknown as Record<string, unknown>,
     });
+
+    // ─── CLIENT-SIDE NEXT-CARD INJECTION (2026-05-13 bug fix) ──────────────
+    //
+    // The chat agent (gpt-5.4-mini / gemini-3.1-flash-lite) reliably emits
+    // the bubble_copy text after a tool result but DOES NOT reliably call
+    // the directed rendering tool in the same turn — it stops after text.
+    // Customer sees the bubble but no next card. Strengthening the prompt
+    // doesn't help with lite/mini models.
+    //
+    // Fix: for deterministic wizard transitions (CLIENT_RENDERED_DIRECTIVES
+    // set), synthesize the next assistant message client-side via
+    // setMessages — no chat-agent round-trip. The card renders immediately;
+    // sendAutomaticallyWhen sees the new last message has an incomplete
+    // tool call (state='input-available', no output) → returns false → no
+    // LLM call. The chat agent is bypassed for wizard transitions.
+    //
+    // Persistence: setMessages updates client state; the saveAssistantCardMessage
+    // Server Action upserts the synthetic message into customer_chat_messages
+    // so resume/refresh works. Best-effort — don't block UI on the persist.
+    const nextDirective = normalizedResult.directive;
+    if (
+      nextDirective &&
+      CLIENT_RENDERED_DIRECTIVES.has(nextDirective) &&
+      normalizedResult.ok !== false
+    ) {
+      const nextToolCallId = crypto.randomUUID();
+      const nextMessageId = crypto.randomUUID();
+      const bubble = normalizedResult.bubble_copy?.trim();
+      const inputData =
+        (normalizedResult.data as Record<string, unknown> | undefined) ?? {};
+      const newMessage: UIMessage = {
+        id: nextMessageId,
+        role: "assistant",
+        parts: [
+          ...(bubble
+            ? [{ type: "text" as const, text: bubble }]
+            : []),
+          {
+            type: `tool-${nextDirective}` as const,
+            toolCallId: nextToolCallId,
+            state: "input-available" as const,
+            input: inputData,
+          } as unknown as NonNullable<UIMessage["parts"]>[number],
+        ],
+      } as UIMessage;
+
+      setMessages((prev) => [...prev, newMessage]);
+
+      // Persist async; don't await. saveAssistantCardMessage is a Server
+      // Action that upserts a single row in customer_chat_messages so a
+      // page refresh during this turn doesn't lose the card.
+      void saveAssistantCardMessage({
+        chatId,
+        message: newMessage as unknown as Record<string, unknown>,
+      });
+    }
   }
 
   function onSend(e: FormEvent) {
@@ -561,9 +674,29 @@ export function Chat({ chatId, initialMessages, initialStep }: ChatProps) {
       reason: "footer_button",
     });
     if (result.ok && result.directive === "show_escalation_card") {
-      // Synthetic agent message: render escalation directly client-side.
-      // The agent doesn't need to be in the loop for this.
-      void sendMessage({ text: "Can I talk to a real person?" });
+      // Client-side render of the escalation card (2026-05-13 — same
+      // pattern as the other wizard transitions). Chat agent stays out
+      // of the loop; setMessages append + persist async.
+      const newMessage: UIMessage = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        parts: [
+          ...(result.bubble_copy?.trim()
+            ? [{ type: "text" as const, text: result.bubble_copy }]
+            : []),
+          {
+            type: "tool-show_escalation_card" as const,
+            toolCallId: crypto.randomUUID(),
+            state: "input-available" as const,
+            input: (result.data ?? {}) as Record<string, unknown>,
+          } as unknown as NonNullable<UIMessage["parts"]>[number],
+        ],
+      } as UIMessage;
+      setMessages((prev) => [...prev, newMessage]);
+      void saveAssistantCardMessage({
+        chatId,
+        message: newMessage as unknown as Record<string, unknown>,
+      });
     }
   }
 

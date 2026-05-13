@@ -263,7 +263,31 @@ async function sendOtpViaSmsProvider(
  * Rate-limit: counts non-consumed otp_codes for this phone created in the
  * last hour; if ≥ MAX_ACTIVE_CODES_PER_HOUR, returns
  * { ok: false, error: 'rate_limited' } without inserting OR sending.
+ *
+ * Test-OTP bypass (2026-05-13): when phone_e164 matches the env-gated
+ * SCHEDULER_TEST_PHONE_E164 value, the function:
+ *   - SKIPS the Telnyx SMS send
+ *   - Inserts the otp_codes row with hash(SCHEDULER_TEST_OTP_CODE)
+ *   - Returns ok:true normally
+ * This lets Playwright + manual end-to-end testing drive the wizard
+ * without needing a real phone to receive SMS. The verifyOtp path is
+ * unchanged — the test phone uses the same Hash + verify pipeline; only
+ * the SMS transport is bypassed.
+ *
+ * Security: gated by exact phone-string match on a Supabase Edge Function
+ * env var (SCHEDULER_TEST_PHONE_E164). Production deploys leave both
+ * env vars unset → bypass code path is dead. The bypass code itself
+ * (SCHEDULER_TEST_OTP_CODE) is a 6-digit string; if production accidentally
+ * sets the test phone but not the code, sendOtp falls back to normal
+ * generation (no static-code leak).
  */
+const TEST_PHONE_E164 = Deno.env.get("SCHEDULER_TEST_PHONE_E164") ?? "";
+const TEST_OTP_CODE = Deno.env.get("SCHEDULER_TEST_OTP_CODE") ?? "";
+const TEST_BYPASS_ENABLED =
+  TEST_PHONE_E164.length > 0 &&
+  /^\+1\d{10}$/.test(TEST_PHONE_E164) &&
+  /^\d{6}$/.test(TEST_OTP_CODE);
+
 export async function sendOtp(
   sb: SupabaseClient,
   shopId: number,
@@ -284,7 +308,11 @@ export async function sendOtp(
     return { ok: false, error: "rate_limited" };
   }
 
-  const code = generateOtp();
+  // Test bypass: when env-gated test phone is used, use the static test
+  // code AND skip the SMS send. Otherwise generate randomly + send Telnyx.
+  const isTestPhone =
+    TEST_BYPASS_ENABLED && args.phone_e164 === TEST_PHONE_E164;
+  const code = isTestPhone ? TEST_OTP_CODE : generateOtp();
   const salt = generateSalt();
   const codeHash = await sha256(salt, code);
 
@@ -305,6 +333,25 @@ export async function sendOtp(
       ok: false,
       error: "send_failed",
       detail: `otp_codes insert: ${error?.message ?? "unknown"}`,
+    };
+  }
+
+  // Test-phone bypass: skip the Telnyx send. The otp_codes row is already
+  // inserted with hash(TEST_OTP_CODE), so verifyOtp(TEST_OTP_CODE) will
+  // succeed normally. Log the bypass so it shows up in audit retrospectives.
+  if (isTestPhone) {
+    console.log(
+      JSON.stringify({
+        level: "info",
+        msg: "send_otp_test_bypass",
+        phone_last_four: args.phone_e164.slice(-4),
+        otp_codes_row_id: insertedRow.id,
+      }),
+    );
+    return {
+      ok: true,
+      ttl_seconds: OTP_TTL_MIN * 60,
+      phone_last_four: args.phone_e164.slice(-4),
     };
   }
 
