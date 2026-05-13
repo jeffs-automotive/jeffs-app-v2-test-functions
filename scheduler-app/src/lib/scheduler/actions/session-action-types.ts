@@ -51,9 +51,14 @@ const DIRECTIVE_TO_TOOL_NAME: Record<string, string> = {
   // phone_name → step 3 / step 4
   send_otp_first: "show_otp_input",
   show_otp_input: "show_otp_input",
-  identity_match_required: "show_escalation_card",
   show_new_customer_form: "show_new_customer_form",
-  partial_verification_gate: "show_escalation_card",
+  // Step 3.5 reconciliation forks — now have dedicated cards (2026-05-13)
+  identity_match_required: "show_multi_account_disambiguation",
+  show_multi_account_disambiguation: "show_multi_account_disambiguation",
+  partial_verification_gate: "show_partial_verification_gate",
+  show_partial_verification_gate: "show_partial_verification_gate",
+  no_match_choose_path: "show_no_match_choose_path",
+  show_no_match_choose_path: "show_no_match_choose_path",
 
   // otp → step 5 (returning customer info edit) / step 6 (vehicle pick) / step 7
   show_customer_info_edit: "show_customer_info_edit",

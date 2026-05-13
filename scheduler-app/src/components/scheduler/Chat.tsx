@@ -45,6 +45,9 @@ import {
   CustomerNotesCard,
   CustomerQuestionCard,
   GreetingCard,
+  MultiAccountDisambiguationCard,
+  NoMatchChoosePathCard,
+  PartialVerificationGateCard,
   PhoneNameCard,
   SummaryCard,
   TestingServiceApprovalCard,
@@ -65,9 +68,12 @@ import {
   submitDate,
   submitEscalate,
   submitGreeting,
+  submitMultiAccountChoice,
   submitNewCustomer,
   submitNewVehicle,
+  submitNoMatchChoice,
   submitOtp,
+  submitPartialVerificationChoice,
   submitPhoneName,
   resendOtp,
   submitServiceAndConcernPicker,
@@ -382,6 +388,36 @@ export function Chat({ chatId, initialMessages, initialStep }: ChatProps) {
               : null,
           });
           break;
+        case "show_no_match_choose_path":
+          result = await submitNoMatchChoice({
+            chatId,
+            action:
+              cardOutput.action === "try_different_phone"
+                ? "try_different_phone"
+                : "continue_as_new",
+          });
+          break;
+        case "show_partial_verification_gate":
+          result = await submitPartialVerificationChoice({
+            chatId,
+            action: cardOutput.action as
+              | "use_different_phone"
+              | "proceed_as_partial"
+              | "continue_as_new"
+              | "escalate",
+          });
+          break;
+        case "show_multi_account_disambiguation": {
+          const isSelect = cardOutput.action === "select";
+          result = await submitMultiAccountChoice({
+            chatId,
+            action: isSelect ? "select" : "none_of_these",
+            selected_customer_id: isSelect
+              ? Number(cardOutput.selected_customer_id ?? 0)
+              : undefined,
+          });
+          break;
+        }
         case "show_customer_info_edit":
           result = await submitCustomerInfoEdit({
             chatId,
@@ -1069,6 +1105,75 @@ function PartRenderer({
         <CustomerQuestionCard
           disabled={disabled}
           onSubmit={(out) => submit(out)}
+        />
+      );
+    }
+
+    case "show_no_match_choose_path": {
+      const attemptedFirst =
+        typeof tp.input?.attempted_first_name === "string"
+          ? tp.input.attempted_first_name
+          : null;
+      const attemptedLast4 =
+        typeof tp.input?.attempted_phone_last_four === "string"
+          ? tp.input.attempted_phone_last_four
+          : null;
+      return (
+        <NoMatchChoosePathCard
+          attempted_first_name={attemptedFirst}
+          attempted_phone_last_four={attemptedLast4}
+          disabled={disabled}
+          onSubmit={(out) => submit(out as Record<string, unknown>)}
+        />
+      );
+    }
+
+    case "show_partial_verification_gate": {
+      const matchedAxis: "name" | "phone" =
+        tp.input?.matched_axis === "phone" ? "phone" : "name";
+      const attemptedFirst =
+        typeof tp.input?.attempted_first_name === "string"
+          ? tp.input.attempted_first_name
+          : null;
+      const attemptedLast4 =
+        typeof tp.input?.attempted_phone_last_four === "string"
+          ? tp.input.attempted_phone_last_four
+          : null;
+      const matchedFirst =
+        typeof tp.input?.matched_first_name === "string"
+          ? tp.input.matched_first_name
+          : null;
+      return (
+        <PartialVerificationGateCard
+          matched_axis={matchedAxis}
+          attempted_first_name={attemptedFirst}
+          attempted_phone_last_four={attemptedLast4}
+          matched_first_name={matchedFirst}
+          disabled={disabled}
+          onSubmit={(out) => submit(out as Record<string, unknown>)}
+        />
+      );
+    }
+
+    case "show_multi_account_disambiguation": {
+      const candidates = Array.isArray(tp.input?.candidates)
+        ? (tp.input.candidates as Array<{
+            customer_id: number;
+            first_name: string;
+            last_name?: string | null;
+            recent_vehicle?: string | null;
+          }>)
+        : [];
+      const attemptedLast4 =
+        typeof tp.input?.attempted_phone_last_four === "string"
+          ? tp.input.attempted_phone_last_four
+          : null;
+      return (
+        <MultiAccountDisambiguationCard
+          candidates={candidates}
+          attempted_phone_last_four={attemptedLast4}
+          disabled={disabled}
+          onSubmit={(out) => submit(out as Record<string, unknown>)}
         />
       );
     }

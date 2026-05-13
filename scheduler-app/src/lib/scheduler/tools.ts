@@ -386,6 +386,62 @@ export const customerNotesCardSchema = z.object({
 
 export const customerQuestionCardSchema = z.object({});
 
+export const noMatchChoosePathCardSchema = z.object({
+  attempted_first_name: z
+    .string()
+    .nullable()
+    .optional()
+    .describe(
+      "First name the customer typed at Step 2 (echoed back in the card).",
+    ),
+  attempted_phone_last_four: z
+    .string()
+    .nullable()
+    .optional()
+    .describe("Last 4 digits of the phone they entered."),
+});
+
+export const partialVerificationGateCardSchema = z.object({
+  matched_axis: z
+    .enum(["name", "phone"])
+    .describe(
+      "Which identity axis matched. 'name' = Tekmetric has a customer " +
+        "with this name but a different phone. 'phone' = Tekmetric has " +
+        "this number on file under a different name.",
+    ),
+  attempted_first_name: z.string().nullable().optional(),
+  attempted_phone_last_four: z.string().nullable().optional(),
+  matched_first_name: z
+    .string()
+    .nullable()
+    .optional()
+    .describe(
+      "First name on the partially-matched record. Only meaningful when " +
+        "matched_axis='phone' — surfaced as 'That number's on file for " +
+        "<name> — is that you?'.",
+    ),
+});
+
+export const multiAccountDisambiguationCardSchema = z.object({
+  candidates: z
+    .array(
+      z.object({
+        customer_id: z.number(),
+        first_name: z.string(),
+        last_name: z.string().nullable().optional(),
+        recent_vehicle: z.string().nullable().optional(),
+      }),
+    )
+    .min(2)
+    .max(8)
+    .describe(
+      "Tekmetric customers sharing the entered phone. Show each with a " +
+        "recent-vehicle hint so the customer can recognize themselves. " +
+        "Capped at 8 — if there are more, the orchestrator escalates.",
+    ),
+  attempted_phone_last_four: z.string().nullable().optional(),
+});
+
 export const customerInfoEditCardSchema = z.object({
   first_name: z
     .string()
@@ -641,6 +697,33 @@ export const showSummaryCard = tool({
   inputSchema: summaryCardSchema,
 });
 
+export const showNoMatchChoosePath = tool({
+  description:
+    "STEP 3.5b — Render when §4.3 reconciliation lands on 0 phone matches " +
+    "AND the customer said they were a returning customer. Two paths: " +
+    "continue_as_new (fork to NewCustomerForm) or try_different_phone " +
+    "(bounce back to PhoneNameCard). Per chat-design.md §3.5b.",
+  inputSchema: noMatchChoosePathCardSchema,
+});
+
+export const showPartialVerificationGate = tool({
+  description:
+    "STEP 3.5 — Render when §4.3 reconciliation lands on a partial match " +
+    "(name OR phone, not both). The card lets the customer pick whether " +
+    "to use a different phone, proceed under the partial match, or set up " +
+    "a new account. Per chat-design.md §3.5.",
+  inputSchema: partialVerificationGateCardSchema,
+});
+
+export const showMultiAccountDisambiguation = tool({
+  description:
+    "STEP 3.5c — Render when phone hits 2+ Tekmetric customer records. " +
+    "Customer picks which account is theirs from a list (each row shows " +
+    "a recent vehicle for recognition). 'None of these' falls through to " +
+    "show_no_match_choose_path. Per chat-design.md §3.5c.",
+  inputSchema: multiAccountDisambiguationCardSchema,
+});
+
 export const showCustomerInfoEdit = tool({
   description:
     "STEP 5 (returning customer) — Render the customer info edit card after " +
@@ -686,6 +769,9 @@ export function makeChatAgentTools(args: { session_id: string }) {
     show_appointment_type: showAppointmentType,
     show_calendar_date_picker: showCalendarDatePicker,
     show_waiter_time_picker: showWaiterTimePicker,
+    show_no_match_choose_path: showNoMatchChoosePath,
+    show_partial_verification_gate: showPartialVerificationGate,
+    show_multi_account_disambiguation: showMultiAccountDisambiguation,
     show_customer_info_edit: showCustomerInfoEdit,
     show_summary_card: showSummaryCard,
     show_customer_notes_card: showCustomerNotesCard,

@@ -37,6 +37,18 @@ export type {
   AddressEntry,
 } from "./CustomerInfoEditCard";
 
+export { NoMatchChoosePathCard } from "./NoMatchChoosePathCard";
+export type { NoMatchChoosePathCardProps } from "./NoMatchChoosePathCard";
+
+export { PartialVerificationGateCard } from "./PartialVerificationGateCard";
+export type { PartialVerificationGateCardProps } from "./PartialVerificationGateCard";
+
+export { MultiAccountDisambiguationCard } from "./MultiAccountDisambiguationCard";
+export type {
+  MultiAccountDisambiguationCardProps,
+  MultiAccountCandidate,
+} from "./MultiAccountDisambiguationCard";
+
 export { PhoneNameCard } from "./PhoneNameCard";
 export type { PhoneNameCardProps } from "./PhoneNameCard";
 

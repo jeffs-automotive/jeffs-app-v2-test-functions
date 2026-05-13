@@ -655,6 +655,238 @@ export async function submitNewCustomer(args: {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+//   STEP 3.5 — Identity reconciliation forks (partial/none/multi)
+// ═════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Customer picked a path on NoMatchChoosePathCard (Step 3.5b).
+ *   - 'continue_as_new' → route to NewCustomerForm.
+ *   - 'try_different_phone' → bounce back to PhoneNameCard (clear phone +
+ *     OTP state, keep first/last name pre-filled for continuity).
+ */
+export async function submitNoMatchChoice(args: {
+  chatId: string;
+  action: "continue_as_new" | "try_different_phone";
+}): Promise<SessionActionResult> {
+  try {
+    await logAudit({
+      session_id: args.chatId,
+      step: "no_match_choose_path",
+      event_type: "card_submitted",
+      event_detail: { action: args.action },
+    });
+
+    if (args.action === "try_different_phone") {
+      await writeSession({
+        chatId: args.chatId,
+        updates: {
+          phone_e164: null,
+          otp_sent_at: null,
+          otp_verified_at: null,
+          otp_attempts: 0,
+        },
+        nextStep: "phone_name",
+      });
+      return {
+        ok: true,
+        directive: "show_phone_name_card",
+        data: {
+          // Pre-fill first/last name so the customer doesn't retype.
+          step_label: "Step 2 · Try a different number",
+        },
+        bubble_copy: getBubbleCopy("retry_phone"),
+        current_step: "phone_name",
+      };
+    }
+
+    // continue_as_new — set up the new-customer flow
+    await writeSession({
+      chatId: args.chatId,
+      updates: {
+        customer_self_identified: "new",
+      },
+      nextStep: "new_customer_info",
+    });
+    return {
+      ok: true,
+      directive: "show_new_customer_form",
+      data: { mode: "full" },
+      bubble_copy: getBubbleCopy("show_new_customer_form"),
+      current_step: "new_customer_info",
+    };
+  } catch (e) {
+    return tooErrResult(e, "no_match_choose_path");
+  }
+}
+
+/**
+ * Customer picked a path on PartialVerificationGateCard (Step 3.5).
+ *   - 'use_different_phone' → bounce back to PhoneNameCard.
+ *   - 'proceed_as_partial' → continue with the partial match (lower
+ *     identity_verification_level — orchestrator's downstream actions
+ *     gate sensitive operations on this).
+ *   - 'continue_as_new' → fork to new-customer flow.
+ *   - 'escalate' → straight to escalation.
+ */
+export async function submitPartialVerificationChoice(args: {
+  chatId: string;
+  action:
+    | "use_different_phone"
+    | "proceed_as_partial"
+    | "continue_as_new"
+    | "escalate";
+}): Promise<SessionActionResult> {
+  try {
+    await logAudit({
+      session_id: args.chatId,
+      step: "partial_verification_gate",
+      event_type: "card_submitted",
+      event_detail: { action: args.action },
+    });
+
+    if (args.action === "escalate") {
+      return submitEscalate({
+        chatId: args.chatId,
+        reason: "partial_verification:customer_chose_escalate",
+      });
+    }
+
+    if (args.action === "use_different_phone") {
+      await writeSession({
+        chatId: args.chatId,
+        updates: {
+          phone_e164: null,
+          otp_sent_at: null,
+          otp_verified_at: null,
+          otp_attempts: 0,
+        },
+        nextStep: "phone_name",
+      });
+      return {
+        ok: true,
+        directive: "show_phone_name_card",
+        data: { step_label: "Step 2 · Try a different number" },
+        bubble_copy: getBubbleCopy("retry_phone"),
+        current_step: "phone_name",
+      };
+    }
+
+    if (args.action === "continue_as_new") {
+      await writeSession({
+        chatId: args.chatId,
+        updates: { customer_self_identified: "new" },
+        nextStep: "new_customer_info",
+      });
+      return {
+        ok: true,
+        directive: "show_new_customer_form",
+        data: { mode: "full" },
+        bubble_copy: getBubbleCopy("show_new_customer_form"),
+        current_step: "new_customer_info",
+      };
+    }
+
+    // proceed_as_partial — mark identity_verification_level=partial and
+    // continue through vehicle pick. The orchestrator's downstream
+    // sensitive-action gates can see this flag and require a more
+    // careful handoff (e.g., disable hard-delete-pending appointments).
+    await writeSession({
+      chatId: args.chatId,
+      updates: { identity_verification_level: "partial" },
+      nextStep: "customer_info_edit",
+    });
+    return {
+      ok: true,
+      directive: "show_customer_info_edit",
+      data: {},
+      bubble_copy: getBubbleCopy("otp_to_info_edit"),
+      current_step: "customer_info_edit",
+    };
+  } catch (e) {
+    return tooErrResult(e, "partial_verification_gate");
+  }
+}
+
+/**
+ * Customer picked an account on MultiAccountDisambiguationCard (Step 3.5c)
+ * OR said 'none of these'. Selecting writes the chosen customer_id to
+ * the row + advances to OTP for that account.
+ */
+export async function submitMultiAccountChoice(args: {
+  chatId: string;
+  action: "select" | "none_of_these";
+  selected_customer_id?: number;
+}): Promise<SessionActionResult> {
+  try {
+    await logAudit({
+      session_id: args.chatId,
+      step: "multi_account_disambiguation",
+      event_type: "card_submitted",
+      event_detail: {
+        action: args.action,
+        selected: args.selected_customer_id ?? null,
+      },
+    });
+
+    if (args.action === "none_of_these") {
+      // Fall through to NoMatchChoosePathCard — treat as if zero matches.
+      return {
+        ok: true,
+        directive: "show_no_match_choose_path",
+        data: {},
+        bubble_copy: getBubbleCopy("identity_match_required"),
+        current_step: "no_match_choose_path",
+      };
+    }
+
+    if (
+      typeof args.selected_customer_id !== "number" ||
+      !Number.isFinite(args.selected_customer_id)
+    ) {
+      throw new Error("multi_account_choice missing selected_customer_id");
+    }
+
+    await writeSession({
+      chatId: args.chatId,
+      updates: { customer_id: args.selected_customer_id },
+      // After disambiguation we still need OTP to verify ownership.
+      nextStep: "otp_pending",
+    });
+
+    // Re-trigger OTP send for the now-resolved account.
+    const startedAt = Date.now();
+    const result = await consultOrchestrator({
+      session_id: args.chatId,
+      context:
+        `Customer disambiguated multi-account match (selected customer_id=${args.selected_customer_id}). ` +
+        `Tool chain: send_otp({ phone_e164: <session_metadata.phone_e164> }) → ` +
+        `emit 'show_otp_input' with phone_last_four + ttl_seconds + ` +
+        `attempts_remaining=3 (counter resets for the resolved account).`,
+      hints: { selected_customer_id: args.selected_customer_id },
+      intent_type: "verify_and_lookup",
+    });
+    await logAudit({
+      session_id: args.chatId,
+      step: "multi_account_disambiguation",
+      event_type: "tool_called",
+      event_detail: { tool: "send_otp", directive: result.directive },
+      latency_ms: Date.now() - startedAt,
+    });
+
+    return {
+      ok: result.directive !== "tool_error",
+      directive: result.directive ?? "show_otp_input",
+      data: result.data,
+      flags: result.flags,
+      bubble_copy: getBubbleCopy("phone_name_to_otp"),
+      current_step: "otp_pending",
+    };
+  } catch (e) {
+    return tooErrResult(e, "multi_account_disambiguation");
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 //   STEP 6 — Vehicle pick / Add new vehicle
 // ═════════════════════════════════════════════════════════════════════════════
 
