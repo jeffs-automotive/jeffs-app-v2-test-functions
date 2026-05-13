@@ -32,6 +32,23 @@ export interface RoutineServiceRow {
   abbreviation: string;
   display_order: number;
   active: boolean;
+  /** Added 2026-05-13 (Chunk 1 migration 200): TRUE when this service can be
+   *  performed while the customer waits (typically <60 min). Drives waiter
+   *  slot eligibility. */
+  wait_eligible: boolean;
+  /** Added 2026-05-13 (Chunk 1 migration 200): TRUE when picking this chip
+   *  requires the customer to also submit a free-form explanation (e.g.
+   *  "brake inspection" → "tell us what you're noticing"). Drives Step 7.2. */
+  requires_explanation: boolean;
+}
+
+export interface ConcernQuestionRow {
+  id: number;
+  category: string;
+  question_text: string;
+  options: Array<{ label: string; value: string }>;
+  display_order: number;
+  active: boolean;
 }
 
 // ─── Read tools ──────────────────────────────────────────────────────────────
@@ -75,21 +92,78 @@ export async function lookupTestingServicePricing(
  * List all active routine_services in display order. Used by the chat agent
  * to populate show_service_and_concern_picker chips. Cached on the Vercel
  * side via routine-services-cache.ts (5-min TTL).
+ *
+ * Chunk 3 enhancement (2026-05-13): now returns wait_eligible +
+ * requires_explanation flags (added in Chunk 1 migration 200). Optional
+ * filter args let the chat agent pre-narrow without re-filtering client-side:
+ *   - wait_eligible_only: TRUE → only services that can be done while
+ *     customer waits (the §7.1 "wait-eligible chip set")
+ *   - requires_explanation_only: TRUE → only services that need a
+ *     free-form explanation (the §7.2 "concern explanation set")
  */
 export async function listRoutineServices(
   sb: SupabaseClient,
   shopId: number,
+  args: {
+    wait_eligible_only?: boolean;
+    requires_explanation_only?: boolean;
+  } = {},
 ): Promise<{ services: RoutineServiceRow[] }> {
-  const { data, error } = await sb
+  let q = sb
     .from("routine_services")
-    .select("service_key, display_name, abbreviation, display_order, active")
+    .select(
+      "service_key, display_name, abbreviation, display_order, active, wait_eligible, requires_explanation",
+    )
     .eq("shop_id", shopId)
     .eq("active", true)
     .order("display_order", { ascending: true });
+
+  if (args.wait_eligible_only) {
+    q = q.eq("wait_eligible", true);
+  }
+  if (args.requires_explanation_only) {
+    q = q.eq("requires_explanation", true);
+  }
+
+  const { data, error } = await q;
   if (error) {
     throw new Error(`routine_services list failed: ${error.message}`);
   }
   return { services: (data ?? []) as RoutineServiceRow[] };
+}
+
+/**
+ * List the active concern_questions catalog rows for a given category.
+ *
+ * Per chat-design.md §7.4: when the customer's free-form explanation gets
+ * classified into a concern category (noise, vibration, brakes, etc.), the
+ * diagnostic Q&A specialist queries this catalog and picks 2-4 questions
+ * the customer hasn't already answered. Options are stored as JSONB array
+ * of {label, value} pairs (e.g. [{label:"Front of the car",value:"front"}]).
+ *
+ * Returns all active questions for the category, sorted by display_order.
+ * The diagnostic specialist (Chunk 4) handles picking + answer-tracking.
+ *
+ * NEW in Chunk 3 (2026-05-13) — seeded by migration 200 with ~50 questions
+ * across 14 categories.
+ */
+export async function listConcernQuestions(
+  sb: SupabaseClient,
+  shopId: number,
+  category: string,
+): Promise<{ questions: ConcernQuestionRow[]; count: number }> {
+  const { data, error } = await sb
+    .from("concern_questions")
+    .select("id, category, question_text, options, display_order, active")
+    .eq("shop_id", shopId)
+    .eq("category", category)
+    .eq("active", true)
+    .order("display_order", { ascending: true });
+  if (error) {
+    throw new Error(`concern_questions lookup failed: ${error.message}`);
+  }
+  const rows = (data ?? []) as ConcernQuestionRow[];
+  return { questions: rows, count: rows.length };
 }
 
 // ─── Admin tools ─────────────────────────────────────────────────────────────

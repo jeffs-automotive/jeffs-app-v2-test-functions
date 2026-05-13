@@ -38,12 +38,14 @@ import {
   verifyCustomerIdentity,
   lookupVehiclesForCustomer,
   getCustomerUpcomingAppointments,
+  getAppointmentEligibility,
   createNewCustomer,
   createNewVehicle,
 } from "./tools/scheduler-customer.ts";
 import {
   listAvailableSlots,
   getSlotCapacity,
+  getEarliestAvailableSlots,
   holdAppointmentSlot,
   confirmAppointment,
   rescheduleAppointment,
@@ -58,6 +60,8 @@ import {
 } from "./tools/scheduler-otp.ts";
 import {
   lookupTestingServicePricing,
+  listRoutineServices,
+  listConcernQuestions,
   upsertTestingService,
   deactivateTestingService,
   upsertRoutineService,
@@ -143,21 +147,37 @@ export function getSchedulerTools(args: SchedulerToolsArgs) {
 
     lookup_customer_by_name: tool({
       description:
-        "Look up customers in Tekmetric by name (case-insensitive substring). " +
-        "Use this for the §4.3 reconciliation when phone search returns 2+ hits " +
-        "(narrow by name) or when the customer self-IDs as 'returning' but " +
-        "phone has 0 hits (try by name as fallback). Also used by the " +
-        "shared-phone case where customer self-IDs as 'new' but phone matches: " +
-        "we ask for their name to figure out if they're a different person than " +
-        "the matched record. Returns: { customers: [...], count }.",
+        "Look up customers in Tekmetric by name. Tekmetric does substring/contains " +
+        "matching server-side. When `max_distance` is supplied, we ALSO filter the " +
+        "candidate set by Levenshtein edit distance ≤ max_distance against the " +
+        "first/last/full normalized name — this catches typos like 'Jefery' → " +
+        "'Jeffrey' (distance 1) without over-matching unrelated names. Default " +
+        "behavior (no max_distance): return Tekmetric's raw substring matches. " +
+        "Use fuzzy mode (max_distance=2) for the §4.3 reconciliation when the " +
+        "customer's phone has 0 Tekmetric hits but they self-ID as returning. " +
+        "Returns: { customers: [...], count, match_distances?: number[] } where " +
+        "match_distances is populated only when max_distance was set; each entry " +
+        "is the best (lowest) distance to any of first/last/full.",
       inputSchema: z.object({
         name: z
           .string()
           .min(2)
           .describe("Customer's first or full name. Trimmed; min 2 chars."),
+        max_distance: z
+          .number()
+          .int()
+          .min(0)
+          .max(4)
+          .optional()
+          .describe(
+            "Optional Levenshtein edit-distance cap (default 2 if set; omit for raw substring match). " +
+              "Use 2 for normal typo tolerance; 0 for exact matches; 3-4 only when explicitly searching for fuzzy variants.",
+          ),
       }),
       execute: recorded(recorder, "lookup_customer_by_name", (input) =>
-        lookupCustomerByName(sb, shopId, input.name),
+        lookupCustomerByName(sb, shopId, input.name, {
+          max_distance: input.max_distance,
+        }),
       ),
     }),
 
@@ -218,6 +238,34 @@ export function getSchedulerTools(args: SchedulerToolsArgs) {
           getCustomerUpcomingAppointments(sb, shopId, input.customer_id),
       ),
     }),
+
+    get_appointment_eligibility: tool({
+      description:
+        "Check whether a verified customer is eligible to book a new appointment. " +
+        "Counts NO_SHOW history in the past 180 days and pending upcoming bookings " +
+        "in the next 30 days. Returns: { eligible: boolean, reason?: 'repeated_no_shows', " +
+        "warning?: 'recent_no_show_with_pending', no_show_count_180d, upcoming_within_30d }. " +
+        "Decision rules: " +
+        "(a) eligible=false + reason='repeated_no_shows' when no_show_count_180d >= 3 — " +
+        "use the `escalate` directive ('we'd love to help, but our records show a few " +
+        "missed appointments recently — please call us so we can sort this out'); " +
+        "(b) eligible=true + warning='recent_no_show_with_pending' when there's already " +
+        "an upcoming appointment AND a recent no-show — surface a friendly reminder " +
+        "but proceed; " +
+        "(c) eligible=true with no warning — proceed normally. " +
+        "Call this AFTER OTP verify completes, BEFORE offering slots. Customers with " +
+        "no Tekmetric history shadowed locally trivially pass.",
+      inputSchema: z.object({
+        customer_id: z
+          .number()
+          .int()
+          .positive()
+          .describe("Tekmetric customer_id of the verified customer."),
+      }),
+      execute: recorded(recorder, "get_appointment_eligibility", (input) =>
+        getAppointmentEligibility(sb, shopId, input.customer_id),
+      ),
+    }),
   };
 
   // ─── Slots / capacity (read) ───────────────────────────────────────────────
@@ -269,6 +317,47 @@ export function getSchedulerTools(args: SchedulerToolsArgs) {
       }),
       execute: recorded(recorder, "get_slot_capacity", (input) =>
         getSlotCapacity(sb, shopId, input.date),
+      ),
+    }),
+
+    get_earliest_available_slots: tool({
+      description:
+        "Returns the EARLIEST waiter time-slots + the EARLIEST dropoff date " +
+        "in a single compact answer. Cheaper than list_available_slots when the " +
+        "chat agent just wants to surface 'we can get you in as soon as <date>' " +
+        "(the §8 ' soonest available' card in the wizard). Use this AFTER service " +
+        "+ vehicle are confirmed AND eligibility passes — the customer hasn't yet " +
+        "asked for a specific day. If the customer wants to pick a different date, " +
+        "follow up with list_available_slots for the full per-date grid. " +
+        "Returns: { earliest_waiter: {date, times[]} | null, earliest_dropoff: " +
+        "{date} | null, searched_through: 'YYYY-MM-DD' }.",
+      inputSchema: z.object({
+        appointment_type: z
+          .enum(["waiter", "dropoff", "any"])
+          .describe(
+            "Filter to one type, or 'any' to fetch both earliest waiter + earliest dropoff in one call.",
+          ),
+        horizon_days: z
+          .number()
+          .int()
+          .min(1)
+          .max(365)
+          .optional()
+          .describe(
+            "How far ahead to search. Default 30 days; max 365 (matches the design-locked booking horizon).",
+          ),
+        waiter_slot_limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(10)
+          .optional()
+          .describe(
+            "How many waiter time-slots to return on the earliest day. Default 5; Phase 1 only has 2 (08:00, 09:00) so 5 is effectively no cap.",
+          ),
+      }),
+      execute: recorded(recorder, "get_earliest_available_slots", (input) =>
+        getEarliestAvailableSlots(sb, shopId, input),
       ),
     }),
   };
@@ -489,7 +578,7 @@ export function getSchedulerTools(args: SchedulerToolsArgs) {
     }),
   };
 
-  // ─── Pricing (read) ────────────────────────────────────────────────────────
+  // ─── Pricing + catalog (read) ──────────────────────────────────────────────
 
   const pricingReadTools = {
     lookup_testing_service_pricing: tool({
@@ -508,6 +597,79 @@ export function getSchedulerTools(args: SchedulerToolsArgs) {
       }),
       execute: recorded(recorder, "lookup_testing_service_pricing", (input) =>
         lookupTestingServicePricing(sb, shopId, input),
+      ),
+    }),
+
+    list_routine_services: tool({
+      description:
+        "Returns the active routine-service chip catalog (oil change, tire " +
+        "rotation, state inspection, brake inspection, …) used to populate the " +
+        "§7.1 service-and-concern picker. Each row carries: service_key, " +
+        "display_name, abbreviation (4-letter Tekmetric title abbreviation), " +
+        "display_order, active, AND two Phase-1 design-locked flags: " +
+        "wait_eligible (TRUE → can be done while customer waits; drives waiter " +
+        "vs dropoff eligibility) and requires_explanation (TRUE → picking this " +
+        "chip kicks off the §7.2 free-form-explanation sub-flow, e.g. 'brake " +
+        "inspection' needs 'tell us what you're noticing'). " +
+        "Filter options (optional): " +
+        "wait_eligible_only=true returns only chips a waiter customer is allowed " +
+        "to combine; requires_explanation_only=true returns only chips that " +
+        "trigger the explanation flow (used by the chat agent to pre-narrow " +
+        "without re-filtering client-side). " +
+        "Returns: { services: [...] }.",
+      inputSchema: z.object({
+        wait_eligible_only: z
+          .boolean()
+          .optional()
+          .describe(
+            "Filter to wait-eligible chips only (for waiter appointment picker).",
+          ),
+        requires_explanation_only: z
+          .boolean()
+          .optional()
+          .describe(
+            "Filter to chips that require a free-form explanation (for §7.2 sub-flow eligibility check).",
+          ),
+      }),
+      execute: recorded(recorder, "list_routine_services", (input) =>
+        listRoutineServices(sb, shopId, input),
+      ),
+    }),
+
+    list_concern_questions: tool({
+      description:
+        "Returns the active clarification-question catalog for a single " +
+        "concern category. Categories (per Chunk 1 migration): noise, " +
+        "vibration, pulling, smell, smoke, leak, warning_light, performance, " +
+        "electrical, hvac, brakes, steering, tires, other. " +
+        "Used by the diagnostic Q&A specialist (Chunk 4) AND directly by the " +
+        "scheduler specialist when it needs to render a customer-facing " +
+        "clarification card. Each row carries: id, question_text, options " +
+        "(array of {label, value} for multiple-choice rendering), display_order, " +
+        "active. Sorted by display_order ascending. " +
+        "Returns: { questions: [...], count }.",
+      inputSchema: z.object({
+        category: z
+          .enum([
+            "noise",
+            "vibration",
+            "pulling",
+            "smell",
+            "smoke",
+            "leak",
+            "warning_light",
+            "performance",
+            "electrical",
+            "hvac",
+            "brakes",
+            "steering",
+            "tires",
+            "other",
+          ])
+          .describe("The concern category to fetch questions for."),
+      }),
+      execute: recorded(recorder, "list_concern_questions", (input) =>
+        listConcernQuestions(sb, shopId, input.category),
       ),
     }),
   };

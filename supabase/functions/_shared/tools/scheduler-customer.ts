@@ -25,6 +25,11 @@ import {
   tekmetricGetJson,
   type TekmetricPage,
 } from "../tekmetric-client.ts";
+import {
+  isFuzzyNameMatch,
+  levenshteinDistance,
+  normalizeName,
+} from "../levenshtein.ts";
 
 // ─── Tekmetric DTO subsets ───────────────────────────────────────────────────
 
@@ -123,7 +128,21 @@ export async function lookupCustomerByName(
   sb: SupabaseClient,
   shopId: number,
   name: string,
-): Promise<{ customers: TekmetricCustomer[]; count: number }> {
+  opts: {
+    /** If set, filters candidates whose first/last/full normalized form is
+     *  within `max_distance` Levenshtein edits of the query (catches typos
+     *  like "Jefery" → "Jeffrey"). Default: no fuzzy filter — Tekmetric's
+     *  built-in substring/contains search drives the candidate set. */
+    max_distance?: number;
+  } = {},
+): Promise<{
+  customers: TekmetricCustomer[];
+  count: number;
+  /** Per-customer Levenshtein distance to the best-matching name token,
+   *  populated only when `max_distance` is supplied. Same index as
+   *  `customers`. */
+  match_distances?: number[];
+}> {
   const trimmed = name.trim();
   if (trimmed.length < 2) return { customers: [], count: 0 };
   const page = await tekmetricGetJson<TekmetricPage<TekmetricCustomer>>(
@@ -131,7 +150,51 @@ export async function lookupCustomerByName(
     "/customers",
     { shop: shopId, search: trimmed, size: 25 },
   );
-  return { customers: page.content ?? [], count: (page.content ?? []).length };
+  const candidates = page.content ?? [];
+
+  // No fuzzy filter requested — return Tekmetric's raw substring matches.
+  if (opts.max_distance === undefined) {
+    return { customers: candidates, count: candidates.length };
+  }
+
+  // Fuzzy filter: keep candidates within max_distance edits on any of
+  // first name, last name, or "first last" concatenation. The best
+  // (lowest) distance is the customer's match score.
+  const query = normalizeName(trimmed);
+  const filtered: TekmetricCustomer[] = [];
+  const distances: number[] = [];
+  for (const c of candidates) {
+    const first = normalizeName(c.firstName ?? "");
+    const last = normalizeName(c.lastName ?? "");
+    const full = normalizeName(`${c.firstName ?? ""} ${c.lastName ?? ""}`);
+
+    const fragments: number[] = [];
+    // Length-difference pre-filter — saves work on obvious non-matches.
+    if (Math.abs(first.length - query.length) <= opts.max_distance) {
+      fragments.push(levenshteinDistance(query, first));
+    }
+    if (Math.abs(last.length - query.length) <= opts.max_distance) {
+      fragments.push(levenshteinDistance(query, last));
+    }
+    if (Math.abs(full.length - query.length) <= opts.max_distance) {
+      fragments.push(levenshteinDistance(query, full));
+    }
+    if (fragments.length === 0) continue;
+    const best = Math.min(...fragments);
+    if (best <= opts.max_distance) {
+      filtered.push(c);
+      distances.push(best);
+    }
+  }
+  // Sort ascending by distance so callers can prefer best matches first.
+  const order = distances
+    .map((_, i) => i)
+    .sort((a, b) => distances[a] - distances[b]);
+  return {
+    customers: order.map((i) => filtered[i]),
+    count: filtered.length,
+    match_distances: order.map((i) => distances[i]),
+  };
 }
 
 /**
@@ -160,11 +223,16 @@ export async function getCustomerById(
  * Verify a self-asserted customer identity matches a Tekmetric customer
  * record by lenient name compare + vehicle match.
  *
- * Lenient name: case-insensitive + simple Levenshtein ≤ 2 + nickname-aware.
- * Phase 1: full nickname dictionary deferred — for now the lenient compare is
- * lowercased exact match on first or full name. Returning customer's
- * confirmation is the strong signal; the lenient compare just guards against
- * typos.
+ * Lenient name compare (Chunk 3 enhancement 2026-05-13):
+ *   - Normalizes both sides (lowercase + diacritic strip + whitespace collapse)
+ *   - Counts as a match when ANY of the following Levenshtein distances ≤2:
+ *     submitted vs firstName, submitted vs lastName, submitted vs "first last"
+ *   - Also matches on substring containment (covers "Jeff" vs "Jeffrey Seidel"
+ *     when the customer only types their first name).
+ *
+ * Full nickname dictionary (e.g. Bob↔Robert) deferred to Phase 1.1 — the
+ * Levenshtein floor catches typos AND most nickname shapes where the
+ * shortened form is a prefix.
  */
 export async function verifyCustomerIdentity(
   sb: SupabaseClient,
@@ -178,6 +246,7 @@ export async function verifyCustomerIdentity(
 ): Promise<{
   verified: boolean;
   name_match?: boolean;
+  name_distance?: number;
   vehicle_match?: boolean;
   mismatch_reason?: string;
 }> {
@@ -187,17 +256,33 @@ export async function verifyCustomerIdentity(
   }
 
   let nameMatch: boolean | undefined;
+  let nameDistance: number | undefined;
   if (args.name) {
-    const submitted = args.name.trim().toLowerCase();
-    const fullName = `${customer.firstName ?? ""} ${customer.lastName ?? ""}`
-      .trim()
-      .toLowerCase();
-    const firstName = (customer.firstName ?? "").trim().toLowerCase();
-    nameMatch =
-      submitted === fullName ||
-      submitted === firstName ||
-      fullName.includes(submitted) ||
-      submitted.includes(firstName);
+    const fuzzyFirst = isFuzzyNameMatch(
+      args.name,
+      customer.firstName ?? "",
+      2,
+    );
+    const fuzzyLast = isFuzzyNameMatch(args.name, customer.lastName ?? "", 2);
+    const fullName = `${customer.firstName ?? ""} ${customer.lastName ?? ""}`;
+    const fuzzyFull = isFuzzyNameMatch(args.name, fullName, 2);
+
+    // Substring containment fallback — "Jeff" should match "Jeffrey Seidel"
+    // even though the Levenshtein distance is 8.
+    const subA = normalizeName(args.name);
+    const subB = normalizeName(fullName);
+    const subFirst = normalizeName(customer.firstName ?? "");
+    const substringMatch =
+      (subA.length >= 2 && subB.length >= 2 && subB.includes(subA)) ||
+      (subA.length >= 2 && subFirst.length >= 2 && subA.includes(subFirst));
+
+    nameMatch = fuzzyFirst.match || fuzzyLast.match || fuzzyFull.match ||
+      substringMatch;
+    nameDistance = Math.min(
+      fuzzyFirst.distance,
+      fuzzyLast.distance,
+      fuzzyFull.distance,
+    );
   }
 
   let vehicleMatch: boolean | undefined;
@@ -234,7 +319,13 @@ export async function verifyCustomerIdentity(
     }
   }
 
-  return { verified, name_match: nameMatch, vehicle_match: vehicleMatch, mismatch_reason };
+  return {
+    verified,
+    name_match: nameMatch,
+    name_distance: nameDistance,
+    vehicle_match: vehicleMatch,
+    mismatch_reason,
+  };
 }
 
 /**
@@ -307,6 +398,106 @@ export async function getCustomerUpcomingAppointments(
   }));
 
   return { appointments: rows, count: rows.length };
+}
+
+/**
+ * Booking-eligibility gate for the scheduler specialist.
+ *
+ * Phase 1 policy (chat-design.md + scheduler_phase1_design_lock.md 2026-05-13):
+ *
+ *   - >=3 NO_SHOW appointments in the past 180 days
+ *       → eligible=false, reason='repeated_no_shows'
+ *       → chat agent escalates ("please call us to book")
+ *   - >=1 NO_SHOW in the past 180 days AND has an upcoming appointment
+ *     within the next 30 days
+ *       → eligible=true, warning='recent_no_show_with_pending'
+ *       → chat agent surfaces a friendly reminder to keep the upcoming slot
+ *   - 0 NO_SHOWs OR no upcoming
+ *       → eligible=true
+ *
+ * Read-only — never writes. Logged in tool_calls via the recorder wrapper.
+ * Data source: local `appointments` shadow (sync'd every 5 min by
+ * scheduler-cron). Customers without any Tekmetric history shadowed locally
+ * trivially pass the check.
+ *
+ * NEW in Chunk 3 — earlier scheduler-orchestrator design had no eligibility
+ * gate. Required by the §10 escalation triggers in chat-design.md.
+ */
+export async function getAppointmentEligibility(
+  sb: SupabaseClient,
+  shopId: number,
+  customerId: number,
+): Promise<{
+  eligible: boolean;
+  reason?: "repeated_no_shows";
+  warning?: "recent_no_show_with_pending";
+  no_show_count_180d: number;
+  upcoming_within_30d: number;
+}> {
+  const cutoff180 = new Date(
+    Date.now() - 180 * 24 * 60 * 60 * 1000,
+  ).toISOString();
+  const horizon30 = new Date(
+    Date.now() + 30 * 24 * 60 * 60 * 1000,
+  ).toISOString();
+  const now = new Date().toISOString();
+
+  // Count past 180-day no-shows. Note: NO_SHOW is set when the customer
+  // missed the appointment per Tekmetric webhook; deleted_at is null
+  // throughout (we keep no-show rows for compliance / abuse-detection).
+  const { count: noShowCount, error: noShowErr } = await sb
+    .from("appointments")
+    .select("tekmetric_appointment_id", { count: "exact", head: true })
+    .eq("shop_id", shopId)
+    .eq("customer_id", customerId)
+    .eq("appointment_status", "NO_SHOW")
+    .gte("start_time", cutoff180)
+    .is("deleted_at", null);
+  if (noShowErr) {
+    throw new Error(
+      `getAppointmentEligibility no-show count failed: ${noShowErr.message}`,
+    );
+  }
+  const ns = noShowCount ?? 0;
+
+  // Count upcoming (next 30d) non-cancelled / non-no-show appointments.
+  const { count: upcomingCount, error: upErr } = await sb
+    .from("appointments")
+    .select("tekmetric_appointment_id", { count: "exact", head: true })
+    .eq("shop_id", shopId)
+    .eq("customer_id", customerId)
+    .not("appointment_status", "in", "(CANCELED,NO_SHOW)")
+    .gte("start_time", now)
+    .lt("start_time", horizon30)
+    .is("deleted_at", null);
+  if (upErr) {
+    throw new Error(
+      `getAppointmentEligibility upcoming count failed: ${upErr.message}`,
+    );
+  }
+  const up = upcomingCount ?? 0;
+
+  if (ns >= 3) {
+    return {
+      eligible: false,
+      reason: "repeated_no_shows",
+      no_show_count_180d: ns,
+      upcoming_within_30d: up,
+    };
+  }
+  if (ns >= 1 && up >= 1) {
+    return {
+      eligible: true,
+      warning: "recent_no_show_with_pending",
+      no_show_count_180d: ns,
+      upcoming_within_30d: up,
+    };
+  }
+  return {
+    eligible: true,
+    no_show_count_180d: ns,
+    upcoming_within_30d: up,
+  };
 }
 
 // ─── Write tools ─────────────────────────────────────────────────────────────

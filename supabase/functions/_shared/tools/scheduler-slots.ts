@@ -331,6 +331,81 @@ export async function listAvailableSlots(
 }
 
 /**
+ * "Soonest available" wrapper around listAvailableSlots.
+ *
+ * Per chat-design.md §8 + scheduler_phase1_design_lock.md (2026-05-13):
+ * after the customer picks their services and confirms verification,
+ * the scheduler specialist surfaces a single card with the EARLIEST waiter
+ * time-slots and the EARLIEST dropoff date — NOT the full 30-day grid.
+ * Customers can then accept the soonest option or page into the calendar
+ * for a different day (which calls list_available_slots).
+ *
+ * Returns:
+ *   - earliest_waiter:  date + up to `waiter_slot_limit` time-slots on the
+ *                       earliest day with any waiter capacity. Combines
+ *                       08:00 AND 09:00 when both are open on that day.
+ *                       (Phase 1 only has 2 waiter slots; the limit param is
+ *                       future-proofing for additional slots.)
+ *   - earliest_dropoff: the earliest date with any dropoff capacity remaining.
+ *
+ * Search horizon: configurable via `horizon_days` (default 30; cap 365 per
+ * the 365-day booking horizon decision in design lock 2026-05-13).
+ *
+ * NEW in Chunk 3 — earlier scheduler-orchestrator had the model compose
+ * "earliest" from the full per-date map, burning tokens. This tool puts the
+ * computation server-side so the model only needs to render the answer.
+ */
+export async function getEarliestAvailableSlots(
+  sb: SupabaseClient,
+  shopId: number,
+  args: {
+    appointment_type: "waiter" | "dropoff" | "any";
+    horizon_days?: number;
+    waiter_slot_limit?: number;
+  },
+): Promise<{
+  earliest_waiter: { date: string; times: string[] } | null;
+  earliest_dropoff: { date: string } | null;
+  searched_through: string;
+}> {
+  const horizon = Math.min(Math.max(args.horizon_days ?? 30, 1), 365);
+  const today = new Date();
+  const end = addDays(today, horizon);
+
+  const full = await listAvailableSlots(sb, shopId, {
+    type: args.appointment_type,
+    date_range_start: ymd(today),
+    date_range_end: ymd(end),
+  });
+
+  let earliestWaiter: { date: string; times: string[] } | null = null;
+  if (
+    full.earliest.waiter &&
+    (args.appointment_type === "waiter" || args.appointment_type === "any")
+  ) {
+    const limit = Math.max(args.waiter_slot_limit ?? 5, 1);
+    earliestWaiter = {
+      date: full.earliest.waiter.date,
+      times: full.earliest.waiter.times.slice(0, limit),
+    };
+  }
+
+  let earliestDropoff: { date: string } | null = null;
+  if (
+    full.earliest.dropoff &&
+    (args.appointment_type === "dropoff" || args.appointment_type === "any")
+  ) {
+    earliestDropoff = { date: full.earliest.dropoff.date };
+  }
+
+  return {
+    earliest_waiter: earliestWaiter,
+    earliest_dropoff: earliestDropoff,
+    searched_through: ymd(end),
+  };
+}
+
+/**
  * Detailed capacity status for a single date — for admin tooling and
  * debugging. Less heavily used in the customer flow (list_available_slots
  * is the primary tool).
