@@ -525,11 +525,23 @@ export async function createNewCustomer(
     };
   },
 ): Promise<{ customer_id: number }> {
+  // Tekmetric POST /customers expects `email` to be an ARRAY of
+  // {email, primary} objects — not a bare string. Verified live
+  // 2026-05-13 by the actual API error:
+  //   "Cannot construct instance of `java.util.ArrayList` ... no String-
+  //    argument constructor/factory method to deserialize from String value
+  //    ('test@example.com')"
+  // (NB: patchCustomer further down still sends `email: <string>` — that
+  // path appears to work on PATCH. If the same parse error surfaces on
+  // patch, port this array shape there too.)
+  const emailArray = args.email?.trim()
+    ? [{ email: args.email.trim(), primary: true }]
+    : [];
   const body = {
     shopId,
     firstName: args.first_name.trim(),
     lastName: args.last_name.trim(),
-    email: args.email?.trim() || null,
+    email: emailArray,
     phone: [
       {
         number: args.phone_e164,
