@@ -1689,6 +1689,17 @@ export async function submitAppointmentType(args: {
       hints: { appointment_type: args.appointment_type },
       intent_type: "fetch_slots",
     });
+    // TEMP diagnostic: trace what the orchestrator returns for fetch_slots
+    // so we can debug why the calendar card sometimes doesn't render.
+    console.log(
+      JSON.stringify({
+        level: "info",
+        msg: "appt_type_orchestrator_result",
+        directive: result.directive,
+        data_keys: result.data ? Object.keys(result.data) : [],
+        flags: result.flags,
+      }),
+    );
     return {
       ok: result.directive !== "tool_error",
       directive: result.directive ?? "show_calendar_date_picker",
