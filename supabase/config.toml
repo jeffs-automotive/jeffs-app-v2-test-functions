@@ -518,6 +518,21 @@ verify_jwt = false
 import_map = "./functions/orchestrator-direct/deno.json"
 entrypoint = "./functions/orchestrator-direct/index.ts"
 
+[functions.scheduler-step2-direct]
+enabled = true
+# Deterministic Step 2 endpoint per chat-design.md §605 + audit B-1 + F5-full
+# refactor 2026-05-13. Tekmetric lookup + §4.3 reconciliation matrix + Telnyx
+# OTP send, no LLM hop. Replaces the brittle generateText+JSON.parse path that
+# caused the 2026-05-13 Step 2 escalation bug.
+# Auth: same Pattern A bearer check as orchestrator-direct. verify_jwt=false
+# so the SUPABASE_SECRET_KEY (new 2026 sb_secret_* format, NOT a JWT) passes
+# through to our manual check inside the function. Without this, Supabase's
+# platform gateway rejects the bearer with UNAUTHORIZED_INVALID_JWT_FORMAT
+# before the function code ever runs.
+verify_jwt = false
+import_map = "./functions/scheduler-step2-direct/deno.json"
+entrypoint = "./functions/scheduler-step2-direct/index.ts"
+
 [functions.transcript-dispatcher]
 enabled = true
 # Cron-driven backstop + on-demand dispatcher. Triggered by Supabase Cron and by
