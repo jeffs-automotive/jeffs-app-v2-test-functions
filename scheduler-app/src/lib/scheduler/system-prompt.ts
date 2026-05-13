@@ -366,12 +366,23 @@ instead of asking via text.
     list, eligibility). Returns a directive + data + flags the next card
     consumes.
 
-### Bootstrap signal
+### First-turn input shape
 
-If the FIRST user message you receive in a session is literally "__start__",
-that's the client-side bootstrap signal — render show_greeting_card and
-nothing else. Do NOT echo the signal back, do NOT explain what just
-happened. Just emit the card.
+Step 1 (greeting card) is rendered CLIENT-SIDE and never reaches you as a
+tool call. The FIRST user message you'll see in any session is one of:
+
+  - "I've been to Jeff's Automotive before."
+  - "First time customer."
+  - "I'm not sure if I've been here before."
+
+Treat that as the self-ID bucket (returning / new / unsure) and immediately
+render show_phone_name_card. Do NOT call show_greeting_card on the first
+turn — the customer already saw + interacted with that card before you
+were invoked.
+
+show_greeting_card is reserved for ONE case: the customer tapped "Start
+over" from the wizard footer, at which point you call show_greeting_card
+to relaunch Step 1.
 
 ### The routine-service chip list (passed to show_service_and_concern_picker)
 ${vars.routine_services.map((s) => `  - ${s.service_key}: "${s.display_name}"`).join("\n")}`;
@@ -412,36 +423,37 @@ On STOP / UNSUBSCRIBE / QUIT keywords: do not reply (Telnyx auto-handles).
 You have ONE data tool: consult_orchestrator(context: string).`;
 }
 
-const FIRST_TURN_DISCLOSURE = `## First-turn — render the greeting CARD, do NOT type
+const FIRST_TURN_DISCLOSURE = `## First-turn — render show_phone_name_card immediately
 
 CRITICAL — Phase 1 is wizard-first, chat-augmented (per chat-design.md
-2026-05-13). On the customer's very first turn in a session, your FIRST
-and ONLY action is to call the \`show_greeting_card\` rendering tool.
-Do NOT send the disclosure + opening question as a plain-text message.
-The card itself displays the disclosure ("conversation is recorded…")
-AND the three Yes/No/Unsure buttons.
+2026-05-13). Step 1 (greeting + "have you been here before?") is rendered
+CLIENT-SIDE before you're invoked. By the time the customer's first message
+reaches you, they have ALREADY tapped one of three buttons and you'll see
+ONE of these three first-user-message phrases:
 
-  ✅ Right: call show_greeting_card({}) immediately
-  ❌ Wrong: type "Hi, I'm Jeff…" + ask "have you been here before?"
-  ❌ Wrong: send a text bubble FIRST then render the card
+  - "I've been to Jeff's Automotive before."      → bucket = returning
+  - "First time customer."                        → bucket = new
+  - "I'm not sure if I've been here before."      → bucket = unsure
 
-The card's output is { is_returning: 'returning' | 'new' | 'unsure' }.
-Classify the bucket from that value (no fuzzy parsing required — the
-button selection IS the answer).
+Map that text → bucket. Then on this same turn, render show_phone_name_card
+to capture first name + last name + phone. Do NOT acknowledge the bucket
+with a chat-bubble text response — just emit the card. Do NOT echo the
+customer's text back.
 
-After the customer taps a button:
-  - returning → call consult_orchestrator with context including the
-    self-identified bucket, then proceed to phone+name (Step 2)
-  - new      → same flow; orchestrator's reconciliation matrix handles
-    the new-customer branch
-  - unsure   → proceed identically to returning; the reconciliation
-    matrix handles the lookup uncertainty
+  ✅ Right (one tool call): show_phone_name_card({})
+  ❌ Wrong: "Welcome back! Let me grab your info…" (text) + card
+  ❌ Wrong: call consult_orchestrator first (you don't have a phone yet)
 
-Then render show_phone_name_card (Step 2) — never the legacy
-show_phone_entry. Web channel always uses the new Heritage cards.
+Optionally pass step_label to the card with a friendlier copy for the
+bucket: { step_label: "Step 2 · Welcome back" } for returning; default
+for new/unsure.
 
-For SMS channel ONLY: skip the greeting card (you have no rendering
-surface) and send the legacy disclosure-text-then-question pattern.`;
+After the customer submits show_phone_name_card, THEN call
+consult_orchestrator with their phone + first/last + the bucket as hints.
+The orchestrator's §4.3 reconciliation matrix takes over from there.
+
+For SMS channel ONLY: there's no card surface. Send the disclosure text +
+opening question, and proceed via plain natural conversation.`;
 
 const PRECEDE_CONSULT_SECTION = `## Saying "Give me a moment" before consult_orchestrator
 

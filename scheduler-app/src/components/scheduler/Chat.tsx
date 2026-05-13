@@ -18,7 +18,7 @@
  * compact echo of the customer's choice for context.
  */
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { useChat } from "@ai-sdk/react";
 import {
   DefaultChatTransport,
@@ -72,27 +72,30 @@ export function Chat({ chatId, initialMessages }: ChatProps) {
   const [draft, setDraft] = useState("");
   const isWorking = status === "submitted" || status === "streaming";
 
-  // Phase 1 wizard-first bootstrap (Chunk 6 fix 2026-05-13):
-  // The customer never types the FIRST message — the chat agent's system
-  // prompt instructs it to render show_greeting_card immediately. To trigger
-  // that, we auto-fire a hidden synthetic user message on mount when there
-  // are zero messages in the conversation. The agent's first response is the
-  // greeting card; from that point forward all interaction is card-driven.
-  //
-  // The fired text is intentionally generic ("__start__") and the chat agent
-  // is told to NOT echo it back — it's a session-bootstrap signal, not a
-  // customer utterance.
-  const didBootstrapRef = useRef(false);
-  useEffect(() => {
-    if (didBootstrapRef.current) return;
-    if (messages.length > 0) {
-      didBootstrapRef.current = true;
-      return;
-    }
+  // Phase 1 wizard-first (Chunk 6 fix v2 — 2026-05-13):
+  // Step 1 (greeting) is rendered CLIENT-SIDE, not by the chat agent. Rationale:
+  //   1. Step 1 is deterministic — every session starts with "have you been here
+  //      before?". There's no reason to spend an LLM call to emit a card the
+  //      wizard knows belongs at this step.
+  //   2. The auto-fire `__start__` synthetic signal approach (v1) was unreliable
+  //      — gpt-5.4-mini / gemini-3.1-flash treated the bootstrap signal as
+  //      conversational noise and returned empty text instead of the tool call,
+  //      leaving customers stuck on "Jeff is typing…".
+  // When the customer taps a button on the client-side card, we then send their
+  // actual answer as the first user message to the agent, which proceeds from
+  // there with show_phone_name_card.
+  async function handleGreetingPick(out: {
+    is_returning: "returning" | "new" | "unsure";
+  }) {
     if (isWorking) return;
-    didBootstrapRef.current = true;
-    void sendMessage({ text: "__start__" });
-  }, [messages.length, isWorking, sendMessage]);
+    const text =
+      out.is_returning === "returning"
+        ? "I've been to Jeff's Automotive before."
+        : out.is_returning === "new"
+          ? "First time customer."
+          : "I'm not sure if I've been here before.";
+    void sendMessage({ text });
+  }
 
   function onSend(e: FormEvent) {
     e.preventDefault();
@@ -133,20 +136,11 @@ export function Chat({ chatId, initialMessages }: ChatProps) {
     });
   }
 
-  // Hide the synthetic bootstrap message from the conversation surface.
-  // The user-message "__start__" is a transport-level signal to fire the
-  // agent's first turn; the customer should never see it as a chat bubble.
-  const visibleMessages = messages.filter((m) => {
-    if (m.role !== "user") return true;
-    const parts = m.parts ?? [];
-    const text = parts
-      .filter((p): p is { type: "text"; text: string } =>
-        (p as { type?: string }).type === "text",
-      )
-      .map((p) => p.text)
-      .join("");
-    return text.trim() !== "__start__";
-  });
+  // First-turn check: when there are zero messages, render the GreetingCard
+  // client-side. As soon as the customer taps a button, handleGreetingPick
+  // pushes their answer to the agent via sendMessage — from that point the
+  // chat agent owns the flow.
+  const showClientGreeting = messages.length === 0 && !isWorking;
 
   return (
     <div className="flex h-full flex-col">
@@ -155,13 +149,14 @@ export function Chat({ chatId, initialMessages }: ChatProps) {
         aria-label="Conversation"
         className="flex-1 space-y-4 overflow-y-auto px-1 py-3"
       >
-        {visibleMessages.length === 0 && isWorking ? (
-          <ChatBubble role="assistant">
-            <p className="m-0 italic text-ink-secondary">Jeff is getting set up…</p>
-          </ChatBubble>
+        {showClientGreeting ? (
+          <GreetingCard
+            disabled={isWorking}
+            onSubmit={(out) => void handleGreetingPick(out)}
+          />
         ) : null}
 
-        {visibleMessages.map((m) => (
+        {messages.map((m) => (
           <MessageBlock
             key={m.id}
             message={m}
@@ -170,7 +165,7 @@ export function Chat({ chatId, initialMessages }: ChatProps) {
           />
         ))}
 
-        {isWorking && visibleMessages.length > 0 ? (
+        {isWorking ? (
           <ChatBubble role="assistant">
             <p className="m-0 italic text-ink-secondary">Jeff is typing…</p>
           </ChatBubble>

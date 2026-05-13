@@ -114,6 +114,12 @@ export async function POST(req: Request) {
  * picks the same model — that way a customer's experience is consistent
  * across turns of the same conversation.
  *
+ * Canonical IDs verified against https://ai-gateway.vercel.sh/v1/models on
+ * 2026-05-13. Note the design lock spec'd "gemini-3.1-flash" but the
+ * catalog only ships "gemini-3.1-flash-lite" (no plain -flash variant);
+ * lite still has tool-use + reasoning + vision tags so it satisfies the
+ * "fast + cheap + tool-capable" design intent.
+ *
  * Spike TODO (per design §17): once Vercel AI Gateway's per-request
  * function-form selection is verified, swap this for the canonical
  * Gateway pattern.
@@ -126,5 +132,5 @@ function pickModelForSession(chatId: string) {
   const bucket = Math.abs(hash) % 2;
   return bucket === 0
     ? gateway("openai/gpt-5.4-mini")
-    : gateway("google/gemini-3.1-flash");
+    : gateway("google/gemini-3.1-flash-lite");
 }
