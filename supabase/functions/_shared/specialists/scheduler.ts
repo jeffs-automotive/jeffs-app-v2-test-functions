@@ -18,7 +18,8 @@
 
 // AI SDK pinned at v5 per ai_sdk_and_models.md; @ai-sdk/anthropic@^2.
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
-import { generateText, stepCountIs } from "npm:ai@^5";
+import { generateText, Output, stepCountIs } from "npm:ai@^5";
+import { z } from "npm:zod@^4";
 import { anthropic } from "npm:@ai-sdk/anthropic@^2";
 
 import {
@@ -97,17 +98,20 @@ Today's date is ${TODAY_HINT()}.
 1. Read the chat agent's \`context\` and \`hints\`.
 2. Decide which tool(s) to call. You may call tools in parallel when independent.
 3. Compose a structured directive based on the tool results.
-4. Respond with EXACTLY one JSON object as your final message — NO prose,
-   NO markdown fences, NO explanation. Just the JSON.
 
-# Strict JSON output contract
+Your final response is enforced by a Zod schema (AI SDK v5 Output.object).
+You return a structured \`{ directive, data, flags }\` object. The directive
+must be one of the values in the table below; \`data\` is per-directive
+fields; \`flags\` is optional booleans. The structured-output adapter
+handles serialization — you do NOT need to emit JSON text yourself, just
+populate the structured response.
 
-Your final message MUST be valid JSON parseable by JSON.parse. Shape:
+# Directive contract
 
 {
-  "directive": "<one of the directives below>",
-  "data": { ... directive-specific fields ... },
-  "flags": { ... optional booleans the chat agent branches on ... }
+  directive: "<one of the directives below>",
+  data: { ... directive-specific fields, or null ... },
+  flags: { ... optional booleans the chat agent branches on, or null ... }
 }
 
 # Directives the chat agent understands
@@ -230,8 +234,75 @@ Your final message MUST be valid JSON parseable by JSON.parse. Shape:
 - Quoting prices for parts/labor/repairs/routine maintenance — only testing
   services from lookup_testing_service_pricing.
 
-Return ONLY the JSON. Final message must be parseable.`;
+The structured-output adapter handles serialization. Populate the
+{ directive, data, flags } fields per the table above.`;
 }
+
+/**
+ * Structured-output schema for the scheduler specialist's final response.
+ *
+ * Migrated 2026-05-13 from free-form generateText + manual JSON.parse
+ * (which failed when Haiku 4.5 wrapped output in markdown fences or
+ * added prose) to AI SDK v5's Output.object({ schema }) pattern.
+ *
+ * The schema enforces:
+ *   - directive: one of the known directive strings (extensible)
+ *   - data: optional object with directive-specific fields (validated
+ *     downstream by the per-card Zod schemas in scheduler-app/tools.ts;
+ *     keeping it open-ended here so the LLM can populate any directive's
+ *     required fields without us pre-declaring every variant)
+ *   - flags: optional flags object
+ *
+ * The enum below MUST stay in sync with the directives the specialist
+ * is instructed to emit (see system-prompt §"Directives the chat agent
+ * understands"). Adding a new directive: append it here AND update
+ * the system prompt's directive table.
+ */
+const SCHEDULER_DIRECTIVES = [
+  "show_phone_entry",
+  "send_otp_first",
+  "identity_match_required",
+  "show_new_customer_form",
+  "show_vehicle_picker",
+  "offer_earliest_available",
+  "show_calendar_date_picker",
+  "show_waiter_time_picker",
+  "render_confirmation_card",
+  "appointment_booked",
+  "show_pricing_quote",
+  "pricing_unavailable",
+  "slot_just_taken",
+  "hold_expired",
+  "escalate",
+  "tool_error",
+  "continue",
+] as const;
+
+const SchedulerDirectiveSchema = z.object({
+  directive: z
+    .enum(SCHEDULER_DIRECTIVES)
+    .describe(
+      "Which directive the chat agent should act on next. Match the " +
+        "directive table in your system prompt exactly.",
+    ),
+  data: z
+    .record(z.string(), z.unknown())
+    .nullable()
+    .describe(
+      "Directive-specific data fields per the system-prompt's directive " +
+        "table. For send_otp_first: { phone_last_four, ttl_seconds }. " +
+        "For show_vehicle_picker: { vehicles, allow_add_new }. Etc. " +
+        "Pass null when no data fields are needed.",
+    ),
+  flags: z
+    .record(z.string(), z.unknown())
+    .nullable()
+    .describe(
+      "Optional structural flags the chat agent branches on. E.g., " +
+        "{ tekmetric_error: true } for tool_error directive. Pass null " +
+        "when no flags are needed.",
+    ),
+});
 
 interface ParsedDirective {
   directive: string;
@@ -239,6 +310,11 @@ interface ParsedDirective {
   flags?: Record<string, unknown>;
 }
 
+/**
+ * Legacy free-form JSON parser. RETAINED as a defensive fallback in case
+ * the Output.object path returns nothing parseable for some reason — but
+ * normal flow uses result.output (structured) directly, NOT this function.
+ */
 function tryParseDirective(text: string): ParsedDirective | null {
   // Strip whitespace + optional code fences (defensive — Haiku occasionally wraps).
   const trimmed = text
@@ -304,6 +380,14 @@ export async function runSchedulerSpecialist(
     tools,
     stopWhen: stepCountIs(MAX_STEPS),
     maxOutputTokens: MAX_TOKENS,
+    // Structured-output migration 2026-05-13 (audit Commit G): force the
+    // final response to match SchedulerDirectiveSchema. Eliminates the
+    // free-form-text + manual JSON.parse fragility class that caused the
+    // 2026-05-13 Step 2 escalation bug. The result's `output` field is
+    // typed by the schema; no more tryParseDirective on result.text.
+    output: Output.object({
+      schema: SchedulerDirectiveSchema,
+    }),
   });
   const agentEndedAt = new Date();
 
@@ -318,14 +402,48 @@ export async function runSchedulerSpecialist(
     }
   }
 
-  const parsed = tryParseDirective(result.text);
+  // Structured output is the canonical path. `result.output` is typed
+  // by SchedulerDirectiveSchema. Defensive fallback to tryParseDirective
+  // on result.text only if `output` is somehow missing (shouldn't happen
+  // with AI SDK v5 + Anthropic, but the legacy parser is cheap to keep
+  // as a safety net while we observe the new path in production).
+  const structured = (result as unknown as { output?: ParsedDirective })
+    .output;
+  let directive: string;
+  let data: Record<string, unknown> | undefined;
+  let flags: Record<string, unknown> | undefined;
+  let parsedOk: boolean;
+  if (
+    structured &&
+    typeof structured === "object" &&
+    typeof structured.directive === "string"
+  ) {
+    directive = structured.directive;
+    data = structured.data ?? undefined;
+    flags = structured.flags ?? undefined;
+    parsedOk = true;
+  } else {
+    const fallback = tryParseDirective(result.text);
+    directive = fallback?.directive ?? "tool_error";
+    data = fallback?.data;
+    flags = fallback ? fallback.flags : { directive_parse_failed: true };
+    parsedOk = fallback !== null;
+    // Log the unexpected miss so we know when fallback fires.
+    console.error(
+      JSON.stringify({
+        level: "warn",
+        msg: "scheduler_specialist_structured_output_missing",
+        used_fallback_parser: true,
+        fallback_succeeded: parsedOk,
+        text_len: result.text?.length ?? 0,
+      }),
+    );
+  }
 
   return {
-    directive: parsed?.directive ?? "tool_error",
-    data: parsed?.data,
-    flags: parsed
-      ? parsed.flags
-      : { directive_parse_failed: true },
+    directive,
+    data,
+    flags,
     tools_called: toolsCalled,
     tokens_in: tokensIn,
     tokens_out: tokensOut,
@@ -335,6 +453,6 @@ export async function runSchedulerSpecialist(
     agent_started_at: agentStartedAt.toISOString(),
     agent_ended_at: agentEndedAt.toISOString(),
     raw_text: result.text,
-    parsed_ok: parsed !== null,
+    parsed_ok: parsedOk,
   };
 }
