@@ -1691,6 +1691,8 @@ export async function submitAppointmentType(args: {
     });
     // TEMP diagnostic: trace what the orchestrator returns for fetch_slots
     // so we can debug why the calendar card sometimes doesn't render.
+    // Also write to scheduler_audit_log so it's queryable from the DB
+    // (Vercel MCP truncates console.log entries; DB row gives full picture).
     console.log(
       JSON.stringify({
         level: "info",
@@ -1700,6 +1702,16 @@ export async function submitAppointmentType(args: {
         flags: result.flags,
       }),
     );
+    await logAudit({
+      session_id: args.chatId,
+      step: "appointment_type",
+      event_type: "orchestrator_result",
+      event_detail: {
+        directive: result.directive,
+        data: result.data,
+        flags: result.flags,
+      } as unknown as Record<string, unknown>,
+    });
     return {
       ok: result.directive !== "tool_error",
       directive: result.directive ?? "show_calendar_date_picker",
