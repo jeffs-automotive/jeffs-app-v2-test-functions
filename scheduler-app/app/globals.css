@@ -1,13 +1,30 @@
 @import "tailwindcss";
 
 /*
- * Brand tokens for Jeff's Automotive (per appointments_design.md §3.1).
- * Tailwind v4 uses CSS-first theme variables; @theme inline declares them.
+ * Heritage Editorial design tokens for Jeff's Automotive scheduler.
  *
- * Burgundy primary: #96003C
- * Gold accent:      #D2B487
+ * Locked 2026-05-13 per chat-design.md visual direction. References:
+ *   Hagerty (deep burgundy + ivory + thin gold rules + editorial serif),
+ *   Singer Vehicle Design (cream background, restrained gold, classical type),
+ *   Faherty (warm cream, serif heads + sans body),
+ *   Aesop (minimal ivory, small-caps section labels, generous whitespace).
+ *
+ * Palette principles:
+ *   - Ivory background instead of pure white. Warmth = trust + craft.
+ *   - Burgundy stays the headline color; deepened-feel via paired serif type.
+ *   - Gold is a RULE LINE + accent role — never a fill on big surfaces.
+ *   - Charcoal body text (not pure black). Easier on the eye, more editorial.
+ *
+ * Fonts:
+ *   --font-display = Fraunces (serif; for h1/h2 + section headings)
+ *   --font-sans    = Inter (for body, buttons, form input)
+ *   Both loaded via next/font in app/layout.tsx; injected as CSS vars at <html>.
+ *
+ * Tailwind v4: @theme inline lifts these into utility classes
+ *   (e.g. text-brand-burgundy-700, font-display, bg-paper).
  */
 @theme inline {
+  /* ─── Burgundy (brand primary) ─────────────────────────────────────────── */
   --color-brand-burgundy: #96003C;
   --color-brand-burgundy-50: #fdf2f5;
   --color-brand-burgundy-100: #fbe5eb;
@@ -20,6 +37,7 @@
   --color-brand-burgundy-800: #7d0033;
   --color-brand-burgundy-900: #66002a;
 
+  /* ─── Gold (rule lines + tag accents) ──────────────────────────────────── */
   --color-brand-gold: #D2B487;
   --color-brand-gold-50: #fbf7ee;
   --color-brand-gold-100: #f4ecd5;
@@ -29,16 +47,109 @@
   --color-brand-gold-500: #b6814a;
   --color-brand-gold-600: #94633b;
 
-  --font-sans: system-ui, -apple-system, "Segoe UI", "Roboto", sans-serif;
+  /* ─── Heritage neutrals ────────────────────────────────────────────────── */
+  /* Paper backgrounds — warm off-whites. */
+  --color-paper:      #F5F1E8;  /* main page background */
+  --color-paper-100:  #FDFAF3;  /* card surface (one shade lighter than paper) */
+  --color-paper-200:  #F0EADD;  /* subtle row dividers, hover surface */
+  --color-paper-300:  #E7DFD0;  /* chip default fill */
+
+  /* Ink — charcoal-leaning, never pure black. */
+  --color-ink:        #2A2622;  /* primary text */
+  --color-ink-secondary: #5C534A;  /* muted body + meta lines */
+  --color-ink-tertiary:  #8A7F73;  /* captions, timestamps */
+
+  /* Rule / hairline */
+  --color-rule:       #DDD3BE;  /* default thin hairline (gold-ish, not stark gray) */
+  --color-rule-strong: #B89E72;  /* stronger rule for section break */
+
+  /* Status — kept restrained per editorial brief; no neon greens/reds. */
+  --color-status-warn-bg: #FDF3DC;
+  --color-status-warn-fg: #6A4E14;
+  --color-status-error-bg: #F7E0DF;
+  --color-status-error-fg: #6C1A18;
+  --color-status-ok-bg: #E6EBDF;
+  --color-status-ok-fg: #3D4A21;
+
+  /* ─── Fonts (loaded via next/font in layout.tsx) ────────────────────────── */
+  --font-sans: var(--font-inter), system-ui, -apple-system, "Segoe UI", "Roboto", sans-serif;
+  --font-display: var(--font-fraunces), "Iowan Old Style", Georgia, "Times New Roman", serif;
+
+  /* ─── Spacing scale (default Tailwind kept; only motion/radius adjusted) ─ */
+  --radius-card: 6px;    /* cards are minimally rounded — editorial-feel */
+  --radius-input: 4px;
+  --radius-pill: 9999px;
 }
 
 :root {
   color-scheme: light;
 }
 
-body {
-  background: #ffffff;
-  color: #111827;
+/* ─── Body defaults ────────────────────────────────────────────────────────── */
+
+html, body {
+  background: var(--color-paper);
+  color: var(--color-ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  /* Subtle paper-texture vignette — VERY restrained, just enough to give the
+   * page a tactile feel without crossing into kitsch. Pure CSS, no image. */
+  background-image:
+    radial-gradient(ellipse at top, rgba(255, 255, 255, 0.4) 0%, transparent 60%),
+    radial-gradient(ellipse at bottom, rgba(0, 0, 0, 0.02) 0%, transparent 60%);
+  background-attachment: fixed;
+}
+
+/* ─── Editorial typography defaults ────────────────────────────────────────── */
+
+h1, h2, h3 {
+  font-family: var(--font-display);
+  letter-spacing: -0.005em;
+  color: var(--color-ink);
+}
+
+h1 { font-weight: 500; }
+h2 { font-weight: 500; }
+h3 { font-weight: 500; }
+
+/* Small-caps section labels — Aesop-style. Use .label-eyebrow class. */
+.label-eyebrow {
+  font-family: var(--font-sans);
+  font-size: 0.6875rem;       /* 11px */
+  line-height: 1.2;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-ink-tertiary);
+}
+
+/* Decorative rule (under section title) */
+.rule-hairline {
+  border-top: 1px solid var(--color-rule);
+}
+
+.rule-gold {
+  border-top: 1px solid var(--color-brand-gold-400);
+}
+
+/* ─── Focus rings — slightly warmer than default Tailwind ──────────────────── */
+
+*:focus-visible {
+  outline: 2px solid var(--color-brand-burgundy-500);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* ─── Reduced-motion override for the motion@^12 animations ───────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

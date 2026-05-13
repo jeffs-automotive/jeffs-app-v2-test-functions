@@ -35,6 +35,16 @@ import { WaiterTimePicker } from "./WaiterTimePicker";
 import { NewCustomerForm } from "./NewCustomerForm";
 import { ConfirmationCard } from "./ConfirmationCard";
 import { EscalationCard } from "./EscalationCard";
+// Heritage Editorial cards (Chunk 6 — 2026-05-13). New directives route here.
+import {
+  AppointmentTypeCard,
+  ClarificationQuestionCard,
+  CustomerNotesCard,
+  CustomerQuestionCard,
+  PhoneNameCard,
+  SummaryCard,
+  TestingServiceApprovalCard,
+} from "./heritage";
 
 export interface ChatProps {
   chatId: string;
@@ -365,6 +375,150 @@ function PartRenderer({
       );
     }
 
+    // ─── Heritage Editorial cards (Chunk 6 directives — 2026-05-13) ─────────
+
+    case "show_phone_name_card": {
+      const stepLabel = typeof tp.input?.step_label === "string"
+        ? tp.input.step_label
+        : undefined;
+      return (
+        <PhoneNameCard
+          step_label={stepLabel}
+          disabled={disabled}
+          onSubmit={(out) => submit(out)}
+        />
+      );
+    }
+
+    case "show_clarification_question": {
+      const id = Number(tp.input?.question_id ?? 0);
+      const questionText = String(tp.input?.question_text ?? "");
+      const opts = Array.isArray(tp.input?.options)
+        ? (tp.input.options as Array<{ label: string; value: string }>)
+        : [];
+      const serviceKey = typeof tp.input?.service_key === "string"
+        ? tp.input.service_key
+        : undefined;
+      const category = typeof tp.input?.category === "string"
+        ? tp.input.category
+        : undefined;
+      if (id <= 0 || !questionText || opts.length === 0) return null;
+      return (
+        <ClarificationQuestionCard
+          question_id={id}
+          question_text={questionText}
+          options={opts}
+          service_key={serviceKey}
+          category={category}
+          disabled={disabled}
+          onSubmit={(out) => submit(out)}
+        />
+      );
+    }
+
+    case "show_testing_service_approval": {
+      const services = Array.isArray(tp.input?.services)
+        ? (tp.input.services as Array<{
+            service_key: string;
+            display_name: string;
+            starting_price_cents: number;
+            notes?: string | null;
+          }>)
+        : [];
+      const category = typeof tp.input?.category === "string"
+        ? tp.input.category
+        : undefined;
+      return (
+        <TestingServiceApprovalCard
+          services={services}
+          category={category}
+          disabled={disabled}
+          onSubmit={(out) => submit(out)}
+        />
+      );
+    }
+
+    case "show_appointment_type": {
+      const options = Array.isArray(tp.input?.options)
+        ? (tp.input.options as Array<{
+            type: "waiter" | "dropoff";
+            available: boolean;
+            unavailable_reason?: string;
+            earliest_hint?: string;
+          }>)
+        : [
+            { type: "waiter" as const, available: true },
+            { type: "dropoff" as const, available: true },
+          ];
+      return (
+        <AppointmentTypeCard
+          options={options}
+          disabled={disabled}
+          onSubmit={(out) => submit(out)}
+        />
+      );
+    }
+
+    case "show_customer_notes_card": {
+      const initial = typeof tp.input?.initial_text === "string"
+        ? tp.input.initial_text
+        : undefined;
+      return (
+        <CustomerNotesCard
+          initial_text={initial}
+          disabled={disabled}
+          onSubmit={(out) => submit(out)}
+        />
+      );
+    }
+
+    case "show_customer_question_card": {
+      return (
+        <CustomerQuestionCard
+          disabled={disabled}
+          onSubmit={(out) => submit(out)}
+        />
+      );
+    }
+
+    case "show_summary_card": {
+      const holdId = typeof tp.input?.hold_id === "string"
+        ? tp.input.hold_id
+        : undefined;
+      const holdExpiresAt = typeof tp.input?.hold_expires_at === "string"
+        ? tp.input.hold_expires_at
+        : undefined;
+      const startsAt = String(tp.input?.starts_at ?? "");
+      const customer = String(tp.input?.customer ?? "");
+      const vehicle = String(tp.input?.vehicle ?? "");
+      const aType = tp.input?.type === "waiter" ? "waiter" : "dropoff";
+      const services = Array.isArray(tp.input?.services)
+        ? (tp.input.services as Array<{
+            display_name: string;
+            kind: "routine" | "concern" | "testing";
+            starting_price_cents?: number;
+            notes?: string;
+          }>)
+        : [];
+      const reminders = Array.isArray(tp.input?.reminders)
+        ? (tp.input.reminders as string[])
+        : [];
+      return (
+        <SummaryCard
+          hold_id={holdId}
+          hold_expires_at={holdExpiresAt}
+          starts_at={startsAt}
+          customer={customer}
+          vehicle={vehicle}
+          type={aType}
+          services={services}
+          reminders={reminders}
+          disabled={disabled}
+          onSubmit={(out) => submit(out)}
+        />
+      );
+    }
+
     case "consult_orchestrator":
       // Server-side data tool — never rendered. Logged invisibly.
       return null;
@@ -430,6 +584,42 @@ function SubmittedEcho({
       break;
     case "show_escalation_card":
       text = "Acknowledged";
+      break;
+    case "show_phone_name_card": {
+      const fn = String((output as { first_name?: string }).first_name ?? "");
+      const ln = String((output as { last_name?: string }).last_name ?? "");
+      text = `${fn} ${ln}`.trim();
+      break;
+    }
+    case "show_clarification_question":
+      text = output.answer === "skipped"
+        ? "Skipped"
+        : `Answered: ${String(output.answer ?? "")}`;
+      break;
+    case "show_testing_service_approval": {
+      const approved = Array.isArray(output.approved)
+        ? (output.approved as string[])
+        : [];
+      const declined = Array.isArray(output.declined)
+        ? (output.declined as string[])
+        : [];
+      text =
+        approved.length > 0
+          ? `Approved ${approved.length} of ${approved.length + declined.length} testing services`
+          : "No testing services for now";
+      break;
+    }
+    case "show_appointment_type":
+      text = `Appointment type: ${String(output.appointment_type ?? "")}`;
+      break;
+    case "show_customer_notes_card":
+      text = output.text ? "Notes submitted" : "Skipped notes";
+      break;
+    case "show_customer_question_card":
+      text = output.question ? "Question sent" : "No questions";
+      break;
+    case "show_summary_card":
+      text = output.confirmed ? "Appointment confirmed ✓" : "Editing…";
       break;
     default:
       text = "Submitted";
