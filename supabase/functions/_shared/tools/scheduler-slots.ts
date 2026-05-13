@@ -36,12 +36,97 @@ import {
   type TekmetricPage,
 } from "../tekmetric-client.ts";
 
-// ─── Capacity constants (per design §5) ──────────────────────────────────────
+// ─── Capacity constants ──────────────────────────────────────────────────────
+//
+// 2026-05-13 audit fix: DB-driven capacity per appointment_default_limits
+// table (migration 20260513000100). The constants below are FALLBACKS
+// when the table is empty / missing a row for a day_of_week — they match
+// the design's original Phase 1 numbers but should never be the source of
+// truth in production. Use getCapacityLimits() below.
 
 const WAITER_TIMES = ["08:00", "09:00"] as const;
-const WAITER_CAPACITY_PER_TIME = 2;
-const DAILY_TOTAL_CAP = 35;
+const FALLBACK_WAITER_CAPACITY_PER_TIME = 2;
+const FALLBACK_DAILY_TOTAL_CAP = 35;
 const SHADOW_HORIZON_DAYS = 7;
+
+/**
+ * Per-day capacity limits, sourced from appointment_default_limits
+ * (DB-driven per spec) with constant fallbacks.
+ */
+interface CapacityLimits {
+  is_closed: boolean;
+  /** Max waiters at 08:00. Null = no row in DB → use fallback. */
+  waiter_8am_slots: number;
+  /** Max waiters at 09:00. */
+  waiter_9am_slots: number;
+  /** Total daily appointments cap (waiter + dropoff combined). */
+  dropoff_total: number;
+}
+
+/**
+ * Fetch appointment_default_limits for the shop, return a map keyed
+ * on day_of_week (0=Sunday..6=Saturday). Missing days fall back to the
+ * Phase-1 constants. One DB read per listAvailableSlots call.
+ */
+async function loadCapacityLimits(
+  sb: SupabaseClient,
+  shopId: number,
+): Promise<Map<number, CapacityLimits>> {
+  const map = new Map<number, CapacityLimits>();
+  try {
+    const { data, error } = await sb
+      .from("appointment_default_limits")
+      .select(
+        "day_of_week, is_closed, waiter_8am_slots, waiter_9am_slots, dropoff_total",
+      )
+      .eq("shop_id", shopId);
+    if (error) {
+      console.error(
+        `appointment_default_limits read failed for shop ${shopId}: ${error.message}. Falling back to constants.`,
+      );
+      return map;
+    }
+    for (const row of data ?? []) {
+      const dow = row.day_of_week as number;
+      if (typeof dow !== "number" || dow < 0 || dow > 6) continue;
+      map.set(dow, {
+        is_closed: Boolean(row.is_closed),
+        waiter_8am_slots:
+          (row.waiter_8am_slots as number | null) ??
+          FALLBACK_WAITER_CAPACITY_PER_TIME,
+        waiter_9am_slots:
+          (row.waiter_9am_slots as number | null) ??
+          FALLBACK_WAITER_CAPACITY_PER_TIME,
+        dropoff_total:
+          (row.dropoff_total as number | null) ?? FALLBACK_DAILY_TOTAL_CAP,
+      });
+    }
+  } catch (e) {
+    console.error(
+      `loadCapacityLimits exception for shop ${shopId}:`,
+      e instanceof Error ? e.message : String(e),
+    );
+  }
+  return map;
+}
+
+function limitsForDate(
+  date: string,
+  byDow: Map<number, CapacityLimits>,
+): CapacityLimits {
+  // day_of_week per Postgres convention (0=Sunday). JS Date.getUTCDay()
+  // returns the same 0-6 mapping. We use UTC since the date string is
+  // YYYY-MM-DD (no timezone) and dates here are shop-local-equivalent.
+  const dow = new Date(`${date}T12:00:00Z`).getUTCDay();
+  const row = byDow.get(dow);
+  if (row) return row;
+  return {
+    is_closed: false,
+    waiter_8am_slots: FALLBACK_WAITER_CAPACITY_PER_TIME,
+    waiter_9am_slots: FALLBACK_WAITER_CAPACITY_PER_TIME,
+    dropoff_total: FALLBACK_DAILY_TOTAL_CAP,
+  };
+}
 
 // ─── Tekmetric DTO subsets ───────────────────────────────────────────────────
 
@@ -159,6 +244,12 @@ export async function listAvailableSlots(
   if (blockErr) throw new Error(`appointment_blocks query failed: ${blockErr.message}`);
   const blocks = blockRows ?? [];
 
+  // DB-driven capacity limits per appointment_default_limits (audit fix
+  // 2026-05-13). Single read; map of day_of_week → { is_closed,
+  // waiter_8am, waiter_9am, dropoff_total }. Missing rows fall back to
+  // the Phase 1 constants defined at top of file.
+  const limitsByDow = await loadCapacityLimits(sb, shopId);
+
   // ─── Per-date capacity ───────────────────────────────────────────────────
   const available: Record<
     string,
@@ -174,7 +265,13 @@ export async function listAvailableSlots(
   ) {
     const date = ymd(cursor);
 
-    // Hard skips: closed (Sunday/holiday), full-day block
+    // Hard skips: closed (Sunday/holiday), full-day block, OR
+    // appointment_default_limits.is_closed=true for this day-of-week.
+    const dayLimits = limitsForDate(date, limitsByDow);
+    if (dayLimits.is_closed) {
+      available[date] = { waiter_times: [], dropoff_available: false };
+      continue;
+    }
     if (closedSet.has(date)) {
       available[date] = { waiter_times: [], dropoff_available: false };
       continue;
@@ -284,14 +381,18 @@ export async function listAvailableSlots(
       }
     }
 
-    const dailyCapHit = totalDayCount >= DAILY_TOTAL_CAP;
+    // Per-day, per-slot capacity from appointment_default_limits.
+    const dailyCapHit = totalDayCount >= dayLimits.dropoff_total;
     const openWaiterTimes = dailyCapHit
       ? []
-      : WAITER_TIMES.filter(
-          (t) =>
-            !blockedWaiterTimes.has(t) &&
-            (waiterCounts[t] ?? 0) < WAITER_CAPACITY_PER_TIME,
-        );
+      : WAITER_TIMES.filter((t) => {
+          if (blockedWaiterTimes.has(t)) return false;
+          const cap =
+            t === "08:00"
+              ? dayLimits.waiter_8am_slots
+              : dayLimits.waiter_9am_slots;
+          return (waiterCounts[t] ?? 0) < cap;
+        });
     const dropoffOk = !dropoffBlocked && !dailyCapHit;
 
     available[date] = {
@@ -442,9 +543,17 @@ export async function getSlotCapacity(
     reason: (b.reason ?? null) as string | null,
   }));
 
+  // DB-driven per-day capacity (audit fix 2026-05-13).
+  const limitsByDow = await loadCapacityLimits(sb, shopId);
+  const dayLimits = limitsForDate(date, limitsByDow);
+
   const waiterRemaining = slot.waiter_times.map((t) => ({
     time: t,
-    remaining: WAITER_CAPACITY_PER_TIME, // approximation — exact remaining requires another count
+    // Use the matched per-slot cap; exact remaining requires a per-slot
+    // count which the caller already has from listAvailableSlots if
+    // needed.
+    remaining:
+      t === "08:00" ? dayLimits.waiter_8am_slots : dayLimits.waiter_9am_slots,
   }));
 
   // Total remaining = day cap minus today's count (approximate via shadow)
@@ -461,8 +570,10 @@ export async function getSlotCapacity(
   return {
     date,
     waiter_remaining: waiterRemaining,
-    dropoff_remaining: slot.dropoff_available ? Math.max(0, DAILY_TOTAL_CAP - dayCount) : 0,
-    total_remaining: Math.max(0, DAILY_TOTAL_CAP - dayCount),
+    dropoff_remaining: slot.dropoff_available
+      ? Math.max(0, dayLimits.dropoff_total - dayCount)
+      : 0,
+    total_remaining: Math.max(0, dayLimits.dropoff_total - dayCount),
     blocks,
   };
 }
@@ -561,9 +672,12 @@ export async function holdAppointmentSlot(
   }
 
   // Drop-off path — Phase 1 simpler check (no dedicated RPC, but still
-  // race-tolerant via daily cap of 35; overbooking risk is bounded by the
-  // daily cap which we always check at confirm-time too).
-  if (tekmetricSlotCount >= DAILY_TOTAL_CAP) {
+  // race-tolerant via the day's dropoff_total cap from
+  // appointment_default_limits; overbooking risk is bounded by the daily
+  // cap which we always check at confirm-time too).
+  const limitsByDow = await loadCapacityLimits(sb, shopId);
+  const dayLimits = limitsForDate(date, limitsByDow);
+  if (tekmetricSlotCount >= dayLimits.dropoff_total) {
     throw new Error("slot_just_taken");
   }
   const { data: existingHolds } = await sb
@@ -574,7 +688,7 @@ export async function holdAppointmentSlot(
     .is("released_at", null)
     .gt("expires_at", new Date().toISOString());
   const holdCount = (existingHolds ?? []).length;
-  if (tekmetricSlotCount + holdCount >= DAILY_TOTAL_CAP) {
+  if (tekmetricSlotCount + holdCount >= dayLimits.dropoff_total) {
     throw new Error("slot_just_taken");
   }
 
