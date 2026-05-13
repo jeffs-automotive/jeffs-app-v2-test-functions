@@ -2143,24 +2143,51 @@ export async function submitSummaryConfirm(args: {
         : "PICKUP_DROPOFF";
 
     const startedAt = Date.now();
-    const confirmResult = await bookingConfirmBooking({
-      op: "confirm_booking",
+    await logAudit({
       session_id: args.chatId,
-      hold_id: String(confirmRow.hold_token),
-      customer_id:
-        typeof confirmRow.customer_id === "number"
-          ? confirmRow.customer_id
-          : undefined,
-      vehicle_id:
-        typeof confirmRow.vehicle_id === "number"
-          ? confirmRow.vehicle_id
-          : undefined,
-      title,
-      description,
-      appointment_option: apptOption,
-      new_customer: newCustomer,
-      new_vehicle: newVehicle,
+      step: "summary",
+      event_type: "pre_confirm_call",
+      event_detail: {
+        is_new_customer: isNewCustomer,
+        is_new_vehicle: isNewVehicle,
+        has_new_customer_data: !!newCustomer,
+        has_new_vehicle_data: !!newVehicle,
+        title_len: title.length,
+        description_len: description.length,
+        appointment_option: apptOption,
+        hold_id: String(confirmRow.hold_token),
+      },
     });
+    let confirmResult: Awaited<ReturnType<typeof bookingConfirmBooking>>;
+    try {
+      confirmResult = await bookingConfirmBooking({
+        op: "confirm_booking",
+        session_id: args.chatId,
+        hold_id: String(confirmRow.hold_token),
+        customer_id:
+          typeof confirmRow.customer_id === "number"
+            ? confirmRow.customer_id
+            : undefined,
+        vehicle_id:
+          typeof confirmRow.vehicle_id === "number"
+            ? confirmRow.vehicle_id
+            : undefined,
+        title,
+        description,
+        appointment_option: apptOption,
+        new_customer: newCustomer,
+        new_vehicle: newVehicle,
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      await logAudit({
+        session_id: args.chatId,
+        step: "summary",
+        event_type: "confirm_threw",
+        event_detail: { error: msg.slice(0, 500) },
+      });
+      throw e;
+    }
     await logAudit({
       session_id: args.chatId,
       step: "summary",
