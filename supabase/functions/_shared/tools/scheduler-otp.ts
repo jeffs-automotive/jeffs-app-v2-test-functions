@@ -80,36 +80,179 @@ function bytesToHex(b: Uint8Array): string {
   );
 }
 
+// ─── Telnyx SMS send ─────────────────────────────────────────────────────────
+//
+// Telnyx Messaging API per https://developers.telnyx.com/api-reference/messages.
+//   - POST https://api.telnyx.com/v2/messages
+//   - Auth: Authorization: Bearer ${TELNYX_API_KEY}
+//   - Body: { from, to, text, messaging_profile_id? }
+//   - 200 response: { data: { id, to: [{ status }], ... } }
+//   - Status "queued" = accepted into Telnyx's pipeline; delivery status
+//     comes asynchronously via webhook (we'll wire that in a follow-up).
+//
+// Env-driven provider selection (lock 2026-05-13):
+//   - SMS_PROVIDER='telnyx' (or unset; Telnyx is the default when API key
+//     is present) → real send via Telnyx
+//   - SMS_PROVIDER='stub' → no-op log only (dev path; read otp_codes row
+//     to read the code)
+//   - SMS_PROVIDER='disabled' → reject sends explicitly
+
+interface SendOtpResult {
+  ok: boolean;
+  provider_message_id?: string;
+  /** Provider-side status (e.g. "queued"). Set on success. */
+  provider_status?: string;
+  /** Error code for our internal taxonomy. Set on failure. */
+  error_code?: "auth" | "invalid_number" | "rate_limit" | "provider_error" | "network" | "config";
+  /** Free-form detail safe to log (no secrets). */
+  detail?: string;
+}
+
+function buildOtpMessageText(code: string): string {
+  // Keep under 160 chars to stay one SMS segment (cheaper + delivers faster).
+  // 10DLC OTP/transactional messages are exempt from STOP-handling reminders
+  // per Telnyx's compliance docs, so we skip "Reply STOP" to keep length short.
+  return `Jeff's Automotive: Your verification code is ${code}. Expires in 5 minutes. Don't share this code.`;
+}
+
+async function sendViaTelnyx(
+  phoneE164: string,
+  code: string,
+): Promise<SendOtpResult> {
+  const apiKey = Deno.env.get("TELNYX_API_KEY");
+  const fromNumber = Deno.env.get("TELNYX_FROM_NUMBER");
+  const messagingProfileId = Deno.env.get("TELNYX_MESSAGING_PROFILE_ID"); // optional
+
+  if (!apiKey) {
+    return {
+      ok: false,
+      error_code: "config",
+      detail: "TELNYX_API_KEY missing in edge secrets",
+    };
+  }
+  if (!fromNumber) {
+    return {
+      ok: false,
+      error_code: "config",
+      detail: "TELNYX_FROM_NUMBER missing in edge secrets",
+    };
+  }
+
+  const body: Record<string, unknown> = {
+    from: fromNumber,
+    to: phoneE164,
+    text: buildOtpMessageText(code),
+  };
+  if (messagingProfileId) body.messaging_profile_id = messagingProfileId;
+
+  let res: Response;
+  try {
+    res = await fetch("https://api.telnyx.com/v2/messages", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(15_000), // hard 15s cap; Telnyx normally ~300ms
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, error_code: "network", detail: msg.slice(0, 200) };
+  }
+
+  // Read once; non-200 responses include errors[] per Telnyx's standard envelope.
+  let json: unknown;
+  try {
+    json = await res.json();
+  } catch {
+    json = null;
+  }
+
+  if (!res.ok) {
+    const errorCode: SendOtpResult["error_code"] =
+      res.status === 401 || res.status === 403
+        ? "auth"
+        : res.status === 422
+          ? "invalid_number"
+          : res.status === 429
+            ? "rate_limit"
+            : "provider_error";
+    return {
+      ok: false,
+      error_code: errorCode,
+      detail: `telnyx HTTP ${res.status}: ${JSON.stringify(json).slice(0, 300)}`,
+    };
+  }
+
+  const payload = json as {
+    data?: { id?: string; to?: Array<{ status?: string }> };
+  };
+  const providerMessageId = payload.data?.id;
+  const providerStatus = payload.data?.to?.[0]?.status ?? "queued";
+
+  console.log(
+    JSON.stringify({
+      level: "info",
+      msg: "send_otp_telnyx_ok",
+      provider_message_id: providerMessageId,
+      provider_status: providerStatus,
+      to_last_four: phoneE164.slice(-4),
+    }),
+  );
+
+  return {
+    ok: true,
+    provider_message_id: providerMessageId,
+    provider_status: providerStatus,
+  };
+}
+
 /**
- * Send the OTP via the configured SMS provider. STUBBED for Phase 1 pending
- * Chris's SMS-provider decision per scheduler_project_state.md "SMS provider
- * TBD" section.
+ * Dispatch the OTP to the configured SMS provider.
  *
- * When the provider is locked, replace this body with the actual outbound
- * call. The `send_otp` tool itself + everything around it is provider-
- * agnostic and won't change.
+ * Selection: explicit `SMS_PROVIDER` env wins; otherwise we auto-detect
+ * (TELNYX_API_KEY present → telnyx; else stub).
  */
 async function sendOtpViaSmsProvider(
-  _phoneE164: string,
-  _code: string,
-): Promise<{ ok: true; provider_message_id?: string }> {
-  // STUB — no real send for Phase 1 testing.
-  // For dev verification, the scheduler operator can read the most recent
-  // active otp_code row from the otp_codes table directly to retrieve
-  // the code (only viable while the SMS provider is unset).
-  const stubProvider = Deno.env.get("SMS_PROVIDER") ?? "stub";
-  if (stubProvider === "stub") {
+  phoneE164: string,
+  code: string,
+): Promise<SendOtpResult> {
+  const explicit = Deno.env.get("SMS_PROVIDER")?.toLowerCase();
+  const hasTelnyx = !!Deno.env.get("TELNYX_API_KEY");
+  const provider = explicit ?? (hasTelnyx ? "telnyx" : "stub");
+
+  if (provider === "stub") {
     console.log(
       JSON.stringify({
-        level: "info",
+        level: "warning",
         msg: "send_otp_stub",
-        note: "SMS provider unset — code persisted to otp_codes. Read row directly during dev.",
+        note:
+          "SMS_PROVIDER=stub — no real send. Read otp_codes row to retrieve code.",
+        to_last_four: phoneE164.slice(-4),
       }),
     );
     return { ok: true, provider_message_id: "stub-no-send" };
   }
-  // Future: branch on SMS_PROVIDER env to call telnyx / voip-co / etc.
-  throw new Error(`unknown_sms_provider: ${stubProvider}`);
+
+  if (provider === "disabled") {
+    return {
+      ok: false,
+      error_code: "config",
+      detail: "SMS_PROVIDER=disabled",
+    };
+  }
+
+  if (provider === "telnyx") {
+    return sendViaTelnyx(phoneE164, code);
+  }
+
+  return {
+    ok: false,
+    error_code: "config",
+    detail: `unknown_sms_provider: ${provider}`,
+  };
 }
 
 // ─── Tool functions ──────────────────────────────────────────────────────────
@@ -145,28 +288,51 @@ export async function sendOtp(
   const salt = generateSalt();
   const codeHash = await sha256(salt, code);
 
-  const { error } = await sb.from("otp_codes").insert({
-    shop_id: shopId,
-    phone_e164: args.phone_e164,
-    code_hash: bytesToHex(codeHash),
-    salt: bytesToHex(salt),
-    expires_at: new Date(Date.now() + OTP_TTL_MIN * 60_000).toISOString(),
-    ip_addr: args.ip_addr ?? null,
-  });
-  if (error) {
+  const { data: insertedRow, error } = await sb
+    .from("otp_codes")
+    .insert({
+      shop_id: shopId,
+      phone_e164: args.phone_e164,
+      code_hash: bytesToHex(codeHash),
+      salt: bytesToHex(salt),
+      expires_at: new Date(Date.now() + OTP_TTL_MIN * 60_000).toISOString(),
+      ip_addr: args.ip_addr ?? null,
+    })
+    .select("id")
+    .single();
+  if (error || !insertedRow) {
     return {
       ok: false,
       error: "send_failed",
-      detail: `otp_codes insert: ${error.message}`,
+      detail: `otp_codes insert: ${error?.message ?? "unknown"}`,
     };
   }
 
   const sendResult = await sendOtpViaSmsProvider(args.phone_e164, code);
   if (!sendResult.ok) {
-    // (We never set ok=false today — the stub always returns ok. Future:
-    // when real SMS is wired, mark the code consumed_at if send fails so
-    // the customer doesn't burn an attempt slot.)
-    return { ok: false, error: "send_failed" };
+    // Real-send failure: mark the row consumed so it doesn't count against
+    // the rate-limit window AND so a retry triggers a fresh code generation
+    // rather than letting the customer try to verify against an undelivered
+    // code. The customer (or chat agent) is told to retry via the
+    // 'send_failed' error.
+    await sb
+      .from("otp_codes")
+      .update({ consumed_at: new Date().toISOString() })
+      .eq("id", insertedRow.id as string);
+    console.error(
+      JSON.stringify({
+        level: "error",
+        msg: "send_otp_provider_failed",
+        provider_error_code: sendResult.error_code,
+        detail: sendResult.detail,
+        to_last_four: args.phone_e164.slice(-4),
+      }),
+    );
+    return {
+      ok: false,
+      error: "send_failed",
+      detail: sendResult.detail,
+    };
   }
 
   return {
