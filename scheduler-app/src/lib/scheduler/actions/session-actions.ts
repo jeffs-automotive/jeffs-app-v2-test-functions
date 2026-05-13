@@ -2872,6 +2872,12 @@ export async function submitStartOver(args: {
         edited_address: null,
         primary_email_for_description: null,
         new_vehicle_info: null,
+        // Identity bindings — clear so a "Start Over" truly starts fresh
+        // (otherwise stale customer_id / vehicle_id from a prior session
+        // would skip the Step 4 / Step 5 creation flow).
+        customer_id: null,
+        vehicle_id: null,
+        appointment_id: null,
         selected_simple_services: null,
         explanation_required_items: null,
         diagnostic_processing_complete: false,
