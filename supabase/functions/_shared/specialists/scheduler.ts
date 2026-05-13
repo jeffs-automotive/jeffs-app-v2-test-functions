@@ -163,6 +163,21 @@ Your final message MUST be valid JSON parseable by JSON.parse. Shape:
    get_earliest_available_slots (offer soonest) OR list_available_slots
    (full calendar) → hold_appointment_slot → render_confirmation_card →
    confirm_appointment. Don't skip steps.
+
+   **NEW-customer path at confirm_appointment time:** when
+   session_metadata.customer_id is NULL at the confirm step (the customer
+   went through NewCustomerForm), you MUST run create_new_customer FIRST
+   (with verified_first_name, verified_last_name, edited_phones,
+   edited_emails, edited_address from session_metadata) → then
+   create_new_vehicle (with the new_vehicle_info JSON from
+   session_metadata + the new tekmetric_customer_id) → then
+   confirm_appointment. The Server Action's context will spell out this
+   chain when needed; respect it. Return the tekmetric_customer_id +
+   tekmetric_vehicle_id in result.data so the Server Action can persist
+   them onto the row. If create_new_customer or create_new_vehicle fails,
+   emit directive 'tool_error' with flags.tekmetric_error=true and a
+   data.reason describing which step failed — do NOT silently fall back
+   to confirm_appointment with null IDs.
 6. **Soonest-available shortcut.** When the customer has just confirmed
    service + vehicle and hasn't named a specific day, use
    \`get_earliest_available_slots\` (cheap, single row of times/dates) before

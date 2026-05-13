@@ -1129,11 +1129,73 @@ export async function submitSummaryConfirm(args: {
     }
 
     // Customer confirmed → invoke orchestrator confirm_appointment.
+    //
+    // For NEW customers, the Tekmetric customer + vehicle records don't
+    // exist yet — submitNewCustomer / submitNewVehicle only wrote the
+    // session row's verified_*, new_vehicle_info, edited_emails, etc. Per
+    // chat-design.md §10 + audit I-5, the orchestrator's confirm_appointment
+    // path must call create_new_customer + create_new_vehicle FIRST (before
+    // the appointment POST). The specialist now sees the new-customer
+    // signals in sessionMetadata (per F12 widen-SELECT fix) — we wire the
+    // explicit tool chain in the context so it knows what to do without
+    // having to infer it.
+    const supabaseConfirm = createSupabaseAdminClient();
+    const { data: confirmRow } = await supabaseConfirm
+      .from("customer_chat_sessions")
+      .select("customer_id, vehicle_id, new_vehicle_info")
+      .eq("id", args.chatId)
+      .maybeSingle();
+
+    const isNewCustomer = !confirmRow?.customer_id;
+    const isNewVehicle = !confirmRow?.vehicle_id && !!confirmRow?.new_vehicle_info;
+
+    const confirmContext = isNewCustomer
+      ? `Customer confirmed the summary. This is a NEW customer (session_metadata.customer_id is null). Tool chain:\n` +
+        `  1. create_new_customer({\n` +
+        `       first_name: session_metadata.verified_first_name,\n` +
+        `       last_name: session_metadata.verified_last_name,\n` +
+        `       phones: session_metadata.edited_phones (array, has primary flag),\n` +
+        `       emails: session_metadata.edited_emails (array, has primary flag),\n` +
+        `       address: session_metadata.edited_address (may be null in vehicle-only mode),\n` +
+        `     })\n` +
+        `     → returns { tekmetric_customer_id }\n` +
+        `  2. create_new_vehicle({\n` +
+        `       tekmetric_customer_id: <from step 1>,\n` +
+        `       ...session_metadata.new_vehicle_info (year, make, model, sub_model?, vin?, license_plate?, state?),\n` +
+        `     })\n` +
+        `     → returns { tekmetric_vehicle_id }\n` +
+        `  3. confirm_appointment({\n` +
+        `       customer_id: <step 1 result>,\n` +
+        `       vehicle_id: <step 2 result>,\n` +
+        `       ...appointment + services from session_metadata,\n` +
+        `     })\n` +
+        `  4. Emit 'appointment_booked' with the appointment_id + starts_at.\n` +
+        `  If create_new_customer or create_new_vehicle fails → emit 'tool_error'\n` +
+        `  with reason='tekmetric_create_failed' and the underlying error message.`
+      : isNewVehicle
+        ? `Customer confirmed the summary. Returning customer adding a NEW vehicle. Tool chain:\n` +
+          `  1. create_new_vehicle({\n` +
+          `       tekmetric_customer_id: session_metadata.customer_id,\n` +
+          `       ...session_metadata.new_vehicle_info,\n` +
+          `     })\n` +
+          `  2. confirm_appointment with the resulting vehicle_id.\n` +
+          `  3. Emit 'appointment_booked' on success.`
+        : `Customer confirmed the summary. Both customer + vehicle exist in Tekmetric. Tool chain:\n` +
+          `  1. confirm_appointment({\n` +
+          `       customer_id: session_metadata.customer_id,\n` +
+          `       vehicle_id: session_metadata.vehicle_id,\n` +
+          `       ...appointment + services from session_metadata,\n` +
+          `     })\n` +
+          `  2. Emit 'appointment_booked' on success.`;
+
     const startedAt = Date.now();
     const result = await consultOrchestrator({
       session_id: args.chatId,
-      context: `Customer confirmed the summary. Book the appointment.`,
-      hints: {},
+      context: confirmContext,
+      hints: {
+        new_customer_flow: isNewCustomer,
+        new_vehicle_flow: isNewVehicle,
+      },
       intent_type: "confirm_appointment",
     });
     await logAudit({
@@ -1145,9 +1207,34 @@ export async function submitSummaryConfirm(args: {
     });
 
     if (result.directive === "appointment_booked") {
+      // Capture any newly-created Tekmetric IDs the orchestrator returned
+      // (per the I-5 fix, new-customer + new-vehicle flows go through
+      // create_new_customer + create_new_vehicle BEFORE confirm_appointment
+      // and the specialist passes the resulting Tekmetric IDs back in
+      // result.data). Write them onto the row so downstream reads (audit,
+      // resume, future post-appointment follow-up) have the IDs.
+      const updates: Record<string, unknown> = {
+        appointment_confirmed_at: new Date().toISOString(),
+      };
+      const data = (result.data ?? {}) as Record<string, unknown>;
+      if (
+        isNewCustomer &&
+        typeof data.tekmetric_customer_id === "number"
+      ) {
+        updates.customer_id = data.tekmetric_customer_id;
+      }
+      if (
+        (isNewCustomer || isNewVehicle) &&
+        typeof data.tekmetric_vehicle_id === "number"
+      ) {
+        updates.vehicle_id = data.tekmetric_vehicle_id;
+      }
+      if (typeof data.tekmetric_appointment_id === "number") {
+        updates.appointment_id = data.tekmetric_appointment_id;
+      }
       await writeSession({
         chatId: args.chatId,
-        updates: { appointment_confirmed_at: new Date().toISOString() },
+        updates,
         nextStep: "customer_notes",
       });
       return {
