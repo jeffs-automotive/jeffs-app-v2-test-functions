@@ -1,260 +1,124 @@
-// Orchestrator agent.
+// Unified orchestrator.
 //
-// Receives a user intent (free-form string from Claude Desktop / Haiku),
-// runs Vercel AI SDK's generateText with the orchestrator system prompt
-// and the registered tool catalog, and returns a structured JSON response
-// for Claude Desktop to format.
+// ONE entry point — `runOrchestrator(sb, shopId, input)` — for both:
+//   - Claude Desktop advisor path (orchestrator-mcp → caller_context='advisor')
+//   - scheduler-app customer path (orchestrator-direct → caller_context='customer')
 //
-// Pattern: Claude Desktop (cheap chat) → MCP `run_orchestrator` tool
-// → this function → smart model w/ tools → JSON back to Claude Desktop
-// → Haiku formats it for the user.
+// The architecture (Chunk 2 build-out 2026-05-13):
 //
-// Logging: every run writes to public.orchestrator_runs + public.agent_calls
-// (the LLM call) + public.tool_calls (each tool invocation, via the recorder).
+//   orchestrator-mcp           orchestrator-direct
+//        │                              │
+//        ▼                              ▼
+//   runOrchestrator(input with caller_context)
+//        │
+//        ▼
+//   orchestrator-router.ts  ── classify (LLM or intent_type short-circuit) ──┐
+//        │                                                                  │
+//        ▼                                                                  │
+//   ALLOWED_BY_CONTEXT gate (refuses keytag for customer)                    │
+//        │                                                                  │
+//        ▼                                                                  │
+//   specialists/{keytag|scheduler|diagnostic}.ts ─── generateText + tools ───┘
+//        │
+//        ▼
+//   { ok, run_id, answer?, directive?, data?, flags?, meta }
+//
+// Replaces the old separate _shared/orchestrator.ts (keytag-only) +
+// _shared/scheduler-orchestrator.ts (scheduler-only). Per Chris's directive
+// 2026-05-13: "I was under the impression we were using one orchestrator. For
+// key tags scheduling and future additions..."
+//
+// Run-row logging: ALL paths log to public.orchestrator_runs + public.agent_calls
+// + public.tool_calls. The specialist files return raw agent results; this
+// file owns the persistence + meta-shape.
 
-// AI SDK pinned at v5 — see .claude/memory/ai_sdk_and_models.md for rationale.
-// `ai@^5` pairs with `@ai-sdk/anthropic@^2`. Do NOT bump to v6 / v3 until issue
-// vercel/ai #12020 (empty input_schema on zod tools w/ Anthropic) closes.
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
-import { generateText, stepCountIs } from "npm:ai@^5";
-import { anthropic } from "npm:@ai-sdk/anthropic@^2";
 
 import {
-  getOrchestratorTools,
   makeToolCallRecorder,
+  type ToolCallRecorder,
 } from "./orchestrator-tools.ts";
+import {
+  type CallerContext,
+  DEFAULT_SPECIALIST,
+  type OrchestratorResultMeta,
+  type SpecialistName,
+} from "./orchestrator-types.ts";
+import { routeToSpecialist } from "./orchestrator-router.ts";
+import {
+  runKeytagSpecialist,
+  type KeytagSpecialistResult,
+} from "./specialists/keytag.ts";
+import {
+  runSchedulerSpecialist,
+  type SchedulerSpecialistResult,
+} from "./specialists/scheduler.ts";
+import {
+  runDiagnosticSpecialist,
+  type DiagnosticSpecialistResult,
+} from "./specialists/diagnostic.ts";
 
-// Default model per Anthropic's current line (May 2026 — verified at
-// platform.claude.com/docs/en/about-claude/models/overview). NOT 4.5 (deprecated)
-// and NOT 4.7 (4.7 only exists for Opus, not Sonnet).
-const DEFAULT_MODEL = "claude-sonnet-4-6";
-const MAX_STEPS = 5;        // hard cap on tool-call rounds — protection against runaway loops
-const MAX_TOKENS = 2048;    // hard cap on the orchestrator's output tokens per run
+// ─── Input + result types ────────────────────────────────────────────────────
 
 export interface OrchestratorInput {
-  intent: string;
+  /** Who is calling — gates allowed specialists. REQUIRED. */
+  caller_context: CallerContext;
+
+  // ─── Advisor-path fields (caller_context='advisor') ────────────────────────
+  /** Free-form intent (advisor's natural-language request via Claude Desktop). */
+  intent?: string;
+  /** OAuth-bound identity for audit attribution. */
+  user_label?: string;
+  /** Optional structured params from MCP tools/call arguments. */
   params?: Record<string, unknown>;
-  /** Free-form label identifying the team member (Phase 1 — replaces team_member FK). */
-  user_label: string;
+
+  // ─── Customer-path fields (caller_context='customer') ──────────────────────
+  /** UUID of the customer_chat_sessions row this run is scoped to. */
+  session_id?: string;
+  /** Chat agent's plain-English summary of the conversation context. */
+  context?: string;
+  /** Optional structured hints (phone, customer_id, vehicle_id, picked services, …). */
+  hints?: Record<string, unknown>;
+
+  // ─── Routing hints (either caller_context) ─────────────────────────────────
+  /** Structured intent hint that short-circuits the router LLM call.
+   *  See INTENT_TYPE_TO_SPECIALIST in orchestrator-types.ts. */
+  intent_type?: string;
+  /** When true, exposes admin tools to the scheduler specialist (block/unblock
+   *  capacity, upsert services, upload MDs). Only honored when
+   *  caller_context='advisor'. */
+  include_admin_tools?: boolean;
+  /** Audit info for admin tool calls; required when include_admin_tools=true. */
+  admin_audit?: { oauth_client_id: string; display_name: string };
 }
 
 export interface OrchestratorResult {
   ok: boolean;
   run_id: string;
-  /** Final natural-language answer the orchestrator wrote. Claude Desktop renders this. */
-  answer: string;
-  /** Structured tool-result data the orchestrator pulled, for Claude Desktop to optionally format more richly. */
-  data: unknown[];
-  meta: {
-    model: string;
-    tools_called: string[];
-    total_tokens_in: number;
-    total_tokens_out: number;
-    latency_ms: number;
-    steps: number;
-  };
+
+  // ─── Specialist-shaped output (at most one is set) ─────────────────────────
+  /** Keytag specialist: natural-language answer for Claude Desktop. */
+  answer?: string;
+  /** Scheduler/diagnostic specialist: structured directive for the chat agent. */
+  directive?: string;
+
+  // ─── Common payloads ───────────────────────────────────────────────────────
+  /** Specialist-dependent payload. For keytag: array of {tool, output}. For
+   *  scheduler/diagnostic: structured data fields. */
+  data?: unknown;
+  /** Optional flags the caller branches on (tekmetric_error, slot_just_taken, …). */
+  flags?: Record<string, unknown>;
+
+  meta: OrchestratorResultMeta;
   error?: string;
 }
 
-/**
- * Builds the system prompt with the CURRENT UTC datetime injected. The model
- * needs this for any relative-time arithmetic (e.g. converting "last 7 days"
- * to an ISO `since` value when calling getKeytagAuditHistory). Without it,
- * the model falls back to its training cutoff and produces wrong dates.
- */
-function buildSystemPrompt(): string {
-  const nowIso = new Date().toISOString();
-  const todayEastern = new Date().toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-    timeZone: "America/New_York",
-  });
-  return SYSTEM_PROMPT_TEMPLATE
-    .replace("{NOW_ISO}", nowIso)
-    .replace("{TODAY_EASTERN}", todayEastern);
-}
+// ─── Defaults + constants ────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT_TEMPLATE = `You are the orchestrator agent for Jeff's Automotive's chat assistant.
+const ADVISOR_SESSION_WINDOW_MIN = 30;
+const CUSTOMER_SESSION_WINDOW_MIN = 30;
 
-CURRENT DATETIME (injected at request time):
-- Now (UTC):       {NOW_ISO}
-- Today (Eastern): {TODAY_EASTERN}
-Whenever you compute a relative time like "last 7 days" or "yesterday",
-USE THE ABOVE values. Do not fall back to training-data dates.
-
-Your job:
-1. Receive a user intent (a question or request, in free-form language).
-2. Decide which tool(s) — if any — to call to answer it.
-3. Call them. You may call tools in parallel when independent.
-4. Compose a concise, factual answer from the tool results.
-5. Return a clear, natural-language answer that Claude Desktop's chat agent will deliver to the user verbatim.
-
-Tool inventory:
-- listWipKeyTags            (READ)  list every in-use tag (WIP + A/R)
-- whoIsOnTag                (READ)  which RO has a specific (color, number) — returns customer name + vehicle Y/M/M
-- assignKeytagToRo          (WRITE) put a tag on an RO (specific or auto round-robin)
-- releaseKeytagFromRo       (WRITE) free a tag from an RO + clear in Tekmetric
-- revertKeytagToAssigned    (WRITE) flip a posted_ar tag back to assigned (manual A/R un-post)
-- markKeytagPosted          (WRITE) mark a tag posted_ar (manual sent-to-A/R override)
-- runBulkReconcile          (WRITE) on-demand keytag-bulk-reconcile run (refreshes the pool)
-- getKeytagAuditHistory     (READ)  who-did-what audit log; defaults to last 24h
-- lookupManualReview        (READ)  look up the situation + options for a 6-char review code from an email
-- resolveManualReview       (WRITE) apply the advisor's choice for a 6-char review code; the code IS pre-approval
-
-Decision rules (apply in order):
-- If you can answer directly without a tool, do not call one. Token-efficient is the goal.
-- For ANY "who has Red 5" / "which RO has Yellow 45" / "tell me about Red 7" / "what car is on tag X" — whoIsOnTag.
-- For "list all active key tags" / "what's in the shop" — listWipKeyTags.
-- For "put red 5 on RO 152222" / "give RO 152222 a tag" — assignKeytagToRo.
-- For "release the tag from RO 152222" / "keys are off RO 152300" — releaseKeytagFromRo.
-- For "put RO X back to WIP, customer didn't actually pay" / "un-post RO X" — revertKeytagToAssigned.
-- For "manually mark RO X as A/R" (rare — webhook does this normally) — markKeytagPosted.
-- For "refresh the keytag pool" / "run reconcile now" — runBulkReconcile.
-- For "who released Red 5 yesterday" / "what did mike do today" / "audit / history" — getKeytagAuditHistory.
-- For "code ABC-XXXXXX" or "I got an email about <prefix>-XXXXXX" — lookupManualReview first if no choice given;
-  resolveManualReview when the advisor names the code + their choice (e.g. "code ORP-A4B72C option release").
-
-Color-coded key tags: the shop uses 90 RED tags (Red 1 - Red 90) and 90 YELLOW tags (Yellow 1 - Yellow 90).
-Always describe tags as "Red 5" or "Yellow 45" in user-facing text — never the wire format (R5/Y45) and
-never just a bare number.
-
-Write-tool safety:
-- Never invent the ro_number or tag color/number. If the user is ambiguous ("assign a tag to that RO"),
-  ask which RO they mean.
-- For specific assignments, ALWAYS pass both color and tag_number. Never pass just a number.
-- If the user says "give RO X a tag" without specifying, OMIT color and tag_number — round-robin picks one.
-- Surface error messages from write tools verbatim (tag_in_use_by_other_ro, ro_already_has_tag, pool_exhausted).
-  Don't paraphrase them or hide them; the advisor needs to know.
-- After a successful write, confirm the action concretely: "Assigned Red 5 to RO 152222." Include the ro_url.
-
-MANUAL REVIEW CODES (out-of-band human resolution) — CRITICAL:
-The system sometimes detects situations it cannot safely auto-resolve (e.g., a tag was assigned
-to an RO that Tekmetric says was deleted, or a tag was already released when the RO came back from
-A/R). When this happens, the system emails the service team with a 6-character code and a set of
-options. Format examples: \`ORP-A4B72C\`, \`DRF-K7M3N9\`, \`REG-X2P8Q5\`, \`ARN-H4J6L2\`, \`PAF-G9R3T7\`.
-
-Category prefixes:
-- ORP — orphan release (a tagged RO is gone from Tekmetric)
-- DRF — drift on work approval (RO has prior keytag history but no current tag)
-- REG — A/R regression (A/R RO came back to WIP, tag was already released)
-- ARN — A/R with no prior tag (A/R RO has no tag in our system)
-- PAF — Tekmetric write failure (we assigned a tag but Tekmetric refused to record it)
-
-How to handle code-related intents:
-1. **Code only, no choice yet** — e.g., "I got an email with code ORP-A4B72C" or "code ARN-X3K9P2".
-   → Call \`lookupManualReview(code)\`. Present the issue_summary + options in a clean format. Ask the
-     advisor which option they want.
-2. **Code + choice** — e.g., "code ORP-A4B72C option release" / "ORP-A4B72C option a" / "resolve DRF-K7M3N9 with use_prior_tag".
-   → Call \`resolveManualReview(code, choice, ...)\` directly. The option may be referenced by:
-     - The key name (the canonical identifier, e.g. "release", "keep_tag", "track_tag", "use_prior_tag",
-       "use_different_tag", "assign_new", "no_tag", "retry_patch", "release_and_redo", "accept_unsynced",
-       "escalate_chris")
-     - A letter (a/b/c) — map to the position in the options list FROM lookupManualReview. If you
-       don't yet know the list, call \`lookupManualReview\` first to map letter→key.
-3. **Choice needs a tag** — some options have \`needs_tag_input: true\` (e.g., "track_tag" on ARN,
-   "use_different_tag" on DRF). The advisor's intent will include the tag — "code ARN-X3K9P2 option
-   track_tag red 5". Pass \`color="red"\` and \`tag_number=5\` along with \`choice\`. If the advisor
-   picks a needs-tag-input option but doesn't name a tag, ASK: "Which tag is on the keys? (Red or Yellow,
-   1-90)."
-
-Authority: the 6-character code IS the pre-approval. The advisor receiving the email is presumed
-authorized; once they enter the code + choice, the resolve tool applies the action immediately. Do
-NOT additionally trigger the UUID confirmation-token flow (that's for in-chat sensitive actions like
-"release Red 5 from RO 152442" with no prior code).
-
-After resolving a code, relay the tool's \`message\` field verbatim to the advisor. It tells them
-exactly what changed. If the resolution fails (\`failure_reason\`: code_not_found, already_resolved,
-lockout_active, choice_requires_tag_input, etc.), surface that plainly so they know what to do next.
-
-TWO-STEP CONFIRMATION FOR SENSITIVE OPERATIONS — CRITICAL:
-The following tools may return \`{ok:false, needs_confirmation:true, confirmation:{token_id, scope_summary, expires_at, action_kind}}\`
-on their FIRST call. This is the system's A/R-lockdown + force-assign gate. When you see this response:
-
-  1. DO NOT immediately re-call the tool in the same run with the token. The confirmation MUST come from
-     the human user in a separate turn. Return the confirmation request as your answer.
-  2. Your answer should include:
-     - The scope_summary VERBATIM (this is what the system will execute on confirmation)
-     - The token_id (so the user / Claude Desktop can reference it on the next turn)
-     - A clear yes/no question: "Reply 'yes, confirm <token_id>' (or simply 'yes') to proceed."
-     - The expiry time: "This token expires in 5 minutes."
-  3. Example response when releaseKeytagFromRo returns needs_confirmation:
-     "⚠️ Confirmation required: Release A/R key tag from RO #152407 (currently in posted_ar status).
-      Red 4 will return to the available pool.
-      Reply 'yes, confirm a1b2c3d4-…' (or just 'yes') to proceed. Expires at 2026-05-11T19:30:00Z."
-
-When the user's NEXT message confirms (e.g. "yes", "yes confirm", "do it"), the run_orchestrator call's
-intent string SHOULD include enough context (Claude Desktop carries prior-turn context) so you can:
-  - Identify the same operation (same ro_number + same tag + same action)
-  - Find the confirmation token (from Claude Desktop's relay, or from the user's reply)
-  - Re-call the SAME tool with confirmation_token=<token_id>
-If the user simply says "yes" with no token visible in the intent, the orchestrator-mcp tool wrapping
-should be passing the prior turn's context — but if you cannot find the token, ASK: "I need the
-confirmation token from the previous step. Can you re-state the request with the token included?"
-
-If the consume returns "confirmation_failed" with reason "token_expired", tell the user the token
-expired and ask them to re-state the original request to get a new token. If the reason is
-"scope_hash_mismatch", that means the user's confirmed scope doesn't match what they originally
-requested — this is a security boundary; REFUSE and ask the user to re-state from scratch.
-
-WHICH OPERATIONS REQUIRE CONFIRMATION:
-- releaseKeytagFromRo on a tag in posted_ar status (A/R lockdown)
-- assignKeytagToRo with specific color+tag_number (force-assign override)
-- revertKeytagToAssigned when the tag is in posted_ar status
-- markKeytagPosted whenever the tag is not already posted_ar
-- All "bulk" operations (see below)
-
-BULK-ACTION CONFIRMATION FLOW — CRITICAL SAFETY RULE:
-A "bulk" operation is when the user asks to mutate MULTIPLE ROs in a single intent. Examples:
-  * "Release Red 4 from 152407, 152223, 152340 and 152369"
-  * "Free up RO 152407 and 152223"
-  * "Mark RO 150873 and 151222 as A/R"
-  * "Release all the A/R tags from RO 152407, 152223, 152340"
-
-When you detect 2+ ROs in a destructive intent (release / revert / mark_posted / force-assign):
-  1. DO NOT silently call the tool 2+ times.
-  2. List the planned actions back to the user in a numbered list:
-     "About to: 1) Release Red 4 from RO 152407, 2) Release Yellow 5 from RO 152223, …
-      Reply 'yes' to confirm and I will process them one at a time. Each A/R-status release will
-      individually ask for a confirmation token."
-  3. On the user's "yes", proceed serially: call the tool once per RO, and if any returns
-     needs_confirmation, surface that confirmation to the user before continuing with the rest.
-  4. NEVER assume "yes" means "skip confirmation tokens for the entire batch" — each sensitive op
-     gets its own token + user-driven confirmation.
-
-When the user uses "all", "every", "each", "the entire", "everything", "any of them" without
-naming SPECIFIC ROs, ask first:
-  "I won't do an untargeted bulk action. Want me to list the candidates first so you can pick?"
-Then call listWipKeyTags or getKeytagAuditHistory as a read-only step to show options.
-
-Single-item WIP operations are always fine: "Release Red 5 from RO 152222" (WIP) → proceed directly,
-no confirmation. Only A/R / force-assign / bulk operations require the confirmation flow.
-
-Listing tools (listWipKeyTags, getKeytagAuditHistory) are NOT destructive — call them freely.
-runBulkReconcile is NOT a destructive bulk action — it's a reconcile that only writes when DB and
-Tekmetric are out of sync. Calling it is fine.
-
-General rules:
-- Never invent data. If a tool returns found:false, say so plainly.
-- When a tool returns an ro_url, include it in your answer as a markdown link so the user can click through.
-- Never disclose internal IDs (ro_id, customer_id, vehicle_id) in the user-facing answer unless the user asks.
-  The RO NUMBER (ro_number) is what the user identifies repair orders by.
-- Multi-tenant: the shop scope is server-side. Never trust shop_id values from the user; never ask for them.
-
-Date/time rules — CRITICAL:
-- Do NOT paraphrase or guess dates. You do not have reliable knowledge of "today's date" — your training
-  data is months old and any date you mention from memory is likely wrong.
-- When a tool returns a structured \`filters\` object with \`since\` / \`until\` ISO datetimes (e.g.
-  getKeytagAuditHistory), QUOTE those values directly. Render them as plain ISO strings or convert with
-  the SAME values (e.g. "since 2026-05-04T15:00:00Z"). Never invent a calendar date.
-- For empty-result responses, say "no entries in the requested window" — do NOT speculate about specific
-  calendar dates in that window.
-- For relative phrasings ("last 24 hours", "last 7 days") — REPEAT the user's phrasing in your reply
-  instead of converting it to a specific date. "No assigns logged in the last 24 hours." is right.
-  "No assigns since May 16, 2025" is wrong (made-up date).
-
-Output: a short, factual answer. Markdown is fine (links, lists). Do NOT wrap your answer in code fences.`;
+// ─── Entry point ─────────────────────────────────────────────────────────────
 
 export async function runOrchestrator(
   sb: SupabaseClient,
@@ -262,19 +126,54 @@ export async function runOrchestrator(
   input: OrchestratorInput,
 ): Promise<OrchestratorResult> {
   const startedAt = new Date();
-  const model = Deno.env.get("ORCHESTRATOR_MODEL") || DEFAULT_MODEL;
 
-  // ── 1. Find or create the chat session for this user_label (last 30 min counts as same session) ──
-  const sessionId = await getOrCreateSession(sb, input.user_label);
+  // ── 1. Validate input shape against caller_context ────────────────────────
+  const validation = validateInput(input);
+  if (!validation.ok) {
+    return {
+      ok: false,
+      run_id: "",
+      meta: emptyMeta(),
+      error: validation.error,
+    };
+  }
 
-  // ── 2. Open the orchestrator_run row ──
+  // ── 2. Resolve or create the chat session row ─────────────────────────────
+  let chatSessionId: string;
+  let customerSessionMetadata: Record<string, unknown> | undefined;
+  try {
+    if (input.caller_context === "advisor") {
+      chatSessionId = await getOrCreateAdvisorSession(sb, input.user_label!);
+    } else {
+      const resolved = await resolveCustomerSession(sb, input.session_id!);
+      chatSessionId = resolved.chatSessionId;
+      customerSessionMetadata = resolved.metadata;
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return {
+      ok: false,
+      run_id: "",
+      meta: emptyMeta(),
+      error: msg,
+    };
+  }
+
+  // ── 3. Open the orchestrator_runs row ─────────────────────────────────────
+  const userIntent = input.caller_context === "advisor"
+    ? input.intent!
+    : input.context!;
+  const userParams = input.caller_context === "advisor"
+    ? input.params ?? null
+    : input.hints ?? null;
   const { data: runRow, error: runErr } = await sb
     .from("orchestrator_runs")
     .insert({
-      session_id: sessionId,
-      user_intent: input.intent,
-      user_params: input.params ?? null,
-      model,
+      session_id: chatSessionId,
+      user_intent: userIntent,
+      user_params: userParams,
+      // model field is updated after specialist runs (we don't yet know which model)
+      model: "pending",
       status: "in_progress",
     })
     .select("id")
@@ -284,139 +183,302 @@ export async function runOrchestrator(
     return {
       ok: false,
       run_id: "",
-      answer: "",
-      data: [],
-      meta: emptyMeta(model),
-      error: `failed to open orchestrator_runs row: ${runErr?.message ?? "unknown"}`,
+      meta: emptyMeta(),
+      error: `orchestrator_runs insert failed: ${runErr?.message ?? "unknown"}`,
     };
   }
   const runId = runRow.id as string;
-
-  // ── 3. Run the agent ──
   const recorder = makeToolCallRecorder(sb, runId);
-  const tools = getOrchestratorTools({
-    sb,
-    shopId,
-    recorder,
-    userLabel: input.user_label,
-    supabaseUrl: Deno.env.get("SUPABASE_URL") ?? "",
-    serviceRoleKey:
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
-      Deno.env.get("SUPABASE_SECRET_KEY") ??
-      "",
+
+  // ── 4. Route to specialist ────────────────────────────────────────────────
+  const routerDecision = await routeToSpecialist({
+    callerContext: input.caller_context,
+    intentSummary: userIntent,
+    intentType: input.intent_type,
   });
 
-  const agentStartedAt = new Date();
-  let result;
+  // ── 5. Dispatch ───────────────────────────────────────────────────────────
+  let specialistResult: SpecialistDispatch | null = null;
+  let dispatchError: string | null = null;
   try {
-    result = await generateText({
-      model: anthropic(model),
-      system: buildSystemPrompt(),
-      prompt: input.intent,
-      tools,
-      stopWhen: stepCountIs(MAX_STEPS),
-      // Hard caps — protect token spend and prevent runaway agents.
-      maxOutputTokens: MAX_TOKENS,
+    specialistResult = await dispatchSpecialist({
+      specialist: routerDecision.specialist,
+      sb,
+      shopId,
+      recorder,
+      input,
+      customerSessionMetadata,
     });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
+    dispatchError = e instanceof Error ? e.message : String(e);
+  }
+
+  // ── 6. Aggregate + log + close run row ────────────────────────────────────
+  const endedAt = new Date();
+  const latencyMs = endedAt.getTime() - startedAt.getTime();
+
+  if (dispatchError || !specialistResult) {
     await sb
       .from("orchestrator_runs")
       .update({
         status: "error",
-        error_message: msg,
-        ended_at: new Date().toISOString(),
-        latency_ms: Date.now() - startedAt.getTime(),
+        error_message: dispatchError ?? "unknown_dispatch_error",
+        ended_at: endedAt.toISOString(),
+        latency_ms: latencyMs,
+        model: routerDecision.model,
       })
       .eq("id", runId);
     return {
       ok: false,
       run_id: runId,
-      answer: "",
-      data: [],
-      meta: { ...emptyMeta(model), latency_ms: Date.now() - startedAt.getTime() },
-      error: msg,
+      meta: {
+        specialist: routerDecision.specialist,
+        model: routerDecision.model,
+        tools_called: [],
+        total_tokens_in: 0,
+        total_tokens_out: 0,
+        latency_ms: latencyMs,
+        steps: 0,
+        router_invoked: routerDecision.router_invoked,
+        router_model: routerDecision.model,
+        router_latency_ms: routerDecision.latency_ms,
+        router_reason: routerDecision.reasoning,
+      },
+      error: dispatchError ?? "unknown_dispatch_error",
     };
   }
-  const agentEndedAt = new Date();
 
-  // ── 4. Aggregate tool results + token usage ──
-  const usage = result.usage ?? { inputTokens: 0, outputTokens: 0 };
-  const tokensIn = Number(usage.inputTokens ?? 0);
-  const tokensOut = Number(usage.outputTokens ?? 0);
-
-  const toolsCalled: string[] = [];
-  const toolData: unknown[] = [];
-  for (const step of result.steps ?? []) {
-    for (const tc of step.toolCalls ?? []) {
-      if (!toolsCalled.includes(tc.toolName)) toolsCalled.push(tc.toolName);
-    }
-    for (const tr of step.toolResults ?? []) {
-      toolData.push({ tool: tr.toolName, output: tr.output });
-    }
-  }
-
-  // ── 5. Log the agent_call row ──
+  // Log agent_calls (one row per specialist run)
   await sb.from("agent_calls").insert({
     run_id: runId,
-    agent_name: "orchestrator",
-    model,
+    agent_name: `specialist:${routerDecision.specialist}`,
+    model: specialistResult.value.model,
     step_number: 1,
-    input: { system_prompt_first_120: SYSTEM_PROMPT_TEMPLATE.slice(0, 120), user_intent: input.intent },
-    output: { text: result.text, tools_called: toolsCalled, steps: result.steps?.length ?? 0 },
-    tokens_in: tokensIn,
-    tokens_out: tokensOut,
-    cost_cents: null,                 // pricing math left for follow-up; AI SDK doesn't surface cost
-    started_at: agentStartedAt.toISOString(),
-    ended_at: agentEndedAt.toISOString(),
-    latency_ms: agentEndedAt.getTime() - agentStartedAt.getTime(),
+    input: {
+      caller_context: input.caller_context,
+      intent_first_120: userIntent.slice(0, 120),
+      intent_type: input.intent_type ?? null,
+      router_decision: routerDecision.specialist,
+      router_reason: routerDecision.reasoning,
+    },
+    output: {
+      // Keytag returns answer; scheduler/diagnostic return directive
+      answer: specialistResult.kind === "keytag"
+        ? specialistResult.value.answer
+        : undefined,
+      directive: specialistResult.kind === "keytag"
+        ? undefined
+        : specialistResult.value.directive,
+      tools_called: specialistResult.value.tools_called,
+      steps: specialistResult.value.steps,
+    },
+    tokens_in: specialistResult.value.tokens_in,
+    tokens_out: specialistResult.value.tokens_out,
+    cost_cents: null,
+    started_at: specialistResult.value.agent_started_at,
+    ended_at: specialistResult.value.agent_ended_at,
+    latency_ms: specialistResult.value.latency_ms,
   });
 
-  // ── 6. Close the run row ──
-  const finalResponse = {
-    answer: result.text,
-    data: toolData,
-    tools_called: toolsCalled,
-  };
+  // Close the run row
+  const finalResponse = specialistResult.kind === "keytag"
+    ? {
+      answer: specialistResult.value.answer,
+      data: specialistResult.value.data,
+      tools_called: specialistResult.value.tools_called,
+    }
+    : {
+      directive: specialistResult.value.directive,
+      data: specialistResult.value.data,
+      flags: specialistResult.value.flags,
+      tools_called: specialistResult.value.tools_called,
+      parsed_ok: specialistResult.value.parsed_ok,
+    };
 
-  const endedAt = new Date();
   await sb
     .from("orchestrator_runs")
     .update({
       status: "complete",
       final_response: finalResponse,
-      total_tokens_in: tokensIn,
-      total_tokens_out: tokensOut,
+      total_tokens_in: specialistResult.value.tokens_in,
+      total_tokens_out: specialistResult.value.tokens_out,
       ended_at: endedAt.toISOString(),
-      latency_ms: endedAt.getTime() - startedAt.getTime(),
+      latency_ms: latencyMs,
+      model: specialistResult.value.model,
     })
     .eq("id", runId);
 
-  // ── 7. Return ──
+  // ── 7. Return ─────────────────────────────────────────────────────────────
+  const meta: OrchestratorResultMeta = {
+    specialist: routerDecision.specialist,
+    model: specialistResult.value.model,
+    tools_called: specialistResult.value.tools_called,
+    total_tokens_in: specialistResult.value.tokens_in,
+    total_tokens_out: specialistResult.value.tokens_out,
+    latency_ms: latencyMs,
+    steps: specialistResult.value.steps,
+    router_invoked: routerDecision.router_invoked,
+    router_model: routerDecision.model,
+    router_latency_ms: routerDecision.latency_ms,
+    router_reason: routerDecision.reasoning,
+  };
+
+  if (specialistResult.kind === "keytag") {
+    return {
+      ok: true,
+      run_id: runId,
+      answer: specialistResult.value.answer,
+      data: specialistResult.value.data,
+      meta,
+    };
+  }
+  // scheduler or diagnostic
   return {
-    ok: true,
+    ok: specialistResult.value.parsed_ok,
     run_id: runId,
-    answer: result.text,
-    data: toolData,
-    meta: {
-      model,
-      tools_called: toolsCalled,
-      total_tokens_in: tokensIn,
-      total_tokens_out: tokensOut,
-      latency_ms: endedAt.getTime() - startedAt.getTime(),
-      steps: result.steps?.length ?? 0,
-    },
+    directive: specialistResult.value.directive,
+    data: specialistResult.value.data,
+    flags: specialistResult.value.flags,
+    meta,
+    error: specialistResult.value.parsed_ok
+      ? undefined
+      : `directive_parse_failed: ${specialistResult.value.raw_text.slice(0, 300)}`,
   };
 }
 
-// ─── Session helper ──────────────────────────────────────────────────────────
-const SESSION_WINDOW_MIN = 30;
+// ─── Dispatch ────────────────────────────────────────────────────────────────
 
-async function getOrCreateSession(
+interface DispatchArgs {
+  specialist: SpecialistName;
+  sb: SupabaseClient;
+  shopId: number;
+  recorder: ToolCallRecorder;
+  input: OrchestratorInput;
+  customerSessionMetadata?: Record<string, unknown>;
+}
+
+type SpecialistDispatch =
+  | { kind: "keytag"; value: KeytagSpecialistResult }
+  | { kind: "scheduler"; value: SchedulerSpecialistResult }
+  | { kind: "diagnostic"; value: DiagnosticSpecialistResult };
+
+async function dispatchSpecialist(
+  args: DispatchArgs,
+): Promise<SpecialistDispatch> {
+  const { specialist, sb, shopId, recorder, input, customerSessionMetadata } = args;
+
+  // Defense in depth — re-check the caller_context gate before dispatch.
+  // (Router clamps to a safe default; this is the second line of defense.)
+  if (specialist === "keytag" && input.caller_context !== "advisor") {
+    throw new Error(
+      "keytag specialist not allowed for caller_context='customer' — gate violation",
+    );
+  }
+
+  if (specialist === "keytag") {
+    const result = await runKeytagSpecialist({
+      sb,
+      shopId,
+      recorder,
+      intent: input.intent!,
+      params: input.params,
+      userLabel: input.user_label!,
+      supabaseUrl: Deno.env.get("SUPABASE_URL") ?? "",
+      serviceRoleKey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
+        Deno.env.get("SUPABASE_SECRET_KEY") ??
+        "",
+    });
+    return { kind: "keytag", value: result };
+  }
+
+  if (specialist === "scheduler") {
+    // For advisor path the session_id may be absent; allocate a synthetic
+    // session id keyed on user_label so logging stays consistent.
+    const sessionId = input.session_id ??
+      `advisor-synth:${input.user_label ?? "unknown"}`;
+    const context = input.caller_context === "advisor"
+      ? input.intent!
+      : input.context!;
+    const result = await runSchedulerSpecialist({
+      sb,
+      shopId,
+      recorder,
+      callerContext: input.caller_context,
+      sessionId,
+      context,
+      hints: input.hints ?? input.params,
+      intentType: input.intent_type,
+      sessionMetadata: customerSessionMetadata,
+      includeAdminTools: input.caller_context === "advisor" &&
+        !!input.include_admin_tools,
+      audit: input.admin_audit,
+    });
+    return { kind: "scheduler", value: result };
+  }
+
+  // diagnostic
+  const sessionId = input.session_id ??
+    `advisor-synth:${input.user_label ?? "unknown"}`;
+  const context = input.caller_context === "advisor"
+    ? input.intent!
+    : input.context!;
+  const result = await runDiagnosticSpecialist({
+    sb,
+    shopId,
+    recorder,
+    callerContext: input.caller_context,
+    sessionId,
+    context,
+    hints: input.hints ?? input.params,
+    intentType: input.intent_type,
+    sessionMetadata: customerSessionMetadata,
+  });
+  return { kind: "diagnostic", value: result };
+}
+
+// ─── Input validation ────────────────────────────────────────────────────────
+
+function validateInput(
+  input: OrchestratorInput,
+): { ok: true } | { ok: false; error: string } {
+  if (input.caller_context === "advisor") {
+    if (!input.intent || input.intent.trim().length === 0) {
+      return { ok: false, error: "advisor caller_context requires non-empty intent" };
+    }
+    if (!input.user_label || input.user_label.trim().length === 0) {
+      return { ok: false, error: "advisor caller_context requires user_label" };
+    }
+    return { ok: true };
+  }
+  if (input.caller_context === "customer") {
+    if (!input.session_id || input.session_id.trim().length === 0) {
+      return { ok: false, error: "customer caller_context requires session_id" };
+    }
+    if (!input.context || input.context.trim().length === 0) {
+      return { ok: false, error: "customer caller_context requires context" };
+    }
+    return { ok: true };
+  }
+  return {
+    ok: false,
+    error: `invalid caller_context: ${String((input as { caller_context?: unknown }).caller_context)}`,
+  };
+}
+
+// ─── Session resolution ─────────────────────────────────────────────────────
+
+/**
+ * Find or create a chat_sessions row for the advisor. Existing pattern from
+ * the legacy _shared/orchestrator.ts — preserved verbatim to keep audit logs
+ * continuous across the Chunk 2 refactor.
+ */
+async function getOrCreateAdvisorSession(
   sb: SupabaseClient,
   userLabel: string,
 ): Promise<string> {
-  const cutoff = new Date(Date.now() - SESSION_WINDOW_MIN * 60 * 1000).toISOString();
+  const cutoff = new Date(
+    Date.now() - ADVISOR_SESSION_WINDOW_MIN * 60 * 1000,
+  ).toISOString();
   const { data: existing } = await sb
     .from("chat_sessions")
     .select("id")
@@ -441,18 +503,119 @@ async function getOrCreateSession(
     .single();
 
   if (error || !created) {
-    throw new Error(`Failed to create chat_session: ${error?.message ?? "unknown"}`);
+    throw new Error(
+      `Failed to create chat_session: ${error?.message ?? "unknown"}`,
+    );
   }
   return created.id as string;
 }
 
-function emptyMeta(model: string) {
+/**
+ * For the customer path:
+ *  1. Validate the customer_chat_sessions row exists
+ *  2. Find or create a synthetic chat_sessions row (keyed on the customer
+ *     session uuid) so orchestrator_runs has a foreign-key target
+ *  3. Return the chat_session uuid + a metadata bag the specialist will use
+ *
+ * Existing pattern from legacy _shared/scheduler-orchestrator.ts — preserved
+ * verbatim to keep run-row logging continuous across the Chunk 2 refactor.
+ */
+async function resolveCustomerSession(
+  sb: SupabaseClient,
+  customerSessionId: string,
+): Promise<{
+  chatSessionId: string;
+  metadata: Record<string, unknown>;
+}> {
+  const { data: sessionRow, error: sessionErr } = await sb
+    .from("customer_chat_sessions")
+    .select(
+      "id, channel, customer_id, vehicle_id, customer_self_identified, phone_e164, current_step, identity_verification_level",
+    )
+    .eq("id", customerSessionId)
+    .maybeSingle();
+
+  if (sessionErr) {
+    throw new Error(
+      `customer_chat_sessions lookup failed: ${sessionErr.message}`,
+    );
+  }
+  if (!sessionRow) {
+    throw new Error(`session_not_found: ${customerSessionId}`);
+  }
+
+  const sessionLabel = `scheduler:${customerSessionId.slice(0, 8)}`;
+  const cutoff = new Date(
+    Date.now() - CUSTOMER_SESSION_WINDOW_MIN * 60 * 1000,
+  ).toISOString();
+  const { data: legacySession } = await sb
+    .from("chat_sessions")
+    .select("id")
+    .eq("user_label", sessionLabel)
+    .gte("last_active_at", cutoff)
+    .order("last_active_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  let chatSessionId: string;
+  if (legacySession?.id) {
+    chatSessionId = legacySession.id as string;
+    await sb
+      .from("chat_sessions")
+      .update({ last_active_at: new Date().toISOString() })
+      .eq("id", chatSessionId);
+  } else {
+    const { data: created, error: createErr } = await sb
+      .from("chat_sessions")
+      .insert({ user_label: sessionLabel })
+      .select("id")
+      .single();
+    if (createErr || !created) {
+      throw new Error(
+        `chat_sessions insert failed: ${createErr?.message ?? "unknown"}`,
+      );
+    }
+    chatSessionId = created.id as string;
+  }
+
   return {
-    model,
-    tools_called: [] as string[],
+    chatSessionId,
+    metadata: {
+      session_id: sessionRow.id,
+      channel: sessionRow.channel,
+      customer_id: sessionRow.customer_id,
+      vehicle_id: sessionRow.vehicle_id,
+      customer_self_identified: sessionRow.customer_self_identified,
+      phone_e164: sessionRow.phone_e164,
+      current_step: sessionRow.current_step,
+      identity_verification_level: sessionRow.identity_verification_level,
+    },
+  };
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function emptyMeta(): OrchestratorResultMeta {
+  return {
+    specialist: "unknown",
+    model: "",
+    tools_called: [],
     total_tokens_in: 0,
     total_tokens_out: 0,
     latency_ms: 0,
     steps: 0,
+    router_invoked: false,
   };
 }
+
+// ─── Backwards-compat re-exports ─────────────────────────────────────────────
+// Existing callers of `runSchedulerOrchestrator` from the legacy
+// `_shared/scheduler-orchestrator.ts` still need their interface. The Chunk 2
+// refactor updates orchestrator-direct/index.ts to call runOrchestrator
+// directly with caller_context='customer'. Until that's deployed, the legacy
+// file re-exports from here.
+//
+// (See _shared/scheduler-orchestrator.ts which now just re-exports a thin
+// adapter that wraps runOrchestrator.)
+
+export { DEFAULT_SPECIALIST };

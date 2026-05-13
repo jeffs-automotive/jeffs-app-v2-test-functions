@@ -2,8 +2,8 @@
 //
 // Plain JSON in/out endpoint hit by the scheduler-app's Vercel Server Action /
 // Route Handler. Sister of orchestrator-mcp (which speaks JSON-RPC + OAuth+PKCE
-// to Claude Desktop). Same orchestrator agent under the hood — different tool
-// catalog, different system prompt, different auth.
+// to Claude Desktop). Same unified orchestrator under the hood (Chunk 2
+// refactor 2026-05-13) — different caller_context, different response shaping.
 //
 // Auth: Pattern A per appointments_design.md §15:
 //   - Authorization: Bearer <SUPABASE_SECRET_KEY>
@@ -14,20 +14,24 @@
 //   auto-injects on Supabase side).
 //
 // Request:
-//   POST / { session_id, context, hints? }
+//   POST / { session_id, context, hints?, intent_type? }
 // Response:
 //   200 { directive, data?, flags?, meta }   (success)
 //   401 { ok: false, error }                  (missing/invalid bearer)
 //   400 { ok: false, error }                  (malformed body)
 //   500 { ok: false, error }                  (orchestrator threw)
+//
+// Chunk 2 changes (2026-05-13):
+//   - Switched from runSchedulerOrchestrator → runOrchestrator with
+//     caller_context='customer'
+//   - Added optional `intent_type` body field that short-circuits the router
+//     LLM call when the chat-side caller already knows which specialist owns
+//     the turn (e.g. 'verify_and_lookup', 'hold_slot', 'diagnose_concern')
 
 import "@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-import {
-  runSchedulerOrchestrator,
-  type SchedulerOrchestratorInput,
-} from "../_shared/scheduler-orchestrator.ts";
+import { runOrchestrator } from "../_shared/orchestrator.ts";
 import { ENV_NAMES } from "../_shared/tekmetric.ts";
 import {
   checkSchedulerBearer,
@@ -62,8 +66,17 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
-function parseBody(raw: unknown):
-  | { ok: true; input: SchedulerOrchestratorInput }
+interface ParsedBody {
+  session_id: string;
+  context: string;
+  hints?: Record<string, unknown>;
+  intent_type?: string;
+}
+
+function parseBody(
+  raw: unknown,
+):
+  | { ok: true; input: ParsedBody }
   | { ok: false; error: string } {
   if (!isPlainObject(raw)) {
     return { ok: false, error: "body_not_object" };
@@ -81,12 +94,20 @@ function parseBody(raw: unknown):
     }
     hints = raw.hints;
   }
+  let intentType: string | undefined;
+  if (raw.intent_type !== undefined) {
+    if (typeof raw.intent_type !== "string" || raw.intent_type.length === 0) {
+      return { ok: false, error: "intent_type_not_string" };
+    }
+    intentType = raw.intent_type;
+  }
   return {
     ok: true,
     input: {
       session_id: raw.session_id,
       context: raw.context,
       hints,
+      intent_type: intentType,
     },
   };
 }
@@ -118,11 +139,32 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const result = await runSchedulerOrchestrator(sb, SHOP_ID, parsed.input);
-    // Always 200 even on orchestrator-internal "error" directive — the chat
-    // agent branches on `directive`, not HTTP status. Only return 5xx for
-    // pre-orchestrator failures (auth, parse).
-    return jsonResponse(result, 200);
+    const result = await runOrchestrator(sb, SHOP_ID, {
+      caller_context: "customer",
+      session_id: parsed.input.session_id,
+      context: parsed.input.context,
+      hints: parsed.input.hints,
+      intent_type: parsed.input.intent_type,
+    });
+
+    // Re-shape for the existing scheduler-app caller. The unified orchestrator
+    // result includes meta + maybe answer (for keytag — never reached here
+    // since customer caller_context can't route to keytag), so we just project
+    // the customer-relevant fields.
+    return jsonResponse(
+      {
+        ok: result.ok,
+        directive: result.directive ?? "tool_error",
+        data: result.data,
+        flags: result.flags,
+        meta: result.meta,
+        run_id: result.run_id,
+        error: result.error,
+      },
+      200, // 200 even on orchestrator-internal "error" directive — the chat
+      // agent branches on `directive`, not HTTP status. Only return 5xx for
+      // pre-orchestrator failures (auth, parse).
+    );
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error(

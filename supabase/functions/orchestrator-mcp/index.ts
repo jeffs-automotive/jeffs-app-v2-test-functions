@@ -223,7 +223,14 @@ async function handleToolsCall(params: unknown, userLabel: string): Promise<unkn
 
   // user_label comes from the OAuth token's bound identity, NOT from the tool's
   // arguments — the Claude-Desktop-side caller can't override audit trail.
+  //
+  // caller_context='advisor' opens the full specialist set (keytag + scheduler
+  // + diagnostic). The unified orchestrator + router pick the right specialist
+  // for the intent. Existing keytag traffic continues to land on the keytag
+  // specialist unchanged; new advisor-driven booking / diagnostic intents now
+  // route correctly without needing a new MCP tool.
   const orchestratorResult = await runOrchestrator(sb, SHOP_ID, {
+    caller_context: "advisor",
     intent,
     params: userParams,
     user_label: userLabel,

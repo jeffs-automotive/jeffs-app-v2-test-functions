@@ -1,11 +1,15 @@
-// AI SDK tool registry for the scheduler orchestrator.
+// AI SDK tool registry for the scheduler specialist.
 //
 // Per appointments_design.md §7.2.
 //
 // Wraps each pure tool function from `_shared/tools/scheduler-*.ts` into a
 // Vercel AI SDK tool({ description, inputSchema, execute }) definition. The
-// scheduler orchestrator (`_shared/scheduler-orchestrator.ts`) passes this
-// map into generateText({ tools: getSchedulerTools(...) }).
+// scheduler specialist (`_shared/specialists/scheduler.ts`, dispatched by
+// `_shared/orchestrator.ts`) passes this map into
+// generateText({ tools: getSchedulerTools(...) }).
+//
+// Chunk 2 refactor (2026-05-13): previously consumed by the now-deprecated
+// `_shared/scheduler-orchestrator.ts`. Tool catalog itself is unchanged.
 //
 // Tool description guidance (read this when adding new tools):
 //   - Be specific about WHEN this tool is the right answer.
@@ -508,7 +512,15 @@ export function getSchedulerTools(args: SchedulerToolsArgs) {
     }),
   };
 
-  let result: Record<string, ReturnType<typeof tool>> = {
+  // Result accumulator. We use `Record<string, ReturnType<typeof tool<any, any>>>`
+  // (vs. `Record<string, ReturnType<typeof tool>>`) because each tool() call
+  // returns a Tool<TInput, TOutput> narrowed by its inputSchema. The bare
+  // ReturnType<typeof tool> defaults the generics to `never`, which then
+  // refuses to accept spreads of differently-narrowed tools. The `any, any`
+  // form is the same as the AI SDK's own `ToolSet` (Record<string, Tool>).
+  // Pre-existing typing fixed in Chunk 2 refactor (2026-05-13).
+  // deno-lint-ignore no-explicit-any
+  let result: Record<string, ReturnType<typeof tool<any, any>>> = {
     ...customerReadTools,
     ...slotReadTools,
     ...bookingTools,
