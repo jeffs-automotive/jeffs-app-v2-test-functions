@@ -42,3 +42,5 @@ desktop.ini
 
 # Stray root-level npm lockfile (the real one lives in scheduler-app/)
 /package-lock.json
+
+.vercel

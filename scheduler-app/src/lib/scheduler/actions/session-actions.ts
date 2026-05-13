@@ -37,6 +37,10 @@ import {
   consultOrchestrator,
   OrchestratorError,
 } from "@/lib/scheduler/orchestrator-client";
+import {
+  callStep2Direct,
+  Step2DirectError,
+} from "@/lib/scheduler/step2-direct-client";
 import { getBubbleCopy } from "@/lib/scheduler/bubble-templates";
 import { scanForEscalationKeywords } from "@/lib/scheduler/escalation-keywords";
 import {
@@ -197,6 +201,9 @@ export async function submitPhoneName(args: {
   phone_e164: string;
 }): Promise<SessionActionResult> {
   try {
+    // Write the row FIRST so even if the downstream Tekmetric/Telnyx call
+    // fails, the customer's data isn't lost (row-as-truth per locked
+    // decision #1).
     await writeSession({
       chatId: args.chatId,
       updates: {
@@ -217,156 +224,190 @@ export async function submitPhoneName(args: {
       },
     });
 
-    // Invoke orchestrator: do Tekmetric lookup + reconciliation matrix +
-    // send OTP. Orchestrator-direct picks the right directive based on
-    // (phone hits) × (self-id bucket) per chat-design.md §4.3.
-    //
-    // NOTE — design audit B-1 (2026-05-13) recommends inlining the
-    // Telnyx OTP send + Tekmetric lookup directly in this Server Action
-    // (NO LLM hop on Step 2, per locked design §605). That's a Phase 1.5
-    // refactor — it requires either duplicating Telnyx env vars to Vercel
-    // OR creating a deterministic `scheduler-step2-direct` edge function.
-    // For now we strengthen the specialist contract via explicit tool-
-    // chain instructions in `context` + structured `hints` so Haiku 4.5
-    // doesn't have to infer what to do. Closes edge-audit I-1 partially.
+    // Read the customer_self_identified bucket from the row (set by
+    // submitGreeting at Step 1). Required for the §4.3 reconciliation
+    // matrix below.
+    const supabase = createSupabaseAdminClient();
+    const { data: prior } = await supabase
+      .from("customer_chat_sessions")
+      .select("customer_self_identified")
+      .eq("id", args.chatId)
+      .maybeSingle();
+    const bucket =
+      (prior?.customer_self_identified as
+        | "returning"
+        | "new"
+        | "unsure"
+        | null) ?? "unsure";
+
+    // DETERMINISTIC Step 2 path per chat-design.md §605 + audit B-1
+    // (2026-05-13 ship). The prior LLM-specialist path (orchestrator-
+    // direct → scheduler specialist → generateText → JSON.parse) was
+    // empirically fragile: free-form text parsing failed on Haiku
+    // drift, returning directive='tool_error' even when send_otp had
+    // succeeded. The new scheduler-step2-direct edge function does the
+    // same Tekmetric lookup + §4.3 reconciliation + Telnyx send in
+    // plain TypeScript — no LLM, no parsing.
     const startedAt = Date.now();
-    const result = await consultOrchestrator({
+    const step2 = await callStep2Direct({
       session_id: args.chatId,
-      context:
-        `Customer submitted Step 2 (phone+name). The row already has\n` +
-        `entered_first_name + entered_last_name + phone_e164 + self_id_bucket\n` +
-        `written by submitPhoneName — see the session_metadata in your\n` +
-        `system prompt for the authoritative values. Tool chain:\n` +
-        `  1. lookup_customer_by_phone({ phone_e164: <session_metadata.phone_e164> })\n` +
-        `  2. Apply §4.3 reconciliation matrix:\n` +
-        `       returning + 1 hit  → send_otp → emit 'send_otp_first'\n` +
-        `       returning + 0 hits → emit 'identity_match_required'\n` +
-        `       new       + 0 hits → emit 'show_new_customer_form'\n` +
-        `       new       + N hits → emit 'identity_match_required'\n` +
-        `                            (treat as suspicious; escalate)\n` +
-        `       unsure    + 1 hit  → send_otp → emit 'send_otp_first'\n` +
-        `                            (verify, then disambiguate)\n` +
-        `       unsure    + 0 hits → emit 'show_new_customer_form'\n` +
-        `       N hits + name match→ send_otp → emit 'send_otp_first'\n` +
-        `       N hits + no match  → emit 'identity_match_required'\n` +
-        `  3. NEVER emit 'send_otp_first' without first calling send_otp —\n` +
-        `     the directive is only valid AFTER the SMS is actually queued.`,
-      hints: {
-        first_name: args.first_name,
-        last_name: args.last_name,
-        phone_e164: args.phone_e164,
-      },
-      intent_type: "verify_and_lookup",
+      first_name: args.first_name,
+      last_name: args.last_name,
+      phone_e164: args.phone_e164,
+      customer_self_identified: bucket,
     });
+
     await logAudit({
       session_id: args.chatId,
       step: "phone_name",
       event_type: "tool_called",
       event_detail: {
-        tool: "consultOrchestrator",
-        intent_type: "verify_and_lookup",
-        directive: result.directive,
-        // Capture the full result shape so we can debug LLM-specialist
-        // drift in the audit log (the row-as-truth fix below sidesteps
-        // any drift in result.data, but the audit log needs to record
-        // what came back).
-        data_keys: result.data ? Object.keys(result.data) : [],
-        flags: result.flags ?? null,
+        tool: "scheduler-step2-direct",
+        directive: step2.directive,
+        data_keys: step2.data ? Object.keys(step2.data) : [],
       },
       latency_ms: Date.now() - startedAt,
     });
-    // Structured log so it surfaces in Vercel logs alongside the trace.
-    // Sentry breadcrumb-equivalent (we don't import Sentry helpers here
-    // since this isn't an exception — but tooErrResult will pick it up
-    // if anything throws downstream).
+    // Structured log so the deterministic path's outcome is visible in
+    // Vercel logs without depending on Sentry.
     // eslint-disable-next-line no-console
     console.log(
       JSON.stringify({
         level: "info",
-        msg: "phone_name_orchestrator_result",
+        msg: "phone_name_step2_direct_result",
         session_id: args.chatId,
-        directive: result.directive,
-        data_keys: result.data ? Object.keys(result.data) : [],
-        flags: result.flags ?? null,
+        directive: step2.directive,
+        data_keys: step2.data ? Object.keys(step2.data) : [],
         latency_ms: Date.now() - startedAt,
       }),
     );
 
-    // ─── ROW-AS-TRUTH DETERMINISTIC RESPONSE (2026-05-13 bug fix) ──────────
-    //
-    // The LLM specialist (Haiku 4.5) is supposed to:
-    //   1. Call lookup_customer_by_phone
-    //   2. Call send_otp on a match
-    //   3. Emit directive='send_otp_first' WITH data.phone_last_four +
-    //      data.ttl_seconds bubbled up from the send_otp tool's return
-    //
-    // Empirical failure observed 2026-05-13: SMS arrives (so send_otp ran)
-    // but the chat agent escalates with "expected directive/tool result
-    // was missing or malformed". Diagnosis: the specialist's response
-    // doesn't reliably carry the send_otp data fields, so show_otp_input
-    // gets called with empty/malformed input → Zod validation fails →
-    // chat agent generates the escalation natural-language fallback.
-    //
-    // Fix: trust the ROW. If after the orchestrator returns the row's
-    // otp_sent_at is recent (last 60s), FORCE directive='show_otp_input'
-    // with phone_last_four computed from the row's phone_e164 + a fresh
-    // 5-min ttl_seconds. This is the row-as-truth pattern from locked
-    // decision #1 — the LLM specialist's data plumbing is best-effort,
-    // the row is authoritative.
-    const verifySupabase = createSupabaseAdminClient();
-    const { data: rowAfter } = await verifySupabase
-      .from("customer_chat_sessions")
-      .select("phone_e164, otp_sent_at, customer_id")
-      .eq("id", args.chatId)
-      .maybeSingle();
-
-    const otpSentRecently =
-      rowAfter?.otp_sent_at &&
-      Date.now() - new Date(rowAfter.otp_sent_at as string).getTime() <
-        60_000;
-
-    if (otpSentRecently && rowAfter?.phone_e164) {
-      const phoneLastFour = String(rowAfter.phone_e164).slice(-4);
+    // Map the deterministic directive to:
+    //   - The chat-agent tool to render (via Chat.tsx's mapDirectiveToToolName)
+    //   - A bubble_copy template
+    //   - The next current_step value
+    if (step2.directive === "send_otp_first") {
       return {
         ok: true,
-        directive: "show_otp_input",
+        // Sent through mapDirectiveToToolName in Chat.tsx → show_otp_input
+        directive: "send_otp_first",
         data: {
-          // Spread the specialist's data FIRST so our schema-required
-          // fields below ALWAYS win — the row is the source of truth
-          // for phone_last_four + ttl_seconds, not whatever the LLM
-          // happened to bubble up.
-          ...(result.data ?? {}),
-          phone_last_four: phoneLastFour,
-          ttl_seconds: 300,
+          phone_last_four: step2.data?.phone_last_four,
+          ttl_seconds: step2.data?.ttl_seconds,
           attempts_remaining: 3,
         },
-        flags: result.flags,
         bubble_copy: getBubbleCopy("phone_name_to_otp"),
         current_step: "otp_pending",
       };
     }
+    if (step2.directive === "show_new_customer_form") {
+      // No phone hits + bucket = new/unsure → new customer form
+      await writeSession({
+        chatId: args.chatId,
+        updates: {},
+        nextStep: "new_customer_info",
+      });
+      return {
+        ok: true,
+        directive: "show_new_customer_form",
+        data: { mode: "full", ...(step2.data ?? {}) },
+        bubble_copy: getBubbleCopy("show_new_customer_form"),
+        current_step: "new_customer_info",
+      };
+    }
+    if (step2.directive === "show_no_match_choose_path") {
+      await writeSession({
+        chatId: args.chatId,
+        updates: {},
+        nextStep: "no_match_choose_path",
+      });
+      return {
+        ok: true,
+        directive: "show_no_match_choose_path",
+        data: step2.data ?? {},
+        bubble_copy: getBubbleCopy("identity_match_required"),
+        current_step: "no_match_choose_path",
+      };
+    }
+    if (step2.directive === "show_multi_account_disambiguation") {
+      await writeSession({
+        chatId: args.chatId,
+        updates: {},
+        nextStep: "multi_account_disambiguation",
+      });
+      return {
+        ok: true,
+        directive: "show_multi_account_disambiguation",
+        data: step2.data ?? {},
+        bubble_copy: getBubbleCopy("identity_match_required"),
+        current_step: "multi_account_disambiguation",
+      };
+    }
+    if (step2.directive === "show_partial_verification_gate") {
+      await writeSession({
+        chatId: args.chatId,
+        updates: {},
+        nextStep: "partial_verification_gate",
+      });
+      return {
+        ok: true,
+        directive: "show_partial_verification_gate",
+        data: step2.data ?? {},
+        bubble_copy: getBubbleCopy("partial_verification"),
+        current_step: "partial_verification_gate",
+      };
+    }
+    // show_escalation_card (Telnyx or Tekmetric hard fail)
+    if (step2.directive === "show_escalation_card") {
+      await writeSession({
+        chatId: args.chatId,
+        updates: {
+          escalated_at: new Date().toISOString(),
+          escalation_reason:
+            String(step2.data?.reason ?? "step2_direct_failed"),
+          status: "escalated",
+        },
+        nextStep: "escalated",
+      });
+      return {
+        ok: true,
+        directive: "show_escalation_card",
+        data: {
+          reason: step2.data?.reason ?? "step2_direct_failed",
+          shop_phone: step2.data?.shop_phone ?? "6102536565",
+          allow_back_to_scheduling: true,
+        },
+        bubble_copy: getBubbleCopy("escalate"),
+        current_step: "escalated",
+      };
+    }
 
-    // No OTP sent — fall through to the specialist's original directive.
-    // Map the orchestrator's directive to a bubble template + step.
-    const bubbleKey =
-      result.directive === "send_otp_first"
-        ? "phone_name_to_otp"
-        : result.directive === "show_new_customer_form"
-          ? "show_new_customer_form"
-          : result.directive === "identity_match_required"
-            ? "identity_match_required"
-            : undefined;
-
+    // Unknown directive — defensive escalation. Should never fire since
+    // the edge function's response shape is finite + tested.
+    Sentry.captureMessage("step2_direct_unknown_directive", {
+      level: "warning",
+      tags: { surface: "server_action", wizard_step: "phone_name" },
+      extra: { directive: step2.directive, data: step2.data },
+    });
     return {
-      ok: result.directive !== "tool_error",
-      directive: result.directive,
-      data: result.data,
-      flags: result.flags,
-      bubble_copy: bubbleKey ? getBubbleCopy(bubbleKey) : undefined,
-      current_step: "otp_pending",
+      ok: false,
+      directive: "show_escalation_card",
+      data: {
+        reason: `step2_direct_unknown_directive:${step2.directive}`,
+        shop_phone: "6102536565",
+      },
+      bubble_copy: getBubbleCopy("escalate"),
+      current_step: "escalated",
     };
   } catch (e) {
-    if (e instanceof OrchestratorError) {
+    if (e instanceof Step2DirectError) {
+      await logAudit({
+        session_id: args.chatId,
+        step: "phone_name",
+        event_type: "tekmetric_error",
+        error_message: e.message,
+      });
+    } else if (e instanceof OrchestratorError) {
       await logAudit({
         session_id: args.chatId,
         step: "phone_name",
