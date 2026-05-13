@@ -1,19 +1,23 @@
 /**
- * Gemini 2.5 Pro audit of scheduler-app/ + chat-design.md.
+ * GPT-5.5 audit of scheduler-app/ + chat-design.md (sibling of
+ * gemini-audit-scheduler-app.mjs — same bundle, different model).
  *
  * Reads:
  *   - C:/Users/ChristopherGoodson/Apps/jeffs-app-v2-test-data/scheduler-app/
  *     (recursive; .ts, .tsx, .css, .json, .md files only)
+ *   - supabase/functions/ (edge functions)
  *   - chat-design.md (canonical spec)
  *
- * Sends to gemini-2.5-pro via REST. API key resolved from:
- *   1. process.env.GOOGLE_GENERATIVE_AI_API_KEY
+ * Sends to gpt-5.5-2026-04-23 via OpenAI Chat Completions REST API.
+ * API key resolved from:
+ *   1. process.env.OPENAI_API_KEY
  *   2. fallback: ~/Apps/jeffs-app-v2/.env.local (prod project's key)
+ *   3. fallback: ~/Apps/jeffs-app-v2/.env
  *
- * Writes findings to .claude/memory/audit_gemini_2026-05-13.md
+ * Writes findings to .claude/memory/audit_gpt_2026-05-13.md
  *
  * Invocation:
- *   node scripts/gemini-audit-scheduler-app.mjs
+ *   node scripts/gpt-audit-scheduler-app.mjs
  */
 
 import fs from "node:fs/promises";
@@ -26,10 +30,15 @@ const REPO_ROOT = path.resolve(__dirname, "..");
 
 const SCHEDULER_APP_DIR = path.join(REPO_ROOT, "scheduler-app");
 const SUPABASE_FUNCTIONS_DIR = path.join(REPO_ROOT, "supabase", "functions");
-const DESIGN_DOC = "C:/Users/ChristopherGoodson/dotfiles-v2-test-data/jeffs-app-v2-test-data/.claude/work/planning/references/chat-design.md";
-const OUTPUT = "C:/Users/ChristopherGoodson/dotfiles-v2-test-data/jeffs-app-v2-test-data/.claude/memory/audit_gemini_2026-05-13.md";
+const DESIGN_DOC =
+  "C:/Users/ChristopherGoodson/dotfiles-v2-test-data/jeffs-app-v2-test-data/.claude/work/planning/references/chat-design.md";
+const OUTPUT =
+  "C:/Users/ChristopherGoodson/dotfiles-v2-test-data/jeffs-app-v2-test-data/.claude/memory/audit_gpt_2026-05-13.md";
 
-const MODEL = "gemini-2.5-pro";
+// Pinned date-suffixed model name (per OpenAI Chat Completions docs query
+// 2026-05-13). gpt-5.5 is the latest reasoning + code model in the gpt-5
+// series; data-residency eligible per /v1/chat/completions docs.
+const MODEL = "gpt-5.5-2026-04-23";
 
 const INCLUDE_EXT = new Set([".ts", ".tsx", ".css", ".md", ".sql"]);
 const EXCLUDE_DIRS = new Set([
@@ -42,8 +51,8 @@ const EXCLUDE_DIRS = new Set([
 ]);
 
 async function resolveApiKey() {
-  if (process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
-    return process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+  if (process.env.OPENAI_API_KEY) {
+    return process.env.OPENAI_API_KEY;
   }
   const candidates = [
     "C:/Users/ChristopherGoodson/Apps/jeffs-app-v2/.env.local",
@@ -52,7 +61,7 @@ async function resolveApiKey() {
   for (const p of candidates) {
     try {
       const raw = await fs.readFile(p, "utf-8");
-      const m = raw.match(/^GOOGLE_GENERATIVE_AI_API_KEY=(.+)$/m);
+      const m = raw.match(/^OPENAI_API_KEY=(.+)$/m);
       if (m) {
         const v = m[1].trim().replace(/^["']|["']$/g, "");
         if (v) return v;
@@ -61,9 +70,7 @@ async function resolveApiKey() {
       // try next
     }
   }
-  throw new Error(
-    "No GOOGLE_GENERATIVE_AI_API_KEY found in env or prod .env.local",
-  );
+  throw new Error("No OPENAI_API_KEY found in env or prod .env.local");
 }
 
 async function walk(root, acc = []) {
@@ -101,7 +108,7 @@ async function buildContext() {
 
   const parts = [];
   let totalBytes = 0;
-  const LIMIT_BYTES = 1_400_000; // ~1.4 MB raw; gemini-2.5-pro has plenty of room but keep prompt reasonable
+  const LIMIT_BYTES = 1_400_000; // ~1.4 MB raw
 
   for (const p of [...schedulerFiles, ...edgeFiles]) {
     const content = await readFileSafe(p);
@@ -145,33 +152,41 @@ Focus your audit on:
 
 Output: markdown. No preamble. Use the severity emojis. Cite file:line for every finding.`;
 
-async function callGemini(apiKey, prompt) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${apiKey}`;
+async function callOpenAI(apiKey, prompt) {
+  const url = "https://api.openai.com/v1/chat/completions";
   const body = {
-    systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
-    contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: {
-      temperature: 0.2,
-      maxOutputTokens: 32768,
-    },
+    model: MODEL,
+    messages: [
+      { role: "system", content: SYSTEM_INSTRUCTION },
+      { role: "user", content: prompt },
+    ],
+    // gpt-5.5 supports a max output range up to 16k-32k for the larger
+    // variants; 16k is sufficient for a comprehensive audit.
+    max_completion_tokens: 16384,
+    // gpt-5.5 reasoning models reject custom temperature — only the
+    // default (1) is supported. Omit the field entirely rather than
+    // sending the unsupported value.
   };
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "<unreadable>");
-    throw new Error(`Gemini HTTP ${res.status}: ${text.slice(0, 500)}`);
+    throw new Error(`OpenAI HTTP ${res.status}: ${text.slice(0, 500)}`);
   }
   const json = await res.json();
-  const text = json?.candidates?.[0]?.content?.parts?.map((p) => p.text).join("") ?? "";
+  const text = json?.choices?.[0]?.message?.content ?? "";
   if (!text) {
     throw new Error(
-      `Gemini returned no text. Raw: ${JSON.stringify(json).slice(0, 800)}`,
+      `OpenAI returned no text. Raw: ${JSON.stringify(json).slice(0, 800)}`,
     );
   }
-  return { text, usage: json.usageMetadata };
+  return { text, usage: json.usage };
 }
 
 async function main() {
@@ -182,22 +197,26 @@ async function main() {
 
   console.log("→ Walking files + building context…");
   const ctx = await buildContext();
-  console.log(`  files: ${ctx.fileCount} · code bytes: ${ctx.totalBytes} · design bytes: ${ctx.design.length}`);
+  console.log(
+    `  files: ${ctx.fileCount} · code bytes: ${ctx.totalBytes} · design bytes: ${ctx.design.length}`,
+  );
 
   const prompt = `# Canonical design spec (read this first)\n\n${ctx.design}\n\n---\n\n# Implementation (scheduler-app/ + supabase/functions/)\n${ctx.code}`;
 
   console.log(`→ Calling ${MODEL}…`);
-  const { text, usage } = await callGemini(apiKey, prompt);
+  const { text, usage } = await callOpenAI(apiKey, prompt);
 
-  console.log(`  tokens in: ${usage?.promptTokenCount ?? "?"} · out: ${usage?.candidatesTokenCount ?? "?"}`);
+  console.log(
+    `  tokens in: ${usage?.prompt_tokens ?? "?"} · out: ${usage?.completion_tokens ?? "?"}`,
+  );
 
   const header =
-    `# Gemini 2.5 Pro audit — scheduler-app vs chat-design.md\n\n` +
+    `# GPT-5.5 audit — scheduler-app vs chat-design.md\n\n` +
     `> Generated ${new Date().toISOString()}\n` +
     `> Files audited: ${ctx.fileCount} · Code bytes: ${ctx.totalBytes} · ` +
     `Design doc bytes: ${ctx.design.length}\n` +
     `> Model: ${MODEL} · ` +
-    `Tokens: ${usage?.promptTokenCount ?? "?"} in / ${usage?.candidatesTokenCount ?? "?"} out\n` +
+    `Tokens: ${usage?.prompt_tokens ?? "?"} in / ${usage?.completion_tokens ?? "?"} out\n` +
     `> Elapsed: ${((Date.now() - startedAt) / 1000).toFixed(1)}s\n\n---\n\n`;
 
   await fs.writeFile(OUTPUT, header + text + "\n", "utf-8");
@@ -206,6 +225,6 @@ async function main() {
 }
 
 main().catch((e) => {
-  console.error("✗ Gemini audit failed:", e instanceof Error ? e.message : e);
+  console.error("✗ GPT audit failed:", e instanceof Error ? e.message : e);
   process.exitCode = 1;
 });
