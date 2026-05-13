@@ -516,7 +516,16 @@ export async function submitNewCustomer(args: {
   chatId: string;
   first_name: string;
   last_name: string;
-  email?: string;
+  /** Required per chat-design.md §New Client Step 4 (was optional pre-fix). */
+  email: string;
+  /** Required address per spec (was missing entirely pre-fix). */
+  address?: {
+    address1: string;
+    address2?: string;
+    city: string;
+    state: string;
+    zip: string;
+  };
   vehicle: {
     year: number;
     make: string;
@@ -533,10 +542,9 @@ export async function submitNewCustomer(args: {
       updates: {
         verified_first_name: args.first_name,
         verified_last_name: args.last_name,
-        edited_emails: args.email
-          ? [{ email: args.email, primary: true }]
-          : null,
-        primary_email_for_description: args.email ?? null,
+        edited_emails: [{ email: args.email, is_primary: true }],
+        primary_email_for_description: args.email,
+        edited_address: args.address ?? null,
         new_vehicle_info: args.vehicle,
       },
       nextStep: "service_concern_picker",
@@ -546,7 +554,8 @@ export async function submitNewCustomer(args: {
       step: "new_customer_info",
       event_type: "card_submitted",
       event_detail: {
-        has_email: !!args.email,
+        has_email: true,
+        has_address: !!args.address,
         vehicle_year: args.vehicle.year,
         vehicle_make: args.vehicle.make,
       },

@@ -25,6 +25,13 @@ export interface NewCustomerFormProps {
     first_name?: string;
     last_name?: string;
     email?: string;
+    address?: {
+      address1?: string;
+      address2?: string;
+      city?: string;
+      state?: string;
+      zip?: string;
+    };
     vehicle?: {
       year?: number;
       make?: string;
@@ -38,7 +45,16 @@ export interface NewCustomerFormProps {
   onSubmit: (output: {
     first_name: string;
     last_name: string;
-    email?: string;
+    /** Required in full mode per chat-design.md §New Client Step 4. */
+    email: string;
+    /** Required street + city + state + zip in full mode. */
+    address?: {
+      address1: string;
+      address2?: string;
+      city: string;
+      state: string;
+      zip: string;
+    };
     vehicle: {
       year: number;
       make: string;
@@ -67,6 +83,21 @@ export function NewCustomerForm({
   const [lastName, setLastName] = useState(collected_so_far?.last_name ?? "");
   const [email, setEmail] = useState(collected_so_far?.email ?? "");
 
+  // Address — required in 'full' mode per chat-design.md §New Client
+  // Step 4 lines 2588-2620 (address1, city, state, zip required;
+  // address2 optional). PA pre-selected since the shop is in PA.
+  const [address1, setAddress1] = useState(
+    collected_so_far?.address?.address1 ?? "",
+  );
+  const [address2, setAddress2] = useState(
+    collected_so_far?.address?.address2 ?? "",
+  );
+  const [city, setCity] = useState(collected_so_far?.address?.city ?? "");
+  const [addrState, setAddrState] = useState(
+    collected_so_far?.address?.state ?? "PA",
+  );
+  const [zip, setZip] = useState(collected_so_far?.address?.zip ?? "");
+
   const [year, setYear] = useState<string>(
     collected_so_far?.vehicle?.year !== undefined
       ? String(collected_so_far.vehicle.year)
@@ -94,9 +125,21 @@ export function NewCustomerForm({
     if (!isVehicleOnly) {
       if (firstName.trim().length === 0) next.firstName = "First name is required.";
       if (lastName.trim().length === 0) next.lastName = "Last name is required.";
-      if (email.trim().length > 0 && !/^\S+@\S+\.\S+$/.test(email.trim())) {
+      // Email REQUIRED per chat-design.md §New Client Step 4 (used for
+      // appointment confirmation + Tekmetric appointment.description).
+      const emailTrim = email.trim();
+      if (emailTrim.length === 0) {
+        next.email = "Email is required for the appointment confirmation.";
+      } else if (!/^\S+@\S+\.\S+$/.test(emailTrim)) {
         next.email = "Email doesn't look quite right.";
       }
+      // Address fields REQUIRED per spec.
+      if (address1.trim().length === 0)
+        next.address1 = "Street address is required.";
+      if (city.trim().length === 0) next.city = "City is required.";
+      if (addrState.trim().length !== 2) next.addrState = "State (2 letters).";
+      if (!/^\d{5}$/.test(zip.trim()))
+        next.zip = "ZIP must be 5 digits.";
     }
 
     const yearNum = Number.parseInt(year, 10);
@@ -117,7 +160,16 @@ export function NewCustomerForm({
       await onSubmit({
         first_name: firstName.trim(),
         last_name: lastName.trim(),
-        email: email.trim() ? email.trim() : undefined,
+        email: email.trim(),
+        address: isVehicleOnly
+          ? undefined
+          : {
+              address1: address1.trim(),
+              address2: address2.trim() || undefined,
+              city: city.trim(),
+              state: addrState.trim(),
+              zip: zip.trim(),
+            },
         vehicle: {
           year: yearNum,
           make: make.trim(),
@@ -187,7 +239,8 @@ export function NewCustomerForm({
                 <div className="sm:col-span-2">
                   <Field
                     label="Email"
-                    help="Optional — we'll send your appointment confirmation here."
+                    required
+                    help="We'll send your appointment confirmation here."
                     error={errors.email}
                     inputId="ncf-email"
                   >
@@ -199,6 +252,124 @@ export function NewCustomerForm({
                         placeholder="sarah@example.com"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
+                        disabled={disabled || pending}
+                        aria-describedby={ariaDescribedBy}
+                        aria-invalid={ariaInvalid}
+                      />
+                    )}
+                  </Field>
+                </div>
+              </div>
+            </fieldset>
+          ) : null}
+
+          {!isVehicleOnly ? (
+            <fieldset>
+              <legend className="label-eyebrow mb-3 block">
+                Where do you live?
+              </legend>
+              <div className="grid grid-cols-1 gap-3">
+                <Field
+                  label="Street address"
+                  required
+                  error={errors.address1}
+                  inputId="ncf-addr1"
+                >
+                  {({ id, ariaDescribedBy, ariaInvalid }) => (
+                    <Input
+                      id={id}
+                      type="text"
+                      autoComplete="address-line1"
+                      placeholder="123 Main Street"
+                      value={address1}
+                      onChange={(e) => setAddress1(e.target.value)}
+                      disabled={disabled || pending}
+                      aria-describedby={ariaDescribedBy}
+                      aria-invalid={ariaInvalid}
+                    />
+                  )}
+                </Field>
+                <Field
+                  label="Apt / suite (optional)"
+                  inputId="ncf-addr2"
+                >
+                  {({ id, ariaDescribedBy, ariaInvalid }) => (
+                    <Input
+                      id={id}
+                      type="text"
+                      autoComplete="address-line2"
+                      value={address2}
+                      onChange={(e) => setAddress2(e.target.value)}
+                      disabled={disabled || pending}
+                      aria-describedby={ariaDescribedBy}
+                      aria-invalid={ariaInvalid}
+                    />
+                  )}
+                </Field>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_5rem_6rem]">
+                  <Field
+                    label="City"
+                    required
+                    error={errors.city}
+                    inputId="ncf-city"
+                  >
+                    {({ id, ariaDescribedBy, ariaInvalid }) => (
+                      <Input
+                        id={id}
+                        type="text"
+                        autoComplete="address-level2"
+                        placeholder="Norristown"
+                        value={city}
+                        onChange={(e) => setCity(e.target.value)}
+                        disabled={disabled || pending}
+                        aria-describedby={ariaDescribedBy}
+                        aria-invalid={ariaInvalid}
+                      />
+                    )}
+                  </Field>
+                  <Field
+                    label="State"
+                    required
+                    error={errors.addrState}
+                    inputId="ncf-addr-state"
+                  >
+                    {({ id, ariaDescribedBy, ariaInvalid }) => (
+                      <Input
+                        id={id}
+                        type="text"
+                        autoComplete="address-level1"
+                        maxLength={2}
+                        value={addrState}
+                        onChange={(e) =>
+                          setAddrState(
+                            e.target.value.toUpperCase().slice(0, 2),
+                          )
+                        }
+                        disabled={disabled || pending}
+                        aria-describedby={ariaDescribedBy}
+                        aria-invalid={ariaInvalid}
+                      />
+                    )}
+                  </Field>
+                  <Field
+                    label="ZIP"
+                    required
+                    error={errors.zip}
+                    inputId="ncf-addr-zip"
+                  >
+                    {({ id, ariaDescribedBy, ariaInvalid }) => (
+                      <Input
+                        id={id}
+                        inputMode="numeric"
+                        autoComplete="postal-code"
+                        maxLength={5}
+                        placeholder="19401"
+                        value={zip}
+                        onChange={(e) =>
+                          setZip(
+                            e.target.value.replace(/\D/g, "").slice(0, 5),
+                          )
+                        }
                         disabled={disabled || pending}
                         aria-describedby={ariaDescribedBy}
                         aria-invalid={ariaInvalid}

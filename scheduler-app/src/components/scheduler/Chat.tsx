@@ -228,9 +228,16 @@ export function Chat({ chatId, initialMessages }: ChatProps) {
               chatId,
               first_name: String(cardOutput.first_name ?? ""),
               last_name: String(cardOutput.last_name ?? ""),
-              email: cardOutput.email
-                ? String(cardOutput.email)
-                : undefined,
+              email: String(cardOutput.email ?? ""),
+              address: cardOutput.address as
+                | {
+                    address1: string;
+                    address2?: string;
+                    city: string;
+                    state: string;
+                    zip: string;
+                  }
+                | undefined,
               vehicle: cardOutput.vehicle as never,
             });
           } else {
