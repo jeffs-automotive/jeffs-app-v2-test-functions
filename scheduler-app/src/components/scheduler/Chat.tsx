@@ -68,6 +68,7 @@ import {
   submitNewVehicle,
   submitOtp,
   submitPhoneName,
+  resendOtp,
   submitServiceAndConcernPicker,
   submitStartOver,
   submitSummaryConfirm,
@@ -257,12 +258,21 @@ export function Chat({ chatId, initialMessages, initialStep }: ChatProps) {
             phone_e164: String(cardOutput.phone ?? ""),
           });
           break;
-        case "show_otp_input":
-          result = await submitOtp({
-            chatId,
-            code: String(cardOutput.code ?? ""),
-          });
+        case "show_otp_input": {
+          // Two card outputs: { code: "123456" } for submit, or
+          // { action: "resend" } for resend. Per chat-design.md §Step 3
+          // (lines 645-651) the resend has a 30s client-side cooldown
+          // enforced by the card; here we just thread the action through.
+          if (cardOutput.action === "resend") {
+            result = await resendOtp({ chatId });
+          } else {
+            result = await submitOtp({
+              chatId,
+              code: String(cardOutput.code ?? ""),
+            });
+          }
           break;
+        }
         case "show_vehicle_picker":
           result = await submitVehiclePick({
             chatId,
@@ -778,12 +788,17 @@ function PartRenderer({
     case "show_otp_input": {
       const phoneLastFour = String(tp.input?.phone_last_four ?? "");
       const ttlSeconds = Number(tp.input?.ttl_seconds ?? 300);
+      const attemptsRemaining =
+        typeof tp.input?.attempts_remaining === "number"
+          ? (tp.input.attempts_remaining as number)
+          : undefined;
       return (
         <OtpInput
           phone_last_four={phoneLastFour}
           ttl_seconds={ttlSeconds}
+          attempts_remaining={attemptsRemaining}
           disabled={disabled}
-          onSubmit={(out) => submit(out)}
+          onSubmit={(out) => submit(out as Record<string, unknown>)}
         />
       );
     }

@@ -433,6 +433,85 @@ export async function submitOtp(args: {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+//   STEP 3 (resend) — Resend OTP
+// ═════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Resend the OTP for an existing session that's already on Step 3
+ * (otp_pending). Triggered by the OTP card's "Resend code" button per
+ * chat-design.md §Step 3 lines 645-651.
+ *
+ * Does NOT increment session-level otp_attempts — that counter is for
+ * wrong-CODE attempts, not resend requests. The per-phone rate limit
+ * (3 active codes per hour) prevents abuse at the OTP layer.
+ */
+export async function resendOtp(args: {
+  chatId: string;
+}): Promise<SessionActionResult> {
+  try {
+    const supabase = createSupabaseAdminClient();
+    const { data: row } = await supabase
+      .from("customer_chat_sessions")
+      .select("phone_e164, entered_first_name, entered_last_name")
+      .eq("id", args.chatId)
+      .maybeSingle();
+
+    await logAudit({
+      session_id: args.chatId,
+      step: "otp_pending",
+      event_type: "otp_resend_requested",
+      event_detail: {
+        phone_last_four: row?.phone_e164
+          ? String(row.phone_e164).slice(-4)
+          : null,
+      },
+    });
+
+    const startedAt = Date.now();
+    const result = await consultOrchestrator({
+      session_id: args.chatId,
+      context:
+        `Customer tapped Resend on Step 3. Tool chain:\n` +
+        `  1. send_otp({ phone_e164: <session_metadata.phone_e164> })\n` +
+        `  2. Emit directive 'show_otp_input' with the fresh ttl_seconds and\n` +
+        `     phone_last_four. Do NOT call lookup_customer_by_phone (already\n` +
+        `     done at Step 2).\n` +
+        `  3. If send_otp returns 'rate_limited' or 'send_failed', emit\n` +
+        `     'show_escalation_card' with the appropriate reason.`,
+      hints: {
+        phone_e164: row?.phone_e164 ?? null,
+        is_resend: true,
+      },
+      intent_type: "verify_and_lookup",
+    });
+    await logAudit({
+      session_id: args.chatId,
+      step: "otp_pending",
+      event_type: "tool_called",
+      event_detail: {
+        tool: "send_otp",
+        is_resend: true,
+        directive: result.directive,
+      },
+      latency_ms: Date.now() - startedAt,
+    });
+
+    return {
+      ok: result.directive !== "tool_error",
+      directive: result.directive ?? "show_otp_input",
+      data: result.data,
+      flags: result.flags,
+      bubble_copy:
+        result.directive === "show_otp_input"
+          ? getBubbleCopy("phone_name_to_otp")
+          : undefined,
+    };
+  } catch (e) {
+    return tooErrResult(e, "otp_pending");
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 //   STEP 5 (returning customer) — Customer info edit
 // ═════════════════════════════════════════════════════════════════════════════
 
