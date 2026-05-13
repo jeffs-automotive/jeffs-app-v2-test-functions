@@ -33,6 +33,7 @@
 
 import * as Sentry from "@sentry/nextjs";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import type { Json } from "@/lib/database.types";
 import {
   consultOrchestrator,
   OrchestratorError,
@@ -1305,6 +1306,26 @@ export async function submitServiceAndConcernPicker(args: {
       latency_ms: Date.now() - startedAt,
     });
 
+    // Transform the specialist's ARRAY-shaped clarify_concern_question
+    // response into the single-question card shape the UI expects, and
+    // persist the remaining questions for submitClarificationAnswer to
+    // walk through one at a time.
+    if (result.directive === "clarify_concern_question") {
+      const shaped = await shapeClarificationDirective({
+        chatId: args.chatId,
+        data: (result.data ?? {}) as Record<string, unknown>,
+      });
+      return {
+        ok: true,
+        directive: shaped.directive,
+        data: shaped.data,
+        flags: result.flags,
+        bubble_copy: getBubbleCopy("concern_to_diagnostic_loading"),
+      };
+    }
+
+    // propose_testing_services / continue / tool_error all flow through
+    // unchanged; the orchestrator owns those response shapes already.
     return {
       ok: result.directive !== "tool_error",
       directive: result.directive,
@@ -1315,6 +1336,211 @@ export async function submitServiceAndConcernPicker(args: {
   } catch (e) {
     return tooErrResult(e, "service_concern_picker");
   }
+}
+
+// ─── Clarification question pipeline helpers ───────────────────────────────
+//
+// The diagnostic specialist returns:
+//   { category, questions: [{id, question_text, options}, ...],
+//     recommended_testing_services: [...], reasoning }
+// but the UI's ClarificationQuestionCard renders ONE question at a time
+// with flat fields. These helpers bridge the contract:
+//   - shapeClarificationDirective: pops the first question, persists the
+//     remaining queue + the deferred testing services, returns the flat
+//     card-ready shape.
+//   - advanceClarificationQueue: called from submitClarificationAnswer to
+//     either return the next pending question OR transition to propose
+//     testing / continue when the queue empties.
+
+type CatalogQuestion = {
+  id: number;
+  question_text: string;
+  options: Array<{ label: string; value: string }>;
+};
+
+type CatalogTestingService = {
+  service_key: string;
+  display_name: string;
+  abbreviation?: string;
+  starting_price_cents: number;
+  notes?: string | null;
+};
+
+function parseQuestionList(raw: unknown): CatalogQuestion[] {
+  if (!Array.isArray(raw)) return [];
+  const out: CatalogQuestion[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const r = item as Record<string, unknown>;
+    const id = Number(r.id);
+    const question_text = typeof r.question_text === "string"
+      ? r.question_text
+      : "";
+    const options = Array.isArray(r.options)
+      ? (r.options as unknown[])
+          .filter(
+            (o): o is { label: string; value: string } =>
+              !!o &&
+              typeof o === "object" &&
+              typeof (o as Record<string, unknown>).label === "string" &&
+              typeof (o as Record<string, unknown>).value === "string",
+          )
+      : [];
+    if (Number.isFinite(id) && id > 0 && question_text && options.length > 0) {
+      out.push({ id, question_text, options });
+    }
+  }
+  return out;
+}
+
+async function shapeClarificationDirective(args: {
+  chatId: string;
+  data: Record<string, unknown>;
+}): Promise<{
+  directive: "clarify_concern_question" | "propose_testing_services" | "continue";
+  data: Record<string, unknown>;
+}> {
+  const category = typeof args.data.category === "string"
+    ? args.data.category
+    : "";
+  const questions = parseQuestionList(args.data.questions);
+  const testingServices = Array.isArray(args.data.recommended_testing_services)
+    ? (args.data.recommended_testing_services as CatalogTestingService[])
+    : [];
+
+  if (questions.length === 0) {
+    // No questions to ask — go straight to testing proposal (or continue).
+    if (testingServices.length > 0) {
+      return {
+        directive: "propose_testing_services",
+        data: { category, recommended_testing_services: testingServices },
+      };
+    }
+    return { directive: "continue", data: { category } };
+  }
+
+  // Pop the first question, persist the rest as the pending queue.
+  const [first, ...rest] = questions;
+  if (!first) {
+    // Type-safety: shouldn't happen given the length check above.
+    return { directive: "continue", data: { category } };
+  }
+  await writeSession({
+    chatId: args.chatId,
+    updates: {
+      clarification_questions_pending: {
+        category,
+        remaining: rest,
+        // Stash the testing services so we don't lose them while walking
+        // through the queue — submitClarificationAnswer reads this back
+        // when the queue drains.
+        deferred_testing_services: testingServices,
+      } as unknown as Json,
+    },
+  });
+
+  return {
+    directive: "clarify_concern_question",
+    data: {
+      question_id: first.id,
+      question_text: first.question_text,
+      options: first.options,
+      category,
+    },
+  };
+}
+
+async function advanceClarificationQueue(args: {
+  chatId: string;
+}): Promise<SessionActionResult> {
+  const supabase = createSupabaseAdminClient();
+  const { data: row, error } = await supabase
+    .from("customer_chat_sessions")
+    .select("clarification_questions_pending")
+    .eq("id", args.chatId)
+    .maybeSingle();
+  if (error) {
+    throw new Error(`session read failed: ${error.message}`);
+  }
+  const pending = (row?.clarification_questions_pending ?? {}) as {
+    category?: string;
+    remaining?: CatalogQuestion[];
+    deferred_testing_services?: CatalogTestingService[];
+  };
+  const category = typeof pending.category === "string" ? pending.category : "";
+  const remaining = parseQuestionList(pending.remaining);
+  const deferredTesting = Array.isArray(pending.deferred_testing_services)
+    ? (pending.deferred_testing_services as CatalogTestingService[])
+    : [];
+
+  if (remaining.length > 0) {
+    const [next, ...rest] = remaining;
+    if (!next) {
+      // Type-safety; shouldn't happen given length check.
+      await writeSession({
+        chatId: args.chatId,
+        updates: { clarification_questions_pending: null },
+      });
+      return {
+        ok: true,
+        directive: "show_appointment_type",
+        data: {},
+        bubble_copy: getBubbleCopy("to_appointment_type"),
+        current_step: "appointment_type",
+      };
+    }
+    await writeSession({
+      chatId: args.chatId,
+      updates: {
+        clarification_questions_pending: {
+          category,
+          remaining: rest,
+          deferred_testing_services: deferredTesting,
+        } as unknown as Json,
+      },
+    });
+    return {
+      ok: true,
+      directive: "clarify_concern_question",
+      data: {
+        question_id: next.id,
+        question_text: next.question_text,
+        options: next.options,
+        category,
+      },
+    };
+  }
+
+  // Queue drained — clear pending + emit the deferred next step.
+  await writeSession({
+    chatId: args.chatId,
+    updates: {
+      clarification_questions_pending: null,
+      diagnostic_processing_complete: true,
+      recommended_testing_services: deferredTesting as unknown as Json,
+    },
+    nextStep: deferredTesting.length > 0
+      ? "testing_service_approval"
+      : "appointment_type",
+  });
+
+  if (deferredTesting.length > 0) {
+    return {
+      ok: true,
+      directive: "propose_testing_services",
+      data: {
+        category,
+        recommended_testing_services: deferredTesting,
+      },
+    };
+  }
+  return {
+    ok: true,
+    directive: "show_appointment_type",
+    data: {},
+    bubble_copy: getBubbleCopy("to_appointment_type"),
+    current_step: "appointment_type",
+  };
 }
 
 export async function submitClarificationAnswer(args: {
@@ -1346,19 +1572,13 @@ export async function submitClarificationAnswer(args: {
       event_detail: { question_id: args.question_id, skipped: args.answer === "skipped" },
     });
 
-    // Ask the orchestrator what's next: another question, propose testing, or move on.
-    const result = await consultOrchestrator({
-      session_id: args.chatId,
-      context: `Customer answered clarification question ${args.question_id} with "${args.answer}". What's next?`,
-      hints: { question_id: args.question_id, answer: args.answer },
-      intent_type: "diagnose_concern",
-    });
-    return {
-      ok: result.directive !== "tool_error",
-      directive: result.directive,
-      data: result.data,
-      flags: result.flags,
-    };
+    // Walk the pending-question queue locally — the diagnostic specialist
+    // returned the full question set + deferred testing services in one
+    // shot when the concern was first described, so we don't need a
+    // second consultOrchestrator() call per question. (The prior version
+    // called the specialist on EVERY answer, which was slow + expensive
+    // + caused the specialist to drift its earlier classification.)
+    return await advanceClarificationQueue({ chatId: args.chatId });
   } catch (e) {
     return tooErrResult(e, "clarification_question");
   }
