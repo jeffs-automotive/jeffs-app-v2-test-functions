@@ -2,45 +2,37 @@
 
 import { useState } from "react";
 
+import { Button, Card } from "@/components/ui";
+
 /**
- * ConfirmationCard rendering tool component.
+ * ConfirmationCard rendering tool component (Heritage Editorial refactor 2026-05-13).
  *
- * Per appointments_design.md §7.5 + §9 (slot hold + confirmation flow):
- * - Input: { appointment_id?, summary, starts_at, customer, vehicle, type, reminders[] }
+ * Per appointments_design.md §7.5 + §9:
+ * - Input: { summary, starts_at, customer, vehicle, type, reminders[] }
  * - Output: { confirmed: boolean }
  *
- * Final read-back the customer sees before the orchestrator calls
- * confirm_appointment → Tekmetric POST /appointments. Customer taps
- * "Confirm" or "Cancel."
+ * Legacy single-line summary view. The richer Step 10.1 review surface
+ * lives in `heritage/SummaryCard.tsx` and is rendered via the new
+ * `show_summary_card` directive. This card is kept for any orchestrator
+ * paths still emitting the legacy `show_confirmation_card` / `render_confirmation_card`
+ * directive — eventual deprecation TBD once all callers migrate.
  *
- * For DROP-OFF appointments per §5: do NOT display a time. The orchestrator
- * uses 12:00 PM internally as a Tekmetric placeholder; customers never see
- * that. The starts_at field arrives as a date-only ISO ('2026-05-13') for
- * drop-offs vs full timestamp for waiters.
+ * For DROP-OFF appointments: never display the 12:00 PM Tekmetric
+ * placeholder. starts_at arrives as date-only for drop-offs.
  */
 
 export interface ConfirmationCardProps {
-  /** Appointment summary (e.g., "Oil Change", "State Inspection + Brake Inspection"). */
   summary: string;
-  /** ISO date or datetime depending on type. */
   starts_at: string;
-  /** Customer display name (e.g., "Vince Zulauf"). */
   customer: string;
-  /** Vehicle display label (e.g., "2018 Toyota Camry"). */
   vehicle: string;
-  /** Appointment type — drives whether time is shown. */
   type: "waiter" | "dropoff";
-  /** Service-specific reminders shown above the buttons. Per §5: */
-  /**   - drop-off: "Please drop off your vehicle before 10 AM..." */
-  /**   - state inspection: "Please bring up-to-date insurance and registration cards." */
   reminders?: string[];
   onSubmit: (output: { confirmed: boolean }) => void | Promise<void>;
   disabled?: boolean;
 }
 
 function formatStartsAt(iso: string, type: "waiter" | "dropoff"): string {
-  // For dropoff, we get just a date (YYYY-MM-DD) — we never display the
-  // placeholder 12:00 PM time per design §5.
   if (type === "dropoff") {
     const [y, m, d] = iso.slice(0, 10).split("-").map((s) => Number.parseInt(s, 10));
     const date = new Date(y!, (m ?? 1) - 1, d ?? 1);
@@ -51,7 +43,6 @@ function formatStartsAt(iso: string, type: "waiter" | "dropoff"): string {
       year: "numeric",
     });
   }
-  // Waiter: full datetime
   const date = new Date(iso);
   return `${date.toLocaleDateString(undefined, {
     weekday: "long",
@@ -87,64 +78,81 @@ export function ConfirmationCard({
   }
 
   return (
-    <div
-      role="group"
-      aria-labelledby="confirmation-heading"
-      className="rounded-md border border-brand-burgundy-200 bg-brand-burgundy-50 p-4 shadow-sm"
-    >
-      <h3
-        id="confirmation-heading"
-        className="mb-3 text-base font-semibold text-brand-burgundy-800"
-      >
-        Just to confirm
-      </h3>
+    <Card aria-labelledby="confirmation-heading">
+      <Card.Eyebrow>Step 10 · Just to confirm</Card.Eyebrow>
+      <Card.Title id="confirmation-heading">
+        Does this look right? ✅
+      </Card.Title>
 
-      <dl className="mb-3 space-y-1 text-sm text-gray-800">
-        <div className="flex flex-wrap">
-          <dt className="w-28 font-medium">{type === "dropoff" ? "Drop off:" : "Appointment:"}</dt>
-          <dd>{formatStartsAt(starts_at, type)}</dd>
-        </div>
-        <div className="flex flex-wrap">
-          <dt className="w-28 font-medium">Customer:</dt>
-          <dd>{customer}</dd>
-        </div>
-        <div className="flex flex-wrap">
-          <dt className="w-28 font-medium">Vehicle:</dt>
-          <dd>{vehicle}</dd>
-        </div>
-        <div className="flex flex-wrap">
-          <dt className="w-28 font-medium">Service:</dt>
-          <dd>{summary}</dd>
-        </div>
-      </dl>
+      <Card.Body className="space-y-3">
+        <dl className="space-y-2 text-[15px]">
+          <div className="flex flex-wrap items-baseline gap-2">
+            <dt className="w-28 text-[13px] uppercase tracking-wider text-ink-tertiary">
+              {type === "dropoff" ? "Drop off" : "Appointment"}
+            </dt>
+            <dd className="flex-1 font-display text-ink">
+              {formatStartsAt(starts_at, type)}
+            </dd>
+          </div>
+          <div className="flex flex-wrap items-baseline gap-2">
+            <dt className="w-28 text-[13px] uppercase tracking-wider text-ink-tertiary">
+              Customer
+            </dt>
+            <dd className="flex-1 text-ink">{customer}</dd>
+          </div>
+          <div className="flex flex-wrap items-baseline gap-2">
+            <dt className="w-28 text-[13px] uppercase tracking-wider text-ink-tertiary">
+              Vehicle
+            </dt>
+            <dd className="flex-1 text-ink">{vehicle}</dd>
+          </div>
+          <div className="flex flex-wrap items-baseline gap-2">
+            <dt className="w-28 text-[13px] uppercase tracking-wider text-ink-tertiary">
+              Service
+            </dt>
+            <dd className="flex-1 text-ink">{summary}</dd>
+          </div>
+        </dl>
 
-      {reminders.length > 0 ? (
-        <ul className="mb-3 list-disc rounded border border-brand-gold-300 bg-brand-gold-50 p-3 pl-7 text-sm text-gray-800">
-          {reminders.map((r, idx) => (
-            // eslint-disable-next-line react/no-array-index-key
-            <li key={idx}>{r}</li>
-          ))}
-        </ul>
-      ) : null}
+        {reminders.length > 0 ? (
+          <div
+            className="rounded-[var(--radius-input)] border-l-2 border-brand-gold-400 bg-paper-200 px-3 py-2 text-[14px] leading-relaxed text-ink"
+            role="note"
+          >
+            <p className="mb-1 text-[12px] font-medium uppercase tracking-wider text-ink-tertiary">
+              Please bring
+            </p>
+            <ul className="space-y-1">
+              {reminders.map((r, idx) => (
+                // eslint-disable-next-line react/no-array-index-key
+                <li key={idx}>• {r}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </Card.Body>
 
-      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-        <button
-          type="button"
+      <Card.Actions align="between">
+        <Button
+          variant="secondary"
+          size="md"
+          disabled={disabled || submitting}
           onClick={() => void emit(false)}
-          disabled={disabled || submitting}
-          className="rounded border border-gray-300 bg-white px-4 py-2 text-base font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          fullWidthOnMobile
         >
-          Cancel
-        </button>
-        <button
-          type="button"
+          Edit something
+        </Button>
+        <Button
+          variant="primary"
+          size="md"
+          loading={submitting}
+          disabled={disabled}
           onClick={() => void emit(true)}
-          disabled={disabled || submitting}
-          className="rounded bg-brand-burgundy-700 px-4 py-2 text-base font-medium text-white hover:bg-brand-burgundy-800 disabled:opacity-50"
+          fullWidthOnMobile
         >
-          Confirm appointment
-        </button>
-      </div>
-    </div>
+          Confirm appointment 🔑
+        </Button>
+      </Card.Actions>
+    </Card>
   );
 }

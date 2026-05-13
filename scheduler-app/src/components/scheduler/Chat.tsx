@@ -38,12 +38,14 @@ import { EscalationCard } from "./EscalationCard";
 // Heritage Editorial cards (Chunk 6 — 2026-05-13). New directives route here.
 import {
   AppointmentTypeCard,
+  ChatBubble,
   ClarificationQuestionCard,
   CustomerNotesCard,
   CustomerQuestionCard,
   PhoneNameCard,
   SummaryCard,
   TestingServiceApprovalCard,
+  WizardFooter,
 } from "./heritage";
 
 export interface ChatProps {
@@ -77,18 +79,51 @@ export function Chat({ chatId, initialMessages }: ChatProps) {
     void sendMessage({ text });
   }
 
+  // ─── WizardFooter handlers (Chunk 6 incremental wiring 2026-05-13) ─────────
+  // Per chat-design.md: both buttons send a synthetic user message the chat
+  // agent recognizes. The orchestrator picks up intent_type via hints and
+  // routes appropriately. Confirmation UX (2-tap) is owned by WizardFooter.
+  async function handleStartOver() {
+    if (isWorking) return;
+    // Synthetic user message that the chat agent translates into a fresh
+    // start. The agent's system prompt handles this via the "Always-visible
+    // affordances" section.
+    void sendMessage({
+      text: "I want to start over from the beginning, please.",
+    });
+  }
+
+  async function handleEscalate() {
+    if (isWorking) return;
+    // Synthetic user message that the chat agent translates into an
+    // escalation. The orchestrator emits the escalate directive on the next
+    // turn, which renders the EscalationCard.
+    void sendMessage({
+      text: "Can I talk to a real person?",
+    });
+  }
+
   return (
     <div className="flex h-full flex-col">
       <div
         aria-live="polite"
         aria-label="Conversation"
-        className="flex-1 space-y-4 overflow-y-auto px-1 py-2"
+        className="flex-1 space-y-4 overflow-y-auto px-1 py-3"
       >
         {messages.length === 0 ? (
-          <p className="rounded border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-600">
-            Type anything below to start chatting with Jeff — your AI scheduling
-            assistant.
-          </p>
+          <ChatBubble role="assistant">
+            <p className="m-0">
+              Hi! 👋 I&apos;m Jeff, your AI scheduling assistant for Jeff&apos;s
+              Automotive.
+            </p>
+            <p className="mt-2">
+              Heads up — this conversation is recorded so our team can make
+              sure we&apos;re taking good care of you.
+            </p>
+            <p className="mt-2">
+              To get started — have you been to our shop before?
+            </p>
+          </ChatBubble>
         ) : null}
 
         {messages.map((m) => (
@@ -99,11 +134,17 @@ export function Chat({ chatId, initialMessages }: ChatProps) {
             disabled={isWorking}
           />
         ))}
+
+        {isWorking ? (
+          <ChatBubble role="assistant">
+            <p className="m-0 italic text-ink-secondary">Jeff is typing…</p>
+          </ChatBubble>
+        ) : null}
       </div>
 
       <form
         onSubmit={onSend}
-        className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end"
+        className="mt-4 flex flex-col gap-2 border-t border-rule pt-3 sm:flex-row sm:items-end"
       >
         <label className="sr-only" htmlFor="chat-input">
           Message
@@ -119,18 +160,37 @@ export function Chat({ chatId, initialMessages }: ChatProps) {
             }
           }}
           rows={2}
-          placeholder="Type your message..."
+          placeholder="Type a message…"
           disabled={isWorking}
-          className="flex-1 resize-none rounded border border-gray-300 px-3 py-2 text-base focus:border-brand-burgundy-700 focus:outline-none focus:ring-2 focus:ring-brand-burgundy-200"
+          className={
+            "flex-1 resize-none rounded-[var(--radius-input)] border border-rule " +
+            "bg-paper-100 px-3.5 py-2.5 text-[15px] text-ink placeholder:text-ink-tertiary " +
+            "focus:border-brand-burgundy-500 focus:outline-none " +
+            "focus:ring-2 focus:ring-brand-burgundy-200 " +
+            "disabled:opacity-60 transition-colors"
+          }
         />
         <button
           type="submit"
           disabled={isWorking || draft.trim().length === 0}
-          className="rounded bg-brand-burgundy-700 px-4 py-2 text-base font-medium text-white hover:bg-brand-burgundy-800 disabled:opacity-50"
+          className={
+            "min-h-11 rounded-[var(--radius-input)] bg-brand-burgundy-700 " +
+            "px-5 py-2.5 text-[15px] font-medium text-paper-100 " +
+            "transition-colors duration-150 ease-out " +
+            "hover:bg-brand-burgundy-800 disabled:opacity-50 disabled:cursor-not-allowed " +
+            "focus-visible:outline-2 focus-visible:outline-offset-2 " +
+            "focus-visible:outline-brand-burgundy-500"
+          }
         >
           {isWorking ? "…" : "Send"}
         </button>
       </form>
+
+      <WizardFooter
+        onStartOver={handleStartOver}
+        onEscalate={handleEscalate}
+        disabled={isWorking}
+      />
     </div>
   );
 }
@@ -147,18 +207,40 @@ interface MessageBlockProps {
 
 function MessageBlock({ message, addToolResult, disabled }: MessageBlockProps) {
   const isUser = message.role === "user";
+  const parts = message.parts ?? [];
+
+  // Split parts: text parts get wrapped in a single ChatBubble; tool-call
+  // parts get rendered as full-width cards (they bring their own surface).
+  const textParts: NonNullable<UIMessage["parts"]> = [];
+  const toolParts: NonNullable<UIMessage["parts"]> = [];
+  for (const part of parts) {
+    if ((part as { type?: string }).type === "text") {
+      textParts.push(part);
+    } else {
+      toolParts.push(part);
+    }
+  }
+
   return (
-    <div
-      className={
-        isUser
-          ? "ml-auto max-w-[85%] rounded-md bg-brand-burgundy-700 px-3 py-2 text-sm text-white"
-          : "mr-auto max-w-full text-sm text-gray-900"
-      }
-    >
-      {(message.parts ?? []).map((part, idx) => (
+    <div className="space-y-3">
+      {textParts.length > 0 ? (
+        <ChatBubble role={isUser ? "user" : "assistant"}>
+          {textParts.map((part, idx) => (
+            <PartRenderer
+              // eslint-disable-next-line react/no-array-index-key
+              key={`text-${idx}`}
+              part={part}
+              messageRole={message.role}
+              addToolResult={addToolResult}
+              disabled={disabled}
+            />
+          ))}
+        </ChatBubble>
+      ) : null}
+      {toolParts.map((part, idx) => (
         <PartRenderer
           // eslint-disable-next-line react/no-array-index-key
-          key={idx}
+          key={`tool-${idx}`}
           part={part}
           messageRole={message.role}
           addToolResult={addToolResult}
@@ -182,14 +264,14 @@ function PartRenderer({
   addToolResult,
   disabled,
 }: PartRendererProps) {
-  // Plain text part — render as paragraph
+  // Plain text part — render as paragraph. Parent (MessageBlock) wraps these
+  // in a single ChatBubble per message so multiple text parts flow together.
   if (part.type === "text") {
     const textPart = part as { type: "text"; text: string };
     if (!textPart.text) return null;
+    void messageRole;
     return (
-      <p className={messageRole === "user" ? "" : "whitespace-pre-wrap py-1"}>
-        {textPart.text}
-      </p>
+      <p className="m-0 whitespace-pre-wrap">{textPart.text}</p>
     );
   }
 
@@ -625,6 +707,11 @@ function SubmittedEcho({
       text = "Submitted";
   }
   return (
-    <p className="my-1 text-xs italic text-gray-500">— {text}</p>
+    <p
+      className="my-1 pl-3 text-[12px] italic leading-relaxed text-ink-tertiary border-l border-rule"
+      aria-label="Submitted"
+    >
+      — {text}
+    </p>
   );
 }

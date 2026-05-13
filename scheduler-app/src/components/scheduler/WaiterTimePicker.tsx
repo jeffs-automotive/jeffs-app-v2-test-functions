@@ -2,25 +2,22 @@
 
 import { useState } from "react";
 
+import { Card } from "@/components/ui";
+
 /**
- * WaiterTimePicker rendering tool component.
+ * WaiterTimePicker rendering tool component (Heritage Editorial refactor 2026-05-13).
  *
  * Per appointments_design.md §7.5:
  * - Input: { date: string, available_times: string[] }   // '08:00' or '09:00' or both
  * - Output: { selected_time: string }
  *
- * Used only for the WAITER appointment type, after the customer picks a date
- * via CalendarDatePicker. Never rendered for drop-off (drop-offs skip the
- * time selection entirely per design §5).
- *
- * Phase 1 has only two possible times — 08:00 and 09:00 — but this component
- * accepts any subset (and could be extended to other times in Phase 2 by
- * just passing a longer available_times array).
+ * Used only for the WAITER appointment type (drop-offs skip time selection).
+ * Phase 1 only has 8 AM + 9 AM but the component accepts any subset.
  */
 
 export interface WaiterTimePickerProps {
-  date: string;                           // ISO YYYY-MM-DD for display
-  available_times: string[];              // 'HH:MM' format
+  date: string;
+  available_times: string[];
   onSubmit: (output: { selected_time: string }) => void | Promise<void>;
   disabled?: boolean;
 }
@@ -53,10 +50,12 @@ export function WaiterTimePicker({
   disabled = false,
 }: WaiterTimePickerProps) {
   const [submitting, setSubmitting] = useState(false);
+  const [picked, setPicked] = useState<string | null>(null);
 
   async function pick(time: string) {
     if (disabled || submitting) return;
     setSubmitting(true);
+    setPicked(time);
     try {
       await onSubmit({ selected_time: time });
     } finally {
@@ -65,48 +64,53 @@ export function WaiterTimePicker({
   }
 
   return (
-    <div
-      role="group"
-      aria-labelledby="waiter-time-heading"
-      className="rounded-md border border-gray-200 bg-white p-4 shadow-sm"
-    >
-      <h3
-        id="waiter-time-heading"
-        className="mb-1 text-sm font-medium text-gray-900"
-      >
-        Pick a time
-      </h3>
-      <p className="mb-3 text-sm text-gray-600">
-        {formatDateForDisplay(date)}
-      </p>
+    <Card aria-labelledby="waiter-time-heading">
+      <Card.Eyebrow>Step 9 · Waiter time</Card.Eyebrow>
+      <Card.Title id="waiter-time-heading">What time works? ☕</Card.Title>
+      <Card.Description>{formatDateForDisplay(date)}</Card.Description>
 
-      {available_times.length === 0 ? (
-        <p className="text-sm text-gray-700">
-          No waiter slots open that day. Please pick a different day or call us
-          at{" "}
-          <a
-            className="font-medium text-brand-burgundy-700 underline"
-            href="tel:6102536565"
-          >
-            (610) 253-6565
-          </a>
-          .
-        </p>
-      ) : (
-        <div className="flex flex-wrap gap-2">
-          {available_times.map((time) => (
-            <button
-              key={time}
-              type="button"
-              onClick={() => void pick(time)}
-              disabled={disabled || submitting}
-              className="rounded border border-gray-300 px-4 py-3 text-base hover:border-brand-burgundy-700 hover:bg-brand-burgundy-50 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-brand-burgundy-700"
+      <Card.Body>
+        {available_times.length === 0 ? (
+          <p className="text-[14px] leading-relaxed text-ink-secondary">
+            No waiter slots open that day. Pick a different day above, or
+            call us at{" "}
+            <a
+              className="font-medium text-brand-burgundy-700 hover:underline"
+              href="tel:6102536565"
             >
-              {formatHHMMForDisplay(time)}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+              (610) 253-6565
+            </a>
+            .
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-2.5">
+            {available_times.map((time) => {
+              const isPicked = picked === time;
+              return (
+                <button
+                  key={time}
+                  type="button"
+                  onClick={() => void pick(time)}
+                  disabled={disabled || submitting}
+                  aria-pressed={isPicked}
+                  className={
+                    "min-h-12 min-w-28 rounded-[var(--radius-card)] border px-5 py-3 " +
+                    "text-[16px] font-display transition-colors duration-150 ease-out " +
+                    "focus-visible:outline-2 focus-visible:outline-offset-2 " +
+                    "focus-visible:outline-brand-burgundy-500 " +
+                    "disabled:opacity-60 disabled:cursor-not-allowed " +
+                    (isPicked
+                      ? "border-brand-burgundy-700 bg-brand-burgundy-700 text-paper-100"
+                      : "border-rule bg-paper-100 text-ink hover:border-brand-burgundy-500 hover:bg-brand-burgundy-50")
+                  }
+                >
+                  {formatHHMMForDisplay(time)}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </Card.Body>
+    </Card>
   );
 }

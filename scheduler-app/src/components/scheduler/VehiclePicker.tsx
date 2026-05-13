@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 
+import { Card } from "@/components/ui";
+
 /**
- * VehiclePicker rendering tool component.
+ * VehiclePicker rendering tool component (Heritage Editorial refactor 2026-05-13).
  *
  * Per appointments_design.md §7.5:
  * - Input: { vehicles: Array<{id, label}>, allow_add_new: boolean }
@@ -11,13 +13,12 @@ import { useState } from "react";
  *
  * If the customer picks "Add new vehicle", we emit `vehicle_id: 'new'` and
  * the orchestrator's next directive renders show_new_customer_form (vehicle
- * subset). This component is just the picker — it doesn't collect new-vehicle
- * fields itself.
+ * subset).
  */
 
 export interface VehicleOption {
   id: string;
-  label: string;        // e.g. "2018 Toyota Camry"
+  label: string;
 }
 
 export interface VehiclePickerProps {
@@ -34,10 +35,12 @@ export function VehiclePicker({
   disabled = false,
 }: VehiclePickerProps) {
   const [submitting, setSubmitting] = useState(false);
+  const [picked, setPicked] = useState<string | null>(null);
 
   async function pick(vehicle_id: string | "new") {
     if (disabled || submitting) return;
     setSubmitting(true);
+    setPicked(vehicle_id);
     try {
       await onSubmit({ vehicle_id });
     } finally {
@@ -46,64 +49,92 @@ export function VehiclePicker({
   }
 
   return (
-    <div
-      role="group"
-      aria-labelledby="vehicle-picker-heading"
-      className="rounded-md border border-gray-200 bg-white p-4 shadow-sm"
-    >
-      <h3
-        id="vehicle-picker-heading"
-        className="mb-3 text-sm font-medium text-gray-900"
-      >
-        Which vehicle is this for?
-      </h3>
+    <Card aria-labelledby="vehicle-picker-heading">
+      <Card.Eyebrow>Step 6 · Which vehicle?</Card.Eyebrow>
+      <Card.Title id="vehicle-picker-heading">
+        Which one are we taking care of? 🚗
+      </Card.Title>
+      <Card.Description>
+        Tap the vehicle this appointment is for. Adding a new one? Tap
+        &quot;Add a vehicle&quot; — we&apos;ll grab the year/make/model next.
+      </Card.Description>
 
-      <ul className="flex flex-col gap-2">
-        {vehicles.map((v) => (
-          <li key={v.id}>
-            <button
-              type="button"
-              onClick={() => void pick(v.id)}
-              disabled={disabled || submitting}
-              className="flex w-full items-center justify-between rounded border border-gray-300 px-4 py-3 text-left text-base hover:border-brand-burgundy-700 hover:bg-brand-burgundy-50 disabled:opacity-50"
-            >
-              <span>{v.label}</span>
-              <span aria-hidden="true" className="text-gray-400">
-                →
-              </span>
-            </button>
-          </li>
-        ))}
+      <Card.Body>
+        <ul className="flex flex-col gap-2">
+          {vehicles.map((v) => {
+            const isPicked = picked === v.id;
+            return (
+              <li key={v.id}>
+                <button
+                  type="button"
+                  onClick={() => void pick(v.id)}
+                  disabled={disabled || submitting}
+                  aria-pressed={isPicked}
+                  className={
+                    "flex w-full items-center justify-between rounded-[var(--radius-card)] " +
+                    "border px-5 py-4 text-left text-[15px] " +
+                    "transition-colors duration-150 ease-out " +
+                    "focus-visible:outline-2 focus-visible:outline-offset-2 " +
+                    "focus-visible:outline-brand-burgundy-500 " +
+                    "disabled:opacity-60 disabled:cursor-not-allowed " +
+                    (isPicked
+                      ? "border-brand-burgundy-700 bg-brand-burgundy-50"
+                      : "border-rule bg-paper-100 hover:border-rule-strong hover:bg-paper-200")
+                  }
+                >
+                  <span className="font-medium text-ink">{v.label}</span>
+                  <span
+                    aria-hidden="true"
+                    className="text-ink-tertiary transition-transform duration-150 group-hover:translate-x-0.5"
+                  >
+                    →
+                  </span>
+                </button>
+              </li>
+            );
+          })}
 
-        {allow_add_new ? (
-          <li>
-            <button
-              type="button"
-              onClick={() => void pick("new")}
-              disabled={disabled || submitting}
-              className="flex w-full items-center justify-between rounded border border-dashed border-brand-gold-300 px-4 py-3 text-left text-base text-brand-burgundy-700 hover:border-brand-burgundy-700 hover:bg-brand-gold-50 disabled:opacity-50"
+          {allow_add_new ? (
+            <li>
+              <button
+                type="button"
+                onClick={() => void pick("new")}
+                disabled={disabled || submitting}
+                aria-pressed={picked === "new"}
+                className={
+                  "flex w-full items-center justify-between rounded-[var(--radius-card)] " +
+                  "border border-dashed px-5 py-4 text-left text-[15px] " +
+                  "text-brand-burgundy-700 transition-colors duration-150 ease-out " +
+                  "focus-visible:outline-2 focus-visible:outline-offset-2 " +
+                  "focus-visible:outline-brand-burgundy-500 " +
+                  "disabled:opacity-60 disabled:cursor-not-allowed " +
+                  (picked === "new"
+                    ? "border-brand-burgundy-700 bg-brand-burgundy-50"
+                    : "border-brand-gold-400 bg-paper-100 hover:border-brand-burgundy-500 hover:bg-brand-gold-50")
+                }
+              >
+                <span className="font-medium">+ Add a vehicle</span>
+                <span aria-hidden="true" className="text-ink-tertiary">
+                  →
+                </span>
+              </button>
+            </li>
+          ) : null}
+        </ul>
+
+        {vehicles.length === 0 && !allow_add_new ? (
+          <p className="mt-3 text-[14px] leading-relaxed text-ink-secondary">
+            I don&apos;t see any vehicles on file. Please call us at{" "}
+            <a
+              className="font-medium text-brand-burgundy-700 hover:underline"
+              href="tel:6102536565"
             >
-              <span>+ Add new vehicle</span>
-              <span aria-hidden="true" className="text-gray-400">
-                →
-              </span>
-            </button>
-          </li>
+              (610) 253-6565
+            </a>{" "}
+            to get set up.
+          </p>
         ) : null}
-      </ul>
-
-      {vehicles.length === 0 && !allow_add_new ? (
-        <p className="mt-2 text-sm text-gray-500">
-          No vehicles on file. Please call us at{" "}
-          <a
-            className="font-medium text-brand-burgundy-700 underline"
-            href="tel:6102536565"
-          >
-            (610) 253-6565
-          </a>{" "}
-          to get set up.
-        </p>
-      ) : null}
-    </div>
+      </Card.Body>
+    </Card>
   );
 }

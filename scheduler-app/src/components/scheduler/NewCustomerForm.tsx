@@ -2,27 +2,25 @@
 
 import { useState, type FormEvent } from "react";
 
+import { Button, Card, Field, Input } from "@/components/ui";
+
 /**
- * NewCustomerForm rendering tool component.
+ * NewCustomerForm rendering tool component (Heritage Editorial refactor 2026-05-13).
  *
  * Per appointments_design.md §4.5 + §7.5:
- * - Input: { collected_so_far?: { first_name?, last_name?, ... } }
+ * - Input: { collected_so_far?, mode? }
  * - Output: { first_name, last_name, email?, vehicle: { year, make, model, ... } }
  *
- * Used in two scenarios per §4.3 reconciliation matrix:
- *   1. NEW customer with no Tekmetric record → collect customer + vehicle
- *   2. RETURNING customer adding a new vehicle → only the vehicle fields
- *      are needed; the orchestrator passes `mode: 'vehicle-only'` and we
- *      hide the customer fields
+ * Two modes per §4.3 reconciliation matrix:
+ *   1. 'full' — NEW customer with no Tekmetric record → collect customer + vehicle
+ *   2. 'vehicle-only' — RETURNING customer adding a new vehicle
  *
- * Phone number is NOT collected here — it's already established by the
- * preceding show_phone_entry + OTP flow per §4.3.
+ * Phone is NOT collected here — already established by the preceding
+ * show_phone_entry / show_phone_name_card + OTP flow.
  */
 
 export interface NewCustomerFormProps {
-  /** When 'vehicle-only', hides the customer fields (returning customer + new vehicle). */
   mode?: "full" | "vehicle-only";
-  /** Optional pre-filled values from the orchestrator (e.g., customer name from earlier turn). */
   collected_so_far?: {
     first_name?: string;
     last_name?: string;
@@ -72,249 +70,270 @@ export function NewCustomerForm({
   const [year, setYear] = useState<string>(
     collected_so_far?.vehicle?.year !== undefined
       ? String(collected_so_far.vehicle.year)
-      : ""
+      : "",
   );
   const [make, setMake] = useState(collected_so_far?.vehicle?.make ?? "");
   const [model, setModel] = useState(collected_so_far?.vehicle?.model ?? "");
   const [subModel, setSubModel] = useState(
-    collected_so_far?.vehicle?.sub_model ?? ""
+    collected_so_far?.vehicle?.sub_model ?? "",
   );
   const [vin, setVin] = useState(collected_so_far?.vehicle?.vin ?? "");
   const [licensePlate, setLicensePlate] = useState(
-    collected_so_far?.vehicle?.license_plate ?? ""
+    collected_so_far?.vehicle?.license_plate ?? "",
   );
   const [state, setState] = useState(collected_so_far?.vehicle?.state ?? "");
 
-  const [error, setError] = useState<string | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [pending, setPending] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    const errors: string[] = [];
+    if (pending || disabled) return;
+    const next: Record<string, string> = {};
 
     if (!isVehicleOnly) {
-      if (firstName.trim().length === 0) errors.push("First name is required.");
-      if (lastName.trim().length === 0) errors.push("Last name is required.");
-      // Email is optional; if provided, basic shape check.
+      if (firstName.trim().length === 0) next.firstName = "First name is required.";
+      if (lastName.trim().length === 0) next.lastName = "Last name is required.";
       if (email.trim().length > 0 && !/^\S+@\S+\.\S+$/.test(email.trim())) {
-        errors.push("Email doesn't look right.");
+        next.email = "Email doesn't look quite right.";
       }
     }
 
     const yearNum = Number.parseInt(year, 10);
     if (!Number.isFinite(yearNum) || yearNum < MIN_YEAR || yearNum > CURRENT_YEAR + 2) {
-      errors.push(
-        `Year must be between ${MIN_YEAR} and ${CURRENT_YEAR + 2}.`
-      );
+      next.year = `Year must be between ${MIN_YEAR} and ${CURRENT_YEAR + 2}.`;
     }
-    if (make.trim().length === 0) errors.push("Make is required.");
-    if (model.trim().length === 0) errors.push("Model is required.");
+    if (make.trim().length === 0) next.make = "Make is required.";
+    if (model.trim().length === 0) next.model = "Model is required.";
 
-    if (errors.length > 0) {
-      setError(errors.join(" "));
+    if (Object.keys(next).length > 0) {
+      setErrors(next);
       return;
     }
 
-    setError(null);
-    await onSubmit({
-      first_name: firstName.trim(),
-      last_name: lastName.trim(),
-      email: email.trim() ? email.trim() : undefined,
-      vehicle: {
-        year: yearNum,
-        make: make.trim(),
-        model: model.trim(),
-        sub_model: subModel.trim() || undefined,
-        vin: vin.trim() || undefined,
-        license_plate: licensePlate.trim() || undefined,
-        state: state.trim() || undefined,
-      },
-    });
+    setErrors({});
+    setPending(true);
+    try {
+      await onSubmit({
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+        email: email.trim() ? email.trim() : undefined,
+        vehicle: {
+          year: yearNum,
+          make: make.trim(),
+          model: model.trim(),
+          sub_model: subModel.trim() || undefined,
+          vin: vin.trim() || undefined,
+          license_plate: licensePlate.trim() || undefined,
+          state: state.trim() || undefined,
+        },
+      });
+    } finally {
+      setPending(false);
+    }
   }
 
   return (
-    <form
-      onSubmit={(e) => void handleSubmit(e)}
-      // noValidate so the JS validation in handleSubmit always runs;
-      // without it, native HTML5 validation (e.g., year input min/max) can
-      // suppress the submit event and the customer never sees a clear error.
-      noValidate
-      className="rounded-md border border-gray-200 bg-white p-4 shadow-sm"
-      aria-labelledby="new-customer-heading"
-    >
-      <h3
-        id="new-customer-heading"
-        className="mb-3 text-sm font-medium text-gray-900"
-      >
-        {isVehicleOnly ? "Add a vehicle" : "Tell me about you and the vehicle"}
-      </h3>
-
+    <Card aria-labelledby="new-customer-heading">
+      <Card.Eyebrow>
+        {isVehicleOnly ? "Step 6 · Add a vehicle" : "Step 5 · Welcome aboard"}
+      </Card.Eyebrow>
+      <Card.Title id="new-customer-heading">
+        {isVehicleOnly ? "Tell me about the new car 🚗" : "Tell me about you and your car 👋"}
+      </Card.Title>
       {!isVehicleOnly ? (
-        <fieldset className="mb-3">
-          <legend className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-500">
-            About you
-          </legend>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <div>
-              <label htmlFor="first-name" className="sr-only">First name</label>
-              <input
-                id="first-name"
-                type="text"
-                autoComplete="given-name"
-                placeholder="First name"
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                disabled={disabled}
-                className="w-full rounded border border-gray-300 px-3 py-2 text-base"
-              />
-            </div>
-            <div>
-              <label htmlFor="last-name" className="sr-only">Last name</label>
-              <input
-                id="last-name"
-                type="text"
-                autoComplete="family-name"
-                placeholder="Last name"
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-                disabled={disabled}
-                className="w-full rounded border border-gray-300 px-3 py-2 text-base"
-              />
-            </div>
-            <div className="sm:col-span-2">
-              <label htmlFor="email" className="sr-only">Email (optional)</label>
-              <input
-                id="email"
-                type="email"
-                autoComplete="email"
-                placeholder="Email (optional)"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                disabled={disabled}
-                className="w-full rounded border border-gray-300 px-3 py-2 text-base"
-              />
-            </div>
-          </div>
-        </fieldset>
+        <Card.Description>
+          Just the basics so we can build your record. We&apos;ll save
+          everything when you confirm the appointment.
+        </Card.Description>
       ) : null}
 
-      <fieldset className="mb-3">
-        <legend className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-500">
-          Vehicle
-        </legend>
-        <div className="grid grid-cols-3 gap-2">
-          <div>
-            <label htmlFor="year" className="sr-only">Year</label>
-            <input
-              id="year"
-              type="number"
-              inputMode="numeric"
-              placeholder="Year"
-              value={year}
-              onChange={(e) => setYear(e.target.value)}
-              disabled={disabled}
-              min={MIN_YEAR}
-              max={CURRENT_YEAR + 2}
-              className="w-full rounded border border-gray-300 px-3 py-2 text-base"
-            />
-          </div>
-          <div>
-            <label htmlFor="make" className="sr-only">Make</label>
-            <input
-              id="make"
-              type="text"
-              placeholder="Make"
-              value={make}
-              onChange={(e) => setMake(e.target.value)}
-              disabled={disabled}
-              className="w-full rounded border border-gray-300 px-3 py-2 text-base"
-            />
-          </div>
-          <div>
-            <label htmlFor="model" className="sr-only">Model</label>
-            <input
-              id="model"
-              type="text"
-              placeholder="Model"
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              disabled={disabled}
-              className="w-full rounded border border-gray-300 px-3 py-2 text-base"
-            />
-          </div>
-        </div>
+      <form onSubmit={(e) => void handleSubmit(e)} noValidate className="contents">
+        <Card.Body className="space-y-5">
+          {!isVehicleOnly ? (
+            <fieldset>
+              <legend className="label-eyebrow mb-3 block">About you</legend>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field label="First name" required error={errors.firstName} inputId="ncf-first">
+                  {({ id, ariaDescribedBy, ariaInvalid }) => (
+                    <Input
+                      id={id}
+                      type="text"
+                      autoComplete="given-name"
+                      placeholder="Sarah"
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                      disabled={disabled || pending}
+                      aria-describedby={ariaDescribedBy}
+                      aria-invalid={ariaInvalid}
+                    />
+                  )}
+                </Field>
+                <Field label="Last name" required error={errors.lastName} inputId="ncf-last">
+                  {({ id, ariaDescribedBy, ariaInvalid }) => (
+                    <Input
+                      id={id}
+                      type="text"
+                      autoComplete="family-name"
+                      placeholder="Johnson"
+                      value={lastName}
+                      onChange={(e) => setLastName(e.target.value)}
+                      disabled={disabled || pending}
+                      aria-describedby={ariaDescribedBy}
+                      aria-invalid={ariaInvalid}
+                    />
+                  )}
+                </Field>
+                <div className="sm:col-span-2">
+                  <Field
+                    label="Email"
+                    help="Optional — we'll send your appointment confirmation here."
+                    error={errors.email}
+                    inputId="ncf-email"
+                  >
+                    {({ id, ariaDescribedBy, ariaInvalid }) => (
+                      <Input
+                        id={id}
+                        type="email"
+                        autoComplete="email"
+                        placeholder="sarah@example.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        disabled={disabled || pending}
+                        aria-describedby={ariaDescribedBy}
+                        aria-invalid={ariaInvalid}
+                      />
+                    )}
+                  </Field>
+                </div>
+              </div>
+            </fieldset>
+          ) : null}
 
-        <details className="mt-2 text-sm">
-          <summary className="cursor-pointer text-brand-burgundy-700 hover:underline">
-            More details (optional)
-          </summary>
-          <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <div>
-              <label htmlFor="sub-model" className="sr-only">Sub-model / trim</label>
-              <input
-                id="sub-model"
-                type="text"
-                placeholder="Trim / sub-model"
-                value={subModel}
-                onChange={(e) => setSubModel(e.target.value)}
-                disabled={disabled}
-                className="w-full rounded border border-gray-300 px-3 py-2 text-base"
-              />
+          <fieldset>
+            <legend className="label-eyebrow mb-3 block">Vehicle</legend>
+            <div className="grid grid-cols-3 gap-3">
+              <Field label="Year" required error={errors.year} inputId="ncf-year">
+                {({ id, ariaDescribedBy, ariaInvalid }) => (
+                  <Input
+                    id={id}
+                    type="number"
+                    inputMode="numeric"
+                    placeholder="2018"
+                    value={year}
+                    onChange={(e) => setYear(e.target.value)}
+                    disabled={disabled || pending}
+                    min={MIN_YEAR}
+                    max={CURRENT_YEAR + 2}
+                    aria-describedby={ariaDescribedBy}
+                    aria-invalid={ariaInvalid}
+                  />
+                )}
+              </Field>
+              <Field label="Make" required error={errors.make} inputId="ncf-make">
+                {({ id, ariaDescribedBy, ariaInvalid }) => (
+                  <Input
+                    id={id}
+                    type="text"
+                    placeholder="Toyota"
+                    value={make}
+                    onChange={(e) => setMake(e.target.value)}
+                    disabled={disabled || pending}
+                    aria-describedby={ariaDescribedBy}
+                    aria-invalid={ariaInvalid}
+                  />
+                )}
+              </Field>
+              <Field label="Model" required error={errors.model} inputId="ncf-model">
+                {({ id, ariaDescribedBy, ariaInvalid }) => (
+                  <Input
+                    id={id}
+                    type="text"
+                    placeholder="Camry"
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                    disabled={disabled || pending}
+                    aria-describedby={ariaDescribedBy}
+                    aria-invalid={ariaInvalid}
+                  />
+                )}
+              </Field>
             </div>
-            <div>
-              <label htmlFor="vin" className="sr-only">VIN</label>
-              <input
-                id="vin"
-                type="text"
-                placeholder="VIN"
-                value={vin}
-                onChange={(e) => setVin(e.target.value.toUpperCase())}
-                disabled={disabled}
-                maxLength={17}
-                className="w-full rounded border border-gray-300 px-3 py-2 font-mono text-base"
-              />
-            </div>
-            <div>
-              <label htmlFor="license-plate" className="sr-only">License plate</label>
-              <input
-                id="license-plate"
-                type="text"
-                placeholder="License plate"
-                value={licensePlate}
-                onChange={(e) => setLicensePlate(e.target.value.toUpperCase())}
-                disabled={disabled}
-                className="w-full rounded border border-gray-300 px-3 py-2 text-base"
-              />
-            </div>
-            <div>
-              <label htmlFor="plate-state" className="sr-only">Plate state</label>
-              <input
-                id="plate-state"
-                type="text"
-                placeholder="State"
-                value={state}
-                onChange={(e) => setState(e.target.value.toUpperCase())}
-                disabled={disabled}
-                maxLength={2}
-                className="w-full rounded border border-gray-300 px-3 py-2 text-base"
-              />
-            </div>
-          </div>
-        </details>
-      </fieldset>
 
-      {error ? (
-        <p role="alert" className="mb-3 text-sm text-red-600">
-          {error}
-        </p>
-      ) : null}
+            <details className="mt-3">
+              <summary className="cursor-pointer text-[13px] text-brand-burgundy-700 hover:underline">
+                Add more details (optional)
+              </summary>
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field label="Trim / sub-model" inputId="ncf-sub">
+                  {({ id }) => (
+                    <Input
+                      id={id}
+                      type="text"
+                      placeholder="LE / XLE / Sport"
+                      value={subModel}
+                      onChange={(e) => setSubModel(e.target.value)}
+                      disabled={disabled || pending}
+                    />
+                  )}
+                </Field>
+                <Field label="VIN" inputId="ncf-vin">
+                  {({ id }) => (
+                    <Input
+                      id={id}
+                      type="text"
+                      placeholder="17-char VIN"
+                      value={vin}
+                      onChange={(e) => setVin(e.target.value.toUpperCase())}
+                      disabled={disabled || pending}
+                      maxLength={17}
+                      className="font-mono"
+                    />
+                  )}
+                </Field>
+                <Field label="License plate" inputId="ncf-plate">
+                  {({ id }) => (
+                    <Input
+                      id={id}
+                      type="text"
+                      placeholder="ABC-1234"
+                      value={licensePlate}
+                      onChange={(e) => setLicensePlate(e.target.value.toUpperCase())}
+                      disabled={disabled || pending}
+                    />
+                  )}
+                </Field>
+                <Field label="Plate state" inputId="ncf-state">
+                  {({ id }) => (
+                    <Input
+                      id={id}
+                      type="text"
+                      placeholder="PA"
+                      value={state}
+                      onChange={(e) => setState(e.target.value.toUpperCase())}
+                      disabled={disabled || pending}
+                      maxLength={2}
+                    />
+                  )}
+                </Field>
+              </div>
+            </details>
+          </fieldset>
+        </Card.Body>
 
-      <button
-        type="submit"
-        disabled={disabled}
-        className="rounded bg-brand-burgundy-700 px-4 py-2 text-base font-medium text-white hover:bg-brand-burgundy-800 disabled:opacity-50"
-      >
-        Continue
-      </button>
-    </form>
+        <Card.Actions>
+          <Button
+            type="submit"
+            variant="primary"
+            size="md"
+            loading={pending}
+            disabled={disabled}
+            fullWidthOnMobile
+          >
+            Continue
+          </Button>
+        </Card.Actions>
+      </form>
+    </Card>
   );
 }

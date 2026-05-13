@@ -51,7 +51,11 @@ export function ChatBootstrap() {
 
   if (!chatId) {
     return (
-      <p className="text-sm text-gray-500" aria-live="polite">
+      <p
+        className="text-[14px] italic text-ink-tertiary"
+        aria-live="polite"
+        role="status"
+      >
         Loading chat…
       </p>
     );

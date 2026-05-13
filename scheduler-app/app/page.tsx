@@ -1,67 +1,60 @@
 /**
  * Landing page for appointments.jeffsautomotive.com.
  *
- * Per appointments_design.md §3.1:
- * - Brand: burgundy primary, gold accent
- * - Trust signals: AAA-approved, 3yr/36k, free loaners, family-owned since
- *   1976, hybrid/EV capable
- * - Mobile-first
+ * Per chat-design.md 2026-05-13 visual lock: Heritage Editorial layout
+ * (paper background, Fraunces serif title, label-eyebrow tagline, gold-rule
+ * separators). Mirror of /book — Phase 1 launch keeps the root reachable as
+ * the canonical scheduler URL; /book exists for advisors who want a
+ * branded link.
  *
- * Mounts the chat via ChatBootstrap (client component) — that handles the
- * chatId picking + persistence to localStorage and renders <Chat />.
+ * Trust signals row was retired here per design lock (they distract from
+ * the chat-first flow). They live on jeffsautomotive.com proper; the
+ * scheduler subdomain focuses on the booking action.
  */
 import { ChatBootstrap } from "@/components/scheduler/ChatBootstrap";
 
 export default function HomePage() {
   return (
-    <main className="mx-auto flex min-h-dvh max-w-3xl flex-col px-4 py-8">
-      <header className="mb-6">
-        <h1 className="text-3xl font-bold text-brand-burgundy-700">
-          Jeff&apos;s Automotive
-        </h1>
-        <p className="mt-1 text-sm text-gray-600">
-          Providing you with both customer and automotive service second to none!
-        </p>
+    <main className="flex min-h-dvh flex-col bg-paper">
+      {/* ─── Editorial header ────────────────────────────────────────────── */}
+      <header className="border-b border-rule bg-paper-100">
+        <div className="mx-auto flex max-w-3xl flex-col gap-1 px-4 py-5 sm:py-6">
+          <p className="label-eyebrow">Schedule an appointment</p>
+          <h1 className="font-display text-[28px] leading-tight text-ink sm:text-[34px]">
+            Jeff&apos;s Automotive
+          </h1>
+          <p className="text-[14px] leading-relaxed text-ink-secondary">
+            Family-owned since 1976 · AAA-approved · 3yr/36k warranty
+          </p>
+        </div>
       </header>
 
-      <section
-        aria-label="Trust signals"
-        className="mb-8 flex flex-wrap gap-2 text-xs text-gray-700"
-      >
-        <span className="rounded border border-brand-gold-300 bg-brand-gold-50 px-2 py-1">
-          AAA-approved
-        </span>
-        <span className="rounded border border-brand-gold-300 bg-brand-gold-50 px-2 py-1">
-          3yr / 36k warranty
-        </span>
-        <span className="rounded border border-brand-gold-300 bg-brand-gold-50 px-2 py-1">
-          Free loaners
-        </span>
-        <span className="rounded border border-brand-gold-300 bg-brand-gold-50 px-2 py-1">
-          Family-owned since 1976
-        </span>
-        <span className="rounded border border-brand-gold-300 bg-brand-gold-50 px-2 py-1">
-          Hybrid &amp; EV capable
-        </span>
-      </section>
+      {/* ─── Chat surface ────────────────────────────────────────────────── */}
+      <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 py-6">
+        <section
+          aria-label="Schedule chat"
+          className="flex min-h-[60vh] flex-1 flex-col"
+        >
+          <ChatBootstrap />
+        </section>
+      </div>
 
-      <section
-        aria-label="Schedule chat"
-        className="flex min-h-[60vh] flex-1 flex-col rounded-lg border border-gray-200 bg-white p-4 shadow-sm"
-      >
-        <ChatBootstrap />
-      </section>
-
-      <footer className="mt-8 text-center text-xs text-gray-500">
-        <p>
-          Need to talk to a person? Call us at{" "}
-          <a
-            className="font-medium text-brand-burgundy-700 underline"
-            href="tel:6102536565"
-          >
-            (610) 253-6565
-          </a>
-        </p>
+      {/* ─── Quiet footer ────────────────────────────────────────────────── */}
+      <footer className="border-t border-rule bg-paper-100">
+        <div className="mx-auto flex max-w-3xl flex-col gap-3 px-4 py-4 text-center text-[12px] text-ink-tertiary sm:flex-row sm:items-center sm:justify-between sm:text-left">
+          <p>
+            Need a human? Call us at{" "}
+            <a
+              className="font-medium text-brand-burgundy-700 hover:underline"
+              href="tel:6102536565"
+            >
+              (610) 253-6565
+            </a>
+          </p>
+          <p className="text-ink-tertiary">
+            Conversations are recorded for quality.
+          </p>
+        </div>
       </footer>
     </main>
   );
