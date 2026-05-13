@@ -212,9 +212,17 @@ export async function saveChat(args: {
       parts: m.parts as unknown,
     }));
 
+    // IMPORTANT: do NOT set ignoreDuplicates:true here. The AI SDK saves the
+    // same assistant message id MULTIPLE times during one turn — first with
+    // just the tool call, then again with the appended tool result after
+    // addToolResult fires. With ignoreDuplicates:true the second write was
+    // silently dropped, so the tool stayed in "input-available" state in the
+    // DB and the next page load resumed without the customer's answer. The
+    // upsert MUST be an UPDATE on conflict so the latest `parts` (with the
+    // tool result attached) wins.
     const { error: upsertError } = await supabase
       .from("customer_chat_messages")
-      .upsert(rows, { onConflict: "id", ignoreDuplicates: true });
+      .upsert(rows, { onConflict: "id" });
 
     if (upsertError) {
       throw new Error(

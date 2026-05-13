@@ -71,8 +71,13 @@ import {
   submitTestingApproval,
   submitVehiclePick,
   submitWaiterTime,
-  type SessionActionResult,
 } from "@/lib/scheduler/actions/session-actions";
+// Types + directive mapper live in a separate (non-"use server") file because
+// Next.js 15 forbids non-async-function exports from a Server Actions file.
+import {
+  mapDirectiveToToolName,
+  type SessionActionResult,
+} from "@/lib/scheduler/actions/session-action-types";
 
 export interface ChatProps {
   chatId: string;
@@ -298,6 +303,17 @@ export function Chat({ chatId, initialMessages }: ChatProps) {
       };
     }
 
+    // Translate the orchestrator's SEMANTIC directive (e.g. "send_otp_first",
+    // "render_confirmation_card") into the chat agent's TOOL NAME (e.g.
+    // "show_otp_input", "show_summary_card") before threading back. Without
+    // this the agent has no matching tool for the directive and re-renders
+    // the prior card → customer is stuck on the same step. The mapper is a
+    // pure pass-through for directives that are already tool names.
+    const normalizedResult: SessionActionResult = {
+      ...result,
+      directive: mapDirectiveToToolName(result.directive),
+    };
+
     // Pass the Server Action's structured result back to the chat agent as
     // the tool output. The agent's system prompt is updated to expect this
     // shape: {ok, directive, data, bubble_copy?} — much easier for it to
@@ -305,7 +321,7 @@ export function Chat({ chatId, initialMessages }: ChatProps) {
     addToolResult({
       tool: toolName,
       toolCallId,
-      output: result as unknown as Record<string, unknown>,
+      output: normalizedResult as unknown as Record<string, unknown>,
     });
   }
 

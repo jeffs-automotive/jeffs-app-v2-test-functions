@@ -42,24 +42,11 @@ import {
   type GreetingBucket,
   type WizardStep,
 } from "@/lib/scheduler/session-state";
-
-// ─── Shared result shape ─────────────────────────────────────────────────────
-
-export interface SessionActionResult {
-  ok: boolean;
-  /** Directive the client should act on (mirrors orchestrator-direct shape). */
-  directive?: string;
-  /** Directive payload (mirrors orchestrator-direct shape). */
-  data?: Record<string, unknown>;
-  /** Optional flags the client/agent branches on. */
-  flags?: Record<string, unknown>;
-  /** Templated Jeff-voice chat bubble to render between cards. */
-  bubble_copy?: string;
-  /** Server-rendered current_step AFTER this action (client may sync to it). */
-  current_step?: WizardStep;
-  /** Human-readable error when ok=false. */
-  error?: string;
-}
+// Types live in a separate file — "use server" forbids non-async function
+// exports, and that includes plain interface re-exports through the file.
+// The semantic-directive→tool-name mapping is applied in Chat.tsx at the
+// addToolResult boundary so this file can stay focused on row writes.
+import type { SessionActionResult } from "./session-action-types";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
