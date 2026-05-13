@@ -18,6 +18,13 @@ export interface ConsultOrchestratorRequest {
   context: string;
   /** Optional structured hints — e.g., { phone_e164, customer_id, ... } */
   hints?: Record<string, unknown>;
+  /** Optional structured intent type that short-circuits the unified
+   *  orchestrator's router LLM call. Added in Chunk 2 (2026-05-13).
+   *  Values map directly to specialists via INTENT_TYPE_TO_SPECIALIST.
+   *  Examples: 'verify_and_lookup', 'send_otp', 'hold_slot',
+   *  'confirm_appointment', 'diagnose_concern', 'pick_clarification_questions'.
+   *  Omit to let the router classify from `context`. */
+  intent_type?: string;
 }
 
 export interface ConsultOrchestratorResponse {
