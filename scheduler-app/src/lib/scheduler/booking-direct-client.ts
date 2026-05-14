@@ -22,7 +22,8 @@ export type BookingDirectOp =
   | "hold_slot"
   | "confirm_booking"
   | "create_customer"
-  | "create_vehicle";
+  | "create_vehicle"
+  | "patch_customer";
 
 export interface ListWaiterTimesRequest {
   op: "list_waiter_times";
@@ -144,19 +145,46 @@ export interface CreateVehicleResponse {
   meta?: { latency_ms?: number };
 }
 
+export interface PatchCustomerRequest {
+  op: "patch_customer";
+  session_id: string;
+  customer_id: number;
+  edited_phones?: Array<{ phone_e164: string; is_primary: boolean }>;
+  edited_emails?: Array<{ email: string; is_primary: boolean }>;
+  edited_address?: {
+    address1?: string;
+    address2?: string;
+    city?: string;
+    state?: string;
+    zip?: string;
+  } | null;
+}
+
+export interface PatchCustomerResponse {
+  ok: boolean;
+  op: "patch_customer";
+  customer_id?: number;
+  /** One of: 'tekmetric_4xx' | 'tekmetric_5xx'. */
+  error?: string;
+  tekmetric_error_text?: string;
+  meta?: { latency_ms?: number };
+}
+
 export type BookingDirectRequest =
   | ListWaiterTimesRequest
   | HoldSlotRequest
   | ConfirmBookingRequest
   | CreateCustomerRequest
-  | CreateVehicleRequest;
+  | CreateVehicleRequest
+  | PatchCustomerRequest;
 
 export type BookingDirectResponse =
   | ListWaiterTimesResponse
   | HoldSlotResponse
   | ConfirmBookingResponse
   | CreateCustomerResponse
-  | CreateVehicleResponse;
+  | CreateVehicleResponse
+  | PatchCustomerResponse;
 
 export class BookingDirectError extends Error {
   constructor(
@@ -302,6 +330,18 @@ export async function createVehicle(
   if (r.op !== "create_vehicle") {
     throw new BookingDirectError(
       `scheduler-booking-direct returned wrong op (${r.op}) for create_vehicle`,
+    );
+  }
+  return r;
+}
+
+export async function patchCustomer(
+  req: PatchCustomerRequest,
+): Promise<PatchCustomerResponse> {
+  const r = await call(req);
+  if (r.op !== "patch_customer") {
+    throw new BookingDirectError(
+      `scheduler-booking-direct returned wrong op (${r.op}) for patch_customer`,
     );
   }
   return r;

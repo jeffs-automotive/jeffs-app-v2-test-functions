@@ -24,15 +24,19 @@
  */
 import * as Sentry from "@sentry/nextjs";
 
+import { CustomerInfoEditCard } from "@/components/scheduler/heritage/CustomerInfoEditCard";
 import { GreetingCard } from "@/components/scheduler/heritage/GreetingCard";
 import { MultiAccountDisambiguationCard } from "@/components/scheduler/heritage/MultiAccountDisambiguationCard";
+import { NewCustomerInfoCard } from "@/components/scheduler/heritage/NewCustomerInfoCard";
 import { NoMatchChoosePathCard } from "@/components/scheduler/heritage/NoMatchChoosePathCard";
 import { OtpInput } from "@/components/scheduler/OtpInput";
 import { PartialVerificationGateCard } from "@/components/scheduler/heritage/PartialVerificationGateCard";
 import { PhoneNameCard } from "@/components/scheduler/heritage/PhoneNameCard";
 import { resendOtpV2 } from "@/lib/scheduler/wizard/actions/resend-otp";
+import { submitCustomerInfoEditV2 } from "@/lib/scheduler/wizard/actions/submit-customer-info-edit";
 import { submitGreetingV2 } from "@/lib/scheduler/wizard/actions/submit-greeting";
 import { submitMultiAccountChoiceV2 } from "@/lib/scheduler/wizard/actions/submit-multi-account-choice";
+import { submitNewCustomerInfoV2 } from "@/lib/scheduler/wizard/actions/submit-new-customer-info";
 import { submitNoMatchChoiceV2 } from "@/lib/scheduler/wizard/actions/submit-no-match-choice";
 import { submitOtpV2 } from "@/lib/scheduler/wizard/actions/submit-otp";
 import { submitPartialVerificationChoiceV2 } from "@/lib/scheduler/wizard/actions/submit-partial-verification-choice";
@@ -144,6 +148,48 @@ export function WizardSurface({ chatId, card }: WizardSurfaceProps) {
                 : { action: "none_of_these", chatId },
             );
             logIfFailed("submitMultiAccountChoiceV2", chatId, result);
+          }}
+        />
+      );
+
+    case "customer_info_edit":
+      return (
+        <CustomerInfoEditCard
+          first_name={card.payload.first_name}
+          last_name={card.payload.last_name}
+          initial_phones={card.payload.initial_phones}
+          initial_emails={card.payload.initial_emails}
+          initial_address={card.payload.initial_address ?? undefined}
+          onSubmit={async (output) => {
+            const result = await submitCustomerInfoEditV2({
+              chatId,
+              edited_phones: output.edited_phones,
+              edited_emails: output.edited_emails,
+              edited_address: output.edited_address,
+              primary_email_for_description:
+                output.primary_email_for_description,
+            });
+            logIfFailed("submitCustomerInfoEditV2", chatId, result);
+          }}
+        />
+      );
+
+    case "new_customer_info":
+      return (
+        <NewCustomerInfoCard
+          first_name={card.payload.first_name}
+          last_name={card.payload.last_name}
+          verified_phone_e164={card.payload.verified_phone_e164}
+          onSubmit={async (output) => {
+            const result = await submitNewCustomerInfoV2({
+              chatId,
+              edited_phones: output.edited_phones,
+              edited_emails: output.edited_emails,
+              edited_address: output.edited_address,
+              primary_email_for_description:
+                output.primary_email_for_description,
+            });
+            logIfFailed("submitNewCustomerInfoV2", chatId, result);
           }}
         />
       );

@@ -8,7 +8,7 @@
     ".claude/work/planning/references/gpt-findings-05-13-2026.md"
   ],
   "rationale_one_paragraph": "The Vercel AI SDK was being used as a state machine for a deterministic 10-step wizard, but lite/mini models couldn't reliably emit follow-up tool calls so 19 of 19 wizard cards were already being rendered client-side via a CLIENT_RENDERED_DIRECTIVES allowlist. Two of three Edge Functions were already bypassing the LLM. Net: the LLM did nothing in the main flow but the codebase paid full chat-stream lifecycle cost. This refactor moves to a row-as-truth server-state-driven wizard: each step is a Server Action that writes the row and revalidates the page; the LLM is invoked only for Step 7 diagnostic Q&A and Step 10.3 customer-notes parsing. Chat bubbles stay as decoration (deterministic templates).",
-  "current_phase": "phase_06_step5_customer_info_edit",
+  "current_phase": "phase_07_step6_vehicle",
   "context_protocol": {
     "rule_1_one_phase_per_turn": "Work ONE phase per turn. Do not chain phases in the same turn even if they look small.",
     "rule_2_end_of_phase": "When a phase is done: (1) set its status to 'complete'; (2) set completed_at to today's ISO date; (3) advance current_phase to the next pending phase; (4) write a one-line completion note in the phase's 'completion_note' field; (5) STOP and prompt the user before continuing.",
@@ -269,9 +269,15 @@
     },
     {
       "id": "phase_06_step5_customer_info_edit",
-      "title": "Step 5 (Customer info edit) + fix submitOtp data shape",
-      "status": "pending",
-      "summary": "Migrate Step 5 (customer info edit for returning customers). Fixes Codex's bug 3 (submitOtp only passed stashed_vehicle_data; card needs phones/emails/address).",
+      "title": "Step 5 (Customer info edit) + Step 4 (New customer info) + Codex bug 3 fix",
+      "status": "complete",
+      "completed_at": "2026-05-13",
+      "completion_note": "Wires Step 5 (returning customer info edit) AND Step 4 new-client (New customer info). Also fixes Codex's bug 3 (submitOtp data-shape issue) by routing Tekmetric customer profile fetch through the OTP verify endpoint. Seven changes: (1) scheduler-otp-direct/index.ts verify op: after verifyOtp success + customer_id set + edited_phones not yet populated, fetches customer profile via getCustomerById and stashes phones/emails/address + verified_first/last_name + primary_email on the row. Fail-soft (logs warn on failure; advances anyway). Skips fetch when edited_phones is non-null (Phase 12 Edit-from-Summary re-entry preservation). (2) scheduler-booking-direct/index.ts: added op='patch_customer' for Step 5 Tekmetric PATCH. Calls existing patchCustomer Deno helper (full phone array, primary email single-string, address streetAddress concat). Returns ok:false with tekmetric_error_text on 4xx/5xx. (3) booking-direct-client.ts: typed patchCustomer wrapper + PatchCustomerRequest/Response types. (4) get-current-card.ts: fixed parsePhones + parseEmails to read canonical V1/V2 shape ({phone_e164, is_primary} / {email, is_primary}) — they previously read Tekmetric-shape keys ({number, primary}) and would have returned [] for V1/V2 rows. Accepts legacy keys defensively for backwards-compat. (5) NEW submit-customer-info-edit.ts: submitCustomerInfoEditV2 — Zod-validates, diffs vs current row, skips Tekmetric PATCH on no-op or non-full verification, calls patch_customer for full+changes, always writes edited_* + advances to vehicle_pick. Fail-soft (Tekmetric failure → escalation). (6) NEW submit-new-customer-info.ts: submitNewCustomerInfoV2 — reads first_name/last_name/phone_e164 from row, calls create_customer op via booking-direct-client wrapper, handles phone_duplicate by bouncing to phone_name with bucket='returning', writes customer_id + edited_* + identity_verification_level='full' on success, advances to vehicle_pick. (7) WizardSurface.tsx: added customer_info_edit + new_customer_info switch cases wiring both heritage cards. npm run typecheck passes clean.",
+      "summary": "Migrate Step 5 (customer info edit for returning customers) + Step 4 (new customer info for new-client flow). Fixes Codex's bug 3 (submitOtp data-shape issue) by routing the Tekmetric profile fetch through scheduler-otp-direct's verify op.",
+      "deployment_required": [
+        "supabase functions deploy scheduler-otp-direct (profile-fetch addition)",
+        "supabase functions deploy scheduler-booking-direct (patch_customer op addition)"
+      ],
       "tasks": [
         "Update getCurrentCard for step='customer_info_edit' — loads first_name, last_name, initial_phones, initial_emails, initial_address from Tekmetric via lookupCustomerByPhone (cached on the row if previously written). Cache result in edited_phones / edited_emails / edited_address columns as the initial display values.",
         "Wire heritage/CustomerInfoEditCard into WizardSurface.",

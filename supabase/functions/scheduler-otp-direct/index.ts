@@ -49,6 +49,7 @@ import {
   RESOLVED_SERVICE_ROLE_KEY,
 } from "../_shared/scheduler-auth.ts";
 import { verifyOtp, sendOtp } from "../_shared/tools/scheduler-otp.ts";
+import { getCustomerById } from "../_shared/tools/scheduler-customer.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SHOP_ID = parseInt(
@@ -117,13 +118,28 @@ function parseBody(
 
 // ─── Op handlers ──────────────────────────────────────────────────────────
 
+/**
+ * Convert a Tekmetric-stored phone number to E.164 (+1XXXXXXXXXX). Returns
+ * null when the digit count is unrecognized (defensive — should rarely fire
+ * because Tekmetric phones for US shops are 10-digit).
+ */
+function tekmetricPhoneToE164(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const d = raw.replace(/\D/g, "");
+  if (d.length === 10) return `+1${d}`;
+  if (d.length === 11 && d.startsWith("1")) return `+${d}`;
+  return null;
+}
+
 async function handleVerify(input: VerifyInput): Promise<Response> {
-  // Read phone + customer_id off the session row. Required to feed verifyOtp
-  // and to surface customer_id to the Next.js submitOtpV2 (which branches
-  // on customer_id==null for the Option B new-client path).
+  // Read phone + customer_id + cached edits off the session row. customer_id
+  // surfaces to submitOtpV2 (which branches on customer_id==null for the
+  // Option B new-client path). edited_phones is checked below to skip the
+  // Tekmetric profile fetch when the customer is re-entering Step 5 from
+  // Edit-from-Summary (Phase 12) — preserves their prior edits.
   const { data: row, error: rowErr } = await sb
     .from("customer_chat_sessions")
-    .select("phone_e164, customer_id, otp_attempts")
+    .select("phone_e164, customer_id, otp_attempts, edited_phones")
     .eq("id", input.session_id)
     .maybeSingle();
   if (rowErr) {
@@ -171,6 +187,76 @@ async function handleVerify(input: VerifyInput): Promise<Response> {
       error: result.error ?? "invalid_code",
       attempts_remaining: Math.max(0, 3 - newAttempts),
     });
+  }
+
+  // Verified=true. For returning customers (customer_id set), fetch the
+  // current Tekmetric profile + stash phones/emails/address on the row's
+  // edited_* columns so Step 5 CustomerInfoEditCard pre-fills with current
+  // values. Skip when edited_phones is already populated (Phase 12 Edit-
+  // from-Summary re-entry — customer's prior edits take precedence).
+  //
+  // Fail-soft: a fetch failure shouldn't block the verify response. The
+  // card will render with empty values and the customer can type from
+  // scratch. Logged for observability.
+  if (row.customer_id && !row.edited_phones) {
+    try {
+      const customer = await getCustomerById(sb, SHOP_ID, row.customer_id);
+      if (customer) {
+        const editedPhones = (customer.phone ?? [])
+          .slice(0, 2)
+          .map((p) => ({
+            phone_e164: tekmetricPhoneToE164(p.number),
+            is_primary: p.primary === true,
+          }))
+          .filter((p): p is { phone_e164: string; is_primary: boolean } =>
+            p.phone_e164 !== null
+          );
+        const editedEmails = customer.email
+          ? [{ email: customer.email, is_primary: true }]
+          : [];
+        const editedAddress = customer.address
+          ? {
+              address1: customer.address.streetAddress ?? undefined,
+              city: customer.address.city ?? undefined,
+              state: customer.address.state ?? undefined,
+              zip: customer.address.zip ?? undefined,
+            }
+          : null;
+
+        const { error: stashErr } = await sb
+          .from("customer_chat_sessions")
+          .update({
+            edited_phones: editedPhones,
+            edited_emails: editedEmails,
+            edited_address: editedAddress,
+            primary_email_for_description: customer.email ?? null,
+            verified_first_name: customer.firstName ?? undefined,
+            verified_last_name: customer.lastName ?? undefined,
+            last_active_at: new Date().toISOString(),
+          })
+          .eq("id", input.session_id);
+        if (stashErr) {
+          console.error(
+            JSON.stringify({
+              level: "warn",
+              msg: "verify_otp_profile_stash_failed",
+              session_id: input.session_id,
+              detail: stashErr.message,
+            }),
+          );
+        }
+      }
+    } catch (e) {
+      console.error(
+        JSON.stringify({
+          level: "warn",
+          msg: "verify_otp_profile_fetch_failed",
+          session_id: input.session_id,
+          customer_id: row.customer_id,
+          detail: e instanceof Error ? e.message : String(e),
+        }),
+      );
+    }
   }
 
   return jsonResponse({

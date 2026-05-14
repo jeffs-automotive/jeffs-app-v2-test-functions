@@ -48,6 +48,7 @@ import {
 import {
   createNewCustomer,
   createNewVehicle,
+  patchCustomer,
 } from "../_shared/tools/scheduler-customer.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -137,12 +138,28 @@ interface CreateVehicleInput {
   payload: NewVehiclePayload;
 }
 
+interface PatchCustomerInput {
+  op: "patch_customer";
+  session_id: string;
+  customer_id: number;
+  edited_phones?: Array<{ phone_e164: string; is_primary: boolean }>;
+  edited_emails?: Array<{ email: string; is_primary: boolean }>;
+  edited_address?: {
+    address1?: string;
+    address2?: string;
+    city?: string;
+    state?: string;
+    zip?: string;
+  } | null;
+}
+
 type RequestBody =
   | ListWaiterTimesInput
   | HoldSlotInput
   | ConfirmBookingInput
   | CreateCustomerInput
-  | CreateVehicleInput;
+  | CreateVehicleInput
+  | PatchCustomerInput;
 
 function parseBody(raw: unknown):
   | { ok: true; input: RequestBody }
@@ -308,10 +325,46 @@ function parseBody(raw: unknown):
       },
     };
   }
+  if (r.op === "patch_customer") {
+    if (typeof r.customer_id !== "number") {
+      return { ok: false, error: "customer_id required" };
+    }
+    // Per chat-design.md §Step 5 (lines 1029-1057): the Server Action sends
+    // the FULL phone array on every PATCH (omitting an entry deletes it
+    // from Tekmetric). Either phones, emails, or address must be present —
+    // an op with all three null is a no-op the caller should have skipped.
+    const phonesProvided = Array.isArray(r.edited_phones);
+    const emailsProvided = Array.isArray(r.edited_emails);
+    const addressProvided =
+      r.edited_address !== undefined && r.edited_address !== null;
+    if (!phonesProvided && !emailsProvided && !addressProvided) {
+      return {
+        ok: false,
+        error: "patch_customer: at least one of edited_phones / edited_emails / edited_address must be provided",
+      };
+    }
+    return {
+      ok: true,
+      input: {
+        op: "patch_customer",
+        session_id: r.session_id,
+        customer_id: r.customer_id,
+        edited_phones: phonesProvided
+          ? (r.edited_phones as Array<{ phone_e164: string; is_primary: boolean }>)
+          : undefined,
+        edited_emails: emailsProvided
+          ? (r.edited_emails as Array<{ email: string; is_primary: boolean }>)
+          : undefined,
+        edited_address: addressProvided
+          ? (r.edited_address as PatchCustomerInput["edited_address"])
+          : undefined,
+      },
+    };
+  }
   return {
     ok: false,
     error:
-      "op must be 'list_waiter_times' | 'hold_slot' | 'confirm_booking' | 'create_customer' | 'create_vehicle'",
+      "op must be 'list_waiter_times' | 'hold_slot' | 'confirm_booking' | 'create_customer' | 'create_vehicle' | 'patch_customer'",
   };
 }
 
@@ -628,6 +681,50 @@ async function handleRequest(req: Request): Promise<Response> {
         ok: true,
         op: "create_vehicle",
         vehicle_id: result.vehicle_id,
+        meta: { latency_ms: Date.now() - startedAt },
+      });
+    }
+
+    if (input.op === "patch_customer") {
+      // Step 5 returning-customer info-edit. Per chat-design.md §Step 5
+      // (lines 1029-1057): always send the FULL phone array (omission =
+      // delete from Tekmetric). The Deno helper handles existing-entry id
+      // round-trip + the email/address single-line concat per Tekmetric's
+      // contract.
+      try {
+        await patchCustomer(sb, SHOP_ID, {
+          customer_id: input.customer_id,
+          edited_phones: input.edited_phones,
+          edited_emails: input.edited_emails,
+          edited_address: input.edited_address,
+        });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (/HTTP 4\d\d/.test(msg)) {
+          return jsonResponse({
+            ok: false,
+            op: "patch_customer",
+            error: "tekmetric_4xx",
+            tekmetric_error_text: msg.slice(0, 500),
+            meta: { latency_ms: Date.now() - startedAt },
+          });
+        }
+        return jsonResponse({
+          ok: false,
+          op: "patch_customer",
+          error: "tekmetric_5xx",
+          tekmetric_error_text: msg.slice(0, 500),
+          meta: { latency_ms: Date.now() - startedAt },
+        });
+      }
+
+      // The Server Action persists edited_* to the row separately (so
+      // resume / re-render reads the same values). This op is the
+      // Tekmetric-write side-effect only.
+      return jsonResponse({
+        ok: true,
+        op: "patch_customer",
+        customer_id: input.customer_id,
         meta: { latency_ms: Date.now() - startedAt },
       });
     }

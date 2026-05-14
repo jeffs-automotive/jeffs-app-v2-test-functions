@@ -359,6 +359,12 @@ export async function getCurrentCard(
 // §5 + §11 + §12. These parsers defensively coerce — fallback to safe defaults
 // when the JSONB shape isn't what we expect.
 
+/**
+ * Parse edited_phones JSONB into the typed array CustomerInfoEditCard +
+ * NewCustomerInfoCard expect. Canonical V1/V2 shape on the row is
+ * { phone_e164, is_primary }. Also accepts legacy { number, primary }
+ * keys defensively in case any pre-refactor rows linger.
+ */
 function parsePhones(
   raw: unknown,
 ): Array<{ phone_e164: string; is_primary: boolean }> {
@@ -367,15 +373,16 @@ function parsePhones(
   for (const entry of raw) {
     if (!entry || typeof entry !== "object") continue;
     const e = entry as Record<string, unknown>;
-    // Tekmetric-shape: { id?, number, type, primary }. We normalize to
-    // { phone_e164, is_primary } for the new card. `number` may be 10-digit
-    // (Tekmetric) or E.164 — phase 6 will normalize uniformly; phase 2 just
-    // passes through whatever's on the row.
-    const number = typeof e.number === "string" ? e.number : "";
-    if (!number) continue;
+    const phone =
+      typeof e.phone_e164 === "string"
+        ? e.phone_e164
+        : typeof e.number === "string"
+          ? e.number
+          : "";
+    if (!phone) continue;
     out.push({
-      phone_e164: number,
-      is_primary: e.primary === true,
+      phone_e164: phone,
+      is_primary: e.is_primary === true || e.primary === true,
     });
   }
   return out;
@@ -391,7 +398,10 @@ function parseEmails(
     const e = entry as Record<string, unknown>;
     const email = typeof e.email === "string" ? e.email : "";
     if (!email) continue;
-    out.push({ email, is_primary: e.primary === true });
+    out.push({
+      email,
+      is_primary: e.is_primary === true || e.primary === true,
+    });
   }
   return out;
 }
