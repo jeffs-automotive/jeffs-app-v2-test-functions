@@ -2,6 +2,7 @@
   "schema_version": "1.0",
   "project": "scheduler-app refactor — server-state-driven wizard migration",
   "created_at": "2026-05-13",
+  "post_compaction_reminder": "FIRST ACTION AFTER COMPACTION: read this entire state.json carefully, especially phase_09's `redesign_notes` block. We were mid-design on Phase 9 when context filled. The user gave 4 critical decisions captured in phase_09.redesign_notes.decisions. Do NOT start coding Phase 9 until you've re-read those decisions AND the `open_questions_for_user` list. Some questions still need resolution before code work begins. Also re-read: chat-design.md §Step 7 (lines 1411-1842) for the spec baseline, and current_phase = 'phase_09_step7_2_to_5_diagnostic'. The Phase 9 we're about to build is a DIFFERENT design from the original spec — the LLM job shrinks to questionnaire gap-detection only (no testing-service recommendation; customer chose the service explicitly). See phase_09.redesign_notes.new_flow for the canonical sequence.",
   "spec_source": ".claude/work/planning/references/chat-design.md (see 'Architecture amendment — 2026-05-14' section near the top)",
   "audits_addressed": [
     ".claude/work/planning/references/gemini-findings-05-13-2026.md",
@@ -362,36 +363,94 @@
     },
     {
       "id": "phase_09_step7_2_to_5_diagnostic",
-      "title": "Steps 7.2-7.5 (Per-concern explanations + diagnostic + clarifications + testing approval)",
+      "title": "Steps 7.2-7.5 (Diagnostic flow — REDESIGNED 2026-05-13)",
       "status": "pending",
-      "summary": "Migrate the diagnostic Q&A flow — the FIRST real use of the LLM in the new architecture. Per-concern explanation cards → parallel diagnostic specialist calls → clarification questions → testing service approval.",
-      "tasks": [
-        "Create scheduler-app/src/lib/scheduler/wizard/llm/diagnose-concern.ts — server-side helper that calls Claude Haiku 4.5 via @ai-sdk/anthropic generateObject with a strict Zod output schema { category, remaining_questions, recommended_testing_services }. Reads concern_questions catalog + testing_services from the DB. NOT exposed as a 'tool'; called directly.",
-        "Update getCurrentCard for step='concern_explanation' (renders per-concern card with chat-bubble lead-in from bubble-templates), step='diagnostic_loading' (waits while Promise.all of diagnoseConcern calls), step='clarification_question' (renders one question from the queue), step='testing_service_approval'.",
-        "Wire the existing heritage cards into WizardSurface for these steps.",
-        "Create submitExplanationV2 — appends to explanation_required_items; advances to next concern's card OR to diagnostic_loading if all collected.",
-        "Create runDiagnosticsV2 (called automatically by getCurrentCard when step='diagnostic_loading' arrives — or invoked from the action that just advanced there): Promise.all-fans out diagnoseConcern per item, aggregates clarification_questions_pending + recommended_testing_services, sets diagnostic_processing_complete=true, advances to clarification_question OR testing_service_approval.",
-        "Create submitClarificationAnswerV2 — drops the answered question from the pending queue; advances to next clarification OR to testing_service_approval when queue drains.",
-        "Create submitTestingApprovalV2 — writes approved/declined; advances to second_routine_pass."
-      ],
+      "summary": "Wires the diagnostic Q&A flow. REDESIGN per Chris's 2026-05-13 decisions: customer EXPLICITLY picks diagnostic services (no LLM recommendation); LLM only does questionnaire gap-detection on per-service descriptions, returning IDs of unanswered multiple-choice questions for the wizard to render. Significantly simpler LLM job than the original spec.",
+      "redesign_notes": {
+        "user_intent_verbatim": [
+          "We need to create guidelines and questionnaires.",
+          "We also need to upload the routine services and diagnostic services for the customer to choose.",
+          "There are a few diagnostic services the customer can choose and add a description for.",
+          "These will go to the diagnosis agent to make sure all questions are answered.",
+          "IT doesnt need to recommend a testing service because they already chose the service.",
+          "On the describe issue I believe we should create guidelines and questionnaires for the model to follow.",
+          "'if customer describes noise does their description answer these questions. If not return the questions that still need to be answered.'",
+          "This can be structure so the llm can send back the questions that still need to be answered and the wizard only shows those questions.",
+          "They should be multiple choice questions so the customer can continue to describe the issue. The more information the better."
+        ],
+        "decisions": {
+          "D1_routine_vs_diagnostic_split": {
+            "answer": "Keep both listings. Customers may overlook diagnostic services and describe the issue under a routine chip (e.g. 'check_battery'). Both routes flow through the SAME questionnaire — the routine row's category determines which questionnaire to load, same as a directly-picked testing service.",
+            "implementation_implication": "routine_services has rows with requires_explanation=true (brake_inspection, check_battery, warning_lights, check_suspension, check_ac) that NEED a concern_categories mapping like testing_services already has. Either add `concern_categories TEXT[]` column to routine_services via migration, OR maintain a service_key → category[] mapping table. Decide before coding (see open_questions_for_user)."
+          },
+          "D2_picker_layout": {
+            "answer": "One card, then per-diagnostic drill-down for descriptions.",
+            "implementation_implication": "Step 7.1 picker shows BOTH routine + diagnostic chips on one card (single submit). After submit, for each picked service that requires_explanation OR has concern_categories, the wizard drills into one 'tell me about your [service]' card (concern_explanation step), one at a time. After all described, diagnostic_loading runs the LLM gap-detection per description. After that, clarification_question shows the unanswered questions one at a time. Step 7.5 testing_service_approval is SKIPPED (customer already chose; no recommendation). Step 7.6 second routine pass remains."
+          },
+          "D3_guidelines_shape": {
+            "answer": "Per-category prose guideline + questionnaire.",
+            "implementation_implication": "Need a new table or column for per-category prose. Best: NEW table `concern_category_guidelines` with (category TEXT PK, guideline_prose TEXT, display_label TEXT, updated_*). Seeded with the 14 categories from concern_questions CHECK constraint. The LLM prompt for diagnoseConcern receives: category + guideline_prose + questionnaire_for_category + customer_description, returns: array of question_ids the description did NOT answer."
+          },
+          "D4_content_revision_path": {
+            "answer": "Code now, MD-upload later, AND add orchestrator-mcp admin tools for Claude Desktop to edit pricing / routine services dynamically.",
+            "implementation_implication": "Existing _shared/scheduler-admin-md.ts already has uploadRoutineServicesMd + uploadTestingServicesMd. Need to verify they're exposed via orchestrator-mcp's advisor tools (probably yes per scheduler-tools.ts admin section). Also need: a simpler per-row UPSERT tool surface (not just MD bulk) so Claude Desktop can do 'update testing_services pricing for brake_inspection to $42' as a single call. Likely already exists as upsertTestingService / upsertRoutineService — need to verify exposure to MCP advisors and surface to Chris how to invoke from Claude Desktop."
+          }
+        },
+        "new_flow": [
+          "Step 7.1 service_concern_picker — ONE card. Two chip sections: Routine + Diagnostic. Submit writes selected_simple_services (all routine non-explanation picks) + sets up the diagnostic-with-explanation queue.",
+          "Step 7.2 concern_explanation — per-diagnostic-with-category card. 'Tell me about your [service name].' One card per picked-and-explanation-required service. After each submit, advance to next OR to diagnostic_loading when queue drains.",
+          "Step 7.3 diagnostic_loading — runs diagnoseConcern() per concern_explanation entry in parallel. LLM gets (category, guideline_prose, questionnaire, customer_description). Returns array of unanswered_question_ids. Aggregates across all concerns into clarification_questions_pending. Sets diagnostic_processing_complete=true. Advances to clarification_question (or appointment_type if all questions answered by descriptions).",
+          "Step 7.4 clarification_question — one card per pending question. Multiple-choice from concern_questions.options JSONB. Customer can pick OR skip ('I'm not sure'). After answer/skip, advance to next OR to second_routine_pass when queue drains.",
+          "Step 7.5 SKIPPED — no testing-service approval card because the customer already chose. (Per Chris's call: 'IT doesnt need to recommend a testing service because they already chose the service.') The picked diagnostic services already became selected_simple_services / approved_testing_services at Step 7.1.",
+          "Step 7.6 second_routine_pass — UNCHANGED. Optional add-ons after diagnostics."
+        ],
+        "open_questions_for_user": [
+          "D1 implementation: should routine_services get a concern_categories TEXT[] column (migration) OR a service_key→category mapping table OR a hardcoded map? Routine rows currently lacking categories that NEED them (per requires_explanation flag): brake_inspection, check_battery, warning_lights, check_suspension, check_ac.",
+          "Diagnostic service price visibility: customer picks 'brake_inspection' at $39.99. When do they SEE the price? Original spec showed prices on the testing-service-approval card (Step 7.5). With approval gone, options: (a) show prices inline on the diagnostic chip section of Step 7.1; (b) show a price summary on Step 10 summary card; (c) both. Chris's call.",
+          "Step 7.5 disposition: remove the wizard step entirely (skip enum value) OR keep step value but auto-skip in code? Recommendation: keep enum value (less churn) but no card render — getCurrentCard sees testing_service_approval and Server Action immediately advances. Or rename to 'price_review_summary' if (b) above is picked.",
+          "MCP admin pricing tool shape: is upsertTestingService already exposed to advisors? Verify in _shared/scheduler-tools.ts admin block. If not, add. Also consider: should it have a confirmation flow (UUID-token pattern from keytag system) since pricing changes are visible to all customers?",
+          "Guideline prose authorship: who writes the initial per-category prose for concern_category_guidelines table? Chris drafts → I seed? Or I draft starter prose → Chris reviews?",
+          "Service availability: NewVehicleCard's `notes` already goes into new_vehicle_info JSONB — should those notes also be fed to diagnoseConcern as additional context for the LLM? E.g. 'recent oil change' might be relevant context for a leak description."
+        ],
+        "data_model_additions_needed": [
+          "Migration: NEW table concern_category_guidelines (category TEXT PRIMARY KEY, guideline_prose TEXT NOT NULL, display_label TEXT NOT NULL, updated_at TIMESTAMPTZ, updated_by_oauth_client_id TEXT, updated_by_name TEXT). Seeded with 14 categories matching concern_questions CHECK constraint.",
+          "Pending decision: ALTER routine_services ADD COLUMN concern_categories TEXT[] (if D1 implementation = column) — or skip if D1 = mapping table or hardcoded map.",
+          "No schema change needed for testing_services — already has concern_categories TEXT[] from migration 20260510131752."
+        ],
+        "files_to_build_or_change": [
+          "supabase/migrations/YYYYMMDDhhmmss_scheduler_concern_category_guidelines.sql (new — seed 14 categories with starter prose)",
+          "(maybe) supabase/migrations/.../scheduler_routine_services_concern_categories.sql (if D1 column-based)",
+          "scheduler-app/src/lib/scheduler/wizard/llm/diagnose-concern.ts (new — @ai-sdk/anthropic generateObject; input: category + guideline + questions + description; output: { unanswered_question_ids })",
+          "scheduler-app/src/lib/scheduler/wizard/actions/submit-service-and-concern-picker.ts (UPDATE — rewrite Phase 8 version to support diagnostic chips + concern-explanation queue setup)",
+          "scheduler-app/src/lib/scheduler/wizard/actions/submit-explanation.ts (new — accepts {service_key, explanation_text}, appends to explanation_required_items, advances to next concern OR diagnostic_loading)",
+          "scheduler-app/src/lib/scheduler/wizard/actions/run-diagnostics.ts (new — wrapper that calls diagnoseConcern per item in Promise.all, builds clarification_questions_pending, advances to clarification_question OR second_routine_pass)",
+          "scheduler-app/src/lib/scheduler/wizard/actions/submit-clarification-answer.ts (new — appends to clarification_questions_answered, advances to next pending OR second_routine_pass)",
+          "scheduler-app/src/lib/scheduler/wizard/get-current-card.ts (UPDATE — service_concern_picker case now includes diagnostic chip list; concern_explanation case pops next service from queue; clarification_question case pops next pending question; testing_service_approval case auto-skips per D2)",
+          "scheduler-app/src/components/scheduler/wizard/WizardSurface.tsx (UPDATE — rebuild service_concern_picker section for two-section chips; add concern_explanation, diagnostic_loading, clarification_question cases)",
+          "scheduler-app/src/components/scheduler/ServiceAndConcernPicker.tsx (REBUILD — two chip sections: routine + diagnostic. Drop the single concern textarea — descriptions now happen per-service on Step 7.2.)",
+          "supabase/functions/_shared/scheduler-tools.ts (UPDATE — verify/expose upsertTestingService + upsertRoutineService to MCP advisor scope for D4)"
+        ],
+        "deployments_required": [
+          "supabase db push (new concern_category_guidelines table + maybe routine_services concern_categories column)",
+          "supabase gen types typescript --linked > scheduler-app/src/lib/database.types.ts",
+          "supabase functions deploy orchestrator-mcp (if admin tools need re-deploy for D4 surfacing)"
+        ],
+        "split_proposal": "Phase 9 is too big for one turn. Suggest split: Phase 9a = concern_category_guidelines migration + diagnose-concern LLM helper + run-diagnostics + submit-clarification-answer (the LLM machinery). Phase 9b = ServiceAndConcernPicker rebuild (two-section chips) + submit-service-and-concern-picker rewrite + submit-explanation + WizardSurface wiring (the UI surface). Phase 9c (optional) = MCP admin tool exposure verification + any pricing-display UX from open_question."
+      },
       "section_refs": [
-        "chat-design.md §Step 7.2 explanation cards (lines 1488-1542)",
-        "chat-design.md §Step 7.3 diagnostic specialist processing (lines 1544-1607)",
-        "chat-design.md §Step 7.4 clarification question cards (lines 1602-1647)",
-        "chat-design.md §Step 7.5 testing service approval (lines 1651-1697)"
-      ],
-      "files": [
-        "scheduler-app/src/lib/scheduler/wizard/llm/diagnose-concern.ts (new — uses @ai-sdk/anthropic + generateObject)",
-        "scheduler-app/src/lib/scheduler/wizard/actions/submit-explanation.ts (new)",
-        "scheduler-app/src/lib/scheduler/wizard/actions/run-diagnostics.ts (new)",
-        "scheduler-app/src/lib/scheduler/wizard/actions/submit-clarification.ts (new)",
-        "scheduler-app/src/lib/scheduler/wizard/actions/submit-testing-approval.ts (new)",
-        "scheduler-app/src/components/scheduler/wizard/WizardSurface.tsx (add 4 cases)"
+        "chat-design.md §Step 7.1 picker card (lines 1421-1486)",
+        "chat-design.md §Step 7.2 explanation cards (lines 1488-1542) — INTENT remains; per-service descriptions",
+        "chat-design.md §Step 7.3 diagnostic specialist processing (lines 1544-1607) — INTENT changes; gap-detection only",
+        "chat-design.md §Step 7.4 clarification question cards (lines 1602-1647) — INTENT unchanged; multiple-choice",
+        "chat-design.md §Step 7.5 testing service approval (lines 1651-1697) — SKIPPED per D2",
+        "Phase 0 architecture amendment in chat-design.md (LLM role narrowed further: gap-detection only, no recommendation)"
       ],
       "verification": [
-        "Manual: full diagnostic flow with a brake concern → see clarification questions → approve testing → advance",
-        "Verify: model output is parsed via Zod; on parse failure return graceful fallback (skip diagnostic recommendations)",
-        "Verify: parallel Promise.all completes for multi-concern picks"
+        "Manual: pick a diagnostic chip (brake_inspection) → describe issue → see only the questions the description didn't already answer → answer/skip → advance to second_routine_pass",
+        "Manual: pick a routine chip with requires_explanation=true (check_battery via routine list) → same flow as a directly-picked testing service (description → gap detection → clarifications)",
+        "Verify: LLM output parsed via Zod with strict {unanswered_question_ids: number[]} shape; on parse failure return all-question-ids-unanswered (defensive fallback — better to over-ask than miss data)",
+        "Verify: parallel Promise.all completes for multi-concern picks within ~15s",
+        "Manual: MCP tool from Claude Desktop changes brake_inspection price → next /book-v2 session shows new price"
       ]
     },
     {
