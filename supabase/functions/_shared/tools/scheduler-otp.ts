@@ -402,7 +402,13 @@ export async function sendOtp(
  * the phone. Constant-time compare via XOR.
  *
  * Outcomes:
- *   - { verified: true } — single-use; row marked consumed_at.
+ *   - { verified: true } — single-use; row marked consumed_at. When session_id
+ *     is supplied, ALSO writes otp_verified_at=now() and
+ *     identity_verification_level='full' to the matching
+ *     customer_chat_sessions row. This is the chat-design.md §3 identity-gate
+ *     persistence (OTP-success path always lands at 'full' verification per
+ *     §4.3 reconciliation matrix: phone hits >= 1 → full; the no-phone-match
+ *     'partial' path never sends OTP in the first place).
  *   - { verified: false, error: 'no_active_code' } — none in window
  *   - { verified: false, error: 'invalid_code' } — hash mismatch (attempt
  *     counter incremented; on 3rd wrong attempt, code is consumed to force
@@ -413,7 +419,7 @@ export async function sendOtp(
 export async function verifyOtp(
   sb: SupabaseClient,
   shopId: number,
-  args: { phone_e164: string; code: string },
+  args: { phone_e164: string; code: string; session_id?: string },
 ): Promise<{
   verified: boolean;
   error?: "no_active_code" | "invalid_code" | "too_many_attempts" | "expired";
@@ -479,6 +485,35 @@ export async function verifyOtp(
     .from("otp_codes")
     .update({ consumed_at: new Date().toISOString() })
     .eq("id", row.id as string);
+
+  // Persist identity-gate state to the chat session row when caller threaded
+  // through session_id. Per chat-design.md §3 (lines 685-705) OTP success
+  // ALWAYS means 'full' verification — the partial-verify branch (name match
+  // without phone match) never sends an OTP. Best-effort: a row-write failure
+  // shouldn't fail the verify itself (the otp_codes row is already consumed
+  // and the customer should see the success path). Surfaced via console
+  // error for observability.
+  if (args.session_id) {
+    const verifiedAt = new Date().toISOString();
+    const { error: sessionUpdateErr } = await sb
+      .from("customer_chat_sessions")
+      .update({
+        otp_verified_at: verifiedAt,
+        identity_verification_level: "full",
+        last_active_at: verifiedAt,
+      })
+      .eq("id", args.session_id);
+    if (sessionUpdateErr) {
+      console.error(
+        JSON.stringify({
+          level: "error",
+          msg: "verify_otp_session_write_failed",
+          session_id: args.session_id,
+          detail: sessionUpdateErr.message,
+        }),
+      );
+    }
+  }
 
   return { verified: true };
 }

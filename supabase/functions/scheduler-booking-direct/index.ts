@@ -321,6 +321,33 @@ function parseBody(raw: unknown):
 // UNIQUE constraint handles the race + daily-cap floor). This is
 // "best-effort" availability; the hold RPC is the source of truth for
 // race resolution.
+//
+// Timezone: appointments.start_time is TIMESTAMPTZ stored in UTC. Shop is
+// in America/New_York. We extract shop-local hour via Intl.DateTimeFormat
+// so EDT (UTC-4) and EST (UTC-5) both work correctly — 8 AM shop-local is
+// 12 UTC in summer and 13 UTC in winter. Don't rely on a fixed offset.
+const SHOP_TIMEZONE = "America/New_York"; // Phase 1 single-shop
+
+function shopLocalDateAndHour(
+  isoUtc: string,
+): { date: string; hour: number } {
+  const d = new Date(isoUtc);
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: SHOP_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    hour12: false,
+  }).formatToParts(d);
+  const get = (t: string) =>
+    parts.find((p) => p.type === t)?.value ?? "";
+  return {
+    date: `${get("year")}-${get("month")}-${get("day")}`,
+    hour: parseInt(get("hour"), 10),
+  };
+}
+
 async function listWaiterTimes(date: string): Promise<string[]> {
   // day_of_week: 0=Sun, 1=Mon, ..., 6=Sat (matches appointment_default_limits)
   const dow = new Date(`${date}T00:00:00Z`).getUTCDay();
@@ -359,15 +386,21 @@ async function listWaiterTimes(date: string): Promise<string[]> {
     if (t === "09:00") holds9 += 1;
   }
 
-  // Also count existing confirmed appointments on this date+slot.
-  const dayStart = `${date}T00:00:00-04:00`;
-  const dayEnd = `${date}T23:59:59-04:00`;
+  // Count existing confirmed appointments on this date+slot. Query a 1-day
+  // buffer on each side in UTC, then filter by shop-local date in JS —
+  // avoids miscounting at DST boundaries when a shop-local day's UTC bounds
+  // shift by an hour.
+  const dayBefore = new Date(`${date}T00:00:00Z`);
+  dayBefore.setUTCDate(dayBefore.getUTCDate() - 1);
+  const dayAfter = new Date(`${date}T00:00:00Z`);
+  dayAfter.setUTCDate(dayAfter.getUTCDate() + 2);
+
   const { data: appts, error: apptsErr } = await sb
     .from("appointments")
     .select("start_time, appointment_status")
     .eq("shop_id", SHOP_ID)
-    .gte("start_time", dayStart)
-    .lte("start_time", dayEnd)
+    .gte("start_time", dayBefore.toISOString())
+    .lt("start_time", dayAfter.toISOString())
     .is("deleted_at", null);
   if (apptsErr) {
     throw new Error(`appointments read failed: ${apptsErr.message}`);
@@ -375,16 +408,18 @@ async function listWaiterTimes(date: string): Promise<string[]> {
   let appts8 = 0;
   let appts9 = 0;
   for (const a of appts ?? []) {
-    const st = a.start_time as string;
-    if (a.appointment_status === "CANCELED" || a.appointment_status === "NO_SHOW") {
+    if (
+      a.appointment_status === "CANCELED" ||
+      a.appointment_status === "NO_SHOW"
+    ) {
       continue;
     }
-    // Compare local time component — Tekmetric times in EDT.
+    const st = a.start_time as string | null;
     if (!st) continue;
-    const hour = new Date(st).getUTCHours();
-    // 8 AM EDT = 12 UTC; 9 AM EDT = 13 UTC (during DST).
-    if (hour === 12) appts8 += 1;
-    if (hour === 13) appts9 += 1;
+    const { date: apptDate, hour } = shopLocalDateAndHour(st);
+    if (apptDate !== date) continue; // outside target shop-local day
+    if (hour === 8) appts8 += 1;
+    if (hour === 9) appts9 += 1;
   }
 
   const available: string[] = [];

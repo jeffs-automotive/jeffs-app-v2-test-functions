@@ -620,15 +620,17 @@ export function getSchedulerTools(args: SchedulerToolsArgs) {
     verify_otp: tool({
       description:
         "Verify a customer-entered OTP code. Single-use; max 3 attempts per " +
-        "code, then auto-consumed (force resend). Returns: { verified: true } " +
-        "or { verified: false, error: 'no_active_code' | 'invalid_code' | " +
-        "'too_many_attempts' | 'expired' }.",
+        "code, then auto-consumed (force resend). On success, writes " +
+        "otp_verified_at + identity_verification_level='full' to the chat " +
+        "session row (per chat-design.md §3 identity gate). Returns: " +
+        "{ verified: true } or { verified: false, error: 'no_active_code' | " +
+        "'invalid_code' | 'too_many_attempts' | 'expired' }.",
       inputSchema: z.object({
         phone_e164: z.string().regex(/^\+1\d{10}$/),
         code: z.string().regex(/^\d{6}$/),
       }),
       execute: recorded(recorder, "verify_otp", (input) =>
-        verifyOtp(sb, shopId, input),
+        verifyOtp(sb, shopId, { ...input, session_id: sessionId }),
       ),
     }),
 

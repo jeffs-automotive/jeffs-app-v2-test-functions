@@ -213,27 +213,21 @@ async function decide(
         },
       };
     }
-    // Phase 1 minimal-viable path: the spec (chat-design.md §2589-§2755)
-    // wants this branch to send OTP FIRST then route to Step 4 new
-    // customer info card after verify. We currently skip OTP for
-    // brand-new customers — they go straight to Step 4. The
-    // show_new_customer_info_card directive carries the verified phone
-    // (display-only on the card) + the name entered at Step 2.
+    // 'new' or 'unsure' bucket + 0 phone match + 0 name match.
     //
-    // NOTE: this short-circuits OTP for new customers. If we want full
-    // spec adherence (OTP-verify even for new customers — protects
-    // against bots/spam), the path is: directive='send_otp_first',
-    // then on submitOtp success branch on customer_id==null →
-    // show_new_customer_info_card. Flagged for discussion before
-    // implementing — Phase 1 acceptable per Chris's "practically the
-    // same" guidance + bot risk is low at launch volume.
+    // Per chat-design.md §2589-§2755: "Steps 1-3 are IDENTICAL to Current
+    // Client. Differences begin at Step 4." → new customers receive OTP
+    // verification, then route to new_customer_info (Step 4 new-client)
+    // post-verify based on customer_id being NULL on the row.
+    //
+    // Option B chosen 2026-05-13 (Phase 5 of the refactor):
+    //   - directive='send_otp_first' with NO matched customer_id
+    //   - submitOtpV2 on the Next.js side branches on row.customer_id ==
+    //     NULL to advance to new_customer_info instead of customer_info_edit
+    //   - Protects against bot / spam sign-ups and matches the spec verbatim
     return {
-      directive: "show_new_customer_info_card",
-      data: {
-        first_name,
-        last_name,
-        verified_phone_e164: input.phone_e164,
-      },
+      directive: "send_otp_first",
+      data: {},
     };
   }
 

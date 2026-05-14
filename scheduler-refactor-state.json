@@ -1,0 +1,669 @@
+{
+  "schema_version": "1.0",
+  "project": "scheduler-app refactor — server-state-driven wizard migration",
+  "created_at": "2026-05-13",
+  "spec_source": ".claude/work/planning/references/chat-design.md (see 'Architecture amendment — 2026-05-14' section near the top)",
+  "audits_addressed": [
+    ".claude/work/planning/references/gemini-findings-05-13-2026.md",
+    ".claude/work/planning/references/gpt-findings-05-13-2026.md"
+  ],
+  "rationale_one_paragraph": "The Vercel AI SDK was being used as a state machine for a deterministic 10-step wizard, but lite/mini models couldn't reliably emit follow-up tool calls so 19 of 19 wizard cards were already being rendered client-side via a CLIENT_RENDERED_DIRECTIVES allowlist. Two of three Edge Functions were already bypassing the LLM. Net: the LLM did nothing in the main flow but the codebase paid full chat-stream lifecycle cost. This refactor moves to a row-as-truth server-state-driven wizard: each step is a Server Action that writes the row and revalidates the page; the LLM is invoked only for Step 7 diagnostic Q&A and Step 10.3 customer-notes parsing. Chat bubbles stay as decoration (deterministic templates).",
+  "current_phase": "phase_05b_multi_account",
+  "context_protocol": {
+    "rule_1_one_phase_per_turn": "Work ONE phase per turn. Do not chain phases in the same turn even if they look small.",
+    "rule_2_end_of_phase": "When a phase is done: (1) set its status to 'complete'; (2) set completed_at to today's ISO date; (3) advance current_phase to the next pending phase; (4) write a one-line completion note in the phase's 'completion_note' field; (5) STOP and prompt the user before continuing.",
+    "rule_3_read_narrowly": "Read only the slice of chat-design.md relevant to the current phase (use the section_refs the phase declares). Don't reload the whole 3,278-line spec each turn.",
+    "rule_4_ask_in_grey_areas": "When in doubt about scope, naming, or approach, ASK the user before guessing. Per .claude/rules/never-guess.md.",
+    "rule_5_no_regressions": "/book must keep working through phases 3-14. New wizard surface lives at /book-v2 until phase 15 swaps the routes.",
+    "rule_6_verify_locally": "Each phase must end with `npm run typecheck` passing in scheduler-app/. Tests don't need to all pass yet during phases 3-14 (the old AI-SDK-shaped tests will be migrated in phase 17).",
+    "rule_7_commit_per_phase": "Each phase produces one git commit. User opens PRs; do not push unless asked."
+  },
+  "phases": [
+    {
+      "id": "phase_00_spec_amendment",
+      "title": "Spec amendment + state.json setup",
+      "status": "complete",
+      "completed_at": "2026-05-13",
+      "completion_note": "Inserted 'Architecture amendment — 2026-05-14' section into chat-design.md (after Status table, before Phase 1 scope). Created this state file with all 20 phases defined.",
+      "summary": "Add the architecture amendment to chat-design.md superseding the AI-SDK-as-state-machine pattern. Create this state file.",
+      "files": [
+        ".claude/work/planning/references/chat-design.md",
+        "scheduler-refactor-state.json"
+      ],
+      "verification": [
+        "chat-design.md has new section between Status and Phase 1 scope",
+        "scheduler-refactor-state.json exists at project root and is valid JSON"
+      ]
+    },
+    {
+      "id": "phase_01_independent_bug_fixes",
+      "title": "Independent bug fixes (4)",
+      "status": "complete",
+      "completed_at": "2026-05-13",
+      "completion_note": "All 4 fixes landed. Bug 1: verifyOtp now accepts optional session_id; on verified=true writes otp_verified_at + identity_verification_level='full' + last_active_at to customer_chat_sessions. scheduler-tools.ts verify_otp tool threads sessionId from getSchedulerTools closure. Bug 2: dismissEscalation now orders by occurred_at (the actual column). Bug 3: computeAvailableDates now applies the full 5-layer availability stack (closed_dates + appointment_default_limits.is_closed + appointment_blocks full + appointment_blocks time-specific + holds/appointments count vs capacity). Bug 4: listWaiterTimes now uses Intl.DateTimeFormat in America/New_York to bucket appointments by shop-local hour — correct in both EDT and EST. The hardcoded -04:00 day window was replaced with a 1-day buffer queried in UTC then filtered by shop-local date. npm run typecheck passes clean. Unit test for verifyOtp persistence DEFERRED to phase_17 (test suite migration) — adding a Vitest unit test for a Deno-side function requires Supabase-mock infrastructure that doesn't fit Phase 1's scope.",
+      "summary": "Fix the 4 verified bugs whose surface area outlives the migration. Each is small; bundle them in one phase. SKIP bugs that touch the chat-stream layer being removed — those get fixed inside their respective migration phase.",
+      "tasks": [
+        "Bug 1: verifyOtp at supabase/functions/_shared/tools/scheduler-otp.ts:477-483 — on verified=true, write otp_verified_at=now() + identity_verification_level='full' on the customer_chat_sessions row. Accept session_id as an extra param or look up by phone_e164 within the function (decide at execution).",
+        "Bug 2: dismissEscalation at scheduler-app/src/lib/scheduler/actions/session-actions.ts:3020 — change .order('created_at') to .order('occurred_at'). The scheduler_audit_log column is occurred_at per migration 20260513000100.",
+        "Bug 3: computeAvailableDates at scheduler-app/src/lib/scheduler/actions/session-actions.ts:1972-2110 — apply capacity exclusion. For each candidate date: count active appointment_holds + non-cancelled appointments per appointment_type; exclude the date when total >= sum-of-capacity-for-that-day's-time-slots (waiter: waiter_8am_slots + waiter_9am_slots; dropoff: dropoff_total). Reuse the math pattern from hold_waiter_slot RPC if useful.",
+        "Bug 4: listWaiterTimes at supabase/functions/scheduler-booking-direct/index.ts:363-385 — replace hardcoded UTC hour=12/13 (assumes EDT) with shop-timezone-aware comparison. Phase 1 single-shop: use America/New_York via Intl.DateTimeFormat or date-fns-tz. Lift the timezone string to a const so phase 2 multi-shop can read from a column later."
+      ],
+      "section_refs": [
+        "chat-design.md §3 (Step 3 OTP) — verifyOtp persistence requirement",
+        "chat-design.md §A escalation flow — escalation_dismissed event ordering",
+        "chat-design.md §9 (Step 9 date picker) — capacity exclusion intent",
+        "chat-design.md §9 (Step 9.2 waiter time picker) — timezone semantics"
+      ],
+      "files": [
+        "supabase/functions/_shared/tools/scheduler-otp.ts",
+        "scheduler-app/src/lib/scheduler/actions/session-actions.ts",
+        "supabase/functions/scheduler-booking-direct/index.ts"
+      ],
+      "out_of_scope": [
+        "submitOtp 'stashed_vehicle_data' bug — fixed in phase 6 (Step 5 customer info edit migration)",
+        "Three legacy 'show_new_customer_form' returns in session-actions.ts — fixed in phase 7 (Step 6 migration)",
+        "summary_edit_attempts routing to date_pick — fixed in phase 12 (Step 10.1 migration)",
+        "New-client OTP-skip policy decision — covered in phase 5 (Step 3 migration)"
+      ],
+      "verification": [
+        "npm run typecheck passes in scheduler-app/",
+        "Unit test added: verifyOtp on valid code → row has otp_verified_at + identity_verification_level='full'",
+        "Smoke test (manual or unit): computeAvailableDates excludes a fully-booked fixture day"
+      ]
+    },
+    {
+      "id": "phase_02_new_primitives",
+      "title": "New wizard primitives (no UI swap)",
+      "status": "complete",
+      "completed_at": "2026-05-13",
+      "completion_note": "Five new files under scheduler-app/src/lib/scheduler/wizard/. (1) card-payloads.ts — WizardCard discriminated union covering all 25 step values with per-step payload interfaces; includes a compile-time exhaustiveness check (_StepCoverageCheck). (2) transition-types.ts — minimal WizardTransitionResult ({ok:true, next_step} | {ok:false, error}). (3) append-bubble.ts — writes a single { type:'text', text } part row to customer_chat_messages; resolves shop_id from the session row; best-effort with Sentry+console on failure (does not throw). (4) transition.ts — applyWizardTransition writes the row, optionally appends user+assistant bubbles, and revalidatePath('/book-v2'). Phase 15 changes the revalidate target to '/book'. (5) get-current-card.ts — full 25-case switch from row state to WizardCard. Phase 2 fills in the trivial cases (greeting, phone_name, otp_pending, etc.) and stubs Tekmetric-touching cases with defensive placeholder payloads + TODO(phase_NN) markers naming the phase that will fill them in. Includes JSONB parsers for edited_phones/edited_emails/edited_address. npm run typecheck passes clean. Unit tests DEFERRED to phase_17 (test infra has pre-existing module-resolution issues separate from this phase).",
+      "summary": "Add types + helpers for the server-state-driven wizard. Old AI-SDK surface stays untouched. Goal: enable the upcoming step-migration phases without touching /book.",
+      "tasks": [
+        "Create scheduler-app/src/lib/scheduler/wizard/card-payloads.ts — TypeScript discriminated union WizardCard = { step: 'greeting'; payload: GreetingPayload } | { step: 'phone_name'; payload: PhoneNamePayload } | ... for all 24 current_step values. Per-step payload types describe what the card needs to render.",
+        "Create scheduler-app/src/lib/scheduler/wizard/get-current-card.ts — async function getCurrentCard(chatId): Promise<WizardCard | null>. Reads the row, builds payload from row state (e.g., for 'customer_info_edit' it loads phones/emails/address from the row OR triggers a Tekmetric lookup if not yet stashed).",
+        "Create scheduler-app/src/lib/scheduler/wizard/transition-types.ts — type WizardTransitionResult = { ok: true; next_step: WizardStep; jeff_says?: string } | { ok: false; error: string; jeff_says?: string }.",
+        "Create scheduler-app/src/lib/scheduler/wizard/append-bubble.ts — async function appendBubble(chatId, role, text). Writes a simplified row to customer_chat_messages: { session_id, shop_id, role, parts: [{ type: 'text', text }], created_at }. Coexists with the existing AI-SDK-shaped rows during the migration; phase 16 prunes the AI-SDK shape.",
+        "Create scheduler-app/src/lib/scheduler/wizard/transition.ts — helper applyWizardTransition({ chatId, updates, next_step, jeff_says? }): writes row + appends bubble + calls revalidatePath('/book-v2'). Used by every step's Server Action.",
+        "Unit tests for getCurrentCard against several fixture rows (greeting, phone_name, otp_pending, vehicle_pick, summary)."
+      ],
+      "section_refs": [
+        "chat-design.md Architecture amendment — 2026-05-14 (the new architecture section)",
+        "chat-design.md current_step enum line 288 (all 24 values)"
+      ],
+      "files": [
+        "scheduler-app/src/lib/scheduler/wizard/card-payloads.ts (new)",
+        "scheduler-app/src/lib/scheduler/wizard/get-current-card.ts (new)",
+        "scheduler-app/src/lib/scheduler/wizard/transition-types.ts (new)",
+        "scheduler-app/src/lib/scheduler/wizard/append-bubble.ts (new)",
+        "scheduler-app/src/lib/scheduler/wizard/transition.ts (new)",
+        "scheduler-app/tests/unit/wizard/get-current-card.test.ts (new)"
+      ],
+      "verification": [
+        "npm run typecheck passes",
+        "npm run test wizard/* passes"
+      ]
+    },
+    {
+      "id": "phase_03_step1_greeting",
+      "title": "Step 1 (Greeting) on new pattern",
+      "status": "complete",
+      "completed_at": "2026-05-13",
+      "completion_note": "Three new files. (1) app/book-v2/page.tsx — Server Component: hydrateSession (cookie → chatId) → ensureSessionExists (idempotent row INSERT) → getCurrentCard (build WizardCard from row state) → renders WizardSurface inside a Heritage-Editorial layout matching /book's chrome. dynamic='force-dynamic' so cookie hydration runs on every request. (2) src/components/scheduler/wizard/WizardSurface.tsx — Client Component switching on card.step. Phase 3 wires only the 'greeting' case to GreetingCard (reusing the existing heritage/GreetingCard verbatim — only the onSubmit handler changes); every other step renders NotYetMigrated pointing back at /book. Errors from the V2 Server Action are logged to Sentry + console for phase 3; phase 14 replaces with inline error UX. (3) src/lib/scheduler/wizard/actions/submit-greeting.ts — 'use server' submitGreetingV2 Server Action: writes is_returning_customer + customer_self_identified + greeting_answered_at, advances current_step → 'phone_name' via applyWizardTransition, appends a Jeff-voice bubble varying by greeting bucket (returning/new/unsure), returns WizardTransitionResult. Bubble copy is inline (not delegated to the legacy bubble-templates.ts which is destined for deletion in phase 16). /book legacy route is untouched. npm run typecheck passes clean. Manual smoke test queued for the user: visit /book-v2, tap each of the 3 greeting buttons, verify row.current_step advances to 'phone_name' + the page revalidates to the NotYetMigrated placeholder for phone_name.",
+      "summary": "Build the WizardSurface shell + migrate Step 1 (Greeting) to server-state. Parallel route /book-v2; /book keeps working.",
+      "tasks": [
+        "Create scheduler-app/app/book-v2/page.tsx — Server Component that runs hydrateSession() + getCurrentCard(chatId) + renders <WizardSurface initialCard={card} chatId={chatId} />.",
+        "Create scheduler-app/src/components/scheduler/wizard/WizardSurface.tsx — Client Component that takes WizardCard and switches on .step to render the right card. Phase 3 only wires step='greeting'; all other steps render a 'Step X not yet migrated — visit /book for the live flow' placeholder.",
+        "Reuse heritage/GreetingCard with a new onSubmit prop that calls submitGreetingV2.",
+        "Create scheduler-app/src/lib/scheduler/wizard/actions/submit-greeting.ts — 'use server' submitGreetingV2 Server Action: writes is_returning_customer + customer_self_identified + greeting_answered_at, calls applyWizardTransition to advance to 'phone_name', returns WizardTransitionResult.",
+        "Local smoke test: open /book-v2, tap Yes/No/Unsure, verify row updated + placeholder rendered."
+      ],
+      "section_refs": [
+        "chat-design.md §Step 1 Greeting (lines 336-456)",
+        "Architecture amendment — server-state-driven wizard"
+      ],
+      "files": [
+        "scheduler-app/app/book-v2/page.tsx (new)",
+        "scheduler-app/src/components/scheduler/wizard/WizardSurface.tsx (new)",
+        "scheduler-app/src/lib/scheduler/wizard/actions/submit-greeting.ts (new)"
+      ],
+      "verification": [
+        "npm run typecheck passes",
+        "Manual: /book-v2 renders GreetingCard; tap Yes → row.current_step = 'phone_name' + page revalidates",
+        "/book (legacy) still works"
+      ]
+    },
+    {
+      "id": "phase_04_step2_phone_name",
+      "title": "Step 2 (PhoneName) on new pattern",
+      "status": "complete",
+      "completed_at": "2026-05-13",
+      "completion_note": "Step 2 (phone + first + last name) is now live on /book-v2. (1) NEW src/lib/scheduler/wizard/actions/submit-phone-name.ts — 'use server' submitPhoneNameV2: Zod-validates (first/last 1-50 chars, phone E.164 +1XXXXXXXXXX), pre-writes entered_first_name + entered_last_name + phone_e164 to the row so values survive a downstream failure, reads customer_self_identified, calls callStep2Direct (deterministic edge function — no LLM), maps the 6 possible directives to WizardSteps (send_otp_first→otp_pending, show_no_match_choose_path→no_match_choose_path, show_multi_account_disambiguation→multi_account_disambiguation, show_partial_verification_gate→partial_verification_gate, show_new_customer_info_card / show_new_customer_form→new_customer_info, show_escalation_card→escalated), hands off to applyWizardTransition with branch-specific updates + bubble copy. Fail-safe escalation when step2-direct throws or returns an unknown directive. (2) UPDATE PhoneNamePayload — added optional initial_first_name / initial_last_name / initial_phone_e164 for resume / branch bounce-back prefill. (3) UPDATE getCurrentCard — phone_name case now populates prefill fields from row; partial_verification_gate case fixed to default matched_axis='name' (the only branch step2-direct emits, per chat-design.md §3.5b) with matched_first_name=null for PII protection per spec line 217. (4) UPDATE WizardSurface — added phone_name case wiring heritage/PhoneNameCard; refactored the per-action error log into a shared logIfFailed helper so future per-step cases stay DRY. Branch-state cards (multi-account, partial, no-match, escalated, new_customer_info) still render NotYetMigrated — phase 5 wires them. npm run typecheck passes clean. Manual smoke test for the user: visit /book-v2, tap a greeting bucket → PhoneNameCard renders with the right step_label per bucket → submit a real test phone → verify (a) row.phone_e164 / entered_*_name written before step2-direct call, (b) directive maps correctly to a next step, (c) OTP SMS arrives for the send_otp_first path.",
+      "summary": "Migrate Step 2 (phone + first name + last name capture) to server-state. Reuses existing scheduler-step2-direct edge function for Tekmetric lookup + OTP send.",
+      "tasks": [
+        "Wire heritage/PhoneNameCard into WizardSurface for step='phone_name'.",
+        "Create scheduler-app/src/lib/scheduler/wizard/actions/submit-phone-name.ts — 'use server' submitPhoneNameV2: validates input (Zod), writes entered_first_name + entered_last_name + phone_e164 + advances current_step to 'otp_pending' (or other step depending on Tekmetric result), calls scheduler-step2-direct edge function (reuse step2-direct-client.ts), maps directive to next_step, calls applyWizardTransition.",
+        "Map scheduler-step2-direct directives to next_step values: send_otp_first→otp_pending, show_no_match_choose_path→no_match_choose_path, show_multi_account_disambiguation→multi_account_disambiguation, show_partial_verification_gate→partial_verification_gate, show_new_customer_info_card→new_customer_info, show_escalation_card→escalated.",
+        "Update getCurrentCard to build the right payload for each of those branch states (placeholder for branches we haven't migrated yet — they'll be filled in phase 5 + phase 6)."
+      ],
+      "section_refs": [
+        "chat-design.md §Step 2 (lines 461-622)",
+        "chat-design.md §3.5 reconciliation matrix (lines 685-705)"
+      ],
+      "files": [
+        "scheduler-app/src/components/scheduler/wizard/WizardSurface.tsx (add phone_name case)",
+        "scheduler-app/src/lib/scheduler/wizard/actions/submit-phone-name.ts (new)",
+        "scheduler-app/src/lib/scheduler/wizard/get-current-card.ts (add phone_name payload builder)"
+      ],
+      "verification": [
+        "npm run typecheck passes",
+        "Manual: /book-v2 greeting → phone_name → submit known-good test phone → see otp_pending render (placeholder until phase 5)"
+      ]
+    },
+    {
+      "id": "phase_05_step3_otp_reconciliation",
+      "title": "Step 3 + §3.5 reconciliation (split: 5a OTP+Partial+NoMatch; 5b Multi-account)",
+      "status": "split",
+      "completion_note": "Split mid-phase into phase_05a (this entry, complete) and phase_05b (newly added below) because the multi-account disambiguation card requires a DB migration to stash candidates. Phase_05a delivered the OTP verify + resend path + 2 of 3 reconciliation branches and is independently deployable. Phase_05b ships the migration + multi-account wiring.",
+      "summary": "Migrate Step 3 (OTP verify) + the §3.5 reconciliation branches. Split into 5a + 5b for clean delivery.",
+      "tasks": [
+        "ASK Chris: should new customers (customer_self_identified='new' + 0 phone matches) ALSO receive OTP? The current code skips OTP for them (scheduler-step2-direct:216-229). The spec §2589-2755 implies Steps 1-3 are identical for both flows. Capture decision in this phase's completion_note.",
+        "Wire heritage/OtpInput into WizardSurface for step='otp_pending'.",
+        "Wire heritage/PartialVerificationGateCard for step='partial_verification_gate'.",
+        "Wire heritage/MultiAccountDisambiguationCard for step='multi_account_disambiguation'.",
+        "Wire heritage/NoMatchChoosePathCard for step='no_match_choose_path'.",
+        "Create submitOtpV2 Server Action — calls verifyOtp (with the phase-1 persistence fix from phase 1 already in place), branches on result. On success + returning customer: advance to customer_info_edit. On success + new customer (if policy keeps OTP for new clients): advance to new_customer_info. On wrong code: re-render otp_pending with attempts_remaining. On 3rd wrong: advance to escalated.",
+        "Create submitPartialVerificationChoice / submitMultiAccountChoice / submitNoMatchChoice Server Actions for the 3.5 cards.",
+        "Create resendOtpV2 Server Action — re-invokes sendOtp with rate-limit checks."
+      ],
+      "section_refs": [
+        "chat-design.md §Step 3 (lines 625-936)",
+        "chat-design.md §Step 3.5 partial verification gate (lines 728-758)",
+        "chat-design.md §3.5b no-match card (lines 759-773)"
+      ],
+      "files": [
+        "scheduler-app/src/components/scheduler/wizard/WizardSurface.tsx (add 4 branch cases)",
+        "scheduler-app/src/lib/scheduler/wizard/actions/submit-otp.ts (new)",
+        "scheduler-app/src/lib/scheduler/wizard/actions/submit-reconciliation.ts (new — covers 3.5 branches)",
+        "scheduler-app/src/lib/scheduler/wizard/actions/resend-otp.ts (new)"
+      ],
+      "verification": [
+        "Manual: full Step 1 → 2 → 3 → customer_info_edit placeholder against test phone",
+        "Manual: 3 wrong OTP codes → escalation card",
+        "Multi-account flow: test phone with 2+ Tekmetric customers → disambiguation card → pick → customer_info_edit placeholder"
+      ]
+    },
+    {
+      "id": "phase_05a_step3_otp_partial_no_match",
+      "title": "Step 3 OTP + §3.5a partial + §3.5b no-match (Option B: OTP for new customers)",
+      "status": "complete",
+      "completed_at": "2026-05-13",
+      "policy_decision": "Option B chosen by Chris 2026-05-13: new customers receive OTP too. scheduler-step2-direct's 'new/unsure + 0-match' branch now emits send_otp_first instead of show_new_customer_info_card. submitOtpV2 branches on row.customer_id==NULL post-verify to route to new_customer_info (Step 4 new-client) instead of customer_info_edit.",
+      "completion_note": "Six new files + 2 edits. (1) NEW supabase/functions/scheduler-otp-direct/ — Deno edge function with op='verify' and op='resend' ops. Verify reads phone + customer_id off the session row, calls the existing verifyOtp helper (Phase 1 fix writes otp_verified_at + identity_verification_level='full' on success), bumps session-level otp_attempts on failure, returns { verified, customer_id, attempts_remaining }. Resend calls sendOtp (rate-limit + Telnyx), resets otp_attempts to 0. (2) NEW deno.json for the edge function. (3) NEW scheduler-app/src/lib/scheduler/otp-direct-client.ts — Next.js Pattern-A-bearer fetch wrapper with typed response unions for both ops. (4) NEW wizard/actions/submit-otp.ts — submitOtpV2: Zod-validates 6-digit code, calls callOtpVerify, branches on verified + customer_id (customer_id set → customer_info_edit; null → new_customer_info per Option B), bumps to escalated on attempts_remaining=0, stays on otp_pending with attempts-remaining bubble on wrong code. (5) NEW wizard/actions/resend-otp.ts — resendOtpV2: calls callOtpResend, escalates on rate_limited / send_failed. (6) NEW wizard/actions/submit-no-match-choice.ts — try_different_phone clears phone/OTP and bounces to phone_name with name preserved; continue_as_new sets bucket='new' + advances to new_customer_info WITHOUT additional OTP (per spec §3.5b — the choose-path screen is the verification proxy). (7) NEW wizard/actions/submit-partial-verification-choice.ts — 4 actions: use_different_phone (clear + bounce), proceed_as_partial (set level='partial' + skip directly to vehicle_pick per spec lines 751-758), continue_as_new (bucket flip), escalate. (8) EDIT supabase/functions/scheduler-step2-direct/index.ts — Option B implementation: new/unsure + 0-match now emits send_otp_first instead of show_new_customer_info_card. Updated comment block to reflect the policy decision. (9) EDIT WizardSurface.tsx — added OtpInput, PartialVerificationGateCard, NoMatchChoosePathCard cases. Multi-account case still renders NotYetMigrated (phase_05b). npm run typecheck passes clean. Verification ready: full Step 1 → 2 → 3 → customer_info_edit placeholder (returning); full Step 1 → 2 → 3 → new_customer_info placeholder (new + 0-match via Option B); 3 wrong codes → escalated; resend works after 30s cooldown; partial + no-match cards route per spec.",
+      "summary": "Migrate Step 3 OTP verify + resend AND the §3.5a / §3.5b reconciliation branches (partial-verification gate, no-match-choose-path). Multi-account (§3.5c) deferred to phase_05b because it needs a DB column for stashed candidates.",
+      "deployment_required": [
+        "Deploy NEW edge function: supabase functions deploy scheduler-otp-direct",
+        "Re-deploy EDITED edge function: supabase functions deploy scheduler-step2-direct (Option B behavior change)"
+      ],
+      "section_refs": [
+        "chat-design.md §Step 3 (lines 625-936)",
+        "chat-design.md §3.5a partial-verification gate (lines 728-758)",
+        "chat-design.md §3.5b no-match choose path (lines 759-773)",
+        "chat-design.md §2589-2755 new-client flow (Option B rationale)"
+      ],
+      "files": [
+        "supabase/functions/scheduler-otp-direct/deno.json (new)",
+        "supabase/functions/scheduler-otp-direct/index.ts (new)",
+        "supabase/functions/scheduler-step2-direct/index.ts (edited for Option B)",
+        "scheduler-app/src/lib/scheduler/otp-direct-client.ts (new)",
+        "scheduler-app/src/lib/scheduler/wizard/actions/submit-otp.ts (new)",
+        "scheduler-app/src/lib/scheduler/wizard/actions/resend-otp.ts (new)",
+        "scheduler-app/src/lib/scheduler/wizard/actions/submit-no-match-choice.ts (new)",
+        "scheduler-app/src/lib/scheduler/wizard/actions/submit-partial-verification-choice.ts (new)",
+        "scheduler-app/src/components/scheduler/wizard/WizardSurface.tsx (added 3 cases)"
+      ],
+      "verification": [
+        "npm run typecheck passes clean",
+        "Manual after deploy: greeting → phone_name → OTP card → enter correct code → returning customer lands on customer_info_edit placeholder; new customer (Option B) lands on new_customer_info placeholder",
+        "Manual: 3 wrong OTP codes → escalated card",
+        "Manual: tap Resend after 30s → new code arrives + countdown resets",
+        "Manual: no-match path → try_different_phone bounces back to phone_name with names preserved",
+        "Manual: no-match path → continue_as_new advances to new_customer_info placeholder",
+        "Manual: partial-verification gate → proceed_as_partial advances to vehicle_pick placeholder with identity_verification_level='partial' on the row"
+      ]
+    },
+    {
+      "id": "phase_05b_multi_account",
+      "title": "Step §3.5c (Multi-account disambiguation)",
+      "status": "pending",
+      "summary": "Split off from phase_05 because it needs a DB column to stash candidates returned from scheduler-step2-direct. Adds the migration + the multi-account flow.",
+      "tasks": [
+        "Migration: add a `pending_candidates JSONB` column to customer_chat_sessions for stashing candidate-list data the §3.5c multi-account-disambiguation card needs to render. Filename pattern: supabase/migrations/YYYYMMDDhhmmss_scheduler_pending_candidates.sql.",
+        "Regenerate scheduler-app/src/lib/database.types.ts via the Supabase MCP generate_typescript_types tool.",
+        "Edit supabase/functions/scheduler-step2-direct/index.ts — when emitting show_multi_account_disambiguation, also UPDATE customer_chat_sessions.pending_candidates with the candidate JSONB array.",
+        "Update scheduler-app/src/lib/scheduler/wizard/get-current-card.ts — multi_account_disambiguation case reads pending_candidates from the row (instead of returning the empty array).",
+        "NEW scheduler-app/src/lib/scheduler/wizard/actions/submit-multi-account-choice.ts — submitMultiAccountChoiceV2: 'select' sets customer_id on the row + advances to otp_pending (OTP-verifies the selected account); 'none_of_these' falls through to NoMatchChoosePath.",
+        "Wire MultiAccountDisambiguationCard into WizardSurface.",
+        "Clear pending_candidates after the customer picks (cleanup; row stays tidy)."
+      ],
+      "deployment_required": [
+        "Apply migration: supabase db push",
+        "Re-deploy scheduler-step2-direct after the pending_candidates write is added"
+      ],
+      "section_refs": [
+        "chat-design.md §3.5c multi-account disambiguation (lines 685, 707-728)"
+      ],
+      "files": [
+        "supabase/migrations/YYYYMMDDhhmmss_scheduler_pending_candidates.sql (new)",
+        "scheduler-app/src/lib/database.types.ts (regenerated)",
+        "supabase/functions/scheduler-step2-direct/index.ts (write pending_candidates)",
+        "scheduler-app/src/lib/scheduler/wizard/get-current-card.ts (read pending_candidates)",
+        "scheduler-app/src/lib/scheduler/wizard/actions/submit-multi-account-choice.ts (new)",
+        "scheduler-app/src/components/scheduler/wizard/WizardSurface.tsx (add multi-account case)"
+      ],
+      "verification": [
+        "npm run typecheck passes",
+        "Multi-account flow: test phone with 2+ Tekmetric customers → disambiguation card renders with vehicle-only labels → pick one → customer_info_edit placeholder (post-OTP)"
+      ]
+    },
+    {
+      "id": "phase_06_step5_customer_info_edit",
+      "title": "Step 5 (Customer info edit) + fix submitOtp data shape",
+      "status": "pending",
+      "summary": "Migrate Step 5 (customer info edit for returning customers). Fixes Codex's bug 3 (submitOtp only passed stashed_vehicle_data; card needs phones/emails/address).",
+      "tasks": [
+        "Update getCurrentCard for step='customer_info_edit' — loads first_name, last_name, initial_phones, initial_emails, initial_address from Tekmetric via lookupCustomerByPhone (cached on the row if previously written). Cache result in edited_phones / edited_emails / edited_address columns as the initial display values.",
+        "Wire heritage/CustomerInfoEditCard into WizardSurface.",
+        "Create submitCustomerInfoEditV2 Server Action — detects diffs vs initial, optionally PATCHes Tekmetric (only when verification_level='full' AND changes detected), writes edited_phones / edited_emails / edited_address / primary_email_for_description to the row, advances current_step to 'vehicle_pick'.",
+        "Address Codex bug 3: the new submitOtpV2 (from phase 5) + the new getCurrentCard payload builder for customer_info_edit jointly fix the missing-data issue. Verify the card renders with actual customer info, not 'stashed_vehicle_data' shape.",
+        "Wire heritage/NewCustomerInfoCard for step='new_customer_info' (new-client Step 4)."
+      ],
+      "section_refs": [
+        "chat-design.md §Step 5 (lines 956-1176)",
+        "chat-design.md New Client Step 4 (lines 2595-2682)"
+      ],
+      "files": [
+        "scheduler-app/src/components/scheduler/wizard/WizardSurface.tsx (add 2 cases)",
+        "scheduler-app/src/lib/scheduler/wizard/actions/submit-customer-info-edit.ts (new)",
+        "scheduler-app/src/lib/scheduler/wizard/actions/submit-new-customer-info.ts (new)",
+        "scheduler-app/src/lib/scheduler/wizard/get-current-card.ts (add customer_info_edit + new_customer_info payload builders)"
+      ],
+      "verification": [
+        "Manual: returning-customer happy path through Step 5 — phones/emails/address pre-filled from Tekmetric",
+        "Manual: edit phone → Save → row + Tekmetric updated; advance to vehicle_pick placeholder",
+        "Manual: no changes → Save → skip Tekmetric PATCH; advance"
+      ]
+    },
+    {
+      "id": "phase_07_step6_vehicle",
+      "title": "Step 6 (Vehicle pick + new vehicle drill-down)",
+      "status": "pending",
+      "summary": "Migrate Step 6 vehicle picker + new-vehicle add. Removes the three legacy 'show_new_customer_form' returns from session-actions.ts (Codex bug 1).",
+      "tasks": [
+        "Update getCurrentCard for step='vehicle_pick' — calls lookupVehiclesForCustomer via Tekmetric, builds vehicle list payload with body-style emoji map.",
+        "Wire heritage/VehiclePicker into WizardSurface for step='vehicle_pick'.",
+        "Wire heritage/NewVehicleCard into WizardSurface for step='new_vehicle_form'.",
+        "Create submitVehiclePickV2 — writes vehicle_id, advances to 'service_concern_picker' (per design 600ms delay via UX, not server).",
+        "Create submitNewVehicleV2 — calls scheduler-booking-direct op='create_vehicle' (reuses bookingCreateVehicle from booking-direct-client.ts), advances to 'service_concern_picker'.",
+        "Remove the three legacy 'show_new_customer_form' returns from session-actions.ts:1067, 1137, 1301 — these aren't reachable from /book-v2 but kept /book working; phase 16 will clean them up entirely. For phase 7: just leave them, no behavior change needed."
+      ],
+      "section_refs": [
+        "chat-design.md §Step 6 (lines 1178-1408)"
+      ],
+      "files": [
+        "scheduler-app/src/components/scheduler/wizard/WizardSurface.tsx (add 2 cases)",
+        "scheduler-app/src/lib/scheduler/wizard/actions/submit-vehicle.ts (new — covers pick + new)",
+        "scheduler-app/src/lib/scheduler/wizard/get-current-card.ts (add vehicle_pick + new_vehicle_form payloads)"
+      ],
+      "verification": [
+        "Manual: customer with 1 vehicle → tap → row.vehicle_id set + advance",
+        "Manual: customer with 0 vehicles → drill straight to new_vehicle_form",
+        "Manual: add new vehicle → Tekmetric POST /vehicles → row updated"
+      ]
+    },
+    {
+      "id": "phase_08_step7_1_service_concern_picker",
+      "title": "Step 7.1 (Service + concern picker)",
+      "status": "pending",
+      "summary": "Migrate Step 7.1 — the chip-list picker that branches into either Step 8 (no-explanation path) or Step 7.2 (explanation path).",
+      "tasks": [
+        "Update getCurrentCard for step='service_concern_picker' — loads routine_services from cache (existing routine-services-cache.ts).",
+        "Wire heritage/ServiceAndConcernPicker(?) or use existing ServiceAndConcernPicker into WizardSurface.",
+        "Create submitServiceAndConcernPickerV2 — partitions picks into selected_simple_services + items requiring explanation; writes both to row; advances to 'concern_explanation' if any explanation-required item exists, else 'appointment_type' (skipping 7.2-7.6 entirely).",
+        "Note: phase 9 covers the actual diagnostic flow; this phase only handles the picker + branch decision."
+      ],
+      "section_refs": [
+        "chat-design.md §Step 7.1 picker card (lines 1421-1486)",
+        "chat-design.md §Step 7 routine vs explanation-required classification (lines 1454-1471)"
+      ],
+      "files": [
+        "scheduler-app/src/components/scheduler/wizard/WizardSurface.tsx (add case)",
+        "scheduler-app/src/lib/scheduler/wizard/actions/submit-service-concern.ts (new)",
+        "scheduler-app/src/lib/scheduler/wizard/get-current-card.ts (add service_concern_picker payload)"
+      ],
+      "verification": [
+        "Manual: pick only routine chips → advance directly to appointment_type",
+        "Manual: pick a concern chip → advance to concern_explanation"
+      ]
+    },
+    {
+      "id": "phase_09_step7_2_to_5_diagnostic",
+      "title": "Steps 7.2-7.5 (Per-concern explanations + diagnostic + clarifications + testing approval)",
+      "status": "pending",
+      "summary": "Migrate the diagnostic Q&A flow — the FIRST real use of the LLM in the new architecture. Per-concern explanation cards → parallel diagnostic specialist calls → clarification questions → testing service approval.",
+      "tasks": [
+        "Create scheduler-app/src/lib/scheduler/wizard/llm/diagnose-concern.ts — server-side helper that calls Claude Haiku 4.5 via @ai-sdk/anthropic generateObject with a strict Zod output schema { category, remaining_questions, recommended_testing_services }. Reads concern_questions catalog + testing_services from the DB. NOT exposed as a 'tool'; called directly.",
+        "Update getCurrentCard for step='concern_explanation' (renders per-concern card with chat-bubble lead-in from bubble-templates), step='diagnostic_loading' (waits while Promise.all of diagnoseConcern calls), step='clarification_question' (renders one question from the queue), step='testing_service_approval'.",
+        "Wire the existing heritage cards into WizardSurface for these steps.",
+        "Create submitExplanationV2 — appends to explanation_required_items; advances to next concern's card OR to diagnostic_loading if all collected.",
+        "Create runDiagnosticsV2 (called automatically by getCurrentCard when step='diagnostic_loading' arrives — or invoked from the action that just advanced there): Promise.all-fans out diagnoseConcern per item, aggregates clarification_questions_pending + recommended_testing_services, sets diagnostic_processing_complete=true, advances to clarification_question OR testing_service_approval.",
+        "Create submitClarificationAnswerV2 — drops the answered question from the pending queue; advances to next clarification OR to testing_service_approval when queue drains.",
+        "Create submitTestingApprovalV2 — writes approved/declined; advances to second_routine_pass."
+      ],
+      "section_refs": [
+        "chat-design.md §Step 7.2 explanation cards (lines 1488-1542)",
+        "chat-design.md §Step 7.3 diagnostic specialist processing (lines 1544-1607)",
+        "chat-design.md §Step 7.4 clarification question cards (lines 1602-1647)",
+        "chat-design.md §Step 7.5 testing service approval (lines 1651-1697)"
+      ],
+      "files": [
+        "scheduler-app/src/lib/scheduler/wizard/llm/diagnose-concern.ts (new — uses @ai-sdk/anthropic + generateObject)",
+        "scheduler-app/src/lib/scheduler/wizard/actions/submit-explanation.ts (new)",
+        "scheduler-app/src/lib/scheduler/wizard/actions/run-diagnostics.ts (new)",
+        "scheduler-app/src/lib/scheduler/wizard/actions/submit-clarification.ts (new)",
+        "scheduler-app/src/lib/scheduler/wizard/actions/submit-testing-approval.ts (new)",
+        "scheduler-app/src/components/scheduler/wizard/WizardSurface.tsx (add 4 cases)"
+      ],
+      "verification": [
+        "Manual: full diagnostic flow with a brake concern → see clarification questions → approve testing → advance",
+        "Verify: model output is parsed via Zod; on parse failure return graceful fallback (skip diagnostic recommendations)",
+        "Verify: parallel Promise.all completes for multi-concern picks"
+      ]
+    },
+    {
+      "id": "phase_10_step7_6_step8",
+      "title": "Step 7.6 (Second routine pass) + Step 8 (Appointment type)",
+      "status": "pending",
+      "summary": "Migrate the second-routine-pass card + appointment type picker (waiter vs dropoff) with proactive earliest-available.",
+      "tasks": [
+        "Update getCurrentCard for step='second_routine_pass' (loads routine_services + already-picked items as disabled).",
+        "Create submitSecondRoutinePassV2 — writes additional_routine_services_round2; advances to appointment_type.",
+        "Update getCurrentCard for step='appointment_type' — pre-computes wait_eligibility + earliest_waiter_date + earliest_dropoff_date by reading routine_services.wait_eligible + counting holds/appointments. NO LLM. Use existing capacity math (or extract from phase 1's computeAvailableDates fix).",
+        "Wire heritage/AppointmentTypeCard into WizardSurface.",
+        "Create submitAppointmentTypeV2 — writes appointment_type; advances to date_pick."
+      ],
+      "section_refs": [
+        "chat-design.md §Step 7.6 (lines 1700-1742)",
+        "chat-design.md §Step 8 (lines 1826-1941)"
+      ],
+      "files": [
+        "scheduler-app/src/components/scheduler/wizard/WizardSurface.tsx (add 2 cases)",
+        "scheduler-app/src/lib/scheduler/wizard/actions/submit-second-routine-pass.ts (new)",
+        "scheduler-app/src/lib/scheduler/wizard/actions/submit-appointment-type.ts (new)",
+        "scheduler-app/src/lib/scheduler/wizard/get-current-card.ts (add 2 payloads + eligibility computation)"
+      ],
+      "verification": [
+        "Manual: pick wait-eligible service only → see both wait + dropoff options",
+        "Manual: pick brake_inspection → see Variant B (dropoff only) card"
+      ]
+    },
+    {
+      "id": "phase_11_step9_date_time_hold",
+      "title": "Step 9 (Date picker + waiter time picker + hold)",
+      "status": "pending",
+      "summary": "Migrate date picker + waiter time picker + slot hold. Reuses scheduler-booking-direct for hold_slot op. Capacity filtering already fixed in phase 1.",
+      "tasks": [
+        "Update getCurrentCard for step='date_pick' — uses computeAvailableDates (now capacity-aware from phase 1).",
+        "Wire heritage/CalendarDatePicker(?) or existing CalendarDatePicker into WizardSurface.",
+        "Create submitDateV2 — writes appointment_date; if appointment_type='waiter' advance to waiter_time_pick, else hold_slot via scheduler-booking-direct and advance to summary.",
+        "Update getCurrentCard for step='waiter_time_pick' — uses scheduler-booking-direct op='list_waiter_times' (now timezone-aware from phase 1).",
+        "Create submitWaiterTimeV2 — writes appointment_time; calls hold_slot; on success advance to summary; on race-lost return error + bounce back to date_pick."
+      ],
+      "section_refs": [
+        "chat-design.md §Step 9 (lines 2139-2298)"
+      ],
+      "files": [
+        "scheduler-app/src/components/scheduler/wizard/WizardSurface.tsx (add 2 cases)",
+        "scheduler-app/src/lib/scheduler/wizard/actions/submit-date.ts (new)",
+        "scheduler-app/src/lib/scheduler/wizard/actions/submit-waiter-time.ts (new)"
+      ],
+      "verification": [
+        "Manual: pick a date → see correct waiter times (capacity-aware)",
+        "Manual: pick a time → hold placed → row.hold_token set + summary placeholder renders",
+        "Manual: race-lost simulation → bounce back to date_pick"
+      ]
+    },
+    {
+      "id": "phase_12_step10_1_2_summary_confirm",
+      "title": "Steps 10.1-10.2 (Summary + per-section edits + Tekmetric POST confirm)",
+      "status": "pending",
+      "summary": "Migrate the summary card + the edit-from-summary drill-downs + the Tekmetric POST confirmation. Fixes the summary-edit-routing-to-date_pick bug (Codex finding 6).",
+      "tasks": [
+        "Update getCurrentCard for step='summary' — loads all row fields for the summary display + hold_expires_at countdown.",
+        "Wire heritage/SummaryCard into WizardSurface.",
+        "Create summary edit handlers: editInfo → back to customer_info_edit, editVehicle → back to vehicle_pick, editServices → back to service_concern_picker (and re-run diagnostic if concerns changed), editDateTime → back to date_pick. EACH increments summary_edit_attempts; at attempts >= 2 the next edit fires escalation.",
+        "Wait — re-check chat-design.md §10.1.5: 'After the 2nd edit cycle completes (returns to summary), a 3rd Edit tap is intercepted'. The current code uses >= 3 (allows 2 edits per the fix). Verify and align.",
+        "Create submitSummaryConfirmV2 — verifies hold still valid; if expired bounce to date_pick with hold_expired bubble. Else call scheduler-booking-direct op='confirm_booking' with built description; on success write appointment_id + appointment_confirmed_at; advance to customer_notes. On failure: retry once with 1s backoff; surface error + retry option."
+      ],
+      "section_refs": [
+        "chat-design.md §Step 10.1 summary card (lines 2305-2347)",
+        "chat-design.md §Step 10.1.5 edit drill-downs (lines 2349-2367)",
+        "chat-design.md §Step 10.2 Tekmetric POST (lines 2369-2403)"
+      ],
+      "files": [
+        "scheduler-app/src/components/scheduler/wizard/WizardSurface.tsx (add case)",
+        "scheduler-app/src/lib/scheduler/wizard/actions/submit-summary.ts (new — confirm + edit handlers)",
+        "scheduler-app/src/lib/scheduler/wizard/get-current-card.ts (add summary payload builder)"
+      ],
+      "verification": [
+        "Manual: confirm path → appointment booked in Tekmetric → advance to customer_notes",
+        "Manual: edit-from-summary on vehicle → return to vehicle picker → re-pick → return to summary with new vehicle",
+        "Manual: 3rd edit tap → escalation",
+        "Manual: confirm with expired hold → bounce to date_pick"
+      ]
+    },
+    {
+      "id": "phase_13_step10_3_5_notes_question_transcript",
+      "title": "Steps 10.3-10.5 (Customer notes + question + completed + transcript email)",
+      "status": "pending",
+      "summary": "Migrate post-confirm capture. SECOND real use of the LLM in the new architecture — parseCustomerNote for notes >150 chars OR parsed-rewrite for notes ≤150 chars.",
+      "tasks": [
+        "Create scheduler-app/src/lib/scheduler/wizard/llm/parse-customer-note.ts — server-side helper using @ai-sdk/openai (cheap model) + generateObject. Returns { approved: bool, parsed_text?, reason_if_rejected? }. ≤150 chars → ask for parse + approval; >150 chars → skip parsing, save raw, route to appointment description.",
+        "Update getCurrentCard for step='customer_notes' + step='customer_question'.",
+        "Wire heritage/CustomerNotesCard + CustomerQuestionCard into WizardSurface.",
+        "Create submitCustomerNotesV2 — applies the parse logic (≤150 or >150 branch), writes customer_notes_text + customer_notes_approved + customer_notes_edit_attempts. On 2nd reject: punt to >150 path (raw note → appt description).",
+        "Create submitCustomerQuestionV2 — writes customer_question + customer_question_forwarded; advances to completed.",
+        "Wire heritage/CompletedCard into WizardSurface for step='completed'.",
+        "On advance to 'completed': fire on-demand transcript dispatch via transcript-dispatcher edge function (existing). Keep the 5-min cron backstop unchanged."
+      ],
+      "section_refs": [
+        "chat-design.md §Step 10.3 customer notes (lines 2405-2453)",
+        "chat-design.md §Step 10.4 customer questions (lines 2455-2485)",
+        "chat-design.md §Step 10.5 goodbye + transcript (lines 2488-2545)"
+      ],
+      "files": [
+        "scheduler-app/src/lib/scheduler/wizard/llm/parse-customer-note.ts (new)",
+        "scheduler-app/src/lib/scheduler/wizard/actions/submit-customer-notes.ts (new)",
+        "scheduler-app/src/lib/scheduler/wizard/actions/submit-customer-question.ts (new)",
+        "scheduler-app/src/lib/scheduler/wizard/actions/fire-transcript-dispatch.ts (new — small helper)",
+        "scheduler-app/src/components/scheduler/wizard/WizardSurface.tsx (add 3 cases)"
+      ],
+      "verification": [
+        "Manual: full happy path through to completed card",
+        "Manual: 200-char note → skip parse, route to appt description",
+        "Manual: 80-char note → parse + approve",
+        "Manual: 2x reject parsed → punt to raw + advance",
+        "Manual: transcript email arrives at service@jeffsautomotive.com"
+      ]
+    },
+    {
+      "id": "phase_14_cross_cutting",
+      "title": "Cross-cutting flows (footer, escalation, idle/abandon, resume, errors)",
+      "status": "pending",
+      "summary": "Wire the cross-cutting flows into the new wizard surface: page-footer Start Over + Talk to a Person, keyword escalation scanner, client-side idle timers + sendBeacon, online/offline banner, 15s/45s slowness messaging, escalation card.",
+      "tasks": [
+        "Wire heritage/WizardFooter into /book-v2 page-level layout (sticky bottom).",
+        "Create submitStartOverV2 — resets row to greeting (clears customer_id, vehicle_id, appointment_id, all step fields); advances current_step to greeting.",
+        "Create submitEscalateV2 — sets status='escalated', escalated_at, escalation_reason; fires on-demand transcript email with [ESCALATED] subject prefix.",
+        "Create dismissEscalationV2 — restores prior step (read from audit log, ordering by occurred_at — the column already corrected in phase 1).",
+        "Wire heritage/EscalationCard for step='escalated'.",
+        "Add escalation keyword scanner — run inside Server Actions for free-text fields (concern_explanation, customer_notes_text, customer_question); if match, return escalation flag.",
+        "Add client-side idle timer in WizardSurface — 2-min nudge bubble + 7-min mark-abandoned via sendBeacon to /api/scheduler/mark-abandoned (new tiny route).",
+        "Add online/offline banner in WizardSurface.",
+        "Add slowness messaging (15s 'Still working…' + 45s 'Taking longer than expected, retry or call us')."
+      ],
+      "section_refs": [
+        "chat-design.md §Cross-cutting flows (lines 2834-3137)"
+      ],
+      "files": [
+        "scheduler-app/src/lib/scheduler/wizard/actions/submit-start-over.ts (new)",
+        "scheduler-app/src/lib/scheduler/wizard/actions/submit-escalate.ts (new)",
+        "scheduler-app/src/lib/scheduler/wizard/actions/dismiss-escalation.ts (new — uses occurred_at)",
+        "scheduler-app/src/lib/scheduler/wizard/actions/mark-abandoned.ts (new)",
+        "scheduler-app/app/api/scheduler/mark-abandoned/route.ts (new — accepts sendBeacon POST)",
+        "scheduler-app/src/components/scheduler/wizard/WizardSurface.tsx (footer + idle + offline + slowness wiring)"
+      ],
+      "verification": [
+        "Manual: tap Start Over mid-flow → row reset, greeting renders",
+        "Manual: tap Talk to a Person → escalation card + transcript email fires",
+        "Manual: idle 2 min → nudge bubble; idle 7 min → row.status='abandoned'",
+        "Manual: type 'lawyer' in concern → auto-escalation"
+      ]
+    },
+    {
+      "id": "phase_15_swap_routes",
+      "title": "Swap /book to new wizard",
+      "status": "pending",
+      "summary": "Cut over /book to the new WizardSurface. /book-v2 becomes a redirect to /book.",
+      "tasks": [
+        "Update scheduler-app/app/book/page.tsx — copy the body from app/book-v2/page.tsx (hydrate + getCurrentCard + WizardSurface). Replace the old Chat-based render.",
+        "Change scheduler-app/app/book-v2/page.tsx to redirect to /book (or delete the route entirely — decide at execution).",
+        "Update middleware.ts cookie-set logic if needed (likely no change — cookie is the same).",
+        "Smoke test all 10 wizard steps end-to-end on /book.",
+        "Bump scheduler-app/package.json version to 0.1.0."
+      ],
+      "section_refs": [
+        "chat-design.md Architecture amendment (the new architecture section)"
+      ],
+      "files": [
+        "scheduler-app/app/book/page.tsx",
+        "scheduler-app/app/book-v2/page.tsx",
+        "scheduler-app/middleware.ts (likely no change)",
+        "scheduler-app/package.json"
+      ],
+      "verification": [
+        "End-to-end test: returning customer happy path",
+        "End-to-end test: new customer happy path",
+        "End-to-end test: multi-account disambiguation",
+        "End-to-end test: diagnostic Q&A path",
+        "End-to-end test: dropoff path",
+        "Lighthouse mobile: no regressions"
+      ]
+    },
+    {
+      "id": "phase_16_delete_dead_code",
+      "title": "Delete dead code",
+      "status": "pending",
+      "summary": "Remove the AI-SDK chat-stream layer + XState + the now-unused tools/system-prompt/orchestrator-client surfaces. Delete only what's actually unreachable.",
+      "tasks": [
+        "Delete scheduler-app/app/api/chat/route.ts.",
+        "Delete scheduler-app/src/components/scheduler/Chat.tsx.",
+        "Delete scheduler-app/src/components/scheduler/ChatBootstrap.tsx (if only Chat.tsx imports it).",
+        "Delete scheduler-app/src/lib/scheduler/tools.ts.",
+        "Delete scheduler-app/src/lib/scheduler/system-prompt.ts.",
+        "Delete scheduler-app/src/lib/scheduler/session-context.ts.",
+        "Delete scheduler-app/src/lib/scheduler/orchestrator-client.ts (if no remaining consumers — diagnostic specialist now calls models directly, not via orchestrator-direct).",
+        "Delete scheduler-app/src/lib/scheduler/machine/wizard-machine.ts (+ wizard-types.ts if it was the XState types file).",
+        "Delete scheduler-app/src/lib/scheduler/escalation-keywords.ts? (decide — phase 14 may keep it).",
+        "Audit session-actions.ts — delete the V1 Server Actions; keep only the V2 ones (or merge V2 into the canonical names if cleaner).",
+        "Remove deps from package.json: @ai-sdk/react, @ai-sdk/gateway, @xstate/react, xstate. Keep @ai-sdk/anthropic, @ai-sdk/openai, ai (for generateObject/generateText).",
+        "Delete scheduler-app/src/lib/scheduler/chat-store.ts AI-SDK-specific functions; keep only the transcript-append helper.",
+        "Delete the orchestrator-direct edge function for the customer path. Keep orchestrator-mcp + _shared/orchestrator.ts for the advisor side.",
+        "Run npm install + verify lockfile shrinks."
+      ],
+      "section_refs": [
+        "chat-design.md Architecture amendment — 'What is removed' table"
+      ],
+      "files": [
+        "[many — see tasks]"
+      ],
+      "verification": [
+        "npm run typecheck passes",
+        "npm run build passes",
+        "/book end-to-end smoke test still works",
+        "No lingering imports of deleted modules"
+      ]
+    },
+    {
+      "id": "phase_17_test_migration",
+      "title": "Test suite migration",
+      "status": "pending",
+      "summary": "Drop the 19 AI-SDK-shaped unit tests; add new wizard tests against Server Actions + getCurrentCard + the two LLM helpers (with mocked model output).",
+      "tasks": [
+        "Delete obsolete tests: chat-store.test.ts (AI-SDK shape), orchestrator-client.test.ts, system-prompt.test.ts, tools.test.ts. Keep card-component tests (PhoneEntry, OtpInput, VehiclePicker, etc.) — they're still valid.",
+        "Add tests for getCurrentCard against every step state.",
+        "Add tests for each V2 Server Action — happy path + error path.",
+        "Add tests for diagnoseConcern + parseCustomerNote LLM helpers with mocked model output (use MSW or vitest mocks).",
+        "Add an E2E Playwright suite covering the 5 main flows (returning happy, new happy, multi-account, diagnostic, dropoff)."
+      ],
+      "files": [
+        "scheduler-app/tests/unit/wizard/* (new)",
+        "scheduler-app/tests/e2e/* (new — playwright)"
+      ],
+      "verification": [
+        "npm run test passes with new suite",
+        "npm run test:coverage shows DAL + wizard actions at >= 80% line coverage",
+        "npm run test:e2e passes the 5 main flows"
+      ]
+    },
+    {
+      "id": "phase_18_edge_consolidation",
+      "title": "Edge function consolidation",
+      "status": "pending",
+      "summary": "Merge scheduler-step2-direct + scheduler-booking-direct into a single scheduler-server function with op routing. Reduces deploy surface + shared client setup.",
+      "tasks": [
+        "Create supabase/functions/scheduler-server/index.ts — accepts { op, session_id, ...op_specific } and dispatches.",
+        "Migrate ops: 'lookup_and_send_otp' (was step2-direct), 'verify_otp', 'list_waiter_times', 'hold_slot', 'confirm_booking', 'create_customer', 'create_vehicle'.",
+        "Update scheduler-app/src/lib/scheduler/wizard/llm/* and actions/* to call the unified endpoint.",
+        "Deploy via supabase functions deploy scheduler-server.",
+        "Verify all paths against the new endpoint.",
+        "Once verified: delete scheduler-step2-direct + scheduler-booking-direct from supabase/functions/ and undeploy."
+      ],
+      "files": [
+        "supabase/functions/scheduler-server/index.ts (new)",
+        "supabase/functions/scheduler-server/deno.json (new)",
+        "supabase/functions/scheduler-step2-direct/* (delete after cutover)",
+        "supabase/functions/scheduler-booking-direct/* (delete after cutover)",
+        "scheduler-app/src/lib/scheduler/booking-direct-client.ts (update to point at scheduler-server)",
+        "scheduler-app/src/lib/scheduler/step2-direct-client.ts (update or delete + inline)"
+      ],
+      "verification": [
+        "All wizard flows still work against the new endpoint",
+        "Old endpoints undeployed; mcp__supabase__list_edge_functions confirms"
+      ]
+    },
+    {
+      "id": "phase_19_docs_verify",
+      "title": "Final docs / verification",
+      "status": "pending",
+      "summary": "Update READMEs, project memory, and run a full verification pass. Capture lessons learned.",
+      "tasks": [
+        "Update scheduler-app/README.md (if exists) or create one — short, point at chat-design.md for behavior.",
+        "Update .claude/memory/scheduler_project_state.md to reflect the new architecture.",
+        "Update Supabase MCP project notes if any reference the deprecated orchestrator-direct path for the customer flow.",
+        "Run full end-to-end verification: 10 sessions covering happy paths + edge cases.",
+        "Run Sentry + Vercel logs check — zero errors over the verification window.",
+        "Mark the refactor complete in this state file. Optionally archive scheduler-refactor-state.json to .claude/memory/ as a record."
+      ],
+      "files": [
+        "scheduler-app/README.md (if not exists, create — minimal)",
+        ".claude/memory/scheduler_project_state.md",
+        "scheduler-refactor-state.json (mark all phases complete)"
+      ],
+      "verification": [
+        "10 manual end-to-end sessions: 0 unhandled errors",
+        "Sentry clean for 24h",
+        "PR merged to main"
+      ]
+    }
+  ]
+}
