@@ -609,6 +609,7 @@ export type Database = {
           otp_sent_at: string | null
           otp_verified_at: string | null
           outcome: string | null
+          pending_candidates: Json | null
           phone_e164: string | null
           primary_email_for_description: string | null
           recommended_testing_services: Json | null
@@ -667,6 +668,7 @@ export type Database = {
           otp_sent_at?: string | null
           otp_verified_at?: string | null
           outcome?: string | null
+          pending_candidates?: Json | null
           phone_e164?: string | null
           primary_email_for_description?: string | null
           recommended_testing_services?: Json | null
@@ -725,6 +727,7 @@ export type Database = {
           otp_sent_at?: string | null
           otp_verified_at?: string | null
           outcome?: string | null
+          pending_candidates?: Json | null
           phone_e164?: string | null
           primary_email_for_description?: string | null
           recommended_testing_services?: Json | null

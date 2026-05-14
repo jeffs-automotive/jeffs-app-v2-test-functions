@@ -130,12 +130,15 @@ export async function getCurrentCard(
       };
 
     case "multi_account_disambiguation":
-      // TODO(phase_05): scheduler-step2-direct already returns candidates
-      // for this case; stash them on the row + read here instead of empty.
+      // Per chat-design.md §3.5c lines 685 + 710 — VEHICLE-only picker,
+      // never names. Candidates were stashed on the row by
+      // scheduler-step2-direct when phone hit 2+ Tekmetric records;
+      // parseCandidates defensively filters out any entry missing
+      // recent_vehicle (the spec requires it for the card to render).
       return {
         step: "multi_account_disambiguation",
         payload: {
-          candidates: [],
+          candidates: parseCandidates(row.pending_candidates),
           attempted_phone_last_four: phoneLastFour || null,
         },
       };
@@ -420,6 +423,40 @@ function parseAddress(
   if (typeof a.zip === "string") result.zip = a.zip;
   // Return null if nothing meaningful was on the row.
   return Object.keys(result).length > 0 ? result : null;
+}
+
+/**
+ * Parse pending_candidates JSONB into the typed candidate array the
+ * MultiAccountDisambiguationCard expects.
+ *
+ * Per chat-design.md §3.5c lines 685 + 710: PII-protective vehicle-only
+ * picker. Any entry missing recent_vehicle is omitted entirely — the
+ * card cannot render an unidentified row, and the spec instructs the
+ * orchestrator to drop such candidates rather than surface them blank.
+ *
+ * Defensive about JSON shape: scheduler-step2-direct writes the array
+ * as `(decision.data as Record<string, unknown>).candidates` and the
+ * Tekmetric helpers' recent_vehicle may be null when the matched
+ * customer has no vehicle on file.
+ */
+function parseCandidates(
+  raw: unknown,
+): Array<{ customer_id: number; recent_vehicle: string }> {
+  if (!Array.isArray(raw)) return [];
+  const out: Array<{ customer_id: number; recent_vehicle: string }> = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") continue;
+    const e = entry as Record<string, unknown>;
+    if (typeof e.customer_id !== "number") continue;
+    if (typeof e.recent_vehicle !== "string" || e.recent_vehicle.length === 0) {
+      continue;
+    }
+    out.push({
+      customer_id: e.customer_id,
+      recent_vehicle: e.recent_vehicle,
+    });
+  }
+  return out;
 }
 
 function buildCustomerName(row: Record<string, unknown>): string {

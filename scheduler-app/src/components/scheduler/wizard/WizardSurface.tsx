@@ -25,12 +25,14 @@
 import * as Sentry from "@sentry/nextjs";
 
 import { GreetingCard } from "@/components/scheduler/heritage/GreetingCard";
+import { MultiAccountDisambiguationCard } from "@/components/scheduler/heritage/MultiAccountDisambiguationCard";
 import { NoMatchChoosePathCard } from "@/components/scheduler/heritage/NoMatchChoosePathCard";
 import { OtpInput } from "@/components/scheduler/OtpInput";
 import { PartialVerificationGateCard } from "@/components/scheduler/heritage/PartialVerificationGateCard";
 import { PhoneNameCard } from "@/components/scheduler/heritage/PhoneNameCard";
 import { resendOtpV2 } from "@/lib/scheduler/wizard/actions/resend-otp";
 import { submitGreetingV2 } from "@/lib/scheduler/wizard/actions/submit-greeting";
+import { submitMultiAccountChoiceV2 } from "@/lib/scheduler/wizard/actions/submit-multi-account-choice";
 import { submitNoMatchChoiceV2 } from "@/lib/scheduler/wizard/actions/submit-no-match-choice";
 import { submitOtpV2 } from "@/lib/scheduler/wizard/actions/submit-otp";
 import { submitPartialVerificationChoiceV2 } from "@/lib/scheduler/wizard/actions/submit-partial-verification-choice";
@@ -122,6 +124,26 @@ export function WizardSurface({ chatId, card }: WizardSurfaceProps) {
           onSubmit={async ({ action }) => {
             const result = await submitNoMatchChoiceV2({ chatId, action });
             logIfFailed("submitNoMatchChoiceV2", chatId, result);
+          }}
+        />
+      );
+
+    case "multi_account_disambiguation":
+      return (
+        <MultiAccountDisambiguationCard
+          candidates={card.payload.candidates}
+          attempted_phone_last_four={card.payload.attempted_phone_last_four}
+          onSubmit={async (output) => {
+            const result = await submitMultiAccountChoiceV2(
+              output.action === "select"
+                ? {
+                    action: "select",
+                    chatId,
+                    selected_customer_id: output.selected_customer_id,
+                  }
+                : { action: "none_of_these", chatId },
+            );
+            logIfFailed("submitMultiAccountChoiceV2", chatId, result);
           }}
         />
       );

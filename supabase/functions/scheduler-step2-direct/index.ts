@@ -379,8 +379,41 @@ async function handleRequest(req: Request): Promise<Response> {
     });
   }
 
+  // Stash candidates for the §3.5c multi-account-disambiguation card.
+  // Per chat-design.md "Architecture amendment — 2026-05-14" + row-as-
+  // truth: the next page render reads candidates from this column via
+  // get-current-card.ts. Cleared by submit-multi-account-choice once
+  // the customer picks (or "none of these" falls through).
+  if (decision.directive === "show_multi_account_disambiguation") {
+    const candidatesPayload =
+      (decision.data as Record<string, unknown>).candidates ?? [];
+    const { error: candidatesWriteErr } = await sb
+      .from("customer_chat_sessions")
+      .update({
+        pending_candidates: candidatesPayload as unknown as Record<
+          string,
+          unknown
+        >[],
+        last_active_at: new Date().toISOString(),
+      })
+      .eq("id", input.session_id);
+    if (candidatesWriteErr) {
+      console.error(
+        JSON.stringify({
+          level: "warn",
+          msg: "step2_direct_pending_candidates_write_failed",
+          session_id: input.session_id,
+          detail: candidatesWriteErr.message,
+        }),
+      );
+      // Don't fail the response — the card will render with 0 candidates
+      // and the customer can still tap "None of these" to fall through
+      // to NoMatchChoosePath. Better than a hard escalation.
+    }
+  }
+
   // All non-OTP branches: just return the directive + data. The Server
-  // Action persists any row updates from the customer's next card.
+  // Action persists any further row updates from the customer's next card.
   return jsonResponse({
     ok: true,
     directive: decision.directive,

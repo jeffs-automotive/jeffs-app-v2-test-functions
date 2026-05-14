@@ -8,7 +8,7 @@
     ".claude/work/planning/references/gpt-findings-05-13-2026.md"
   ],
   "rationale_one_paragraph": "The Vercel AI SDK was being used as a state machine for a deterministic 10-step wizard, but lite/mini models couldn't reliably emit follow-up tool calls so 19 of 19 wizard cards were already being rendered client-side via a CLIENT_RENDERED_DIRECTIVES allowlist. Two of three Edge Functions were already bypassing the LLM. Net: the LLM did nothing in the main flow but the codebase paid full chat-stream lifecycle cost. This refactor moves to a row-as-truth server-state-driven wizard: each step is a Server Action that writes the row and revalidates the page; the LLM is invoked only for Step 7 diagnostic Q&A and Step 10.3 customer-notes parsing. Chat bubbles stay as decoration (deterministic templates).",
-  "current_phase": "phase_05b_multi_account",
+  "current_phase": "phase_06_step5_customer_info_edit",
   "context_protocol": {
     "rule_1_one_phase_per_turn": "Work ONE phase per turn. Do not chain phases in the same turn even if they look small.",
     "rule_2_end_of_phase": "When a phase is done: (1) set its status to 'complete'; (2) set completed_at to today's ISO date; (3) advance current_phase to the next pending phase; (4) write a one-line completion note in the phase's 'completion_note' field; (5) STOP and prompt the user before continuing.",
@@ -234,7 +234,9 @@
     {
       "id": "phase_05b_multi_account",
       "title": "Step §3.5c (Multi-account disambiguation)",
-      "status": "pending",
+      "status": "complete",
+      "completed_at": "2026-05-13",
+      "completion_note": "Six changes. (1) NEW migration 20260513230000_scheduler_pending_candidates.sql — adds pending_candidates JSONB to customer_chat_sessions (nullable, no default). (2) database.types.ts manually patched with pending_candidates: Json | null in Row/Insert/Update — will be overwritten by user's regen post-migration-apply. (3) scheduler-step2-direct/index.ts: writes decision.data.candidates to row.pending_candidates when emitting show_multi_account_disambiguation (best-effort, structured console.warn on failure). (4) get-current-card.ts multi_account_disambiguation case now calls new parseCandidates() helper which defensively coerces JSONB and requires both customer_id (number) + recent_vehicle (non-empty string) per chat-design.md §3.5c PII protection. (5) NEW submit-multi-account-choice.ts — Zod discriminated union ('select' with selected_customer_id, or 'none_of_these'). select → sets customer_id + clears pending_candidates + calls callOtpResend (reuses scheduler-otp-direct 'resend' op as first-send) + advances to otp_pending. none_of_these → clears candidates + advances to no_match_choose_path. (6) WizardSurface.tsx: added MultiAccountDisambiguationCard import + multi_account_disambiguation switch case. npm run typecheck passes clean.",
       "summary": "Split off from phase_05 because it needs a DB column to stash candidates returned from scheduler-step2-direct. Adds the migration + the multi-account flow.",
       "tasks": [
         "Migration: add a `pending_candidates JSONB` column to customer_chat_sessions for stashing candidate-list data the §3.5c multi-account-disambiguation card needs to render. Filename pattern: supabase/migrations/YYYYMMDDhhmmss_scheduler_pending_candidates.sql.",
