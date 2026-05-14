@@ -29,7 +29,13 @@
  * placeholder rendering during migration and become the basis the next
  * phase builds on.
  */
+import * as Sentry from "@sentry/nextjs";
+
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import {
+  fetchVehiclesForCustomer,
+  BookingDirectError,
+} from "@/lib/scheduler/booking-direct-client";
 import type { WizardCard } from "./card-payloads";
 import type { WizardStep } from "../session-state";
 
@@ -178,17 +184,57 @@ export async function getCurrentCard(
         },
       };
 
-    case "vehicle_pick":
-      // TODO(phase_07): lookupVehiclesForCustomer via Tekmetric.
-      return {
-        step: "vehicle_pick",
-        payload: {
-          vehicles: [],
-          // Partial-verification customers can't add a vehicle (spec §3.5a).
-          allow_add_new:
-            (row.identity_verification_level as string | null) !== "partial",
-        },
-      };
+    case "vehicle_pick": {
+      // Partial-verification customers can't add a vehicle (spec §3.5a).
+      const allowAddNew =
+        (row.identity_verification_level as string | null) !== "partial";
+      const customerId = row.customer_id as number | null;
+      if (!customerId) {
+        // New-customer flow (no Tekmetric record yet) — render empty list +
+        // allow_add_new=true so the customer drills directly into add-flow.
+        // Should be rare in practice: submitNewCustomerInfoV2 has just
+        // created the record by the time we're on vehicle_pick.
+        return {
+          step: "vehicle_pick",
+          payload: { vehicles: [], allow_add_new: allowAddNew },
+        };
+      }
+      // Fetch via scheduler-booking-direct. Fail-soft: on Tekmetric failure
+      // the card renders with empty list + allow_add_new=true so the
+      // customer can still proceed by adding a new vehicle.
+      try {
+        const result = await fetchVehiclesForCustomer({
+          op: "fetch_vehicles_for_customer",
+          session_id: chatId,
+          customer_id: customerId,
+        });
+        const vehicles = (result.ok && result.vehicles ? result.vehicles : [])
+          .map((v) => ({
+            id: String(v.id),
+            label: buildVehicleLabel(v),
+          }))
+          .filter((v) => v.label.length > 0);
+        return {
+          step: "vehicle_pick",
+          payload: { vehicles, allow_add_new: allowAddNew },
+        };
+      } catch (e) {
+        Sentry.captureException(e, {
+          tags: {
+            surface: "get_current_card_vehicle_fetch",
+            reason:
+              e instanceof BookingDirectError
+                ? `booking_direct_${e.status ?? "network"}`
+                : "booking_direct_unknown",
+          },
+          level: "warning",
+        });
+        return {
+          step: "vehicle_pick",
+          payload: { vehicles: [], allow_add_new: allowAddNew },
+        };
+      }
+    }
 
     case "new_vehicle_form":
       return { step: "new_vehicle_form", payload: {} };
@@ -467,6 +513,32 @@ function parseCandidates(
     });
   }
   return out;
+}
+
+/**
+ * Build the customer-facing vehicle label per chat-design.md §Step 6
+ * (line 1196): "2022 Toyota Camry" with optional "PA · ABC-1234" plate.
+ * Returns empty string when year + make + model are all missing — caller
+ * filters those out so the picker doesn't render naked entries.
+ *
+ * Color is intentionally NOT included in the label — chat-design.md §6
+ * shows year/make/model + optional plate; color is on the Tekmetric record
+ * but not surfaced for picker disambiguation.
+ */
+function buildVehicleLabel(v: {
+  year: number | null;
+  make: string | null;
+  model: string | null;
+  license_plate: string | null;
+}): string {
+  const parts: string[] = [];
+  if (v.year != null) parts.push(String(v.year));
+  if (v.make) parts.push(v.make);
+  if (v.model) parts.push(v.model);
+  const base = parts.join(" ").trim();
+  if (!base) return "";
+  if (v.license_plate) return `${base} · ${v.license_plate}`;
+  return base;
 }
 
 function buildCustomerName(row: Record<string, unknown>): string {

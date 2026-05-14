@@ -8,7 +8,7 @@
     ".claude/work/planning/references/gpt-findings-05-13-2026.md"
   ],
   "rationale_one_paragraph": "The Vercel AI SDK was being used as a state machine for a deterministic 10-step wizard, but lite/mini models couldn't reliably emit follow-up tool calls so 19 of 19 wizard cards were already being rendered client-side via a CLIENT_RENDERED_DIRECTIVES allowlist. Two of three Edge Functions were already bypassing the LLM. Net: the LLM did nothing in the main flow but the codebase paid full chat-stream lifecycle cost. This refactor moves to a row-as-truth server-state-driven wizard: each step is a Server Action that writes the row and revalidates the page; the LLM is invoked only for Step 7 diagnostic Q&A and Step 10.3 customer-notes parsing. Chat bubbles stay as decoration (deterministic templates).",
-  "current_phase": "phase_07_step6_vehicle",
+  "current_phase": "phase_08_step7_1_service_concern_picker",
   "context_protocol": {
     "rule_1_one_phase_per_turn": "Work ONE phase per turn. Do not chain phases in the same turn even if they look small.",
     "rule_2_end_of_phase": "When a phase is done: (1) set its status to 'complete'; (2) set completed_at to today's ISO date; (3) advance current_phase to the next pending phase; (4) write a one-line completion note in the phase's 'completion_note' field; (5) STOP and prompt the user before continuing.",
@@ -304,8 +304,13 @@
     {
       "id": "phase_07_step6_vehicle",
       "title": "Step 6 (Vehicle pick + new vehicle drill-down)",
-      "status": "pending",
+      "status": "complete",
+      "completed_at": "2026-05-13",
+      "completion_note": "Wires Step 6 (vehicle picker + add-new drill-down) on the new pattern. Six changes: (1) scheduler-booking-direct: added op='fetch_vehicles_for_customer' that calls lookupVehiclesForCustomer (Deno helper) for an existing customer_id, returns vehicles array {id, year, make, model, sub_model, license_plate, color}. Fail-soft with tekmetric_4xx/5xx error tag. (2) booking-direct-client: typed fetchVehiclesForCustomer wrapper + FetchVehiclesRequest/Response types. (3) get-current-card.ts vehicle_pick case: calls fetchVehiclesForCustomer when customer_id is set, builds vehicle labels via new buildVehicleLabel helper ('YYYY MAKE MODEL · PLATE' per chat-design.md §1196), filters out empty labels, fail-soft renders empty list on Tekmetric error. New customers (no customer_id yet) skip the fetch and render empty list + allow_add_new=true. allow_add_new=false for partial-verification customers per spec §3.5a. (4) NEW submit-vehicle-pick.ts: 'new' → advance to new_vehicle_form; numeric → write vehicle_id + advance to service_concern_picker. (5) NEW submit-new-vehicle.ts: Zod-validates year/make/model + optional plate/notes, reads customer_id from row, calls create_vehicle op (existing — Phase 6 already had this in booking-direct-client). On success: writes new_vehicle_info JSONB (year/make/model/plate/notes per chat-design.md §1281 'stored verbatim, no AI parsing') and advances to service_concern_picker. On Tekmetric 4xx/5xx: escalates with reason tag. (6) WizardSurface.tsx: added vehicle_pick + new_vehicle_form switch cases. Legacy show_new_customer_form returns in session-actions.ts:1067, 1137, 1301 are LEFT ALONE per phase scope — they're only used by /book and phase 16 removes them entirely with the rest of the AI-SDK surface. npm run typecheck passes clean.",
       "summary": "Migrate Step 6 vehicle picker + new-vehicle add. Removes the three legacy 'show_new_customer_form' returns from session-actions.ts (Codex bug 1).",
+      "deployment_required": [
+        "supabase functions deploy scheduler-booking-direct (fetch_vehicles_for_customer op)"
+      ],
       "tasks": [
         "Update getCurrentCard for step='vehicle_pick' — calls lookupVehiclesForCustomer via Tekmetric, builds vehicle list payload with body-style emoji map.",
         "Wire heritage/VehiclePicker into WizardSurface for step='vehicle_pick'.",

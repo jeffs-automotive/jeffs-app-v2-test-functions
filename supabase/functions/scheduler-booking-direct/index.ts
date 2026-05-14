@@ -48,6 +48,7 @@ import {
 import {
   createNewCustomer,
   createNewVehicle,
+  lookupVehiclesForCustomer,
   patchCustomer,
 } from "../_shared/tools/scheduler-customer.ts";
 
@@ -153,13 +154,20 @@ interface PatchCustomerInput {
   } | null;
 }
 
+interface FetchVehiclesInput {
+  op: "fetch_vehicles_for_customer";
+  session_id: string;
+  customer_id: number;
+}
+
 type RequestBody =
   | ListWaiterTimesInput
   | HoldSlotInput
   | ConfirmBookingInput
   | CreateCustomerInput
   | CreateVehicleInput
-  | PatchCustomerInput;
+  | PatchCustomerInput
+  | FetchVehiclesInput;
 
 function parseBody(raw: unknown):
   | { ok: true; input: RequestBody }
@@ -325,6 +333,19 @@ function parseBody(raw: unknown):
       },
     };
   }
+  if (r.op === "fetch_vehicles_for_customer") {
+    if (typeof r.customer_id !== "number") {
+      return { ok: false, error: "customer_id required" };
+    }
+    return {
+      ok: true,
+      input: {
+        op: "fetch_vehicles_for_customer",
+        session_id: r.session_id,
+        customer_id: r.customer_id,
+      },
+    };
+  }
   if (r.op === "patch_customer") {
     if (typeof r.customer_id !== "number") {
       return { ok: false, error: "customer_id required" };
@@ -364,7 +385,7 @@ function parseBody(raw: unknown):
   return {
     ok: false,
     error:
-      "op must be 'list_waiter_times' | 'hold_slot' | 'confirm_booking' | 'create_customer' | 'create_vehicle' | 'patch_customer'",
+      "op must be 'list_waiter_times' | 'hold_slot' | 'confirm_booking' | 'create_customer' | 'create_vehicle' | 'patch_customer' | 'fetch_vehicles_for_customer'",
   };
 }
 
@@ -683,6 +704,50 @@ async function handleRequest(req: Request): Promise<Response> {
         vehicle_id: result.vehicle_id,
         meta: { latency_ms: Date.now() - startedAt },
       });
+    }
+
+    if (input.op === "fetch_vehicles_for_customer") {
+      // Step 6 vehicle picker — fetch the customer's current Tekmetric
+      // vehicle list. Fail-soft on Tekmetric error so the page can still
+      // render with allow_add_new=true and zero vehicles.
+      try {
+        const result = await lookupVehiclesForCustomer(
+          sb,
+          SHOP_ID,
+          input.customer_id,
+        );
+        return jsonResponse({
+          ok: true,
+          op: "fetch_vehicles_for_customer",
+          vehicles: result.vehicles.map((v) => ({
+            id: v.id,
+            year: v.year ?? null,
+            make: v.make ?? null,
+            model: v.model ?? null,
+            sub_model: v.subModel ?? null,
+            license_plate: v.licensePlate ?? null,
+            color: v.color ?? null,
+          })),
+          meta: { latency_ms: Date.now() - startedAt },
+        });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error(
+          JSON.stringify({
+            level: "warn",
+            msg: "fetch_vehicles_for_customer_failed",
+            customer_id: input.customer_id,
+            detail: msg,
+          }),
+        );
+        return jsonResponse({
+          ok: false,
+          op: "fetch_vehicles_for_customer",
+          error: /HTTP 4\d\d/.test(msg) ? "tekmetric_4xx" : "tekmetric_5xx",
+          tekmetric_error_text: msg.slice(0, 500),
+          meta: { latency_ms: Date.now() - startedAt },
+        });
+      }
     }
 
     if (input.op === "patch_customer") {

@@ -28,19 +28,23 @@ import { CustomerInfoEditCard } from "@/components/scheduler/heritage/CustomerIn
 import { GreetingCard } from "@/components/scheduler/heritage/GreetingCard";
 import { MultiAccountDisambiguationCard } from "@/components/scheduler/heritage/MultiAccountDisambiguationCard";
 import { NewCustomerInfoCard } from "@/components/scheduler/heritage/NewCustomerInfoCard";
+import { NewVehicleCard } from "@/components/scheduler/heritage/NewVehicleCard";
 import { NoMatchChoosePathCard } from "@/components/scheduler/heritage/NoMatchChoosePathCard";
 import { OtpInput } from "@/components/scheduler/OtpInput";
 import { PartialVerificationGateCard } from "@/components/scheduler/heritage/PartialVerificationGateCard";
 import { PhoneNameCard } from "@/components/scheduler/heritage/PhoneNameCard";
+import { VehiclePicker } from "@/components/scheduler/VehiclePicker";
 import { resendOtpV2 } from "@/lib/scheduler/wizard/actions/resend-otp";
 import { submitCustomerInfoEditV2 } from "@/lib/scheduler/wizard/actions/submit-customer-info-edit";
 import { submitGreetingV2 } from "@/lib/scheduler/wizard/actions/submit-greeting";
 import { submitMultiAccountChoiceV2 } from "@/lib/scheduler/wizard/actions/submit-multi-account-choice";
 import { submitNewCustomerInfoV2 } from "@/lib/scheduler/wizard/actions/submit-new-customer-info";
+import { submitNewVehicleV2 } from "@/lib/scheduler/wizard/actions/submit-new-vehicle";
 import { submitNoMatchChoiceV2 } from "@/lib/scheduler/wizard/actions/submit-no-match-choice";
 import { submitOtpV2 } from "@/lib/scheduler/wizard/actions/submit-otp";
 import { submitPartialVerificationChoiceV2 } from "@/lib/scheduler/wizard/actions/submit-partial-verification-choice";
 import { submitPhoneNameV2 } from "@/lib/scheduler/wizard/actions/submit-phone-name";
+import { submitVehiclePickV2 } from "@/lib/scheduler/wizard/actions/submit-vehicle-pick";
 import type { WizardCard } from "@/lib/scheduler/wizard/card-payloads";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
 
@@ -190,6 +194,38 @@ export function WizardSurface({ chatId, card }: WizardSurfaceProps) {
                 output.primary_email_for_description,
             });
             logIfFailed("submitNewCustomerInfoV2", chatId, result);
+          }}
+        />
+      );
+
+    case "vehicle_pick":
+      return (
+        <VehiclePicker
+          vehicles={card.payload.vehicles}
+          allow_add_new={card.payload.allow_add_new}
+          onSubmit={async ({ vehicle_id }) => {
+            const result = await submitVehiclePickV2({
+              chatId,
+              vehicle_id,
+            });
+            logIfFailed("submitVehiclePickV2", chatId, result);
+          }}
+        />
+      );
+
+    case "new_vehicle_form":
+      return (
+        <NewVehicleCard
+          onSubmit={async (output) => {
+            const result = await submitNewVehicleV2({
+              chatId,
+              year: output.year,
+              make: output.make,
+              model: output.model,
+              license_plate: output.license_plate,
+              notes: output.notes,
+            });
+            logIfFailed("submitNewVehicleV2", chatId, result);
           }}
         />
       );

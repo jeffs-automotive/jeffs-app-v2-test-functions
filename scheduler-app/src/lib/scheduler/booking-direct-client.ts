@@ -23,7 +23,8 @@ export type BookingDirectOp =
   | "confirm_booking"
   | "create_customer"
   | "create_vehicle"
-  | "patch_customer";
+  | "patch_customer"
+  | "fetch_vehicles_for_customer";
 
 export interface ListWaiterTimesRequest {
   op: "list_waiter_times";
@@ -170,13 +171,46 @@ export interface PatchCustomerResponse {
   meta?: { latency_ms?: number };
 }
 
+export interface FetchVehiclesRequest {
+  op: "fetch_vehicles_for_customer";
+  session_id: string;
+  customer_id: number;
+}
+
+/**
+ * One vehicle entry as returned by scheduler-booking-direct's fetch op.
+ * Mirrors the TekmetricVehicle shape but snake_case for the Next.js side.
+ * Nullable fields reflect Tekmetric's records (a vehicle may have year/
+ * make/model but no plate or color).
+ */
+export interface FetchVehiclesEntry {
+  id: number;
+  year: number | null;
+  make: string | null;
+  model: string | null;
+  sub_model: string | null;
+  license_plate: string | null;
+  color: string | null;
+}
+
+export interface FetchVehiclesResponse {
+  ok: boolean;
+  op: "fetch_vehicles_for_customer";
+  vehicles?: FetchVehiclesEntry[];
+  /** One of: 'tekmetric_4xx' | 'tekmetric_5xx'. */
+  error?: string;
+  tekmetric_error_text?: string;
+  meta?: { latency_ms?: number };
+}
+
 export type BookingDirectRequest =
   | ListWaiterTimesRequest
   | HoldSlotRequest
   | ConfirmBookingRequest
   | CreateCustomerRequest
   | CreateVehicleRequest
-  | PatchCustomerRequest;
+  | PatchCustomerRequest
+  | FetchVehiclesRequest;
 
 export type BookingDirectResponse =
   | ListWaiterTimesResponse
@@ -184,7 +218,8 @@ export type BookingDirectResponse =
   | ConfirmBookingResponse
   | CreateCustomerResponse
   | CreateVehicleResponse
-  | PatchCustomerResponse;
+  | PatchCustomerResponse
+  | FetchVehiclesResponse;
 
 export class BookingDirectError extends Error {
   constructor(
@@ -342,6 +377,18 @@ export async function patchCustomer(
   if (r.op !== "patch_customer") {
     throw new BookingDirectError(
       `scheduler-booking-direct returned wrong op (${r.op}) for patch_customer`,
+    );
+  }
+  return r;
+}
+
+export async function fetchVehiclesForCustomer(
+  req: FetchVehiclesRequest,
+): Promise<FetchVehiclesResponse> {
+  const r = await call(req);
+  if (r.op !== "fetch_vehicles_for_customer") {
+    throw new BookingDirectError(
+      `scheduler-booking-direct returned wrong op (${r.op}) for fetch_vehicles_for_customer`,
     );
   }
   return r;
