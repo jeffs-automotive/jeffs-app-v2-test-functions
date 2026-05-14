@@ -33,6 +33,7 @@ import { NoMatchChoosePathCard } from "@/components/scheduler/heritage/NoMatchCh
 import { OtpInput } from "@/components/scheduler/OtpInput";
 import { PartialVerificationGateCard } from "@/components/scheduler/heritage/PartialVerificationGateCard";
 import { PhoneNameCard } from "@/components/scheduler/heritage/PhoneNameCard";
+import { ServiceAndConcernPicker } from "@/components/scheduler/ServiceAndConcernPicker";
 import { VehiclePicker } from "@/components/scheduler/VehiclePicker";
 import { resendOtpV2 } from "@/lib/scheduler/wizard/actions/resend-otp";
 import { submitCustomerInfoEditV2 } from "@/lib/scheduler/wizard/actions/submit-customer-info-edit";
@@ -44,6 +45,7 @@ import { submitNoMatchChoiceV2 } from "@/lib/scheduler/wizard/actions/submit-no-
 import { submitOtpV2 } from "@/lib/scheduler/wizard/actions/submit-otp";
 import { submitPartialVerificationChoiceV2 } from "@/lib/scheduler/wizard/actions/submit-partial-verification-choice";
 import { submitPhoneNameV2 } from "@/lib/scheduler/wizard/actions/submit-phone-name";
+import { submitServiceAndConcernPickerV2 } from "@/lib/scheduler/wizard/actions/submit-service-and-concern-picker";
 import { submitVehiclePickV2 } from "@/lib/scheduler/wizard/actions/submit-vehicle-pick";
 import type { WizardCard } from "@/lib/scheduler/wizard/card-payloads";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
@@ -226,6 +228,21 @@ export function WizardSurface({ chatId, card }: WizardSurfaceProps) {
               notes: output.notes,
             });
             logIfFailed("submitNewVehicleV2", chatId, result);
+          }}
+        />
+      );
+
+    case "service_concern_picker":
+      return (
+        <ServiceAndConcernPicker
+          common_services={card.payload.common_services}
+          onSubmit={async ({ services, concern_text }) => {
+            const result = await submitServiceAndConcernPickerV2({
+              chatId,
+              services,
+              concern_text,
+            });
+            logIfFailed("submitServiceAndConcernPickerV2", chatId, result);
           }}
         />
       );

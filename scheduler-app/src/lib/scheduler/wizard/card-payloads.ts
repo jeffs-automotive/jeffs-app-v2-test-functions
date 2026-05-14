@@ -101,12 +101,21 @@ export interface NewVehicleFormPayload {
   // Phase 1: no per-mode rendering differences. Reserved for phase 7.
 }
 
-/** Step 7.1 — Service + concern picker. */
+/**
+ * Step 7.1 — Service + concern picker.
+ *
+ * Card shape matches ServiceAndConcernPicker.tsx: chips for routine
+ * services plus a single concern textarea. The card doesn't distinguish
+ * per-chip 'requires_explanation' — concern handling is driven by the
+ * single concern_text field. Phase 9's diagnostic-LLM flow operates on
+ * concern_text, not per-chip. The spec's per-chip explanation cards
+ * (chat-design.md §7.2) are a future expansion if/when we rebuild the
+ * picker UI; the payload type stays minimal until then.
+ */
 export interface ServiceConcernPickerPayload {
   common_services: Array<{
     service_key: string;
     display_name: string;
-    requires_explanation: boolean;
   }>;
 }
 

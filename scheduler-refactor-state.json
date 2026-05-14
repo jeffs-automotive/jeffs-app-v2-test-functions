@@ -8,7 +8,7 @@
     ".claude/work/planning/references/gpt-findings-05-13-2026.md"
   ],
   "rationale_one_paragraph": "The Vercel AI SDK was being used as a state machine for a deterministic 10-step wizard, but lite/mini models couldn't reliably emit follow-up tool calls so 19 of 19 wizard cards were already being rendered client-side via a CLIENT_RENDERED_DIRECTIVES allowlist. Two of three Edge Functions were already bypassing the LLM. Net: the LLM did nothing in the main flow but the codebase paid full chat-stream lifecycle cost. This refactor moves to a row-as-truth server-state-driven wizard: each step is a Server Action that writes the row and revalidates the page; the LLM is invoked only for Step 7 diagnostic Q&A and Step 10.3 customer-notes parsing. Chat bubbles stay as decoration (deterministic templates).",
-  "current_phase": "phase_08_step7_1_service_concern_picker",
+  "current_phase": "phase_09_step7_2_to_5_diagnostic",
   "context_protocol": {
     "rule_1_one_phase_per_turn": "Work ONE phase per turn. Do not chain phases in the same turn even if they look small.",
     "rule_2_end_of_phase": "When a phase is done: (1) set its status to 'complete'; (2) set completed_at to today's ISO date; (3) advance current_phase to the next pending phase; (4) write a one-line completion note in the phase's 'completion_note' field; (5) STOP and prompt the user before continuing.",
@@ -336,8 +336,10 @@
     {
       "id": "phase_08_step7_1_service_concern_picker",
       "title": "Step 7.1 (Service + concern picker)",
-      "status": "pending",
-      "summary": "Migrate Step 7.1 — the chip-list picker that branches into either Step 8 (no-explanation path) or Step 7.2 (explanation path).",
+      "status": "complete",
+      "completed_at": "2026-05-13",
+      "completion_note": "Wires Step 7.1 (routine-service chips + single concern textarea) on the new pattern. Four changes: (1) card-payloads.ts — simplified ServiceConcernPickerPayload by dropping the unused requires_explanation field from common_services entries. The existing ServiceAndConcernPicker card uses a SINGLE concern textarea (not per-chip explanation cards as the chat-design.md §7.2 vision originally described). Comment in the type explains the divergence and points at Phase 9 where the diagnostic LLM operates on the concern_text (not per-chip). (2) get-current-card.ts — service_concern_picker case now loads chips via getRoutineServicesForChips (existing 5-min TTL cache); fail-soft logs to Sentry warn and renders empty list so the concern textarea still works. (3) NEW submit-service-and-concern-picker.ts — submitServiceAndConcernPickerV2: Zod-validates, runs scanForEscalationKeywords on concern_text FIRST (legal/refund/manager/profanity triggers — escalates without persisting picks), branches on hasConcern (with concern → 'diagnostic_loading' for Phase 9 to handle; without → skip directly to 'appointment_type'). Persists explanation_required_items wrapped as pseudo-item {service_key:'concern', explanation_text} matching V1 shape so Phase 9 reads the same row regardless of which Server Action wrote it. (4) WizardSurface.tsx — added service_concern_picker switch case wiring ServiceAndConcernPicker (the existing component under src/components/scheduler/, not under heritage/). npm run typecheck passes clean.",
+      "summary": "Migrate Step 7.1 — the chip-list picker that branches into either Step 8 (no-explanation path) or 'diagnostic_loading' (concern path; Phase 9 handles the LLM).",
       "tasks": [
         "Update getCurrentCard for step='service_concern_picker' — loads routine_services from cache (existing routine-services-cache.ts).",
         "Wire heritage/ServiceAndConcernPicker(?) or use existing ServiceAndConcernPicker into WizardSurface.",

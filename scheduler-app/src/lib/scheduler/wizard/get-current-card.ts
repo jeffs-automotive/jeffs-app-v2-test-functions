@@ -36,6 +36,7 @@ import {
   fetchVehiclesForCustomer,
   BookingDirectError,
 } from "@/lib/scheduler/booking-direct-client";
+import { getRoutineServicesForChips } from "@/lib/scheduler/routine-services-cache";
 import type { WizardCard } from "./card-payloads";
 import type { WizardStep } from "../session-state";
 
@@ -239,12 +240,29 @@ export async function getCurrentCard(
     case "new_vehicle_form":
       return { step: "new_vehicle_form", payload: {} };
 
-    case "service_concern_picker":
-      // TODO(phase_08): hydrate from routine_services cache.
+    case "service_concern_picker": {
+      // Load the chip list from the routine_services cache (5-min TTL).
+      // Fail-soft on DB error so the card can still render the concern
+      // textarea — the customer can describe their issue even if chips
+      // are unavailable.
+      let chips: Array<{ service_key: string; display_name: string }> = [];
+      try {
+        const rows = await getRoutineServicesForChips();
+        chips = rows.map((r) => ({
+          service_key: r.service_key,
+          display_name: r.display_name,
+        }));
+      } catch (e) {
+        Sentry.captureException(e, {
+          tags: { surface: "get_current_card_routine_services" },
+          level: "warning",
+        });
+      }
       return {
         step: "service_concern_picker",
-        payload: { common_services: [] },
+        payload: { common_services: chips },
       };
+    }
 
     case "concern_explanation":
       // TODO(phase_09): pop the next un-explained service from
