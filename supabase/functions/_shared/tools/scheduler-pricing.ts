@@ -182,6 +182,8 @@ export async function upsertTestingService(
     abbreviation: string;
     starting_price_cents: number;
     notes?: string;
+    description?: string;
+    example_keywords?: string[];
     concern_categories?: string[];
     active?: boolean;
     updated_by_oauth_client_id: string;
@@ -203,6 +205,8 @@ export async function upsertTestingService(
     abbreviation: args.abbreviation,
     starting_price_cents: args.starting_price_cents,
     notes: args.notes ?? null,
+    description: args.description ?? null,
+    example_keywords: args.example_keywords ?? null,
     concern_categories: args.concern_categories ?? null,
     active: args.active ?? true,
     updated_at: new Date().toISOString(),
@@ -223,6 +227,102 @@ export async function upsertTestingService(
   return {
     service_id: data.id as string,
     action: existing ? "updated" : "created",
+  };
+}
+
+/**
+ * Partial-field update for an existing testing-service row. Unlike
+ * `upsertTestingService` (which requires every required field every
+ * call), this is for ad-hoc field tweaks — e.g., "set brake_inspection
+ * price to $42" without re-supplying display_name/abbreviation/etc.
+ *
+ * The row must already exist (returns action='not_found' if it doesn't).
+ * Soft-delete via the existing `deactivateTestingService` helper.
+ *
+ * Per Chris's Phase 9b directive 2026-05-15: low-friction pricing edits
+ * for testing_services. Routine services do NOT have a pricing column
+ * (and won't in Phase 1).
+ */
+export async function patchTestingServiceFields(
+  sb: SupabaseClient,
+  shopId: number,
+  args: {
+    service_key: string;
+    display_name?: string;
+    abbreviation?: string;
+    starting_price_cents?: number;
+    notes?: string | null;
+    description?: string | null;
+    example_keywords?: string[] | null;
+    concern_categories?: string[] | null;
+    active?: boolean;
+    updated_by_oauth_client_id: string;
+    updated_by_name: string;
+  },
+): Promise<
+  | { action: "updated"; service_id: string; fields_changed: string[] }
+  | { action: "not_found"; service_key: string }
+  | { action: "no_changes"; service_id: string }
+> {
+  const { data: existing, error: lookupErr } = await sb
+    .from("testing_services")
+    .select(
+      "id, display_name, abbreviation, starting_price_cents, notes, description, example_keywords, concern_categories, active",
+    )
+    .eq("shop_id", shopId)
+    .eq("service_key", args.service_key)
+    .maybeSingle();
+  if (lookupErr) {
+    throw new Error(`testing_services lookup failed: ${lookupErr.message}`);
+  }
+  if (!existing) {
+    return { action: "not_found", service_key: args.service_key };
+  }
+
+  const existingRow = existing as Record<string, unknown>;
+  const update: Record<string, unknown> = {};
+  const changed: string[] = [];
+
+  const setIfChanged = <K extends string>(
+    field: K,
+    incoming: unknown,
+    transform: (v: unknown) => unknown = (v) => v,
+  ) => {
+    if (incoming === undefined) return;
+    const newValue = transform(incoming);
+    if (JSON.stringify(newValue) === JSON.stringify(existingRow[field])) return;
+    update[field] = newValue;
+    changed.push(field);
+  };
+
+  setIfChanged("display_name", args.display_name);
+  setIfChanged("abbreviation", args.abbreviation);
+  setIfChanged("starting_price_cents", args.starting_price_cents);
+  setIfChanged("notes", args.notes);
+  setIfChanged("description", args.description);
+  setIfChanged("example_keywords", args.example_keywords);
+  setIfChanged("concern_categories", args.concern_categories);
+  setIfChanged("active", args.active);
+
+  if (changed.length === 0) {
+    return { action: "no_changes", service_id: existing.id as string };
+  }
+
+  update.updated_at = new Date().toISOString();
+  update.updated_by_oauth_client_id = args.updated_by_oauth_client_id;
+  update.updated_by_name = args.updated_by_name;
+
+  const { error } = await sb
+    .from("testing_services")
+    .update(update)
+    .eq("id", existing.id as string);
+  if (error) {
+    throw new Error(`testing_services patch failed: ${error.message}`);
+  }
+  return {
+    action: "updated",
+    service_id: existing.id as string,
+    fields_changed: changed,
   };
 }
 
@@ -258,6 +358,9 @@ export async function upsertRoutineService(
     display_name: string;
     abbreviation: string;
     display_order: number;
+    wait_eligible?: boolean;
+    requires_explanation?: boolean;
+    concern_categories?: string[];
     active?: boolean;
     updated_by_oauth_client_id: string;
     updated_by_name: string;
@@ -276,6 +379,9 @@ export async function upsertRoutineService(
     display_name: args.display_name,
     abbreviation: args.abbreviation,
     display_order: args.display_order,
+    wait_eligible: args.wait_eligible ?? false,
+    requires_explanation: args.requires_explanation ?? false,
+    concern_categories: args.concern_categories ?? null,
     active: args.active ?? true,
     updated_at: new Date().toISOString(),
     updated_by_oauth_client_id: args.updated_by_oauth_client_id,
@@ -295,6 +401,93 @@ export async function upsertRoutineService(
   return {
     service_id: data.id as string,
     action: existing ? "updated" : "created",
+  };
+}
+
+/**
+ * Partial-field update for an existing routine-service row. Unlike
+ * `upsertRoutineService` (which requires every required field), this is
+ * for ad-hoc edits — e.g., "set check_battery requires_explanation=true"
+ * without re-supplying display_name/abbreviation/etc.
+ *
+ * Per Chris's Phase 9b directive 2026-05-15: routine services do NOT
+ * have a pricing column and won't in Phase 1; the partial-update surface
+ * here exists for non-pricing field tweaks (display name, wait
+ * eligibility, requires_explanation, concern_categories, active).
+ */
+export async function patchRoutineServiceFields(
+  sb: SupabaseClient,
+  shopId: number,
+  args: {
+    service_key: string;
+    display_name?: string;
+    abbreviation?: string;
+    display_order?: number;
+    wait_eligible?: boolean;
+    requires_explanation?: boolean;
+    concern_categories?: string[] | null;
+    active?: boolean;
+    updated_by_oauth_client_id: string;
+    updated_by_name: string;
+  },
+): Promise<
+  | { action: "updated"; service_id: string; fields_changed: string[] }
+  | { action: "not_found"; service_key: string }
+  | { action: "no_changes"; service_id: string }
+> {
+  const { data: existing, error: lookupErr } = await sb
+    .from("routine_services")
+    .select(
+      "id, display_name, abbreviation, display_order, wait_eligible, requires_explanation, concern_categories, active",
+    )
+    .eq("shop_id", shopId)
+    .eq("service_key", args.service_key)
+    .maybeSingle();
+  if (lookupErr) {
+    throw new Error(`routine_services lookup failed: ${lookupErr.message}`);
+  }
+  if (!existing) {
+    return { action: "not_found", service_key: args.service_key };
+  }
+
+  const existingRow = existing as Record<string, unknown>;
+  const update: Record<string, unknown> = {};
+  const changed: string[] = [];
+
+  const setIfChanged = <K extends string>(field: K, incoming: unknown) => {
+    if (incoming === undefined) return;
+    if (JSON.stringify(incoming) === JSON.stringify(existingRow[field])) return;
+    update[field] = incoming;
+    changed.push(field);
+  };
+
+  setIfChanged("display_name", args.display_name);
+  setIfChanged("abbreviation", args.abbreviation);
+  setIfChanged("display_order", args.display_order);
+  setIfChanged("wait_eligible", args.wait_eligible);
+  setIfChanged("requires_explanation", args.requires_explanation);
+  setIfChanged("concern_categories", args.concern_categories);
+  setIfChanged("active", args.active);
+
+  if (changed.length === 0) {
+    return { action: "no_changes", service_id: existing.id as string };
+  }
+
+  update.updated_at = new Date().toISOString();
+  update.updated_by_oauth_client_id = args.updated_by_oauth_client_id;
+  update.updated_by_name = args.updated_by_name;
+
+  const { error } = await sb
+    .from("routine_services")
+    .update(update)
+    .eq("id", existing.id as string);
+  if (error) {
+    throw new Error(`routine_services patch failed: ${error.message}`);
+  }
+  return {
+    action: "updated",
+    service_id: existing.id as string,
+    fields_changed: changed,
   };
 }
 

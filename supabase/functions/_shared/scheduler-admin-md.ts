@@ -347,3 +347,187 @@ export async function sha256Hex(content: string): Promise<string> {
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }
+
+// ─── Concern-category MD parser (hierarchical, NOT tabular) ─────────────────
+//
+// Format (taken from dotfiles/.../references/concerns/{slug}/{slug}-concerns.md):
+//
+//   # {Category Display Label}
+//
+//   -- {Sub-Category Name} Checklist --
+//   1. Question 1
+//   2. Question 2
+//   ...
+//
+//   -- {Next Sub-Category Name} Checklist --
+//   1. ...
+//
+//   ---
+//
+//   Sources consulted:
+//   - https://...
+//
+// Parser stops at the `---` horizontal rule — content below is metadata,
+// not parsed into the DB. Numbered-list questions can wrap across multiple
+// lines if needed; the parser joins continuation lines (indented OR
+// non-numbered) onto the prior question.
+
+export interface ParsedConcernQuestion {
+  question_text: string;
+  display_order: number;
+}
+
+export interface ParsedConcernSubcategory {
+  slug: string;
+  display_label: string;
+  display_order: number;
+  questions: ParsedConcernQuestion[];
+}
+
+export interface ParsedConcernDoc {
+  display_label: string;
+  subcategories: ParsedConcernSubcategory[];
+}
+
+/**
+ * Slugify a sub-category display label into a stable DB key.
+ * "High-Pitched Squealing" → "high_pitched_squealing".
+ * "AC Blows Warm or Hot Air" → "ac_blows_warm_or_hot_air".
+ */
+export function slugifyForConcernSubcategory(label: string): string {
+  return label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 80);
+}
+
+/**
+ * Parse a concern-category MD document into structured form. Strict on
+ * structure (must have H1, must have at least one sub-category, each
+ * sub-category must have at least one question) — soft on incidental
+ * whitespace.
+ *
+ * Throws Error with a descriptive message when the structure is wrong.
+ * Caller should surface that message in the UploadResult.error_message.
+ */
+export function parseConcernCategoryMd(content: string): ParsedConcernDoc {
+  const allLines = content.split(/\r?\n/);
+
+  // Trim everything below the first `---` horizontal rule (the sources
+  // section). The regex tolerates `---` with optional trailing spaces.
+  let bodyLines = allLines;
+  const hrIndex = allLines.findIndex((l) => /^---\s*$/.test(l.trim()));
+  if (hrIndex >= 0) {
+    bodyLines = allLines.slice(0, hrIndex);
+  }
+
+  // Find the H1 line. Must exist and be the first non-blank line.
+  let displayLabel: string | null = null;
+  let i = 0;
+  for (; i < bodyLines.length; i++) {
+    const line = bodyLines[i]?.trim() ?? "";
+    if (line === "") continue;
+    const h1Match = line.match(/^#\s+(.+?)\s*$/);
+    if (!h1Match) {
+      throw new Error(
+        `concern MD: expected H1 ('# Category Name') as first non-blank line, got "${line.slice(0, 80)}"`,
+      );
+    }
+    displayLabel = h1Match[1]?.trim() ?? null;
+    i++;
+    break;
+  }
+  if (!displayLabel) {
+    throw new Error("concern MD: missing H1 category label");
+  }
+
+  // Walk the rest, breaking into sub-category sections.
+  const subcategories: ParsedConcernSubcategory[] = [];
+  let currentSub: ParsedConcernSubcategory | null = null;
+  let nextQuestionOrder = 1;
+
+  const SUB_HEADER = /^--\s+(.+?)\s+Checklist\s+--\s*$/;
+  const NUMBERED = /^(\d+)\.\s+(.+?)\s*$/;
+
+  for (; i < bodyLines.length; i++) {
+    const raw = bodyLines[i] ?? "";
+    const line = raw.trim();
+    if (line === "") {
+      // Blank line — separator. No state change.
+      continue;
+    }
+
+    const subMatch = line.match(SUB_HEADER);
+    if (subMatch) {
+      if (currentSub && currentSub.questions.length === 0) {
+        throw new Error(
+          `concern MD: sub-category "${currentSub.display_label}" has no questions`,
+        );
+      }
+      const subLabel = subMatch[1]?.trim() ?? "";
+      if (!subLabel) {
+        throw new Error(`concern MD: empty sub-category name on line "${line}"`);
+      }
+      currentSub = {
+        slug: slugifyForConcernSubcategory(subLabel),
+        display_label: subLabel,
+        display_order: subcategories.length + 1,
+        questions: [],
+      };
+      subcategories.push(currentSub);
+      nextQuestionOrder = 1;
+      continue;
+    }
+
+    const numMatch = line.match(NUMBERED);
+    if (numMatch) {
+      if (!currentSub) {
+        throw new Error(
+          `concern MD: numbered line found before any "-- {Name} Checklist --" header: "${line.slice(0, 80)}"`,
+        );
+      }
+      const text = numMatch[2]?.trim() ?? "";
+      if (!text) {
+        throw new Error(
+          `concern MD: empty numbered question on line "${line}"`,
+        );
+      }
+      currentSub.questions.push({
+        question_text: text,
+        display_order: nextQuestionOrder,
+      });
+      nextQuestionOrder += 1;
+      continue;
+    }
+
+    // Continuation line (line under a numbered question that wraps)
+    if (currentSub && currentSub.questions.length > 0) {
+      const last = currentSub.questions[currentSub.questions.length - 1];
+      if (last) {
+        last.question_text = `${last.question_text} ${line}`;
+      }
+      continue;
+    }
+
+    // Otherwise the line is stray — ignore for forward compatibility
+    // (e.g., advisors may add ad-hoc notes between sections; we don't fail
+    // on those).
+  }
+
+  if (subcategories.length === 0) {
+    throw new Error(
+      "concern MD: no sub-categories found — every doc needs at least one '-- {Name} Checklist --' block",
+    );
+  }
+  if (currentSub && currentSub.questions.length === 0) {
+    throw new Error(
+      `concern MD: sub-category "${currentSub.display_label}" has no questions`,
+    );
+  }
+
+  return {
+    display_label: displayLabel,
+    subcategories,
+  };
+}

@@ -29,8 +29,11 @@ import {
   coerceInt,
   coerceOptions,
   mdTableFromRows,
+  parseConcernCategoryMd,
   parseMdTable,
   sha256Hex,
+  slugifyForConcernSubcategory,
+  type ParsedConcernSubcategory,
 } from "../scheduler-admin-md.ts";
 
 // ─── Shared types ───────────────────────────────────────────────────────────
@@ -1660,4 +1663,412 @@ export async function findOrphanCustomers(
     last_synced_at: (r.last_synced_at ?? null) as string | null,
   }));
   return { orphans, count: orphans.length, lookback_days: lookback };
+}
+
+// ─── Concern category MD upload (NEW v9b, 2026-05-14) ───────────────────────
+//
+// Per chat-design.md "Architecture amendment — 2026-05-14" §Step 7 redesign
+// plus the 14 drafted concern docs in dotfiles/.../references/concerns/.
+//
+// Unlike the other Md upload tools (which parse a single GFM TABLE),
+// concern docs are HIERARCHICAL — one MD file per category, with sub-
+// category sections and numbered questions. The tool:
+//   1. parseConcernCategoryMd(md)            — structural parse
+//   2. diff against current DB state         — identify added/modified/dropped
+//   3. UPSERT subcategories                   — active=true for those in MD
+//   4. UPSERT concern_questions               — active=true for those in MD
+//   5. SOFT-DELETE absent rows                — active=false (preserves history)
+//   6. AUDIT-LOG to scheduler_admin_audit_log — including md_content_hash
+//
+// Re-uploading the SAME MD content fast-paths to a no-op via the hash check.
+//
+// Caller must pass:
+//   - category_slug — MUST match one of the 14 enum values (validated)
+//   - md_content    — the .md file content from references/concerns/{slug}/{slug}-concerns.md
+
+const CONCERN_CATEGORY_SLUGS = [
+  "noise",
+  "vibration",
+  "pulling",
+  "smell",
+  "smoke",
+  "leak",
+  "warning_light",
+  "performance",
+  "electrical",
+  "hvac",
+  "brakes",
+  "steering",
+  "tires",
+  "other",
+] as const;
+
+type ConcernCategorySlug = (typeof CONCERN_CATEGORY_SLUGS)[number];
+
+interface SubcategoryRow {
+  id: number;
+  slug: string;
+  display_label: string;
+  display_order: number;
+  active: boolean;
+}
+
+interface ConcernQuestionRow {
+  id: number;
+  subcategory_id: number | null;
+  question_text: string;
+  display_order: number;
+  active: boolean;
+}
+
+export async function uploadConcernCategoryMd(
+  sb: SupabaseClient,
+  shopId: number,
+  args: {
+    category_slug: string;
+    md_content: string;
+    audit: AdminAudit;
+  },
+): Promise<UploadResult> {
+  const tableName = "concern_questions";
+
+  if (!CONCERN_CATEGORY_SLUGS.includes(args.category_slug as ConcernCategorySlug)) {
+    return {
+      ok: false,
+      table_name: tableName,
+      md_content_hash: "",
+      rows_parsed: 0,
+      rows_added: 0,
+      rows_modified: 0,
+      rows_deactivated: 0,
+      error_message: `category_slug must be one of: ${CONCERN_CATEGORY_SLUGS.join(", ")}`,
+    };
+  }
+  const categorySlug = args.category_slug as ConcernCategorySlug;
+
+  const hash = await sha256Hex(args.md_content);
+  if (await checkDuplicate(sb, tableName, hash)) {
+    return {
+      ok: true,
+      table_name: tableName,
+      md_content_hash: hash,
+      rows_parsed: 0,
+      rows_added: 0,
+      rows_modified: 0,
+      rows_deactivated: 0,
+      duplicate_upload: true,
+    };
+  }
+
+  // ── 1. Parse the MD doc ───────────────────────────────────────────────────
+  let parsed;
+  try {
+    parsed = parseConcernCategoryMd(args.md_content);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    await logAdminAudit(sb, {
+      audit: args.audit,
+      table_name: tableName,
+      operation: "upload_md",
+      md_content_hash: hash,
+      error_message: msg,
+    });
+    return {
+      ok: false,
+      table_name: tableName,
+      md_content_hash: hash,
+      rows_parsed: 0,
+      rows_added: 0,
+      rows_modified: 0,
+      rows_deactivated: 0,
+      error_message: msg,
+    };
+  }
+
+  const totalQuestions = parsed.subcategories.reduce(
+    (sum, s) => sum + s.questions.length,
+    0,
+  );
+
+  // ── 2. Fetch current state for this (shop_id, category) ───────────────────
+  const { data: subRows, error: subFetchErr } = await sb
+    .from("concern_subcategories")
+    .select("id, slug, display_label, display_order, active")
+    .eq("shop_id", shopId)
+    .eq("category", categorySlug);
+  if (subFetchErr) {
+    const msg = `concern_subcategories fetch failed: ${subFetchErr.message}`;
+    await logAdminAudit(sb, {
+      audit: args.audit,
+      table_name: tableName,
+      operation: "upload_md",
+      md_content_hash: hash,
+      error_message: msg,
+    });
+    return {
+      ok: false,
+      table_name: tableName,
+      md_content_hash: hash,
+      rows_parsed: totalQuestions,
+      rows_added: 0,
+      rows_modified: 0,
+      rows_deactivated: 0,
+      error_message: msg,
+    };
+  }
+  const currentSubs = (subRows ?? []) as SubcategoryRow[];
+
+  const { data: qRows, error: qFetchErr } = await sb
+    .from("concern_questions")
+    .select("id, subcategory_id, question_text, display_order, active")
+    .eq("shop_id", shopId)
+    .eq("category", categorySlug);
+  if (qFetchErr) {
+    const msg = `concern_questions fetch failed: ${qFetchErr.message}`;
+    await logAdminAudit(sb, {
+      audit: args.audit,
+      table_name: tableName,
+      operation: "upload_md",
+      md_content_hash: hash,
+      error_message: msg,
+    });
+    return {
+      ok: false,
+      table_name: tableName,
+      md_content_hash: hash,
+      rows_parsed: totalQuestions,
+      rows_added: 0,
+      rows_modified: 0,
+      rows_deactivated: 0,
+      error_message: msg,
+    };
+  }
+  const currentQuestions = (qRows ?? []) as ConcernQuestionRow[];
+
+  const nowIso = new Date().toISOString();
+  let subAdded = 0;
+  let subModified = 0;
+  let subDeactivated = 0;
+  let qAdded = 0;
+  let qModified = 0;
+  let qDeactivated = 0;
+
+  // ── 3. Upsert sub-categories ──────────────────────────────────────────────
+  const currentSubBySlug = new Map(currentSubs.map((s) => [s.slug, s]));
+  const mdSubBySlug = new Map<string, ParsedConcernSubcategory>();
+  parsed.subcategories.forEach((s) => mdSubBySlug.set(s.slug, s));
+
+  // Default-options for new questions (the multiple-choice card needs at
+  // least one option even when the MD didn't supply one). Plain yes/no/skip
+  // is the safe initial set; advisors revise via upsertConcernQuestionOptions
+  // or future MD format extensions.
+  const DEFAULT_OPTIONS = JSON.stringify([
+    { label: "Yes", value: "yes" },
+    { label: "No", value: "no" },
+    { label: "Sometimes / Not sure", value: "sometimes" },
+  ]);
+
+  const subIdBySlug = new Map<string, number>();
+  for (const mdSub of parsed.subcategories) {
+    const existing = currentSubBySlug.get(mdSub.slug);
+    if (existing) {
+      const needsUpdate =
+        existing.display_label !== mdSub.display_label ||
+        existing.display_order !== mdSub.display_order ||
+        existing.active !== true;
+      if (needsUpdate) {
+        const { error } = await sb
+          .from("concern_subcategories")
+          .update({
+            display_label: mdSub.display_label,
+            display_order: mdSub.display_order,
+            active: true,
+            updated_at: nowIso,
+            updated_by_oauth_client_id: args.audit.oauth_client_id,
+            updated_by_name: args.audit.display_name,
+          })
+          .eq("id", existing.id);
+        if (error) {
+          await logAdminAudit(sb, {
+            audit: args.audit,
+            table_name: tableName,
+            operation: "upload_md",
+            md_content_hash: hash,
+            error_message: `subcategory update failed: ${error.message}`,
+          });
+          return {
+            ok: false,
+            table_name: tableName,
+            md_content_hash: hash,
+            rows_parsed: totalQuestions,
+            rows_added: 0,
+            rows_modified: 0,
+            rows_deactivated: 0,
+            error_message: `subcategory update failed: ${error.message}`,
+          };
+        }
+        subModified += 1;
+      }
+      subIdBySlug.set(mdSub.slug, existing.id);
+    } else {
+      const { data, error } = await sb
+        .from("concern_subcategories")
+        .insert({
+          shop_id: shopId,
+          category: categorySlug,
+          slug: mdSub.slug,
+          display_label: mdSub.display_label,
+          display_order: mdSub.display_order,
+          active: true,
+          updated_by_oauth_client_id: args.audit.oauth_client_id,
+          updated_by_name: args.audit.display_name,
+        })
+        .select("id")
+        .single();
+      if (error || !data) {
+        const msg = `subcategory insert failed: ${error?.message ?? "no id returned"}`;
+        await logAdminAudit(sb, {
+          audit: args.audit,
+          table_name: tableName,
+          operation: "upload_md",
+          md_content_hash: hash,
+          error_message: msg,
+        });
+        return {
+          ok: false,
+          table_name: tableName,
+          md_content_hash: hash,
+          rows_parsed: totalQuestions,
+          rows_added: 0,
+          rows_modified: 0,
+          rows_deactivated: 0,
+          error_message: msg,
+        };
+      }
+      subIdBySlug.set(mdSub.slug, data.id as number);
+      subAdded += 1;
+    }
+  }
+
+  // Soft-delete sub-categories that are no longer in the MD
+  for (const existing of currentSubs) {
+    if (!mdSubBySlug.has(existing.slug) && existing.active) {
+      const { error } = await sb
+        .from("concern_subcategories")
+        .update({
+          active: false,
+          updated_at: nowIso,
+          updated_by_oauth_client_id: args.audit.oauth_client_id,
+          updated_by_name: args.audit.display_name,
+        })
+        .eq("id", existing.id);
+      if (!error) subDeactivated += 1;
+    }
+  }
+
+  // ── 4. Upsert concern_questions ───────────────────────────────────────────
+  // Build a lookup of current questions keyed by (subcategory_id, text)
+  const currentByKey = new Map<string, ConcernQuestionRow>();
+  currentQuestions.forEach((q) => {
+    if (q.subcategory_id !== null) {
+      currentByKey.set(`${q.subcategory_id}::${q.question_text}`, q);
+    }
+  });
+
+  const seenQuestionIds = new Set<number>();
+  for (const mdSub of parsed.subcategories) {
+    const subId = subIdBySlug.get(mdSub.slug);
+    if (subId === undefined) continue;
+    for (const q of mdSub.questions) {
+      const key = `${subId}::${q.question_text}`;
+      const existing = currentByKey.get(key);
+      if (existing) {
+        seenQuestionIds.add(existing.id);
+        const needsUpdate =
+          existing.display_order !== q.display_order || existing.active !== true;
+        if (needsUpdate) {
+          const { error } = await sb
+            .from("concern_questions")
+            .update({
+              display_order: q.display_order,
+              active: true,
+              updated_at: nowIso,
+              updated_by_oauth_client_id: args.audit.oauth_client_id,
+              updated_by_name: args.audit.display_name,
+            })
+            .eq("id", existing.id);
+          if (!error) qModified += 1;
+        }
+      } else {
+        const { error } = await sb.from("concern_questions").insert({
+          shop_id: shopId,
+          category: categorySlug,
+          subcategory_id: subId,
+          question_text: q.question_text,
+          options: JSON.parse(DEFAULT_OPTIONS),
+          display_order: q.display_order,
+          active: true,
+          updated_by_oauth_client_id: args.audit.oauth_client_id,
+          updated_by_name: args.audit.display_name,
+        });
+        if (!error) qAdded += 1;
+      }
+    }
+  }
+
+  // Soft-delete questions that are no longer in the MD
+  for (const q of currentQuestions) {
+    if (q.subcategory_id !== null && !seenQuestionIds.has(q.id) && q.active) {
+      const { error } = await sb
+        .from("concern_questions")
+        .update({
+          active: false,
+          updated_at: nowIso,
+          updated_by_oauth_client_id: args.audit.oauth_client_id,
+          updated_by_name: args.audit.display_name,
+        })
+        .eq("id", q.id);
+      if (!error) qDeactivated += 1;
+    }
+  }
+
+  // ── 5. Audit + return ─────────────────────────────────────────────────────
+  const diff = {
+    category_slug: categorySlug,
+    display_label: parsed.display_label,
+    subcategories: {
+      added: subAdded,
+      modified: subModified,
+      deactivated: subDeactivated,
+      total_in_md: parsed.subcategories.length,
+    },
+    questions: {
+      added: qAdded,
+      modified: qModified,
+      deactivated: qDeactivated,
+      total_in_md: totalQuestions,
+    },
+  };
+
+  await logAdminAudit(sb, {
+    audit: args.audit,
+    table_name: tableName,
+    operation: "upload_md",
+    md_content_hash: hash,
+    rows_added: subAdded + qAdded,
+    rows_modified: subModified + qModified,
+    rows_deactivated: subDeactivated + qDeactivated,
+    diff_summary: diff,
+  });
+
+  return {
+    ok: true,
+    table_name: tableName,
+    md_content_hash: hash,
+    rows_parsed: totalQuestions,
+    rows_added: subAdded + qAdded,
+    rows_modified: subModified + qModified,
+    rows_deactivated: subDeactivated + qDeactivated,
+    diff_summary: diff,
+  };
 }

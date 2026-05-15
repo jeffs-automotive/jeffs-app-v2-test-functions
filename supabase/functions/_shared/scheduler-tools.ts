@@ -65,13 +65,16 @@ import {
   listConcernQuestions,
   upsertTestingService,
   deactivateTestingService,
+  patchTestingServiceFields,
   upsertRoutineService,
   deactivateRoutineService,
+  patchRoutineServiceFields,
 } from "./tools/scheduler-pricing.ts";
 import {
   uploadRoutineServicesMd,
   uploadTestingServicesMd,
   uploadConcernQuestionsMd,
+  uploadConcernCategoryMd,
   uploadAppointmentDefaultLimitsMd,
   uploadClosedDatesMd,
   exportRoutineServicesMd,
@@ -925,12 +928,158 @@ export function getSchedulerTools(args: SchedulerToolsArgs) {
           "JSON array (e.g. '[{\"label\":\"Front\",\"value\":\"front\"}]') OR " +
           "the shorthand 'value:label; value2:label2'. Natural-key matching " +
           "is by (category, question_text) since rows have no service_key. " +
-          "Returns: { ok, rows_added, rows_modified, rows_deactivated, … }.",
+          "Returns: { ok, rows_added, rows_modified, rows_deactivated, … }. " +
+          "LEGACY — for the new sub-category-aware flow (Phase 9b+), prefer " +
+          "upload_concern_category_md.",
         inputSchema: z.object({
           md_content: z.string().min(1),
         }),
         execute: recorded(recorder, "upload_concern_questions_md", (input) =>
           uploadConcernQuestionsMd(sb, shopId, { md_content: input.md_content, audit }),
+        ),
+      }),
+
+      upload_concern_category_md: tool({
+        description:
+          "Upload ONE category's hierarchical concern checklist from a " +
+          "markdown doc (the format used in dotfiles/.../references/concerns/" +
+          "{slug}/{slug}-concerns.md). Parses '-- {Sub-Category Name} Checklist --' " +
+          "section headers + numbered question lines. Auto-creates the " +
+          "sub-category rows in concern_subcategories and upserts the " +
+          "questions linked to them. Soft-deletes any subcategory or question " +
+          "no longer present in the MD (active=false; preserves history). " +
+          "Idempotent on identical content (md_content_hash check). Each call " +
+          "is scoped to ONE category (e.g. category_slug='brakes'). Use this " +
+          "for the customer-symptom checklists; use upload_testing_services_md " +
+          "for the testing-service catalog with prices. " +
+          "Returns: { ok, rows_added, rows_modified, rows_deactivated, " +
+          "diff_summary: { subcategories: {...}, questions: {...} }, … }.",
+        inputSchema: z.object({
+          category_slug: z
+            .enum([
+              "noise",
+              "vibration",
+              "pulling",
+              "smell",
+              "smoke",
+              "leak",
+              "warning_light",
+              "performance",
+              "electrical",
+              "hvac",
+              "brakes",
+              "steering",
+              "tires",
+              "other",
+            ])
+            .describe(
+              "The concern category this MD doc belongs to. Must be one of the 14 enum values.",
+            ),
+          md_content: z
+            .string()
+            .min(1)
+            .describe(
+              "Full markdown file content. Must have an H1 (# CategoryName), " +
+                "one or more '-- {Sub-Category Name} Checklist --' section " +
+                "headers, and numbered questions under each. Lines after a " +
+                "`---` horizontal rule (e.g. 'Sources consulted:') are ignored.",
+            ),
+        }),
+        execute: recorded(recorder, "upload_concern_category_md", (input) =>
+          uploadConcernCategoryMd(sb, shopId, {
+            category_slug: input.category_slug,
+            md_content: input.md_content,
+            audit,
+          }),
+        ),
+      }),
+
+      patch_testing_service_fields: tool({
+        description:
+          "Partial-field update for ONE testing_services row. Unlike " +
+          "upsert_testing_service (which requires every field), this is for " +
+          "low-friction ad-hoc edits — e.g. 'set brake_inspection price to " +
+          "$42' without re-supplying display_name/abbreviation/etc. Per " +
+          "Chris's Phase 9b directive: routine_services do NOT have a " +
+          "pricing column (no equivalent patch tool for them with " +
+          "starting_price_cents). The row must already exist (returns " +
+          "action='not_found' otherwise). Returns: " +
+          "{ action: 'updated'|'no_changes'|'not_found', service_id?, " +
+          "fields_changed?: string[] }.",
+        inputSchema: z.object({
+          service_key: z.string().min(1),
+          display_name: z.string().optional(),
+          abbreviation: z.string().optional(),
+          starting_price_cents: z
+            .number()
+            .int()
+            .nonnegative()
+            .optional()
+            .describe("Integer cents — 4995 = $49.95."),
+          notes: z.string().nullable().optional(),
+          description: z.string().nullable().optional(),
+          example_keywords: z.array(z.string()).nullable().optional(),
+          concern_categories: z.array(z.string()).nullable().optional(),
+          active: z.boolean().optional(),
+        }),
+        execute: recorded(recorder, "patch_testing_service_fields", (input) =>
+          patchTestingServiceFields(sb, shopId, {
+            service_key: input.service_key,
+            ...(input.display_name !== undefined && { display_name: input.display_name }),
+            ...(input.abbreviation !== undefined && { abbreviation: input.abbreviation }),
+            ...(input.starting_price_cents !== undefined && {
+              starting_price_cents: input.starting_price_cents,
+            }),
+            ...(input.notes !== undefined && { notes: input.notes }),
+            ...(input.description !== undefined && { description: input.description }),
+            ...(input.example_keywords !== undefined && {
+              example_keywords: input.example_keywords,
+            }),
+            ...(input.concern_categories !== undefined && {
+              concern_categories: input.concern_categories,
+            }),
+            ...(input.active !== undefined && { active: input.active }),
+            updated_by_oauth_client_id: audit.oauth_client_id,
+            updated_by_name: audit.display_name,
+          }),
+        ),
+      }),
+
+      patch_routine_service_fields: tool({
+        description:
+          "Partial-field update for ONE routine_services row. Non-pricing " +
+          "fields only (routine_services has no pricing column). Use for " +
+          "tweaks like 'set check_battery requires_explanation=true' or " +
+          "'rename oil_change display_name to Oil Change & Filter'. " +
+          "Returns: { action: 'updated'|'no_changes'|'not_found', " +
+          "service_id?, fields_changed?: string[] }.",
+        inputSchema: z.object({
+          service_key: z.string().min(1),
+          display_name: z.string().optional(),
+          abbreviation: z.string().optional(),
+          display_order: z.number().int().nonnegative().optional(),
+          wait_eligible: z.boolean().optional(),
+          requires_explanation: z.boolean().optional(),
+          concern_categories: z.array(z.string()).nullable().optional(),
+          active: z.boolean().optional(),
+        }),
+        execute: recorded(recorder, "patch_routine_service_fields", (input) =>
+          patchRoutineServiceFields(sb, shopId, {
+            service_key: input.service_key,
+            ...(input.display_name !== undefined && { display_name: input.display_name }),
+            ...(input.abbreviation !== undefined && { abbreviation: input.abbreviation }),
+            ...(input.display_order !== undefined && { display_order: input.display_order }),
+            ...(input.wait_eligible !== undefined && { wait_eligible: input.wait_eligible }),
+            ...(input.requires_explanation !== undefined && {
+              requires_explanation: input.requires_explanation,
+            }),
+            ...(input.concern_categories !== undefined && {
+              concern_categories: input.concern_categories,
+            }),
+            ...(input.active !== undefined && { active: input.active }),
+            updated_by_oauth_client_id: audit.oauth_client_id,
+            updated_by_name: audit.display_name,
+          }),
         ),
       }),
 

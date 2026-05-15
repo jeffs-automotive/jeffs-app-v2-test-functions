@@ -2,14 +2,14 @@
   "schema_version": "1.0",
   "project": "scheduler-app refactor — server-state-driven wizard migration",
   "created_at": "2026-05-13",
-  "post_compaction_reminder": "Phase 9a complete 2026-05-14. Concern-checklist drafts for all 14 categories now live in dotfiles-v2-test-data/jeffs-app-v2-test-data/.claude/work/planning/references/concerns/{slug}/{slug}-concerns.md (13 categories drafted by parallel research agents 2026-05-14; brakes was authored by Chris previously). These drafts surface the sub-category structure decision: each category has 6-12 symptom-specific sub-categories with 5-7 questions each, NOT flat category-level questions. The current concern_questions table is flat (category → questions); needs restructure to (category → subcategory → questions) for Phase 9 LLM flow. Diagnostic-services.md lists 20 testing services with descriptions + example_keywords; testing_services table needs an example_keywords TEXT[] column added for Path B (describe-concern → recommend service) keyword classification. Next phase pending Chris's review of the 14 drafts: Phase 9b (data-model: subcategories + example_keywords + reconciled service list), Phase 9c (LLM helper rewrite for sub-classification + Path B), Phase 9d (UI rebuild + Warning Lights checkbox-multi-pick flow), Phase 9e (MD-upload tool: Claude orchestrator → tool call → DB upsert so advisors can edit concern docs + service catalogs without re-deploy). Phase 9 Tekmetric correctness still queued separately.",
+  "post_compaction_reminder": "Phase 9a (LLM machinery) + 9b (data model + admin tools) complete 2026-05-15. Next code phase: 9c (UI rebuild). Phase 9b shipped: migration 20260514100000 (concern_subcategories table + concern_questions.subcategory_id FK with backfill + testing_services.example_keywords); new MD parser parseConcernCategoryMd in _shared/scheduler-admin-md.ts; new admin function uploadConcernCategoryMd in tools/scheduler-admin.ts; extended upsertTestingService (now accepts description, example_keywords); extended upsertRoutineService (now accepts requires_explanation, wait_eligible, concern_categories); new patchTestingServiceFields + patchRoutineServiceFields for partial-field updates (the low-friction pricing-edit path Chris asked for); exposed all four new tools via orchestrator-mcp (scheduler-tools.ts: upload_concern_category_md, patch_testing_service_fields, patch_routine_service_fields); seed script scripts/seed-concern-docs.mjs that imports the 14 .md files into the DB. Deployments required: supabase db push (new tables) + supabase gen types (regenerate database.types.ts) + supabase functions deploy orchestrator-mcp + run scripts/seed-concern-docs.mjs. Next code phase 9c is the UI rebuild (was previously labeled 9b in this state.json — see phase_09c entry).",
   "spec_source": ".claude/work/planning/references/chat-design.md (see 'Architecture amendment — 2026-05-14' section near the top)",
   "audits_addressed": [
     ".claude/work/planning/references/gemini-findings-05-13-2026.md",
     ".claude/work/planning/references/gpt-findings-05-13-2026.md"
   ],
   "rationale_one_paragraph": "The Vercel AI SDK was being used as a state machine for a deterministic 10-step wizard, but lite/mini models couldn't reliably emit follow-up tool calls so 19 of 19 wizard cards were already being rendered client-side via a CLIENT_RENDERED_DIRECTIVES allowlist. Two of three Edge Functions were already bypassing the LLM. Net: the LLM did nothing in the main flow but the codebase paid full chat-stream lifecycle cost. This refactor moves to a row-as-truth server-state-driven wizard: each step is a Server Action that writes the row and revalidates the page; the LLM is invoked only for Step 7 diagnostic Q&A and Step 10.3 customer-notes parsing. Chat bubbles stay as decoration (deterministic templates).",
-  "current_phase": "phase_09b_step7_2_to_5_ui_rebuild",
+  "current_phase": "phase_09c_step7_ui_rebuild",
   "context_protocol": {
     "rule_1_one_phase_per_turn": "Work ONE phase per turn. Do not chain phases in the same turn even if they look small.",
     "rule_2_end_of_phase": "When a phase is done: (1) set its status to 'complete'; (2) set completed_at to today's ISO date; (3) advance current_phase to the next pending phase; (4) write a one-line completion note in the phase's 'completion_note' field; (5) STOP and prompt the user before continuing.",
@@ -474,20 +474,51 @@
       ]
     },
     {
-      "id": "phase_09b_step7_2_to_5_ui_rebuild",
+      "id": "phase_09b_data_model_and_admin_tools",
+      "title": "Step 7 — Data model (sub-categories + keywords) + admin MD-upload and pricing-edit tools",
+      "status": "complete",
+      "completed_at": "2026-05-15",
+      "completion_note": "Phase 9b shipped the back-end + tool layer required to (a) get the 14 drafted concern docs INTO the DB and (b) let Chris iterate on them and on testing-service pricing via Claude Desktop / orchestrator-mcp without re-deploying. (1) Migration 20260514100000_scheduler_concern_subcategories_and_keywords.sql — NEW concern_subcategories table (shop+category+slug PK shape, display_label, display_order, active, audit fields); ALTER concern_questions ADD COLUMN subcategory_id FK with idempotent backfill (creates a 'General' subcategory per existing shop+category, links all existing seeded questions there, then sets NOT NULL); swaps the old UNIQUE (shop, category, question_text) constraint to UNIQUE (shop, subcategory_id, question_text) so the same question text can live in multiple sub-categories; ALTER testing_services ADD COLUMN example_keywords TEXT[] + GIN index. (2) NEW parser parseConcernCategoryMd in _shared/scheduler-admin-md.ts — parses the hierarchical format (H1 + '-- {Name} Checklist --' section headers + numbered questions; stops at the `---` sources rule; supports wrapped-question continuation lines). Plus slugifyForConcernSubcategory helper. (3) NEW uploadConcernCategoryMd in tools/scheduler-admin.ts (~310 lines) — one-category-per-call upload: parses, diffs against current DB state, upserts sub-categories + questions with active=true, soft-deletes any absent rows (active=false; preserves history), writes structured diff_summary to scheduler_admin_audit_log with md_content_hash. Re-uploading the SAME content fast-paths to a no-op. Auto-creates default options ([yes/no/sometimes]) for new questions since the MD format doesn't carry them. (4) Extended upsertTestingService (now also accepts description + example_keywords); extended upsertRoutineService (now also accepts requires_explanation + wait_eligible + concern_categories). (5) NEW patchTestingServiceFields + patchRoutineServiceFields — partial-field updates so Chris can change one field (e.g., price) without re-supplying every other column. Returns action='updated'|'no_changes'|'not_found' + fields_changed[]. Routine variant deliberately has NO starting_price_cents (Chris's directive: routine services are no-pricing in Phase 1). (6) Exposed FOUR new MCP tools in scheduler-tools.ts: upload_concern_category_md, patch_testing_service_fields, patch_routine_service_fields (plus the existing upload_concern_questions_md is now flagged LEGACY in its description). (7) NEW scripts/seed-concern-docs.mjs — Node script that reads the 14 .md files from .claude/work/planning/references/concerns/{slug}/{slug}-concerns.md and upserts them. Mirrors the parser + upsert logic inline so it runs as pure Node without Deno. Idempotent. Picks up SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_SECRET_KEY) from env. Chris runs this once after applying the migration to populate the DB; subsequent revisions go through upload_concern_category_md from Claude Desktop.",
+      "files": [
+        "supabase/migrations/20260514100000_scheduler_concern_subcategories_and_keywords.sql (new)",
+        "supabase/functions/_shared/scheduler-admin-md.ts (extended — parseConcernCategoryMd + slugifyForConcernSubcategory + ParsedConcernDoc types)",
+        "supabase/functions/_shared/tools/scheduler-admin.ts (extended — uploadConcernCategoryMd)",
+        "supabase/functions/_shared/tools/scheduler-pricing.ts (extended — upsertTestingService args + upsertRoutineService args + new patchTestingServiceFields + new patchRoutineServiceFields)",
+        "supabase/functions/_shared/scheduler-tools.ts (extended — exposed upload_concern_category_md + patch_testing_service_fields + patch_routine_service_fields)",
+        "scripts/seed-concern-docs.mjs (new)"
+      ],
+      "deployments_required": [
+        "supabase db push (applies migration 20260514100000)",
+        "supabase gen types typescript --linked > scheduler-app/src/lib/database.types.ts (regenerate types — adds concern_subcategories table + new columns)",
+        "supabase functions deploy orchestrator-mcp (or whichever functions serve the scheduler MCP tools — re-deploy so the new tool surfaces register)",
+        "node scripts/seed-concern-docs.mjs (run ONCE after migration applied; loads the 14 concern docs into the DB)"
+      ],
+      "verification": [
+        "After deploy: SELECT count(*) FROM concern_subcategories WHERE shop_id=7476 — expect ~108 rows (sum of sub-cats across the 14 categories)",
+        "After deploy: SELECT count(*) FROM concern_questions WHERE shop_id=7476 AND active=true AND subcategory_id IS NOT NULL — expect ~625",
+        "Claude Desktop test: invoke upload_concern_category_md with category_slug='brakes' and the brakes-concerns.md content twice → second call returns duplicate_upload=true",
+        "Claude Desktop test: invoke patch_testing_service_fields with service_key='brake_inspection' and starting_price_cents=4500 → action='updated', fields_changed=['starting_price_cents']",
+        "Claude Desktop test: invoke patch_routine_service_fields with service_key='check_battery' and requires_explanation=true → action='updated' or 'no_changes' (already true)",
+        "scheduler_admin_audit_log shows one row per upload + per patch with the diff_summary populated"
+      ]
+    },
+    {
+      "id": "phase_09c_step7_ui_rebuild",
       "title": "Step 7 — UI rebuild (picker two-section chips + concern_explanation + diagnostic_loading + clarification_question)",
       "status": "pending",
-      "summary": "Wires Phase 9a's machinery to the customer-facing UI. (1) ServiceAndConcernPicker REBUILD — two chip sections (routine + diagnostic), single submit. Drop the single concern textarea — per-service descriptions now happen on Step 7.2. (2) submit-service-and-concern-picker rewrite — for picked services with requires_explanation=true OR concern_categories non-null, queue them up in explanation_required_items[] with {service_key, explanation_text:'', category} entries; advance to concern_explanation (or directly to appointment_type if no explanation-required picks). (3) NEW submit-explanation — accepts {chatId, service_key, explanation_text}, fills the matching item's explanation_text, advances to next concern OR diagnostic_loading. (4) Update get-current-card for concern_explanation (pop next un-explained item), clarification_question (pop head of clarification_questions_pending; payload already shaped by 9a). (5) WizardSurface — wire concern_explanation card, diagnostic_loading card (calls runDiagnosticsV2 in useEffect+useTransition), clarification_question card. (6) NewConcernExplanationCard component (new) — heritage-styled textarea + lead-in bubble per service. (7) DiagnosticLoadingCard component (new) — heritage-styled 'thinking…' UI. (8) ClarificationQuestionCard component (new) — multiple-choice radio + 'I'm not sure' button.",
+      "summary": "Wires Phase 9a's machinery + Phase 9b's data model to the customer-facing UI. (1) ServiceAndConcernPicker REBUILD — two chip sections (routine + diagnostic), single submit. Drop the single concern textarea — per-service descriptions now happen on Step 7.2. (2) submit-service-and-concern-picker rewrite — for picked services with requires_explanation=true OR concern_categories non-null, queue them up in explanation_required_items[] with {service_key, explanation_text:'', category} entries; advance to concern_explanation (or directly to appointment_type if no explanation-required picks). (3) NEW submit-explanation — accepts {chatId, service_key, explanation_text}, fills the matching item's explanation_text, advances to next concern OR diagnostic_loading. (4) Update get-current-card for concern_explanation (pop next un-explained item), clarification_question (pop head of clarification_questions_pending; payload already shaped by 9a). (5) WizardSurface — wire concern_explanation card, diagnostic_loading card (calls runDiagnosticsV2 in useEffect+useTransition), clarification_question card. (6) NewConcernExplanationCard component (new) — heritage-styled textarea + lead-in bubble per service. (7) DiagnosticLoadingCard component (new) — heritage-styled 'thinking…' UI. (8) ClarificationQuestionCard component (new) — multiple-choice radio + 'I'm not sure' button. (9) The LLM helper diagnose-concern.ts may need a minor update to consume sub-category context (currently it loads category-level guideline + questions; can be enhanced to first sub-classify then load only the sub-cat's questions — but that's optional for v1 since aggregating all sub-cats' questions still works just slower).",
       "tasks": [
         "Rewrite ServiceAndConcernPicker.tsx — drop single textarea, add two chip sections (routine_services where requires_explanation=false → simple chips; routine_services where requires_explanation=true UNION testing_services → diagnostic chips with display_name + starting_price). Submit emits {picks: string[]}.",
         "Update get-current-card.ts service_concern_picker case to include the diagnostic chip list (load testing_services + the requires_explanation=true routine rows; merge into a unified payload).",
         "Update card-payloads.ts ServiceConcernPickerPayload to carry both `common_services` (routine non-explanation) AND `diagnostic_services` (testing + routine-with-explanation, each with price).",
-        "Rewrite submit-service-and-concern-picker.ts — split picks into (a) selected_simple_services for the non-explanation routine ones, (b) explanation_required_items[] queue with {service_key, explanation_text:''} for the explanation-required ones. Advance to concern_explanation when queue non-empty; else appointment_type. Keep escalation keyword scan (still relevant for any free-text concern_text the picker might still surface if Chris wants a 'describe something else' free-text slot).",
+        "Rewrite submit-service-and-concern-picker.ts — split picks into (a) selected_simple_services for the non-explanation routine ones, (b) explanation_required_items[] queue with {service_key, explanation_text:''} for the explanation-required ones. Advance to concern_explanation when queue non-empty; else appointment_type. Keep escalation keyword scan.",
         "Write submit-explanation.ts — reads explanation_required_items, finds the first item with empty explanation_text, writes the customer's text into it, advances to the next empty item OR to diagnostic_loading when all filled.",
         "Update get-current-card.ts concern_explanation case — pop next un-explained item; payload includes service_key + display_name + lead-in bubble template per category.",
         "Update get-current-card.ts clarification_question case — read head of clarification_questions_pending (already has full payload from 9a); return its question_text + options + service_key + category.",
         "Build NewConcernExplanationCard.tsx + DiagnosticLoadingCard.tsx + ClarificationQuestionCard.tsx — heritage styling per Plan/references/heritage.",
         "Wire WizardSurface — concern_explanation, diagnostic_loading (mounts with useEffect → useTransition → runDiagnosticsV2), clarification_question.",
+        "Special-case Warning Lights flow per services-categories.md — after picking warning_lights routine chip, render a multi-pick checkbox list of specific lights (each light = a sub-category from concerns/warning_light/warning_light-concerns.md); for each picked light queue an explanation_required_items entry with category='warning_light' + light_slug stashed for the LLM context.",
+        "Decide / implement the Describe Concern free-text path — separate diagnostic chip that opens a textarea, runs the LLM to classify across all 14 categories + pick a testing_service via example_keywords matching, then queues the explanation flow.",
         "Verify: end-to-end on /book-v2 — pick brake_inspection → describe → see brakes questions → answer / skip → land on second_routine_pass."
       ],
       "files": [
@@ -495,40 +526,32 @@
         "scheduler-app/src/components/scheduler/heritage/NewConcernExplanationCard.tsx (new — TBD if heritage/ has a base to extend)",
         "scheduler-app/src/components/scheduler/heritage/DiagnosticLoadingCard.tsx (new)",
         "scheduler-app/src/components/scheduler/heritage/ClarificationQuestionCard.tsx (new)",
+        "scheduler-app/src/components/scheduler/heritage/WarningLightsPickerCard.tsx (new — multi-pick checkbox of specific lights)",
         "scheduler-app/src/lib/scheduler/wizard/actions/submit-service-and-concern-picker.ts (rewrite)",
         "scheduler-app/src/lib/scheduler/wizard/actions/submit-explanation.ts (new)",
-        "scheduler-app/src/lib/scheduler/wizard/card-payloads.ts (update ServiceConcernPickerPayload + ConcernExplanationPayload)",
-        "scheduler-app/src/lib/scheduler/wizard/get-current-card.ts (3 cases: service_concern_picker / concern_explanation / clarification_question)",
-        "scheduler-app/src/components/scheduler/wizard/WizardSurface.tsx (add 3 cases)"
+        "scheduler-app/src/lib/scheduler/wizard/actions/submit-warning-lights-pick.ts (new — for the multi-pick step)",
+        "scheduler-app/src/lib/scheduler/wizard/card-payloads.ts (update ServiceConcernPickerPayload + ConcernExplanationPayload; add WarningLightsPickerPayload)",
+        "scheduler-app/src/lib/scheduler/wizard/get-current-card.ts (cases: service_concern_picker, concern_explanation, clarification_question, warning_lights_pick)",
+        "scheduler-app/src/components/scheduler/wizard/WizardSurface.tsx (add 4 cases)"
       ],
       "verification": [
         "Manual: pick brake_inspection on Step 7.1 → describe → answer some clarifications → arrive at second_routine_pass",
         "Manual: pick check_battery (routine with requires_explanation=true) → same flow (uses electrical category)",
+        "Manual: pick warning_lights → see checkbox list of dashboard lights → pick 'Check Engine Light' → describe → see CEL sub-cat questions",
         "Manual: pick only routine non-explanation chips → skip past Step 7.2 to appointment_type",
         "npm run typecheck passes",
         "Manual: Sentry shows diagnose_concern_llm warnings with non-zero token usage on first real LLM call"
       ]
     },
     {
-      "id": "phase_09c_mcp_admin_pricing",
-      "title": "Step 7 — MCP admin pricing tool verification + (optional) confirmation flow",
+      "id": "phase_09c_2_mcp_admin_pricing_followups",
+      "title": "Step 7 — MCP admin pricing follow-ups (LARGELY SUPERSEDED by 9b)",
       "status": "pending",
-      "summary": "Resolved-deferred from 9a: Q4 (MCP admin pricing tool exposure). Audit _shared/scheduler-tools.ts admin section + scheduler-admin-md.ts to verify upsertTestingService + upsertRoutineService + the new uploadConcernCategoryGuidelinesMd are exposed to the orchestrator-mcp advisor scope. Decide whether to add UUID-confirmation pattern (Pattern A from pattern-compliance.md keytag references) given that pricing changes are customer-visible.",
+      "summary": "Most of this phase was shipped in 9b. Remaining items: (1) Optional UUID-confirmation flow for price changes (Pattern A from pattern-compliance.md keytag references) when delta > 25% — pricing changes are customer-visible so large drops/spikes should require Chris's explicit 'yes' before applying. (2) A similar uploadConcernCategoryGuidelinesMd MCP tool surface for the concern_category_guidelines table seeded in Phase 9a (right now the prose is set only by the migration; advisors can't edit it without a re-deploy). Both are low-friction-iteration improvements; not blocking 9c UI rebuild.",
       "tasks": [
-        "Read _shared/scheduler-tools.ts admin block — list every admin tool exposed and to which scope (orchestrator-mcp advisor vs scheduler-direct vs none).",
-        "Verify upsertTestingService exists; if not, add (per-row { service_key, fields: { starting_price_cents?, display_name?, abbreviation?, concern_categories?, active? } }).",
-        "Verify upsertRoutineService exists; if not, add (per-row + concern_categories support per 9a's new column).",
-        "Add uploadConcernCategoryGuidelinesMd tool — MD parse + upsert + audit-log (matches uploadTestingServicesMd shape).",
-        "Decide: confirmation-token flow on price upserts? Recommend: yes when delta > 25% or affects an active session — match the keytag UUID-token pattern. No for the seed/MD-upload path (advisor explicitly chose to bulk-overwrite)."
-      ],
-      "files": [
-        "supabase/functions/_shared/scheduler-tools.ts (verify + maybe extend)",
-        "supabase/functions/_shared/scheduler-admin-md.ts (extend with uploadConcernCategoryGuidelinesMd)",
-        "supabase/functions/_shared/tools/scheduler-admin.ts (extend)"
-      ],
-      "verification": [
-        "MCP tool list from Claude Desktop shows the pricing edit tools",
-        "Manual: update brake_inspection price via tool → next /book-v2 session reads new price"
+        "OPTIONAL: Add confirmation-token guard on patch_testing_service_fields when starting_price_cents delta > 25% — generate a UUID token via Pattern A, present scope_summary to Chris, require 'yes' in a NEW turn, then re-invoke with confirmation_token. Skip for new-row inserts (no prior baseline).",
+        "Add uploadConcernCategoryGuidelinesMd tool — accept a small MD doc with one paragraph per category, parse, upsert into concern_category_guidelines (the table already exists from Phase 9a migration 20260514000000).",
+        "Add export tools that round-trip concern docs from the DB back into the .md shape (for advisors who want to download → edit → upload)."
       ]
     },
     {
