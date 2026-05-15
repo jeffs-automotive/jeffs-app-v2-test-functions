@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "project": "scheduler-app refactor — server-state-driven wizard migration",
   "created_at": "2026-05-13",
-  "post_compaction_reminder": "Phase 9a complete 2026-05-14. Next: Phase 9b — ServiceAndConcernPicker UI rebuild (two-section chips) + submit-service-and-concern-picker rewrite (per-service items into explanation_required_items queue) + submit-explanation Server Action (per-service description capture) + WizardSurface wiring (concern_explanation, diagnostic_loading, clarification_question cases). Phase 9c (optional) = MCP admin pricing tool exposure verification.",
+  "post_compaction_reminder": "Phase 9a complete 2026-05-14. Concern-checklist drafts for all 14 categories now live in dotfiles-v2-test-data/jeffs-app-v2-test-data/.claude/work/planning/references/concerns/{slug}/{slug}-concerns.md (13 categories drafted by parallel research agents 2026-05-14; brakes was authored by Chris previously). These drafts surface the sub-category structure decision: each category has 6-12 symptom-specific sub-categories with 5-7 questions each, NOT flat category-level questions. The current concern_questions table is flat (category → questions); needs restructure to (category → subcategory → questions) for Phase 9 LLM flow. Diagnostic-services.md lists 20 testing services with descriptions + example_keywords; testing_services table needs an example_keywords TEXT[] column added for Path B (describe-concern → recommend service) keyword classification. Next phase pending Chris's review of the 14 drafts: Phase 9b (data-model: subcategories + example_keywords + reconciled service list), Phase 9c (LLM helper rewrite for sub-classification + Path B), Phase 9d (UI rebuild + Warning Lights checkbox-multi-pick flow), Phase 9e (MD-upload tool: Claude orchestrator → tool call → DB upsert so advisors can edit concern docs + service catalogs without re-deploy). Phase 9 Tekmetric correctness still queued separately.",
   "spec_source": ".claude/work/planning/references/chat-design.md (see 'Architecture amendment — 2026-05-14' section near the top)",
   "audits_addressed": [
     ".claude/work/planning/references/gemini-findings-05-13-2026.md",
@@ -529,6 +529,77 @@
       "verification": [
         "MCP tool list from Claude Desktop shows the pricing edit tools",
         "Manual: update brake_inspection price via tool → next /book-v2 session reads new price"
+      ]
+    },
+    {
+      "id": "phase_09d_tekmetric_correctness",
+      "title": "Step 7 follow-up — Tekmetric GET /appointments correctness + raw_payload column + full-field parsing",
+      "status": "pending",
+      "summary": "Surfaced during Phase 9a research: a live curl against /appointments revealed two material bugs in the appointments-sync TypeScript shape AND we currently parse only a small subset of the response into the local shadow table. This phase (a) lists out every distinct enum value Tekmetric actually returns for appointmentStatus + appointmentOption.code + rideOption.code so we can categorize and write the correct CHECK constraints + classifier logic; (b) parses every field in the response into its own typed column instead of discarding fields we don't currently use; (c) adds a raw_payload JSONB column so future Tekmetric additions land verbatim without a migration. Discovered when curling https://shop.tekmetric.com/api/v1/appointments?shop=7476 returned content[0].appointmentStatus='NONE' (bare string, not the {id,name,code} object our TS interface declared) and appointmentOption.code values of 'STAY'/'DROP' (NOT the 'WAITER'/'PICKUP_DROPOFF'/'TOWED'/'NONE' our classifier+POST builder hardcodes against).",
+      "discoveries_2026_05_14": {
+        "bug_1_appointmentStatus_shape": {
+          "what_our_code_expects": "{ id: number, name: string, code: string }",
+          "what_tekmetric_actually_returns": "\"NONE\" (bare string)",
+          "impact": "appointments-sync line 220 writes a.appointmentStatus?.code which is undefined on a string → defaults to literal 'NONE' for EVERY synced appointment. The local appointments table has appointment_status='NONE' for every row. Breaks appointments_date_scan_idx partial filter (NOT IN ('CANCELED','NO_SHOW') never excludes anything because nothing is ever marked CANCELED).",
+          "files_touched": [
+            "supabase/functions/appointments-sync/index.ts:76 (TekmetricAppointment interface)",
+            "supabase/functions/appointments-sync/index.ts:220 (the write)"
+          ]
+        },
+        "bug_2_appointmentOption_codes": {
+          "what_our_code_expects": "WAITER | PICKUP_DROPOFF | TOWED | NONE",
+          "what_tekmetric_actually_returns_on_GET": "STAY | DROP | null (so far — full enum unknown)",
+          "what_our_POST_sends": "WAITER | PICKUP_DROPOFF (scheduler-slots.ts:803-805 confirmAppointment)",
+          "impact": "classifyAppointmentType() if-ladder never fires for real data — every appointment falls through to the UTC-hour heuristic. POST send-side values may be silently mapped, rejected, or correctly accepted by Tekmetric (testing needed). appointment_option column writes the raw 'STAY'/'DROP'/null which our scheduler code reads with different value names elsewhere.",
+          "files_touched": [
+            "supabase/functions/appointments-sync/index.ts:85-102 (classifyAppointmentType)",
+            "supabase/functions/_shared/tools/scheduler-slots.ts:803-805 (POST builder)"
+          ]
+        },
+        "drift_unparsed_fields_seen_in_sample": [
+          "arrived (null in 5/5 sample — likely TIMESTAMPTZ when customer checks in)",
+          "leadSource (null in 5/5 — likely a tracking source for new appointments)",
+          "pickupTime (TIMESTAMPTZ; non-null for drop-off appointments — when customer picked up)",
+          "dropoffTime (TIMESTAMPTZ; non-null for drop-off appointments — when customer dropped off)",
+          "createdDate (TIMESTAMPTZ; always present)",
+          "updatedDate (TIMESTAMPTZ; always present)"
+        ],
+        "envelope_fields_we_ignored": [
+          "sort.* (Spring pagination metadata — pageable only, no business value)",
+          "pageable.* (Spring pagination metadata — fetch loop uses .last only, rest discarded)",
+          "totalElements (worth logging into appointment_sync_state for drift detection — current sync_state has no total count)"
+        ]
+      },
+      "tasks": [
+        "Step 1 — ENUMERATE: fetch all 133 (or more, full window) appointments and run SQL to extract distinct appointmentStatus, distinct appointmentOption.code, distinct rideOption.code values. Output the empirical enum set. NO assumptions; only what we observe.",
+        "Step 2 — DOCUMENT: in a new markdown reference (Plan/references/tekmetric-appointment-shape.md) write down: every field name, observed nullability, observed distinct values for enum fields, and a NOTE about each unparsed field — what we think it means + how confident we are. Cite Tekmetric docs where they exist.",
+        "Step 3 — DECIDE: per enum value, what each ones means functionally for the wizard. e.g. 'STAY' = waiter, 'DROP' = dropoff, 'TOWED' = dropoff-special-handling, null = legacy unset. For status: which values mean 'slot is consumed' for capacity (CONFIRMED, ARRIVED?), which mean 'slot is freed' (CANCELED, NO_SHOW?), which are NONE-pending. Plan goes into the markdown ref.",
+        "Step 4 — MIGRATION: alter the local appointments table — (a) loosen the appointment_status CHECK to match empirical enum set + add new ones we discover (or drop CHECK in favor of app-layer validation), (b) update appointment_option enum the same way, (c) ADD COLUMNS: arrived TIMESTAMPTZ, lead_source TEXT, pickup_time TIMESTAMPTZ, dropoff_time TIMESTAMPTZ, created_date TIMESTAMPTZ, updated_date TIMESTAMPTZ. (d) ADD COLUMN raw_payload JSONB for future fields we haven't named yet. (e) ADD COLUMN parse_version SMALLINT NOT NULL DEFAULT 1 so we can detect rows synced with an old parser shape.",
+        "Step 5 — FIX appointments-sync/index.ts: rewrite TekmetricAppointment interface to match reality (appointmentStatus: string; appointmentOption: { id, code, name } | null; add the 6 missing fields; permit unknown extras via Record<string, unknown>). Rewrite the upsert payload to populate every new column. Write raw_payload = the whole JSON object verbatim.",
+        "Step 6 — FIX classifyAppointmentType: use the empirical-enum mapping from Step 3. Keep the UTC-hour heuristic as a defensive fallback only when code is null.",
+        "Step 7 — FIX confirmAppointment POST send-side codes if Step 1's enumeration shows the GET-side codes (STAY/DROP) ARE what Tekmetric expects on POST (likely — same endpoint should be symmetric). Otherwise document the asymmetry.",
+        "Step 8 — BACK-POPULATE the new columns + raw_payload for the existing rolling-7-day window on next sync tick. No retroactive history backfill (window is rolling; old rows expire naturally).",
+        "Step 9 — VERIFY: write a small pgTAP or SQL audit that confirms (a) every row in the new sync has raw_payload non-null, (b) appointment_status distribution matches what the empirical enumeration found, (c) no row has the literal default 'NONE' unless that's the real value."
+      ],
+      "deferred_to_later": [
+        "Webhook ingestion shape: Tekmetric's appointment webhooks may have a DIFFERENT shape from GET. Verify before consuming. Separate from this phase.",
+        "Repair-order JSON parsing: same drift risk on RO endpoints. Likely a separate phase since RO surface is much bigger."
+      ],
+      "files": [
+        "supabase/migrations/YYYYMMDDhhmmss_appointments_raw_payload_and_columns.sql (new)",
+        "supabase/functions/appointments-sync/index.ts (interface rewrite + classifier fix + write all columns + raw_payload)",
+        "supabase/functions/_shared/tools/scheduler-slots.ts (POST builder code names — verify against empirical GET enum)",
+        "Plan/references/tekmetric-appointment-shape.md (new — empirical reference doc)"
+      ],
+      "deployments_required": [
+        "supabase db push (new columns + relaxed CHECK)",
+        "supabase gen types typescript --linked > scheduler-app/src/lib/database.types.ts",
+        "supabase functions deploy appointments-sync"
+      ],
+      "verification": [
+        "Sample raw JSON output captured at 2026-05-14 in this state.json under discoveries_2026_05_14",
+        "After deploy: SELECT DISTINCT appointment_status FROM appointments returns the full empirical set, not just 'NONE'",
+        "After deploy: SELECT count(*) FROM appointments WHERE raw_payload IS NULL returns 0 for rows synced after the deploy"
       ]
     },
     {
