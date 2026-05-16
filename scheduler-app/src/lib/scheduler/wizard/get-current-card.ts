@@ -34,10 +34,14 @@ import * as Sentry from "@sentry/nextjs";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   fetchVehiclesForCustomer,
+  listWaiterTimes,
   BookingDirectError,
 } from "@/lib/scheduler/booking-direct-client";
 import { getRoutineServicesForChips } from "@/lib/scheduler/routine-services-cache";
-import { getEarliestAvailableDate } from "./availability";
+import {
+  computeAvailableDates,
+  getEarliestAvailableDate,
+} from "./availability";
 import type { WizardCard } from "./card-payloads";
 import type { WizardStep } from "../session-state";
 
@@ -506,28 +510,83 @@ export async function getCurrentCard(
       };
     }
 
-    case "date_pick":
-      // TODO(phase_11): call computeAvailableDates.
+    case "date_pick": {
+      // Phase 11 (2026-05-15): full 365-day window of capacity-aware
+      // availability. computeAvailableDates handles the 5-layer stack;
+      // we pre-set initial_focus to the earliest available day so the
+      // calendar opens on the right month even when "today" has no
+      // capacity. Fail-soft to an empty list — the card renders with a
+      // "no openings in window" affordance + the shop phone fallback.
+      const apptType =
+        (row.appointment_type as "waiter" | "dropoff" | null) ?? "dropoff";
+      let availableDates: string[] = [];
+      try {
+        availableDates = await computeAvailableDates({
+          appointment_type: apptType,
+          days_ahead: 365,
+        });
+      } catch (e) {
+        Sentry.captureException(e, {
+          tags: { surface: "get_current_card_date_pick" },
+          level: "warning",
+        });
+      }
+
+      const today = new Date();
+      const rangeEndIso = ymdFromDate(
+        new Date(today.getFullYear(), today.getMonth(), today.getDate() + 365),
+      );
+
       return {
         step: "date_pick",
         payload: {
-          available_dates: [],
-          type:
-            (row.appointment_type as "waiter" | "dropoff" | null) ?? "dropoff",
-          initial_focus_date: null,
-          range_end: null,
+          available_dates: availableDates,
+          type: apptType,
+          initial_focus_date: availableDates[0] ?? null,
+          range_end: rangeEndIso,
         },
       };
+    }
 
-    case "waiter_time_pick":
-      // TODO(phase_11): call list_waiter_times against scheduler-booking-direct.
+    case "waiter_time_pick": {
+      // Phase 11 (2026-05-15): real-time spots-left fetch via
+      // scheduler-booking-direct list_waiter_times op. The edge function
+      // counts holds + non-cancelled appointments against the day's
+      // waiter_8am_slots / waiter_9am_slots capacity (timezone-aware per
+      // the Phase 1 fix) and returns the surviving subset of ['08:00',
+      // '09:00']. Race-protected: an empty array means both slots filled
+      // between picking the date and now — the card renders an empty
+      // state and the customer back-arrows to date_pick.
+      const date = (row.appointment_date as string | null) ?? "";
+      let availableTimes: Array<"08:00" | "09:00"> = [];
+      if (date) {
+        try {
+          const result = await listWaiterTimes({
+            op: "list_waiter_times",
+            session_id: chatId,
+            date,
+          });
+          availableTimes = result.available_times.filter(
+            (t): t is "08:00" | "09:00" => t === "08:00" || t === "09:00",
+          );
+        } catch (e) {
+          Sentry.captureException(e, {
+            tags: {
+              surface: "get_current_card_waiter_time_pick",
+              reason:
+                e instanceof BookingDirectError
+                  ? `booking_direct_${e.status ?? "network"}`
+                  : "booking_direct_unknown",
+            },
+            level: "warning",
+          });
+        }
+      }
       return {
         step: "waiter_time_pick",
-        payload: {
-          date: (row.appointment_date as string | null) ?? "",
-          available_times: [],
-        },
+        payload: { date, available_times: availableTimes },
       };
+    }
 
     case "summary":
       // TODO(phase_12): full summary build — customer name, vehicle label,
@@ -972,4 +1031,17 @@ function formatDateHint(ymd: string | null): string | null {
     day: "numeric",
     timeZone: "America/New_York",
   }).format(d);
+}
+
+/**
+ * Format a local Date as YYYY-MM-DD using the local timezone components
+ * (NOT toISOString which shifts to UTC). Used by the date_pick payload
+ * builder for range_end (today + 365 days) so the calendar's bounds match
+ * the calendar's own grid math (which uses local-time year/month/day).
+ */
+function ymdFromDate(d: Date): string {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
 }

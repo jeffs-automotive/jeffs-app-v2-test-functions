@@ -34,6 +34,7 @@ import * as Sentry from "@sentry/nextjs";
 import { useRouter } from "next/navigation";
 
 import { AppointmentTypeCard } from "@/components/scheduler/heritage/AppointmentTypeCard";
+import { CalendarDatePicker } from "@/components/scheduler/CalendarDatePicker";
 import { ClarificationQuestionCard } from "@/components/scheduler/heritage/ClarificationQuestionCard";
 import { ConcernExplanationCard } from "@/components/scheduler/heritage/ConcernExplanationCard";
 import { CustomerInfoEditCard } from "@/components/scheduler/heritage/CustomerInfoEditCard";
@@ -49,11 +50,13 @@ import { PhoneNameCard } from "@/components/scheduler/heritage/PhoneNameCard";
 import { SecondRoutinePassCard } from "@/components/scheduler/heritage/SecondRoutinePassCard";
 import { ServiceAndConcernPicker } from "@/components/scheduler/ServiceAndConcernPicker";
 import { VehiclePicker } from "@/components/scheduler/VehiclePicker";
+import { WaiterTimePicker } from "@/components/scheduler/WaiterTimePicker";
 import { resendOtpV2 } from "@/lib/scheduler/wizard/actions/resend-otp";
 import { runDiagnosticsV2 } from "@/lib/scheduler/wizard/actions/run-diagnostics";
 import { submitAppointmentTypeV2 } from "@/lib/scheduler/wizard/actions/submit-appointment-type";
 import { submitClarificationAnswerV2 } from "@/lib/scheduler/wizard/actions/submit-clarification-answer";
 import { submitCustomerInfoEditV2 } from "@/lib/scheduler/wizard/actions/submit-customer-info-edit";
+import { submitDateV2 } from "@/lib/scheduler/wizard/actions/submit-date";
 import { submitExplanationV2 } from "@/lib/scheduler/wizard/actions/submit-explanation";
 import { submitGreetingV2 } from "@/lib/scheduler/wizard/actions/submit-greeting";
 import { submitMultiAccountChoiceV2 } from "@/lib/scheduler/wizard/actions/submit-multi-account-choice";
@@ -66,6 +69,7 @@ import { submitPhoneNameV2 } from "@/lib/scheduler/wizard/actions/submit-phone-n
 import { submitSecondRoutinePassV2 } from "@/lib/scheduler/wizard/actions/submit-second-routine-pass";
 import { submitServiceAndConcernPickerV2 } from "@/lib/scheduler/wizard/actions/submit-service-and-concern-picker";
 import { submitVehiclePickV2 } from "@/lib/scheduler/wizard/actions/submit-vehicle-pick";
+import { submitWaiterTimeV2 } from "@/lib/scheduler/wizard/actions/submit-waiter-time";
 import type { WizardCard } from "@/lib/scheduler/wizard/card-payloads";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
 
@@ -364,6 +368,41 @@ export function WizardSurface({ chatId, card }: WizardSurfaceProps) {
               appointment_type,
             });
             handleResult("submitAppointmentTypeV2", chatId, result);
+          }}
+        />
+      );
+
+    case "date_pick":
+      return (
+        <CalendarDatePicker
+          available_dates={card.payload.available_dates}
+          type={card.payload.type}
+          initial_focus_date={card.payload.initial_focus_date ?? undefined}
+          range_end={card.payload.range_end ?? undefined}
+          onSubmit={async ({ selected_date }) => {
+            const result = await submitDateV2({ chatId, selected_date });
+            handleResult("submitDateV2", chatId, result);
+          }}
+        />
+      );
+
+    case "waiter_time_pick":
+      return (
+        <WaiterTimePicker
+          date={card.payload.date}
+          available_times={card.payload.available_times}
+          onSubmit={async ({ selected_time }) => {
+            if (selected_time !== "08:00" && selected_time !== "09:00") {
+              // Defensive: the picker only renders 08:00 / 09:00 buttons,
+              // but the action's Zod schema is strict — narrow here to
+              // satisfy the type.
+              return;
+            }
+            const result = await submitWaiterTimeV2({
+              chatId,
+              selected_time,
+            });
+            handleResult("submitWaiterTimeV2", chatId, result);
           }}
         />
       );
