@@ -11,6 +11,12 @@ export type { GreetingCardProps } from "./GreetingCard";
 export { ClarificationQuestionCard } from "./ClarificationQuestionCard";
 export type { ClarificationQuestionCardProps } from "./ClarificationQuestionCard";
 
+export { ConcernExplanationCard } from "./ConcernExplanationCard";
+export type { ConcernExplanationCardProps } from "./ConcernExplanationCard";
+
+export { DiagnosticLoadingCard } from "./DiagnosticLoadingCard";
+export type { DiagnosticLoadingCardProps } from "./DiagnosticLoadingCard";
+
 export { TestingServiceApprovalCard } from "./TestingServiceApprovalCard";
 export type { TestingServiceApprovalCardProps } from "./TestingServiceApprovalCard";
 

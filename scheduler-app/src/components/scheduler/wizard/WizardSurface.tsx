@@ -24,7 +24,10 @@
  */
 import * as Sentry from "@sentry/nextjs";
 
+import { ClarificationQuestionCard } from "@/components/scheduler/heritage/ClarificationQuestionCard";
+import { ConcernExplanationCard } from "@/components/scheduler/heritage/ConcernExplanationCard";
 import { CustomerInfoEditCard } from "@/components/scheduler/heritage/CustomerInfoEditCard";
+import { DiagnosticLoadingCard } from "@/components/scheduler/heritage/DiagnosticLoadingCard";
 import { GreetingCard } from "@/components/scheduler/heritage/GreetingCard";
 import { MultiAccountDisambiguationCard } from "@/components/scheduler/heritage/MultiAccountDisambiguationCard";
 import { NewCustomerInfoCard } from "@/components/scheduler/heritage/NewCustomerInfoCard";
@@ -36,7 +39,10 @@ import { PhoneNameCard } from "@/components/scheduler/heritage/PhoneNameCard";
 import { ServiceAndConcernPicker } from "@/components/scheduler/ServiceAndConcernPicker";
 import { VehiclePicker } from "@/components/scheduler/VehiclePicker";
 import { resendOtpV2 } from "@/lib/scheduler/wizard/actions/resend-otp";
+import { runDiagnosticsV2 } from "@/lib/scheduler/wizard/actions/run-diagnostics";
+import { submitClarificationAnswerV2 } from "@/lib/scheduler/wizard/actions/submit-clarification-answer";
 import { submitCustomerInfoEditV2 } from "@/lib/scheduler/wizard/actions/submit-customer-info-edit";
+import { submitExplanationV2 } from "@/lib/scheduler/wizard/actions/submit-explanation";
 import { submitGreetingV2 } from "@/lib/scheduler/wizard/actions/submit-greeting";
 import { submitMultiAccountChoiceV2 } from "@/lib/scheduler/wizard/actions/submit-multi-account-choice";
 import { submitNewCustomerInfoV2 } from "@/lib/scheduler/wizard/actions/submit-new-customer-info";
@@ -236,13 +242,65 @@ export function WizardSurface({ chatId, card }: WizardSurfaceProps) {
       return (
         <ServiceAndConcernPicker
           common_services={card.payload.common_services}
-          onSubmit={async ({ services, concern_text }) => {
+          diagnostic_services={card.payload.diagnostic_services}
+          onSubmit={async ({ picks }) => {
             const result = await submitServiceAndConcernPickerV2({
               chatId,
-              services,
-              concern_text,
+              picks,
             });
             logIfFailed("submitServiceAndConcernPickerV2", chatId, result);
+          }}
+        />
+      );
+
+    case "concern_explanation":
+      return (
+        <ConcernExplanationCard
+          service_key={card.payload.service_key}
+          display_name={card.payload.display_name}
+          lead_in_bubble={card.payload.lead_in_bubble}
+          onSubmit={async ({ service_key, explanation_text }) => {
+            const result = await submitExplanationV2({
+              chatId,
+              service_key,
+              explanation_text,
+            });
+            logIfFailed("submitExplanationV2", chatId, result);
+          }}
+        />
+      );
+
+    case "diagnostic_loading":
+      return (
+        <DiagnosticLoadingCard
+          onMount={async () => {
+            const result = await runDiagnosticsV2({ chatId });
+            logIfFailed("runDiagnosticsV2", chatId, result);
+            return result.ok
+              ? { ok: true }
+              : { ok: false, error: result.error };
+          }}
+        />
+      );
+
+    case "clarification_question":
+      return (
+        <ClarificationQuestionCard
+          question_id={card.payload.question_id}
+          question_text={card.payload.question_text}
+          options={card.payload.options}
+          service_key={card.payload.service_key ?? undefined}
+          category={card.payload.category ?? undefined}
+          onSubmit={async ({ question_id, answer }) => {
+            const result = await submitClarificationAnswerV2({
+              chatId,
+              question_id,
+              action:
+                answer === "skipped"
+                  ? { kind: "skip" }
+                  : { kind: "answer", value: answer },
+            });
+            logIfFailed("submitClarificationAnswerV2", chatId, result);
           }}
         />
       );

@@ -2,40 +2,67 @@
 
 import { useState, type FormEvent } from "react";
 
-import { Button, Card, Chip, Field, Textarea } from "@/components/ui";
+import { Button, Card, Chip } from "@/components/ui";
 
 /**
- * ServiceAndConcernPicker rendering tool component (Heritage Editorial refactor 2026-05-13).
+ * ServiceAndConcernPicker — Phase 9c rebuild 2026-05-15.
  *
- * Per appointments_design.md §7.5 + scheduler_phase1_design_lock.md §7:
- * - Input: { common_services: ServiceChip[] }
- * - Output: { services: string[], concern_text?: string }
+ * Per chat-design.md "Architecture amendment — 2026-05-14" + services-
+ * categories.md: TWO chip sections.
  *
- * The customer can pick service chips, type a concern, both, or neither
- * (must do at least one to submit). Chips come from routine_services.
+ *   1. Routine services — non-explanation chips (oil change, tire rotate,
+ *      state inspection, alignment, etc.). No price shown — these are
+ *      flat-rate or quoted at the shop. Quick single-tap picks.
+ *   2. Diagnostic services — chips that need a description from the
+ *      customer (testing services + the five routine-with-explanation
+ *      chips: Brake Inspection, Check Battery, Warning Lights, Check
+ *      Suspension, Check A/C). Testing services show a starting price;
+ *      routine-with-explanation chips don't carry a price (just the
+ *      diagnostic flow trigger).
+ *
+ * The customer picks any subset across BOTH sections. Submit emits a
+ * single { picks: string[] } — the server splits into the right buckets.
+ * No concern textarea on this card; per-service descriptions happen on
+ * the next card (Step 7.2 concern_explanation, one per item).
  */
 
-export interface ServiceChip {
+export interface RoutineChip {
   service_key: string;
   display_name: string;
 }
 
+export interface DiagnosticChip {
+  service_key: string;
+  display_name: string;
+  /** Integer cents; null for routine-with-explanation chips (no fee). */
+  starting_price_cents: number | null;
+  source: "testing" | "routine";
+}
+
 export interface ServiceAndConcernPickerProps {
-  common_services: ServiceChip[];
-  onSubmit: (output: {
-    services: string[];
-    concern_text?: string;
-  }) => void | Promise<void>;
+  common_services: RoutineChip[];
+  /** Optional — defaults to [] for legacy callers (Chat.tsx + pre-Phase-9c tests).
+   *  The new wizard surface always passes a populated list when there are
+   *  diagnostic chips to offer. Phase 16 removes the legacy Chat.tsx and we
+   *  can flip this back to required. */
+  diagnostic_services?: DiagnosticChip[];
+  onSubmit: (output: { picks: string[] }) => void | Promise<void>;
   disabled?: boolean;
+}
+
+function formatPrice(cents: number | null): string | null {
+  if (cents === null) return null;
+  if (cents === 0) return "Free";
+  return `$${(cents / 100).toFixed(2)}`;
 }
 
 export function ServiceAndConcernPicker({
   common_services,
+  diagnostic_services = [],
   onSubmit,
   disabled = false,
 }: ServiceAndConcernPickerProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [concern, setConcern] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
@@ -52,24 +79,15 @@ export function ServiceAndConcernPicker({
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (pending || disabled) return;
-    const trimmedConcern = concern.trim();
-    const services = common_services
-      .map((s) => s.service_key)
-      .filter((k) => selected.has(k));
-
-    if (services.length === 0 && !trimmedConcern) {
-      setError(
-        "Pick at least one service or tell me a bit about what's going on.",
-      );
+    const picks = Array.from(selected);
+    if (picks.length === 0) {
+      setError("Pick at least one service to continue.");
       return;
     }
     setError(null);
     setPending(true);
     try {
-      await onSubmit({
-        services,
-        concern_text: trimmedConcern || undefined,
-      });
+      await onSubmit({ picks });
     } finally {
       setPending(false);
     }
@@ -82,50 +100,81 @@ export function ServiceAndConcernPicker({
         What&apos;s the visit for? 🛠️
       </Card.Title>
       <Card.Description>
-        Pick any routine services that apply, OR tell me what you&apos;re
-        noticing in your own words. Both is fine too.
+        Pick anything that applies — routine services on top, diagnostic
+        services below. If something&apos;s off and you&apos;re not sure
+        which category it fits, the diagnostic chips are where to look.
       </Card.Description>
 
-      <form onSubmit={(e) => void handleSubmit(e)} noValidate className="contents">
-        <Card.Body className="space-y-5">
-          <fieldset>
-            <legend className="label-eyebrow mb-2 block">Routine services</legend>
-            <div className="flex flex-wrap gap-2" role="group">
-              {common_services.map((s) => (
-                <Chip
-                  key={s.service_key}
-                  selected={selected.has(s.service_key)}
-                  disabled={disabled || pending}
-                  onClick={() => toggle(s.service_key)}
-                >
-                  {s.display_name}
-                </Chip>
-              ))}
-            </div>
-          </fieldset>
+      <form
+        onSubmit={(e) => void handleSubmit(e)}
+        noValidate
+        className="contents"
+      >
+        <Card.Body className="space-y-6">
+          {common_services.length > 0 && (
+            <fieldset>
+              <legend className="label-eyebrow mb-2 block">
+                Routine services
+              </legend>
+              <div className="flex flex-wrap gap-2" role="group">
+                {common_services.map((s) => (
+                  <Chip
+                    key={s.service_key}
+                    selected={selected.has(s.service_key)}
+                    disabled={disabled || pending}
+                    onClick={() => toggle(s.service_key)}
+                  >
+                    {s.display_name}
+                  </Chip>
+                ))}
+              </div>
+            </fieldset>
+          )}
 
-          <Field
-            label="Or describe a concern"
-            help="Examples: grinding when I brake · AC isn't blowing cold · check engine light came on"
-            error={error ?? undefined}
-            inputId="concern-textarea"
-          >
-            {({ id, ariaDescribedBy, ariaInvalid }) => (
-              <Textarea
-                id={id}
-                rows={3}
-                value={concern}
-                onChange={(e) => {
-                  setConcern(e.target.value);
-                  setError(null);
-                }}
-                disabled={disabled || pending}
-                placeholder="Tell me what you're noticing — even rough details help."
-                aria-describedby={ariaDescribedBy}
-                aria-invalid={ariaInvalid}
-              />
-            )}
-          </Field>
+          {diagnostic_services.length > 0 && (
+            <fieldset>
+              <legend className="label-eyebrow mb-2 block">
+                Diagnostic services
+              </legend>
+              <p className="mb-3 text-[14px] leading-relaxed text-ink-secondary">
+                Pick one of these if something&apos;s acting up. We&apos;ll
+                ask you to describe what you&apos;re noticing on the next
+                screen.
+              </p>
+              <div className="flex flex-wrap gap-2" role="group">
+                {diagnostic_services.map((s) => {
+                  const price = formatPrice(s.starting_price_cents);
+                  return (
+                    <Chip
+                      key={s.service_key}
+                      selected={selected.has(s.service_key)}
+                      disabled={disabled || pending}
+                      onClick={() => toggle(s.service_key)}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span>{s.display_name}</span>
+                        {price && (
+                          <span className="text-[12px] font-medium text-ink-secondary">
+                            {price}
+                          </span>
+                        )}
+                      </span>
+                    </Chip>
+                  );
+                })}
+              </div>
+            </fieldset>
+          )}
+
+          {error && (
+            <p
+              className="text-[14px] text-status-error"
+              role="alert"
+              aria-live="polite"
+            >
+              {error}
+            </p>
+          )}
         </Card.Body>
 
         <Card.Actions>

@@ -1085,11 +1085,19 @@ function PartRenderer({
             display_name: string;
           }>)
         : [];
+      // Phase 9c shape change: picker now emits { picks } instead of
+      // { services, concern_text }. Legacy Chat.tsx still expects the
+      // V1 shape — translate inline (concern_text is dropped since the
+      // V2 picker no longer has a free-text textarea; the customer
+      // describes concerns on the Step 7.2 cards in the new flow).
+      // Phase 16 deletes this file entirely.
       return (
         <ServiceAndConcernPicker
           common_services={common}
           disabled={disabled}
-          onSubmit={(out) => submit(out)}
+          onSubmit={({ picks }) =>
+            submit({ services: picks, concern_text: undefined })
+          }
         />
       );
     }

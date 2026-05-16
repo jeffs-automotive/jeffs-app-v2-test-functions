@@ -241,56 +241,176 @@ export async function getCurrentCard(
       return { step: "new_vehicle_form", payload: {} };
 
     case "service_concern_picker": {
-      // Load the chip list from the routine_services cache (5-min TTL).
-      // Fail-soft on DB error so the card can still render the concern
-      // textarea — the customer can describe their issue even if chips
-      // are unavailable.
-      let chips: Array<{ service_key: string; display_name: string }> = [];
+      // Phase 9c rebuild — load BOTH chip sections per the new two-section
+      // picker. Routine non-explanation chips on top; routine-with-
+      // requires_explanation + testing_services merged into the diagnostic
+      // section (with prices).
+      let commonServices: Array<{ service_key: string; display_name: string }> =
+        [];
+      let diagnosticServices: Array<{
+        service_key: string;
+        display_name: string;
+        starting_price_cents: number | null;
+        source: "testing" | "routine";
+      }> = [];
+
       try {
-        const rows = await getRoutineServicesForChips();
-        chips = rows.map((r) => ({
+        const allRoutine = await getRoutineServicesForChips();
+        // Need requires_explanation too — the cache helper doesn't expose it,
+        // so fetch it separately (single DB call, no perf concern at chat
+        // turn frequency). Future optimization: add it to the cache.
+        const { data: routineFull, error: routineErr } = await supabase
+          .from("routine_services")
+          .select("service_key, requires_explanation")
+          .eq("shop_id", 7476)
+          .eq("active", true);
+        if (routineErr) {
+          throw new Error(
+            `routine_services requires_explanation lookup failed: ${routineErr.message}`,
+          );
+        }
+        const requiresExplanationByKey = new Map<string, boolean>();
+        for (const r of (routineFull ?? []) as Array<{
+          service_key: string;
+          requires_explanation: boolean;
+        }>) {
+          requiresExplanationByKey.set(r.service_key, r.requires_explanation);
+        }
+
+        commonServices = allRoutine
+          .filter((r) => !requiresExplanationByKey.get(r.service_key))
+          .map((r) => ({
+            service_key: r.service_key,
+            display_name: r.display_name,
+          }));
+
+        const routineDiagnostic = allRoutine
+          .filter((r) => requiresExplanationByKey.get(r.service_key))
+          .map((r) => ({
+            service_key: r.service_key,
+            display_name: r.display_name,
+            starting_price_cents: null as number | null,
+            source: "routine" as const,
+          }));
+
+        const { data: testingRows, error: testingErr } = await supabase
+          .from("testing_services")
+          .select("service_key, display_name, starting_price_cents")
+          .eq("shop_id", 7476)
+          .eq("active", true)
+          .order("display_name", { ascending: true });
+        if (testingErr) {
+          throw new Error(
+            `testing_services lookup failed: ${testingErr.message}`,
+          );
+        }
+        const testingDiagnostic = (
+          (testingRows ?? []) as Array<{
+            service_key: string;
+            display_name: string;
+            starting_price_cents: number;
+          }>
+        ).map((r) => ({
           service_key: r.service_key,
           display_name: r.display_name,
+          starting_price_cents: r.starting_price_cents,
+          source: "testing" as const,
         }));
+
+        diagnosticServices = [...routineDiagnostic, ...testingDiagnostic];
       } catch (e) {
         Sentry.captureException(e, {
-          tags: { surface: "get_current_card_routine_services" },
+          tags: { surface: "get_current_card_service_concern_picker" },
           level: "warning",
         });
       }
+
       return {
         step: "service_concern_picker",
-        payload: { common_services: chips },
+        payload: {
+          common_services: commonServices,
+          diagnostic_services: diagnosticServices,
+        },
       };
     }
 
-    case "concern_explanation":
-      // TODO(phase_09): pop the next un-explained service from
-      // explanation_required_items; render its lead-in bubble.
+    case "concern_explanation": {
+      // Pop the next un-explained item from explanation_required_items.
+      // Phase 9c shape: { service_key, display_name, explanation_text } —
+      // the first entry with empty explanation_text is the active card.
+      const items = parseExplanationRequiredItems(
+        row.explanation_required_items,
+      );
+      const next = items.find((i) => !i.explanation_text);
+      if (!next) {
+        // Queue drained — getCurrentCard shouldn't normally hit this (the
+        // submit action would have advanced past concern_explanation). Fall
+        // back to a stub; WizardSurface treats it like a transient state.
+        return {
+          step: "concern_explanation",
+          payload: {
+            service_key: "",
+            display_name: "",
+            lead_in_bubble: "",
+          },
+        };
+      }
       return {
         step: "concern_explanation",
-        payload: { service_key: "", display_name: "", lead_in_bubble: "" },
+        payload: {
+          service_key: next.service_key,
+          display_name: next.display_name || next.service_key,
+          lead_in_bubble: buildConcernExplanationLeadIn(
+            next.display_name || next.service_key,
+          ),
+        },
       };
+    }
 
     case "diagnostic_loading":
       return { step: "diagnostic_loading", payload: {} };
 
-    case "clarification_question":
-      // TODO(phase_09): pop next from clarification_questions_pending.
+    case "clarification_question": {
+      // Pop head of clarification_questions_pending (Phase 9a writes the
+      // full payload there: question_id + question_text + options +
+      // service_key + category, in MD-display order).
+      const pending = parseClarificationQuestionsPending(
+        row.clarification_questions_pending,
+      );
+      const head = pending[0];
+      if (!head) {
+        return {
+          step: "clarification_question",
+          payload: {
+            question_id: 0,
+            question_text: "",
+            options: [],
+            service_key: null,
+            category: null,
+          },
+        };
+      }
       return {
         step: "clarification_question",
         payload: {
-          question_id: 0,
-          question_text: "",
-          options: [],
-          service_key: null,
-          category: null,
+          question_id: head.question_id,
+          question_text: head.question_text,
+          options: head.options,
+          service_key: head.service_key,
+          category: head.category,
         },
       };
+    }
 
     case "testing_service_approval":
-      // TODO(phase_09): read recommended_testing_services off the row +
-      // join testing_services for pricing/notes.
+      // Per chat-design.md "Architecture amendment — 2026-05-14" §Step 7
+      // redesign D2: this step is SKIPPED in the new design (customer
+      // already picked their testing services explicitly at Step 7.1).
+      // run-diagnostics advances directly to clarification_question or
+      // second_routine_pass — never to testing_service_approval. If a
+      // row somehow lands here (legacy session, manual SQL), return an
+      // empty payload; WizardSurface auto-skips by calling a transition
+      // to second_routine_pass.
       return {
         step: "testing_service_approval",
         payload: { services: [], category: null },
@@ -569,4 +689,91 @@ function buildCustomerName(row: Record<string, unknown>): string {
     (row.entered_last_name as string | null) ??
     "";
   return [first, last].filter(Boolean).join(" ");
+}
+
+// ─── Phase 9c — explanation queue + clarification queue parsers ─────────────
+
+interface ExplanationItem {
+  service_key: string;
+  display_name: string;
+  explanation_text: string;
+  category?: string | null;
+}
+
+function parseExplanationRequiredItems(raw: unknown): ExplanationItem[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ExplanationItem[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") continue;
+    const e = entry as Record<string, unknown>;
+    const service_key =
+      typeof e.service_key === "string" ? e.service_key : null;
+    if (!service_key) continue;
+    const display_name =
+      typeof e.display_name === "string" ? e.display_name : service_key;
+    const explanation_text =
+      typeof e.explanation_text === "string" ? e.explanation_text : "";
+    const category =
+      typeof e.category === "string" && e.category.length > 0
+        ? e.category
+        : null;
+    out.push({ service_key, display_name, explanation_text, category });
+  }
+  return out;
+}
+
+interface PendingQuestion {
+  question_id: number;
+  question_text: string;
+  options: Array<{ label: string; value: string }>;
+  service_key: string | null;
+  category: string | null;
+}
+
+function parseClarificationQuestionsPending(raw: unknown): PendingQuestion[] {
+  if (!Array.isArray(raw)) return [];
+  const out: PendingQuestion[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") continue;
+    const e = entry as Record<string, unknown>;
+    const question_id =
+      typeof e.question_id === "number" ? e.question_id : null;
+    const question_text =
+      typeof e.question_text === "string" ? e.question_text : null;
+    if (question_id === null || question_text === null) continue;
+    const optsRaw = Array.isArray(e.options) ? e.options : [];
+    const options = optsRaw
+      .map((o) => {
+        if (!o || typeof o !== "object") return null;
+        const oo = o as Record<string, unknown>;
+        return typeof oo.label === "string" && typeof oo.value === "string"
+          ? { label: oo.label, value: oo.value }
+          : null;
+      })
+      .filter((x): x is { label: string; value: string } => x !== null);
+    out.push({
+      question_id,
+      question_text,
+      options,
+      service_key:
+        typeof e.service_key === "string" && e.service_key.length > 0
+          ? e.service_key
+          : null,
+      category:
+        typeof e.category === "string" && e.category.length > 0
+          ? e.category
+          : null,
+    });
+  }
+  return out;
+}
+
+/**
+ * Stock lead-in bubble for the Step 7.2 concern_explanation card. Per
+ * chat-design.md §7.2 the bubble varies by service kind; for Phase 9c v1
+ * we use a single conversational template. Future revision could load
+ * a per-service or per-category bubble template from the DB.
+ */
+function buildConcernExplanationLeadIn(displayName: string): string {
+  return `Got it — tell me a bit about ${displayName.toLowerCase()}. What are you noticing? 🤔`;
 }
