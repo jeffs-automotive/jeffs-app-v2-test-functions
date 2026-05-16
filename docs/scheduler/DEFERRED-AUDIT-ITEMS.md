@@ -16,36 +16,22 @@ the work lands.
 
 ## Catalog data
 
-### CAT-1 · Subcategory seed for 13 concern categories (NON-brakes)
+### CAT-1 · Subcategory seed for 13 concern categories — RESOLVED 2026-05-16
 
-- **What** — seed `concern_subcategories` + `concern_questions` for
-  electrical, hvac, leak, noise, other, performance, pulling, smell,
-  smoke, steering, tires, vibration, warning_light. The brakes
-  category was seeded 2026-05-16 (migration 20260516210000); the
-  other 12 use a single "general" backfill subcategory, which means
-  the LLM filter at `diagnose-concern.ts` has nothing to filter on
-  — every customer description in those categories surfaces ALL
-  questions.
-- **Why deferred at first** — content-authoring of options arrays
-  per question is substantial (105 subcategories + 729 questions).
-  Done quickly with bad defaults the UX is poor; done thoroughly
-  it's hours.
-- **Status 2026-05-16** — first agent run stopped early at 2 of
-  13 categories (electrical + hvac only). Re-dispatched as TWO
-  parallel agents writing two part-migrations:
-  - `20260516220000_scheduler_concern_seeds_part1.sql` — 6 cats
-    (electrical, hvac, leak, noise, other, performance)
-  - `20260516220001_scheduler_concern_seeds_part2.sql` — 7 cats
-    (pulling, smell, smoke, steering, tires, vibration,
-    warning_light)
-  Each agent has strict validation requirements (wc -l minimum,
-  grep counts for WITH sub AS / BEGIN / COMMIT / RAISE EXCEPTION
-  before reporting done).
-- **When to revisit** — if both agents' migrations land, refine
-  options post-rollout per service-writer feedback. Build the
-  `upload_concern_category_md` MCP tool (referenced in
-  `20260514100000`'s comment) so service writers can refresh
-  options without code changes.
+- **Status** — RESOLVED. All 13 concern categories now have real
+  subcategories the LLM filter can match on:
+  - `20260516210000_scheduler_brakes_subcategory_seed.sql` (brakes
+    — 6 subs, 37 questions)
+  - `20260516220000_scheduler_concern_seeds_part1.sql` (6 cats
+    electrical/hvac/leak/noise/other/performance — 47 subs, 329
+    questions)
+  - `20260516220001_scheduler_concern_seeds_part2.sql` (7 cats
+    pulling/smell/smoke/steering/tires/vibration/warning_light —
+    52 subs, 363 questions)
+  - Grand total: 105 subcategories + 729 questions across 13
+    categories.
+- **Follow-up tracking** — CAT-2 (option-array refinement per
+  service-writer review).
 
 ### CAT-2 · Subcategory option-array refinement
 
