@@ -162,7 +162,7 @@ describe("<CalendarDatePicker />", () => {
         onSubmit={vi.fn()}
       />
     );
-    expect(screen.getByText(/drop off/)).toBeInTheDocument();
+    expect(screen.getByText(/Drop off/)).toBeInTheDocument();
 
     rerender(
       <CalendarDatePicker
@@ -171,6 +171,6 @@ describe("<CalendarDatePicker />", () => {
         onSubmit={vi.fn()}
       />
     );
-    expect(screen.getByText(/wait while we work on it/)).toBeInTheDocument();
+    expect(screen.getByText(/Wait while we work/)).toBeInTheDocument();
   });
 });

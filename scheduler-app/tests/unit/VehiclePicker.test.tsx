@@ -9,7 +9,7 @@ describe("<VehiclePicker />", () => {
     { id: "359094", label: "2021 Honda Civic" },
   ];
 
-  it("renders one button per vehicle plus 'Add new vehicle' when allow_add_new", () => {
+  it("renders one button per vehicle plus 'Add a vehicle' when allow_add_new", () => {
     render(
       <VehiclePicker
         vehicles={sampleVehicles}
@@ -25,11 +25,11 @@ describe("<VehiclePicker />", () => {
       screen.getByRole("button", { name: /2021 Honda Civic/ })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /Add new vehicle/ })
+      screen.getByRole("button", { name: /Add a vehicle/ })
     ).toBeInTheDocument();
   });
 
-  it("hides 'Add new vehicle' when allow_add_new is false", () => {
+  it("hides 'Add a vehicle' when allow_add_new is false", () => {
     render(
       <VehiclePicker
         vehicles={sampleVehicles}
@@ -39,7 +39,7 @@ describe("<VehiclePicker />", () => {
     );
 
     expect(
-      screen.queryByRole("button", { name: /Add new vehicle/ })
+      screen.queryByRole("button", { name: /Add a vehicle/ })
     ).not.toBeInTheDocument();
   });
 
@@ -60,7 +60,7 @@ describe("<VehiclePicker />", () => {
     expect(onSubmit).toHaveBeenCalledWith({ vehicle_id: "359093" });
   });
 
-  it("emits 'new' when 'Add new vehicle' is clicked", async () => {
+  it("emits 'new' when 'Add a vehicle' is clicked", async () => {
     const onSubmit = vi.fn();
     render(
       <VehiclePicker
@@ -71,7 +71,7 @@ describe("<VehiclePicker />", () => {
     );
 
     await userEvent.click(
-      screen.getByRole("button", { name: /Add new vehicle/ })
+      screen.getByRole("button", { name: /Add a vehicle/ })
     );
 
     expect(onSubmit).toHaveBeenCalledWith({ vehicle_id: "new" });
@@ -86,7 +86,9 @@ describe("<VehiclePicker />", () => {
       />
     );
 
-    expect(screen.getByText(/no vehicles on file/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/don't see any vehicles on file/i),
+    ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /\(610\) 253-6565/ })).toHaveAttribute(
       "href",
       "tel:6102536565"
