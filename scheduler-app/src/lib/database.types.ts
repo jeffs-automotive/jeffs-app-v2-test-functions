@@ -374,13 +374,21 @@ export type Database = {
           appointment_option: string | null
           appointment_status: string
           appointment_type: string
+          arrived: boolean | null
           color: string | null
+          confirmation_status: string | null
           created_at: string
+          created_date: string | null
           customer_id: number | null
           deleted_at: string | null
           description: string | null
+          dropoff_time: string | null
           end_time: string
           id: string
+          lead_source: string | null
+          parse_version: number
+          pickup_time: string | null
+          raw_payload: Json | null
           ride_option: string | null
           shop_id: number
           source: string
@@ -389,19 +397,28 @@ export type Database = {
           tekmetric_synced_at: string
           title: string | null
           updated_at: string
+          updated_date: string | null
           vehicle_id: number | null
         }
         Insert: {
           appointment_option?: string | null
           appointment_status: string
           appointment_type: string
+          arrived?: boolean | null
           color?: string | null
+          confirmation_status?: string | null
           created_at?: string
+          created_date?: string | null
           customer_id?: number | null
           deleted_at?: string | null
           description?: string | null
+          dropoff_time?: string | null
           end_time: string
           id?: string
+          lead_source?: string | null
+          parse_version?: number
+          pickup_time?: string | null
+          raw_payload?: Json | null
           ride_option?: string | null
           shop_id: number
           source?: string
@@ -410,19 +427,28 @@ export type Database = {
           tekmetric_synced_at?: string
           title?: string | null
           updated_at?: string
+          updated_date?: string | null
           vehicle_id?: number | null
         }
         Update: {
           appointment_option?: string | null
           appointment_status?: string
           appointment_type?: string
+          arrived?: boolean | null
           color?: string | null
+          confirmation_status?: string | null
           created_at?: string
+          created_date?: string | null
           customer_id?: number | null
           deleted_at?: string | null
           description?: string | null
+          dropoff_time?: string | null
           end_time?: string
           id?: string
+          lead_source?: string | null
+          parse_version?: number
+          pickup_time?: string | null
+          raw_payload?: Json | null
           ride_option?: string | null
           shop_id?: number
           source?: string
@@ -431,6 +457,7 @@ export type Database = {
           tekmetric_synced_at?: string
           title?: string | null
           updated_at?: string
+          updated_date?: string | null
           vehicle_id?: number | null
         }
         Relationships: []

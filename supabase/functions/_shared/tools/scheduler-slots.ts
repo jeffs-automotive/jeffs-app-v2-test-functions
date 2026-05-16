@@ -139,11 +139,25 @@ export interface TekmetricAppointment {
   endTime: string;
   description: string | null;
   title?: string | null;
-  appointmentStatus: { id: number; name: string; code: string };
+  // Phase 9d 2026-05-16: bare string on the wire, NOT { id, name, code }.
+  // Empirical enum: NONE | CANCELED | ARRIVED | NO_SHOW.
+  appointmentStatus: string;
+  // appointmentOption is unsettable via POST/PATCH (silently ignored per
+  // 2026-05-16 testing). GET returns it as { id, code, name } though.
   appointmentOption?: { id: number; name: string; code: string } | null;
   rideOption?: { id: number; name: string; code: string } | null;
+  // Hex color code. PRIMARY signal for appointment_type classification
+  // per Phase 9d (see classifyAppointmentType below).
   color?: string | null;
+  arrived?: boolean | null;
+  leadSource?: string | null;
+  pickupTime?: string | null;
+  dropoffTime?: string | null;
+  createdDate?: string | null;
+  updatedDate?: string | null;
+  confirmationStatus?: string | null;
   deletedDate?: string | null;
+  [k: string]: unknown;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -168,16 +182,45 @@ function dayBoundsUtc(date: string): { start: string; end: string } {
   return { start, end: next.toISOString() };
 }
 
+/**
+ * Phase 9d 2026-05-16 — color-derived classifier (sister of the one in
+ * appointments-sync/index.ts). Used for beyond-shadow-horizon Tekmetric
+ * direct fetches where we don't have the row locally yet.
+ *
+ * Color → meaning per docs/scheduler/appointment-post.md:
+ *   #D01919 (red)    — waiter
+ *   #0D4A80 (navy)   — dropoff (default)
+ *   #FCB70D (yellow) — loaner (dropoff for capacity)
+ *   #F0572A (orange) — tow-in (dropoff for capacity)
+ *   #1786E8 (blue)   — needs-ride (dropoff for capacity)
+ *   #128743 (green)  — needs-by (dropoff for capacity)
+ *   any other        — dropoff (safe default)
+ *
+ * Fallback: if no color present (older Tekmetric appointments, edge cases),
+ * use the legacy UTC-hour heuristic — EDT 8/9 AM (UTC 12/13) is waiter,
+ * everything else is dropoff. The appointments-sync cron will overwrite the
+ * row with the color-derived value on the next sync once the row lands in
+ * the shadow.
+ */
 function classifyAppointmentType(
-  startTime: string,
+  color: string | null | undefined,
+  startTime?: string,
 ): "waiter" | "dropoff" {
-  // Waiter slots are at 08:00 or 09:00 local-EDT (UTC-04 in DST, UTC-05 standard).
-  // Phase 1 heuristic: parse hour in UTC; assume EDT (most of the year). If we
-  // misclassify on edge cases, the appointments-sync cron will overwrite with
-  // the right value when it pulls from Tekmetric (which has the source of truth).
-  const hour = new Date(startTime).getUTCHours();
-  // 08:00 EDT = 12:00 UTC; 09:00 EDT = 13:00 UTC; 12:00 EDT = 16:00 UTC
-  if (hour === 12 || hour === 13) return "waiter";
+  const c = (color ?? "").toLowerCase();
+  switch (c) {
+    case "#d01919": return "waiter";
+    case "#0d4a80":
+    case "#fcb70d":
+    case "#f0572a":
+    case "#1786e8":
+    case "#128743":
+      return "dropoff";
+  }
+  // No color set — fall back to UTC-hour heuristic.
+  if (startTime) {
+    const hour = new Date(startTime).getUTCHours();
+    if (hour === 12 || hour === 13) return "waiter";
+  }
   return "dropoff";
 }
 
@@ -359,11 +402,19 @@ export async function listAvailableSlots(
         totalDayCount = 0;
         for (const a of page.content ?? []) {
           if (a.deletedDate) continue;
-          if (a.appointmentStatus?.code === "CANCELED" || a.appointmentStatus?.code === "NO_SHOW") {
+          // Phase 9d 2026-05-16: appointmentStatus is a bare string on the
+          // wire, not { id, name, code }. The prior `?.code` access was
+          // always undefined → CANCELED + NO_SHOW rows were INCORRECTLY
+          // counted toward capacity in this far-future Tekmetric-direct
+          // path. (The local shadow path at line 317 uses .not(
+          // "appointment_status", "in", "(CANCELED,NO_SHOW)") which has
+          // always read the local string column, so the shadow path was
+          // already correct.)
+          if (a.appointmentStatus === "CANCELED" || a.appointmentStatus === "NO_SHOW") {
             continue;
           }
           totalDayCount += 1;
-          const t = classifyAppointmentType(a.startTime);
+          const t = classifyAppointmentType(a.color, a.startTime);
           if (t === "waiter") {
             const hour = new Date(a.startTime).getUTCHours();
             const slot = hour === 12 ? "08:00" : "09:00";
@@ -619,13 +670,14 @@ export async function holdAppointmentSlot(
     );
     for (const a of page.content ?? []) {
       if (a.deletedDate) continue;
+      // Phase 9d 2026-05-16: bare string, not object — see note above.
       if (
-        a.appointmentStatus?.code === "CANCELED" ||
-        a.appointmentStatus?.code === "NO_SHOW"
+        a.appointmentStatus === "CANCELED" ||
+        a.appointmentStatus === "NO_SHOW"
       ) {
         continue;
       }
-      const aType = classifyAppointmentType(a.startTime);
+      const aType = classifyAppointmentType(a.color, a.startTime);
       if (type === "waiter") {
         if (aType !== "waiter") continue;
         const hour = new Date(a.startTime).getUTCHours();

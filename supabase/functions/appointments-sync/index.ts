@@ -63,6 +63,14 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 // ─── Tekmetric appointment shape (pull) ──────────────────────────────────────
+//
+// Phase 9d 2026-05-16 — fixed the interface to match what Tekmetric actually
+// returns. The prior shape declared appointmentStatus as { id, name, code }
+// but live API + webhook payloads return it as a bare string (e.g., "NONE").
+// Reading `.code` on a string yields undefined and the upsert defaulted to
+// "NONE" for every appointment — see scheduler-refactor-state.json
+// phase_09d.discoveries_2026_05_14.bug_1_appointmentStatus_shape for the
+// full incident write-up.
 
 interface TekmetricAppointment {
   id: number;
@@ -73,32 +81,83 @@ interface TekmetricAppointment {
   endTime: string;
   description: string | null;
   title?: string | null;
-  appointmentStatus: { id: number; name: string; code: string };
+  // Bare string — NOT { id, name, code }. Empirical values: NONE | CANCELED
+  // (plus the docs enum ARRIVED | NO_SHOW which we haven't seen in webhooks).
+  appointmentStatus: string;
+  // Object IS still { id, code, name } on GET/webhook for this one. But it's
+  // unsettable via POST/PATCH (silently ignored — see 2026-05-16 testing).
   appointmentOption?: { id: number; name: string; code: string } | null;
   rideOption?: { id: number; name: string; code: string } | null;
+  // Hex color code. The customer-pick → staff-visibility channel (per the
+  // 2026-05-16 architecture amendment). Drives classifyAppointmentType below.
   color?: string | null;
+  // Phase 9d additions — fields the prior parser discarded.
+  arrived?: boolean | null;
+  leadSource?: string | null;
+  pickupTime?: string | null;
+  dropoffTime?: string | null;
+  createdDate?: string | null;
+  updatedDate?: string | null;
+  // confirmationStatus: NONE | CONFIRMED. Read-only via Tekmetric API; only
+  // set via Tekmetric's internal flow (SMS reply / staff confirm). V2.1 webhook
+  // handler will detect a flip to CONFIRMED and PATCH the title to prepend
+  // "CONFIRMED " for advisor visibility (tracked in future-release-notes.md).
+  confirmationStatus?: string | null;
   deletedDate?: string | null;
+  // Forward-compat: allow unknown fields so Tekmetric additions don't break
+  // the parse. raw_payload captures the full object verbatim.
+  [k: string]: unknown;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function classifyAppointmentType(
-  startTime: string,
-  appointmentOptionCode?: string | null,
-): "waiter" | "dropoff" {
-  // Trust appointmentOption.code if present (most authoritative)
-  if (appointmentOptionCode === "WAITER") return "waiter";
-  if (
-    appointmentOptionCode === "PICKUP_DROPOFF" ||
-    appointmentOptionCode === "TOWED" ||
-    appointmentOptionCode === "NONE"
-  ) {
-    return "dropoff";
+/**
+ * Phase 9d 2026-05-16 — color-derived classifier.
+ *
+ * The prior classifier used `appointmentOption.code` as the primary signal
+ * (with a UTC-hour fallback). 2026-05-16 testing proved that Tekmetric's
+ * POST/PATCH API silently ignores `appointmentOption` in every shape — every
+ * API-created appointment defaults to STAY. Empirical query against the
+ * existing 177-row shadow showed the legacy classifier mislabeled 39 rows
+ * (22%): 35 navy appointments tagged as waiter and 4 red as dropoff.
+ *
+ * The fix: derive `appointment_type` from `color`. Tekmetric's UI lets staff
+ * pick the color independently of the (broken) appointmentOption dropdown,
+ * and per Chris's shop convention (per docs/scheduler/appointment-post.md):
+ *
+ *   #D01919 (red)    — waiter (customer waits)
+ *   #0D4A80 (navy)   — dropoff (default; standard drop-off)
+ *   #FCB70D (yellow) — loaner car required (still a dropoff for capacity)
+ *   #F0572A (orange) — tow-in (still consumes a service bay → dropoff)
+ *   #1786E8 (blue)   — needs ride/shuttle (still a dropoff for capacity)
+ *   #128743 (green)  — needs-by time promise (still a dropoff)
+ *   light green      — will reschedule; unused (would map to dropoff)
+ *   lavender         — no show marker (would map to dropoff)
+ *   purple           — new-customer marker (would map to dropoff)
+ *
+ * Only RED maps to waiter. Every other color is dropoff for capacity-tracking
+ * purposes — including tow-in, since towed appointments still consume a
+ * service bay slot. Future Phase v2.1 may widen the `appointment_type` enum
+ * to add 'towed' as its own value (with coordinated reader updates in
+ * scheduler-slots.ts + availability.ts), but for v2 launch the conservative
+ * mapping ships.
+ *
+ * @param color  hex color from Tekmetric (e.g., "#D01919"); case-insensitive
+ * @returns "waiter" if red, else "dropoff"
+ */
+function classifyAppointmentType(color: string | null | undefined): "waiter" | "dropoff" {
+  const c = (color ?? "").toLowerCase();
+  switch (c) {
+    case "#d01919": return "waiter";    // red
+    case "#0d4a80": return "dropoff";   // navy (default)
+    case "#fcb70d": return "dropoff";   // yellow loaner
+    case "#f0572a": return "dropoff";   // orange tow-in
+    case "#1786e8": return "dropoff";   // blue needs-ride
+    case "#128743": return "dropoff";   // green needs-by
+    // light_green / lavender / purple — hex codes not yet observed; default
+    // to dropoff for safety. Add explicit cases here if they start appearing.
+    default:        return "dropoff";   // unknown / null / pre-Phase-9d rows
   }
-  // Fallback to time heuristic — EDT 8 AM = UTC 12; EDT 9 AM = UTC 13
-  const hour = new Date(startTime).getUTCHours();
-  if (hour === 12 || hour === 13) return "waiter";
-  return "dropoff";
 }
 
 function ymd(d: Date): string {
@@ -213,16 +272,36 @@ async function runSync(): Promise<SyncResult> {
       vehicle_id: a.vehicleId ?? null,
       start_time: a.startTime,
       end_time: a.endTime,
-      appointment_type: classifyAppointmentType(
-        a.startTime,
-        a.appointmentOption?.code ?? null,
-      ),
-      appointment_status: a.appointmentStatus?.code ?? "NONE",
+      // Phase 9d 2026-05-16: color-derived classifier replaces the prior
+      // appointmentOption.code + UTC-hour heuristic. See classifyAppointmentType
+      // above for the full color-to-type mapping.
+      appointment_type: classifyAppointmentType(a.color ?? null),
+      // Phase 9d 2026-05-16: appointmentStatus is a BARE STRING on the
+      // Tekmetric side ("NONE" | "CANCELED" | "ARRIVED" | "NO_SHOW"), not
+      // a { id, name, code } object. The prior `?.code` read returned
+      // undefined for every row and defaulted to "NONE" — every appointment
+      // in the shadow had appointment_status = "NONE" until this fix.
+      appointment_status: typeof a.appointmentStatus === "string"
+        ? a.appointmentStatus
+        : "NONE",
       title: a.title ?? null,
       description: a.description ?? null,
       appointment_option: a.appointmentOption?.code ?? null,
       ride_option: a.rideOption?.code ?? null,
       color: a.color ?? null,
+      // Phase 9d 2026-05-16: previously-discarded Tekmetric fields.
+      arrived: typeof a.arrived === "boolean" ? a.arrived : null,
+      lead_source: a.leadSource ?? null,
+      pickup_time: a.pickupTime ?? null,
+      dropoff_time: a.dropoffTime ?? null,
+      created_date: a.createdDate ?? null,
+      updated_date: a.updatedDate ?? null,
+      confirmation_status: a.confirmationStatus ?? null,
+      // Verbatim Tekmetric payload — defense against future field
+      // additions. Caller does not need to read this for routine queries;
+      // it's a safety net for shape drift.
+      raw_payload: a as Record<string, unknown>,
+      parse_version: 2, // bumped from 1 = pre-Phase-9d shape
       source: "tekmetric",
       tekmetric_synced_at: new Date().toISOString(),
       deleted_at: null,
