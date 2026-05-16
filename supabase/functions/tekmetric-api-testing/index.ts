@@ -1,17 +1,20 @@
 // tekmetric-api-testing
 //
-// A read-only Tekmetric API probe + sandbox edge function (created 2026-05-15).
+// A Tekmetric API probe + sandbox edge function (created 2026-05-15).
 // Purpose: let Chris (and Claude) inspect Tekmetric responses without exposing
 // the vault-stored access token, so we can:
 //
-//   - Discover empirical enum values (e.g., appointmentOption.code returns
-//     STAY / DROP, not WAITER / PICKUP_DROPOFF — Phase 9d finding)
+//   - Discover empirical enum values (e.g., appointmentOption.id=1 is STAY,
+//     id=2 is DROP — verified 2026-05-15 against 1146 production webhooks)
 //   - Audit individual records by id (raw JSON, not the parsed shadow rows)
 //   - Test new endpoints before wiring them into the booking flow
 //   - Sanity-check the cached access token after rotation
+//   - Run controlled write tests (POST/PATCH/DELETE) gated by a UUID
+//     two-step confirmation so no accidental fires
 //
 // CATALOG / INDEX (call with { op: 'index' } or no body to list available ops):
 //
+//   READ OPS (no gate):
 //   • index                        → returns this catalog
 //   • whoami                       → basic token sanity check
 //   • get_appointment              { appointment_id }
@@ -27,9 +30,26 @@
 //   • list_canned_jobs             { page?, size? }
 //   • raw_get                      { path, query? }  — escape hatch for any GET
 //
+//   WRITE OPS (UUID two-step gate — see "UUID confirmation pattern" below):
+//   • test_post_appointment        { body, confirmation_token? }
+//   • update_appointment           { appointment_id, body, confirmation_token? }
+//   • delete_appointment           { appointment_id, confirmation_token? }
+//
 // Response shape (always JSON):
 //   200 { ok: true,  op, url_called, status, data }
 //   4xx { ok: false, op, url_called?, status?, error, body_excerpt? }
+//
+// UUID confirmation pattern (write ops only):
+//   Step 1: caller posts WITHOUT `confirmation_token`. Function previews the
+//           outgoing Tekmetric request, generates a UUID, returns:
+//             { ok: false, needs_confirmation: true,
+//               confirmation_token: <uuid>,
+//               would_send: { method, path, body }, expires_at }
+//   Step 2: caller posts WITH the same op body AND `confirmation_token: <uuid>`.
+//           Function checks (token, body_hash) against an in-memory cache,
+//           applies the write, returns the Tekmetric response.
+//   Tokens expire after 5 minutes. The body hash is sha256 of the
+//   canonicalized request payload — changing the body invalidates the token.
 //
 // Auth: Supabase's default JWT verification (verify_jwt=true). The
 // publishable anon key passes — this is a read-only testing surface, so
@@ -212,6 +232,53 @@ const OP_CATALOG: OpDescriptor[] = [
       query: { size: 5 },
     },
   },
+  {
+    op: "test_post_appointment",
+    description:
+      "POST /appointments — UUID two-step gate. Step 1 (no confirmation_token): preview + get token. Step 2 (with token + same body): apply. `shopId` auto-added when absent. Empirical enum: appointmentOption=1 is waiter (STAY), 2 is dropoff (DROP). status / confirmationStatus are bare strings.",
+    args: {
+      body: "object (required, the appointment payload — see appointment-post.md)",
+      confirmation_token: "uuid (omit on step 1)",
+    },
+    example: {
+      op: "test_post_appointment",
+      body: {
+        customerId: 44698535,
+        vehicleId: 0,
+        startTime: "2026-12-15T13:00:00Z",
+        endTime: "2026-12-15T14:00:00Z",
+        title: "[TM] Test Booking — appointmentOption probe",
+        description: "Test booking — please ignore or cancel.",
+        appointmentOption: 1,
+        color: "red",
+      },
+    },
+  },
+  {
+    op: "update_appointment",
+    description:
+      "PATCH /appointments/{id} — UUID two-step gate. Use to flip an appointment to status=CANCELED after a test, or to test confirmationStatus acceptance, etc.",
+    args: {
+      appointment_id: "number (required)",
+      body: "object (required, partial update — only fields to change)",
+      confirmation_token: "uuid (omit on step 1)",
+    },
+    example: {
+      op: "update_appointment",
+      appointment_id: 12345678,
+      body: { status: "CANCELED" },
+    },
+  },
+  {
+    op: "delete_appointment",
+    description:
+      "DELETE /appointments/{id} — UUID two-step gate. Hard delete; status=CANCELED via update_appointment is the softer alternative.",
+    args: {
+      appointment_id: "number (required)",
+      confirmation_token: "uuid (omit on step 1)",
+    },
+    example: { op: "delete_appointment", appointment_id: 12345678 },
+  },
 ];
 
 function describeIndex(): Record<string, unknown> {
@@ -219,7 +286,7 @@ function describeIndex(): Record<string, unknown> {
     ok: true,
     op: "index",
     description:
-      "tekmetric-api-testing — read-only probe surface. See the OP_CATALOG entries below for available ops.",
+      "tekmetric-api-testing — read + (gated) write probe surface. See the OP_CATALOG entries below for available ops.",
     shop_id: SHOP_ID,
     op_catalog: OP_CATALOG,
   };
@@ -492,6 +559,345 @@ async function handleWhoami(): Promise<Response> {
   return jsonResponse({ ok: result.status < 400, op: "whoami", ...result });
 }
 
+// ─── Two-step confirmation gate (write ops) — stateless HMAC tokens ─────────
+//
+// Token format: `<expires_at_ms>.<body_hash_hex>.<hmac_hex>`
+//   • expires_at_ms: epoch ms when this token is no longer valid (5 min TTL)
+//   • body_hash_hex: sha256 of canonicalized request scope (op + body)
+//   • hmac_hex:     HMAC-SHA256(SUPABASE_SERVICE_ROLE_KEY, expires_at_ms +
+//                   "." + body_hash_hex)
+//
+// Stateless by design — survives isolate cold starts / pg_net's parallel
+// invocations. No DB or in-memory cache. The HMAC ensures the token can't
+// be forged without the secret; the body_hash ensures changing the body
+// between step 1 and step 2 voids the token.
+
+const TOKEN_TTL_MS = 5 * 60 * 1000;
+const HMAC_SECRET = SUPABASE_SERVICE_ROLE_KEY;
+
+async function sha256Hex(input: string): Promise<string> {
+  const data = new TextEncoder().encode(input);
+  const buf = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/**
+ * Canonicalize a JSON-ish value for hashing — sort object keys at every
+ * level. Arrays preserve their order. Primitives pass through. Ensures
+ * two semantically-identical objects always hash the same regardless of
+ * key insertion order.
+ */
+function canonicalize(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(canonicalize);
+  if (v !== null && typeof v === "object") {
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(v as Record<string, unknown>).sort()) {
+      out[key] = canonicalize((v as Record<string, unknown>)[key]);
+    }
+    return out;
+  }
+  return v;
+}
+
+async function hashScope(scope: unknown): Promise<string> {
+  return sha256Hex(JSON.stringify(canonicalize(scope)));
+}
+
+let cachedHmacKey: CryptoKey | null = null;
+
+async function getHmacKey(): Promise<CryptoKey> {
+  if (cachedHmacKey) return cachedHmacKey;
+  cachedHmacKey = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(HMAC_SECRET),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign", "verify"],
+  );
+  return cachedHmacKey;
+}
+
+async function hmacSignHex(payload: string): Promise<string> {
+  const key = await getHmacKey();
+  const sig = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(payload),
+  );
+  return Array.from(new Uint8Array(sig))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function issueToken(
+  scope: unknown,
+  _scope_summary: string,
+): Promise<{ token: string; expires_at: string }> {
+  const expires_at_ms = Date.now() + TOKEN_TTL_MS;
+  const body_hash = await hashScope(scope);
+  const payload = `${expires_at_ms}.${body_hash}`;
+  const signature = await hmacSignHex(payload);
+  return {
+    token: `${payload}.${signature}`,
+    expires_at: new Date(expires_at_ms).toISOString(),
+  };
+}
+
+async function consumeToken(
+  token: string,
+  scope: unknown,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const parts = token.split(".");
+  if (parts.length !== 3) {
+    return { ok: false, reason: "malformed_token" };
+  }
+  const [expires_at_str, body_hash_str, signature] = parts;
+  const expires_at_ms = Number(expires_at_str);
+  if (!Number.isFinite(expires_at_ms)) {
+    return { ok: false, reason: "malformed_token_expiry" };
+  }
+  if (Date.now() > expires_at_ms) {
+    return { ok: false, reason: "token_expired" };
+  }
+  const incoming_body_hash = await hashScope(scope);
+  if (incoming_body_hash !== body_hash_str) {
+    return { ok: false, reason: "body_mismatch_token_void" };
+  }
+  const expected_signature = await hmacSignHex(
+    `${expires_at_str}.${body_hash_str}`,
+  );
+  // Constant-time-ish compare via hex string equality (acceptable for an
+  // internal testing tool; no remote timing attack vector to worry about).
+  if (expected_signature !== signature) {
+    return { ok: false, reason: "invalid_signature" };
+  }
+  return { ok: true };
+}
+
+interface TekmetricWriteResult {
+  url_called: string;
+  status: number;
+  body: unknown;
+  body_excerpt?: string;
+}
+
+async function tekmetricWrite(
+  method: "POST" | "PATCH" | "DELETE",
+  path: string,
+  body?: unknown,
+): Promise<TekmetricWriteResult> {
+  const res = await tekmetricFetch(sb, path, { method, body });
+  const text = await res.text();
+  let parsed: unknown = null;
+  try {
+    parsed = text ? JSON.parse(text) : null;
+  } catch {
+    return {
+      url_called: path,
+      status: res.status,
+      body: null,
+      body_excerpt: text.slice(0, 1000),
+    };
+  }
+  return { url_called: path, status: res.status, body: parsed };
+}
+
+/**
+ * Best-effort audit log row. Never throws — a logging failure must not
+ * block the write op's response.
+ */
+async function logTestWrite(args: {
+  op: string;
+  scope: unknown;
+  result: TekmetricWriteResult;
+}): Promise<void> {
+  try {
+    await sb.from("scheduler_admin_audit_log").insert({
+      table_name: "tekmetric_api",
+      operation: args.op,
+      diff_summary: {
+        scope: args.scope,
+        url_called: args.result.url_called,
+        status: args.result.status,
+        body_excerpt:
+          args.result.body_excerpt ??
+          JSON.stringify(args.result.body).slice(0, 500),
+      },
+    });
+  } catch (e) {
+    console.warn(
+      JSON.stringify({
+        level: "warning",
+        msg: "test_write_audit_log_failed",
+        detail: e instanceof Error ? e.message : String(e),
+      }),
+    );
+  }
+}
+
+// ─── Write op handlers ──────────────────────────────────────────────────────
+
+async function handleTestPostAppointment(
+  args: Record<string, unknown>,
+): Promise<Response> {
+  if (!isObject(args.body)) {
+    return jsonResponse(
+      { ok: false, op: "test_post_appointment", error: "missing body object" },
+      400,
+    );
+  }
+  const bodyWithShop: Record<string, unknown> = { ...args.body };
+  if (!("shopId" in bodyWithShop)) bodyWithShop.shopId = SHOP_ID;
+
+  const scope = { op: "test_post_appointment", body: bodyWithShop };
+  const incomingToken = asString(args.confirmation_token);
+
+  if (incomingToken === null) {
+    const { token, expires_at } = await issueToken(
+      scope,
+      `POST /appointments — shop ${SHOP_ID}`,
+    );
+    return jsonResponse(
+      {
+        ok: false,
+        op: "test_post_appointment",
+        needs_confirmation: true,
+        confirmation_token: token,
+        expires_at,
+        would_send: { method: "POST", path: "/appointments", body: bodyWithShop },
+      },
+      200,
+    );
+  }
+
+  const consume = await consumeToken(incomingToken, scope);
+  if (!consume.ok) {
+    return jsonResponse(
+      { ok: false, op: "test_post_appointment", error: consume.reason },
+      400,
+    );
+  }
+
+  const result = await tekmetricWrite("POST", "/appointments", bodyWithShop);
+  await logTestWrite({ op: "test_post_appointment", scope, result });
+  return jsonResponse(
+    { ok: result.status < 400, op: "test_post_appointment", ...result },
+  );
+}
+
+async function handleUpdateAppointment(
+  args: Record<string, unknown>,
+): Promise<Response> {
+  const appointmentId = asNumber(args.appointment_id);
+  if (appointmentId === null) {
+    return jsonResponse(
+      {
+        ok: false,
+        op: "update_appointment",
+        error: "missing or invalid appointment_id",
+      },
+      400,
+    );
+  }
+  if (!isObject(args.body)) {
+    return jsonResponse(
+      { ok: false, op: "update_appointment", error: "missing body object" },
+      400,
+    );
+  }
+
+  const scope = {
+    op: "update_appointment",
+    appointment_id: appointmentId,
+    body: args.body,
+  };
+  const incomingToken = asString(args.confirmation_token);
+  const path = `/appointments/${appointmentId}`;
+
+  if (incomingToken === null) {
+    const { token, expires_at } = await issueToken(
+      scope,
+      `PATCH ${path}`,
+    );
+    return jsonResponse(
+      {
+        ok: false,
+        op: "update_appointment",
+        needs_confirmation: true,
+        confirmation_token: token,
+        expires_at,
+        would_send: { method: "PATCH", path, body: args.body },
+      },
+      200,
+    );
+  }
+
+  const consume = await consumeToken(incomingToken, scope);
+  if (!consume.ok) {
+    return jsonResponse(
+      { ok: false, op: "update_appointment", error: consume.reason },
+      400,
+    );
+  }
+
+  const result = await tekmetricWrite("PATCH", path, args.body);
+  await logTestWrite({ op: "update_appointment", scope, result });
+  return jsonResponse(
+    { ok: result.status < 400, op: "update_appointment", ...result },
+  );
+}
+
+async function handleDeleteAppointment(
+  args: Record<string, unknown>,
+): Promise<Response> {
+  const appointmentId = asNumber(args.appointment_id);
+  if (appointmentId === null) {
+    return jsonResponse(
+      {
+        ok: false,
+        op: "delete_appointment",
+        error: "missing or invalid appointment_id",
+      },
+      400,
+    );
+  }
+
+  const scope = { op: "delete_appointment", appointment_id: appointmentId };
+  const incomingToken = asString(args.confirmation_token);
+  const path = `/appointments/${appointmentId}`;
+
+  if (incomingToken === null) {
+    const { token, expires_at } = await issueToken(scope, `DELETE ${path}`);
+    return jsonResponse(
+      {
+        ok: false,
+        op: "delete_appointment",
+        needs_confirmation: true,
+        confirmation_token: token,
+        expires_at,
+        would_send: { method: "DELETE", path },
+      },
+      200,
+    );
+  }
+
+  const consume = await consumeToken(incomingToken, scope);
+  if (!consume.ok) {
+    return jsonResponse(
+      { ok: false, op: "delete_appointment", error: consume.reason },
+      400,
+    );
+  }
+
+  const result = await tekmetricWrite("DELETE", path);
+  await logTestWrite({ op: "delete_appointment", scope, result });
+  return jsonResponse(
+    { ok: result.status < 400, op: "delete_appointment", ...result },
+  );
+}
+
 async function handleRawGet(
   args: Record<string, unknown>,
 ): Promise<Response> {
@@ -608,6 +1014,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
         return await handleListCannedJobs(raw);
       case "raw_get":
         return await handleRawGet(raw);
+      case "test_post_appointment":
+        return await handleTestPostAppointment(raw);
+      case "update_appointment":
+        return await handleUpdateAppointment(raw);
+      case "delete_appointment":
+        return await handleDeleteAppointment(raw);
       default:
         return jsonResponse(
           {

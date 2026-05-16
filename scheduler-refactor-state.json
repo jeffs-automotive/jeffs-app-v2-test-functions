@@ -558,9 +558,10 @@
     },
     {
       "id": "phase_09d_tekmetric_correctness",
-      "title": "Step 7 follow-up — Tekmetric GET /appointments correctness + raw_payload column + full-field parsing",
+      "title": "Step 7 follow-up — Tekmetric GET /appointments correctness + raw_payload column + full-field parsing + color-derived appointment_type classifier",
       "status": "pending",
-      "summary": "Surfaced during Phase 9a research: a live curl against /appointments revealed two material bugs in the appointments-sync TypeScript shape AND we currently parse only a small subset of the response into the local shadow table. This phase (a) lists out every distinct enum value Tekmetric actually returns for appointmentStatus + appointmentOption.code + rideOption.code so we can categorize and write the correct CHECK constraints + classifier logic; (b) parses every field in the response into its own typed column instead of discarding fields we don't currently use; (c) adds a raw_payload JSONB column so future Tekmetric additions land verbatim without a migration. Discovered when curling https://shop.tekmetric.com/api/v1/appointments?shop=7476 returned content[0].appointmentStatus='NONE' (bare string, not the {id,name,code} object our TS interface declared) and appointmentOption.code values of 'STAY'/'DROP' (NOT the 'WAITER'/'PICKUP_DROPOFF'/'TOWED'/'NONE' our classifier+POST builder hardcodes against).",
+      "criticality_for_v2_launch_2026_05_16": "BLOCKS V2 launch. Per the 2026-05-16 tekmetric-api-testing investigation (see docs/scheduler/appointment-post.md 'Empirical findings'), Tekmetric's POST/PATCH API silently ignores appointmentOption in every shape we tested. All chat-driven (API-created) appointments will land in Tekmetric with appointmentOption=STAY (waiter) regardless of what the customer picked. The CURRENT classifyAppointmentType in appointments-sync derives our local appointment_type from Tekmetric's appointmentOption.code — meaning every V2 chat booking will be counted as a waiter slot in our capacity math (computeAvailableDates), even when the customer picked dropoff. This breaks 'how many waiting appointments we take' capacity gates the moment V2 ships. Must be fixed BEFORE V2 launch: rewrite classifyAppointmentType to derive appointment_type from `color` (#D01919 red = waiter, #0D4A80 navy = dropoff, #F0572A orange = tow-in, others mapped per shop convention).",
+      "summary": "Surfaced during Phase 9a research: a live curl against /appointments revealed two material bugs in the appointments-sync TypeScript shape AND we currently parse only a small subset of the response into the local shadow table. This phase (a) lists out every distinct enum value Tekmetric actually returns for appointmentStatus + appointmentOption.code + rideOption.code so we can categorize and write the correct CHECK constraints + classifier logic; (b) parses every field in the response into its own typed column instead of discarding fields we don't currently use; (c) adds a raw_payload JSONB column so future Tekmetric additions land verbatim without a migration; (d) NEW 2026-05-16 — replaces the appointmentOption-driven classifier with a color-driven classifier since the 2026-05-16 testing proved appointmentOption is unsettable via API. Discovered when curling https://shop.tekmetric.com/api/v1/appointments?shop=7476 returned content[0].appointmentStatus='NONE' (bare string, not the {id,name,code} object our TS interface declared) and appointmentOption.code values of 'STAY'/'DROP' (NOT the 'WAITER'/'PICKUP_DROPOFF'/'TOWED'/'NONE' our classifier+POST builder hardcodes against).",
       "discoveries_2026_05_14": {
         "bug_1_appointmentStatus_shape": {
           "what_our_code_expects": "{ id: number, name: string, code: string }",
@@ -688,6 +689,21 @@
       "id": "phase_12_step10_1_2_summary_confirm",
       "title": "Steps 10.1-10.2 (Summary + per-section edits + Tekmetric POST confirm)",
       "status": "pending",
+      "empirical_post_findings_2026_05_16": {
+        "notes": "Comprehensive POST/PATCH probing on 2026-05-16 via the tekmetric-api-testing edge function (17 test appointments created + cancelled). See docs/scheduler/appointment-post.md 'Empirical findings' section for the full table.",
+        "key_changes_for_phase_12_post_builder": [
+          "DROP `appointmentOption` from the POST body entirely — Tekmetric silently ignores every shape we tested (number, all string variants, all object variants). All API-created appointments default to STAY regardless.",
+          "ADD `color` to the POST body: 'red' for customer-picked WAITER, 'navy' (or omit, defaults to navy) for DROPOFF. Tekmetric stores as hex (#D01919 / #0D4A80).",
+          "Title format MUST use [TM] prefix (NOT [OP] — Chris updated the convention 2026-05-16). For waiter add slot tag: '[TM] 8AM WAIT <First Last>, ...' or '[TM] 9AM WAIT <First Last>, ...'. For dropoff: '[TM] <First Last>, ...'.",
+          "DROP `confirmationStatus` from any POST — it's read-only via the API (webhook-only).",
+          "DROP `status` from the POST body unless explicitly canceling — Tekmetric defaults to NONE which is what we want for a fresh booking.",
+          "leadSource: leave default (NOT required to POST). Future v2.1 will add 'TM' once Shop Settings → Marketing is verified."
+        ],
+        "phase_12_add_ons_per_chris_2026_05_16": [
+          "Email notification to service staff after successful POST. Content: summary of the appointment (date/time/customer/vehicle/services) + a link to the Tekmetric appointment page: https://shop.tekmetric.com/admin/shop/7476/appointments/{appointmentId}. INCLUDE any customer/vehicle notes captured during the wizard flow. Likely Resend integration (already in scheduler-app stack).",
+          "GET-after-POST verification step: after Tekmetric returns the new appointment_id, immediately GET /appointments/{id} to verify the booking went through correctly (defends against phantom-write scenarios). Log discrepancies to Sentry."
+        ]
+      },
       "summary": "Migrate the summary card + the edit-from-summary drill-downs + the Tekmetric POST confirmation. Fixes the summary-edit-routing-to-date_pick bug (Codex finding 6).",
       "tasks": [
         "Update getCurrentCard for step='summary' — loads all row fields for the summary display + hold_expires_at countdown.",
