@@ -54,6 +54,7 @@ the catches you should handle BEFORE calling the orchestrator:
 
 | Topic the user mentions | File to consult |
 |---|---|
+| any "help" request — "keytag help", "scheduler help", "schedule help", "tag help", "what can you do", or just "help" | **`help.md`** (consult FIRST when help-flavored; it routes to the right domain command list) |
 | key tag, keytag, tag, "red 5", "yellow 45", round-robin, tag pool, audit history, reconcile, who released, A/R, revert, posted | **`keytag.md`** |
 | scheduler, appointment, booking, /book, testing service, routine service, concern, diagnostic, brake inspection, check battery, warning lights, concern questions, sub-category, pricing, price change, "set price", closed dates, appointment limits, availability, orphan customer | **`scheduler.md`** |
 | (more domains added here as we build new tools) | |
