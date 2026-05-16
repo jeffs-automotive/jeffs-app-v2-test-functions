@@ -21,8 +21,17 @@
  * Sentry (inside the action) + console here. Toast / FormMessage / retry
  * affordances are added per-step starting in phase 4; phase 14 unifies
  * the cross-cutting error states.
+ *
+ * Refresh after action (Phase 9c hotfix 2026-05-16): Server Actions
+ * called outside a <form action> context — e.g. button onClick or
+ * useEffect (the OtpInput auto-submit) — invalidate the server cache via
+ * revalidatePath BUT do NOT auto-update the client view. Calling
+ * `router.refresh()` after each action force-fetches the new RSC payload
+ * so the page rerenders with the next card. Without this, the wizard
+ * "doesn't advance" even though the row was correctly updated.
  */
 import * as Sentry from "@sentry/nextjs";
+import { useRouter } from "next/navigation";
 
 import { ClarificationQuestionCard } from "@/components/scheduler/heritage/ClarificationQuestionCard";
 import { ConcernExplanationCard } from "@/components/scheduler/heritage/ConcernExplanationCard";
@@ -62,6 +71,22 @@ export interface WizardSurfaceProps {
 }
 
 export function WizardSurface({ chatId, card }: WizardSurfaceProps) {
+  const router = useRouter();
+
+  // Helper: log + refresh. Called after every Server Action so the page
+  // re-fetches its RSC payload and advances to the next card. Server Actions
+  // called from useEffect / onClick (not from <form action>) need this
+  // explicit refresh — `revalidatePath` alone invalidates the server cache
+  // but doesn't poke the client view.
+  const handleResult = (
+    actionName: string,
+    _chatId: string,
+    result: WizardTransitionResult,
+  ): void => {
+    logIfFailed(actionName, chatId, result);
+    router.refresh();
+  };
+
   switch (card.step) {
     case "greeting":
       return (
@@ -71,7 +96,7 @@ export function WizardSurface({ chatId, card }: WizardSurfaceProps) {
               chatId,
               is_returning,
             });
-            logIfFailed("submitGreetingV2", chatId, result);
+            handleResult("submitGreetingV2", chatId, result);
           }}
         />
       );
@@ -90,7 +115,7 @@ export function WizardSurface({ chatId, card }: WizardSurfaceProps) {
               last_name,
               phone_e164: phone,
             });
-            logIfFailed("submitPhoneNameV2", chatId, result);
+            handleResult("submitPhoneNameV2", chatId, result);
           }}
         />
       );
@@ -104,12 +129,12 @@ export function WizardSurface({ chatId, card }: WizardSurfaceProps) {
           onSubmit={async (output) => {
             if ("action" in output && output.action === "resend") {
               const result = await resendOtpV2({ chatId });
-              logIfFailed("resendOtpV2", chatId, result);
+              handleResult("resendOtpV2", chatId, result);
               return;
             }
             if ("code" in output) {
               const result = await submitOtpV2({ chatId, code: output.code });
-              logIfFailed("submitOtpV2", chatId, result);
+              handleResult("submitOtpV2", chatId, result);
             }
           }}
         />
@@ -127,7 +152,7 @@ export function WizardSurface({ chatId, card }: WizardSurfaceProps) {
               chatId,
               action,
             });
-            logIfFailed("submitPartialVerificationChoiceV2", chatId, result);
+            handleResult("submitPartialVerificationChoiceV2", chatId, result);
           }}
         />
       );
@@ -139,7 +164,7 @@ export function WizardSurface({ chatId, card }: WizardSurfaceProps) {
           attempted_phone_last_four={card.payload.attempted_phone_last_four}
           onSubmit={async ({ action }) => {
             const result = await submitNoMatchChoiceV2({ chatId, action });
-            logIfFailed("submitNoMatchChoiceV2", chatId, result);
+            handleResult("submitNoMatchChoiceV2", chatId, result);
           }}
         />
       );
@@ -159,7 +184,7 @@ export function WizardSurface({ chatId, card }: WizardSurfaceProps) {
                   }
                 : { action: "none_of_these", chatId },
             );
-            logIfFailed("submitMultiAccountChoiceV2", chatId, result);
+            handleResult("submitMultiAccountChoiceV2", chatId, result);
           }}
         />
       );
@@ -181,7 +206,7 @@ export function WizardSurface({ chatId, card }: WizardSurfaceProps) {
               primary_email_for_description:
                 output.primary_email_for_description,
             });
-            logIfFailed("submitCustomerInfoEditV2", chatId, result);
+            handleResult("submitCustomerInfoEditV2", chatId, result);
           }}
         />
       );
@@ -201,7 +226,7 @@ export function WizardSurface({ chatId, card }: WizardSurfaceProps) {
               primary_email_for_description:
                 output.primary_email_for_description,
             });
-            logIfFailed("submitNewCustomerInfoV2", chatId, result);
+            handleResult("submitNewCustomerInfoV2", chatId, result);
           }}
         />
       );
@@ -216,7 +241,7 @@ export function WizardSurface({ chatId, card }: WizardSurfaceProps) {
               chatId,
               vehicle_id,
             });
-            logIfFailed("submitVehiclePickV2", chatId, result);
+            handleResult("submitVehiclePickV2", chatId, result);
           }}
         />
       );
@@ -233,7 +258,7 @@ export function WizardSurface({ chatId, card }: WizardSurfaceProps) {
               license_plate: output.license_plate,
               notes: output.notes,
             });
-            logIfFailed("submitNewVehicleV2", chatId, result);
+            handleResult("submitNewVehicleV2", chatId, result);
           }}
         />
       );
@@ -248,7 +273,7 @@ export function WizardSurface({ chatId, card }: WizardSurfaceProps) {
               chatId,
               picks,
             });
-            logIfFailed("submitServiceAndConcernPickerV2", chatId, result);
+            handleResult("submitServiceAndConcernPickerV2", chatId, result);
           }}
         />
       );
@@ -265,7 +290,7 @@ export function WizardSurface({ chatId, card }: WizardSurfaceProps) {
               service_key,
               explanation_text,
             });
-            logIfFailed("submitExplanationV2", chatId, result);
+            handleResult("submitExplanationV2", chatId, result);
           }}
         />
       );
@@ -275,7 +300,7 @@ export function WizardSurface({ chatId, card }: WizardSurfaceProps) {
         <DiagnosticLoadingCard
           onMount={async () => {
             const result = await runDiagnosticsV2({ chatId });
-            logIfFailed("runDiagnosticsV2", chatId, result);
+            handleResult("runDiagnosticsV2", chatId, result);
             return result.ok
               ? { ok: true }
               : { ok: false, error: result.error };
@@ -300,7 +325,7 @@ export function WizardSurface({ chatId, card }: WizardSurfaceProps) {
                   ? { kind: "skip" }
                   : { kind: "answer", value: answer },
             });
-            logIfFailed("submitClarificationAnswerV2", chatId, result);
+            handleResult("submitClarificationAnswerV2", chatId, result);
           }}
         />
       );

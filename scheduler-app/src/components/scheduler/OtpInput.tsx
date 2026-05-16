@@ -64,6 +64,8 @@ export function OtpInput({
   const [secondsLeft, setSecondsLeft] = useState(ttl_seconds);
   const [resendCooldown, setResendCooldown] = useState(RESEND_COOLDOWN_SECONDS);
   const [pendingResend, setPendingResend] = useState(false);
+  const [pendingVerify, setPendingVerify] = useState(false);
+  const submittedRef = useRef<string | null>(null);
   const inputRefs = useRef<Array<HTMLInputElement | null>>([]);
 
   useEffect(() => {
@@ -84,12 +86,30 @@ export function OtpInput({
     return () => clearInterval(t);
   }, [resendCooldown]);
 
-  // Submit when the customer fills the 6th digit
+  // Submit when the customer fills the 6th digit.
+  // Phase 9c hotfix 2026-05-16: track pending state so the card shows a
+  // visible "Verifying…" indicator instead of looking idle. Also guard
+  // against React 18 strict-mode double-mount by remembering the last
+  // submitted code (`submittedRef`) and not re-submitting the same code.
   useEffect(() => {
-    if (digits.every((d) => d.length === 1) && !disabled) {
-      const code = digits.join("");
-      void onSubmit({ code });
-    }
+    const code = digits.join("");
+    if (code.length !== DIGIT_COUNT || disabled || pendingVerify) return;
+    if (submittedRef.current === code) return; // already in flight / submitted
+    submittedRef.current = code;
+    setPendingVerify(true);
+    void (async () => {
+      try {
+        await onSubmit({ code });
+      } finally {
+        // Stay pending — page should be revalidating to the next step.
+        // If revalidate races and we stay on this card (e.g., invalid_code),
+        // the parent will rerender with new attempts_remaining and the
+        // customer can re-edit a digit; that state change clears the
+        // submittedRef pin via the !pendingVerify branch above + the dep
+        // re-run.
+        setPendingVerify(false);
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [digits.join("")]);
 
@@ -150,7 +170,8 @@ export function OtpInput({
   }
 
   const expired = secondsLeft <= 0;
-  const canResend = resendCooldown <= 0 && !pendingResend && !disabled;
+  const canResend =
+    resendCooldown <= 0 && !pendingResend && !disabled && !pendingVerify;
   const isLastTry =
     typeof attempts_remaining === "number" && attempts_remaining <= 1;
   const noAttemptsLeft =
@@ -191,7 +212,7 @@ export function OtpInput({
               maxLength={1}
               aria-label={`Digit ${idx + 1} of ${DIGIT_COUNT}`}
               value={d}
-              disabled={disabled || expired || noAttemptsLeft}
+              disabled={disabled || expired || noAttemptsLeft || pendingVerify}
               onChange={(e) => setDigitAt(idx, e.target.value)}
               onKeyDown={(e) => handleKeyDown(idx, e)}
               onPaste={handlePaste}
@@ -210,7 +231,17 @@ export function OtpInput({
           ))}
         </div>
 
-        {expired ? (
+        {pendingVerify ? (
+          <p
+            role="status"
+            aria-live="polite"
+            className="mt-3 text-[13px] leading-snug text-ink-secondary"
+          >
+            🔐 Verifying your code…
+          </p>
+        ) : null}
+
+        {expired && !pendingVerify ? (
           <p
             role="alert"
             className="mt-3 text-[13px] leading-snug text-status-error-fg"
