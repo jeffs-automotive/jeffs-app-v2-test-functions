@@ -32,6 +32,7 @@ import {
 } from "@/lib/scheduler/otp-direct-client";
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
+import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 
 const submitMultiAccountChoiceSchema = z.discriminatedUnion("action", [
   z.object({
@@ -49,7 +50,7 @@ export type SubmitMultiAccountChoiceV2Args = z.infer<
   typeof submitMultiAccountChoiceSchema
 >;
 
-export async function submitMultiAccountChoiceV2(
+async function submitMultiAccountChoiceV2Impl(
   args: SubmitMultiAccountChoiceV2Args,
 ): Promise<WizardTransitionResult> {
   const parsed = submitMultiAccountChoiceSchema.safeParse(args);
@@ -157,3 +158,8 @@ export async function submitMultiAccountChoiceV2(
     };
   }
 }
+
+export const submitMultiAccountChoiceV2 = wrapAction(
+  "submitMultiAccountChoiceV2",
+  submitMultiAccountChoiceV2Impl,
+);

@@ -35,6 +35,7 @@ import {
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
 import { logError } from "@/lib/scheduler/wizard/log-error";
+import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 
 const phoneEntrySchema = z.object({
   phone_e164: z.string().regex(/^\+1\d{10}$/, "phone must be +1XXXXXXXXXX"),
@@ -68,7 +69,7 @@ export type SubmitCustomerInfoEditV2Args = z.infer<
   typeof submitCustomerInfoEditSchema
 >;
 
-export async function submitCustomerInfoEditV2(
+async function submitCustomerInfoEditV2Impl(
   args: SubmitCustomerInfoEditV2Args,
 ): Promise<WizardTransitionResult> {
   const parsed = submitCustomerInfoEditSchema.safeParse(args);
@@ -211,6 +212,11 @@ export async function submitCustomerInfoEditV2(
     return { ok: false, error: msg };
   }
 }
+
+export const submitCustomerInfoEditV2 = wrapAction(
+  "submitCustomerInfoEditV2",
+  submitCustomerInfoEditV2Impl,
+);
 
 /**
  * Shallow JSON equality — sufficient for the edited_* shapes we compare.

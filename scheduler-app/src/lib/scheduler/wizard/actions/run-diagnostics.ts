@@ -38,6 +38,7 @@ import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-t
 import { diagnoseConcern } from "@/lib/scheduler/wizard/llm/diagnose-concern";
 import { loadConcernContext } from "@/lib/scheduler/wizard/llm/load-concern-context";
 import { resolveServiceCategory } from "@/lib/scheduler/wizard/llm/resolve-service-category";
+import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 
 const FALLBACK_CATEGORY = "other";
 
@@ -90,7 +91,7 @@ function parseVehicleNotes(raw: unknown): string | null {
   return null;
 }
 
-export async function runDiagnosticsV2(
+async function runDiagnosticsV2Impl(
   args: RunDiagnosticsV2Args,
 ): Promise<WizardTransitionResult> {
   const parsed = inputSchema.safeParse(args);
@@ -276,3 +277,8 @@ export async function runDiagnosticsV2(
     jeffBubble,
   });
 }
+
+export const runDiagnosticsV2 = wrapAction(
+  "runDiagnosticsV2",
+  runDiagnosticsV2Impl,
+);

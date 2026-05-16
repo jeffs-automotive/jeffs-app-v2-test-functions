@@ -32,6 +32,7 @@ import { z } from "zod";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
+import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 
 const SHOP_ID = 7476;
 
@@ -57,7 +58,7 @@ interface TestingRow {
   concern_categories: string[] | null;
 }
 
-export async function submitServiceAndConcernPickerV2(
+async function submitServiceAndConcernPickerV2Impl(
   args: SubmitServiceAndConcernPickerV2Args,
 ): Promise<WizardTransitionResult> {
   const parsed = submitServiceAndConcernPickerSchema.safeParse(args);
@@ -195,3 +196,8 @@ export async function submitServiceAndConcernPickerV2(
     };
   }
 }
+
+export const submitServiceAndConcernPickerV2 = wrapAction(
+  "submitServiceAndConcernPickerV2",
+  submitServiceAndConcernPickerV2Impl,
+);

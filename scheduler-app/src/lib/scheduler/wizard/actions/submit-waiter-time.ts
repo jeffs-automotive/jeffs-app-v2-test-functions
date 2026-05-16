@@ -25,6 +25,7 @@ import {
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
 import { buildServiceSummary } from "@/lib/scheduler/wizard/build-service-summary";
+import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 
 const submitWaiterTimeSchema = z.object({
   chatId: z.string().min(1),
@@ -33,7 +34,7 @@ const submitWaiterTimeSchema = z.object({
 
 export type SubmitWaiterTimeV2Args = z.infer<typeof submitWaiterTimeSchema>;
 
-export async function submitWaiterTimeV2(
+async function submitWaiterTimeV2Impl(
   args: SubmitWaiterTimeV2Args,
 ): Promise<WizardTransitionResult> {
   const parsed = submitWaiterTimeSchema.safeParse(args);
@@ -139,6 +140,11 @@ export async function submitWaiterTimeV2(
     };
   }
 }
+
+export const submitWaiterTimeV2 = wrapAction(
+  "submitWaiterTimeV2",
+  submitWaiterTimeV2Impl,
+);
 
 function raceLostBubble(reason: string | undefined): string {
   if (reason === "slot_just_taken") {

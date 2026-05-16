@@ -30,6 +30,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
 import type { WizardStep } from "@/lib/scheduler/session-state";
+import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 
 const dismissEscalationSchema = z.object({
   chatId: z.string().min(1),
@@ -64,7 +65,7 @@ const VALID_RESTORE_STEPS: ReadonlySet<WizardStep> = new Set<WizardStep>([
   "customer_question",
 ]);
 
-export async function dismissEscalationV2(
+async function dismissEscalationV2Impl(
   args: DismissEscalationV2Args,
 ): Promise<WizardTransitionResult> {
   const parsed = dismissEscalationSchema.safeParse(args);
@@ -148,3 +149,8 @@ export async function dismissEscalationV2(
     };
   }
 }
+
+export const dismissEscalationV2 = wrapAction(
+  "dismissEscalationV2",
+  dismissEscalationV2Impl,
+);

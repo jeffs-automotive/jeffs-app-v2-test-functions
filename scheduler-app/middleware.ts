@@ -31,6 +31,7 @@
  */
 
 import { NextResponse, type NextRequest } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 
 const COOKIE_NAME = "sched-chat-id";
 const THIRTY_DAYS_SECONDS = 30 * 24 * 60 * 60;
@@ -39,26 +40,39 @@ const UUID_V4_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function middleware(req: NextRequest) {
-  const existing = req.cookies.get(COOKIE_NAME)?.value;
+  try {
+    const existing = req.cookies.get(COOKIE_NAME)?.value;
 
-  if (existing && UUID_V4_RE.test(existing)) {
-    // Already have a valid cookie — pass through untouched.
+    if (existing && UUID_V4_RE.test(existing)) {
+      // Already have a valid cookie — pass through untouched.
+      return NextResponse.next();
+    }
+
+    // Issue a fresh chat-id cookie.
+    const fresh = crypto.randomUUID();
+    const res = NextResponse.next();
+    res.cookies.set({
+      name: COOKIE_NAME,
+      value: fresh,
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: THIRTY_DAYS_SECONDS,
+    });
+    return res;
+  } catch (e) {
+    // Defense in depth (R6-A NICE 2026-05-16): instrumentation.ts's
+    // onRequestError catches middleware throws, but pin a Sentry capture
+    // here too with the explicit surface so triage doesn't have to infer
+    // "middleware" from request metadata. Always pass through on error
+    // so a Sentry/crypto hiccup doesn't 500 every page navigation.
+    Sentry.captureException(e, {
+      tags: { surface: "scheduler_middleware_cookie_set" },
+      level: "warning",
+    });
     return NextResponse.next();
   }
-
-  // Issue a fresh chat-id cookie.
-  const fresh = crypto.randomUUID();
-  const res = NextResponse.next();
-  res.cookies.set({
-    name: COOKIE_NAME,
-    value: fresh,
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: THIRTY_DAYS_SECONDS,
-  });
-  return res;
 }
 
 /**

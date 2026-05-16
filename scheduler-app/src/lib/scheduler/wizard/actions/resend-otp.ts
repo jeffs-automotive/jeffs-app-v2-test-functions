@@ -26,6 +26,7 @@ import {
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
 import { logError } from "@/lib/scheduler/wizard/log-error";
+import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 
 const resendOtpSchema = z.object({
   chatId: z.string().min(1),
@@ -33,7 +34,7 @@ const resendOtpSchema = z.object({
 
 export type ResendOtpV2Args = z.infer<typeof resendOtpSchema>;
 
-export async function resendOtpV2(
+async function resendOtpV2Impl(
   args: ResendOtpV2Args,
 ): Promise<WizardTransitionResult> {
   const parsed = resendOtpSchema.safeParse(args);
@@ -119,3 +120,5 @@ export async function resendOtpV2(
     return { ok: false, error: msg };
   }
 }
+
+export const resendOtpV2 = wrapAction("resendOtpV2", resendOtpV2Impl);

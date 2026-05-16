@@ -29,6 +29,7 @@ import { z } from "zod";
 
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
+import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 
 const submitPartialVerificationChoiceSchema = z.object({
   chatId: z.string().min(1),
@@ -44,7 +45,7 @@ export type SubmitPartialVerificationChoiceV2Args = z.infer<
   typeof submitPartialVerificationChoiceSchema
 >;
 
-export async function submitPartialVerificationChoiceV2(
+async function submitPartialVerificationChoiceV2Impl(
   args: SubmitPartialVerificationChoiceV2Args,
 ): Promise<WizardTransitionResult> {
   const parsed = submitPartialVerificationChoiceSchema.safeParse(args);
@@ -124,3 +125,8 @@ export async function submitPartialVerificationChoiceV2(
     };
   }
 }
+
+export const submitPartialVerificationChoiceV2 = wrapAction(
+  "submitPartialVerificationChoiceV2",
+  submitPartialVerificationChoiceV2Impl,
+);

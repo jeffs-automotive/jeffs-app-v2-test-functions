@@ -56,6 +56,7 @@ import { scanForEscalationKeywords } from "@/lib/scheduler/escalation-keywords";
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
 import { logError } from "@/lib/scheduler/wizard/log-error";
+import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 import { submitEscalateV2 } from "./submit-escalate";
 
 const PARSE_LENGTH_THRESHOLD = 150; // chars — chat-design.md §10.3
@@ -81,7 +82,7 @@ export type SubmitCustomerNotesV2Args = z.infer<
   typeof submitCustomerNotesSchema
 >;
 
-export async function submitCustomerNotesV2(
+async function submitCustomerNotesV2Impl(
   args: SubmitCustomerNotesV2Args,
 ): Promise<WizardTransitionResult> {
   const parsed = submitCustomerNotesSchema.safeParse(args);
@@ -125,6 +126,11 @@ export async function submitCustomerNotesV2(
     return { ok: false, error: msg };
   }
 }
+
+export const submitCustomerNotesV2 = wrapAction(
+  "submitCustomerNotesV2",
+  submitCustomerNotesV2Impl,
+);
 
 // ─── Skip ───────────────────────────────────────────────────────────────────
 

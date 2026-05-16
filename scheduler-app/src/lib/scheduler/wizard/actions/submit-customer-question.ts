@@ -38,6 +38,7 @@ import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
 import { fireTranscriptDispatch } from "@/lib/scheduler/wizard/actions/fire-transcript-dispatch";
 import { submitEscalateV2 } from "./submit-escalate";
+import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 
 const MAX_QUESTION_LENGTH = 280; // matches CustomerQuestionCard's textarea cap
 
@@ -50,7 +51,7 @@ export type SubmitCustomerQuestionV2Args = z.infer<
   typeof submitCustomerQuestionSchema
 >;
 
-export async function submitCustomerQuestionV2(
+async function submitCustomerQuestionV2Impl(
   args: SubmitCustomerQuestionV2Args,
 ): Promise<WizardTransitionResult> {
   const parsed = submitCustomerQuestionSchema.safeParse(args);
@@ -138,3 +139,8 @@ export async function submitCustomerQuestionV2(
     };
   }
 }
+
+export const submitCustomerQuestionV2 = wrapAction(
+  "submitCustomerQuestionV2",
+  submitCustomerQuestionV2Impl,
+);

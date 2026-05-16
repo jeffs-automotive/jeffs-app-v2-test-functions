@@ -26,6 +26,7 @@ import { scanForEscalationKeywords } from "@/lib/scheduler/escalation-keywords";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
+import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 
 const submitExplanationSchema = z.object({
   chatId: z.string().min(1),
@@ -69,7 +70,7 @@ function parseItems(raw: unknown): ExplanationItem[] {
     .filter((x): x is ExplanationItem => x !== null);
 }
 
-export async function submitExplanationV2(
+async function submitExplanationV2Impl(
   args: SubmitExplanationV2Args,
 ): Promise<WizardTransitionResult> {
   const parsed = submitExplanationSchema.safeParse(args);
@@ -174,3 +175,8 @@ export async function submitExplanationV2(
     jeffBubble,
   });
 }
+
+export const submitExplanationV2 = wrapAction(
+  "submitExplanationV2",
+  submitExplanationV2Impl,
+);

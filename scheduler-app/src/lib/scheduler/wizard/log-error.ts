@@ -31,6 +31,8 @@
  * failure step by the time the row is queried). The helper does a quick
  * lookup so the column is populated at write time.
  */
+import * as Sentry from "@sentry/nextjs";
+
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 export type LogErrorLevel = "fatal" | "error" | "warning" | "info";
@@ -71,8 +73,22 @@ export async function logError(args: LogErrorArgs): Promise<void> {
         .eq("id", args.chatId)
         .maybeSingle();
       stepAtError = (row?.current_step as string | null) ?? null;
-    } catch {
-      // Ignore — the error log entry is still useful without step.
+    } catch (stepLookupErr) {
+      // Best-effort: the error log entry is still useful without step.
+      // R6-A NICE 2026-05-16: surface to Sentry as 'info' so a Semgrep
+      // empty-catch sweep doesn't flag this AND ops can see if the step
+      // lookup itself starts failing systematically.
+      Sentry.captureMessage("log_error_step_lookup_failed", {
+        level: "info",
+        extra: {
+          chatId: args.chatId,
+          original_surface: args.surface,
+          detail:
+            stepLookupErr instanceof Error
+              ? stepLookupErr.message
+              : String(stepLookupErr),
+        },
+      });
     }
   }
 

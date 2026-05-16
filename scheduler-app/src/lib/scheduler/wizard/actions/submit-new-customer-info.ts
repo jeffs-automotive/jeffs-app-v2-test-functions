@@ -34,6 +34,7 @@ import {
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
 import { logError } from "@/lib/scheduler/wizard/log-error";
+import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 
 const phoneEntrySchema = z.object({
   phone_e164: z.string().regex(/^\+1\d{10}$/, "phone must be +1XXXXXXXXXX"),
@@ -65,7 +66,7 @@ export type SubmitNewCustomerInfoV2Args = z.infer<
   typeof submitNewCustomerInfoSchema
 >;
 
-export async function submitNewCustomerInfoV2(
+async function submitNewCustomerInfoV2Impl(
   args: SubmitNewCustomerInfoV2Args,
 ): Promise<WizardTransitionResult> {
   const parsed = submitNewCustomerInfoSchema.safeParse(args);
@@ -280,3 +281,8 @@ export async function submitNewCustomerInfoV2(
     return { ok: false, error: msg };
   }
 }
+
+export const submitNewCustomerInfoV2 = wrapAction(
+  "submitNewCustomerInfoV2",
+  submitNewCustomerInfoV2Impl,
+);

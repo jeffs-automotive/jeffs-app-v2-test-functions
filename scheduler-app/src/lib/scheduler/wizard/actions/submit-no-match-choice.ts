@@ -23,6 +23,7 @@ import { z } from "zod";
 
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
+import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 
 const submitNoMatchChoiceSchema = z.object({
   chatId: z.string().min(1),
@@ -33,7 +34,7 @@ export type SubmitNoMatchChoiceV2Args = z.infer<
   typeof submitNoMatchChoiceSchema
 >;
 
-export async function submitNoMatchChoiceV2(
+async function submitNoMatchChoiceV2Impl(
   args: SubmitNoMatchChoiceV2Args,
 ): Promise<WizardTransitionResult> {
   const parsed = submitNoMatchChoiceSchema.safeParse(args);
@@ -88,3 +89,8 @@ export async function submitNoMatchChoiceV2(
     };
   }
 }
+
+export const submitNoMatchChoiceV2 = wrapAction(
+  "submitNoMatchChoiceV2",
+  submitNoMatchChoiceV2Impl,
+);

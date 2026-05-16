@@ -32,6 +32,7 @@ import {
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
 import { logError } from "@/lib/scheduler/wizard/log-error";
+import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 
 const submitVehiclePickSchema = z.object({
   chatId: z.string().min(1),
@@ -45,7 +46,7 @@ const submitVehiclePickSchema = z.object({
 
 export type SubmitVehiclePickV2Args = z.infer<typeof submitVehiclePickSchema>;
 
-export async function submitVehiclePickV2(
+async function submitVehiclePickV2Impl(
   args: SubmitVehiclePickV2Args,
 ): Promise<WizardTransitionResult> {
   const parsed = submitVehiclePickSchema.safeParse(args);
@@ -155,3 +156,8 @@ export async function submitVehiclePickV2(
     return { ok: false, error: msg };
   }
 }
+
+export const submitVehiclePickV2 = wrapAction(
+  "submitVehiclePickV2",
+  submitVehiclePickV2Impl,
+);

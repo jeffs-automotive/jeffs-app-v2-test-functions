@@ -28,6 +28,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
 import { logError } from "@/lib/scheduler/wizard/log-error";
+import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 
 const inputSchema = z.object({
   chatId: z.string().min(1),
@@ -99,7 +100,7 @@ function parseAnswered(raw: unknown): Record<string, string> {
   return out;
 }
 
-export async function submitClarificationAnswerV2(
+async function submitClarificationAnswerV2Impl(
   args: SubmitClarificationAnswerV2Args,
 ): Promise<WizardTransitionResult> {
   const parsed = inputSchema.safeParse(args);
@@ -214,3 +215,8 @@ export async function submitClarificationAnswerV2(
     return { ok: false, error: msg };
   }
 }
+
+export const submitClarificationAnswerV2 = wrapAction(
+  "submitClarificationAnswerV2",
+  submitClarificationAnswerV2Impl,
+);

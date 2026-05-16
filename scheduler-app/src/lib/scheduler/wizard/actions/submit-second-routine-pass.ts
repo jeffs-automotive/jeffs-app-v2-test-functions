@@ -28,6 +28,7 @@ import { z } from "zod";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
+import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 
 const SHOP_ID = 7476; // Phase 1 single-shop
 
@@ -40,7 +41,7 @@ export type SubmitSecondRoutinePassV2Args = z.infer<
   typeof submitSecondRoutinePassSchema
 >;
 
-export async function submitSecondRoutinePassV2(
+async function submitSecondRoutinePassV2Impl(
   args: SubmitSecondRoutinePassV2Args,
 ): Promise<WizardTransitionResult> {
   const parsed = submitSecondRoutinePassSchema.safeParse(args);
@@ -151,6 +152,11 @@ export async function submitSecondRoutinePassV2(
     };
   }
 }
+
+export const submitSecondRoutinePassV2 = wrapAction(
+  "submitSecondRoutinePassV2",
+  submitSecondRoutinePassV2Impl,
+);
 
 /**
  * Build the Step 7.6 → Step 8 transition bubble:

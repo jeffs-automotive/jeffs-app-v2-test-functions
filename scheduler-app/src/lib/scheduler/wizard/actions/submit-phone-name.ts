@@ -30,6 +30,7 @@ import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
 import type { WizardStep } from "@/lib/scheduler/session-state";
 import { logError } from "@/lib/scheduler/wizard/log-error";
+import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 
 // ─── Input validation ───────────────────────────────────────────────────────
 
@@ -93,7 +94,7 @@ function bubbleForDirective(directive: string): string | undefined {
 
 // ─── Server Action ──────────────────────────────────────────────────────────
 
-export async function submitPhoneNameV2(
+async function submitPhoneNameV2Impl(
   args: SubmitPhoneNameV2Args,
 ): Promise<WizardTransitionResult> {
   const parsed = submitPhoneNameSchema.safeParse(args);
@@ -293,3 +294,8 @@ export async function submitPhoneNameV2(
     return { ok: false, error: msg };
   }
 }
+
+export const submitPhoneNameV2 = wrapAction(
+  "submitPhoneNameV2",
+  submitPhoneNameV2Impl,
+);

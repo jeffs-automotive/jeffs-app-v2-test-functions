@@ -37,6 +37,7 @@ import {
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
 import { logError } from "@/lib/scheduler/wizard/log-error";
+import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 
 const CURRENT_YEAR = new Date().getFullYear();
 const MIN_YEAR = 1980;
@@ -63,7 +64,7 @@ const submitNewVehicleSchema = z.object({
 
 export type SubmitNewVehicleV2Args = z.infer<typeof submitNewVehicleSchema>;
 
-export async function submitNewVehicleV2(
+async function submitNewVehicleV2Impl(
   args: SubmitNewVehicleV2Args,
 ): Promise<WizardTransitionResult> {
   const parsed = submitNewVehicleSchema.safeParse(args);
@@ -206,3 +207,8 @@ export async function submitNewVehicleV2(
     return { ok: false, error: msg };
   }
 }
+
+export const submitNewVehicleV2 = wrapAction(
+  "submitNewVehicleV2",
+  submitNewVehicleV2Impl,
+);

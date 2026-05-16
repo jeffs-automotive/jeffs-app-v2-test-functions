@@ -22,6 +22,7 @@ import {
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
 import { logError } from "@/lib/scheduler/wizard/log-error";
+import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 
 // Bug fix 2026-05-16 (R4-IMPORTANT-D-2): every other V2 action runs a
 // .safeParse on entry; submit-greeting previously trusted the TS interface
@@ -33,7 +34,7 @@ const submitGreetingSchema = z.object({
 
 export type SubmitGreetingV2Args = z.infer<typeof submitGreetingSchema>;
 
-export async function submitGreetingV2(
+async function submitGreetingV2Impl(
   args: SubmitGreetingV2Args,
 ): Promise<WizardTransitionResult> {
   const parsed = submitGreetingSchema.safeParse(args);
@@ -77,6 +78,11 @@ export async function submitGreetingV2(
     return { ok: false, error: msg };
   }
 }
+
+export const submitGreetingV2 = wrapAction(
+  "submitGreetingV2",
+  submitGreetingV2Impl,
+);
 
 /**
  * Bubble copy per chat-design.md §4a Jeff voice — warm + light emoji.

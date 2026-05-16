@@ -31,6 +31,7 @@ import {
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
 import { logError } from "@/lib/scheduler/wizard/log-error";
+import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 
 const submitOtpSchema = z.object({
   chatId: z.string().min(1),
@@ -39,7 +40,7 @@ const submitOtpSchema = z.object({
 
 export type SubmitOtpV2Args = z.infer<typeof submitOtpSchema>;
 
-export async function submitOtpV2(
+async function submitOtpV2Impl(
   args: SubmitOtpV2Args,
 ): Promise<WizardTransitionResult> {
   const parsed = submitOtpSchema.safeParse(args);
@@ -201,6 +202,8 @@ function wrongCodeBubble(
 function returningSuccessBubble(): string {
   return "Got it — your number checks out! ✅";
 }
+
+export const submitOtpV2 = wrapAction("submitOtpV2", submitOtpV2Impl);
 
 function newCustomerSuccessBubble(firstName: string | null): string {
   if (firstName) {

@@ -46,6 +46,7 @@ import {
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
 import { logError } from "@/lib/scheduler/wizard/log-error";
+import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 import type { WizardStep } from "@/lib/scheduler/session-state";
 import {
   buildAppointmentTitleV2,
@@ -65,7 +66,7 @@ const submitSummarySchema = z.object({
 
 export type SubmitSummaryV2Args = z.infer<typeof submitSummarySchema>;
 
-export async function submitSummaryV2(
+async function submitSummaryV2Impl(
   args: SubmitSummaryV2Args,
 ): Promise<WizardTransitionResult> {
   const parsed = submitSummarySchema.safeParse(args);
@@ -103,6 +104,11 @@ export async function submitSummaryV2(
     return { ok: false, error: msg };
   }
 }
+
+export const submitSummaryV2 = wrapAction(
+  "submitSummaryV2",
+  submitSummaryV2Impl,
+);
 
 // ─── Edit path ──────────────────────────────────────────────────────────────
 

@@ -20,6 +20,7 @@ import { z } from "zod";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
+import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 
 const SHOP_ID = 7476; // Phase 1 single-shop
 
@@ -32,7 +33,7 @@ export type SubmitAppointmentTypeV2Args = z.infer<
   typeof submitAppointmentTypeSchema
 >;
 
-export async function submitAppointmentTypeV2(
+async function submitAppointmentTypeV2Impl(
   args: SubmitAppointmentTypeV2Args,
 ): Promise<WizardTransitionResult> {
   const parsed = submitAppointmentTypeSchema.safeParse(args);
@@ -73,6 +74,11 @@ export async function submitAppointmentTypeV2(
     };
   }
 }
+
+export const submitAppointmentTypeV2 = wrapAction(
+  "submitAppointmentTypeV2",
+  submitAppointmentTypeV2Impl,
+);
 
 /**
  * Returns true when every picked service is in routine_services with

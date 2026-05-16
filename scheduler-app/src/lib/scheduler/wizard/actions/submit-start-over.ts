@@ -34,6 +34,7 @@ import { z } from "zod";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
+import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 
 const submitStartOverSchema = z.object({
   chatId: z.string().min(1),
@@ -41,7 +42,7 @@ const submitStartOverSchema = z.object({
 
 export type SubmitStartOverV2Args = z.infer<typeof submitStartOverSchema>;
 
-export async function submitStartOverV2(
+async function submitStartOverV2Impl(
   args: SubmitStartOverV2Args,
 ): Promise<WizardTransitionResult> {
   const parsed = submitStartOverSchema.safeParse(args);
@@ -178,3 +179,8 @@ export async function submitStartOverV2(
     };
   }
 }
+
+export const submitStartOverV2 = wrapAction(
+  "submitStartOverV2",
+  submitStartOverV2Impl,
+);

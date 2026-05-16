@@ -32,6 +32,7 @@ import {
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
 import { buildServiceSummary } from "@/lib/scheduler/wizard/build-service-summary";
+import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 
 const submitDateSchema = z.object({
   chatId: z.string().min(1),
@@ -40,7 +41,7 @@ const submitDateSchema = z.object({
 
 export type SubmitDateV2Args = z.infer<typeof submitDateSchema>;
 
-export async function submitDateV2(
+async function submitDateV2Impl(
   args: SubmitDateV2Args,
 ): Promise<WizardTransitionResult> {
   const parsed = submitDateSchema.safeParse(args);
@@ -165,6 +166,8 @@ export async function submitDateV2(
     };
   }
 }
+
+export const submitDateV2 = wrapAction("submitDateV2", submitDateV2Impl);
 
 function raceLostBubble(reason: string | undefined): string {
   if (reason === "slot_just_taken") {

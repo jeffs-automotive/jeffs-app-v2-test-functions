@@ -1191,6 +1191,15 @@ async function assessWaitEligibility(
       `routine_services wait_eligible lookup failed: ${routineErr.message}`,
     );
   }
+  // R6-C-2 2026-05-16: a service_key may legitimately appear in BOTH
+  // testing_services and routine_services (current intentional collisions:
+  // brake_inspection — testing for the $39.99 diagnostic, routine with
+  // requires_explanation=TRUE for the picker UX). When that happens, the
+  // ROUTINE row wins via the lookup-order below (we read routineByKey
+  // first, fall back to testingByKey). Future deliberate collisions must
+  // preserve this resolution order; surprise collisions should be caught
+  // via the upsert_testing_service / upsert_routine_service admin tools
+  // (which can lint cross-table uniqueness before inserting).
   const routineByKey = new Map<
     string,
     { display_name: string; wait_eligible: boolean }

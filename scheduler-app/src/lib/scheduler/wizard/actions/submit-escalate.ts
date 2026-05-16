@@ -42,6 +42,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
 import { fireTranscriptDispatch } from "@/lib/scheduler/wizard/actions/fire-transcript-dispatch";
+import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 
 const submitEscalateSchema = z.object({
   chatId: z.string().min(1),
@@ -50,7 +51,7 @@ const submitEscalateSchema = z.object({
 
 export type SubmitEscalateV2Args = z.infer<typeof submitEscalateSchema>;
 
-export async function submitEscalateV2(
+async function submitEscalateV2Impl(
   args: SubmitEscalateV2Args,
 ): Promise<WizardTransitionResult> {
   const parsed = submitEscalateSchema.safeParse(args);
@@ -138,3 +139,8 @@ export async function submitEscalateV2(
     };
   }
 }
+
+export const submitEscalateV2 = wrapAction(
+  "submitEscalateV2",
+  submitEscalateV2Impl,
+);

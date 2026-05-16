@@ -135,6 +135,15 @@ vi.mock("next/cache", () => ({
 vi.mock("@sentry/nextjs", () => ({
   captureException: vi.fn(),
   captureMessage: vi.fn(),
+  setTag: vi.fn(),
+  // R6-A-1: actions are wrapped in Sentry.withServerActionInstrumentation
+  // via the wrapAction helper. The mock just invokes the callback so the
+  // wrapped action's behavior is unchanged in tests.
+  withServerActionInstrumentation: (
+    _name: string,
+    _options: unknown,
+    callback: () => Promise<unknown>,
+  ) => callback(),
 }));
 
 vi.mock("@/lib/scheduler/wizard/append-bubble", () => ({
