@@ -508,15 +508,12 @@ entrypoint = "./functions/tekmetric-webhook/index.ts"
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/tekmetric-webhook/*.html" ]
 
-[functions.orchestrator-direct]
-enabled = true
-# Plain JSON in/out endpoint hit by the scheduler-app's Vercel Server Action.
-# Auth: Pattern A — Authorization: Bearer <SUPABASE_SECRET_KEY> manually verified
-# in the function. verify_jwt=false so we can do our own bearer check rather
-# than letting Supabase's JWT verifier accept any project-signed JWT.
-verify_jwt = false
-import_map = "./functions/orchestrator-direct/deno.json"
-entrypoint = "./functions/orchestrator-direct/index.ts"
+# NOTE 2026-05-16 (R6-E-1): orchestrator-direct was deleted in Phase 16 dead-
+# code prune (commit 6c27700). The block was kept around for the V1 wizard
+# during the V2 migration; with V2 live on /, /book, and /book-v2, the
+# function is gone. Block removed here so `supabase functions deploy` doesn't
+# try to redeploy a missing entrypoint. To prune the live cloud-side function:
+# `supabase functions delete orchestrator-direct`.
 
 [functions.scheduler-step2-direct]
 enabled = true
