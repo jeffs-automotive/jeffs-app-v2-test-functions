@@ -223,9 +223,36 @@ export interface SummaryPayload {
   reminders: string[];
 }
 
-/** Step 10.3 — Customer notes capture. */
+/**
+ * Step 10.3 — Customer notes capture (Phase 13 2026-05-16).
+ *
+ * Two render modes:
+ *
+ *   - **Input mode** (`parsed_preview === null`): show the textarea + Skip
+ *     + Send buttons. `initial_text` is the customer's prior raw note when
+ *     resuming a session or null on first show.
+ *
+ *   - **Approval mode** (`parsed_preview !== null`): the customer's prior
+ *     submit (text ≤150 chars) was LLM-parsed. The card shows the parsed
+ *     preview with Save (approve) + Edit (reject) buttons. On a 2nd reject
+ *     the action auto-punts to the raw-append path. `edit_attempts` is
+ *     surfaced so the card can hint "Last try — next edit will send your
+ *     original note as-is" on attempts=1.
+ */
 export interface CustomerNotesPayload {
   initial_text: string | null;
+  /**
+   * Phase 13: LLM-rewritten preview of the customer's ≤150-char raw note.
+   * `null` in input mode (no preview yet). Non-null + non-empty puts the
+   * card into approval mode.
+   */
+  parsed_preview: string | null;
+  /**
+   * Phase 13: count of prior Edit (reject) clicks on the parsed preview.
+   * `0` on first preview; `1` on the alternate-wording retry. The card
+   * uses this to surface a "last try" hint on attempts=1.
+   */
+  edit_attempts: number;
 }
 
 /** Step 10.4 — Customer question capture. */

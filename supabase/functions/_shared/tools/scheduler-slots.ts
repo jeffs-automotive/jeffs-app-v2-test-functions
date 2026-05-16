@@ -1127,6 +1127,81 @@ export async function cancelAppointment(
   return { success: true };
 }
 
+/**
+ * Append a customer-authored note to an existing Tekmetric appointment's
+ * description. Phase 13 2026-05-16 — the Step 10.3 customer-notes channel.
+ *
+ * Per chat-design.md §10.3-10.5 amendment 2026-05-16: the customer's note
+ * is appended to `appointment.description` (NOT `customer.notes` — that
+ * field is deferred to V2.1+). The existing description already carries
+ * the service summary + concerns from the POST; we GET the current
+ * description, append a separator + "Customer note: <text>", and PATCH.
+ *
+ * GET-then-PATCH (instead of a single PATCH with `description = <new>`)
+ * avoids overwriting the original service summary. Empty existing
+ * description is handled — we just write "Customer note: <text>" with no
+ * leading separator.
+ */
+export async function appendAppointmentDescription(
+  sb: SupabaseClient,
+  shopId: number,
+  args: { appointment_id: number; append_text: string },
+): Promise<{ success: true; new_description: string }> {
+  const trimmed = (args.append_text ?? "").trim();
+  if (!trimmed) {
+    throw new Error("append_text cannot be empty");
+  }
+
+  // GET the appointment to read the current description.
+  const getRes = await tekmetricFetch(
+    sb,
+    `/appointments/${args.appointment_id}`,
+    { method: "GET", query: { shop: shopId } },
+  );
+  if (!getRes.ok) {
+    const text = await getRes.text();
+    throw new Error(
+      `Tekmetric GET /appointments/${args.appointment_id} → HTTP ${getRes.status}: ${text.slice(0, 300)}`,
+    );
+  }
+  const getJson = await getRes.json();
+  const existing = String(getJson?.data?.description ?? "");
+  const newDescription = existing.length > 0
+    ? `${existing}\n\nCustomer note: ${trimmed}`
+    : `Customer note: ${trimmed}`;
+
+  // PATCH the appointment with the appended description. shopId is
+  // required in the body per the Tekmetric PATCH contract.
+  const patchRes = await tekmetricFetch(
+    sb,
+    `/appointments/${args.appointment_id}`,
+    {
+      method: "PATCH",
+      body: { shopId, description: newDescription },
+    },
+  );
+  if (!patchRes.ok) {
+    const text = await patchRes.text();
+    throw new Error(
+      `Tekmetric PATCH /appointments/${args.appointment_id} → HTTP ${patchRes.status}: ${text.slice(0, 300)}`,
+    );
+  }
+
+  // Update local shadow so the next page load matches Tekmetric without
+  // waiting for the appointments-sync cron.
+  await sb
+    .from("appointments")
+    .update({
+      description: newDescription,
+      tekmetric_synced_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("shop_id", shopId)
+    .eq("tekmetric_appointment_id", args.appointment_id);
+
+  return { success: true, new_description: newDescription };
+}
+
 // ─── Admin tools (called via Claude Desktop OR the scheduler) ────────────────
 
 /**

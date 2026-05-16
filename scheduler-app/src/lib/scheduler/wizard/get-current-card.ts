@@ -43,6 +43,7 @@ import {
   getEarliestAvailableDate,
 } from "./availability";
 import { buildSummaryCardPayload } from "./build-summary-data";
+import { parseCustomerNote } from "./llm/parse-customer-note";
 import type { WizardCard } from "./card-payloads";
 import type { WizardStep } from "../session-state";
 
@@ -638,24 +639,95 @@ export async function getCurrentCard(
       }
     }
 
-    case "customer_notes":
+    case "customer_notes": {
+      // Phase 13 (2026-05-16): two modes.
+      //
+      // Input mode: row.customer_notes_text is null OR
+      //   customer_notes_approved is non-null (already finalized; shouldn't
+      //   normally be on this step but defensive). Render with no preview.
+      //
+      // Approval mode: row.customer_notes_text is set AND approved is null.
+      //   We LLM-parse the stored raw text and surface the preview. The
+      //   action submitCustomerNotesV2 handles Approve / Edit. Re-parse on
+      //   every render so an Edit click (which only bumps edit_attempts)
+      //   produces fresh alternate wording without us persisting it.
+      const rawText = (row.customer_notes_text as string | null) ?? null;
+      const approved = (row.customer_notes_approved as boolean | null) ?? null;
+      const editAttempts =
+        (row.customer_notes_edit_attempts as number | null) ?? 0;
+
+      const inputMode =
+        !rawText || rawText.trim().length === 0 || approved !== null;
+
+      if (inputMode) {
+        return {
+          step: "customer_notes",
+          payload: {
+            initial_text: rawText,
+            parsed_preview: null,
+            edit_attempts: editAttempts,
+          },
+        };
+      }
+
+      // Approval mode — call the LLM rewriter. Attempt 2 fires on the
+      // 1st Edit click (edit_attempts === 1 after the action incremented).
+      const firstName =
+        (row.verified_first_name as string | null) ??
+        (row.entered_first_name as string | null) ??
+        null;
+      const attempt: 1 | 2 = editAttempts >= 1 ? 2 : 1;
+
+      let parsedPreview = rawText.trim().slice(0, 150);
+      try {
+        const result = await parseCustomerNote({
+          raw_text: rawText,
+          attempt,
+          customer_first_name: firstName,
+        });
+        // Fail-safe inside parseCustomerNote returns parsed_text=raw on
+        // LLM error, so this branch always produces a non-empty preview.
+        if (result.parsed_text.trim().length > 0) {
+          parsedPreview = result.parsed_text;
+        }
+      } catch (e) {
+        Sentry.captureException(e, {
+          tags: { surface: "get_current_card_customer_notes_parse" },
+          level: "warning",
+          extra: { chatId, attempt },
+        });
+      }
+
       return {
         step: "customer_notes",
         payload: {
-          initial_text: (row.customer_notes_text as string | null) ?? null,
+          initial_text: rawText,
+          parsed_preview: parsedPreview,
+          edit_attempts: editAttempts,
         },
       };
+    }
 
     case "customer_question":
       return { step: "customer_question", payload: {} };
 
     case "completed":
-      // TODO(phase_13): build appointment_label from appointment_date + time.
+      // Phase 13 (2026-05-16): build appointment_label from
+      // appointment_date + appointment_time + appointment_type. The label
+      // appears in the completed card recap ("We'll see you Wednesday,
+      // May 13 at 8:00 AM" for waiter; bare date for dropoff).
       return {
         step: "completed",
         payload: {
-          first_name: (row.verified_first_name as string | null) ?? null,
-          appointment_label: null,
+          first_name:
+            (row.verified_first_name as string | null) ??
+            (row.entered_first_name as string | null) ??
+            null,
+          appointment_label: buildAppointmentLabel(
+            row.appointment_date as string | null,
+            row.appointment_time as string | null,
+            row.appointment_type as "waiter" | "dropoff" | null,
+          ),
           allow_schedule_another: true,
         },
       };
@@ -1074,4 +1146,42 @@ function ymdFromDate(d: Date): string {
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
+}
+
+/**
+ * Build the friendly recap string for the completed card.
+ *   waiter:  "Wed, May 13 at 8:00 AM"
+ *   dropoff: "Wed, May 13"
+ *
+ * Times are shop-local (America/New_York). Returns null when date is
+ * missing so the card suppresses the "We'll see you ..." line.
+ */
+function buildAppointmentLabel(
+  date: string | null,
+  time: string | null,
+  type: "waiter" | "dropoff" | null,
+): string | null {
+  if (!date) return null;
+  const timeStr = type === "waiter" ? (time ?? "08:00") : "12:00";
+  const startIso = `${date}T${timeStr}:00-04:00`;
+  const d = new Date(startIso);
+  if (Number.isNaN(d.getTime())) return null;
+
+  const dayPart = d.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    timeZone: "America/New_York",
+  });
+
+  if (type !== "waiter") {
+    return dayPart;
+  }
+
+  const timePart = d.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "America/New_York",
+  });
+  return `${dayPart} at ${timePart}`;
 }

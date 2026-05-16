@@ -24,7 +24,8 @@ export type BookingDirectOp =
   | "create_customer"
   | "create_vehicle"
   | "patch_customer"
-  | "fetch_vehicles_for_customer";
+  | "fetch_vehicles_for_customer"
+  | "append_appointment_description";
 
 export interface ListWaiterTimesRequest {
   op: "list_waiter_times";
@@ -216,6 +217,24 @@ export interface FetchVehiclesResponse {
   meta?: { latency_ms?: number };
 }
 
+export interface AppendDescriptionRequest {
+  op: "append_appointment_description";
+  session_id: string;
+  appointment_id: number;
+  append_text: string;
+}
+
+export interface AppendDescriptionResponse {
+  ok: boolean;
+  op: "append_appointment_description";
+  appointment_id?: number;
+  new_description?: string;
+  /** One of: 'tekmetric_4xx' | 'tekmetric_5xx'. */
+  error?: string;
+  tekmetric_error_text?: string;
+  meta?: { latency_ms?: number };
+}
+
 export type BookingDirectRequest =
   | ListWaiterTimesRequest
   | HoldSlotRequest
@@ -223,7 +242,8 @@ export type BookingDirectRequest =
   | CreateCustomerRequest
   | CreateVehicleRequest
   | PatchCustomerRequest
-  | FetchVehiclesRequest;
+  | FetchVehiclesRequest
+  | AppendDescriptionRequest;
 
 export type BookingDirectResponse =
   | ListWaiterTimesResponse
@@ -232,7 +252,8 @@ export type BookingDirectResponse =
   | CreateCustomerResponse
   | CreateVehicleResponse
   | PatchCustomerResponse
-  | FetchVehiclesResponse;
+  | FetchVehiclesResponse
+  | AppendDescriptionResponse;
 
 export class BookingDirectError extends Error {
   constructor(
@@ -402,6 +423,18 @@ export async function fetchVehiclesForCustomer(
   if (r.op !== "fetch_vehicles_for_customer") {
     throw new BookingDirectError(
       `scheduler-booking-direct returned wrong op (${r.op}) for fetch_vehicles_for_customer`,
+    );
+  }
+  return r;
+}
+
+export async function appendAppointmentDescription(
+  req: AppendDescriptionRequest,
+): Promise<AppendDescriptionResponse> {
+  const r = await call(req);
+  if (r.op !== "append_appointment_description") {
+    throw new BookingDirectError(
+      `scheduler-booking-direct returned wrong op (${r.op}) for append_appointment_description`,
     );
   }
   return r;

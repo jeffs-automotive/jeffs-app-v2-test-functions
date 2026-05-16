@@ -44,6 +44,7 @@ import {
 import {
   holdAppointmentSlot,
   confirmAppointment,
+  appendAppointmentDescription,
 } from "../_shared/tools/scheduler-slots.ts";
 import {
   createNewCustomer,
@@ -166,6 +167,13 @@ interface FetchVehiclesInput {
   customer_id: number;
 }
 
+interface AppendDescriptionInput {
+  op: "append_appointment_description";
+  session_id: string;
+  appointment_id: number;
+  append_text: string;
+}
+
 type RequestBody =
   | ListWaiterTimesInput
   | HoldSlotInput
@@ -173,7 +181,8 @@ type RequestBody =
   | CreateCustomerInput
   | CreateVehicleInput
   | PatchCustomerInput
-  | FetchVehiclesInput;
+  | FetchVehiclesInput
+  | AppendDescriptionInput;
 
 function parseBody(raw: unknown):
   | { ok: true; input: RequestBody }
@@ -348,6 +357,23 @@ function parseBody(raw: unknown):
       },
     };
   }
+  if (r.op === "append_appointment_description") {
+    if (typeof r.appointment_id !== "number") {
+      return { ok: false, error: "appointment_id required (number)" };
+    }
+    if (typeof r.append_text !== "string" || !r.append_text.trim()) {
+      return { ok: false, error: "append_text required (non-empty string)" };
+    }
+    return {
+      ok: true,
+      input: {
+        op: "append_appointment_description",
+        session_id: r.session_id,
+        appointment_id: r.appointment_id,
+        append_text: r.append_text,
+      },
+    };
+  }
   if (r.op === "patch_customer") {
     if (typeof r.customer_id !== "number") {
       return { ok: false, error: "customer_id required" };
@@ -387,7 +413,7 @@ function parseBody(raw: unknown):
   return {
     ok: false,
     error:
-      "op must be 'list_waiter_times' | 'hold_slot' | 'confirm_booking' | 'create_customer' | 'create_vehicle' | 'patch_customer' | 'fetch_vehicles_for_customer'",
+      "op must be 'list_waiter_times' | 'hold_slot' | 'confirm_booking' | 'create_customer' | 'create_vehicle' | 'patch_customer' | 'fetch_vehicles_for_customer' | 'append_appointment_description'",
   };
 }
 
@@ -794,6 +820,44 @@ async function handleRequest(req: Request): Promise<Response> {
         customer_id: input.customer_id,
         meta: { latency_ms: Date.now() - startedAt },
       });
+    }
+
+    if (input.op === "append_appointment_description") {
+      // Phase 13 (2026-05-16): customer-authored note from Step 10.3 gets
+      // appended to the existing appointment description (NOT overwritten).
+      // Per chat-design.md §10.3-10.5 amendment, this is the Phase 1
+      // channel for customer notes — customer.notes field is deferred.
+      try {
+        const result = await appendAppointmentDescription(sb, SHOP_ID, {
+          appointment_id: input.appointment_id,
+          append_text: input.append_text,
+        });
+        return jsonResponse({
+          ok: true,
+          op: "append_appointment_description",
+          appointment_id: input.appointment_id,
+          new_description: result.new_description,
+          meta: { latency_ms: Date.now() - startedAt },
+        });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (/HTTP 4\d\d/.test(msg)) {
+          return jsonResponse({
+            ok: false,
+            op: "append_appointment_description",
+            error: "tekmetric_4xx",
+            tekmetric_error_text: msg.slice(0, 500),
+            meta: { latency_ms: Date.now() - startedAt },
+          });
+        }
+        return jsonResponse({
+          ok: false,
+          op: "append_appointment_description",
+          error: "tekmetric_5xx",
+          tekmetric_error_text: msg.slice(0, 500),
+          meta: { latency_ms: Date.now() - startedAt },
+        });
+      }
     }
 
     if (input.op === "confirm_booking") {

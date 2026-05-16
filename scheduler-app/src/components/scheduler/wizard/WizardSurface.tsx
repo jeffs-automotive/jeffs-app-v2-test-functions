@@ -36,8 +36,11 @@ import { useRouter } from "next/navigation";
 import { AppointmentTypeCard } from "@/components/scheduler/heritage/AppointmentTypeCard";
 import { CalendarDatePicker } from "@/components/scheduler/CalendarDatePicker";
 import { ClarificationQuestionCard } from "@/components/scheduler/heritage/ClarificationQuestionCard";
+import { CompletedCard } from "@/components/scheduler/heritage/CompletedCard";
 import { ConcernExplanationCard } from "@/components/scheduler/heritage/ConcernExplanationCard";
 import { CustomerInfoEditCard } from "@/components/scheduler/heritage/CustomerInfoEditCard";
+import { CustomerNotesCard } from "@/components/scheduler/heritage/CustomerNotesCard";
+import { CustomerQuestionCard } from "@/components/scheduler/heritage/CustomerQuestionCard";
 import { DiagnosticLoadingCard } from "@/components/scheduler/heritage/DiagnosticLoadingCard";
 import { GreetingCard } from "@/components/scheduler/heritage/GreetingCard";
 import { MultiAccountDisambiguationCard } from "@/components/scheduler/heritage/MultiAccountDisambiguationCard";
@@ -57,6 +60,8 @@ import { runDiagnosticsV2 } from "@/lib/scheduler/wizard/actions/run-diagnostics
 import { submitAppointmentTypeV2 } from "@/lib/scheduler/wizard/actions/submit-appointment-type";
 import { submitClarificationAnswerV2 } from "@/lib/scheduler/wizard/actions/submit-clarification-answer";
 import { submitCustomerInfoEditV2 } from "@/lib/scheduler/wizard/actions/submit-customer-info-edit";
+import { submitCustomerNotesV2 } from "@/lib/scheduler/wizard/actions/submit-customer-notes";
+import { submitCustomerQuestionV2 } from "@/lib/scheduler/wizard/actions/submit-customer-question";
 import { submitDateV2 } from "@/lib/scheduler/wizard/actions/submit-date";
 import { submitExplanationV2 } from "@/lib/scheduler/wizard/actions/submit-explanation";
 import { submitGreetingV2 } from "@/lib/scheduler/wizard/actions/submit-greeting";
@@ -427,6 +432,76 @@ export function WizardSurface({ chatId, card }: WizardSurfaceProps) {
               edit_target,
             });
             handleResult("submitSummaryV2", chatId, result);
+          }}
+        />
+      );
+
+    case "customer_notes":
+      return (
+        <CustomerNotesCard
+          initial_text={card.payload.initial_text}
+          parsed_preview={card.payload.parsed_preview}
+          edit_attempts={card.payload.edit_attempts}
+          onSubmit={async ({ text, approved }) => {
+            // Input mode — Skip (text=null) or Send (text=typed).
+            void approved; // approved=true on Send; we infer the kind from text instead.
+            const result =
+              text === null || text.trim().length === 0
+                ? await submitCustomerNotesV2({ chatId, kind: "skip" })
+                : await submitCustomerNotesV2({
+                    chatId,
+                    kind: "submit_raw",
+                    text,
+                  });
+            handleResult("submitCustomerNotesV2", chatId, result);
+          }}
+          onApprove={async ({ parsed_text }) => {
+            const result = await submitCustomerNotesV2({
+              chatId,
+              kind: "approve_parsed",
+              parsed_text,
+            });
+            handleResult("submitCustomerNotesV2(approve)", chatId, result);
+          }}
+          onReject={async () => {
+            const result = await submitCustomerNotesV2({
+              chatId,
+              kind: "reject_parsed",
+            });
+            handleResult("submitCustomerNotesV2(reject)", chatId, result);
+          }}
+        />
+      );
+
+    case "customer_question":
+      return (
+        <CustomerQuestionCard
+          onSubmit={async ({ question }) => {
+            const result = await submitCustomerQuestionV2({
+              chatId,
+              question,
+            });
+            handleResult("submitCustomerQuestionV2", chatId, result);
+          }}
+        />
+      );
+
+    case "completed":
+      return (
+        <CompletedCard
+          first_name={card.payload.first_name}
+          appointment_label={card.payload.appointment_label}
+          allow_schedule_another={card.payload.allow_schedule_another}
+          onScheduleAnother={async () => {
+            // Phase 13: minimal "Schedule another" implementation —
+            // navigate to /book-v2 with a fresh-session query param. The
+            // session cookie reset (clearing sched-chat-id) is wired into
+            // Phase 14's Start Over flow + the page-level layout. Until
+            // then, a hard navigation is the safe path.
+            window.location.assign("/book-v2?reset=1");
+          }}
+          onClose={async () => {
+            // No-op — the CompletedCard handles its own ghost state.
           }}
         />
       );
