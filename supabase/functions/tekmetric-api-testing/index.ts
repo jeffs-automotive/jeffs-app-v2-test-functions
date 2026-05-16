@@ -31,9 +31,11 @@
 //   200 { ok: true,  op, url_called, status, data }
 //   4xx { ok: false, op, url_called?, status?, error, body_excerpt? }
 //
-// Auth: Pattern A bearer (matches scheduler-step2-direct + scheduler-otp-
-// direct + scheduler-booking-direct). Callers must supply
-// `Authorization: Bearer <SUPABASE_SECRET_KEY>` + `apikey: <SAME_VALUE>`.
+// Auth: Supabase's default JWT verification (verify_jwt=true). The
+// publishable anon key passes — this is a read-only testing surface, so
+// we don't gate it behind the service-role-key Pattern A bearer the
+// other scheduler-* functions use. The Tekmetric token still comes from
+// the vault via getTekmetricAccessToken (see tekmetric-client.ts).
 //
 // Safety:
 //   - READ-ONLY. No POST/PATCH/DELETE ops exposed. If you need to test a
@@ -46,21 +48,17 @@
 import "@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-import {
-  checkSchedulerBearer,
-  unauthorizedResponse,
-  RESOLVED_SERVICE_ROLE_KEY,
-} from "../_shared/scheduler-auth.ts";
 import { tekmetricFetch } from "../_shared/tekmetric-client.ts";
 import { ENV_NAMES } from "../_shared/tekmetric.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const SHOP_ID = parseInt(
   Deno.env.get(ENV_NAMES.TEKMETRIC_SHOP_ID) ?? "7476",
   10,
 );
 
-const sb = createClient(SUPABASE_URL, RESOLVED_SERVICE_ROLE_KEY, {
+const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
@@ -552,9 +550,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
       405,
     );
   }
-
-  const auth = checkSchedulerBearer(req, "tekmetric-api-testing");
-  if (!auth.ok) return unauthorizedResponse(auth);
 
   // Empty body → default to op='index' so a bare POST returns the catalog.
   let raw: unknown = {};
