@@ -1,48 +1,49 @@
 "use client";
 
 /**
- * IdleTimer — Phase 14 client-side idle / abandon detector.
+ * IdleTimer — client-side idle / abandon detector.
  *
- * Per chat-design.md §B "Idle / abandon flow" (lines 3188-3223):
+ * 2026-05-16 ephemeral-session rewrite per Chris's spec:
  *
- *   - Every user interaction (pointer down, key down, scroll, touch
- *     start) resets the idle timer.
- *   - 2 minutes of inactivity → surface a soft nudge: "Still there? 👋
- *     Take your time."
- *   - 7 minutes of total inactivity → fire `navigator.sendBeacon` to
- *     /api/scheduler/mark-abandoned and reload the page (the row's
- *     status will read 'timed_out' on the next render and the resume
- *     flow takes over).
- *   - `beforeunload` / `pagehide` also fire the beacon — so tab close
- *     while the customer was actively in-flight still surfaces as
- *     'abandoned' to the service team.
+ *   "The appointment process will time out after 5 minutes of
+ *    inactivity. If it times out it will reload the page and start at
+ *    step one."
  *
- * The 2-minute nudge is RENDER-ONLY (no row write). The 7-minute
- * abandon IS a row write (via the beacon endpoint).
+ * Behavior:
+ *   - Every user interaction (pointer/key/scroll/touch) resets the
+ *     5-minute timer.
+ *   - After 5 minutes of inactivity → fire `navigator.sendBeacon` to
+ *     /api/scheduler/mark-abandoned (which flips status='timed_out',
+ *     stamps ended_at, and releases any active appointment_holds for
+ *     the session). Then window.location.reload() — the next render
+ *     calls hydrateSession which sees the stale row + wipes it in
+ *     place, surfacing the greeting card.
+ *   - `beforeunload` / `pagehide` also fire the beacon — tab-close
+ *     while in-flight releases the hold + marks the session abandoned.
  *
- * Design note: this component is invisible most of the time; it only
- * appears when the 2-minute mark is hit. Visibility is `aria-live` so
- * screen readers announce the nudge.
+ * Phase 14's 2-minute "Still there?" nudge was dropped in this
+ * rewrite. The spec is single-threshold and abrupt by design — the
+ * customer should treat the wizard as ephemeral, not a long-lived
+ * session.
  *
- * Phase 14 scope: terminal-step sessions (status='ended' / 'escalated')
- * are silently skipped — those don't need the abandon flow.
+ * Disabled at terminal steps (escalated / completed) — those have no
+ * abandon flow since the session is already terminal.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 
 export interface IdleTimerProps {
   chatId: string;
-  /** Current step at mount — used as the source in the abandon beacon. */
+  /** Current step at mount — included in the abandon beacon's audit. */
   currentStep: string;
   /**
-   * Skip when the session is in a terminal state (completed / escalated /
-   * timed_out). Defaults to false; parent should pass true when the
-   * wizard's step is one of those terminals.
+   * Skip when the session is in a terminal state (completed / escalated).
+   * Defaults to false; parent passes true when the wizard's step is one
+   * of those terminals.
    */
   disabled?: boolean;
 }
 
-const IDLE_NUDGE_MS = 2 * 60 * 1000; // 2 minutes
-const ABANDON_AFTER_NUDGE_MS = 5 * 60 * 1000; // +5 minutes = 7 total
+const TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes — per 2026-05-16 spec
 const INTERACTIVE_EVENTS: Array<keyof DocumentEventMap> = [
   "pointerdown",
   "keydown",
@@ -55,15 +56,14 @@ export function IdleTimer({
   currentStep,
   disabled = false,
 }: IdleTimerProps) {
-  const [nudgeVisible, setNudgeVisible] = useState(false);
-  // Track abandonment state so we don't double-fire if onUnload also runs.
+  // Track abandonment so the idle-timer + pagehide handlers don't
+  // double-fire if both happen to run.
   const abandonedRef = useRef(false);
 
   useEffect(() => {
     if (disabled) return;
 
-    let nudgeTimer: ReturnType<typeof setTimeout> | null = null;
-    let abandonTimer: ReturnType<typeof setTimeout> | null = null;
+    let idleTimer: ReturnType<typeof setTimeout> | null = null;
 
     function fireBeacon(source: "idle_timer" | "tab_close") {
       if (abandonedRef.current) return;
@@ -74,73 +74,54 @@ export function IdleTimer({
           step: currentStep,
           source,
         });
-        // sendBeacon is fire-and-forget; the browser flushes even on
-        // page tear-down. POST is the default. We don't await — even on
-        // success the response is empty.
         navigator.sendBeacon?.(
           `/api/scheduler/mark-abandoned?${params.toString()}`,
         );
       } catch {
         // beacon failure is acceptable — server-side cron will reap
+        // orphan rows long-term; the hold's TTL also bounds the impact.
       }
     }
 
-    function resetTimers() {
+    function resetTimer() {
       if (abandonedRef.current) return;
-      if (nudgeTimer) clearTimeout(nudgeTimer);
-      if (abandonTimer) clearTimeout(abandonTimer);
-      setNudgeVisible(false);
-      nudgeTimer = setTimeout(() => {
-        setNudgeVisible(true);
-        abandonTimer = setTimeout(() => {
-          fireBeacon("idle_timer");
-          // Reload so the page re-reads the row (now status='timed_out')
-          // and surfaces the appropriate "abandoned" state. Phase 15
-          // will deepen this into a dedicated abandoned card.
-          try {
-            window.location.reload();
-          } catch {
-            // ignore — beacon already fired
-          }
-        }, ABANDON_AFTER_NUDGE_MS);
-      }, IDLE_NUDGE_MS);
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        fireBeacon("idle_timer");
+        // Reload to a clean state. hydrateSession will detect the
+        // just-stamped timed_out row and wipe-in-place → greeting.
+        try {
+          window.location.reload();
+        } catch {
+          // ignore — beacon already fired
+        }
+      }, TIMEOUT_MS);
     }
 
     function onUnload() {
-      // pagehide / beforeunload covers tab-close, navigation away,
-      // and history pops. Only beacon if we haven't already.
+      // pagehide / beforeunload covers tab-close, navigation away, and
+      // history pops. Beacon releases the hold + marks abandoned.
       fireBeacon("tab_close");
     }
 
     for (const evt of INTERACTIVE_EVENTS) {
-      document.addEventListener(evt, resetTimers, { passive: true });
+      document.addEventListener(evt, resetTimer, { passive: true });
     }
     window.addEventListener("pagehide", onUnload);
     window.addEventListener("beforeunload", onUnload);
 
-    resetTimers();
+    resetTimer();
 
     return () => {
       for (const evt of INTERACTIVE_EVENTS) {
-        document.removeEventListener(evt, resetTimers);
+        document.removeEventListener(evt, resetTimer);
       }
       window.removeEventListener("pagehide", onUnload);
       window.removeEventListener("beforeunload", onUnload);
-      if (nudgeTimer) clearTimeout(nudgeTimer);
-      if (abandonTimer) clearTimeout(abandonTimer);
+      if (idleTimer) clearTimeout(idleTimer);
     };
   }, [chatId, currentStep, disabled]);
 
-  if (!nudgeVisible || disabled) return null;
-
-  return (
-    <div
-      role="status"
-      aria-live="polite"
-      className="mx-auto mb-4 max-w-3xl rounded-[var(--radius-card)] border border-brand-gold-300 bg-brand-gold-50 px-4 py-3 text-[14px] leading-relaxed text-ink-secondary"
-    >
-      Still there? 👋 Take your time — I&apos;ll wait. Just tap any card
-      or type to continue.
-    </div>
-  );
+  // No rendered UI — this component is purely a side-effect harness.
+  return null;
 }

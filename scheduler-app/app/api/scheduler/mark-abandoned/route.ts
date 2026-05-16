@@ -1,37 +1,31 @@
 /**
- * POST /api/scheduler/mark-abandoned — Phase 14 idle / tab-close handler.
+ * POST /api/scheduler/mark-abandoned — idle / tab-close handler.
  *
- * Per chat-design.md §B "Idle / abandon flow" (lines 3188-3223): when the
- * client detects either (a) 7 minutes of total inactivity OR (b) tab
- * unload via `beforeunload` / `pagehide`, it fires
- * `navigator.sendBeacon('/api/scheduler/mark-abandoned?chat_id=...&step=...')`.
+ * Per the 2026-05-16 ephemeral-session architecture: the V2 wizard no
+ * longer persists state across customer absence. If the customer leaves
+ * the page OR is idle for 5+ minutes, the IdleTimer fires this beacon,
+ * the row is marked timed_out, and ANY ACTIVE APPOINTMENT HOLD for the
+ * session is released so other customers can pick that slot.
  *
- * `sendBeacon` is fire-and-forget — the browser sends even during page
- * tear-down. The endpoint accepts POST (sendBeacon defaults to POST) and
- * returns 204 No Content quickly so the browser doesn't queue the
- * response.
+ * Triggers:
+ *   - 5-min inactivity timer in IdleTimer.tsx
+ *   - pagehide / beforeunload (tab close, nav-away)
  *
- * Idempotent: the WHERE clause only flips rows whose status is `active`.
- * A row that's already escalated/ended/timed_out is left alone — the
- * customer might be on a stale tab from an earlier completed session.
+ * The beacon writes the row update + releases the hold. The customer's
+ * next visit goes through hydrateSession, which detects the stale row
+ * (status != 'active') and wipes it in-place to start fresh.
  *
- * Status convention follows the schema's `'active'|'idle'|'ended'|
- * 'escalated'|'timed_out'` enum (per migration 20260513000000):
- *   - `timed_out` matches the chat-design.md spec's "abandoned" intent.
- *   - We also stamp `ended_at` so transcript-dispatcher's session_end
- *     timing reads correctly.
+ * Idempotent: row updates only fire on status='active' rows. Hold
+ * release only touches rows where released_at IS NULL. Multiple beacons
+ * for the same session (e.g., one from idle timer + one from pagehide)
+ * are safe — second one is a no-op.
  *
- * Auth: NONE. This endpoint accepts an unauthenticated beacon because
- * (a) the browser can't attach bearers on a sendBeacon during tear-down
- * and (b) the abuse surface is small — the only effect is marking a row
- * that the abuser already knows the chat_id for (cookie-bound) as
- * timed_out, which is precisely what the customer would do themselves.
+ * Auth: NONE. The browser can't attach bearers on sendBeacon during
+ * tear-down. Abuse surface is small — marking a row the attacker
+ * already knows the chat_id for as timed_out is exactly what the
+ * legitimate customer would do.
  *
- * Phase 1 limitation: this is a best-effort beacon. If the browser fails
- * to send (network drop, force-quit, etc.), the orphan `active` row will
- * be reaped by a future Phase 1.1 server-side cron OR by the customer's
- * next return (which can flip it to `active` again — see chat-design.md
- * §C "Resume after returning").
+ * Returns 204 always so the browser doesn't queue retries.
  */
 import { NextResponse } from "next/server";
 import * as Sentry from "@sentry/nextjs";
@@ -94,6 +88,26 @@ export async function POST(req: Request): Promise<NextResponse> {
         extra: { chatId, error: updateErr.message },
       });
       return new NextResponse(null, { status: 204 });
+    }
+
+    // Release any active appointment_holds for this session so other
+    // customers can pick the same slot. The 2026-05-16 ephemeral-session
+    // architecture says holds survive only during the active session;
+    // a timeout / tab-close MUST free the slot.
+    //
+    // Filter on released_at IS NULL so this is idempotent — a hold
+    // already released by submitSummaryV2 confirm or by a prior beacon
+    // is left alone.
+    const { error: releaseErr } = await supabase
+      .from("appointment_holds")
+      .update({ released_at: nowIso })
+      .eq("session_id", chatId)
+      .is("released_at", null);
+    if (releaseErr) {
+      Sentry.captureMessage("mark_abandoned_release_hold_failed", {
+        level: "warning",
+        extra: { chatId, error: releaseErr.message },
+      });
     }
 
     // Best-effort audit row carrying source + step at abandon.
