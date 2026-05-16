@@ -668,11 +668,26 @@ export function Chat({ chatId, initialMessages, initialStep }: ChatProps) {
     // Persistence: setMessages updates client state; the saveAssistantCardMessage
     // Server Action upserts the synthetic message into customer_chat_messages
     // so resume/refresh works. Best-effort — don't block UI on the persist.
+    //
+    // ERROR PATH (2026-05-15 audit fix — "Code submitted but nothing happens"):
+    // We MUST render even when ok=false. tooErrResult sets ok=false +
+    // directive='tool_error' on any Server Action failure;
+    // mapDirectiveToToolName converts tool_error → show_escalation_card,
+    // which IS in CLIENT_RENDERED_DIRECTIVES. Earlier this branch also
+    // required `ok !== false`, which silently swallowed the failure: the
+    // shouldAutoSend predicate above had already returned false (because
+    // show_escalation_card is in the set), so neither path rendered.
+    // Customer saw the "Code submitted" echo from SubmittedEcho and was
+    // STUCK with no escalation, no retry, no feedback. Audit log for
+    // session 84dc3da3 (2026-05-13 19:20:13) shows the exact pathology:
+    // verify_otp returned tool_error after 6902ms and the customer never
+    // got the escalation card. Removing the ok guard means any
+    // CLIENT_RENDERED directive — including show_escalation_card from
+    // tool_error mapping — surfaces a card to the customer.
     const nextDirective = normalizedResult.directive;
     if (
       nextDirective &&
-      CLIENT_RENDERED_DIRECTIVES.has(nextDirective) &&
-      normalizedResult.ok !== false
+      CLIENT_RENDERED_DIRECTIVES.has(nextDirective)
     ) {
       const nextToolCallId = crypto.randomUUID();
       const nextMessageId = crypto.randomUUID();
