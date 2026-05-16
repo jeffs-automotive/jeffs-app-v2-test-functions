@@ -1,0 +1,10 @@
+{
+  "name": "jeffs-app-v2-test-data",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Repo-root package.json — exists only so scripts/ can resolve npm deps from Node's ESM resolver. Application code lives under scheduler-app/. Edge functions live under supabase/functions/ (Deno; not npm-managed).",
+  "type": "module",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.105.4"
+  }
+}

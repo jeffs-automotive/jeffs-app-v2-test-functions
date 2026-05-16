@@ -1,3 +1,4 @@
+Initialising login role...
 export type Json =
   | string
   | number
@@ -486,6 +487,36 @@ export type Database = {
         }
         Relationships: []
       }
+      concern_category_guidelines: {
+        Row: {
+          category: string
+          display_label: string
+          guideline_prose: string
+          shop_id: number
+          updated_at: string
+          updated_by_name: string | null
+          updated_by_oauth_client_id: string | null
+        }
+        Insert: {
+          category: string
+          display_label: string
+          guideline_prose: string
+          shop_id: number
+          updated_at?: string
+          updated_by_name?: string | null
+          updated_by_oauth_client_id?: string | null
+        }
+        Update: {
+          category?: string
+          display_label?: string
+          guideline_prose?: string
+          shop_id?: number
+          updated_at?: string
+          updated_by_name?: string | null
+          updated_by_oauth_client_id?: string | null
+        }
+        Relationships: []
+      }
       concern_questions: {
         Row: {
           active: boolean
@@ -496,6 +527,7 @@ export type Database = {
           options: Json
           question_text: string
           shop_id: number
+          subcategory_id: number
           updated_at: string
           updated_by_name: string | null
           updated_by_oauth_client_id: string | null
@@ -509,6 +541,7 @@ export type Database = {
           options: Json
           question_text: string
           shop_id: number
+          subcategory_id: number
           updated_at?: string
           updated_by_name?: string | null
           updated_by_oauth_client_id?: string | null
@@ -522,6 +555,57 @@ export type Database = {
           options?: Json
           question_text?: string
           shop_id?: number
+          subcategory_id?: number
+          updated_at?: string
+          updated_by_name?: string | null
+          updated_by_oauth_client_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "concern_questions_subcategory_id_fkey"
+            columns: ["subcategory_id"]
+            isOneToOne: false
+            referencedRelation: "concern_subcategories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      concern_subcategories: {
+        Row: {
+          active: boolean
+          category: string
+          created_at: string
+          display_label: string
+          display_order: number
+          id: number
+          shop_id: number
+          slug: string
+          updated_at: string
+          updated_by_name: string | null
+          updated_by_oauth_client_id: string | null
+        }
+        Insert: {
+          active?: boolean
+          category: string
+          created_at?: string
+          display_label: string
+          display_order?: number
+          id?: number
+          shop_id: number
+          slug: string
+          updated_at?: string
+          updated_by_name?: string | null
+          updated_by_oauth_client_id?: string | null
+        }
+        Update: {
+          active?: boolean
+          category?: string
+          created_at?: string
+          display_label?: string
+          display_order?: number
+          id?: number
+          shop_id?: number
+          slug?: string
           updated_at?: string
           updated_by_name?: string | null
           updated_by_oauth_client_id?: string | null
@@ -1349,6 +1433,7 @@ export type Database = {
         Row: {
           abbreviation: string
           active: boolean
+          concern_categories: string[] | null
           created_at: string
           display_name: string
           display_order: number
@@ -1364,6 +1449,7 @@ export type Database = {
         Insert: {
           abbreviation: string
           active?: boolean
+          concern_categories?: string[] | null
           created_at?: string
           display_name: string
           display_order: number
@@ -1379,6 +1465,7 @@ export type Database = {
         Update: {
           abbreviation?: string
           active?: boolean
+          concern_categories?: string[] | null
           created_at?: string
           display_name?: string
           display_order?: number
@@ -1598,6 +1685,7 @@ export type Database = {
           created_at: string
           description: string | null
           display_name: string
+          example_keywords: string[] | null
           id: string
           notes: string | null
           service_key: string
@@ -1614,6 +1702,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           display_name: string
+          example_keywords?: string[] | null
           id?: string
           notes?: string | null
           service_key: string
@@ -1630,6 +1719,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           display_name?: string
+          example_keywords?: string[] | null
           id?: string
           notes?: string | null
           service_key?: string
@@ -2117,3 +2207,4 @@ export const Constants = {
     Enums: {},
   },
 } as const
+<claude-code-hint v="1" type="plugin" value="supabase@claude-plugins-official" />
