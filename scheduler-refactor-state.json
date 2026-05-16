@@ -9,7 +9,7 @@
     ".claude/work/planning/references/gpt-findings-05-13-2026.md"
   ],
   "rationale_one_paragraph": "The Vercel AI SDK was being used as a state machine for a deterministic 10-step wizard, but lite/mini models couldn't reliably emit follow-up tool calls so 19 of 19 wizard cards were already being rendered client-side via a CLIENT_RENDERED_DIRECTIVES allowlist. Two of three Edge Functions were already bypassing the LLM. Net: the LLM did nothing in the main flow but the codebase paid full chat-stream lifecycle cost. This refactor moves to a row-as-truth server-state-driven wizard: each step is a Server Action that writes the row and revalidates the page; the LLM is invoked only for Step 7 diagnostic Q&A and Step 10.3 customer-notes parsing. Chat bubbles stay as decoration (deterministic templates).",
-  "current_phase": "phase_15_swap_routes",
+  "current_phase": "phase_16_delete_dead_code",
   "context_protocol": {
     "rule_1_one_phase_per_turn": "Work ONE phase per turn. Do not chain phases in the same turn even if they look small.",
     "rule_2_end_of_phase": "When a phase is done: (1) set its status to 'complete'; (2) set completed_at to today's ISO date; (3) advance current_phase to the next pending phase; (4) write a one-line completion note in the phase's 'completion_note' field; (5) STOP and prompt the user before continuing.",
@@ -833,8 +833,11 @@
     {
       "id": "phase_15_swap_routes",
       "title": "Swap /book to new wizard",
-      "status": "pending",
+      "status": "complete",
+      "completed_at": "2026-05-16",
+      "completion_note": "Phase 15 cut over /book + / to the server-state-driven V2 wizard. (1) NEW src/components/scheduler/wizard/BookPageShell.tsx — shared Server Component that owns the header, the WizardSurface, the cross-cutting WizardCrossCutting wrapper (OfflineBanner + IdleTimer + WizardFooter), and the editorial footer. Reads chatId via hydrateSession + the row via getCurrentCard. (2) app/book/page.tsx — replaced the legacy ChatBootstrap-based render with a thin shell that just calls BookPageShell (force-dynamic kept). (3) app/page.tsx — same swap for the canonical scheduler URL (the root route also previously used ChatBootstrap). The state.json originally only called out /book, but / is the canonical landing URL and would have left the legacy stack reachable; the broader scope is correct per chat-design.md intent. (4) app/book-v2/page.tsx — replaced with a simple redirect to /book so any advisor-shared /book-v2 links + Vercel preview URLs continue working through the migration window. Phase 16 deletes the route entirely. (5) Bumped scheduler-app/package.json version from 0.0.1 → 0.1.0 to mark the V2 cutover. (6) typecheck + build both clean. Build-output proof of the cutover: /book + / dropped from 334 kB First Load (legacy AI-SDK + XState path) to 277 kB First Load (V2 wizard path). Phase 16 will trim the remaining 226 kB shared bundle by deleting the unreachable ChatBootstrap + AI-SDK + XState chain.",
       "summary": "Cut over /book to the new WizardSurface. /book-v2 becomes a redirect to /book.",
+      "scope_expansion_note": "The state.json originally scoped Phase 15 to /book only. During execution the / (root) route was also swapped because it's the canonical scheduler URL and shared the same legacy ChatBootstrap path; leaving it on legacy would have defeated the cutover intent. /book-v2 became a redirect (not a delete) — Phase 16 handles the delete.",
       "tasks": [
         "Update scheduler-app/app/book/page.tsx — copy the body from app/book-v2/page.tsx (hydrate + getCurrentCard + WizardSurface). Replace the old Chat-based render.",
         "Change scheduler-app/app/book-v2/page.tsx to redirect to /book (or delete the route entirely — decide at execution).",

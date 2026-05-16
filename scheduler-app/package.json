@@ -1,6 +1,6 @@
 {
   "name": "scheduler-app",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Customer-facing appointment scheduler for Jeff's Automotive — chat agent at appointments.jeffsautomotive.com. See ../docs and dotfiles-v2-test-data/.../.claude/memory/appointments_design.md for the architectural binding.",
   "private": true,
   "type": "module",
