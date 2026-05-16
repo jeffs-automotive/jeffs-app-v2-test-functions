@@ -810,8 +810,25 @@ export async function holdAppointmentSlot(
  * appointment payload, POST /appointments, then mark the hold consumed
  * and write a write-through row in our local `appointments` shadow.
  *
- * The Tekmetric POST /appointments returns a BARE INTEGER ID (not an object)
- * in the `data` field — handle accordingly.
+ * Phase 12 2026-05-16 — POST body shape change per the 2026-05-16
+ * empirical findings (see docs/scheduler/appointment-post.md):
+ *
+ *   - DROP `appointmentOption` (silently ignored by Tekmetric in every
+ *     shape; all API-POSTed appointments default to STAY regardless).
+ *   - ADD `color` as the staff-facing channel: "red" for waiter,
+ *     "navy" for dropoff. Other shop colors deferred to V2.1.
+ *   - title prefix uses `[TM]` to mark online-scheduler bookings (per
+ *     Chris's 2026-05-16 convention update; replaces the older `[OP]`
+ *     placeholder).
+ *   - GET-after-POST verification: immediately re-fetch the appointment
+ *     by id to verify Tekmetric stored it correctly. Defends against
+ *     phantom-write where our network drops between Tekmetric's 200 OK
+ *     and our row write. Log discrepancies to console.warn (Sentry on
+ *     the Vercel side); don't fail the booking (it's already in
+ *     Tekmetric — failing here would leave a phantom anyway).
+ *
+ * The Tekmetric POST /appointments returns a BARE INTEGER ID (not an
+ * object) in the `data` field — handle accordingly.
  */
 export async function confirmAppointment(
   sb: SupabaseClient,
@@ -822,9 +839,23 @@ export async function confirmAppointment(
     vehicle_id: number;
     title: string;
     description: string;
-    appointment_option?: "WAITER" | "PICKUP_DROPOFF" | "TOWED" | "NONE";
+    /**
+     * Color tag for the Tekmetric calendar block. Defaults to red for
+     * waiter, navy for dropoff (per shop convention documented in
+     * docs/scheduler/appointment-post.md). Caller can override for
+     * future feature colors (yellow=loaner, blue=ride, etc.).
+     */
+    color?: string;
   },
-): Promise<{ appointment_id: number; status: string; start_time: string }> {
+): Promise<{
+  appointment_id: number;
+  status: string;
+  start_time: string;
+  verification: {
+    ok: boolean;
+    diff?: string;
+  };
+}> {
   // Re-check the hold
   const { data: hold, error: holdErr } = await sb
     .from("appointment_holds")
@@ -852,10 +883,13 @@ export async function confirmAppointment(
   const startTime = new Date(startTimeIso);
   const endTime = new Date(startTime.getTime() + 60 * 60_000); // 1-hour appointments
 
-  const apptOption =
-    args.appointment_option ??
-    (type === "waiter" ? "WAITER" : "PICKUP_DROPOFF");
+  // Color defaults from appointment_type per shop convention. Caller can
+  // override for future feature colors.
+  const color = args.color ?? (type === "waiter" ? "red" : "navy");
 
+  // POST body per 2026-05-16 empirical findings — 8 fields, no
+  // appointmentOption (silently ignored), no confirmationStatus
+  // (read-only), no status (defaults to NONE).
   const body = {
     shopId,
     customerId: args.customer_id,
@@ -864,7 +898,7 @@ export async function confirmAppointment(
     endTime: endTime.toISOString(),
     title: args.title,
     description: args.description,
-    appointmentOption: apptOption,
+    color,
   };
 
   const res = await tekmetricFetch(sb, "/appointments", {
@@ -893,6 +927,71 @@ export async function confirmAppointment(
     );
   }
 
+  // GET-after-POST verification (Phase 12 2026-05-16 add-on).
+  // Confirm the booking landed with the expected fields. Fail-soft —
+  // don't throw if verify fails; the appointment IS in Tekmetric, and
+  // the customer should see success even if our verify GET hiccups.
+  const verification: { ok: boolean; diff?: string } = { ok: true };
+  try {
+    const verifyRes = await tekmetricFetch(
+      sb,
+      `/appointments/${appointmentId}`,
+      { method: "GET" },
+    );
+    if (verifyRes.ok) {
+      const verifyJson = await verifyRes.json();
+      const stored = verifyJson?.data ?? verifyJson;
+      const issues: string[] = [];
+      if (stored?.customerId !== args.customer_id) {
+        issues.push(`customerId mismatch (got ${stored?.customerId})`);
+      }
+      if (stored?.vehicleId !== args.vehicle_id) {
+        issues.push(`vehicleId mismatch (got ${stored?.vehicleId})`);
+      }
+      if (stored?.startTime !== startTime.toISOString()) {
+        issues.push(`startTime mismatch (got ${stored?.startTime})`);
+      }
+      if (stored?.title !== args.title) {
+        issues.push(`title mismatch`);
+      }
+      if (issues.length > 0) {
+        verification.ok = false;
+        verification.diff = issues.join("; ");
+        console.warn(
+          JSON.stringify({
+            level: "warning",
+            msg: "confirm_appointment_verify_mismatch",
+            appointment_id: appointmentId,
+            issues,
+          }),
+        );
+      }
+    } else {
+      verification.ok = false;
+      verification.diff = `verify_get_status_${verifyRes.status}`;
+      console.warn(
+        JSON.stringify({
+          level: "warning",
+          msg: "confirm_appointment_verify_get_failed",
+          appointment_id: appointmentId,
+          status: verifyRes.status,
+        }),
+      );
+    }
+  } catch (e) {
+    verification.ok = false;
+    verification.diff =
+      e instanceof Error ? e.message.slice(0, 200) : String(e).slice(0, 200);
+    console.warn(
+      JSON.stringify({
+        level: "warning",
+        msg: "confirm_appointment_verify_threw",
+        appointment_id: appointmentId,
+        detail: verification.diff,
+      }),
+    );
+  }
+
   // Mark hold consumed
   await sb
     .from("appointment_holds")
@@ -900,7 +999,11 @@ export async function confirmAppointment(
     .eq("id", args.hold_id);
 
   // Write-through to local shadow (so list_available_slots is up-to-date
-  // immediately, before next sync tick)
+  // immediately, before next sync tick). Phase 9d shape: appointment_type
+  // derives from color (red→waiter, else→dropoff), status defaults to NONE
+  // (Tekmetric's default for fresh appointments — we no longer write
+  // CONFIRMED since CONFIRMED isn't even a valid appointmentStatus per
+  // empirical Tekmetric API testing).
   await sb
     .from("appointments")
     .upsert(
@@ -912,12 +1015,13 @@ export async function confirmAppointment(
         start_time: startTime.toISOString(),
         end_time: endTime.toISOString(),
         appointment_type: type,
-        appointment_status: "CONFIRMED",
+        appointment_status: "NONE",
         title: args.title,
         description: args.description,
-        appointment_option: apptOption,
+        color,
         source: "scheduler-app",
         tekmetric_synced_at: new Date().toISOString(),
+        parse_version: 2,
       },
       { onConflict: "shop_id,tekmetric_appointment_id" },
     );
@@ -930,8 +1034,9 @@ export async function confirmAppointment(
 
   return {
     appointment_id: appointmentId as number,
-    status: "CONFIRMED",
+    status: "NONE",
     start_time: startTime.toISOString(),
+    verification,
   };
 }
 

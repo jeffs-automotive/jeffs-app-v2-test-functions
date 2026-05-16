@@ -49,6 +49,7 @@ import { PartialVerificationGateCard } from "@/components/scheduler/heritage/Par
 import { PhoneNameCard } from "@/components/scheduler/heritage/PhoneNameCard";
 import { SecondRoutinePassCard } from "@/components/scheduler/heritage/SecondRoutinePassCard";
 import { ServiceAndConcernPicker } from "@/components/scheduler/ServiceAndConcernPicker";
+import { SummaryCard } from "@/components/scheduler/heritage/SummaryCard";
 import { VehiclePicker } from "@/components/scheduler/VehiclePicker";
 import { WaiterTimePicker } from "@/components/scheduler/WaiterTimePicker";
 import { resendOtpV2 } from "@/lib/scheduler/wizard/actions/resend-otp";
@@ -68,6 +69,7 @@ import { submitPartialVerificationChoiceV2 } from "@/lib/scheduler/wizard/action
 import { submitPhoneNameV2 } from "@/lib/scheduler/wizard/actions/submit-phone-name";
 import { submitSecondRoutinePassV2 } from "@/lib/scheduler/wizard/actions/submit-second-routine-pass";
 import { submitServiceAndConcernPickerV2 } from "@/lib/scheduler/wizard/actions/submit-service-and-concern-picker";
+import { submitSummaryV2 } from "@/lib/scheduler/wizard/actions/submit-summary";
 import { submitVehiclePickV2 } from "@/lib/scheduler/wizard/actions/submit-vehicle-pick";
 import { submitWaiterTimeV2 } from "@/lib/scheduler/wizard/actions/submit-waiter-time";
 import type { WizardCard } from "@/lib/scheduler/wizard/card-payloads";
@@ -403,6 +405,28 @@ export function WizardSurface({ chatId, card }: WizardSurfaceProps) {
               selected_time,
             });
             handleResult("submitWaiterTimeV2", chatId, result);
+          }}
+        />
+      );
+
+    case "summary":
+      return (
+        <SummaryCard
+          hold_id={card.payload.hold_id ?? undefined}
+          hold_expires_at={card.payload.hold_expires_at ?? undefined}
+          starts_at={card.payload.starts_at}
+          customer={card.payload.customer}
+          vehicle={card.payload.vehicle}
+          type={card.payload.type}
+          services={card.payload.services}
+          reminders={card.payload.reminders}
+          onSubmit={async ({ confirmed, edit_target }) => {
+            const result = await submitSummaryV2({
+              chatId,
+              confirmed,
+              edit_target,
+            });
+            handleResult("submitSummaryV2", chatId, result);
           }}
         />
       );

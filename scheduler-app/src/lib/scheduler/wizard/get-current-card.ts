@@ -42,6 +42,7 @@ import {
   computeAvailableDates,
   getEarliestAvailableDate,
 } from "./availability";
+import { buildSummaryCardPayload } from "./build-summary-data";
 import type { WizardCard } from "./card-payloads";
 import type { WizardStep } from "../session-state";
 
@@ -588,25 +589,54 @@ export async function getCurrentCard(
       };
     }
 
-    case "summary":
-      // TODO(phase_12): full summary build — customer name, vehicle label,
-      // services breakdown, hold_expires_at, reminders.
-      return {
-        step: "summary",
-        payload: {
-          hold_id: (row.hold_token as string | null) ?? null,
-          hold_expires_at: null,
-          starts_at:
-            (row.appointment_date as string | null) ??
-            "",
-          customer: buildCustomerName(row),
-          vehicle: "",
-          type:
-            (row.appointment_type as "waiter" | "dropoff" | null) ?? "dropoff",
-          services: [],
-          reminders: [],
-        },
-      };
+    case "summary": {
+      // Phase 12 (2026-05-16): full payload via buildSummaryCardPayload.
+      // Includes services breakdown (routine + concerns + testing), pre-
+      // appointment reminders, and the hold_expires_at countdown read
+      // from appointment_holds (the source-of-truth for hold TTL).
+      const holdToken = (row.hold_token as string | null) ?? undefined;
+      let holdExpiresAt: string | undefined = undefined;
+      if (holdToken) {
+        const { data: hold } = await supabase
+          .from("appointment_holds")
+          .select("expires_at, released_at")
+          .eq("id", holdToken)
+          .maybeSingle();
+        if (hold && !hold.released_at) {
+          holdExpiresAt = hold.expires_at as string;
+        }
+      }
+      try {
+        const payload = await buildSummaryCardPayload({
+          chatId,
+          hold_id: holdToken,
+          hold_expires_at: holdExpiresAt,
+        });
+        return { step: "summary", payload };
+      } catch (e) {
+        Sentry.captureException(e, {
+          tags: { surface: "get_current_card_summary" },
+          level: "warning",
+        });
+        // Fail-soft skeleton so the card still renders something.
+        return {
+          step: "summary",
+          payload: {
+            hold_id: holdToken ?? null,
+            hold_expires_at: holdExpiresAt ?? null,
+            starts_at:
+              (row.appointment_date as string | null) ?? "",
+            customer: buildCustomerName(row),
+            vehicle: "",
+            type:
+              (row.appointment_type as "waiter" | "dropoff" | null) ??
+              "dropoff",
+            services: [],
+            reminders: [],
+          },
+        };
+      }
+    }
 
     case "customer_notes":
       return {

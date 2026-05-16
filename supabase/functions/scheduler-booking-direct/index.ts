@@ -123,7 +123,13 @@ interface ConfirmBookingInput {
   vehicle_id: number;
   title: string;
   description: string;
-  appointment_option?: "WAITER" | "PICKUP_DROPOFF" | "TOWED" | "NONE";
+  /**
+   * Phase 12 2026-05-16: replaces the unused appointment_option field.
+   * Color is the staff-facing channel in the Tekmetric calendar
+   * ("red" = waiter, "navy" = dropoff). See appointment-post.md
+   * Empirical findings section.
+   */
+  color?: string;
 }
 
 interface CreateCustomerInput {
@@ -254,13 +260,9 @@ function parseBody(raw: unknown):
         vehicle_id: r.vehicle_id,
         title: r.title,
         description: r.description,
-        appointment_option:
-          r.appointment_option === "WAITER" ||
-          r.appointment_option === "PICKUP_DROPOFF" ||
-          r.appointment_option === "TOWED" ||
-          r.appointment_option === "NONE"
-            ? r.appointment_option
-            : undefined,
+        color: typeof r.color === "string" && r.color.length > 0
+          ? r.color
+          : undefined,
       },
     };
   }
@@ -805,7 +807,7 @@ async function handleRequest(req: Request): Promise<Response> {
         vehicle_id: input.vehicle_id,
         title: input.title,
         description: input.description,
-        appointment_option: input.appointment_option,
+        color: input.color,
       });
 
       return jsonResponse({
@@ -816,6 +818,7 @@ async function handleRequest(req: Request): Promise<Response> {
         start_time: result.start_time,
         customer_id: input.customer_id,
         vehicle_id: input.vehicle_id,
+        verification: result.verification,
         meta: { latency_ms: Date.now() - startedAt },
       });
     }

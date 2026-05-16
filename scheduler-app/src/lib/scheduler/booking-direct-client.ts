@@ -99,7 +99,13 @@ export interface ConfirmBookingRequest {
   vehicle_id: number;
   title: string;
   description: string;
-  appointment_option?: "WAITER" | "PICKUP_DROPOFF" | "TOWED" | "NONE";
+  /**
+   * Phase 12 2026-05-16: replaces the prior `appointment_option` field
+   * which Tekmetric's API silently ignored. `color` is the staff-facing
+   * channel in the Tekmetric calendar — "red" for waiter, "navy" for
+   * dropoff (default). Other shop colors for future features.
+   */
+  color?: string;
 }
 
 export interface ConfirmBookingResponse {
@@ -111,6 +117,13 @@ export interface ConfirmBookingResponse {
   customer_id?: number;
   vehicle_id?: number;
   error?: string;
+  /**
+   * GET-after-POST verification result (Phase 12 add-on). `ok: true` when
+   * Tekmetric's stored record matches what we sent; `ok: false` with a
+   * `diff` string when there's a mismatch. Verification failure does NOT
+   * fail the booking — the appointment IS in Tekmetric.
+   */
+  verification?: { ok: boolean; diff?: string };
   meta?: { latency_ms?: number };
 }
 

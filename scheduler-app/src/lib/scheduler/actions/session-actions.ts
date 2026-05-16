@@ -2258,10 +2258,11 @@ export async function submitSummaryConfirm(args: {
 
     const title = await buildAppointmentTitle({ chatId: args.chatId });
     const description = await buildServiceSummary({ chatId: args.chatId });
-    const apptOption =
-      confirmRow.appointment_type === "waiter"
-        ? "WAITER"
-        : "PICKUP_DROPOFF";
+    // Phase 12 2026-05-16: appointment_option no longer sent (Tekmetric
+    // silently ignores it). color is the staff-facing channel —
+    // red for waiter, navy for dropoff.
+    const color =
+      confirmRow.appointment_type === "waiter" ? "red" : "navy";
 
     const startedAt = Date.now();
     let confirmResult: Awaited<ReturnType<typeof bookingConfirmBooking>>;
@@ -2274,7 +2275,7 @@ export async function submitSummaryConfirm(args: {
         vehicle_id: confirmRow.vehicle_id,
         title,
         description,
-        appointment_option: apptOption,
+        color,
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
