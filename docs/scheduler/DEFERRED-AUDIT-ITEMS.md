@@ -30,13 +30,22 @@ the work lands.
   per question is substantial (105 subcategories + 729 questions).
   Done quickly with bad defaults the UX is poor; done thoroughly
   it's hours.
-- **Status 2026-05-16** — agent run in background to author the
-  full migration with heuristic option arrays. **See most recent
-  scheduler migration in `supabase/migrations/` for status.**
-- **When to revisit** — if the agent commit landed and Chris wants
-  to refine specific options post-rollout, build the
-  `upload_concern_category_md` MCP tool referenced in
-  `20260514100000`'s comment.
+- **Status 2026-05-16** — first agent run stopped early at 2 of
+  13 categories (electrical + hvac only). Re-dispatched as TWO
+  parallel agents writing two part-migrations:
+  - `20260516220000_scheduler_concern_seeds_part1.sql` — 6 cats
+    (electrical, hvac, leak, noise, other, performance)
+  - `20260516220001_scheduler_concern_seeds_part2.sql` — 7 cats
+    (pulling, smell, smoke, steering, tires, vibration,
+    warning_light)
+  Each agent has strict validation requirements (wc -l minimum,
+  grep counts for WITH sub AS / BEGIN / COMMIT / RAISE EXCEPTION
+  before reporting done).
+- **When to revisit** — if both agents' migrations land, refine
+  options post-rollout per service-writer feedback. Build the
+  `upload_concern_category_md` MCP tool (referenced in
+  `20260514100000`'s comment) so service writers can refresh
+  options without code changes.
 
 ### CAT-2 · Subcategory option-array refinement
 
@@ -258,6 +267,24 @@ files
 Was deferred from R4 (auto-mode blocked the package.json edit).
 **Removed in R6 batch A (commit `e679001`).** Listed here for
 historical reference; can delete this entry next cleanup.
+
+### CLN-5 · Architectural-exception doc for V2 row-as-truth pattern
+
+- **What** — `pattern-compliance.md` prescribes next-safe-action
+  + Thin Action / Fat DAL + `useActionState` keyed on
+  `state.timestamp`. The V2 scheduler intentionally departs: no
+  `src/lib/dal/`, manual `safeParse` + applyWizardTransition,
+  `router.refresh()` instead of `useActionState`, return shape
+  omits `timestamp`. The departure IS documented in
+  `chat-design.md` "Architecture amendment — 2026-05-14" but the
+  specific incompatibilities with `pattern-compliance.md` aren't
+  enumerated.
+- **Why deferred** — pure doc work; doesn't affect runtime.
+  Useful for the next developer reading both docs side-by-side.
+- **When to revisit** — when V2 wizard ships fully or when
+  another module-level architectural exception is needed
+  (parallel structure).
+- **Source** — R6 Stream B.
 
 ---
 
