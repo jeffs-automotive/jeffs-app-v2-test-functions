@@ -10,7 +10,6 @@
 
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import {
-  TEKMETRIC_API_BASE,
   buildTekmetricRoUrl,
 } from "../tekmetric.ts";
 import {
@@ -18,7 +17,7 @@ import {
   formatKeytag,
   type TagColor,
 } from "../keytag-format.ts";
-import { getTekmetricAccessToken } from "../tekmetric-client.ts";
+import { tekmetricFetch } from "../tekmetric-client.ts";
 import {
   attachResolutionAuditLog,
   lookupManualReview as lookupRpc,
@@ -652,12 +651,15 @@ async function patchTekmetricKeytag(
   roId: number,
   wire: string,
 ): Promise<{ ok: boolean; error?: string }> {
+  // R4-IMPORTANT-A-2 2026-05-16: previously this helper inlined the
+  // bearer + URL build via raw fetch, bypassing tekmetricFetch. Routes
+  // through the shared client now so the 401-retry + auth header logic
+  // is centralized.
   try {
-    const token = await getTekmetricAccessToken(sb);
-    const res = await fetch(`${TEKMETRIC_API_BASE}/repair-orders/${roId}?shop=${shopId}`, {
+    const res = await tekmetricFetch(sb, `/repair-orders/${roId}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ keyTag: wire }),
+      body: { keyTag: wire },
+      query: { shop: shopId },
     });
     if (!res.ok) {
       const text = await res.text();

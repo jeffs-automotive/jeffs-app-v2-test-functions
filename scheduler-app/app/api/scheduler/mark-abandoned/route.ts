@@ -69,6 +69,47 @@ export async function POST(req: Request): Promise<NextResponse> {
 
     const supabase = createSupabaseAdminClient();
 
+    // R4-IMPORTANT-C-3 2026-05-16: post-confirm race protection. The
+    // booking flow has a window between the Tekmetric POST succeeding
+    // and the Vercel row write completing (submit-summary advances to
+    // customer_notes via applyWizardTransition). If the 5-min idle
+    // beacon fires inside that window, mark-abandoned would release
+    // the hold + flip the row to timed_out — wiping the customer's
+    // freshly-confirmed appointment context even though Tekmetric
+    // has the booking.
+    //
+    // The edge fn's confirmAppointment writes appointment_id onto the
+    // session row BEFORE returning. If we observe appointment_id set,
+    // the booking succeeded — never release the hold (defense in
+    // depth) and never flip the session to timed_out.
+    const { data: snapshot } = await supabase
+      .from("customer_chat_sessions")
+      .select("appointment_id, appointment_confirmed_at")
+      .eq("id", chatId)
+      .maybeSingle();
+    const bookingLanded =
+      snapshot &&
+      (typeof snapshot.appointment_id === "number" ||
+        snapshot.appointment_confirmed_at != null);
+    if (bookingLanded) {
+      // Don't run the abandon path. The customer notes step (or any
+      // post-confirm surface) can navigate away naturally. Audit-log
+      // the no-op so we can measure how often this race kicks in.
+      void supabase
+        .from("scheduler_audit_log")
+        .insert({
+          session_id: chatId,
+          step: step ?? "unknown",
+          event_type: "session_abandon_skipped_post_confirm",
+          event_detail: {
+            source: source ?? "idle_timer",
+            step_at_abandon: step ?? null,
+            appointment_id: snapshot.appointment_id ?? null,
+          },
+        });
+      return new NextResponse(null, { status: 204 });
+    }
+
     // Only flip rows that are currently in-flight. Idempotent: a row
     // that's already ended/escalated/timed_out is left alone.
     //

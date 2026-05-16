@@ -35,6 +35,7 @@ import {
   tekmetricGetJson,
   type TekmetricPage,
 } from "../tekmetric-client.ts";
+import { logEdgeError } from "../log-edge-error.ts";
 
 // ─── Capacity constants ──────────────────────────────────────────────────────
 //
@@ -1037,7 +1038,13 @@ export async function confirmAppointment(
   // (Tekmetric's default for fresh appointments — we no longer write
   // CONFIRMED since CONFIRMED isn't even a valid appointmentStatus per
   // empirical Tekmetric API testing).
-  await sb
+  //
+  // R4-IMPORTANT-B-4 2026-05-16: capture the error if the local upsert
+  // fails. The Tekmetric write already succeeded so we don't fail the
+  // booking — but we DO surface to scheduler_error_log so ops can detect
+  // the local-shadow drift window before the next appointments-sync
+  // cron tick. (Old code discarded the error silently.)
+  const { error: shadowErr } = await sb
     .from("appointments")
     .upsert(
       {
@@ -1058,6 +1065,25 @@ export async function confirmAppointment(
       },
       { onConflict: "shop_id,tekmetric_appointment_id" },
     );
+  if (shadowErr) {
+    console.error(
+      JSON.stringify({
+        level: "warning",
+        msg: "confirm_appointment_local_shadow_upsert_failed",
+        appointment_id: appointmentId,
+        detail: shadowErr.message,
+      }),
+    );
+    await logEdgeError(sb, {
+      session_id: (hold.session_id as string | null) ?? null,
+      surface: "scheduler-slots/confirmAppointment/shadow_upsert",
+      origin_id: "scheduler-slots",
+      level: "warning",
+      error_code: "shadow_upsert_failed",
+      message: shadowErr.message,
+      context: { appointment_id: appointmentId, tekmetric_succeeded: true },
+    });
+  }
 
   // Set appointment_id on the chat session
   await sb

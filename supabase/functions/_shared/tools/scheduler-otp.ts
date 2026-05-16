@@ -21,6 +21,7 @@
 //   - Max 3 wrong attempts per code → consume the code (force a resend)
 
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
+import { logEdgeError } from "../log-edge-error.ts";
 
 const OTP_TTL_MIN = 5;
 const OTP_LENGTH = 6;
@@ -521,6 +522,18 @@ export async function verifyOtp(
           detail: sessionUpdateErr.message,
         }),
       );
+      // R4-IMPORTANT-A-5 2026-05-16: surface to scheduler_error_log so
+      // ops can detect the half-verified state (otp_codes consumed but
+      // identity_verification_level still 'partial'). Without this the
+      // downstream "PII gate" mis-routing was invisible to triage.
+      await logEdgeError(sb, {
+        session_id: args.session_id,
+        surface: "scheduler-otp/verifyOtp",
+        origin_id: "scheduler-otp",
+        level: "error",
+        error_code: "session_write_failed_after_verify",
+        message: sessionUpdateErr.message,
+      });
     }
   }
 
