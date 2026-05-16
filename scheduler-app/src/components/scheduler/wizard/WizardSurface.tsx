@@ -31,6 +31,7 @@
  * "doesn't advance" even though the row was correctly updated.
  */
 import * as Sentry from "@sentry/nextjs";
+import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 
 import { AppointmentTypeCard } from "@/components/scheduler/heritage/AppointmentTypeCard";
@@ -88,6 +89,37 @@ export interface WizardSurfaceProps {
 }
 
 export function WizardSurface({ chatId, card }: WizardSurfaceProps) {
+  // R6-D-1 + IMPORTANT-D-1 2026-05-16: focus management + aria-live for
+  // wizard step transitions. Every step advance previously dropped focus
+  // to document.body (WCAG 2.4.3 Focus Order) and went unannounced to
+  // screen readers (4.1.3 Status Messages). The wrapper region:
+  //   - tabIndex={-1} so it can receive programmatic focus but isn't in
+  //     the natural tab order (keyboard users still tab into the card's
+  //     own first interactive element after).
+  //   - aria-live="polite" so SR users hear the new card's labelledby on
+  //     mount without interrupting current speech.
+  //   - useEffect on card.step sends focus on every transition.
+  // The actual switch lives in WizardCardSwitcher below so the focus
+  // ref is scoped to this outer component and doesn't capture state
+  // that the inner switch would otherwise be repeating.
+  const containerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    containerRef.current?.focus();
+  }, [card.step]);
+
+  return (
+    <div
+      ref={containerRef}
+      tabIndex={-1}
+      aria-live="polite"
+      className="outline-none focus:outline-none"
+    >
+      <WizardCardSwitcher chatId={chatId} card={card} />
+    </div>
+  );
+}
+
+function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
   const router = useRouter();
 
   // Helper: log + refresh. Called after every Server Action so the page
