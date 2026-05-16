@@ -40,6 +40,7 @@ import {
   unauthorizedResponse,
   RESOLVED_SERVICE_ROLE_KEY,
 } from "../_shared/scheduler-auth.ts";
+import { logEdgeError } from "../_shared/log-edge-error.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
@@ -413,6 +414,14 @@ Deno.serve(async (req) => {
   }
   const auth = checkSchedulerBearer(req, "transcript-dispatcher");
   if (!auth.ok) {
+    await logEdgeError(sb, {
+      surface: "transcript-dispatcher/auth",
+      origin_id: "transcript-dispatcher",
+      level: "warning",
+      error_code: `auth_${auth.reason ?? "unknown"}`,
+      message: auth.reason ?? null,
+      context: auth.diagnostic ? { diagnostic: auth.diagnostic } : null,
+    });
     return unauthorizedResponse(auth);
   }
 

@@ -27,6 +27,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
 import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
+import { logError } from "@/lib/scheduler/wizard/log-error";
 
 const submitExplanationSchema = z.object({
   chatId: z.string().min(1),
@@ -82,98 +83,124 @@ async function submitExplanationV2Impl(
   }
   const { chatId, service_key, explanation_text } = parsed.data;
 
-  const supabase = createSupabaseAdminClient();
-  const { data: row, error: rowErr } = await supabase
-    .from("customer_chat_sessions")
-    .select("explanation_required_items")
-    .eq("id", chatId)
-    .maybeSingle();
-  if (rowErr || !row) {
-    return { ok: false, error: rowErr?.message ?? "session_not_found" };
-  }
-
-  const items = parseItems(row.explanation_required_items);
-  if (items.length === 0) {
-    // Nothing to fill — defensively advance to appointment_type. The
-    // submit-service-and-concern-picker action would normally have routed
-    // here only when items existed, so this is the back-button case.
-    return applyWizardTransition({
-      chatId,
-      nextStep: "appointment_type",
-    });
-  }
-
-  // Find the FIRST empty entry matching this service_key. If the customer
-  // back-buttons and resubmits a previously-filled entry, treat it as an
-  // overwrite (still picks the first matching key).
-  const targetIdx = items.findIndex(
-    (i) => i.service_key === service_key && !i.explanation_text,
-  );
-  if (targetIdx === -1) {
-    // Defensive: the submit references a service_key that doesn't have an
-    // open slot. Could be a stale form submit. Don't error noisily — just
-    // try to advance based on current queue state.
-    const stillEmpty = items.some((i) => !i.explanation_text);
-    return applyWizardTransition({
-      chatId,
-      nextStep: stillEmpty ? "concern_explanation" : "diagnostic_loading",
-    });
-  }
-
-  // Escalation keyword scan on the customer's prose.
+  // Pattern-extension fix 2026-05-16: prior shape had try/catch ONLY
+  // around the keyword scanner (lines 124-146 below). The main body —
+  // supabase row read, parseItems, applyWizardTransition — had no
+  // top-level catch. An uncaught throw would escape as a raw Server
+  // Action rejection (the client sees a thrown error, not the
+  // {ok:false} envelope every other action returns). Now wrapped to
+  // match the action-suite convention.
   try {
-    const hit = scanForEscalationKeywords(explanation_text);
-    if (hit) {
+    const supabase = createSupabaseAdminClient();
+    const { data: row, error: rowErr } = await supabase
+      .from("customer_chat_sessions")
+      .select("explanation_required_items")
+      .eq("id", chatId)
+      .maybeSingle();
+    if (rowErr || !row) {
+      return { ok: false, error: rowErr?.message ?? "session_not_found" };
+    }
+
+    const items = parseItems(row.explanation_required_items);
+    if (items.length === 0) {
+      // Nothing to fill — defensively advance to appointment_type. The
+      // submit-service-and-concern-picker action would normally have
+      // routed here only when items existed, so this is the back-button
+      // case.
       return applyWizardTransition({
         chatId,
-        updates: {
-          status: "escalated",
-          escalated_at: new Date().toISOString(),
-          escalation_reason: `keyword:${hit.category}:${hit.keyword}`,
-        },
-        nextStep: "escalated",
-        userBubble: explanation_text,
-        jeffBubble:
-          "Let me get a real person on this one — please call us at (610) 253-6565 and we'll take great care of you. 📞",
+        nextStep: "appointment_type",
       });
     }
-  } catch (e) {
-    // Keyword scanner is non-critical; log + proceed.
-    Sentry.captureException(e, {
-      tags: { surface: "submit_explanation_v2_keyword_scan" },
-      level: "warning",
+
+    // Find the FIRST empty entry matching this service_key. If the
+    // customer back-buttons and resubmits a previously-filled entry,
+    // treat it as an overwrite (still picks the first matching key).
+    const targetIdx = items.findIndex(
+      (i) => i.service_key === service_key && !i.explanation_text,
+    );
+    if (targetIdx === -1) {
+      // Defensive: the submit references a service_key that doesn't
+      // have an open slot. Could be a stale form submit. Don't error
+      // noisily — just try to advance based on current queue state.
+      const stillEmpty = items.some((i) => !i.explanation_text);
+      return applyWizardTransition({
+        chatId,
+        nextStep: stillEmpty ? "concern_explanation" : "diagnostic_loading",
+      });
+    }
+
+    // Escalation keyword scan on the customer's prose. Inner try kept
+    // around the scanner itself so a scanner failure doesn't block
+    // the queue advance — but the OUTER try below catches anything
+    // else.
+    try {
+      const hit = scanForEscalationKeywords(explanation_text);
+      if (hit) {
+        return applyWizardTransition({
+          chatId,
+          updates: {
+            status: "escalated",
+            escalated_at: new Date().toISOString(),
+            escalation_reason: `keyword:${hit.category}:${hit.keyword}`,
+          },
+          nextStep: "escalated",
+          userBubble: explanation_text,
+          jeffBubble:
+            "Let me get a real person on this one — please call us at (610) 253-6565 and we'll take great care of you. 📞",
+        });
+      }
+    } catch (e) {
+      // Keyword scanner is non-critical; log + proceed.
+      Sentry.captureException(e, {
+        tags: { surface: "submit_explanation_v2_keyword_scan" },
+        level: "warning",
+      });
+    }
+
+    // Patch the matched entry; preserve every other field.
+    const targetItem = items[targetIdx];
+    if (!targetItem) {
+      // Type narrowing — targetIdx >= 0 guarantees a hit, but TS doesn't
+      // know.
+      return { ok: false, error: "internal_state_error_target_item" };
+    }
+    const updatedItems: ExplanationItem[] = items.map((item, idx) =>
+      idx === targetIdx ? { ...item, explanation_text } : item,
+    );
+
+    const stillEmpty = updatedItems.some((i) => !i.explanation_text);
+    const nextStep = stillEmpty
+      ? ("concern_explanation" as const)
+      : ("diagnostic_loading" as const);
+
+    const jeffBubble = stillEmpty
+      ? undefined
+      : "Thanks — let me think through what testing might be needed. 🤔";
+
+    return applyWizardTransition({
+      chatId,
+      updates: { explanation_required_items: updatedItems },
+      nextStep,
+      userBubble: explanation_text,
+      jeffBubble,
     });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    Sentry.captureException(e, {
+      tags: { surface: "submit_explanation_v2", chat_id: chatId },
+      level: "error",
+    });
+    await logError({
+      chatId,
+      surface: "submit_explanation_v2",
+      error_code: "uncaught",
+      message: msg,
+      stack: e instanceof Error ? (e.stack ?? null) : null,
+      context: { service_key },
+    });
+    return { ok: false, error: msg };
   }
-
-  // Patch the matched entry; preserve every other field.
-  const targetItem = items[targetIdx];
-  if (!targetItem) {
-    // Type narrowing — targetIdx >= 0 guarantees a hit, but TS doesn't know.
-    return {
-      ok: false,
-      error: "internal_state_error_target_item",
-    };
-  }
-  const updatedItems: ExplanationItem[] = items.map((item, idx) =>
-    idx === targetIdx ? { ...item, explanation_text } : item,
-  );
-
-  const stillEmpty = updatedItems.some((i) => !i.explanation_text);
-  const nextStep = stillEmpty
-    ? ("concern_explanation" as const)
-    : ("diagnostic_loading" as const);
-
-  const jeffBubble = stillEmpty
-    ? undefined
-    : "Thanks — let me think through what testing might be needed. 🤔";
-
-  return applyWizardTransition({
-    chatId,
-    updates: { explanation_required_items: updatedItems },
-    nextStep,
-    userBubble: explanation_text,
-    jeffBubble,
-  });
 }
 
 export const submitExplanationV2 = wrapAction(

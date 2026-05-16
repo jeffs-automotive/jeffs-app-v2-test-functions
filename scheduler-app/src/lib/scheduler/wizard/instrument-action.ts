@@ -46,6 +46,23 @@ export function wrapAction<Args, Result>(
       { recordResponse: false },
       async () => {
         Sentry.setTag("wizard_action", actionName);
+        // Auto-tag chat_id at the wrapper so every inner
+        // Sentry.captureException within the action inherits it. Every V2
+        // action takes args with a `chatId: string` field. Pattern-
+        // extension fix 2026-05-16: prior R4 wiring added chat_id only to
+        // the TOP-LEVEL catches, leaving inner captureException sites
+        // (parse failures, edge fn op-error branches, etc.) without the
+        // session-correlation tag. This hoists it to the wrapper so all
+        // sub-spans get it for free.
+        if (
+          args !== null &&
+          typeof args === "object" &&
+          "chatId" in args &&
+          typeof (args as { chatId: unknown }).chatId === "string" &&
+          (args as { chatId: string }).chatId.length > 0
+        ) {
+          Sentry.setTag("chat_id", (args as { chatId: string }).chatId);
+        }
         return await inner(args);
       },
     );

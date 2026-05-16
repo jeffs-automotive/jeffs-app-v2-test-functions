@@ -39,6 +39,7 @@ import { diagnoseConcern } from "@/lib/scheduler/wizard/llm/diagnose-concern";
 import { loadConcernContext } from "@/lib/scheduler/wizard/llm/load-concern-context";
 import { resolveServiceCategory } from "@/lib/scheduler/wizard/llm/resolve-service-category";
 import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
+import { logError } from "@/lib/scheduler/wizard/log-error";
 
 const FALLBACK_CATEGORY = "other";
 
@@ -103,6 +104,34 @@ async function runDiagnosticsV2Impl(
   }
   const { chatId } = parsed.data;
 
+  // Pattern-extension fix 2026-05-16: this action previously had no
+  // top-level try/catch. Uncaught throws from supabase reads,
+  // Promise.all over diagnoseConcern, or applyWizardTransition would
+  // escape as raw Server Action rejections. Wrapping the body to
+  // match the rest of the V2 action suite — {ok:false} envelope on
+  // any failure + logError for triage.
+  try {
+    return await runDiagnosticsBody(chatId);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    Sentry.captureException(e, {
+      tags: { surface: "run_diagnostics_v2", chat_id: chatId },
+      level: "error",
+    });
+    await logError({
+      chatId,
+      surface: "run_diagnostics_v2",
+      error_code: "uncaught",
+      message: msg,
+      stack: e instanceof Error ? (e.stack ?? null) : null,
+    });
+    return { ok: false, error: msg };
+  }
+}
+
+async function runDiagnosticsBody(
+  chatId: string,
+): Promise<WizardTransitionResult> {
   const supabase = createSupabaseAdminClient();
 
   // ── 1. Load the row ──────────────────────────────────────────────────────

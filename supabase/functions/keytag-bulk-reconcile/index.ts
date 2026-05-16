@@ -79,6 +79,7 @@ import {
   unauthorizedResponse,
   RESOLVED_SERVICE_ROLE_KEY,
 } from "../_shared/scheduler-auth.ts";
+import { logEdgeError } from "../_shared/log-edge-error.ts";
 import {
   issueManualReview,
   type ManualReviewOption,
@@ -1215,6 +1216,16 @@ Deno.serve(async (req: Request) => {
   // Bearer auth (matches keytag-daily-report, transcript-dispatcher, etc.)
   const authCheck = checkSchedulerBearer(req, "keytag-bulk-reconcile");
   if (!authCheck.ok) {
+    await logEdgeError(sb, {
+      surface: "keytag-bulk-reconcile/auth",
+      origin_id: "keytag-bulk-reconcile",
+      level: "warning",
+      error_code: `auth_${authCheck.reason ?? "unknown"}`,
+      message: authCheck.reason ?? null,
+      context: authCheck.diagnostic
+        ? { diagnostic: authCheck.diagnostic }
+        : null,
+    });
     return unauthorizedResponse(authCheck);
   }
 

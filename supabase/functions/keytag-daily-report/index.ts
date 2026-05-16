@@ -36,6 +36,7 @@ import {
   unauthorizedResponse,
   RESOLVED_SERVICE_ROLE_KEY,
 } from "../_shared/scheduler-auth.ts";
+import { logEdgeError } from "../_shared/log-edge-error.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
@@ -434,7 +435,17 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: false, error: "method_not_allowed" }, 405);
   }
   const auth = checkSchedulerBearer(req, "keytag-daily-report");
-  if (!auth.ok) return unauthorizedResponse(auth);
+  if (!auth.ok) {
+    await logEdgeError(sb, {
+      surface: "keytag-daily-report/auth",
+      origin_id: "keytag-daily-report",
+      level: "warning",
+      error_code: `auth_${auth.reason ?? "unknown"}`,
+      message: auth.reason ?? null,
+      context: auth.diagnostic ? { diagnostic: auth.diagnostic } : null,
+    });
+    return unauthorizedResponse(auth);
+  }
 
   // `?force=true` bypasses Resend's idempotency-key dedup. Used for
   // ad-hoc smoke tests when we've already sent today's email but want
