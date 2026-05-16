@@ -18,6 +18,7 @@
  * Action so the admin client is appropriate (bypasses RLS, app-trusted).
  */
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { shopLocalToIsoString } from "@/lib/scheduler/wizard/shop-tz";
 
 export interface SummaryServiceItem {
   display_name: string;
@@ -249,10 +250,13 @@ export async function buildSummaryCardPayload(args: {
   const apptTime =
     (row.appointment_time as string | null) ??
     (type === "dropoff" ? "08:00:00" : "08:00:00");
-  // EDT/EST handled correctly by toLocaleDateString in the card; we just
-  // need a valid ISO with offset. Use -04:00 for Phase 1 (EDT).
+  // R6 pattern-extension 2026-05-16: previously hardcoded -04:00 (EDT)
+  // here too. Replaced with shopLocalToIsoString which probes the
+  // correct offset per-date (returns -04:00 in EDT, -05:00 in EST).
+  // Without this fix, every Nov-Mar appointment was rendered 1 hour
+  // off shop-local in the summary card.
   const starts_at = apptDate
-    ? `${apptDate}T${apptTime.slice(0, 8)}-04:00`
+    ? shopLocalToIsoString(apptDate, apptTime.slice(0, 5))
     : "";
 
   // Services breakdown — routine + concerns + testing.

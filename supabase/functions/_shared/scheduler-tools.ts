@@ -518,9 +518,16 @@ export function getSchedulerTools(args: SchedulerToolsArgs) {
         last_name: z.string().min(1),
         phone_e164: z.string().regex(/^\+1\d{10}$/),
         email: z.string().email().optional(),
+        // R6 pattern-extension 2026-05-16: aligned with createNewCustomer's
+        // actual wire shape (scheduler-customer.ts:580). The helper writes
+        // address1/address2 (matches Tekmetric POST /customers contract);
+        // prior `streetAddress` field would have been silently dropped if
+        // the LLM ever passed it through. The system prompt at
+        // specialists/scheduler.ts §178-181 was updated in the same pass.
         address: z
           .object({
-            streetAddress: z.string().optional(),
+            address1: z.string().optional(),
+            address2: z.string().optional(),
             city: z.string().optional(),
             state: z.string().optional(),
             zip: z.string().optional(),

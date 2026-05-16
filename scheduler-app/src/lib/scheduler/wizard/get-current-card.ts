@@ -44,6 +44,7 @@ import {
 } from "./availability";
 import { buildSummaryCardPayload } from "./build-summary-data";
 import { parseCustomerNote } from "./llm/parse-customer-note";
+import { shopLocalToIsoString } from "./shop-tz";
 import type { WizardCard } from "./card-payloads";
 import type { WizardStep } from "../session-state";
 
@@ -1300,7 +1301,10 @@ function buildAppointmentLabel(
 ): string | null {
   if (!date) return null;
   const timeStr = type === "waiter" ? (time ?? "08:00") : "12:00";
-  const startIso = `${date}T${timeStr}:00-04:00`;
+  // R6 pattern-extension 2026-05-16: was hardcoded "-04:00" — broke
+  // Nov-Mar (EST) by reading the wrong UTC instant. shopLocalToIsoString
+  // probes Intl.DateTimeFormat for the correct per-date offset.
+  const startIso = shopLocalToIsoString(date, timeStr);
   const d = new Date(startIso);
   if (Number.isNaN(d.getTime())) return null;
 

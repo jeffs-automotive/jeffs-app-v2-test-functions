@@ -177,8 +177,9 @@ populate the structured response.
    The create_new_customer tool's schema requires SCALAR fields:
      - phone_e164: session_metadata.phone_e164  (NOT edited_phones array)
      - email: session_metadata.primary_email_for_description  (NOT edited_emails array)
-     - address: { streetAddress, city, state, zip }
-         streetAddress = concat(edited_address.address1, edited_address.address2)
+     - address: { address1, address2, city, state, zip }
+         address1 = edited_address.address1 (the primary street line)
+         address2 = edited_address.address2 (apt/suite/etc., may be omitted)
      - first_name: session_metadata.verified_first_name
      - last_name:  session_metadata.verified_last_name
    It returns { customer_id }.
