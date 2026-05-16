@@ -147,10 +147,12 @@ export async function getCurrentCard(
 
     case "multi_account_disambiguation":
       // Per chat-design.md §3.5c lines 685 + 710 — VEHICLE-only picker,
-      // never names. Candidates were stashed on the row by
-      // scheduler-step2-direct when phone hit 2+ Tekmetric records;
-      // parseCandidates defensively filters out any entry missing
-      // recent_vehicle (the spec requires it for the card to render).
+      // never names. Candidates are stashed on the row by
+      // submit-phone-name (Round 1 fix 2026-05-16) from
+      // step2Result.data.candidates, which scheduler-step2-direct now
+      // pre-filters at the edge fn to drop null-vehicle entries.
+      // parseCandidates here is still defensive (shape coercion +
+      // double-filter) but should normally pass everything through.
       return {
         step: "multi_account_disambiguation",
         payload: {

@@ -717,53 +717,71 @@ export async function patchCustomer(
     );
   }
 
-  // Build the phone array. Match each edited phone to an existing entry
-  // by E.164-digit equality so we can preserve the entry id.
+  // Bug audit 2026-05-16: the PATCH payload shape was inconsistent with
+  // the POST /customers shape that was confirmed working at Phase 12
+  // (commit 89a9d8c). Tekmetric rejected the prior PATCH shape with 4xx,
+  // submit-customer-info-edit caught the !ok and escalated. The user
+  // hit this as "after verifying my information went to escalation."
+  //
+  // Aligned to the POST shape that's known to work:
+  //   - email: ARRAY of strings (not a single string)
+  //   - phones (plural key, not "phone")
+  //   - phone.number in dashed format "###-###-####" (not E.164)
+  //   - address1/address2/city/state/zip (not streetAddress concat)
+  //
+  // We still preserve existing phone-entry ids by matching E.164 digits
+  // against existing entries (Tekmetric may expect the id to round-trip
+  // on updates — kept the original behavior).
   const existingPhones = current.phone ?? [];
   const editedPhones = args.edited_phones ?? null;
-  const phoneArray = editedPhones
+  const phonesArray = editedPhones
     ? editedPhones.slice(0, 2).map((p) => {
-        const digits = p.phone_e164.replace(/\D/g, "");
+        const digits = p.phone_e164.replace(/\D/g, "").replace(/^1/, "");
+        const dashed = digits.length === 10
+          ? `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`
+          : p.phone_e164;
         const matchedExisting = existingPhones.find(
-          (ep) => ep.number?.replace(/\D/g, "") === digits,
+          (ep) => ep.number?.replace(/\D/g, "").replace(/^1/, "") === digits,
         );
         return {
           id: matchedExisting?.id,
-          number: p.phone_e164,
+          number: dashed,
           type: matchedExisting?.type ?? "Mobile",
           primary: p.is_primary,
         };
       })
     : undefined;
 
-  // Email: Tekmetric customer.email is a single TEXT field, not an array
-  // (per generated types). Use the primary email; the secondary lives in
+  // Email: Tekmetric POST takes an ARRAY of strings. Send a 1-element
+  // array (the primary email) — Tekmetric's customer.email is a single
+  // TEXT field on reads (per generated types), but the API accepts (and
+  // requires) an array shape on write. The secondary email lives in
   // session_row.edited_emails for app-side reference only.
   const editedEmails = args.edited_emails ?? null;
   const primaryEmail = editedEmails?.find((e) => e.is_primary)?.email
     ?? editedEmails?.[0]?.email
     ?? undefined;
+  const emailArray =
+    typeof primaryEmail === "string" && primaryEmail.length > 0
+      ? [primaryEmail]
+      : undefined;
 
-  // Address: Tekmetric uses streetAddress (single line) + city/state/zip.
-  // Our app collects address1 + address2 separately; concat them.
+  // Address: Tekmetric POST accepts address1/address2 as first-class
+  // fields. Don't concat into streetAddress — that shape gets silently
+  // dropped.
   const addressBlock = args.edited_address
     ? {
-        streetAddress: [
-          args.edited_address.address1?.trim() ?? "",
-          args.edited_address.address2?.trim() ?? "",
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .trim() || null,
-        city: args.edited_address.city?.trim() || null,
-        state: args.edited_address.state?.trim() || null,
-        zip: args.edited_address.zip?.trim() || null,
+        address1: args.edited_address.address1?.trim() || undefined,
+        address2: args.edited_address.address2?.trim() || undefined,
+        city: args.edited_address.city?.trim() || undefined,
+        state: args.edited_address.state?.trim() || undefined,
+        zip: args.edited_address.zip?.trim() || undefined,
       }
     : undefined;
 
   const body: Record<string, unknown> = {};
-  if (phoneArray) body.phone = phoneArray;
-  if (primaryEmail !== undefined) body.email = primaryEmail;
+  if (phonesArray) body.phones = phonesArray;
+  if (emailArray) body.email = emailArray;
   if (addressBlock) body.address = addressBlock;
 
   if (Object.keys(body).length === 0) {
