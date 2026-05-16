@@ -40,6 +40,9 @@ desktop.ini
 # Never commit raw staging output — committed copies live under .claude/work/...
 .tmp/
 
+# Playwright MCP per-conversation debug captures (console + page snapshots)
+.playwright-mcp/
+
 # Stray root-level npm lockfile (the real one lives in scheduler-app/)
 /package-lock.json
 

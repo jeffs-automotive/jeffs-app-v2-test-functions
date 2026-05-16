@@ -1,8 +1,13 @@
 #!/usr/bin/env node
 /**
  * Seed: parses the 14 concern checklist MD docs from
- *   .claude/work/planning/references/concerns/{slug}/{slug}-concerns.md
+ *   docs/scheduler/concerns/{slug}/{slug}-concerns.md
  * and upserts them into the concern_subcategories + concern_questions tables.
+ *
+ * Source location moved 2026-05-15 from .claude/work/planning/references/
+ * concerns/ (initial drafts, now historical planning artifact) to
+ * docs/scheduler/concerns/ (canonical editing location going forward —
+ * what advisors edit + Claude uploads via upload_concern_category_md).
  *
  * Re-implements the parser + upsert logic from
  *   supabase/functions/_shared/scheduler-admin-md.ts:parseConcernCategoryMd
@@ -341,7 +346,7 @@ async function main() {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  const baseDir = join(__dirname, "..", ".claude", "work", "planning", "references", "concerns");
+  const baseDir = join(__dirname, "..", "docs", "scheduler", "concerns");
   console.log(`Seeding from: ${baseDir}`);
   console.log(`Shop: ${SHOP_ID}\n`);
 

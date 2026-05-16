@@ -488,11 +488,12 @@
         "scripts/seed-concern-docs.mjs (new)"
       ],
       "deployments_required": [
-        "supabase db push (applies migration 20260514100000)",
-        "supabase gen types typescript --linked > scheduler-app/src/lib/database.types.ts (regenerate types — adds concern_subcategories table + new columns)",
-        "supabase functions deploy orchestrator-mcp (or whichever functions serve the scheduler MCP tools — re-deploy so the new tool surfaces register)",
-        "node scripts/seed-concern-docs.mjs (run ONCE after migration applied; loads the 14 concern docs into the DB)"
+        "[DONE 2026-05-15] supabase db push — migrations 20260514000000 + 20260514000100 + 20260514100000 applied to itzdasxobllfiuolmbxu",
+        "[DONE 2026-05-15] supabase gen types typescript --linked > scheduler-app/src/lib/database.types.ts — regen complete (NOTE: CLI banner leaked into stdout; commit 13de13e stripped 'Initialising login role...' line 1 + the claude-plugin hint at EOF. Future regens must filter non-TS lines)",
+        "[DONE 2026-05-15] supabase functions deploy — scheduler-otp-direct + scheduler-step2-direct + scheduler-booking-direct + orchestrator-mcp all re-deployed",
+        "[DONE 2026-05-15] node scripts/seed-concern-docs.mjs — 14 categories, 105 subcats, 729 questions seeded (14 'General' backfill subcats + 70 flat-seed questions correctly soft-deleted)"
       ],
+      "post_deploy_drift_check_2026_05_15": "Audit ran 2026-05-15 after the 5-deploy Vercel failure (database.types.ts CLI noise). Findings: (1) migrations applied=local=36 ✓ (2) DB row counts match seed expectations ✓ (3) all 14 docs/scheduler/concerns/ files identical to .claude/work/planning/references/concerns/ ✓ (4) Phase 16 dead-code candidates all still present (no premature deletion) ✓ (5) all scheduler.md / keytag.md tool references exist in scheduler-tools.ts / orchestrator-tools.ts ✓ (6) cleanup commit added .playwright-mcp/ to .gitignore + updated seed script to read from canonical docs/scheduler/concerns/ + recorded deployments-done above. No structural drift; ready for Phase 9c.",
       "verification": [
         "After deploy: SELECT count(*) FROM concern_subcategories WHERE shop_id=7476 — expect ~108 rows (sum of sub-cats across the 14 categories)",
         "After deploy: SELECT count(*) FROM concern_questions WHERE shop_id=7476 AND active=true AND subcategory_id IS NOT NULL — expect ~625",
