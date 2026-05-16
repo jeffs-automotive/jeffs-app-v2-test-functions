@@ -33,9 +33,11 @@
 import * as Sentry from "@sentry/nextjs";
 import { z } from "zod";
 
+import { scanForEscalationKeywords } from "@/lib/scheduler/escalation-keywords";
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
 import { fireTranscriptDispatch } from "@/lib/scheduler/wizard/actions/fire-transcript-dispatch";
+import { submitEscalateV2 } from "./submit-escalate";
 
 const MAX_QUESTION_LENGTH = 280; // matches CustomerQuestionCard's textarea cap
 
@@ -62,6 +64,41 @@ export async function submitCustomerQuestionV2(
 
   const trimmed = question?.trim() ?? null;
   const finalQuestion = trimmed && trimmed.length > 0 ? trimmed : null;
+
+  // Phase 14 — keyword scan on the customer's question (even though
+  // questions are normally forwarded, escalation keywords here should
+  // still funnel through the [ESCALATED] transcript path so the team
+  // sees urgency in the inbox subject).
+  if (finalQuestion) {
+    const hit = scanForEscalationKeywords(finalQuestion);
+    if (hit) {
+      // Persist the question text first so the transcript includes it,
+      // then escalate. We DON'T advance to completed — escalation takes
+      // priority over the regular completed terminal.
+      try {
+        const supabase = (
+          await import("@/lib/supabase/admin")
+        ).createSupabaseAdminClient();
+        await supabase
+          .from("customer_chat_sessions")
+          .update({
+            customer_question: finalQuestion,
+            customer_question_forwarded: true,
+          })
+          .eq("id", chatId);
+      } catch (e) {
+        Sentry.captureException(e, {
+          tags: { surface: "submit_customer_question_v2_preescalate_persist" },
+          level: "warning",
+          extra: { chatId },
+        });
+      }
+      return submitEscalateV2({
+        chatId,
+        reason: `keyword:${hit.category}:${hit.keyword}`,
+      });
+    }
+  }
 
   try {
     const result = await applyWizardTransition({

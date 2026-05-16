@@ -42,6 +42,7 @@ import { CustomerInfoEditCard } from "@/components/scheduler/heritage/CustomerIn
 import { CustomerNotesCard } from "@/components/scheduler/heritage/CustomerNotesCard";
 import { CustomerQuestionCard } from "@/components/scheduler/heritage/CustomerQuestionCard";
 import { DiagnosticLoadingCard } from "@/components/scheduler/heritage/DiagnosticLoadingCard";
+import { EscalationCard } from "@/components/scheduler/EscalationCard";
 import { GreetingCard } from "@/components/scheduler/heritage/GreetingCard";
 import { MultiAccountDisambiguationCard } from "@/components/scheduler/heritage/MultiAccountDisambiguationCard";
 import { NewCustomerInfoCard } from "@/components/scheduler/heritage/NewCustomerInfoCard";
@@ -63,6 +64,7 @@ import { submitCustomerInfoEditV2 } from "@/lib/scheduler/wizard/actions/submit-
 import { submitCustomerNotesV2 } from "@/lib/scheduler/wizard/actions/submit-customer-notes";
 import { submitCustomerQuestionV2 } from "@/lib/scheduler/wizard/actions/submit-customer-question";
 import { submitDateV2 } from "@/lib/scheduler/wizard/actions/submit-date";
+import { dismissEscalationV2 } from "@/lib/scheduler/wizard/actions/dismiss-escalation";
 import { submitExplanationV2 } from "@/lib/scheduler/wizard/actions/submit-explanation";
 import { submitGreetingV2 } from "@/lib/scheduler/wizard/actions/submit-greeting";
 import { submitMultiAccountChoiceV2 } from "@/lib/scheduler/wizard/actions/submit-multi-account-choice";
@@ -482,6 +484,27 @@ export function WizardSurface({ chatId, card }: WizardSurfaceProps) {
               question,
             });
             handleResult("submitCustomerQuestionV2", chatId, result);
+          }}
+        />
+      );
+
+    case "escalated":
+      return (
+        <EscalationCard
+          reason={card.payload.reason}
+          shop_phone={card.payload.shop_phone}
+          allow_back_to_scheduling={true}
+          onSubmit={async (output) => {
+            if ("action" in output && output.action === "back_to_scheduling") {
+              const result = await dismissEscalationV2({ chatId });
+              handleResult("dismissEscalationV2", chatId, result);
+              return;
+            }
+            // 'I'll call — close this chat' acknowledges the escalation;
+            // the customer's path forward is the phone CTA in the card
+            // itself. We don't transition state — the row stays
+            // status='escalated' until the customer either calls (no
+            // row write) or the service team manually resolves.
           }}
         />
       );

@@ -113,9 +113,14 @@ function roleLabel(role: TranscriptMessageView["role"]): string {
 }
 
 export function buildTranscriptSubject(view: TranscriptViewModel): string {
+  // [ESCALATED] prefix when the session was escalated (footer button OR
+  // keyword scanner OR retry-limit trigger) — surfaces urgency to the
+  // service team's inbox per chat-design.md §A "Escalation flow".
   // [ERR] prefix when the session captured any errors — replaces the legacy
   // [NEG] sentiment prefix (sentiment classification deferred to Phase 2 per
   // design lock 2026-05-13).
+  // Both can appear: "[ESCALATED] [ERR] Transcript: ..."
+  const escalatedPrefix = view.outcome === "escalation" ? "[ESCALATED] " : "";
   const errPrefix = view.errors && view.errors.length > 0 ? "[ERR] " : "";
   const outcome =
     view.outcome === "scheduled"
@@ -127,7 +132,7 @@ export function buildTranscriptSubject(view: TranscriptViewModel): string {
           : view.outcome === "incomplete"
             ? "incomplete"
             : view.outcome;
-  return `${errPrefix}Transcript: ${view.customer_name} — ${outcome}`;
+  return `${escalatedPrefix}${errPrefix}Transcript: ${view.customer_name} — ${outcome}`;
 }
 
 export function buildTranscriptHtml(view: TranscriptViewModel): string {

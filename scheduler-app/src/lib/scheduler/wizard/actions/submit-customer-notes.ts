@@ -52,8 +52,10 @@ import { z } from "zod";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { appendAppointmentDescription, BookingDirectError } from "@/lib/scheduler/booking-direct-client";
+import { scanForEscalationKeywords } from "@/lib/scheduler/escalation-keywords";
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
+import { submitEscalateV2 } from "./submit-escalate";
 
 const PARSE_LENGTH_THRESHOLD = 150; // chars — chat-design.md §10.3
 const REJECT_ATTEMPT_PUNT_THRESHOLD = 2; // 2nd reject = punt
@@ -142,6 +144,18 @@ async function handleSubmitRaw(
   if (trimmed.length === 0) {
     // Defensive — Zod min(1) should have caught this, but treat as skip.
     return handleSkip(chatId);
+  }
+
+  // Phase 14 — scan the raw note for escalation keywords BEFORE we
+  // commit it. A hit funnels through submitEscalateV2 (which sets
+  // status=escalated + fires the [ESCALATED] transcript). The keyword
+  // tag is included in the reason for service-team triage.
+  const hit = scanForEscalationKeywords(trimmed);
+  if (hit) {
+    return submitEscalateV2({
+      chatId,
+      reason: `keyword:${hit.category}:${hit.keyword}`,
+    });
   }
 
   if (trimmed.length > PARSE_LENGTH_THRESHOLD) {

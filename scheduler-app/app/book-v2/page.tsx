@@ -22,6 +22,7 @@
 import { ensureSessionExists } from "@/lib/scheduler/chat-store";
 import { hydrateSession } from "@/lib/scheduler/hydrate-session";
 import { getCurrentCard } from "@/lib/scheduler/wizard/get-current-card";
+import { WizardCrossCutting } from "@/components/scheduler/wizard/WizardCrossCutting";
 import { WizardSurface } from "@/components/scheduler/wizard/WizardSurface";
 
 // Force dynamic so cookie hydration + row read run on every request.
@@ -64,6 +65,8 @@ export default async function BookV2Page() {
           <WizardSurface chatId={chatId} card={card} />
         </section>
       </div>
+
+      <WizardCrossCutting chatId={chatId} currentStep={card.step} />
 
       <footer className="border-t border-rule bg-paper-100">
         <div className="mx-auto flex max-w-3xl flex-col gap-3 px-4 py-4 text-center text-[12px] text-ink-tertiary sm:flex-row sm:items-center sm:justify-between sm:text-left">
