@@ -37,8 +37,11 @@ import {
   BookingDirectError,
 } from "@/lib/scheduler/booking-direct-client";
 import { getRoutineServicesForChips } from "@/lib/scheduler/routine-services-cache";
+import { getEarliestAvailableDate } from "./availability";
 import type { WizardCard } from "./card-payloads";
 import type { WizardStep } from "../session-state";
+
+const SHOP_ID = 7476; // Phase 1 single-shop
 
 const SHOP_PHONE = "6102536565";
 
@@ -416,39 +419,92 @@ export async function getCurrentCard(
         payload: { services: [], category: null },
       };
 
-    case "second_routine_pass":
-      // TODO(phase_10): load routine_services list + already-picked from
-      // selected_simple_services.
+    case "second_routine_pass": {
+      // Phase 10 (2026-05-15): load the full routine_services list as
+      // chips. Already-picked items (from Step 7.1 selected_simple_services
+      // OR Step 7.2 explanation_required_items) render disabled with an
+      // "✓ added" badge — the card hides them from the pickable set so the
+      // customer can't double-book a service.
+      let commonServices: Array<{ service_key: string; display_name: string }> =
+        [];
+      try {
+        commonServices = (await getRoutineServicesForChips()).map((r) => ({
+          service_key: r.service_key,
+          display_name: r.display_name,
+        }));
+      } catch (e) {
+        Sentry.captureException(e, {
+          tags: { surface: "get_current_card_second_routine_pass" },
+          level: "warning",
+        });
+      }
+
+      const alreadyPicked = collectPickedServiceKeys(row);
       return {
         step: "second_routine_pass",
         payload: {
-          common_services: [],
-          already_picked:
-            (row.selected_simple_services as string[] | null) ?? [],
+          common_services: commonServices,
+          already_picked: alreadyPicked,
         },
       };
+    }
 
-    case "appointment_type":
-      // TODO(phase_10): pre-compute wait_eligible + earliest hints.
+    case "appointment_type": {
+      // Phase 10 (2026-05-15): pre-compute wait_eligibility + earliest
+      // dates per type. Deterministic — no LLM. Wait-eligibility is
+      // routine_services.wait_eligible AND across every picked service
+      // (any single non-wait-eligible service blocks the whole basket;
+      // any testing_services pick also blocks since they're not waitable).
+      const allKeys = collectPickedServiceKeys(row);
+      let waitEligible = true;
+      let waitEligibilityReason: string | null = null;
+      try {
+        const result = await assessWaitEligibility(supabase, allKeys);
+        waitEligible = result.wait_eligible;
+        waitEligibilityReason = result.blocked_reason;
+      } catch (e) {
+        Sentry.captureException(e, {
+          tags: { surface: "get_current_card_appointment_type_eligibility" },
+          level: "warning",
+        });
+        // Default-safe: if eligibility can't be assessed, allow waiter
+        // (customer's choice wins; submit-appointment-type re-validates
+        // server-side before advancing).
+      }
+
+      const [earliestWaiter, earliestDropoff] = await Promise.all([
+        waitEligible ? getEarliestAvailableDate("waiter", 30) : Promise.resolve(null),
+        getEarliestAvailableDate("dropoff", 30).catch((e) => {
+          Sentry.captureException(e, {
+            tags: { surface: "get_current_card_appointment_type_dropoff" },
+            level: "warning",
+          });
+          return null;
+        }),
+      ]);
+
       return {
         step: "appointment_type",
         payload: {
           options: [
             {
               type: "waiter",
-              available: true,
-              unavailable_reason: null,
-              earliest_hint: null,
+              available: waitEligible,
+              unavailable_reason: waitEligible ? null : waitEligibilityReason,
+              earliest_hint: waitEligible
+                ? formatDateHint(earliestWaiter)
+                : null,
             },
             {
               type: "dropoff",
               available: true,
               unavailable_reason: null,
-              earliest_hint: null,
+              earliest_hint: formatDateHint(earliestDropoff),
             },
           ],
         },
       };
+    }
 
     case "date_pick":
       // TODO(phase_11): call computeAvailableDates.
@@ -776,4 +832,144 @@ function parseClarificationQuestionsPending(raw: unknown): PendingQuestion[] {
  */
 function buildConcernExplanationLeadIn(displayName: string): string {
   return `Got it — tell me a bit about ${displayName.toLowerCase()}. What are you noticing? 🤔`;
+}
+
+// ─── Phase 10 — service pick aggregation + wait-eligibility ─────────────────
+
+/**
+ * Collect every service_key the customer has committed to across the four
+ * row buckets:
+ *   - selected_simple_services (Step 7.1 routine non-explanation picks)
+ *   - approved_testing_services (Step 7.1 diagnostic chip section)
+ *   - explanation_required_items[].service_key (Step 7.2 queue entries)
+ *   - additional_routine_services_round2 (Step 7.6 add-ons)
+ *
+ * Returns a de-duplicated array. Order is preserved as much as possible
+ * (selected_simple_services first, then testing, then explanation queue,
+ * then second-pass adds) so downstream UI can render in a consistent
+ * sequence.
+ */
+function collectPickedServiceKeys(row: Record<string, unknown>): string[] {
+  const keys = new Set<string>();
+  const out: string[] = [];
+  const push = (k: string) => {
+    if (!keys.has(k)) {
+      keys.add(k);
+      out.push(k);
+    }
+  };
+  for (const k of (row.selected_simple_services as string[] | null) ?? []) {
+    push(k);
+  }
+  for (const k of (row.approved_testing_services as string[] | null) ?? []) {
+    push(k);
+  }
+  if (Array.isArray(row.explanation_required_items)) {
+    for (const entry of row.explanation_required_items) {
+      if (
+        entry &&
+        typeof entry === "object" &&
+        typeof (entry as Record<string, unknown>).service_key === "string"
+      ) {
+        push((entry as Record<string, unknown>).service_key as string);
+      }
+    }
+  }
+  for (const k of (row.additional_routine_services_round2 as
+    | string[]
+    | null) ?? []) {
+    push(k);
+  }
+  return out;
+}
+
+/**
+ * Decide whether the picked-service basket is eligible for the waiter
+ * slot. Every key must be in routine_services with wait_eligible=true.
+ * Any testing_services pick (no wait_eligible column) blocks eligibility
+ * — those services take time and require a tech bay.
+ *
+ * Returns the blocking display_name in blocked_reason when a single
+ * service is the culprit; falls back to a generic reason when multiple
+ * services are blocking.
+ */
+async function assessWaitEligibility(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  allKeys: string[],
+): Promise<{ wait_eligible: boolean; blocked_reason: string | null }> {
+  if (allKeys.length === 0) {
+    return { wait_eligible: true, blocked_reason: null };
+  }
+
+  const { data: routineRows, error: routineErr } = await supabase
+    .from("routine_services")
+    .select("service_key, display_name, wait_eligible")
+    .eq("shop_id", SHOP_ID)
+    .in("service_key", allKeys);
+  if (routineErr) {
+    throw new Error(
+      `routine_services wait_eligible lookup failed: ${routineErr.message}`,
+    );
+  }
+  const routineByKey = new Map<
+    string,
+    { display_name: string; wait_eligible: boolean }
+  >();
+  for (const r of (routineRows ?? []) as Array<{
+    service_key: string;
+    display_name: string;
+    wait_eligible: boolean;
+  }>) {
+    routineByKey.set(r.service_key, {
+      display_name: r.display_name,
+      wait_eligible: !!r.wait_eligible,
+    });
+  }
+
+  const blockers: string[] = [];
+  for (const key of allKeys) {
+    const r = routineByKey.get(key);
+    if (r === undefined) {
+      // Testing service or stale key — treat as non-waiter-eligible.
+      blockers.push(key);
+      continue;
+    }
+    if (!r.wait_eligible) {
+      blockers.push(r.display_name);
+    }
+  }
+
+  if (blockers.length === 0) {
+    return { wait_eligible: true, blocked_reason: null };
+  }
+  if (blockers.length === 1) {
+    return {
+      wait_eligible: false,
+      blocked_reason: `${blockers[0]} takes longer than a waiter slot allows.`,
+    };
+  }
+  return {
+    wait_eligible: false,
+    blocked_reason:
+      "Some of the services you picked take longer than a waiter slot allows.",
+  };
+}
+
+/**
+ * Format a YYYY-MM-DD into a short human-readable hint like "Mon May 19"
+ * for the appointment_type card buttons. Returns null when input is null
+ * so the card can suppress the "Earliest:" line.
+ */
+function formatDateHint(ymd: string | null): string | null {
+  if (!ymd) return null;
+  // Construct the date AT NOON UTC for the day so timezone shifts can't
+  // bump us to the prior calendar day in any locale.
+  const d = new Date(`${ymd}T12:00:00Z`);
+  if (Number.isNaN(d.getTime())) return null;
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    timeZone: "America/New_York",
+  }).format(d);
 }

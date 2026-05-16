@@ -33,6 +33,7 @@
 import * as Sentry from "@sentry/nextjs";
 import { useRouter } from "next/navigation";
 
+import { AppointmentTypeCard } from "@/components/scheduler/heritage/AppointmentTypeCard";
 import { ClarificationQuestionCard } from "@/components/scheduler/heritage/ClarificationQuestionCard";
 import { ConcernExplanationCard } from "@/components/scheduler/heritage/ConcernExplanationCard";
 import { CustomerInfoEditCard } from "@/components/scheduler/heritage/CustomerInfoEditCard";
@@ -45,10 +46,12 @@ import { NoMatchChoosePathCard } from "@/components/scheduler/heritage/NoMatchCh
 import { OtpInput } from "@/components/scheduler/OtpInput";
 import { PartialVerificationGateCard } from "@/components/scheduler/heritage/PartialVerificationGateCard";
 import { PhoneNameCard } from "@/components/scheduler/heritage/PhoneNameCard";
+import { SecondRoutinePassCard } from "@/components/scheduler/heritage/SecondRoutinePassCard";
 import { ServiceAndConcernPicker } from "@/components/scheduler/ServiceAndConcernPicker";
 import { VehiclePicker } from "@/components/scheduler/VehiclePicker";
 import { resendOtpV2 } from "@/lib/scheduler/wizard/actions/resend-otp";
 import { runDiagnosticsV2 } from "@/lib/scheduler/wizard/actions/run-diagnostics";
+import { submitAppointmentTypeV2 } from "@/lib/scheduler/wizard/actions/submit-appointment-type";
 import { submitClarificationAnswerV2 } from "@/lib/scheduler/wizard/actions/submit-clarification-answer";
 import { submitCustomerInfoEditV2 } from "@/lib/scheduler/wizard/actions/submit-customer-info-edit";
 import { submitExplanationV2 } from "@/lib/scheduler/wizard/actions/submit-explanation";
@@ -60,6 +63,7 @@ import { submitNoMatchChoiceV2 } from "@/lib/scheduler/wizard/actions/submit-no-
 import { submitOtpV2 } from "@/lib/scheduler/wizard/actions/submit-otp";
 import { submitPartialVerificationChoiceV2 } from "@/lib/scheduler/wizard/actions/submit-partial-verification-choice";
 import { submitPhoneNameV2 } from "@/lib/scheduler/wizard/actions/submit-phone-name";
+import { submitSecondRoutinePassV2 } from "@/lib/scheduler/wizard/actions/submit-second-routine-pass";
 import { submitServiceAndConcernPickerV2 } from "@/lib/scheduler/wizard/actions/submit-service-and-concern-picker";
 import { submitVehiclePickV2 } from "@/lib/scheduler/wizard/actions/submit-vehicle-pick";
 import type { WizardCard } from "@/lib/scheduler/wizard/card-payloads";
@@ -326,6 +330,40 @@ export function WizardSurface({ chatId, card }: WizardSurfaceProps) {
                   : { kind: "answer", value: answer },
             });
             handleResult("submitClarificationAnswerV2", chatId, result);
+          }}
+        />
+      );
+
+    case "second_routine_pass":
+      return (
+        <SecondRoutinePassCard
+          common_services={card.payload.common_services}
+          already_picked={card.payload.already_picked}
+          onSubmit={async ({ added }) => {
+            const result = await submitSecondRoutinePassV2({
+              chatId,
+              added,
+            });
+            handleResult("submitSecondRoutinePassV2", chatId, result);
+          }}
+        />
+      );
+
+    case "appointment_type":
+      return (
+        <AppointmentTypeCard
+          options={card.payload.options.map((o) => ({
+            type: o.type,
+            available: o.available,
+            unavailable_reason: o.unavailable_reason ?? undefined,
+            earliest_hint: o.earliest_hint ?? undefined,
+          }))}
+          onSubmit={async ({ appointment_type }) => {
+            const result = await submitAppointmentTypeV2({
+              chatId,
+              appointment_type,
+            });
+            handleResult("submitAppointmentTypeV2", chatId, result);
           }}
         />
       );
