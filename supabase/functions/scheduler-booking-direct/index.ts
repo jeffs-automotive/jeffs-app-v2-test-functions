@@ -52,6 +52,7 @@ import {
   lookupVehiclesForCustomer,
   patchCustomer,
 } from "../_shared/tools/scheduler-customer.ts";
+import { logEdgeError } from "../_shared/log-edge-error.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SHOP_ID = parseInt(
@@ -99,7 +100,12 @@ interface NewCustomerPayload {
   phone_e164: string;
   email?: string;
   address?: {
-    streetAddress?: string;
+    // R4-IMPORTANT-B-2 2026-05-16: prior shape declared `streetAddress` but
+    // the helper + Vercel-side client both use address1/address2. The cast
+    // at parseBody was a TS no-op so the runtime worked, but the interface
+    // was misleading drift waiting to bite a future refactor.
+    address1?: string;
+    address2?: string;
     city?: string;
     state?: string;
     zip?: string;
@@ -890,6 +896,7 @@ async function handleRequest(req: Request): Promise<Response> {
     return jsonResponse({ ok: false, error: "unreachable" }, 500);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
+    const stack = e instanceof Error ? (e.stack ?? null) : null;
     console.error(
       JSON.stringify({
         level: "error",
@@ -898,6 +905,15 @@ async function handleRequest(req: Request): Promise<Response> {
         detail: msg,
       }),
     );
+    await logEdgeError(sb, {
+      session_id: input.session_id,
+      surface: `scheduler-booking-direct/${input.op}`,
+      origin_id: "scheduler-booking-direct",
+      level: "error",
+      error_code: `${input.op}_unhandled`,
+      message: msg,
+      stack,
+    });
     return jsonResponse(
       {
         ok: false,

@@ -49,6 +49,38 @@ const FALLBACK_WAITER_CAPACITY_PER_TIME = 2;
 const FALLBACK_DAILY_TOTAL_CAP = 35;
 const SHADOW_HORIZON_DAYS = 7;
 
+const SHOP_TIMEZONE = "America/New_York";
+
+/**
+ * Convert a shop-local date+time to a Tekmetric-bound ISO string with the
+ * correct UTC offset for THAT specific date. DST-aware: returns -04:00
+ * during EDT (mid-Mar → early-Nov) and -05:00 during EST (early-Nov →
+ * mid-Mar). Bug fix 2026-05-16 (R4-BLOCKER-B-1): the previous code
+ * hardcoded "-04:00" everywhere, which produced appointments 1 hour off
+ * shop-local every November-March.
+ *
+ * Probes the offset at 12:00 UTC of the given date (7-8 AM shop-local —
+ * far outside the 2 AM DST-transition window). Returns the wall-clock
+ * `${date}T${timeHHMM}:00` tagged with that offset, so `new Date()` of
+ * the result resolves to the correct UTC instant.
+ *
+ * timeHHMM must be "HH:MM" (24-hour, zero-padded). `date` must be
+ * "YYYY-MM-DD".
+ */
+function shopLocalToIsoString(date: string, timeHHMM: string): string {
+  const probe = new Date(`${date}T12:00:00Z`);
+  const tzName =
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: SHOP_TIMEZONE,
+      timeZoneName: "longOffset",
+    })
+      .formatToParts(probe)
+      .find((p) => p.type === "timeZoneName")?.value ?? "GMT-05:00";
+  // tzName is "GMT-04:00" (EDT) or "GMT-05:00" (EST). Strip "GMT" prefix.
+  const offset = tzName.replace(/^GMT/, "") || "-05:00";
+  return `${date}T${timeHHMM}:00${offset}`;
+}
+
 /**
  * Per-day capacity limits, sourced from appointment_default_limits
  * (DB-driven per spec) with constant fallbacks.
@@ -877,9 +909,10 @@ export async function confirmAppointment(
   const time = String(hold.scheduled_time).slice(0, 5); // HH:MM
   const type = hold.appointment_type as "waiter" | "dropoff";
 
-  // EDT offset hard-coded for Phase 1; revisit when DST switches if Issue.
-  // Better: compute via Intl.DateTimeFormat with America/New_York for safety.
-  const startTimeIso = `${date}T${time}:00-04:00`;
+  // DST-aware shop-local → ISO via shopLocalToIsoString (R4-BLOCKER-B-1
+  // 2026-05-16 fix). Replaces the previous hardcoded -04:00 offset which
+  // wrote appointments 1 hour off shop-local every Nov-Mar.
+  const startTimeIso = shopLocalToIsoString(date, time);
   const startTime = new Date(startTimeIso);
   const endTime = new Date(startTime.getTime() + 60 * 60_000); // 1-hour appointments
 
@@ -1058,7 +1091,8 @@ export async function rescheduleAppointment(
     args.appointment_type === "waiter"
       ? (args.new_time ?? "08:00")
       : "12:00";
-  const startTime = new Date(`${args.new_date}T${time}:00-04:00`);
+  // DST-aware (R4-BLOCKER-B-1 2026-05-16 fix). See shopLocalToIsoString.
+  const startTime = new Date(shopLocalToIsoString(args.new_date, time));
   const endTime = new Date(startTime.getTime() + 60 * 60_000);
 
   const res = await tekmetricFetch(sb, `/appointments/${args.appointment_id}`, {

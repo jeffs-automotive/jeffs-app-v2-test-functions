@@ -43,6 +43,7 @@ import {
   type TekmetricCustomer,
 } from "../_shared/tools/scheduler-customer.ts";
 import { sendOtp } from "../_shared/tools/scheduler-otp.ts";
+import { logEdgeError } from "../_shared/log-edge-error.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SHOP_ID = parseInt(
@@ -340,13 +341,24 @@ async function handleRequest(req: Request): Promise<Response> {
     const result = await lookupCustomerByPhone(sb, SHOP_ID, input.phone_e164);
     hits = result.customers;
   } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
     console.error(
       JSON.stringify({
         level: "error",
         msg: "step2_direct_lookup_failed",
-        detail: e instanceof Error ? e.message : String(e),
+        detail: msg,
       }),
     );
+    await logEdgeError(sb, {
+      session_id: input.session_id,
+      surface: "scheduler-step2-direct/lookupCustomerByPhone",
+      origin_id: "scheduler-step2-direct",
+      level: "error",
+      error_code: "tekmetric_lookup_failed",
+      message: msg,
+      stack: e instanceof Error ? (e.stack ?? null) : null,
+      context: { phone_last_four: input.phone_e164.slice(-4) },
+    });
     return jsonResponse({
       ok: false,
       directive: "show_escalation_card",
@@ -392,6 +404,15 @@ async function handleRequest(req: Request): Promise<Response> {
           phone_last_four: input.phone_e164.slice(-4),
         }),
       );
+      await logEdgeError(sb, {
+        session_id: input.session_id,
+        surface: "scheduler-step2-direct/sendOtp",
+        origin_id: "scheduler-step2-direct",
+        level: "warning",
+        error_code: `otp_${otp.error}`,
+        message: otp.detail ?? null,
+        context: { phone_last_four: input.phone_e164.slice(-4) },
+      });
       return jsonResponse({
         ok: false,
         directive: "show_escalation_card",
@@ -451,6 +472,14 @@ async function handleRequest(req: Request): Promise<Response> {
           detail: candidatesWriteErr.message,
         }),
       );
+      await logEdgeError(sb, {
+        session_id: input.session_id,
+        surface: "scheduler-step2-direct/pending_candidates_write",
+        origin_id: "scheduler-step2-direct",
+        level: "warning",
+        error_code: "pending_candidates_write_failed",
+        message: candidatesWriteErr.message,
+      });
       // Don't fail the response — the card will render with 0 candidates
       // and the customer can still tap "None of these" to fall through
       // to NoMatchChoosePath. Better than a hard escalation.

@@ -50,6 +50,7 @@ import {
 } from "../_shared/scheduler-auth.ts";
 import { verifyOtp, sendOtp } from "../_shared/tools/scheduler-otp.ts";
 import { getCustomerById } from "../_shared/tools/scheduler-customer.ts";
+import { logEdgeError } from "../_shared/log-edge-error.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SHOP_ID = parseInt(
@@ -346,6 +347,7 @@ async function handleRequest(req: Request): Promise<Response> {
     return jsonResponse({ ok: false, error: "unreachable" }, 500);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
+    const stack = e instanceof Error ? (e.stack ?? null) : null;
     console.error(
       JSON.stringify({
         level: "error",
@@ -354,6 +356,15 @@ async function handleRequest(req: Request): Promise<Response> {
         detail: msg,
       }),
     );
+    await logEdgeError(sb, {
+      session_id: input.session_id,
+      surface: `scheduler-otp-direct/${input.op}`,
+      origin_id: "scheduler-otp-direct",
+      level: "error",
+      error_code: `${input.op}_unhandled`,
+      message: msg,
+      stack,
+    });
     return jsonResponse(
       { ok: false, op: input.op, error: msg },
       500,

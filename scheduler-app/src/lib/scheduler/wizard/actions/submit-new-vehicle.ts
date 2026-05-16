@@ -36,6 +36,7 @@ import {
 } from "@/lib/scheduler/booking-direct-client";
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
+import { logError } from "@/lib/scheduler/wizard/log-error";
 
 const CURRENT_YEAR = new Date().getFullYear();
 const MIN_YEAR = 1980;
@@ -78,7 +79,7 @@ export async function submitNewVehicleV2(
     const supabase = createSupabaseAdminClient();
     const { data: row, error: readErr } = await supabase
       .from("customer_chat_sessions")
-      .select("customer_id")
+      .select("customer_id, vehicle_id")
       .eq("id", chatId)
       .maybeSingle();
     if (readErr) {
@@ -88,6 +89,20 @@ export async function submitNewVehicleV2(
       });
       return { ok: false, error: readErr.message };
     }
+
+    // Idempotency pre-flight (R4-IMPORTANT-B-1 2026-05-16): Tekmetric POST
+    // /vehicles is NOT idempotent. If this action is retried after a
+    // successful prior POST, vehicle_id is already on the row. Skip the
+    // second POST and just advance — the new_vehicle_info column was
+    // also written by the prior pass.
+    if (row && typeof row.vehicle_id === "number") {
+      return applyWizardTransition({
+        chatId,
+        nextStep: "service_concern_picker",
+        jeffBubble: "Got it — what can we help with today? 🔧",
+      });
+    }
+
     if (!row || typeof row.customer_id !== "number") {
       // Defensive — this Server Action only reachable AFTER
       // submitNewCustomerInfoV2 (new client) OR submitCustomerInfoEditV2
@@ -176,13 +191,18 @@ export async function submitNewVehicleV2(
       jeffBubble: `Added your ${year} ${make} ${model}! 🚗 What can we help with today? 🔧`,
     });
   } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
     Sentry.captureException(e, {
-      tags: { surface: "submit_new_vehicle_v2" },
+      tags: { surface: "submit_new_vehicle_v2", chat_id: chatId },
       level: "error",
     });
-    return {
-      ok: false,
-      error: e instanceof Error ? e.message : String(e),
-    };
+    await logError({
+      chatId,
+      surface: "submit_new_vehicle_v2",
+      error_code: "uncaught",
+      message: msg,
+      stack: e instanceof Error ? (e.stack ?? null) : null,
+    });
+    return { ok: false, error: msg };
   }
 }

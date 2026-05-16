@@ -31,6 +31,7 @@ import {
 } from "@/lib/scheduler/booking-direct-client";
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
+import { logError } from "@/lib/scheduler/wizard/log-error";
 
 const submitVehiclePickSchema = z.object({
   chatId: z.string().min(1),
@@ -139,13 +140,18 @@ export async function submitVehiclePickV2(
       jeffBubble: "Got it! 🔧 What can we help with today?",
     });
   } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
     Sentry.captureException(e, {
-      tags: { surface: "submit_vehicle_pick_v2" },
+      tags: { surface: "submit_vehicle_pick_v2", chat_id: chatId },
       level: "error",
     });
-    return {
-      ok: false,
-      error: e instanceof Error ? e.message : String(e),
-    };
+    await logError({
+      chatId,
+      surface: "submit_vehicle_pick_v2",
+      error_code: "uncaught",
+      message: msg,
+      stack: e instanceof Error ? (e.stack ?? null) : null,
+    });
+    return { ok: false, error: msg };
   }
 }

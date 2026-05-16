@@ -31,6 +31,7 @@ import { NextResponse } from "next/server";
 import * as Sentry from "@sentry/nextjs";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { logError } from "@/lib/scheduler/wizard/log-error";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -70,13 +71,23 @@ export async function POST(req: Request): Promise<NextResponse> {
 
     // Only flip rows that are currently in-flight. Idempotent: a row
     // that's already ended/escalated/timed_out is left alone.
+    //
+    // Bug fix 2026-05-16 (R4-BLOCKER-E-1): previously wrote
+    // outcome: "abandoned", but the CHECK constraint only allows
+    // ('scheduled','info_only','escalation','incomplete'). Every beacon
+    // silently failed the row update — session stayed status='active'
+    // and downstream resume logic mis-treated truly-abandoned rows as
+    // resumable. Fixed to 'incomplete' (matches schema enum). The
+    // separate abandoned_at TIMESTAMPTZ column distinguishes
+    // "user-abandoned" from other "incomplete" outcomes for analytics.
     const nowIso = new Date().toISOString();
     const { error: updateErr } = await supabase
       .from("customer_chat_sessions")
       .update({
         status: "timed_out",
         ended_at: nowIso,
-        outcome: "abandoned",
+        abandoned_at: nowIso,
+        outcome: "incomplete",
         last_active_at: nowIso,
       })
       .eq("id", chatId)
@@ -86,6 +97,14 @@ export async function POST(req: Request): Promise<NextResponse> {
       Sentry.captureMessage("mark_abandoned_update_failed", {
         level: "warning",
         extra: { chatId, error: updateErr.message },
+      });
+      await logError({
+        chatId,
+        surface: "mark_abandoned_route",
+        error_code: "session_update_failed",
+        message: updateErr.message,
+        level: "warning",
+        context: { source: source ?? null, step: step ?? null },
       });
       return new NextResponse(null, { status: 204 });
     }
@@ -107,6 +126,13 @@ export async function POST(req: Request): Promise<NextResponse> {
       Sentry.captureMessage("mark_abandoned_release_hold_failed", {
         level: "warning",
         extra: { chatId, error: releaseErr.message },
+      });
+      await logError({
+        chatId,
+        surface: "mark_abandoned_route",
+        error_code: "hold_release_failed",
+        message: releaseErr.message,
+        level: "warning",
       });
     }
 
@@ -136,6 +162,13 @@ export async function POST(req: Request): Promise<NextResponse> {
     Sentry.captureException(e, {
       tags: { surface: "mark_abandoned_route" },
       level: "warning",
+    });
+    await logError({
+      surface: "mark_abandoned_route",
+      error_code: "uncaught",
+      message: e instanceof Error ? e.message : String(e),
+      stack: e instanceof Error ? e.stack ?? null : null,
+      level: "error",
     });
     // Always return 204 — sendBeacon doesn't process error responses.
     return new NextResponse(null, { status: 204 });

@@ -27,6 +27,7 @@ import { z } from "zod";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
+import { logError } from "@/lib/scheduler/wizard/log-error";
 
 const inputSchema = z.object({
   chatId: z.string().min(1),
@@ -110,84 +111,106 @@ export async function submitClarificationAnswerV2(
   }
   const { chatId, question_id, action } = parsed.data;
 
-  const supabase = createSupabaseAdminClient();
+  // Bug fix 2026-05-16 (R4-IMPORTANT-D-4): every other V2 action wraps
+  // the body in try/catch with Sentry + logError. This one previously
+  // had none — uncaught throws from applyWizardTransition or the parse
+  // helpers became opaque Server Action rejections with no breadcrumb.
+  try {
+    const supabase = createSupabaseAdminClient();
 
-  const { data: row, error: rowErr } = await supabase
-    .from("customer_chat_sessions")
-    .select(
-      "id, clarification_questions_pending, clarification_questions_answered",
-    )
-    .eq("id", chatId)
-    .maybeSingle();
+    const { data: row, error: rowErr } = await supabase
+      .from("customer_chat_sessions")
+      .select(
+        "id, clarification_questions_pending, clarification_questions_answered",
+      )
+      .eq("id", chatId)
+      .maybeSingle();
 
-  if (rowErr || !row) {
-    return { ok: false, error: rowErr?.message ?? "session_not_found" };
-  }
+    if (rowErr || !row) {
+      return { ok: false, error: rowErr?.message ?? "session_not_found" };
+    }
 
-  const pending = parsePending(row.clarification_questions_pending);
-  const answered = parseAnswered(row.clarification_questions_answered);
+    const pending = parsePending(row.clarification_questions_pending);
+    const answered = parseAnswered(row.clarification_questions_answered);
 
-  const head = pending[0];
-  if (!head) {
-    // Queue already drained (likely a stale submit after a refresh). Just
-    // skip ahead to second_routine_pass without changing answered state.
+    const head = pending[0];
+    if (!head) {
+      // Queue already drained (likely a stale submit after a refresh).
+      // Just skip ahead to second_routine_pass without changing answered
+      // state.
+      return applyWizardTransition({
+        chatId,
+        nextStep: "second_routine_pass",
+      });
+    }
+
+    if (head.question_id !== question_id) {
+      Sentry.captureMessage(
+        "submit_clarification_answer_v2 queue head mismatch",
+        {
+          level: "warning",
+          extra: {
+            chatId,
+            submitted_question_id: question_id,
+            actual_head_question_id: head.question_id,
+            pending_count: pending.length,
+          },
+        },
+      );
+      return { ok: false, error: "queue_head_mismatch" };
+    }
+
+    // Validate the answer value is one of the allowed options when 'answer'.
+    if (action.kind === "answer") {
+      const valid = head.options.some((o) => o.value === action.value);
+      if (!valid) {
+        return { ok: false, error: "invalid_option_value" };
+      }
+    }
+
+    const writeValue = action.kind === "skip" ? "skipped" : action.value;
+    const nextAnswered: Record<string, string> = {
+      ...answered,
+      [String(question_id)]: writeValue,
+    };
+    const nextPending = pending.slice(1);
+
+    const userBubble = action.kind === "skip"
+      ? "I'm not sure"
+      : head.options.find((o) => o.value === action.value)?.label ?? action.value;
+
+    const nextStep = nextPending.length > 0
+      ? ("clarification_question" as const)
+      : ("second_routine_pass" as const);
+
+    const jeffBubble = nextPending.length > 0
+      ? undefined
+      : "Thanks — that's everything I needed. Let me check the schedule! 📅";
+
     return applyWizardTransition({
       chatId,
-      nextStep: "second_routine_pass",
-    });
-  }
-
-  if (head.question_id !== question_id) {
-    Sentry.captureMessage("submit_clarification_answer_v2 queue head mismatch", {
-      level: "warning",
-      extra: {
-        chatId,
-        submitted_question_id: question_id,
-        actual_head_question_id: head.question_id,
-        pending_count: pending.length,
+      updates: {
+        clarification_questions_pending: nextPending,
+        clarification_questions_answered: nextAnswered,
       },
+      nextStep,
+      userBubble,
+      jeffBubble,
     });
-    return {
-      ok: false,
-      error: "queue_head_mismatch",
-    };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    Sentry.captureException(e, {
+      tags: { surface: "submit_clarification_answer_v2", chat_id: chatId },
+      level: "error",
+    });
+    await logError({
+      chatId,
+      surface: "submit_clarification_answer_v2",
+      error_code: "uncaught",
+      message: msg,
+      stack: e instanceof Error ? (e.stack ?? null) : null,
+      context: { question_id, action_kind: action.kind },
+    });
+    return { ok: false, error: msg };
   }
-
-  // Validate the answer value is one of the allowed options when 'answer'.
-  if (action.kind === "answer") {
-    const valid = head.options.some((o) => o.value === action.value);
-    if (!valid) {
-      return { ok: false, error: "invalid_option_value" };
-    }
-  }
-
-  const writeValue = action.kind === "skip" ? "skipped" : action.value;
-  const nextAnswered: Record<string, string> = {
-    ...answered,
-    [String(question_id)]: writeValue,
-  };
-  const nextPending = pending.slice(1);
-
-  const userBubble = action.kind === "skip"
-    ? "I'm not sure"
-    : head.options.find((o) => o.value === action.value)?.label ?? action.value;
-
-  const nextStep = nextPending.length > 0
-    ? ("clarification_question" as const)
-    : ("second_routine_pass" as const);
-
-  const jeffBubble = nextPending.length > 0
-    ? undefined
-    : "Thanks — that's everything I needed. Let me check the schedule! 📅";
-
-  return applyWizardTransition({
-    chatId,
-    updates: {
-      clarification_questions_pending: nextPending,
-      clarification_questions_answered: nextAnswered,
-    },
-    nextStep,
-    userBubble,
-    jeffBubble,
-  });
 }

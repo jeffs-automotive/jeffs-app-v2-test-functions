@@ -33,6 +33,7 @@ import {
 } from "@/lib/scheduler/booking-direct-client";
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
+import { logError } from "@/lib/scheduler/wizard/log-error";
 
 const phoneEntrySchema = z.object({
   phone_e164: z.string().regex(/^\+1\d{10}$/, "phone must be +1XXXXXXXXXX"),
@@ -86,7 +87,7 @@ export async function submitNewCustomerInfoV2(
     const supabase = createSupabaseAdminClient();
     const { data: row, error: readErr } = await supabase
       .from("customer_chat_sessions")
-      .select("entered_first_name, entered_last_name, phone_e164")
+      .select("entered_first_name, entered_last_name, phone_e164, customer_id")
       .eq("id", chatId)
       .maybeSingle();
     if (readErr) {
@@ -98,6 +99,20 @@ export async function submitNewCustomerInfoV2(
     }
     if (!row) {
       return { ok: false, error: "session_not_found" };
+    }
+
+    // Idempotency pre-flight (R4-IMPORTANT-B-1 2026-05-16): Tekmetric POST
+    // /customers is NOT idempotent. If this Server Action gets retried
+    // (double-tap, browser retry on transient error, React Server Action
+    // re-fire) AFTER a prior successful POST, customer_id is already on
+    // the row. Skip the second POST and just advance — the prior write
+    // already populated the row's edited_* + verified_* columns too.
+    if (typeof row.customer_id === "number") {
+      return applyWizardTransition({
+        chatId,
+        nextStep: "new_vehicle_form",
+        jeffBubble: "All set up! 🎉 Now tell me about your vehicle.",
+      });
     }
 
     const firstName = (row.entered_first_name as string | null) ?? "";
@@ -250,13 +265,18 @@ export async function submitNewCustomerInfoV2(
       jeffBubble: "All set up! 🎉 Now tell me about your vehicle.",
     });
   } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
     Sentry.captureException(e, {
-      tags: { surface: "submit_new_customer_info_v2" },
+      tags: { surface: "submit_new_customer_info_v2", chat_id: chatId },
       level: "error",
     });
-    return {
-      ok: false,
-      error: e instanceof Error ? e.message : String(e),
-    };
+    await logError({
+      chatId,
+      surface: "submit_new_customer_info_v2",
+      error_code: "uncaught",
+      message: msg,
+      stack: e instanceof Error ? (e.stack ?? null) : null,
+    });
+    return { ok: false, error: msg };
   }
 }

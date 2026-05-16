@@ -55,6 +55,7 @@ import { appendAppointmentDescription, BookingDirectError } from "@/lib/schedule
 import { scanForEscalationKeywords } from "@/lib/scheduler/escalation-keywords";
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
+import { logError } from "@/lib/scheduler/wizard/log-error";
 import { submitEscalateV2 } from "./submit-escalate";
 
 const PARSE_LENGTH_THRESHOLD = 150; // chars — chat-design.md §10.3
@@ -104,17 +105,24 @@ export async function submitCustomerNotesV2(
         return await handleRejectParsed(input.chatId);
     }
   } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
     Sentry.captureException(e, {
       tags: {
         surface: "submit_customer_notes_v2",
         kind: input.kind,
+        chat_id: input.chatId,
       },
       level: "error",
     });
-    return {
-      ok: false,
-      error: e instanceof Error ? e.message : String(e),
-    };
+    await logError({
+      chatId: input.chatId,
+      surface: "submit_customer_notes_v2",
+      error_code: "uncaught",
+      message: msg,
+      stack: e instanceof Error ? (e.stack ?? null) : null,
+      context: { kind: input.kind },
+    });
+    return { ok: false, error: msg };
   }
 }
 

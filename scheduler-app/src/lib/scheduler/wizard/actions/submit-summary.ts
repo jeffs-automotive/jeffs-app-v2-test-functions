@@ -45,6 +45,7 @@ import {
 } from "@/lib/scheduler/booking-direct-client";
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
+import { logError } from "@/lib/scheduler/wizard/log-error";
 import type { WizardStep } from "@/lib/scheduler/session-state";
 import {
   buildAppointmentTitleV2,
@@ -82,14 +83,24 @@ export async function submitSummaryV2(
     }
     return await handleConfirmPath(chatId);
   } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
     Sentry.captureException(e, {
-      tags: { surface: "submit_summary_v2", confirmed: String(confirmed) },
+      tags: {
+        surface: "submit_summary_v2",
+        confirmed: String(confirmed),
+        chat_id: chatId,
+      },
       level: "error",
     });
-    return {
-      ok: false,
-      error: e instanceof Error ? e.message : String(e),
-    };
+    await logError({
+      chatId,
+      surface: "submit_summary_v2",
+      error_code: "uncaught",
+      message: msg,
+      stack: e instanceof Error ? (e.stack ?? null) : null,
+      context: { confirmed },
+    });
+    return { ok: false, error: msg };
   }
 }
 
@@ -198,6 +209,28 @@ async function handleConfirmPath(chatId: string): Promise<WizardTransitionResult
     return { ok: false, error: rowErr?.message ?? "session_not_found" };
   }
   const r = row as Record<string, unknown>;
+
+  // Idempotency pre-flight (R4-IMPORTANT-B-1 2026-05-16): Tekmetric POST
+  // /appointments is NOT idempotent. If this action is retried after a
+  // prior successful confirm (double-tap, network blip between the POST
+  // returning 200 and our row write succeeding), appointment_id is
+  // already on the row. Skip the second POST and re-emit the confirm
+  // success bubble + advance to customer_notes (where the prior pass
+  // was already heading).
+  if (typeof r.appointment_id === "number" && r.appointment_id > 0) {
+    return applyWizardTransition({
+      chatId,
+      updates: {},
+      nextStep: "customer_notes",
+      jeffBubble: buildConfirmedBubble(
+        (r.entered_first_name as string | null) ?? null,
+        r.appointment_type === "waiter" ? "waiter" : "dropoff",
+        // start_time isn't kept on the row post-confirm; fall back to
+        // empty string which buildConfirmedBubble handles gracefully.
+        "",
+      ),
+    });
+  }
 
   // Pre-flight checks
   const holdToken = r.hold_token as string | null;

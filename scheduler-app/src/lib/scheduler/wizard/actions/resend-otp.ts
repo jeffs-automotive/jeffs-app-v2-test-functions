@@ -25,6 +25,7 @@ import {
 } from "@/lib/scheduler/otp-direct-client";
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
+import { logError } from "@/lib/scheduler/wizard/log-error";
 
 const resendOtpSchema = z.object({
   chatId: z.string().min(1),
@@ -103,13 +104,18 @@ export async function resendOtpV2(
       jeffBubble: "Just sent a fresh code — check your phone! 📱",
     });
   } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
     Sentry.captureException(e, {
-      tags: { surface: "resend_otp_v2" },
+      tags: { surface: "resend_otp_v2", chat_id: chatId },
       level: "error",
     });
-    return {
-      ok: false,
-      error: e instanceof Error ? e.message : String(e),
-    };
+    await logError({
+      chatId,
+      surface: "resend_otp_v2",
+      error_code: "uncaught",
+      message: msg,
+      stack: e instanceof Error ? (e.stack ?? null) : null,
+    });
+    return { ok: false, error: msg };
   }
 }

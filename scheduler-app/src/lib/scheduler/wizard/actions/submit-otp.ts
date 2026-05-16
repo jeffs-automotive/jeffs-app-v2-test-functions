@@ -30,6 +30,7 @@ import {
 } from "@/lib/scheduler/otp-direct-client";
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
+import { logError } from "@/lib/scheduler/wizard/log-error";
 
 const submitOtpSchema = z.object({
   chatId: z.string().min(1),
@@ -160,14 +161,19 @@ export async function submitOtpV2(
       jeffBubble: newCustomerSuccessBubble(firstName),
     });
   } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
     Sentry.captureException(e, {
-      tags: { surface: "submit_otp_v2" },
+      tags: { surface: "submit_otp_v2", chat_id: chatId },
       level: "error",
     });
-    return {
-      ok: false,
-      error: e instanceof Error ? e.message : String(e),
-    };
+    await logError({
+      chatId,
+      surface: "submit_otp_v2",
+      error_code: "uncaught",
+      message: msg,
+      stack: e instanceof Error ? (e.stack ?? null) : null,
+    });
+    return { ok: false, error: msg };
   }
 }
 

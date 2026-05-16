@@ -13,6 +13,7 @@
  * migration; phase 16 deletes it.
  */
 import * as Sentry from "@sentry/nextjs";
+import { z } from "zod";
 
 import {
   greetingBucketToBoolean,
@@ -20,35 +21,60 @@ import {
 } from "@/lib/scheduler/session-state";
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
+import { logError } from "@/lib/scheduler/wizard/log-error";
 
-export interface SubmitGreetingV2Args {
-  chatId: string;
-  is_returning: GreetingBucket;
-}
+// Bug fix 2026-05-16 (R4-IMPORTANT-D-2): every other V2 action runs a
+// .safeParse on entry; submit-greeting previously trusted the TS interface
+// alone. Server Actions are exposed to untrusted clients — validate.
+const submitGreetingSchema = z.object({
+  chatId: z.string().min(1),
+  is_returning: z.enum(["returning", "new", "unsure"]),
+});
+
+export type SubmitGreetingV2Args = z.infer<typeof submitGreetingSchema>;
 
 export async function submitGreetingV2(
   args: SubmitGreetingV2Args,
 ): Promise<WizardTransitionResult> {
+  const parsed = submitGreetingSchema.safeParse(args);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues.map((i) => i.message).join("; "),
+    };
+  }
+  const { chatId, is_returning } = parsed.data;
+
   try {
     return await applyWizardTransition({
-      chatId: args.chatId,
+      chatId,
       updates: {
-        is_returning_customer: greetingBucketToBoolean(args.is_returning),
-        customer_self_identified: args.is_returning,
+        is_returning_customer: greetingBucketToBoolean(is_returning),
+        customer_self_identified: is_returning,
         greeting_answered_at: new Date().toISOString(),
       },
       nextStep: "phone_name",
-      jeffBubble: greetingBubble(args.is_returning),
+      jeffBubble: greetingBubble(is_returning),
     });
   } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
     Sentry.captureException(e, {
-      tags: { surface: "submit_greeting_v2", bucket: args.is_returning },
+      tags: {
+        surface: "submit_greeting_v2",
+        bucket: is_returning,
+        chat_id: chatId,
+      },
       level: "error",
     });
-    return {
-      ok: false,
-      error: e instanceof Error ? e.message : String(e),
-    };
+    await logError({
+      chatId,
+      surface: "submit_greeting_v2",
+      error_code: "uncaught",
+      message: msg,
+      stack: e instanceof Error ? (e.stack ?? null) : null,
+      context: { bucket: is_returning },
+    });
+    return { ok: false, error: msg };
   }
 }
 

@@ -29,6 +29,7 @@ import {
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
 import type { WizardStep } from "@/lib/scheduler/session-state";
+import { logError } from "@/lib/scheduler/wizard/log-error";
 
 // ─── Input validation ───────────────────────────────────────────────────────
 
@@ -277,13 +278,18 @@ export async function submitPhoneNameV2(
       jeffBubble: bubbleForDirective(step2Result.directive),
     });
   } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
     Sentry.captureException(e, {
-      tags: { surface: "submit_phone_name_v2" },
+      tags: { surface: "submit_phone_name_v2", chat_id: chatId },
       level: "error",
     });
-    return {
-      ok: false,
-      error: e instanceof Error ? e.message : String(e),
-    };
+    await logError({
+      chatId,
+      surface: "submit_phone_name_v2",
+      error_code: "uncaught",
+      message: msg,
+      stack: e instanceof Error ? (e.stack ?? null) : null,
+    });
+    return { ok: false, error: msg };
   }
 }
