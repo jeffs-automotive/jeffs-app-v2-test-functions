@@ -326,6 +326,20 @@ async function handleRequest(req: Request): Promise<Response> {
 
   const authCheck = checkSchedulerBearer(req, "scheduler-otp-direct");
   if (!authCheck.ok) {
+    // R6 NICE 2026-05-16: surface bearer rejections to scheduler_error_log
+    // for queryable triage. The existing console.warn in scheduler-auth.ts
+    // reaches Sentry via Log Drain, but the structured row gives ops a
+    // single place to query auth failures across all direct fns.
+    await logEdgeError(sb, {
+      surface: "scheduler-otp-direct/auth",
+      origin_id: "scheduler-otp-direct",
+      level: "warning",
+      error_code: `auth_${authCheck.reason ?? "unknown"}`,
+      message: authCheck.reason ?? null,
+      context: authCheck.diagnostic
+        ? { diagnostic: authCheck.diagnostic }
+        : null,
+    });
     return unauthorizedResponse(authCheck);
   }
 

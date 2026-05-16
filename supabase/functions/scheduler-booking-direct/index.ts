@@ -548,6 +548,16 @@ async function handleRequest(req: Request): Promise<Response> {
 
   const authCheck = checkSchedulerBearer(req, "scheduler-booking-direct");
   if (!authCheck.ok) {
+    await logEdgeError(sb, {
+      surface: "scheduler-booking-direct/auth",
+      origin_id: "scheduler-booking-direct",
+      level: "warning",
+      error_code: `auth_${authCheck.reason ?? "unknown"}`,
+      message: authCheck.reason ?? null,
+      context: authCheck.diagnostic
+        ? { diagnostic: authCheck.diagnostic }
+        : null,
+    });
     return unauthorizedResponse(authCheck);
   }
 

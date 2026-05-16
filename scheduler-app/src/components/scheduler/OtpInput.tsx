@@ -86,6 +86,21 @@ export function OtpInput({
     return () => clearInterval(t);
   }, [resendCooldown]);
 
+  // R6-D-6 a11y fix 2026-05-16: track whether the most recent verify
+  // returned wrong-code so screen readers can announce it via role=
+  // "alert" on the FIRST render after a failed attempt. Detection:
+  // attempts_remaining decremented between renders. The priorRef is
+  // updated in a useEffect AFTER paint, so during render we still see
+  // the prior value — that's how we can detect a fresh drop.
+  const priorAttemptsRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    priorAttemptsRef.current = attempts_remaining;
+  }, [attempts_remaining]);
+  const justFailedVerify =
+    typeof priorAttemptsRef.current === "number" &&
+    typeof attempts_remaining === "number" &&
+    attempts_remaining < priorAttemptsRef.current;
+
   // Submit when the customer fills the 6th digit.
   // Phase 9c hotfix 2026-05-16: track pending state so the card shows a
   // visible "Verifying…" indicator instead of looking idle. Also guard
@@ -247,6 +262,16 @@ export function OtpInput({
             className="mt-3 text-[13px] leading-snug text-status-error-fg"
           >
             ⏰ This code expired. Tap &quot;Resend code&quot; below for a fresh one.
+          </p>
+        ) : null}
+
+        {justFailedVerify && !pendingVerify && !expired ? (
+          <p
+            role="alert"
+            className="mt-3 text-[13px] leading-snug text-status-error-fg"
+          >
+            ❌ That code didn&apos;t match. Try again or tap &quot;Resend
+            code&quot; below.
           </p>
         ) : null}
 

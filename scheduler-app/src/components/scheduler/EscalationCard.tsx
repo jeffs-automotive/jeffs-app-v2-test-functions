@@ -94,6 +94,7 @@ export function EscalationCard({
       <Card.Body>
         <a
           href={telHref}
+          aria-label={`Call Jeff's Automotive at ${displayPhone}`}
           className={
             "flex w-full items-center justify-center gap-2 rounded-[var(--radius-card)] " +
             "border border-brand-burgundy-700 bg-brand-burgundy-50 px-5 py-4 " +

@@ -320,6 +320,16 @@ async function handleRequest(req: Request): Promise<Response> {
   // since `.error` is undefined on the success-shaped result type.
   const authCheck = checkSchedulerBearer(req, "scheduler-step2-direct");
   if (!authCheck.ok) {
+    await logEdgeError(sb, {
+      surface: "scheduler-step2-direct/auth",
+      origin_id: "scheduler-step2-direct",
+      level: "warning",
+      error_code: `auth_${authCheck.reason ?? "unknown"}`,
+      message: authCheck.reason ?? null,
+      context: authCheck.diagnostic
+        ? { diagnostic: authCheck.diagnostic }
+        : null,
+    });
     return unauthorizedResponse(authCheck);
   }
 

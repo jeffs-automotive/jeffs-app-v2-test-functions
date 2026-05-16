@@ -1,7 +1,12 @@
 "use client";
 
 import { type HTMLAttributes, type ReactNode } from "react";
-import { LazyMotion, domAnimation, m } from "motion/react";
+import {
+  LazyMotion,
+  domAnimation,
+  m,
+  type HTMLMotionProps,
+} from "motion/react";
 
 /**
  * Heritage Editorial Card — the universal surface for wizard steps.
@@ -24,12 +29,28 @@ import { LazyMotion, domAnimation, m } from "motion/react";
  * prefers-reduced-motion via globals.css override.
  */
 
-export interface CardProps extends HTMLAttributes<HTMLDivElement> {
-  /** When true, suppresses the on-mount fade animation. Useful when the card
-   *  is part of a larger transition the parent owns. */
-  noAnimate?: boolean;
-  /** Optional aria-label / aria-labelledby is supported via {...rest}. */
-}
+/**
+ * CardProps narrowing (R6-D-2 a11y fix 2026-05-16): we accept both
+ * - plain HTMLAttributes<div> shape (for the noAnimate code path which
+ *   renders a <div>)
+ * - motion-specific props (HTMLMotionProps<"div">) for the animated
+ *   <m.div> path
+ *
+ * Prior shape extended HTMLAttributes<HTMLDivElement> + spread {...(rest as
+ * Record<string, unknown>)} on the <m.div> — the cast bypassed TS's
+ * check that aria-* attributes survive into the motion render. Now both
+ * paths preserve the aria props via the union type.
+ */
+export type CardProps =
+  & {
+    /** When true, suppresses the on-mount fade animation. Useful when
+     *  the card is part of a larger transition the parent owns. */
+    noAnimate?: boolean;
+    children?: ReactNode;
+    className?: string;
+  }
+  & Omit<HTMLAttributes<HTMLDivElement>, "children" | "className">
+  & Omit<HTMLMotionProps<"div">, "children" | "className">;
 
 export function Card({
   children,
@@ -56,7 +77,7 @@ export function Card({
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
         className={`${base} ${className ?? ""}`}
-        {...(rest as Record<string, unknown>)}
+        {...(rest as HTMLMotionProps<"div">)}
       >
         {children}
       </m.div>

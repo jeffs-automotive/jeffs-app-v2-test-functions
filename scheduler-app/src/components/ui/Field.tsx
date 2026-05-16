@@ -2,6 +2,7 @@
 
 import {
   forwardRef,
+  useId,
   type InputHTMLAttributes,
   type TextareaHTMLAttributes,
   type ReactNode,
@@ -23,11 +24,10 @@ import {
  *     readers announce it via aria-required on the input)
  */
 
-let idCounter = 0;
-function autoId(prefix: string): string {
-  idCounter += 1;
-  return `${prefix}-${idCounter}`;
-}
+// R6-D-5 a11y fix 2026-05-16: previously a module-scope idCounter
+// produced non-deterministic ids that risked SSR/CSR hydration mismatch
+// when callers forgot to pass an explicit inputId. Replaced with React
+// 18+ useId() inside the Field component (see usage site below).
 
 // ─── Field wrapper ──────────────────────────────────────────────────────────
 
@@ -60,7 +60,11 @@ export function Field({
   className,
   inputId,
 }: FieldProps) {
-  const id = inputId ?? autoId("fld");
+  // useId is hydration-safe — same value server + client. Falls through
+  // to the caller-provided inputId when one is supplied (e.g. for
+  // react-hook-form integration).
+  const generatedId = useId();
+  const id = inputId ?? `fld-${generatedId}`;
   const helpId = help ? `${id}-help` : undefined;
   const errId = error ? `${id}-err` : undefined;
   const describedBy = errId ?? helpId;

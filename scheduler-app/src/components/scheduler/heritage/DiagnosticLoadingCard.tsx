@@ -92,11 +92,19 @@ export function DiagnosticLoadingCard({ onMount }: DiagnosticLoadingCardProps) {
           ? "Almost there — pulling together the right questions for you."
           : "I'm thinking through what testing might be needed based on what you described.";
 
+  // R6-D-3 a11y fix 2026-05-16: previously the Card wrapper carried
+  // aria-live="polite" which scoped the live region to the entire card
+  // (every static surface change re-announced). Tightened: live region
+  // is now scoped to the changing Title + Description only via a
+  // dedicated <div aria-live="polite">; the error branch escalates to
+  // role="alert" so screen readers announce failure immediately.
   return (
-    <Card aria-labelledby="diagnostic-loading-title" aria-live="polite">
+    <Card aria-labelledby="diagnostic-loading-title">
       <Card.Eyebrow>Step 7.3 · Thinking through your concerns</Card.Eyebrow>
-      <Card.Title id="diagnostic-loading-title">{headline} 🤔</Card.Title>
-      <Card.Description>{body}</Card.Description>
+      <div aria-live={error !== null ? undefined : "polite"} aria-atomic="true">
+        <Card.Title id="diagnostic-loading-title">{headline} 🤔</Card.Title>
+        <Card.Description>{body}</Card.Description>
+      </div>
 
       <Card.Body>
         <div className="flex items-center justify-center py-6">
@@ -119,9 +127,11 @@ export function DiagnosticLoadingCard({ onMount }: DiagnosticLoadingCardProps) {
       </Card.Body>
 
       {error !== null && (
-        <Card.Footnote>
-          Error detail (for your service writer): {error}
-        </Card.Footnote>
+        <div role="alert">
+          <Card.Footnote>
+            Error detail (for your service writer): {error}
+          </Card.Footnote>
+        </div>
       )}
     </Card>
   );
