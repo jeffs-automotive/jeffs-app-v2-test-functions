@@ -105,10 +105,17 @@ export async function runDiagnosticsV2(
   const supabase = createSupabaseAdminClient();
 
   // ── 1. Load the row ──────────────────────────────────────────────────────
+  //
+  // Bug audit 2026-05-16: clarification_questions_pending was missing from
+  // this SELECT, so the idempotency-resume branch below ALWAYS read it as
+  // undefined → []. The customer's clarification queue got silently dropped
+  // on every page refresh in the diagnostic_loading step, and they were
+  // advanced to second_routine_pass with no questions answered. Added the
+  // column to the projection.
   const { data: row, error: rowErr } = await supabase
     .from("customer_chat_sessions")
     .select(
-      "id, explanation_required_items, new_vehicle_info, diagnostic_processing_complete",
+      "id, explanation_required_items, new_vehicle_info, diagnostic_processing_complete, clarification_questions_pending",
     )
     .eq("id", chatId)
     .maybeSingle();

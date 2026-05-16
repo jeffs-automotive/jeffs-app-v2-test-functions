@@ -245,14 +245,54 @@ async function decide(
 
   // 2+ phone hits → vehicle-only disambig (spec line 685, 710).
   // Drop names entirely from the candidate output to avoid leaking
-  // other household members' identities.
-  const candidates = await Promise.all(
+  // other household members' identities. Filter out customers whose
+  // most-recent vehicle lookup returned null — the spec PII-protective
+  // rule says we MUST NOT render unidentified rows, so they'd be dropped
+  // at render time anyway. Filtering here means the count returned to
+  // the customer matches what they see on the card. If filtering drops
+  // us to 1 candidate, downgrade to send_otp_first against that single
+  // remaining customer. If it drops us to 0, fall through to the
+  // 0-phone-hits no-match branch.
+  // (Bug audit 2026-05-16: previously every candidate with null vehicle
+  // was emitted to the row but then filtered by parseCandidates, leaving
+  // the customer with an empty list and no path forward.)
+  const candidatesAll = await Promise.all(
     hits.slice(0, 8).map(async (c) => ({
       customer_id: c.id,
-      // Vehicle is the disambiguation handle per spec; no name fields.
       recent_vehicle: await recentVehicleLabel(c.id),
     })),
   );
+  const candidates = candidatesAll.filter(
+    (c): c is { customer_id: number; recent_vehicle: string } =>
+      typeof c.recent_vehicle === "string" && c.recent_vehicle.length > 0,
+  );
+
+  if (candidates.length === 1) {
+    // Only one customer has a renderable vehicle — treat as a 1-hit
+    // match and OTP-verify against it. Same semantics as the count===1
+    // branch above.
+    return {
+      directive: "send_otp_first",
+      data: {},
+      match_customer_id: candidates[0]!.customer_id,
+    };
+  }
+  if (candidates.length === 0) {
+    // Defensive: every Tekmetric hit had no vehicle. Treat as a no-match
+    // and route based on the customer's self-identified bucket so they
+    // still have a path forward.
+    if (customer_self_identified === "returning") {
+      return {
+        directive: "show_no_match_choose_path",
+        data: {
+          attempted_first_name: first_name,
+          attempted_phone_last_four: input.phone_e164.slice(-4),
+        },
+      };
+    }
+    return { directive: "send_otp_first", data: {} };
+  }
+
   return {
     directive: "show_multi_account_disambiguation",
     data: {
@@ -320,19 +360,24 @@ async function handleRequest(req: Request): Promise<Response> {
 
   const decision = await decide(input, hits);
 
+  // Bug audit 2026-05-16: previously, only the send_otp_first branch
+  // persisted match_customer_id to the row. The partial-verification
+  // gate branch (name match, no phone match) computes match_customer_id
+  // too but never wrote it, so downstream Tekmetric ops couldn't find
+  // the matched customer record. Persist it here BEFORE branching so
+  // every directive that carries a matched id gets the same treatment.
+  if (decision.match_customer_id) {
+    await sb
+      .from("customer_chat_sessions")
+      .update({
+        customer_id: decision.match_customer_id,
+        last_active_at: new Date().toISOString(),
+      })
+      .eq("id", input.session_id);
+  }
+
   // For send_otp_first, actually send the OTP + write session row.
   if (decision.directive === "send_otp_first") {
-    // Write match_customer_id onto the row so the OTP-verify step + later
-    // tools see it.
-    if (decision.match_customer_id) {
-      await sb
-        .from("customer_chat_sessions")
-        .update({
-          customer_id: decision.match_customer_id,
-          last_active_at: new Date().toISOString(),
-        })
-        .eq("id", input.session_id);
-    }
 
     const otp = await sendOtp(sb, SHOP_ID, { phone_e164: input.phone_e164 });
 

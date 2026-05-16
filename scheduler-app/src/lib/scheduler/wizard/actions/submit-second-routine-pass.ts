@@ -98,9 +98,13 @@ export async function submitSecondRoutinePassV2(
     );
     let validKeys: string[] = [];
     if (requested.length > 0) {
+      // Bug audit 2026-05-16: also reject requires_explanation=true keys
+      // here. These services must be picked at Step 7.1 so the diagnostic
+      // concern_explanation flow can attach. A stale form submit or
+      // browser-back replay could send one through; filter it out.
       const { data: catalog, error: catErr } = await supabase
         .from("routine_services")
-        .select("service_key")
+        .select("service_key, requires_explanation")
         .eq("shop_id", SHOP_ID)
         .eq("active", true)
         .in("service_key", requested);
@@ -109,8 +113,14 @@ export async function submitSecondRoutinePassV2(
           `routine_services validation lookup failed: ${catErr.message}`,
         );
       }
+      const validRows = (catalog ?? []) as Array<{
+        service_key: string;
+        requires_explanation: boolean;
+      }>;
       const knownKeys = new Set(
-        (catalog ?? []).map((r) => r.service_key as string),
+        validRows
+          .filter((r) => !r.requires_explanation)
+          .map((r) => r.service_key),
       );
       validKeys = requested.filter((k) => knownKeys.has(k));
     }

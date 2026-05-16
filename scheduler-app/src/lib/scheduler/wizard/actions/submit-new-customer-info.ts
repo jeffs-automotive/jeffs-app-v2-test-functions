@@ -165,27 +165,34 @@ export async function submitNewCustomerInfoV2(
     }
 
     if (!createResult.ok) {
-      // Tekmetric error envelope. 'phone_duplicate' (409) is the only one
-      // we route specially — somebody else already registered this phone
-      // (race or the customer is actually returning). Bounce back to
-      // Step 2 with bucket='returning' so they OTP into the existing
-      // account via the normal returning-customer path.
+      // 'phone_duplicate' (409) — Tekmetric refuses POST /customers
+      // because the phone is already on a different account. Bug audit
+      // 2026-05-16 (the "loops back to step 1" report): previously this
+      // unconditionally bounced to phone_name with bucket='returning',
+      // which infinite-looped for customers whose phone IS in Tekmetric
+      // (the next step2 lookup would find them; if the multi-account
+      // disambiguation card was empty due to the related candidate-
+      // persistence bug, they had no path forward). Phase 1 policy:
+      // escalate with a clear bubble. Advisor handles it manually. The
+      // prior customer_id (if step2 found a match) stays on the row.
       if (createResult.error === "phone_duplicate") {
+        Sentry.captureMessage("create_customer phone_duplicate", {
+          level: "warning",
+          extra: {
+            chatId,
+            tekmetric_error: createResult.tekmetric_error_text,
+          },
+        });
         return applyWizardTransition({
           chatId,
           updates: {
-            customer_self_identified: "returning",
-            is_returning_customer: true,
-            // Clear OTP state so submitPhoneNameV2 sends a fresh code
-            otp_sent_at: null,
-            otp_verified_at: null,
-            otp_attempts: 0,
-            // Keep phone_e164 + entered_first/last_name so PhoneNameCard
-            // pre-fills (Phase 4 addition).
+            status: "escalated",
+            escalated_at: new Date().toISOString(),
+            escalation_reason: "create_customer_phone_duplicate",
           },
-          nextStep: "phone_name",
+          nextStep: "escalated",
           jeffBubble:
-            "Looks like this number is already on file — let me try the returning-customer flow instead.",
+            "Looks like this number is already on file under a different account. Please call us at (610) 253-6565 and we'll get you sorted in a minute. 📞",
         });
       }
 

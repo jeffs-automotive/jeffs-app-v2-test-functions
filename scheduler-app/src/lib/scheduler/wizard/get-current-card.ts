@@ -263,11 +263,15 @@ export async function getCurrentCard(
         source: "testing" | "routine";
       }> = [];
 
+      // Bug audit 2026-05-16: previously a single try/catch around BOTH
+      // routine + testing sections meant that an error in EITHER blanked
+      // BOTH sections — the customer saw an empty card with no chips and
+      // no path forward. Split into two independent fail-soft try blocks
+      // so a transient testing_services failure doesn't take out the
+      // routine chips (and vice versa).
+      let requiresExplanationByKey = new Map<string, boolean>();
       try {
         const allRoutine = await getRoutineServicesForChips();
-        // Need requires_explanation too — the cache helper doesn't expose it,
-        // so fetch it separately (single DB call, no perf concern at chat
-        // turn frequency). Future optimization: add it to the cache.
         const { data: routineFull, error: routineErr } = await supabase
           .from("routine_services")
           .select("service_key, requires_explanation")
@@ -278,7 +282,7 @@ export async function getCurrentCard(
             `routine_services requires_explanation lookup failed: ${routineErr.message}`,
           );
         }
-        const requiresExplanationByKey = new Map<string, boolean>();
+        requiresExplanationByKey = new Map<string, boolean>();
         for (const r of (routineFull ?? []) as Array<{
           service_key: string;
           requires_explanation: boolean;
@@ -301,7 +305,17 @@ export async function getCurrentCard(
             starting_price_cents: null as number | null,
             source: "routine" as const,
           }));
+        diagnosticServices.push(...routineDiagnostic);
+      } catch (e) {
+        Sentry.captureException(e, {
+          tags: {
+            surface: "get_current_card_service_concern_picker_routine",
+          },
+          level: "warning",
+        });
+      }
 
+      try {
         const { data: testingRows, error: testingErr } = await supabase
           .from("testing_services")
           .select("service_key, display_name, starting_price_cents")
@@ -325,11 +339,12 @@ export async function getCurrentCard(
           starting_price_cents: r.starting_price_cents,
           source: "testing" as const,
         }));
-
-        diagnosticServices = [...routineDiagnostic, ...testingDiagnostic];
+        diagnosticServices.push(...testingDiagnostic);
       } catch (e) {
         Sentry.captureException(e, {
-          tags: { surface: "get_current_card_service_concern_picker" },
+          tags: {
+            surface: "get_current_card_service_concern_picker_testing",
+          },
           level: "warning",
         });
       }
@@ -411,19 +426,78 @@ export async function getCurrentCard(
       };
     }
 
-    case "testing_service_approval":
+    case "testing_service_approval": {
       // Per chat-design.md "Architecture amendment — 2026-05-14" §Step 7
       // redesign D2: this step is SKIPPED in the new design (customer
       // already picked their testing services explicitly at Step 7.1).
-      // run-diagnostics advances directly to clarification_question or
-      // second_routine_pass — never to testing_service_approval. If a
-      // row somehow lands here (legacy session, manual SQL), return an
-      // empty payload; WizardSurface auto-skips by calling a transition
-      // to second_routine_pass.
+      //
+      // Bug audit 2026-05-16: previously this returned an empty
+      // testing_service_approval payload + a comment claiming WizardSurface
+      // would auto-skip. WizardSurface has NO case for this step (it falls
+      // through to NotYetMigrated). Net effect: any legacy row at this step
+      // showed the migration placeholder — a dead-end visible as an
+      // escalation-shaped failure.
+      //
+      // Fix: write the row to second_routine_pass inline + recurse on this
+      // function to return the second_routine_pass payload. Safe because:
+      //   - testing_service_approval should never be reached in V2;
+      //   - the write is idempotent (re-running won't change anything);
+      //   - returning the second-pass payload here means the customer
+      //     sees the next valid card on this render, without a placeholder.
+      await supabase
+        .from("customer_chat_sessions")
+        .update({
+          current_step: "second_routine_pass",
+          last_active_at: new Date().toISOString(),
+        })
+        .eq("id", chatId);
+      // Re-invoke this function with the row's updated current_step so
+      // we return the right payload. We pass the already-loaded row data
+      // via a quick reconstruction (avoiding a second DB read).
+      const rowCopy = { ...row, current_step: "second_routine_pass" } as Record<
+        string,
+        unknown
+      >;
+      (rowCopy as { current_step: WizardStep }).current_step =
+        "second_routine_pass";
+      // Inline the second_routine_pass payload build here rather than
+      // recursing (which would require re-reading the row).
+      let commonServices: Array<{ service_key: string; display_name: string }> =
+        [];
+      try {
+        const allRoutine = await getRoutineServicesForChips();
+        const { data: explanationFlags } = await supabase
+          .from("routine_services")
+          .select("service_key, requires_explanation")
+          .eq("shop_id", 7476)
+          .eq("active", true);
+        const requiresExplanationByKey = new Map<string, boolean>();
+        for (const r of (explanationFlags ?? []) as Array<{
+          service_key: string;
+          requires_explanation: boolean;
+        }>) {
+          requiresExplanationByKey.set(r.service_key, r.requires_explanation);
+        }
+        commonServices = allRoutine
+          .filter((r) => !requiresExplanationByKey.get(r.service_key))
+          .map((r) => ({
+            service_key: r.service_key,
+            display_name: r.display_name,
+          }));
+      } catch (e) {
+        Sentry.captureException(e, {
+          tags: { surface: "get_current_card_testing_service_approval_migrate" },
+          level: "warning",
+        });
+      }
       return {
-        step: "testing_service_approval",
-        payload: { services: [], category: null },
+        step: "second_routine_pass",
+        payload: {
+          common_services: commonServices,
+          already_picked: collectPickedServiceKeys(row),
+        },
       };
+    }
 
     case "second_routine_pass": {
       // Phase 10 (2026-05-15): load the full routine_services list as
@@ -431,13 +505,42 @@ export async function getCurrentCard(
       // OR Step 7.2 explanation_required_items) render disabled with an
       // "✓ added" badge — the card hides them from the pickable set so the
       // customer can't double-book a service.
+      // Bug audit 2026-05-16: previously this rendered ALL routine_services
+      // as add-on chips, including requires_explanation=true rows (Brake
+      // Inspection, Check Battery, Warning Lights, Check Suspension, Check
+      // A/C). Picking one silently skipped the concern_explanation +
+      // diagnostic gap-detection flow that the spec mandates for those
+      // services. The technician would receive a service request with no
+      // symptoms description. Now we filter requires_explanation rows out
+      // of the second-pass add-on grid — those services must be picked at
+      // Step 7.1 where the diagnostic flow attaches.
       let commonServices: Array<{ service_key: string; display_name: string }> =
         [];
       try {
-        commonServices = (await getRoutineServicesForChips()).map((r) => ({
-          service_key: r.service_key,
-          display_name: r.display_name,
-        }));
+        const allRoutine = await getRoutineServicesForChips();
+        const { data: explanationFlags, error: flagsErr } = await supabase
+          .from("routine_services")
+          .select("service_key, requires_explanation")
+          .eq("shop_id", 7476)
+          .eq("active", true);
+        if (flagsErr) {
+          throw new Error(
+            `routine_services requires_explanation lookup failed: ${flagsErr.message}`,
+          );
+        }
+        const requiresExplanationByKey = new Map<string, boolean>();
+        for (const r of (explanationFlags ?? []) as Array<{
+          service_key: string;
+          requires_explanation: boolean;
+        }>) {
+          requiresExplanationByKey.set(r.service_key, r.requires_explanation);
+        }
+        commonServices = allRoutine
+          .filter((r) => !requiresExplanationByKey.get(r.service_key))
+          .map((r) => ({
+            service_key: r.service_key,
+            display_name: r.display_name,
+          }));
       } catch (e) {
         Sentry.captureException(e, {
           tags: { surface: "get_current_card_second_routine_pass" },
@@ -1062,11 +1165,25 @@ async function assessWaitEligibility(
     return { wait_eligible: true, blocked_reason: null };
   }
 
-  const { data: routineRows, error: routineErr } = await supabase
-    .from("routine_services")
-    .select("service_key, display_name, wait_eligible")
-    .eq("shop_id", SHOP_ID)
-    .in("service_key", allKeys);
+  // Look up display_name + wait_eligible from BOTH routine_services and
+  // testing_services. Bug audit 2026-05-16: previously this only queried
+  // routine_services, so any testing-service key in the basket got
+  // surfaced to the customer as a raw service_key (e.g.,
+  // "engine_noise_diagnostic takes longer than a waiter slot allows").
+  // Pull testing_services too so the blocker name is human-readable.
+  const [{ data: routineRows, error: routineErr }, { data: testingRows }] =
+    await Promise.all([
+      supabase
+        .from("routine_services")
+        .select("service_key, display_name, wait_eligible")
+        .eq("shop_id", SHOP_ID)
+        .in("service_key", allKeys),
+      supabase
+        .from("testing_services")
+        .select("service_key, display_name")
+        .eq("shop_id", SHOP_ID)
+        .in("service_key", allKeys),
+    ]);
   if (routineErr) {
     throw new Error(
       `routine_services wait_eligible lookup failed: ${routineErr.message}`,
@@ -1086,13 +1203,22 @@ async function assessWaitEligibility(
       wait_eligible: !!r.wait_eligible,
     });
   }
+  const testingByKey = new Map<string, { display_name: string }>();
+  for (const r of (testingRows ?? []) as Array<{
+    service_key: string;
+    display_name: string;
+  }>) {
+    testingByKey.set(r.service_key, { display_name: r.display_name });
+  }
 
   const blockers: string[] = [];
   for (const key of allKeys) {
     const r = routineByKey.get(key);
     if (r === undefined) {
-      // Testing service or stale key — treat as non-waiter-eligible.
-      blockers.push(key);
+      // Not in routine_services — check testing_services for a display_name.
+      // Testing services are never wait-eligible (require a tech bay).
+      const t = testingByKey.get(key);
+      blockers.push(t?.display_name ?? key);
       continue;
     }
     if (!r.wait_eligible) {

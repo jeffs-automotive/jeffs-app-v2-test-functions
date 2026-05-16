@@ -212,15 +212,33 @@ export async function submitPhoneNameV2(
       });
     }
 
+    // Step 4b: show_escalation_card path — step2-direct hit either a
+    // multi-name-match-no-phone block (security risk to disclose) OR
+    // sendOtp rate_limited / send_failed OR Tekmetric lookup failure.
+    // The directive maps to step='escalated' but we ALSO need to write
+    // status/escalated_at/escalation_reason so the row stays consistent
+    // and the transcript email + EscalationCard render correctly.
+    // (Bug audit 2026-05-16: previously this branch fell through to the
+    // catch-all transition below with empty branchUpdates, leaving
+    // status='active' + reason=null while current_step='escalated'.)
+    if (step2Result.directive === "show_escalation_card") {
+      const reason =
+        typeof (step2Result.data as { reason?: unknown })?.reason === "string"
+          ? ((step2Result.data as { reason: string }).reason)
+          : "step2_direct_escalation";
+      return applyWizardTransition({
+        chatId,
+        updates: {
+          status: "escalated",
+          escalated_at: new Date().toISOString(),
+          escalation_reason: reason,
+        },
+        nextStep: "escalated",
+        jeffBubble: bubbleForDirective(step2Result.directive),
+      });
+    }
+
     // Step 5: branch-specific row updates.
-    //
-    // PHASE 4 note: candidates (for multi_account_disambiguation),
-    // matched_axis (for partial_verification_gate), and other branch
-    // metadata are NOT stashed on the row in this phase. Phase 5 fills
-    // them in when those branch cards get wired into WizardSurface.
-    // For now: getCurrentCard re-derives what it needs (or uses
-    // documented defaults — e.g., matched_axis='name' is the only branch
-    // step2-direct emits today).
     const branchUpdates: Record<string, unknown> = {};
 
     // 'send_otp_first' implies OTP was sent successfully — stamp otp_sent_at
@@ -229,6 +247,28 @@ export async function submitPhoneNameV2(
     if (step2Result.directive === "send_otp_first") {
       branchUpdates.otp_attempts = 0;
     }
+
+    // 'show_multi_account_disambiguation' — persist the vehicle-only
+    // candidates the edge fn returned so getCurrentCard's
+    // multi_account_disambiguation case can hydrate the picker. Without
+    // this, pending_candidates stays NULL, parseCandidates returns [],
+    // and the user sees an empty list with no candidates to pick.
+    // (Bug audit 2026-05-16: this was a known TODO in the Phase 4
+    // implementation that never got done in Phase 5.)
+    if (step2Result.directive === "show_multi_account_disambiguation") {
+      const candidates = (step2Result.data as { candidates?: unknown })
+        ?.candidates;
+      if (Array.isArray(candidates)) {
+        branchUpdates.pending_candidates = candidates;
+      }
+    }
+
+    // 'show_partial_verification_gate' — Phase 4 plan was to stash
+    // matched_axis on the row. Deferred to V2.1 since the column doesn't
+    // exist yet AND step2-direct only ever emits 'name'. getCurrentCard
+    // hard-codes matched_axis='name' as a documented Phase 1 default;
+    // when a future migration adds the column + step2-direct starts
+    // emitting 'phone', this branch will need to persist it.
 
     return applyWizardTransition({
       chatId,

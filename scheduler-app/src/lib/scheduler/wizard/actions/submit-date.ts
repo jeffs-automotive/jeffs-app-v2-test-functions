@@ -113,6 +113,13 @@ export async function submitDateV2(
           typeof row.vehicle_id === "number" ? row.vehicle_id : undefined,
       });
     } catch (e) {
+      // Bug audit 2026-05-16: previously this terminally escalated on a
+      // single transient throw (network blip, edge fn cold-start timeout).
+      // The customer would land at the EscalationCard with no way back.
+      // Phase 1 policy now: bounce back to date_pick with a "try again"
+      // bubble so the customer can retry the same day or pick another.
+      // If the throw is persistent the customer can fall back via the
+      // page-footer "Talk to a person" button.
       Sentry.captureException(e, {
         tags: {
           surface: "submit_date_v2_hold_call",
@@ -121,18 +128,13 @@ export async function submitDateV2(
               ? `booking_direct_${e.status ?? "network"}`
               : "booking_direct_unknown",
         },
-        level: "error",
+        level: "warning",
       });
       return applyWizardTransition({
         chatId,
-        nextStep: "escalated",
-        updates: {
-          status: "escalated",
-          escalated_at: new Date().toISOString(),
-          escalation_reason: "hold_slot_threw",
-        },
+        nextStep: "date_pick",
         jeffBubble:
-          "Hmm, my system hiccuped while reserving that day. Please call us at (610) 253-6565. 📞",
+          "Hmm, my system hiccuped reserving that day. Let me re-check availability — pick a day below and I'll try again. 📅",
       });
     }
 

@@ -296,6 +296,14 @@ export async function sendOtp(
   | { ok: true; ttl_seconds: number; phone_last_four: string }
   | { ok: false; error: "rate_limited" | "send_failed"; detail?: string }
 > {
+  // Rate-limit guard: count UNCONSUMED + STILL-VALID codes in the last
+  // hour for this phone. Expired codes (expires_at <= now) are NOT
+  // usable so they shouldn't count against the bucket — including them
+  // would lock out customers who legitimately hit a few wrong-code
+  // attempts whose codes then expired without being consumed. Bug
+  // audit 2026-05-16: rate-limit fired after 3 failed-and-expired codes
+  // even though no successful verification had happened.
+  const nowIso = new Date().toISOString();
   const oneHourAgo = new Date(Date.now() - 60 * 60_000).toISOString();
   const { data: recent } = await sb
     .from("otp_codes")
@@ -303,7 +311,8 @@ export async function sendOtp(
     .eq("shop_id", shopId)
     .eq("phone_e164", args.phone_e164)
     .is("consumed_at", null)
-    .gte("created_at", oneHourAgo);
+    .gte("created_at", oneHourAgo)
+    .gt("expires_at", nowIso);
   if ((recent?.length ?? 0) >= MAX_ACTIVE_CODES_PER_HOUR) {
     return { ok: false, error: "rate_limited" };
   }

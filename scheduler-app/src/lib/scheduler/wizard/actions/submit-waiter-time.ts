@@ -89,6 +89,9 @@ export async function submitWaiterTimeV2(
           typeof row.vehicle_id === "number" ? row.vehicle_id : undefined,
       });
     } catch (e) {
+      // Bug audit 2026-05-16: previously terminal-escalated on a single
+      // transient throw. Phase 1 policy now: bounce back to date_pick
+      // (where the customer can retry the same day or pick another).
       Sentry.captureException(e, {
         tags: {
           surface: "submit_waiter_time_v2_hold_call",
@@ -97,18 +100,13 @@ export async function submitWaiterTimeV2(
               ? `booking_direct_${e.status ?? "network"}`
               : "booking_direct_unknown",
         },
-        level: "error",
+        level: "warning",
       });
       return applyWizardTransition({
         chatId,
-        nextStep: "escalated",
-        updates: {
-          status: "escalated",
-          escalated_at: new Date().toISOString(),
-          escalation_reason: "hold_slot_threw",
-        },
+        nextStep: "date_pick",
         jeffBubble:
-          "Hmm, my system hiccuped while reserving that slot. Please call us at (610) 253-6565. 📞",
+          "Hmm, my system hiccuped reserving that slot. Let me re-check availability — pick a day below. 📅",
       });
     }
 
