@@ -24,6 +24,11 @@
 import * as Sentry from "@sentry/nextjs";
 import { z } from "zod";
 
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import {
+  fetchVehiclesForCustomer,
+  BookingDirectError,
+} from "@/lib/scheduler/booking-direct-client";
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
 
@@ -67,9 +72,69 @@ export async function submitVehiclePickV2(
       return { ok: false, error: "vehicle_id must be a positive integer" };
     }
 
+    // Bug fix 2026-05-16: also populate new_vehicle_info with the
+    // picked vehicle's year/make/model so the SummaryCard + the
+    // Tekmetric appointment title render correctly. Without this,
+    // returning customers got an empty vehicle field on the summary
+    // and the Tekmetric calendar title showed no year/make/model.
+    //
+    // Re-fetch the customer's vehicle list to find the picked entry's
+    // metadata. Fail-soft: if the lookup fails, advance without
+    // new_vehicle_info — the downstream code falls back to an empty
+    // vehicle string rather than blocking the booking.
+    const supabase = createSupabaseAdminClient();
+    const { data: row } = await supabase
+      .from("customer_chat_sessions")
+      .select("customer_id")
+      .eq("id", chatId)
+      .maybeSingle();
+    const customerId = (row?.customer_id as number | null) ?? null;
+
+    let newVehicleInfo: Record<string, unknown> | undefined = undefined;
+    if (customerId) {
+      try {
+        const result = await fetchVehiclesForCustomer({
+          op: "fetch_vehicles_for_customer",
+          session_id: chatId,
+          customer_id: customerId,
+        });
+        if (result.ok && result.vehicles) {
+          const picked = result.vehicles.find((v) => v.id === vehicleIdNum);
+          if (picked) {
+            newVehicleInfo = {
+              year: picked.year,
+              make: picked.make,
+              model: picked.model,
+              sub_model: picked.sub_model,
+              license_plate: picked.license_plate,
+              color: picked.color,
+            };
+          }
+        }
+      } catch (e) {
+        // Don't block — log + advance with no vehicle metadata.
+        Sentry.captureException(e, {
+          tags: {
+            surface: "submit_vehicle_pick_v2_fetch_vehicle_metadata",
+            reason:
+              e instanceof BookingDirectError
+                ? `booking_direct_${e.status ?? "network"}`
+                : "booking_direct_unknown",
+          },
+          level: "warning",
+        });
+      }
+    }
+
     return applyWizardTransition({
       chatId,
-      updates: { vehicle_id: vehicleIdNum },
+      updates: {
+        vehicle_id: vehicleIdNum,
+        // Only include new_vehicle_info when we successfully resolved the
+        // vehicle. Skipping the key entirely is safer than writing null
+        // (preserves any prior write).
+        ...(newVehicleInfo ? { new_vehicle_info: newVehicleInfo } : {}),
+      },
       nextStep: "service_concern_picker",
       jeffBubble: "Got it! 🔧 What can we help with today?",
     });

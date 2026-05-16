@@ -240,8 +240,14 @@ export async function submitNewCustomerInfoV2(
         // and makes the row write self-documenting.
         identity_verification_level: "full",
       },
-      nextStep: "vehicle_pick",
-      jeffBubble: "All set up! 🎉 Now let's tell me about your vehicle.",
+      // Bug fix 2026-05-16: per chat-design.md §2599-2755, new customers
+      // SKIP Step 6 vehicle_pick (they have no Tekmetric vehicles yet)
+      // and go directly to new_vehicle_form. The prior nextStep of
+      // 'vehicle_pick' cost a wasted Tekmetric fetch_vehicles_for_customer
+      // round-trip + made the customer tap "Add a vehicle" on an empty
+      // picker.
+      nextStep: "new_vehicle_form",
+      jeffBubble: "All set up! 🎉 Now tell me about your vehicle.",
     });
   } catch (e) {
     Sentry.captureException(e, {

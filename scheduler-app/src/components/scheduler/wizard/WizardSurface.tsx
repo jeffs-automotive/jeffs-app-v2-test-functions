@@ -297,7 +297,15 @@ export function WizardSurface({ chatId, card }: WizardSurfaceProps) {
 
     case "concern_explanation":
       return (
+        // Bug fix 2026-05-16: key={service_key} forces React to unmount
+        // + remount the card between queue items. Without it, the
+        // textarea's local useState retains the prior service's
+        // explanation text — user reported "typed 'brakes are grinding'
+        // for brake inspection, advanced to suspension check, and the
+        // text was still in the textarea." Same pattern flagged for
+        // ClarificationQuestionCard below.
         <ConcernExplanationCard
+          key={card.payload.service_key}
           service_key={card.payload.service_key}
           display_name={card.payload.display_name}
           lead_in_bubble={card.payload.lead_in_bubble}
@@ -327,7 +335,12 @@ export function WizardSurface({ chatId, card }: WizardSurfaceProps) {
 
     case "clarification_question":
       return (
+        // Bug fix 2026-05-16: key={question_id} forces React to
+        // unmount + remount per queue item. Same rationale as
+        // ConcernExplanationCard above — the chip 'selected' state
+        // could persist across queue items without this.
         <ClarificationQuestionCard
+          key={card.payload.question_id}
           question_id={card.payload.question_id}
           question_text={card.payload.question_text}
           options={card.payload.options}

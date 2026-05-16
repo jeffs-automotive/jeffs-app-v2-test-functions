@@ -29,12 +29,18 @@ import { appendBubble, type BubbleRole } from "./append-bubble";
 import type { WizardTransitionResult } from "./transition-types";
 
 /**
- * Path to revalidate after a wizard transition. /book-v2 is the parallel
- * route phases 3-14 build the new surface in. Phase 15 swaps this to
- * '/book' as part of the cutover; phase 16 (delete dead code) removes the
- * /book-v2 route entirely.
+ * Paths to revalidate after a wizard transition. Bug fix 2026-05-16:
+ * previously only '/book-v2' was revalidated, but after the Phase 15
+ * cutover the wizard ships on '/', '/book', AND '/book-v2' (redirect).
+ * Cross-tab navigation + BFCache restore could land on a route whose
+ * RSC cache wasn't invalidated.
+ *
+ * WizardSurface's router.refresh() papers over this for the active tab,
+ * but a SECOND tab opened against / or /book would render stale RSC
+ * bytes until that tab's next navigation. Revalidating all three paths
+ * keeps every tab consistent.
  */
-const WIZARD_REVALIDATE_PATH = "/book-v2";
+const WIZARD_REVALIDATE_PATHS = ["/", "/book", "/book-v2"] as const;
 
 export interface ApplyWizardTransitionArgs {
   chatId: string;
@@ -93,7 +99,9 @@ export async function applyWizardTransition(
     });
   }
 
-  revalidatePath(WIZARD_REVALIDATE_PATH);
+  for (const path of WIZARD_REVALIDATE_PATHS) {
+    revalidatePath(path);
+  }
 
   return { ok: true, next_step: args.nextStep };
 }

@@ -34,6 +34,13 @@ interface ConcernQuestionRow {
   question_text: string;
   options: unknown;
   display_order: number;
+  subcategory_id: number;
+  // Joined from concern_subcategories — these arrive as nested objects
+  // when supabase-js auto-resolves the FK relationship.
+  concern_subcategories: {
+    slug: string;
+    display_label: string;
+  } | null;
 }
 
 interface ConcernGuidelineRow {
@@ -81,9 +88,16 @@ export async function loadConcernContext(
       .eq("shop_id", SHOP_ID)
       .eq("category", category)
       .maybeSingle(),
+    // Bug fix 2026-05-16: JOIN concern_subcategories so each question
+    // carries its subcategory slug + display_label. diagnoseConcern uses
+    // these to filter the question set by the customer's described
+    // symptom (e.g., "brakes are grinding" → only metallic_grinding
+    // questions, not all 6 brake subcategories' worth).
     supabase
       .from("concern_questions")
-      .select("id, question_text, options, display_order")
+      .select(
+        "id, question_text, options, display_order, subcategory_id, concern_subcategories(slug, display_label)",
+      )
       .eq("shop_id", SHOP_ID)
       .eq("category", category)
       .eq("active", true)
@@ -111,6 +125,9 @@ export async function loadConcernContext(
     id: row.id,
     question_text: row.question_text,
     options: normalizeOptions(row.options),
+    subcategory_slug: row.concern_subcategories?.slug ?? "uncategorized",
+    subcategory_label:
+      row.concern_subcategories?.display_label ?? "Uncategorized",
   }));
 
   return {
