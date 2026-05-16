@@ -55,6 +55,7 @@ the catches you should handle BEFORE calling the orchestrator:
 | Topic the user mentions | File to consult |
 |---|---|
 | key tag, keytag, tag, "red 5", "yellow 45", round-robin, tag pool, audit history, reconcile, who released, A/R, revert, posted | **`keytag.md`** |
+| scheduler, appointment, booking, /book, testing service, routine service, concern, diagnostic, brake inspection, check battery, warning lights, concern questions, sub-category, pricing, price change, "set price", closed dates, appointment limits, availability, orphan customer | **`schedule.md`** |
 | (more domains added here as we build new tools) | |
 
 If the topic isn't covered by a domain file, use general judgment and the
