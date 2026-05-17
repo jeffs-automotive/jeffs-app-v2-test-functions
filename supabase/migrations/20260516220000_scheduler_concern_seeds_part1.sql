@@ -30,7 +30,7 @@
 --
 -- Idempotent re-apply:
 --   - Subcategory inserts use ON CONFLICT (shop_id, category, slug)
---   - Question inserts use ON CONFLICT (shop_id, category, question_text)
+--   - Question inserts use ON CONFLICT (shop_id, subcategory_id, question_text)
 -- =====================================================================
 
 BEGIN;
@@ -336,7 +336,7 @@ SELECT
   TRUE
 FROM new_questions nq
 JOIN sub ON sub.slug = nq.slug
-ON CONFLICT (shop_id, category, question_text) DO NOTHING;
+ON CONFLICT (shop_id, subcategory_id, question_text) DO NOTHING;
 
 
 -- ---------------------------------------------------------------------
@@ -601,7 +601,7 @@ SELECT
   TRUE
 FROM new_questions nq
 JOIN sub ON sub.slug = nq.slug
-ON CONFLICT (shop_id, category, question_text) DO NOTHING;
+ON CONFLICT (shop_id, subcategory_id, question_text) DO NOTHING;
 
 
 -- ---------------------------------------------------------------------
@@ -836,7 +836,7 @@ SELECT
   TRUE
 FROM new_questions nq
 JOIN sub ON sub.slug = nq.slug
-ON CONFLICT (shop_id, category, question_text) DO NOTHING;
+ON CONFLICT (shop_id, subcategory_id, question_text) DO NOTHING;
 
 
 -- ---------------------------------------------------------------------
@@ -1161,7 +1161,7 @@ SELECT
   TRUE
 FROM new_questions nq
 JOIN sub ON sub.slug = nq.slug
-ON CONFLICT (shop_id, category, question_text) DO NOTHING;
+ON CONFLICT (shop_id, subcategory_id, question_text) DO NOTHING;
 
 
 -- ---------------------------------------------------------------------
@@ -1366,7 +1366,7 @@ SELECT
   TRUE
 FROM new_questions nq
 JOIN sub ON sub.slug = nq.slug
-ON CONFLICT (shop_id, category, question_text) DO NOTHING;
+ON CONFLICT (shop_id, subcategory_id, question_text) DO NOTHING;
 
 
 -- ---------------------------------------------------------------------
@@ -1661,7 +1661,7 @@ SELECT
   TRUE
 FROM new_questions nq
 JOIN sub ON sub.slug = nq.slug
-ON CONFLICT (shop_id, category, question_text) DO NOTHING;
+ON CONFLICT (shop_id, subcategory_id, question_text) DO NOTHING;
 
 
 -- ---------------------------------------------------------------------
