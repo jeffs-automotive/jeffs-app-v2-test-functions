@@ -260,12 +260,20 @@ DECLARE
   v_question_count INT;
   v_orphan_count INT;
 BEGIN
+  -- Count the 6 specific subcategories this migration adds. The
+  -- 'general' subcategory is a backfill artifact of migration
+  -- 20260514100000 and may not exist on every environment (depending
+  -- on whether concern_questions rows existed at backfill time);
+  -- excluding it makes the check self-contained.
   SELECT COUNT(*) INTO v_subcategory_count
     FROM public.concern_subcategories
-   WHERE shop_id = 7476 AND category = 'brakes' AND active = TRUE;
-  IF v_subcategory_count < 7 THEN  -- 6 specific + 1 'general'
+   WHERE shop_id = 7476
+     AND category = 'brakes'
+     AND active = TRUE
+     AND slug != 'general';
+  IF v_subcategory_count < 6 THEN
     RAISE EXCEPTION
-      'brake subcategory seed incomplete: % rows (expected 7 = 6 specific + 1 general)',
+      'brake subcategory seed incomplete: % specific subcategories (expected 6)',
       v_subcategory_count;
   END IF;
 
