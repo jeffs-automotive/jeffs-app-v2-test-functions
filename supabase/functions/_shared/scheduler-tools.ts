@@ -75,6 +75,7 @@ import {
   uploadTestingServicesMd,
   uploadConcernQuestionsMd,
   uploadConcernCategoryMd,
+  uploadConcernCategoryGuidelineMd,
   uploadAppointmentDefaultLimitsMd,
   uploadClosedDatesMd,
   exportRoutineServicesMd,
@@ -998,6 +999,61 @@ export function getSchedulerTools(args: SchedulerToolsArgs) {
             md_content: input.md_content,
             audit,
           }),
+        ),
+      }),
+
+      upload_concern_category_guideline_md: tool({
+        description:
+          "Upload ONE category's diagnostic-guideline prose paragraph " +
+          "from a markdown doc. concern_category_guidelines stores a short " +
+          "system-prompt fragment the diagnostic LLM reads BEFORE the " +
+          "questions for that category — it shapes how the LLM phrases " +
+          "follow-up questions and what facets it prioritizes. Format: " +
+          "single H1 '# {Display} — Diagnostic Guideline' followed by prose. " +
+          "Stops at the first '---' rule (sources/notes ignored). " +
+          "Idempotent on identical content (md_content_hash check). " +
+          "Each call is scoped to ONE category (e.g. category_slug='brakes'). " +
+          "Returns: { ok, rows_added (1=insert), rows_modified (1=update), " +
+          "diff_summary: { display_label, prose_length, action }, … }.",
+        inputSchema: z.object({
+          category_slug: z
+            .enum([
+              "noise",
+              "vibration",
+              "pulling",
+              "smell",
+              "smoke",
+              "leak",
+              "warning_light",
+              "performance",
+              "electrical",
+              "hvac",
+              "brakes",
+              "steering",
+              "tires",
+              "other",
+            ])
+            .describe(
+              "The concern category whose guideline this MD belongs to.",
+            ),
+          md_content: z
+            .string()
+            .min(1)
+            .describe(
+              "Full markdown file content. Must have an H1 + at least one " +
+                "non-blank prose line. Lines below a `---` horizontal rule " +
+                "are ignored (treat as notes / sources).",
+            ),
+        }),
+        execute: recorded(
+          recorder,
+          "upload_concern_category_guideline_md",
+          (input) =>
+            uploadConcernCategoryGuidelineMd(sb, shopId, {
+              category_slug: input.category_slug,
+              md_content: input.md_content,
+              audit,
+            }),
         ),
       }),
 

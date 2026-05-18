@@ -55,7 +55,8 @@ Each category has 6-12 **sub-categories** (specific symptom patterns) with 5-7 p
 | `upsert_routine_service` | Full-row upsert for one routine chip (NO pricing field — routine services have no pricing in Phase 1) |
 | `patch_routine_service_fields` | **Partial-field update** for routine services |
 | `deactivate_routine_service` | Soft-delete a routine chip |
-| `upload_concern_category_md` | **(NEW v9b)** Upload ONE category's hierarchical .md checklist. Parses sub-categories + numbered questions, diff-based upsert + soft-delete absent rows, audit-logged with md_content_hash |
+| `upload_concern_category_md` | Upload ONE category's hierarchical .md checklist. Parses sub-categories + numbered questions, **answer-options + multi_select** (added 2026-05-18), diff-based upsert + soft-delete absent rows, audit-logged with md_content_hash |
+| `upload_concern_category_guideline_md` | **(NEW 2026-05-18)** Upload ONE category's diagnostic-guideline prose paragraph. Single-row upsert keyed on `(shop_id, category)`. The diagnostic LLM reads this prose BEFORE the per-subcategory questions. |
 | `upload_concern_questions_md` | **LEGACY** — flat-table format upload (pre-sub-category). Still works but `upload_concern_category_md` is the forward path. |
 | `upload_routine_services_md` | Bulk replace the routine-services catalog from an MD table |
 | `upload_testing_services_md` | Bulk replace the testing-services catalog (with prices) from an MD table |
@@ -154,17 +155,34 @@ Before any upload that removes rows from a category, confirm:
 
 If they say yes, proceed. If they didn't intend to drop those, have them edit their MD to include them.
 
-### 9. Concern question OPTIONS are auto-generated for new questions
+### 9. Concern question OPTIONS + multi-select are carried in the MD format (updated 2026-05-18)
 
-The MD format only has question text — no options. New questions seeded via `upload_concern_category_md` get a default `[Yes, No, Sometimes / Not sure]` options set. For richer options (multi-choice, specific labels), use the legacy `upload_concern_questions_md` flat format (which carries options inline) OR ask Chris to revise the MD format to include options.
+The MD format now carries answer-options + a multi-select flag inline. Each numbered question has an indented `- ` line beneath it with `|`-separated entries:
 
-### 10. Concern category guidelines — separate from the questions
+```markdown
+1. Does it occur at high speeds, low speeds, or right before stopping?
+   - High speeds=high | Low speeds=low | Right before stopping=stopping | Not sure=unsure
+2. [multi] Do you hear the noise coming from the front or rear of the vehicle? Left or right side?
+   - Front=front | Rear=rear | Left side=left | Right side=right | All four wheels=all | Not sure=unsure
+```
 
-`concern_category_guidelines` is a different table from `concern_questions`. It holds the per-category **prose paragraph** the diagnostic LLM reads BEFORE the questionnaire. Currently the guideline prose is set only by the migration that seeded it — there's no MCP upload tool for it yet. If the user wants to revise a guideline:
+- `Label=value` form: parser uses both verbatim. The `=value` is optional — when omitted, the parser slugifies the label.
+- `[multi]` prefix on the question text → multi-select chip card (chips toggle, then a Continue button). Otherwise single-select (tap-to-submit).
+- A question with NO options line falls through to the legacy default `[Yes, No, Sometimes / Not sure]` set — back-compat for old MDs.
 
-> "There's no upload tool for the guideline prose yet — that's a Phase 9c follow-up. I can show you what's currently in the DB; revisions would go in a new migration for now. Want me to display the current prose for `brakes`?"
+When uploading an updated concern MD: the parser honors options + multi_select. For EXISTING matched questions it only updates `options/multi_select` if the MD differs from the DB. For NEW questions it uses the MD's parsed options (or the default set if the line is missing).
 
-If they want to view it, query `concern_category_guidelines` directly (read-only).
+### 10. Concern category guidelines — separate from the questions (updated 2026-05-18)
+
+`concern_category_guidelines` is a different table from `concern_questions`. It holds the per-category **prose paragraph** the diagnostic LLM reads BEFORE the questionnaire — it shapes how the LLM phrases follow-up questions and what facets it prioritizes.
+
+There IS now an upload tool: `upload_concern_category_guideline_md`. Edit `docs/scheduler/concerns/{slug}/{slug}-guideline.md`, then ask Claude:
+
+> "Upload the updated brakes guideline."
+
+Format: H1 with the display label + the prose body. Stops at the first `---` rule (notes/sources ignored). One row per category; the upload is a single-row upsert keyed on `(shop_id, category)`.
+
+To VIEW the current guideline without editing: read `concern_category_guidelines` directly (read-only) OR open the matching guideline MD file.
 
 ### 11. Appointment availability — past vs future
 

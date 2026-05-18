@@ -22,7 +22,9 @@ admin tool, parses the markdown, and applies the change to the DB.
 | [`routine-services.md`](./routine-services.md) | The 10 routine-service picker chips (oil change, tire rotate, brake inspection, etc.). NO pricing on routine services in Phase 1. | `upload_routine_services_md` |
 | [`appointment-default-limits.md`](./appointment-default-limits.md) | Weekly capacity pattern — waiter-slot counts and drop-off totals for each day of the week | `upload_appointment_default_limits_md` |
 | [`closed-dates.md`](./closed-dates.md) | One-off closures + holidays. Sundays are auto-managed via a cron; don't list them here. | `upload_closed_dates_md` |
-| [`concerns/{slug}/{slug}-concerns.md`](./concerns/) (14 files) | The diagnostic-LLM's symptom checklists. One markdown doc per concern category — each has 6-12 symptom sub-categories and 5-7 plain-language questions per sub-category. | `upload_concern_category_md` (one category per call) |
+| [`concerns/{slug}/{slug}-concerns.md`](./concerns/) (14 files) | The diagnostic-LLM's symptom checklists. One markdown doc per concern category — each has 6-12 symptom sub-categories and 5-7 plain-language questions per sub-category. Now carries answer-options + multi_select inline (see new format below). | `upload_concern_category_md` (one category per call) |
+| [`concerns/{slug}/{slug}-guideline.md`](./concerns/) (14 files) | The per-category prose paragraph the diagnostic LLM reads BEFORE each category's questionnaire. Shapes how the LLM phrases follow-up questions and what facets it prioritizes. Added 2026-05-18. | `upload_concern_category_guideline_md` (one category per call) |
+| [`prompts/README.md`](./prompts/) | **Read-only** snapshots of the LLM system prompts (`diagnose-concern`, `summarize-concern`). Code-only edits — no upload tool. | — |
 
 ## The 14 concern-category MDs
 
@@ -44,14 +46,18 @@ docs/scheduler/concerns/
 └── warning_light/warning_light-concerns.md
 ```
 
-Format for each concern doc:
+**New format (2026-05-18 — carries options + multi_select):**
 
 ```markdown
 # {Category Display Label}
 
 -- {Sub-Category Name} Checklist --
 1. Question 1
-2. Question 2
+   - Yes=yes | No=no | Not sure=unsure
+2. [multi] Question 2 (multi-select)
+   - Front=front | Rear=rear | Left side=left | Right side=right | Not sure=unsure
+3. Question with custom enumerated options
+   - High speeds=high | Low speeds=low | Right before stopping=stopping | Not sure=unsure
 ...
 
 -- {Next Sub-Category Name} Checklist --
@@ -64,6 +70,16 @@ Sources consulted:
 - url2
 ```
 
+**Format rules:**
+
+- An indented `- ` line under each numbered question carries the option chips. Format: `Label=value | Label=value | …`. The `=value` is optional — when omitted, the parser slugifies the label (e.g., `"Yes — recently"` → `yes_recently`). The generator that produces these MDs always emits explicit values so canonical state is round-trippable.
+- A `[multi]` prefix on the question text → `multi_select=TRUE` (the clarification card renders multi-toggle chips + a Continue button). Otherwise single-select (tap-to-submit).
+- A question with NO options line falls through to the default `[Yes, No, Sometimes / Not sure]` set — back-compat for legacy MDs, but new MDs should always include the options line so the customer gets the right chips.
+
+**For EXISTING matched questions (same subcategory + question_text):** the upload tool updates `options` + `multi_select` ONLY if the MD's values differ from the DB's. Display-order changes also propagate.
+
+**For NEW questions:** the upload tool uses the MD's parsed options (or default yes/no/sometimes if the line is missing) and parsed multi_select.
+
 Edit any concern doc locally, then ask Claude:
 
 > "Upload the updated brakes concern doc."
@@ -73,6 +89,14 @@ Claude will paste the content into `upload_concern_category_md` with
 questions present in your edited file are upserted; anything that was in
 the DB but is no longer in your file is soft-deleted (active=false).
 Re-uploading identical content is a no-op (hash check).
+
+**Regenerating the MDs from canonical state:** the source-of-truth for the catalog lives at `scheduler-app/scripts/canonical-concern-catalog.ts`. To regenerate all 14 concern MDs from that:
+
+```
+node --experimental-strip-types scheduler-app/scripts/generate-concern-md.ts
+```
+
+This refreshes the MDs to match the TS catalog. Useful after a manual DB migration or canonical-TS edit.
 
 ## Quick-reference workflows
 
@@ -99,10 +123,16 @@ Claude calls `patch_testing_service_fields(service_key='brake_inspection', start
 
 ### Refine a concern questionnaire
 
-1. Edit `concerns/{slug}/{slug}-concerns.md` (add/edit sub-categories, change questions, reorder)
+1. Edit `concerns/{slug}/{slug}-concerns.md` (add/edit sub-categories, change questions, options, multi-select flag, reorder)
 2. Ask Claude: *"Upload the updated {slug} concern doc."* (where {slug} is the category)
 3. Claude calls `upload_concern_category_md` with that one category
 4. Repeat per category you changed
+
+### Refine a concern guideline (the prose the LLM reads BEFORE each category's questions)
+
+1. Edit `concerns/{slug}/{slug}-guideline.md` (single prose paragraph or a few)
+2. Ask Claude: *"Upload the updated {slug} guideline."*
+3. Claude calls `upload_concern_category_guideline_md` with that one category
 
 ### Add a new testing service (with pricing)
 

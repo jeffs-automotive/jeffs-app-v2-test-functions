@@ -375,6 +375,18 @@ export async function sha256Hex(content: string): Promise<string> {
 export interface ParsedConcernQuestion {
   question_text: string;
   display_order: number;
+  /** Optional answer-options. When present, the upload tool uses this
+   *  array for the question's `options` JSONB column. When absent, the
+   *  upload tool falls back to the default Yes/No/Sometimes set. Added
+   *  2026-05-18 per the CAT-2 catalog rebuild — the canonical MD format
+   *  now carries options + multi_select inline so upload doesn't
+   *  regress questions that have non-yes/no chips (location, onset,
+   *  speed bands, etc.). */
+  options?: Array<{ label: string; value: string }>;
+  /** Optional multi-select flag (TRUE → chip card allows multi-toggle +
+   *  Continue button). Encoded in the MD as a leading `[multi]` token
+   *  in the question text. Falls back to FALSE when absent. */
+  multi_select?: boolean;
 }
 
 export interface ParsedConcernSubcategory {
@@ -411,6 +423,86 @@ export function slugifyForConcernSubcategory(label: string): string {
  * Throws Error with a descriptive message when the structure is wrong.
  * Caller should surface that message in the UploadResult.error_message.
  */
+// ─── Concern-category guideline parser (added 2026-05-18) ──────────────────
+//
+// Concern-category guidelines are short prose paragraphs the diagnostic
+// LLM reads BEFORE the questions for that category. Format:
+//
+//   # {Display Label} — Diagnostic Guideline
+//
+//   {Prose body — single paragraph or several. Markdown is preserved as
+//    plain text; the diagnostic LLM consumes it as a system-prompt
+//    fragment, not as rendered HTML.}
+//
+//   ---
+//
+//   {Optional notes / sources — ignored by the parser.}
+//
+// Strict: must have an H1 (`# {label}`), must have ≥ 1 non-blank prose
+// line below the H1, stops at the first `---` horizontal rule.
+
+export interface ParsedConcernGuidelineDoc {
+  display_label: string;
+  guideline_prose: string;
+}
+
+export function parseConcernCategoryGuidelineMd(
+  content: string,
+): ParsedConcernGuidelineDoc {
+  const allLines = content.split(/\r?\n/);
+  const hrIdx = allLines.findIndex((l) => /^---\s*$/.test(l.trim()));
+  const body = hrIdx >= 0 ? allLines.slice(0, hrIdx) : allLines;
+
+  let displayLabel: string | null = null;
+  let i = 0;
+  for (; i < body.length; i++) {
+    const line = body[i]?.trim() ?? "";
+    if (line === "") continue;
+    const h1 = line.match(/^#\s+(.+?)\s*$/);
+    if (!h1) {
+      throw new Error(
+        `guideline MD: expected H1 ('# Category — Diagnostic Guideline') as first non-blank line, got "${line.slice(0, 80)}"`,
+      );
+    }
+    // Strip the trailing " — Diagnostic Guideline" suffix if present so
+    // display_label round-trips against the regular category labels.
+    displayLabel = h1[1]?.replace(/\s+[—\-]\s+Diagnostic Guideline\s*$/i, "").trim() ?? null;
+    i++;
+    break;
+  }
+  if (!displayLabel) {
+    throw new Error("guideline MD: missing H1 category label");
+  }
+
+  // Collect non-blank prose lines, preserving paragraph breaks via single
+  // newlines (consecutive blank lines collapse to one). Returns a single
+  // string suitable for storage in the guideline_prose TEXT column.
+  const proseLines: string[] = [];
+  let lastBlank = true;
+  for (; i < body.length; i++) {
+    const line = body[i] ?? "";
+    if (line.trim() === "") {
+      if (!lastBlank) proseLines.push("");
+      lastBlank = true;
+    } else {
+      proseLines.push(line.trim());
+      lastBlank = false;
+    }
+  }
+  // Trim trailing blanks
+  while (proseLines.length > 0 && proseLines[proseLines.length - 1] === "") {
+    proseLines.pop();
+  }
+  const prose = proseLines.join("\n").trim();
+  if (prose.length === 0) {
+    throw new Error(
+      "guideline MD: empty prose body — at least one non-blank line is required",
+    );
+  }
+
+  return { display_label: displayLabel, guideline_prose: prose };
+}
+
 export function parseConcernCategoryMd(content: string): ParsedConcernDoc {
   const allLines = content.split(/\r?\n/);
 
@@ -449,6 +541,14 @@ export function parseConcernCategoryMd(content: string): ParsedConcernDoc {
 
   const SUB_HEADER = /^--\s+(.+?)\s+Checklist\s+--\s*$/;
   const NUMBERED = /^(\d+)\.\s+(.+?)\s*$/;
+  // Options line: indented hyphen + pipe-separated entries. Each entry is
+  // "Label" OR "Label=value". The match uses the RAW line (not trimmed)
+  // so we can require indentation to disambiguate from a sub-category
+  // header which starts with "--". One required leading whitespace char.
+  const OPTIONS_LINE = /^\s+-\s+(.+?)\s*$/;
+  // Multi-select prefix: question text starts with "[multi]" (with
+  // optional surrounding whitespace).
+  const MULTI_PREFIX = /^\[multi\]\s+(.+)$/;
 
   for (; i < bodyLines.length; i++) {
     const raw = bodyLines[i] ?? "";
@@ -487,17 +587,72 @@ export function parseConcernCategoryMd(content: string): ParsedConcernDoc {
           `concern MD: numbered line found before any "-- {Name} Checklist --" header: "${line.slice(0, 80)}"`,
         );
       }
-      const text = numMatch[2]?.trim() ?? "";
+      let text = numMatch[2]?.trim() ?? "";
       if (!text) {
         throw new Error(
           `concern MD: empty numbered question on line "${line}"`,
         );
       }
+      // Strip [multi] prefix if present + flag the question.
+      let multi_select = false;
+      const multiMatch = text.match(MULTI_PREFIX);
+      if (multiMatch) {
+        multi_select = true;
+        text = multiMatch[1] ?? text;
+      }
       currentSub.questions.push({
         question_text: text,
         display_order: nextQuestionOrder,
+        multi_select,
       });
       nextQuestionOrder += 1;
+      continue;
+    }
+
+    // Options line — indented hyphen + pipe-separated entries directly
+    // under a numbered question. Test BEFORE the continuation fallback
+    // because the OPTIONS_LINE regex requires leading whitespace +
+    // `-` which would otherwise be interpreted as a wrapping line.
+    //
+    // Use the RAW line (with indentation preserved) for the regex check
+    // — `line` is trimmed and would lose the indentation that disambiguates
+    // options from a sub-category header.
+    const optionsMatch = raw.match(OPTIONS_LINE);
+    if (
+      optionsMatch &&
+      currentSub &&
+      currentSub.questions.length > 0 &&
+      // Belt-and-suspenders: a sub-category header starts with `--`. If the
+      // captured body begins with `-` and contains "Checklist", treat it
+      // as a header (defensive — the SUB_HEADER regex above should win
+      // since it doesn't require leading whitespace, but covering the
+      // edge case of an indented "-- foo Checklist --" line).
+      !optionsMatch[1]!.match(/\s+Checklist\s+--\s*$/) &&
+      optionsMatch[1]!.includes("|")
+    ) {
+      const last = currentSub.questions[currentSub.questions.length - 1];
+      if (last) {
+        const optsRaw = optionsMatch[1] ?? "";
+        const opts: Array<{ label: string; value: string }> = [];
+        for (const chunk of optsRaw.split("|")) {
+          const part = chunk.trim();
+          if (!part) continue;
+          const eq = part.indexOf("=");
+          if (eq >= 0) {
+            const label = part.slice(0, eq).trim();
+            const value = part.slice(eq + 1).trim();
+            if (label && value) opts.push({ label, value });
+          } else {
+            // No explicit value → slugify the label.
+            const label = part;
+            const value = slugifyForConcernSubcategory(label) || "opt";
+            if (label) opts.push({ label, value });
+          }
+        }
+        if (opts.length > 0) {
+          last.options = opts;
+        }
+      }
       continue;
     }
 

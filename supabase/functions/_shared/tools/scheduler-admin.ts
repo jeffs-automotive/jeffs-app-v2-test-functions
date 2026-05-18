@@ -29,6 +29,7 @@ import {
   coerceInt,
   coerceOptions,
   mdTableFromRows,
+  parseConcernCategoryGuidelineMd,
   parseConcernCategoryMd,
   parseMdTable,
   sha256Hex,
@@ -1719,6 +1720,12 @@ interface ConcernQuestionRow {
   question_text: string;
   display_order: number;
   active: boolean;
+  /** JSONB column — array of {label, value}. Fetched + diffed against the
+   *  parsed MD options so the upload tool only writes when the MD's
+   *  options actually changed. Added 2026-05-18 with the CAT-2 catalog
+   *  rebuild + new MD format. */
+  options?: unknown;
+  multi_select?: boolean;
 }
 
 export async function uploadConcernCategoryMd(
@@ -1820,7 +1827,9 @@ export async function uploadConcernCategoryMd(
 
   const { data: qRows, error: qFetchErr } = await sb
     .from("concern_questions")
-    .select("id, subcategory_id, question_text, display_order, active")
+    .select(
+      "id, subcategory_id, question_text, display_order, active, options, multi_select",
+    )
     .eq("shop_id", shopId)
     .eq("category", categorySlug);
   if (qFetchErr) {
@@ -1976,6 +1985,26 @@ export async function uploadConcernCategoryMd(
   });
 
   const seenQuestionIds = new Set<number>();
+  // Deep-equality check for options arrays (order-sensitive — a reorder
+  // is a meaningful diff). Compares [{label,value}] tuples. Used to
+  // decide whether the MD's options differ from the DB's. Added
+  // 2026-05-18 with the new MD options + multi_select format.
+  const optionsEqual = (
+    a: unknown,
+    b: Array<{ label: string; value: string }>,
+  ): boolean => {
+    if (!Array.isArray(a)) return false;
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      const aEntry = a[i];
+      const bEntry = b[i];
+      if (!aEntry || typeof aEntry !== "object" || !bEntry) return false;
+      const ao = aEntry as Record<string, unknown>;
+      if (ao.label !== bEntry.label || ao.value !== bEntry.value) return false;
+    }
+    return true;
+  };
+
   for (const mdSub of parsed.subcategories) {
     const subId = subIdBySlug.get(mdSub.slug);
     if (subId === undefined) continue;
@@ -1984,28 +2013,54 @@ export async function uploadConcernCategoryMd(
       const existing = currentByKey.get(key);
       if (existing) {
         seenQuestionIds.add(existing.id);
-        const needsUpdate =
-          existing.display_order !== q.display_order || existing.active !== true;
-        if (needsUpdate) {
+        // MD-parsed options/multi_select are honored when present.
+        // Absent options → don't touch the DB row (preserves the
+        // canonical state for legacy MDs that don't carry options
+        // yet). Absent multi_select (i.e., no `[multi]` prefix in MD)
+        // → don't touch — preserve canonical state.
+        const updateFields: Record<string, unknown> = {};
+        if (existing.display_order !== q.display_order) {
+          updateFields.display_order = q.display_order;
+        }
+        if (existing.active !== true) {
+          updateFields.active = true;
+        }
+        if (
+          q.options !== undefined &&
+          !optionsEqual(existing.options, q.options)
+        ) {
+          updateFields.options = q.options;
+        }
+        if (
+          q.multi_select !== undefined &&
+          existing.multi_select !== q.multi_select
+        ) {
+          updateFields.multi_select = q.multi_select;
+        }
+        if (Object.keys(updateFields).length > 0) {
+          updateFields.updated_at = nowIso;
+          updateFields.updated_by_oauth_client_id = args.audit.oauth_client_id;
+          updateFields.updated_by_name = args.audit.display_name;
           const { error } = await sb
             .from("concern_questions")
-            .update({
-              display_order: q.display_order,
-              active: true,
-              updated_at: nowIso,
-              updated_by_oauth_client_id: args.audit.oauth_client_id,
-              updated_by_name: args.audit.display_name,
-            })
+            .update(updateFields)
             .eq("id", existing.id);
           if (!error) qModified += 1;
         }
       } else {
+        // New question — use parsed options when present; fall back to
+        // DEFAULT_OPTIONS (yes/no/sometimes) for legacy MDs without
+        // options. multi_select defaults to FALSE when absent.
+        const options =
+          q.options !== undefined ? q.options : JSON.parse(DEFAULT_OPTIONS);
+        const multi_select = q.multi_select === true;
         const { error } = await sb.from("concern_questions").insert({
           shop_id: shopId,
           category: categorySlug,
           subcategory_id: subId,
           question_text: q.question_text,
-          options: JSON.parse(DEFAULT_OPTIONS),
+          options,
+          multi_select,
           display_order: q.display_order,
           active: true,
           updated_by_oauth_client_id: args.audit.oauth_client_id,
@@ -2069,6 +2124,224 @@ export async function uploadConcernCategoryMd(
     rows_added: subAdded + qAdded,
     rows_modified: subModified + qModified,
     rows_deactivated: subDeactivated + qDeactivated,
+    diff_summary: diff,
+  };
+}
+
+// ─── Concern category guidelines (added 2026-05-18) ─────────────────────────
+//
+// concern_category_guidelines is a tiny table — one row per (shop_id,
+// category) — that stores the prose paragraph the diagnostic LLM reads
+// BEFORE the questions for each category. It's narrower scope than the
+// questions/subcategories upload: just one prose blob per category.
+//
+// upload_concern_category_guidelines_md:
+//   1. Parse MD (parseConcernCategoryGuidelineMd) → { display_label, prose }
+//   2. SHA-256 dedupe — re-uploading identical content is a no-op
+//   3. UPSERT the row keyed on (shop_id, category)
+//   4. Audit-log to scheduler_admin_audit_log
+//
+// The customer-facing wizard doesn't render this prose; only the
+// diagnostic LLM reads it (system-prompt context). Per Chris's 2026-05-18
+// directive, advisors can edit one category's guideline via Claude
+// Desktop without filing a code change.
+
+export async function uploadConcernCategoryGuidelineMd(
+  sb: SupabaseClient,
+  shopId: number,
+  args: {
+    category_slug: string;
+    md_content: string;
+    audit: AdminAudit;
+  },
+): Promise<UploadResult> {
+  const tableName = "concern_category_guidelines";
+
+  if (!CONCERN_CATEGORY_SLUGS.includes(args.category_slug as ConcernCategorySlug)) {
+    return {
+      ok: false,
+      table_name: tableName,
+      md_content_hash: "",
+      rows_parsed: 0,
+      rows_added: 0,
+      rows_modified: 0,
+      rows_deactivated: 0,
+      error_message: `category_slug must be one of: ${CONCERN_CATEGORY_SLUGS.join(", ")}`,
+    };
+  }
+  const categorySlug = args.category_slug as ConcernCategorySlug;
+
+  const hash = await sha256Hex(args.md_content);
+  if (await checkDuplicate(sb, tableName, hash)) {
+    return {
+      ok: true,
+      table_name: tableName,
+      md_content_hash: hash,
+      rows_parsed: 0,
+      rows_added: 0,
+      rows_modified: 0,
+      rows_deactivated: 0,
+      duplicate_upload: true,
+    };
+  }
+
+  let parsed;
+  try {
+    parsed = parseConcernCategoryGuidelineMd(args.md_content);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    await logAdminAudit(sb, {
+      audit: args.audit,
+      table_name: tableName,
+      operation: "upload_md",
+      md_content_hash: hash,
+      error_message: msg,
+    });
+    return {
+      ok: false,
+      table_name: tableName,
+      md_content_hash: hash,
+      rows_parsed: 0,
+      rows_added: 0,
+      rows_modified: 0,
+      rows_deactivated: 0,
+      error_message: msg,
+    };
+  }
+
+  // Fetch existing row to determine added vs modified for the diff
+  // summary (and to skip the write when nothing actually changed).
+  const { data: existing, error: fetchErr } = await sb
+    .from("concern_category_guidelines")
+    .select("display_label, guideline_prose")
+    .eq("shop_id", shopId)
+    .eq("category", categorySlug)
+    .maybeSingle();
+  if (fetchErr) {
+    const msg = `concern_category_guidelines fetch failed: ${fetchErr.message}`;
+    await logAdminAudit(sb, {
+      audit: args.audit,
+      table_name: tableName,
+      operation: "upload_md",
+      md_content_hash: hash,
+      error_message: msg,
+    });
+    return {
+      ok: false,
+      table_name: tableName,
+      md_content_hash: hash,
+      rows_parsed: 1,
+      rows_added: 0,
+      rows_modified: 0,
+      rows_deactivated: 0,
+      error_message: msg,
+    };
+  }
+
+  let rowsAdded = 0;
+  let rowsModified = 0;
+  const nowIso = new Date().toISOString();
+
+  if (!existing) {
+    // INSERT
+    const { error: insertErr } = await sb
+      .from("concern_category_guidelines")
+      .insert({
+        shop_id: shopId,
+        category: categorySlug,
+        display_label: parsed.display_label,
+        guideline_prose: parsed.guideline_prose,
+        updated_at: nowIso,
+        updated_by_oauth_client_id: args.audit.oauth_client_id,
+        updated_by_name: args.audit.display_name,
+      });
+    if (insertErr) {
+      const msg = `concern_category_guidelines insert failed: ${insertErr.message}`;
+      await logAdminAudit(sb, {
+        audit: args.audit,
+        table_name: tableName,
+        operation: "upload_md",
+        md_content_hash: hash,
+        error_message: msg,
+      });
+      return {
+        ok: false,
+        table_name: tableName,
+        md_content_hash: hash,
+        rows_parsed: 1,
+        rows_added: 0,
+        rows_modified: 0,
+        rows_deactivated: 0,
+        error_message: msg,
+      };
+    }
+    rowsAdded = 1;
+  } else {
+    const changed =
+      existing.display_label !== parsed.display_label ||
+      existing.guideline_prose !== parsed.guideline_prose;
+    if (changed) {
+      const { error: updateErr } = await sb
+        .from("concern_category_guidelines")
+        .update({
+          display_label: parsed.display_label,
+          guideline_prose: parsed.guideline_prose,
+          updated_at: nowIso,
+          updated_by_oauth_client_id: args.audit.oauth_client_id,
+          updated_by_name: args.audit.display_name,
+        })
+        .eq("shop_id", shopId)
+        .eq("category", categorySlug);
+      if (updateErr) {
+        const msg = `concern_category_guidelines update failed: ${updateErr.message}`;
+        await logAdminAudit(sb, {
+          audit: args.audit,
+          table_name: tableName,
+          operation: "upload_md",
+          md_content_hash: hash,
+          error_message: msg,
+        });
+        return {
+          ok: false,
+          table_name: tableName,
+          md_content_hash: hash,
+          rows_parsed: 1,
+          rows_added: 0,
+          rows_modified: 0,
+          rows_deactivated: 0,
+          error_message: msg,
+        };
+      }
+      rowsModified = 1;
+    }
+  }
+
+  const diff = {
+    category_slug: categorySlug,
+    display_label: parsed.display_label,
+    prose_length: parsed.guideline_prose.length,
+    action: rowsAdded ? "inserted" : rowsModified ? "updated" : "no-op",
+  };
+
+  await logAdminAudit(sb, {
+    audit: args.audit,
+    table_name: tableName,
+    operation: "upload_md",
+    md_content_hash: hash,
+    rows_added: rowsAdded,
+    rows_modified: rowsModified,
+    rows_deactivated: 0,
+    diff_summary: diff,
+  });
+
+  return {
+    ok: true,
+    table_name: tableName,
+    md_content_hash: hash,
+    rows_parsed: 1,
+    rows_added: rowsAdded,
+    rows_modified: rowsModified,
+    rows_deactivated: 0,
     diff_summary: diff,
   };
 }
