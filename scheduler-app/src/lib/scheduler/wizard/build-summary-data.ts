@@ -18,7 +18,10 @@
  * Action so the admin client is appropriate (bypasses RLS, app-trusted).
  */
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { shopLocalToIsoString } from "@/lib/scheduler/wizard/shop-tz";
+import {
+  isSameDayLocal,
+  shopLocalToIsoString,
+} from "@/lib/scheduler/wizard/shop-tz";
 
 export interface SummaryServiceItem {
   display_name: string;
@@ -42,6 +45,10 @@ export interface SummaryCardPayload {
   type: "waiter" | "dropoff";
   services: SummaryServiceItem[];
   reminders: string[];
+  /** TRUE when starts_at falls on today in the shop's local timezone.
+   *  Drives same-day-aware copy on the SummaryCard label. Optional for
+   *  back-compat — consumers default to false. Added 2026-05-18. */
+  is_same_day?: boolean;
 }
 
 const SHOP_ID = 7476;
@@ -331,10 +338,20 @@ export async function buildSummaryCardPayload(args: {
     }
   }
 
+  // Same-day check (added 2026-05-18). When the appointment is today
+  // in the shop's local timezone, swap the reminder + SummaryCard label
+  // to "drop off as soon as you can today" — the "by 10 AM" guidance
+  // may already be in the past and is misleading for same-day picks.
+  const is_same_day = isSameDayLocal(apptDate);
+
   // Reminders — Phase 1 minimal set.
   const reminders: string[] = [];
   if (type === "dropoff") {
-    reminders.push("Drop off before 10 AM. We'll text or call when ready.");
+    reminders.push(
+      is_same_day
+        ? "Drop off as soon as you can today. We'll text or call when ready."
+        : "Drop off before 10 AM. We'll text or call when ready.",
+    );
   }
   // State Inspection requires title + registration + insurance.
   const hasInspection = selectedRoutine.includes("state_inspection_emissions") ||
@@ -354,5 +371,6 @@ export async function buildSummaryCardPayload(args: {
     type,
     services,
     reminders,
+    is_same_day,
   };
 }

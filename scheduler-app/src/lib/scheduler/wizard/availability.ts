@@ -33,6 +33,10 @@
  * stored with HH:MM in scheduled_time already.
  */
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import {
+  isAfterSameDayCutoff,
+  shopLocalToday,
+} from "@/lib/scheduler/wizard/shop-tz";
 
 const SHOP_TIMEZONE = "America/New_York"; // Phase 1 single-shop
 
@@ -232,6 +236,22 @@ export async function computeAvailableDates(
     }
 
     result.push(date);
+  }
+
+  // Same-day filter (added 2026-05-18 per Chris's directive). Drop today
+  // from the result when either:
+  //   - appointment_type === 'waiter' — waiter slots are 8/9 AM only,
+  //     same-day is always past the slot.
+  //   - shop-local time is at or past SAME_DAY_CUTOFF_HOUR (12 PM ET) —
+  //     drop-off after noon is too late to be useful for our techs.
+  // Applied at the end so capacity math above is unaffected; this is a
+  // pure output filter. The defensive check in submit-date.ts catches
+  // the rare race where a customer crosses noon mid-flight.
+  const blockSameDay =
+    args.appointment_type === "waiter" || isAfterSameDayCutoff();
+  if (blockSameDay) {
+    const today = shopLocalToday();
+    return result.filter((d) => d !== today);
   }
   return result;
 }

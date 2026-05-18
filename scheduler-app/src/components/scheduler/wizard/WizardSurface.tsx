@@ -498,6 +498,7 @@ function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
           type={card.payload.type}
           services={card.payload.services}
           reminders={card.payload.reminders}
+          is_same_day={card.payload.is_same_day}
           onSubmit={async ({ confirmed, edit_target }) => {
             const result = await submitSummaryV2({
               chatId,

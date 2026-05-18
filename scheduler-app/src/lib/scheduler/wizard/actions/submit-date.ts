@@ -33,6 +33,10 @@ import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
 import { buildServiceSummary } from "@/lib/scheduler/wizard/build-service-summary";
 import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
+import {
+  isAfterSameDayCutoff,
+  shopLocalToday,
+} from "@/lib/scheduler/wizard/shop-tz";
 
 const submitDateSchema = z.object({
   chatId: z.string().min(1),
@@ -77,6 +81,32 @@ async function submitDateV2Impl(
     }
     const apptType = (row.appointment_type as "waiter" | "dropoff" | null) ??
       null;
+
+    // Same-day cutoff defense (added 2026-05-18). The date picker filters
+    // today out of the available set when (a) appointment_type === 'waiter'
+    // or (b) shop-local time is past SAME_DAY_CUTOFF_HOUR. This re-check
+    // catches the rare race where a customer loaded the picker at 11:55 AM,
+    // tapped today, and submits at 12:01 PM — the calendar still showed
+    // today as valid client-side, but it's no longer offerable.
+    if (selected_date === shopLocalToday()) {
+      if (apptType === "waiter") {
+        return applyWizardTransition({
+          chatId,
+          nextStep: "date_pick",
+          jeffBubble:
+            "Same-day waiter appointments aren't possible — our waiter slots are 8 AM and 9 AM. Pick another day below and I'll line you up. ⏰",
+        });
+      }
+      if (apptType === "dropoff" && isAfterSameDayCutoff()) {
+        return applyWizardTransition({
+          chatId,
+          nextStep: "date_pick",
+          jeffBubble:
+            "We just hit our same-day cutoff for today — let me pull up the next available days. 📅",
+        });
+      }
+    }
+
     if (apptType === null) {
       // Shouldn't normally happen — Phase 10 always writes appointment_type
       // before advancing to date_pick. Defensive escalation if it does.

@@ -53,6 +53,10 @@ import {
 } from "@/lib/scheduler/wizard/build-summary-data";
 import { buildServiceSummary } from "@/lib/scheduler/wizard/build-service-summary";
 import { notifyStaffOfNewAppointment } from "@/lib/scheduler/wizard/staff-notification";
+import {
+  isSameDayLocal,
+  shopLocalDate,
+} from "@/lib/scheduler/wizard/shop-tz";
 
 const EDIT_ATTEMPT_ESCALATION_THRESHOLD = 3;
 
@@ -457,6 +461,21 @@ function buildConfirmedBubble(
   const friendly = formatFriendlyTime(startTimeIso, type);
   if (type === "waiter") {
     return `${greeting} You're booked for ${friendly}.\n\nBefore you go — is there anything special I should let our techs know about your car or the visit?`;
+  }
+  // Same-day check (added 2026-05-18): compare the appointment's
+  // shop-local date against today's shop-local date. We resolve the
+  // shop-local YYYY-MM-DD from the UTC ISO via shopLocalDate (not a
+  // raw .slice(0,10) which would return the UTC date — same for most
+  // morning dropoff times in the East, but wrong for any appointment
+  // that's a UTC-day later than shop-local). When the customer is
+  // booking for today, the "drop before 10 AM" guidance is misleading
+  // (cutoff is noon and 10 AM may already be past) — swap to
+  // "drop off as soon as you can today."
+  const sameDay = startTimeIso
+    ? isSameDayLocal(shopLocalDate(new Date(startTimeIso)))
+    : false;
+  if (sameDay) {
+    return `${greeting} You're booked for drop-off today — drop off as soon as you can and we'll text you when it's ready.\n\nBefore you go — is there anything special I should let our techs know about your car or the visit?`;
   }
   return `${greeting} You're booked for drop-off on ${friendly} — drop before 10 AM and we'll text you when it's ready.\n\nBefore you go — is there anything special I should let our techs know about your car or the visit?`;
 }

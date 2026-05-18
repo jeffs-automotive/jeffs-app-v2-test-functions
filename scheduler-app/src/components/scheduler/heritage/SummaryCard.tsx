@@ -50,6 +50,12 @@ export interface SummaryCardProps {
   services: SummaryService[];
   /** Pre-appointment reminders. */
   reminders: string[];
+  /** TRUE when the appointment is for today in shop-local time. Drives
+   *  copy: "Dropoff 🚗 — drop off as soon as you can today" instead of
+   *  the standard "Dropoff 🚗 — please drop off before 10 AM" since the
+   *  10 AM guidance may already be past. Optional; defaults to false.
+   *  Added 2026-05-18. */
+  is_same_day?: boolean;
   disabled?: boolean;
   onSubmit: (output: {
     confirmed: boolean;
@@ -103,6 +109,7 @@ export function SummaryCard({
   type,
   services,
   reminders,
+  is_same_day = false,
   disabled = false,
   onSubmit,
 }: SummaryCardProps) {
@@ -165,7 +172,11 @@ export function SummaryCard({
           <p className="label-eyebrow mb-1">Appointment</p>
           <p className="font-display text-lg text-ink">{fmtStarts(starts_at, type)}</p>
           <p className="mt-0.5 text-[14px] text-ink-secondary">
-            {type === "waiter" ? "Waiter ☕" : "Dropoff 🚗 — please drop off before 10 AM"}
+            {type === "waiter"
+              ? "Waiter ☕"
+              : is_same_day
+                ? "Dropoff 🚗 — drop off as soon as you can today"
+                : "Dropoff 🚗 — please drop off before 10 AM"}
           </p>
         </section>
 

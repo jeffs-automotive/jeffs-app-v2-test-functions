@@ -215,6 +215,12 @@ export interface SummaryPayload {
     notes?: string;
   }>;
   reminders: string[];
+  /** TRUE when `starts_at` falls on today in the shop's local timezone.
+   *  Drives copy swaps on the SummaryCard label + the final
+   *  confirmation bubble — "drop off before 10 AM" becomes "drop off
+   *  as soon as you can today" since the "by 10 AM" guidance may
+   *  already be past or close to past. Added 2026-05-18. */
+  is_same_day?: boolean;
 }
 
 /**
