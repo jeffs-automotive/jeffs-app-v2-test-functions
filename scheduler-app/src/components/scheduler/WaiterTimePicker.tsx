@@ -58,12 +58,14 @@ export function WaiterTimePicker({
     setPicked(time);
     try {
       await onSubmit({ selected_time: time });
-      // 2026-05-17 mirror of CalendarDatePicker fix: stay disabled after
-      // a successful submit; parent revalidation unmounts us so the
-      // lingering disabled state never reaches the customer's view.
-    } catch (e) {
+    } finally {
+      // 2026-05-17 (revised): always reset. Earlier rev kept
+      // submitting=true forever; that wedged customers when the server
+      // action returned without a step transition (e.g., race-lost
+      // bounces back to waiter_time_pick). Rapid-click protection lives
+      // server-side now (submit-waiter-time no-ops if current_step is no
+      // longer waiter_time_pick).
       setSubmitting(false);
-      throw e;
     }
   }
 

@@ -204,6 +204,12 @@ async function submitServiceAndConcernPickerV2Impl(
         diagnostic_processing_complete: false,
         clarification_questions_pending: [],
         clarification_questions_answered: {},
+        // 2026-05-17: also reset the diagnostic-output columns so a
+        // back-button → re-pick flow doesn't carry stale recommendations
+        // or declined entries from the prior run into the new one. The
+        // next runDiagnostics will repopulate these atomically.
+        recommended_testing_services: [],
+        declined_testing_services: [],
       },
       nextStep,
       jeffBubble,

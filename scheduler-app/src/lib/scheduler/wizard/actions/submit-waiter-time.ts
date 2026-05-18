@@ -50,7 +50,7 @@ async function submitWaiterTimeV2Impl(
     const supabase = createSupabaseAdminClient();
     const { data: row, error: rowErr } = await supabase
       .from("customer_chat_sessions")
-      .select("appointment_date, customer_id, vehicle_id")
+      .select("appointment_date, customer_id, vehicle_id, current_step")
       .eq("id", chatId)
       .maybeSingle();
     if (rowErr || !row) {
@@ -58,6 +58,12 @@ async function submitWaiterTimeV2Impl(
         ok: false,
         error: rowErr?.message ?? "session_not_found",
       };
+    }
+    // 2026-05-17 rapid-click defense: bail if a prior click already
+    // advanced past waiter_time_pick. Prevents double-hold attempts.
+    const currentStep = row.current_step as string | null;
+    if (currentStep && currentStep !== "waiter_time_pick") {
+      return { ok: true, next_step: currentStep as never };
     }
     const date = (row.appointment_date as string | null) ?? "";
     if (!date) {

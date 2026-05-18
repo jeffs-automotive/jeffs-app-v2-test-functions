@@ -103,20 +103,17 @@ export function CalendarDatePicker({
     setPicked(iso);
     try {
       await onSubmit({ selected_date: iso });
-      // 2026-05-17 fix: keep `submitting=true` after a successful submit.
-      // The parent re-renders (via router.refresh()) and unmounts this
-      // component, so the lingering disabled state is gone the moment the
-      // next card renders. Resetting it in a `finally` previously created
-      // a window where the buttons re-enabled BEFORE the new RSC arrived —
-      // the customer would tap another date thinking "nothing happened",
-      // and the second submit would win, leaving them feeling like the
-      // calendar advanced on a timer with whichever date they tapped last.
-    } catch (e) {
-      // Only reset on a hard throw (rare — server actions return
-      // discriminated results, they don't normally reject). Lets the
-      // customer retry without a full reload.
+    } finally {
+      // 2026-05-17 (revised): always reset submitting. Earlier this
+      // function kept submitting=true forever on the assumption that the
+      // parent would unmount us on the next step transition — but
+      // submitDateV2's dropoff path bounces BACK to date_pick when
+      // holdSlot fails (race-lost, edge-fn timeout, etc.), and the card
+      // stays mounted on the same step. That left the customer with a
+      // permanent "Reserving your date…" loader and no way out. Rapid-
+      // click protection now lives server-side: submit-date.ts no-ops
+      // when current_step has already advanced past date_pick.
       setSubmitting(false);
-      throw e;
     }
   }
 

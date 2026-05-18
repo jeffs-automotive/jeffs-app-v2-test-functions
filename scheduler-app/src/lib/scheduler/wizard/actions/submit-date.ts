@@ -57,7 +57,7 @@ async function submitDateV2Impl(
     const supabase = createSupabaseAdminClient();
     const { data: row, error: rowErr } = await supabase
       .from("customer_chat_sessions")
-      .select("appointment_type, customer_id, vehicle_id")
+      .select("appointment_type, customer_id, vehicle_id, current_step")
       .eq("id", chatId)
       .maybeSingle();
     if (rowErr || !row) {
@@ -65,6 +65,15 @@ async function submitDateV2Impl(
         ok: false,
         error: rowErr?.message ?? "session_not_found",
       };
+    }
+    // 2026-05-17 rapid-click defense: if current_step has already
+    // advanced past date_pick (the previous click won the race + the
+    // navigation is in flight), no-op this call so we don't double-book.
+    // Returns ok=true so the client treats the navigation as in flight;
+    // the next router.refresh() will land them on the right step.
+    const currentStep = row.current_step as string | null;
+    if (currentStep && currentStep !== "date_pick") {
+      return { ok: true, next_step: currentStep as never };
     }
     const apptType = (row.appointment_type as "waiter" | "dropoff" | null) ??
       null;
