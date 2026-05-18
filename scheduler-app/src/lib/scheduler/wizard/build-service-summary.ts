@@ -6,10 +6,16 @@
  * wizard's submitDateV2 / submitWaiterTimeV2 / submitSummaryConfirmV2
  * (Phase 12) can reuse the exact same shape.
  *
- * 2026-05-18 rewrite (per Chris's directive):
- *   - Comma-separated, NOT ` · `. Tekmetric splits the description into
- *     concern lines on commas; the old delimiter put everything on one
- *     line.
+ * 2026-05-18 rewrite (per Chris's directive — verified via PATCH probes on
+ * appointment 62409644):
+ *   - Each fragment is **newline-separated** (`\n`). Tekmetric's appointment
+ *     description UI renders `\n` as a line break — each fragment becomes
+ *     its own concern line. The literal `\n` characters do NOT appear in
+ *     the rendered UI.
+ *   - Other formats tested + rejected: (a) comma-separated → collapsed to
+ *     one line; (b) quoted-and-comma-separated → stored verbatim with
+ *     visible double-quote characters; (c) JSON array `description: [...]`
+ *     → Tekmetric returned 200 SUCCESS but silently stored an empty string.
  *   - Customer-friendly display names (NOT service_keys). Resolves
  *     routine_services.display_name + testing_services.display_name via
  *     a single IN-clause query per table.
@@ -22,11 +28,12 @@
  *   - Approved testing services render with their price: "Brake
  *     inspection approved $39.99". Free services render "(free)".
  *
- * Example output:
+ * Example output (literal `\n` shown as ↵ for readability):
  *
- *   "State Inspection and Emissions, Customer states there is a
- *    thumping noise coming from the front-right of the vehicle when
- *    going over bumps. , Suspension check approved $89.95"
+ *   State Inspection and Emissions ↵
+ *   Customer states there is a thumping noise coming from the front-right
+ *   of the vehicle when going over bumps. ↵
+ *   Suspension check approved $89.95
  *
  * Empty pick set yields "General appointment" so the edge function's
  * service_summary NOT-NULL check still passes.
@@ -154,7 +161,12 @@ export async function buildServiceSummary(args: {
   if (fragments.length === 0) {
     return "General appointment";
   }
-  return fragments.join(", ");
+  // Newline-separated — Tekmetric renders `\n` as line breaks in the
+  // appointment description UI. Verified 2026-05-18 via PATCH probes on
+  // appointment 62409644 (Chris confirmed visually: "three separate
+  // concerns and no visible line break characters"). Other separators
+  // tested + rejected — see the file header for the full matrix.
+  return fragments.join("\n");
 }
 
 // ─── Lookup helpers ─────────────────────────────────────────────────────────
