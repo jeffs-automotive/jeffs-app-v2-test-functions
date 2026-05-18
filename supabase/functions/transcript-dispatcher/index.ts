@@ -496,19 +496,33 @@ function buildCustomerActivity(
   }
 
   // 4. Free-text concern descriptions (Step 6.5 explanation_required_items).
+  //    Prefer the synthesized "Customer states ..." summary added 2026-05-18
+  //    by ensureConcernSummaries (LLM-generated paragraph that folds the
+  //    customer's raw description + their Q&A answers into one sentence).
+  //    Falls back to the raw explanation_text quoted verbatim when no
+  //    summary is on the row yet (back-compat with pre-summarization
+  //    sessions).
   const items = session.explanation_required_items as
     | Array<Record<string, unknown>>
     | null;
   if (Array.isArray(items)) {
     for (const item of items) {
       const display = (item.display_name as string) ?? (item.service_key as string) ?? "Concern";
+      const summary = typeof item.summary === "string" ? item.summary : "";
       const text = (item.explanation_text as string) ?? "";
-      if (!text) continue;
-      events.push({
-        kind: "concern_described",
-        label: `Described concern (${display})`,
-        detail: `"${text}"`,
-      });
+      if (summary.length > 0) {
+        events.push({
+          kind: "concern_described",
+          label: `Described concern (${display})`,
+          detail: summary,
+        });
+      } else if (text.length > 0) {
+        events.push({
+          kind: "concern_described",
+          label: `Described concern (${display})`,
+          detail: `"${text}"`,
+        });
+      }
     }
   }
 

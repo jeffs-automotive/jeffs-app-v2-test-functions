@@ -30,6 +30,7 @@ import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-t
 import { logError } from "@/lib/scheduler/wizard/log-error";
 import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 import { routeAfterDiagnostics } from "@/lib/scheduler/wizard/route-after-diagnostics";
+import { ensureConcernSummaries } from "@/lib/scheduler/wizard/ensure-concern-summaries";
 
 const inputSchema = z.object({
   chatId: z.string().min(1),
@@ -284,7 +285,7 @@ async function submitClarificationAnswerV2Impl(
       recommendation_count: recsCount,
     });
 
-    return applyWizardTransition({
+    const transitionResult = await applyWizardTransition({
       chatId,
       updates: {
         clarification_questions_pending: nextPending,
@@ -294,6 +295,38 @@ async function submitClarificationAnswerV2Impl(
       userBubble,
       jeffBubble,
     });
+
+    // Queue just drained → synthesize the per-concern "Customer states ..."
+    // summaries before the customer reaches the Tekmetric description
+    // builder. Run AFTER the transition so the freshly-answered row is
+    // visible to ensureConcernSummaries. Best-effort: a summarization
+    // failure must not block the wizard advance — fall back to the
+    // raw explanation_text downstream.
+    if (nextPending.length === 0) {
+      try {
+        await ensureConcernSummaries({ chatId });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        Sentry.captureException(e, {
+          tags: {
+            surface: "submit_clarification_answer_v2_summarize",
+            chat_id: chatId,
+          },
+          level: "warning",
+        });
+        // eslint-disable-next-line no-console
+        console.warn(
+          JSON.stringify({
+            level: "warn",
+            msg: "ensure_concern_summaries_failed",
+            chat_id: chatId,
+            detail: msg,
+          }),
+        );
+      }
+    }
+
+    return transitionResult;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     Sentry.captureException(e, {

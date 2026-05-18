@@ -53,6 +53,7 @@ import {
 import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 import { logError } from "@/lib/scheduler/wizard/log-error";
 import { routeAfterDiagnostics } from "@/lib/scheduler/wizard/route-after-diagnostics";
+import { ensureConcernSummaries } from "@/lib/scheduler/wizard/ensure-concern-summaries";
 
 const inputSchema = z.object({
   chatId: z.string().min(1),
@@ -468,6 +469,13 @@ async function runDiagnosticsBody(
 
   // ── Aggregate pending questions ──────────────────────────────────────
   const pending: PendingQuestionEntry[] = [];
+  // Per-concern question_id list — also persisted on each
+  // explanation_required_items entry so ensureConcernSummaries can
+  // group the answered Q&A back to its source concern after the queue
+  // drains. (Without this map, summaries would have to re-derive the
+  // grouping via subcategory→category→source, which is heuristic when
+  // two concerns hit the same category.)
+  const perItemQuestionIds = new Map<string, number[]>();
   for (const r of perConcernResults) {
     if (!r.matchedCat || !r.result.matched_subcategory_slug) continue;
     const subSlug = r.result.matched_subcategory_slug;
@@ -477,6 +485,7 @@ async function runDiagnosticsBody(
           r.matchedCat.subcategories.find((s) => s.slug === subSlug)
             ?.concern_category ?? "other"
         : "other";
+    const idsForConcern: number[] = [];
     for (const qid of r.result.unanswered_question_ids) {
       const q = findQuestionInCatalog(catalog, r.matchedCat, subSlug, qid);
       if (!q) continue;
@@ -489,8 +498,24 @@ async function runDiagnosticsBody(
         subcategory_slug: subSlug,
         multi_select: q.multi_select,
       });
+      idsForConcern.push(q.id);
+    }
+    if (idsForConcern.length > 0) {
+      perItemQuestionIds.set(r.item.service_key, idsForConcern);
     }
   }
+
+  // Annotate each explanation_required_items entry with the question_ids
+  // it queued. This is the canonical "which questions belong to this
+  // concern" record consumed later by ensureConcernSummaries.
+  const updatedExplanationItems = items.map((item) => ({
+    service_key: item.service_key,
+    display_name: item.display_name,
+    explanation_text: item.explanation_text,
+    category: item.category,
+    unanswered_question_ids:
+      perItemQuestionIds.get(item.service_key) ?? [],
+  }));
 
   // ── Persist + advance ────────────────────────────────────────────────
   const { nextStep, jeffBubble } = routeAfterDiagnostics({
@@ -524,10 +549,16 @@ async function runDiagnosticsBody(
       },
     },
   );
-  return applyWizardTransition({
+  // Generate concern summaries NOW if there are no clarification
+  // questions queued for the customer — the wizard skips straight to the
+  // testing-service-approval card and we need summaries ready for the
+  // Tekmetric description builder. When pending is non-empty, summaries
+  // are deferred to submit-clarification-answer's queue-drain branch.
+  const transitionResult = await applyWizardTransition({
     chatId,
     updates: {
       diagnostic_processing_complete: true,
+      explanation_required_items: updatedExplanationItems,
       clarification_questions_pending: pending,
       clarification_questions_answered: {},
       recommended_testing_services,
@@ -535,6 +566,14 @@ async function runDiagnosticsBody(
     nextStep,
     jeffBubble,
   });
+  if (pending.length === 0) {
+    // Fire-and-forget? No — we want summaries persisted before the
+    // customer reaches submit. Await it. Cost is one Haiku call per
+    // concern (~500ms each, parallel) which is acceptable here since
+    // the customer is about to read the recommendation card anyway.
+    await ensureConcernSummaries({ chatId });
+  }
+  return transitionResult;
 }
 
 export const runDiagnosticsV2 = wrapAction(
