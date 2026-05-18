@@ -116,7 +116,12 @@ export function WizardSurface({ chatId, card }: WizardSurfaceProps) {
       aria-live="polite"
       className="outline-none focus:outline-none"
     >
-      <WizardBackBar chatId={chatId} currentStep={card.step} />
+      {/* key={card.step} forces remount on every step change so the bar's
+          local `pending` state can't stick at true across a back navigation.
+          Without the key, backing from date_pick → appointment_type (both
+          in STEPS_WITH_BACK) leaves the same component instance mounted
+          with `pending=true` after the await — the spinner never clears. */}
+      <WizardBackBar key={card.step} chatId={chatId} currentStep={card.step} />
       <WizardCardSwitcher chatId={chatId} card={card} />
     </div>
   );

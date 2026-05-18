@@ -123,10 +123,13 @@ export function ServiceAndConcernPicker({
                         selected={isSelected}
                         disabled={disabled || pending}
                         onClick={() => toggle(s.service_key)}
-                        // Stretch each chip to fill its grid cell so the
-                        // multi-line price + waived-note content lays out
-                        // consistently across the two-column grid.
-                        className="flex h-full w-full flex-col items-start gap-1 py-3 text-left"
+                        // `min-h-20` (80px) is the height of the waived-note
+                        // variant (2-line caveat below the price). Forcing it
+                        // on every chip means single-line chips get blank
+                        // space below the price but match the tallest chip's
+                        // height — the grid reads as a uniform tile set
+                        // instead of jagged rows.
+                        className="flex h-full min-h-20 w-full flex-col items-start gap-1 py-3 text-left"
                       >
                         <span className="flex w-full items-center justify-between gap-2">
                           <span className="font-medium">{s.display_name}</span>
