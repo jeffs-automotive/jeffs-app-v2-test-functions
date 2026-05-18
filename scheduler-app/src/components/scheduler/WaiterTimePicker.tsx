@@ -58,14 +58,18 @@ export function WaiterTimePicker({
     setPicked(time);
     try {
       await onSubmit({ selected_time: time });
-    } finally {
+      // 2026-05-17 mirror of CalendarDatePicker fix: stay disabled after
+      // a successful submit; parent revalidation unmounts us so the
+      // lingering disabled state never reaches the customer's view.
+    } catch (e) {
       setSubmitting(false);
+      throw e;
     }
   }
 
   return (
     <Card aria-labelledby="waiter-time-heading">
-      <Card.Eyebrow>Step 9 · Waiter time</Card.Eyebrow>
+      <Card.Eyebrow>Waiter time</Card.Eyebrow>
       <Card.Title id="waiter-time-heading">What time works? ☕</Card.Title>
       <Card.Description>{formatDateForDisplay(date)}</Card.Description>
 

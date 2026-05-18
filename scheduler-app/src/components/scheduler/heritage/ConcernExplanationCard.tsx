@@ -64,7 +64,7 @@ export function ConcernExplanationCard({
 
   return (
     <Card aria-labelledby={`concern-${service_key}-title`}>
-      <Card.Eyebrow>Step 7.2 · About {display_name}</Card.Eyebrow>
+      <Card.Eyebrow>About {display_name}</Card.Eyebrow>
       <Card.Title id={`concern-${service_key}-title`}>
         {lead_in_bubble}
       </Card.Title>

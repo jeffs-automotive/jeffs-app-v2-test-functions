@@ -52,7 +52,7 @@ export interface NewVehicleCardProps {
 }
 
 export function NewVehicleCard({
-  step_label = "Step 5 · Add your vehicle",
+  step_label = "Add your vehicle",
   title = "Now tell me about your ride! 🚗",
   server_error,
   disabled = false,

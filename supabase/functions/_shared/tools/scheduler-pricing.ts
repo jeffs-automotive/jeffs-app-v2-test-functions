@@ -426,6 +426,8 @@ export async function patchRoutineServiceFields(
     wait_eligible?: boolean;
     requires_explanation?: boolean;
     concern_categories?: string[] | null;
+    starting_price_cents?: number | null;
+    price_waived_note?: string | null;
     active?: boolean;
     updated_by_oauth_client_id: string;
     updated_by_name: string;
@@ -438,7 +440,7 @@ export async function patchRoutineServiceFields(
   const { data: existing, error: lookupErr } = await sb
     .from("routine_services")
     .select(
-      "id, display_name, abbreviation, display_order, wait_eligible, requires_explanation, concern_categories, active",
+      "id, display_name, abbreviation, display_order, wait_eligible, requires_explanation, concern_categories, starting_price_cents, price_waived_note, active",
     )
     .eq("shop_id", shopId)
     .eq("service_key", args.service_key)
@@ -467,6 +469,8 @@ export async function patchRoutineServiceFields(
   setIfChanged("wait_eligible", args.wait_eligible);
   setIfChanged("requires_explanation", args.requires_explanation);
   setIfChanged("concern_categories", args.concern_categories);
+  setIfChanged("starting_price_cents", args.starting_price_cents);
+  setIfChanged("price_waived_note", args.price_waived_note);
   setIfChanged("active", args.active);
 
   if (changed.length === 0) {

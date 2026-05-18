@@ -39,7 +39,7 @@ export function CustomerQuestionCard({
 
   return (
     <Card aria-labelledby="customer-question-title">
-      <Card.Eyebrow>Step 10.3 · Last bit (optional)</Card.Eyebrow>
+      <Card.Eyebrow>Last bit (optional)</Card.Eyebrow>
       <Card.Title id="customer-question-title">
         Got a question for our team? 🤔
       </Card.Title>

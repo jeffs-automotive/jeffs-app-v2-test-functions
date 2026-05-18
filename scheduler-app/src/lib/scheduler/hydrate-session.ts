@@ -162,12 +162,26 @@ export async function hydrateSession(): Promise<HydratedSession> {
       ? new Date(row.last_active_at as string).getTime()
       : 0;
     const ageMs = nowMs - lastActive;
+
+    // Terminal-state rule (2026-05-17): rows whose status is 'ended' or
+    // 'escalated' are NOT wiped on reload regardless of age. The user
+    // just finished an appointment (or hit escalation) — they should
+    // keep seeing CompletedCard / EscalationCard until they explicitly
+    // tap "Start over" or "Schedule another", not be silently reset to
+    // GreetingCard by the next router.refresh().
+    const isTerminalState =
+      row.status === "ended" || row.status === "escalated";
+
     const isStale =
-      row.status !== "active" || ageMs > STALE_AFTER_MS;
+      !isTerminalState &&
+      (row.status === "timed_out" ||
+        row.status === "abandoned" ||
+        (row.status === "active" && ageMs > STALE_AFTER_MS));
 
     if (!isStale) {
-      // Active + fresh — resume in place. This is the same-tab refresh
-      // happy path.
+      // Active + fresh OR terminal-state — resume in place. Active is
+      // the same-tab refresh happy path; terminal-state keeps the
+      // completion / escalation surface visible.
       return { chatId };
     }
 

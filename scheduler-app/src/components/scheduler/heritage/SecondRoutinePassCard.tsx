@@ -66,7 +66,7 @@ export function SecondRoutinePassCard({
 
   return (
     <Card aria-labelledby="second-routine-heading">
-      <Card.Eyebrow>Step 7.6 · Anything else?</Card.Eyebrow>
+      <Card.Eyebrow>Anything else?</Card.Eyebrow>
       <Card.Title id="second-routine-heading">
         Want to add anything else while you&apos;re here?
       </Card.Title>

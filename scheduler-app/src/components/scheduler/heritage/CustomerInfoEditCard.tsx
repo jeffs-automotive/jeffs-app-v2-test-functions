@@ -309,7 +309,7 @@ export function CustomerInfoEditCard({
 
   return (
     <Card aria-labelledby="customer-info-edit-title">
-      <Card.Eyebrow>Step 5 · Confirm your info</Card.Eyebrow>
+      <Card.Eyebrow>Confirm your info</Card.Eyebrow>
       <Card.Title id="customer-info-edit-title">
         Welcome back, {first_name}.
       </Card.Title>

@@ -66,7 +66,7 @@ function e164ToDisplay(e164: string): string {
 }
 
 export function PhoneNameCard({
-  step_label = "Step 2 · Verify it's you",
+  step_label = "Verify it's you",
   initial_first_name = "",
   initial_last_name = "",
   initial_phone_e164 = "",

@@ -91,10 +91,10 @@ export async function getCurrentCard(
         | null;
       const step_label =
         bucket === "returning"
-          ? "Step 2 · Welcome back"
+          ? "Welcome back"
           : bucket === "new"
-            ? "Step 2 · Let’s get you set up"
-            : "Step 2 · A few details";
+            ? "Let’s get you set up"
+            : "A few details";
       // Prefill from prior entries when resuming or bouncing back from a
       // §3.5 branch (no-match → try different phone, etc.). undefined when
       // the column is null so the PhoneNameCard's defaults take over.
@@ -253,111 +253,55 @@ export async function getCurrentCard(
       return { step: "new_vehicle_form", payload: {} };
 
     case "service_concern_picker": {
-      // Phase 9c rebuild — load BOTH chip sections per the new two-section
-      // picker. Routine non-explanation chips on top; routine-with-
-      // requires_explanation + testing_services merged into the diagnostic
-      // section (with prices).
-      let commonServices: Array<{ service_key: string; display_name: string }> =
-        [];
-      let diagnosticServices: Array<{
+      // 2026-05-17 reshape: single-section picker showing all 10 routine
+      // services with their starting price + (optional) waived-fee note.
+      // testing_services is NO LONGER surfaced here — that catalog is
+      // long, mechanic-jargon-heavy, and confusing to customers; the
+      // diagnostic LLM selects the right test from testing_services in
+      // Step 7.3 based on the customer's free-text concern_explanation.
+      let routineServices: Array<{
         service_key: string;
         display_name: string;
         starting_price_cents: number | null;
-        source: "testing" | "routine";
+        price_waived_note: string | null;
       }> = [];
-
-      // Bug audit 2026-05-16: previously a single try/catch around BOTH
-      // routine + testing sections meant that an error in EITHER blanked
-      // BOTH sections — the customer saw an empty card with no chips and
-      // no path forward. Split into two independent fail-soft try blocks
-      // so a transient testing_services failure doesn't take out the
-      // routine chips (and vice versa).
-      let requiresExplanationByKey = new Map<string, boolean>();
       try {
-        const allRoutine = await getRoutineServicesForChips();
-        const { data: routineFull, error: routineErr } = await supabase
+        const { data: rows, error: rowsErr } = await supabase
           .from("routine_services")
-          .select("service_key, requires_explanation")
-          .eq("shop_id", 7476)
-          .eq("active", true);
-        if (routineErr) {
-          throw new Error(
-            `routine_services requires_explanation lookup failed: ${routineErr.message}`,
-          );
-        }
-        requiresExplanationByKey = new Map<string, boolean>();
-        for (const r of (routineFull ?? []) as Array<{
-          service_key: string;
-          requires_explanation: boolean;
-        }>) {
-          requiresExplanationByKey.set(r.service_key, r.requires_explanation);
-        }
-
-        commonServices = allRoutine
-          .filter((r) => !requiresExplanationByKey.get(r.service_key))
-          .map((r) => ({
-            service_key: r.service_key,
-            display_name: r.display_name,
-          }));
-
-        const routineDiagnostic = allRoutine
-          .filter((r) => requiresExplanationByKey.get(r.service_key))
-          .map((r) => ({
-            service_key: r.service_key,
-            display_name: r.display_name,
-            starting_price_cents: null as number | null,
-            source: "routine" as const,
-          }));
-        diagnosticServices.push(...routineDiagnostic);
-      } catch (e) {
-        Sentry.captureException(e, {
-          tags: {
-            surface: "get_current_card_service_concern_picker_routine",
-          },
-          level: "warning",
-        });
-      }
-
-      try {
-        const { data: testingRows, error: testingErr } = await supabase
-          .from("testing_services")
-          .select("service_key, display_name, starting_price_cents")
+          .select(
+            "service_key, display_name, display_order, starting_price_cents, price_waived_note",
+          )
           .eq("shop_id", 7476)
           .eq("active", true)
-          .order("display_name", { ascending: true });
-        if (testingErr) {
+          .order("display_order", { ascending: true });
+        if (rowsErr) {
           throw new Error(
-            `testing_services lookup failed: ${testingErr.message}`,
+            `routine_services lookup failed: ${rowsErr.message}`,
           );
         }
-        const testingDiagnostic = (
-          (testingRows ?? []) as Array<{
+        routineServices = (
+          (rows ?? []) as Array<{
             service_key: string;
             display_name: string;
-            starting_price_cents: number;
+            starting_price_cents: number | null;
+            price_waived_note: string | null;
           }>
         ).map((r) => ({
           service_key: r.service_key,
           display_name: r.display_name,
           starting_price_cents: r.starting_price_cents,
-          source: "testing" as const,
+          price_waived_note: r.price_waived_note,
         }));
-        diagnosticServices.push(...testingDiagnostic);
       } catch (e) {
         Sentry.captureException(e, {
-          tags: {
-            surface: "get_current_card_service_concern_picker_testing",
-          },
+          tags: { surface: "get_current_card_service_concern_picker" },
           level: "warning",
         });
       }
 
       return {
         step: "service_concern_picker",
-        payload: {
-          common_services: commonServices,
-          diagnostic_services: diagnosticServices,
-        },
+        payload: { routine_services: routineServices },
       };
     }
 

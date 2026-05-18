@@ -1054,10 +1054,11 @@ export function getSchedulerTools(args: SchedulerToolsArgs) {
 
       patch_routine_service_fields: tool({
         description:
-          "Partial-field update for ONE routine_services row. Non-pricing " +
-          "fields only (routine_services has no pricing column). Use for " +
-          "tweaks like 'set check_battery requires_explanation=true' or " +
-          "'rename oil_change display_name to Oil Change & Filter'. " +
+          "Partial-field update for ONE routine_services row. Supports " +
+          "pricing fields (starting_price_cents, price_waived_note) added " +
+          "2026-05-17, plus the original metadata fields. Use for tweaks " +
+          "like 'set oil_change price to $65' or 'flip check_battery " +
+          "requires_explanation=true'. Pass NULL to clear a price/note. " +
           "Returns: { action: 'updated'|'no_changes'|'not_found', " +
           "service_id?, fields_changed?: string[] }.",
         inputSchema: z.object({
@@ -1068,6 +1069,22 @@ export function getSchedulerTools(args: SchedulerToolsArgs) {
           wait_eligible: z.boolean().optional(),
           requires_explanation: z.boolean().optional(),
           concern_categories: z.array(z.string()).nullable().optional(),
+          starting_price_cents: z
+            .number()
+            .int()
+            .nonnegative()
+            .nullable()
+            .optional()
+            .describe(
+              "Integer cents — 7995 = $79.95. 0 renders as 'Free' on the picker chip. Pass null to clear (no price shown).",
+            ),
+          price_waived_note: z
+            .string()
+            .nullable()
+            .optional()
+            .describe(
+              "Short customer-facing caveat shown under the price (e.g. 'Fee waived if a repair or more testing is needed and approved'). Pass null to clear.",
+            ),
           active: z.boolean().optional(),
         }),
         execute: recorded(recorder, "patch_routine_service_fields", (input) =>
@@ -1082,6 +1099,12 @@ export function getSchedulerTools(args: SchedulerToolsArgs) {
             }),
             ...(input.concern_categories !== undefined && {
               concern_categories: input.concern_categories,
+            }),
+            ...(input.starting_price_cents !== undefined && {
+              starting_price_cents: input.starting_price_cents,
+            }),
+            ...(input.price_waived_note !== undefined && {
+              price_waived_note: input.price_waived_note,
             }),
             ...(input.active !== undefined && { active: input.active }),
             updated_by_oauth_client_id: audit.oauth_client_id,

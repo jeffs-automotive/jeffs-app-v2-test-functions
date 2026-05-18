@@ -5,47 +5,42 @@ import { useState, type FormEvent } from "react";
 import { Button, Card, Chip } from "@/components/ui";
 
 /**
- * ServiceAndConcernPicker — Phase 9c rebuild 2026-05-15.
+ * ServiceAndConcernPicker — single-section chip picker
+ * (2026-05-17 reshape from the Phase 9c two-section design).
  *
- * Per chat-design.md "Architecture amendment — 2026-05-14" + services-
- * categories.md: TWO chip sections.
+ * Per Chris's UX review:
  *
- *   1. Routine services — non-explanation chips (oil change, tire rotate,
- *      state inspection, alignment, etc.). No price shown — these are
- *      flat-rate or quoted at the shop. Quick single-tap picks.
- *   2. Diagnostic services — chips that need a description from the
- *      customer (testing services + the five routine-with-explanation
- *      chips: Brake Inspection, Check Battery, Warning Lights, Check
- *      Suspension, Check A/C). Testing services show a starting price;
- *      routine-with-explanation chips don't carry a price (just the
- *      diagnostic flow trigger).
+ *   "The diagnostic services should not be shown. It is up to the
+ *    diagnostic LLM to choose which diagnostic service to recommend.
+ *    The customer may not know which one to choose and it's a long
+ *    list and can be confusing. […] [10 routine services] should all
+ *    be shown as routine service. And they should also show the
+ *    pricing for those services. The A/C performance check and the
+ *    brake inspection should both have a note that says 'fee is
+ *    waived if a repair or more testing is needed and approved'"
  *
- * The customer picks any subset across BOTH sections. Submit emits a
- * single { picks: string[] } — the server splits into the right buckets.
- * No concern textarea on this card; per-service descriptions happen on
- * the next card (Step 7.2 concern_explanation, one per item).
+ * Each chip surfaces:
+ *   - Display name
+ *   - Starting price ($XX.XX, "Free", or omitted for null)
+ *   - Optional waived-fee caveat below the price line
+ *
+ * Customer picks any subset and submits. The submit action handles the
+ * diagnostic-routine split (chips with requires_explanation=TRUE drill
+ * into the per-concern description flow; the rest are committed
+ * directly to the appointment).
  */
 
-export interface RoutineChip {
+export interface RoutineServiceChip {
   service_key: string;
   display_name: string;
-}
-
-export interface DiagnosticChip {
-  service_key: string;
-  display_name: string;
-  /** Integer cents; null for routine-with-explanation chips (no fee). */
+  /** Integer cents. 0 → "Free". null → no price shown. */
   starting_price_cents: number | null;
-  source: "testing" | "routine";
+  /** Optional small caveat shown under the price (e.g. "Fee waived if…"). */
+  price_waived_note: string | null;
 }
 
 export interface ServiceAndConcernPickerProps {
-  common_services: RoutineChip[];
-  /** Optional — defaults to [] for legacy callers (Chat.tsx + pre-Phase-9c tests).
-   *  The new wizard surface always passes a populated list when there are
-   *  diagnostic chips to offer. Phase 16 removes the legacy Chat.tsx and we
-   *  can flip this back to required. */
-  diagnostic_services?: DiagnosticChip[];
+  routine_services: RoutineServiceChip[];
   onSubmit: (output: { picks: string[] }) => void | Promise<void>;
   disabled?: boolean;
 }
@@ -57,8 +52,7 @@ function formatPrice(cents: number | null): string | null {
 }
 
 export function ServiceAndConcernPicker({
-  common_services,
-  diagnostic_services = [],
+  routine_services,
   onSubmit,
   disabled = false,
 }: ServiceAndConcernPickerProps) {
@@ -95,14 +89,15 @@ export function ServiceAndConcernPicker({
 
   return (
     <Card aria-labelledby="service-concern-heading">
-      <Card.Eyebrow>Step 7 · What can we help with?</Card.Eyebrow>
+      <Card.Eyebrow>What can we help with?</Card.Eyebrow>
       <Card.Title id="service-concern-heading">
         What&apos;s the visit for? 🛠️
       </Card.Title>
       <Card.Description>
-        Pick anything that applies — routine services on top, diagnostic
-        services below. If something&apos;s off and you&apos;re not sure
-        which category it fits, the diagnostic chips are where to look.
+        Pick anything you&apos;d like us to do. If you&apos;re not sure what
+        the issue is, pick the service that&apos;s closest — we&apos;ll
+        ask you a few questions next to figure out exactly what&apos;s
+        going on.
       </Card.Description>
 
       <form
@@ -110,65 +105,53 @@ export function ServiceAndConcernPicker({
         noValidate
         className="contents"
       >
-        <Card.Body className="space-y-6">
-          {common_services.length > 0 && (
+        <Card.Body>
+          {routine_services.length > 0 && (
             <fieldset>
-              <legend className="label-eyebrow mb-2 block">
-                Routine services
-              </legend>
-              <div className="flex flex-wrap gap-2" role="group">
-                {common_services.map((s) => (
-                  <Chip
-                    key={s.service_key}
-                    selected={selected.has(s.service_key)}
-                    disabled={disabled || pending}
-                    onClick={() => toggle(s.service_key)}
-                  >
-                    {s.display_name}
-                  </Chip>
-                ))}
-              </div>
-            </fieldset>
-          )}
-
-          {diagnostic_services.length > 0 && (
-            <fieldset>
-              <legend className="label-eyebrow mb-2 block">
-                Diagnostic services
-              </legend>
-              <p className="mb-3 text-[14px] leading-relaxed text-ink-secondary">
-                Pick one of these if something&apos;s acting up. We&apos;ll
-                ask you to describe what you&apos;re noticing on the next
-                screen.
-              </p>
-              <div className="flex flex-wrap gap-2" role="group">
-                {diagnostic_services.map((s) => {
+              <legend className="sr-only">Routine services</legend>
+              <ul
+                className="grid gap-3 sm:grid-cols-2"
+                role="group"
+                aria-label="Routine services"
+              >
+                {routine_services.map((s) => {
                   const price = formatPrice(s.starting_price_cents);
+                  const isSelected = selected.has(s.service_key);
                   return (
-                    <Chip
-                      key={s.service_key}
-                      selected={selected.has(s.service_key)}
-                      disabled={disabled || pending}
-                      onClick={() => toggle(s.service_key)}
-                    >
-                      <span className="flex items-center gap-2">
-                        <span>{s.display_name}</span>
-                        {price && (
-                          <span className="text-[12px] font-medium text-ink-secondary">
-                            {price}
+                    <li key={s.service_key}>
+                      <Chip
+                        selected={isSelected}
+                        disabled={disabled || pending}
+                        onClick={() => toggle(s.service_key)}
+                        // Stretch each chip to fill its grid cell so the
+                        // multi-line price + waived-note content lays out
+                        // consistently across the two-column grid.
+                        className="flex h-full w-full flex-col items-start gap-1 py-3 text-left"
+                      >
+                        <span className="flex w-full items-center justify-between gap-2">
+                          <span className="font-medium">{s.display_name}</span>
+                          {price && (
+                            <span className="shrink-0 text-[13px] font-semibold text-brand-burgundy-800">
+                              {price}
+                            </span>
+                          )}
+                        </span>
+                        {s.price_waived_note ? (
+                          <span className="block text-[12px] italic leading-snug text-ink-tertiary">
+                            {s.price_waived_note}
                           </span>
-                        )}
-                      </span>
-                    </Chip>
+                        ) : null}
+                      </Chip>
+                    </li>
                   );
                 })}
-              </div>
+              </ul>
             </fieldset>
           )}
 
           {error && (
             <p
-              className="text-[14px] text-status-error"
+              className="mt-4 text-[14px] text-status-error"
               role="alert"
               aria-live="polite"
             >

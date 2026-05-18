@@ -70,7 +70,7 @@ export function AppointmentTypeCard({
 
   return (
     <Card aria-labelledby="appt-type-title">
-      <Card.Eyebrow>Step 8 · How would you like to come in?</Card.Eyebrow>
+      <Card.Eyebrow>How would you like to come in?</Card.Eyebrow>
       <Card.Title id="appt-type-title">Waiter or dropoff?</Card.Title>
 
       <Card.Body className="space-y-3">

@@ -58,7 +58,7 @@ export function CompletedCard({
 
   return (
     <Card aria-labelledby="completed-card-title">
-      <Card.Eyebrow>Step 10.5 · All done</Card.Eyebrow>
+      <Card.Eyebrow>All done</Card.Eyebrow>
       <Card.Title id="completed-card-title">{greeting} 🎉</Card.Title>
       <Card.Description>
         We&apos;ll see you{" "}

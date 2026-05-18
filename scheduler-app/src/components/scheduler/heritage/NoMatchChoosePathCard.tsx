@@ -55,7 +55,7 @@ export function NoMatchChoosePathCard({
 
   return (
     <Card aria-labelledby="no-match-title">
-      <Card.Eyebrow>Step 3.5 · One quick fork</Card.Eyebrow>
+      <Card.Eyebrow>One quick fork</Card.Eyebrow>
       <Card.Title id="no-match-title">
         Hmm{echoName} — I&apos;m not finding you in our records 🤔
       </Card.Title>

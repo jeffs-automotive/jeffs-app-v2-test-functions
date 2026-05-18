@@ -116,7 +116,7 @@ function CustomerNotesInputCard({
 
   return (
     <Card aria-labelledby="customer-notes-title">
-      <Card.Eyebrow>Step 10.3 · One more thing (optional)</Card.Eyebrow>
+      <Card.Eyebrow>One more thing (optional)</Card.Eyebrow>
       <Card.Title id="customer-notes-title">
         Anything else our team should know? 🛠️
       </Card.Title>
@@ -213,7 +213,7 @@ function CustomerNotesApprovalCard({
 
   return (
     <Card aria-labelledby="customer-notes-approval-title">
-      <Card.Eyebrow>Step 10.3 · Sound right?</Card.Eyebrow>
+      <Card.Eyebrow>Sound right?</Card.Eyebrow>
       <Card.Title id="customer-notes-approval-title">
         I&apos;ll write this down 📝
       </Card.Title>

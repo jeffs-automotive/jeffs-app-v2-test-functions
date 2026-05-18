@@ -100,7 +100,7 @@ export function DiagnosticLoadingCard({ onMount }: DiagnosticLoadingCardProps) {
   // role="alert" so screen readers announce failure immediately.
   return (
     <Card aria-labelledby="diagnostic-loading-title">
-      <Card.Eyebrow>Step 7.3 · Thinking through your concerns</Card.Eyebrow>
+      <Card.Eyebrow>Thinking through your concerns</Card.Eyebrow>
       <div aria-live={error !== null ? undefined : "polite"} aria-atomic="true">
         <Card.Title id="diagnostic-loading-title">{headline} 🤔</Card.Title>
         <Card.Description>{body}</Card.Description>

@@ -74,7 +74,7 @@ export function MultiAccountDisambiguationCard({
 
   return (
     <Card aria-labelledby="multi-account-title">
-      <Card.Eyebrow>Step 3.5 · Which one are you?</Card.Eyebrow>
+      <Card.Eyebrow>Which one are you?</Card.Eyebrow>
       <Card.Title id="multi-account-title">
         Looks like more than one account on this phone 📱
       </Card.Title>

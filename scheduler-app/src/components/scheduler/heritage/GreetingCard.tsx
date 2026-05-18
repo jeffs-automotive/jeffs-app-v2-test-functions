@@ -52,7 +52,7 @@ export function GreetingCard({
 
   return (
     <Card aria-labelledby="greeting-title">
-      <Card.Eyebrow>Step 1 · Welcome</Card.Eyebrow>
+      <Card.Eyebrow>Welcome</Card.Eyebrow>
       <Card.Title id="greeting-title">
         Hi, I&apos;m {agent_name} 👋
       </Card.Title>

@@ -5,84 +5,81 @@ import userEvent from "@testing-library/user-event";
 import { ServiceAndConcernPicker } from "@/components/scheduler/ServiceAndConcernPicker";
 
 /**
- * Phase 17 (2026-05-16) — tests aligned to the Phase 9c rebuild of
- * ServiceAndConcernPicker:
- *   - Chips are toggle buttons (aria-pressed), NOT checkboxes
- *     (the older Phase 1 design used role=checkbox + aria-checked;
- *     superseded when the chip component standardised on the toggle
- *     button pattern).
- *   - onSubmit emits { picks: string[] }, NOT { services, concern_text }.
- *     The Phase 9c amendment moved the free-text concern flow out of
- *     this card — each picked "diagnostic" service now drills into its
- *     own concern_explanation step.
- *   - Empty submit surfaces a role=alert "Pick at least one service".
+ * 2026-05-17 reshape — single-section picker tests.
+ *
+ * The Phase 9c two-section design (routine + diagnostic) was retired
+ * because the diagnostic chip list was long, jargon-heavy, and confusing
+ * to non-mechanic customers. The picker now shows all 10 routine services
+ * with starting prices + optional waived-fee notes; the diagnostic LLM
+ * picks the right testing_service from the customer's free-text concern
+ * description in Step 7.3.
  */
 
-const sampleCommon = [
-  { service_key: "oil_change", display_name: "Oil Change" },
-  { service_key: "tire_rotation", display_name: "Tire Rotation" },
-];
-
-const sampleDiagnostic = [
+const sampleRoutine = [
+  {
+    service_key: "oil_change",
+    display_name: "Oil Change",
+    starting_price_cents: 5995,
+    price_waived_note: null,
+  },
+  {
+    service_key: "tire_rotation",
+    display_name: "Tire Rotation",
+    starting_price_cents: 2995,
+    price_waived_note: null,
+  },
   {
     service_key: "brake_inspection",
     display_name: "Brake Inspection",
-    starting_price_cents: 0,
-    source: "routine" as const,
+    starting_price_cents: 3999,
+    price_waived_note:
+      "Fee waived if a repair or more testing is needed and approved",
   },
   {
-    service_key: "engine_noise_diagnostic",
-    display_name: "Engine Noise Diagnostic",
-    starting_price_cents: 8995,
-    source: "testing" as const,
+    service_key: "check_battery",
+    display_name: "Check Battery",
+    starting_price_cents: 0,
+    price_waived_note: null,
   },
 ];
 
 describe("<ServiceAndConcernPicker />", () => {
-  it("renders one toggle button per common_service", () => {
+  it("renders one toggle button per routine_service with its price", () => {
     render(
       <ServiceAndConcernPicker
-        common_services={sampleCommon}
+        routine_services={sampleRoutine}
         onSubmit={vi.fn()}
       />,
     );
 
+    // Each chip combines name + price in its accessible name.
     expect(
-      screen.getByRole("button", { name: "Oil Change" }),
+      screen.getByRole("button", { name: /Oil Change.*\$59\.95/ }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Tire Rotation" }),
+      screen.getByRole("button", { name: /Tire Rotation.*\$29\.95/ }),
     ).toBeInTheDocument();
-  });
-
-  it("renders diagnostic chips with their starting price", () => {
-    render(
-      <ServiceAndConcernPicker
-        common_services={[]}
-        diagnostic_services={sampleDiagnostic}
-        onSubmit={vi.fn()}
-      />,
-    );
-
-    // Free (cents=0) renders the literal "Free"
+    // Brake inspection — price + waived note.
     expect(
-      screen.getByRole("button", { name: /Brake Inspection.*Free/ }),
+      screen.getByRole("button", {
+        name: /Brake Inspection.*\$39\.99.*Fee waived/,
+      }),
     ).toBeInTheDocument();
-    // $89.95 renders formatted from 8995 cents
+    // Free renders as "Free".
     expect(
-      screen.getByRole("button", { name: /Engine Noise Diagnostic.*\$89\.95/ }),
+      screen.getByRole("button", { name: /Check Battery.*Free/ }),
     ).toBeInTheDocument();
   });
 
   it("toggles a chip on click and reflects aria-pressed", async () => {
     render(
       <ServiceAndConcernPicker
-        common_services={sampleCommon}
+        routine_services={sampleRoutine}
         onSubmit={vi.fn()}
       />,
     );
 
-    const oil = screen.getByRole("button", { name: "Oil Change" });
+    const oil = screen.getByRole("button", { name: /Oil Change/ });
     expect(oil).toHaveAttribute("aria-pressed", "false");
 
     await userEvent.click(oil);
@@ -96,24 +93,23 @@ describe("<ServiceAndConcernPicker />", () => {
     const onSubmit = vi.fn();
     render(
       <ServiceAndConcernPicker
-        common_services={sampleCommon}
-        diagnostic_services={sampleDiagnostic}
+        routine_services={sampleRoutine}
         onSubmit={onSubmit}
       />,
     );
 
     await userEvent.click(
-      screen.getByRole("button", { name: "Oil Change" }),
+      screen.getByRole("button", { name: /Oil Change/ }),
     );
     await userEvent.click(
-      screen.getByRole("button", { name: /Engine Noise Diagnostic/ }),
+      screen.getByRole("button", { name: /Brake Inspection/ }),
     );
     await userEvent.click(screen.getByRole("button", { name: /continue/i }));
 
     expect(onSubmit).toHaveBeenCalledTimes(1);
     const arg = onSubmit.mock.calls[0]![0] as { picks: string[] };
     expect(new Set(arg.picks)).toEqual(
-      new Set(["oil_change", "engine_noise_diagnostic"]),
+      new Set(["oil_change", "brake_inspection"]),
     );
   });
 
@@ -121,7 +117,7 @@ describe("<ServiceAndConcernPicker />", () => {
     const onSubmit = vi.fn();
     render(
       <ServiceAndConcernPicker
-        common_services={sampleCommon}
+        routine_services={sampleRoutine}
         onSubmit={onSubmit}
       />,
     );
@@ -137,7 +133,7 @@ describe("<ServiceAndConcernPicker />", () => {
   it("clears the alert when a chip is picked after an empty submit", async () => {
     render(
       <ServiceAndConcernPicker
-        common_services={sampleCommon}
+        routine_services={sampleRoutine}
         onSubmit={vi.fn()}
       />,
     );
@@ -148,8 +144,27 @@ describe("<ServiceAndConcernPicker />", () => {
 
     // Pick a chip → alert clears
     await userEvent.click(
-      screen.getByRole("button", { name: "Oil Change" }),
+      screen.getByRole("button", { name: /Oil Change/ }),
     );
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("omits the price chip suffix when starting_price_cents is null", () => {
+    render(
+      <ServiceAndConcernPicker
+        routine_services={[
+          {
+            service_key: "custom_service",
+            display_name: "Custom Service",
+            starting_price_cents: null,
+            price_waived_note: null,
+          },
+        ]}
+        onSubmit={vi.fn()}
+      />,
+    );
+    // Button accessible name should be just the display name — no price token.
+    const btn = screen.getByRole("button", { name: "Custom Service" });
+    expect(btn).toBeInTheDocument();
   });
 });

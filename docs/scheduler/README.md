@@ -5,6 +5,15 @@ customer-facing scheduler at **appointments.jeffsautomotive.com**. Edit
 the files here, then ask Claude to upload them — Claude calls the right
 admin tool, parses the markdown, and applies the change to the DB.
 
+> **Looking for the architecture / code map?** See
+> [`../../.claude/memory/scheduler_system_architecture.md`](../../.claude/memory/scheduler_system_architecture.md) —
+> the canonical table of contents for the Next.js app, edge functions,
+> DB schema, crons, RLS posture, deployment, and Sentry config. Lives
+> as a memory file (sibling of `keytag_system_architecture.md`) so it's
+> auto-loaded at session start. This `docs/scheduler/` folder is the
+> *content* admin tools upload; the architecture doc is the *system
+> map* of how that content is consumed.
+
 ## What's in here
 
 | File | What it controls | Claude tool to upload |

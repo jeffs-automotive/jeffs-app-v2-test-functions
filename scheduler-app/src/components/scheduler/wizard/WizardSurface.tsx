@@ -57,6 +57,7 @@ import { ServiceAndConcernPicker } from "@/components/scheduler/ServiceAndConcer
 import { SummaryCard } from "@/components/scheduler/heritage/SummaryCard";
 import { VehiclePicker } from "@/components/scheduler/VehiclePicker";
 import { WaiterTimePicker } from "@/components/scheduler/WaiterTimePicker";
+import { WizardBackBar } from "./WizardBackBar";
 import { resendOtpV2 } from "@/lib/scheduler/wizard/actions/resend-otp";
 import { runDiagnosticsV2 } from "@/lib/scheduler/wizard/actions/run-diagnostics";
 import { submitAppointmentTypeV2 } from "@/lib/scheduler/wizard/actions/submit-appointment-type";
@@ -77,6 +78,7 @@ import { submitPartialVerificationChoiceV2 } from "@/lib/scheduler/wizard/action
 import { submitPhoneNameV2 } from "@/lib/scheduler/wizard/actions/submit-phone-name";
 import { submitSecondRoutinePassV2 } from "@/lib/scheduler/wizard/actions/submit-second-routine-pass";
 import { submitServiceAndConcernPickerV2 } from "@/lib/scheduler/wizard/actions/submit-service-and-concern-picker";
+import { submitStartOverV2 } from "@/lib/scheduler/wizard/actions/submit-start-over";
 import { submitSummaryV2 } from "@/lib/scheduler/wizard/actions/submit-summary";
 import { submitVehiclePickV2 } from "@/lib/scheduler/wizard/actions/submit-vehicle-pick";
 import { submitWaiterTimeV2 } from "@/lib/scheduler/wizard/actions/submit-waiter-time";
@@ -114,6 +116,7 @@ export function WizardSurface({ chatId, card }: WizardSurfaceProps) {
       aria-live="polite"
       className="outline-none focus:outline-none"
     >
+      <WizardBackBar chatId={chatId} currentStep={card.step} />
       <WizardCardSwitcher chatId={chatId} card={card} />
     </div>
   );
@@ -315,8 +318,7 @@ function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
     case "service_concern_picker":
       return (
         <ServiceAndConcernPicker
-          common_services={card.payload.common_services}
-          diagnostic_services={card.payload.diagnostic_services}
+          routine_services={card.payload.routine_services}
           onSubmit={async ({ picks }) => {
             const result = await submitServiceAndConcernPickerV2({
               chatId,
@@ -561,12 +563,13 @@ function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
           appointment_label={card.payload.appointment_label}
           allow_schedule_another={card.payload.allow_schedule_another}
           onScheduleAnother={async () => {
-            // Phase 13: minimal "Schedule another" implementation —
-            // navigate to /book-v2 with a fresh-session query param. The
-            // session cookie reset (clearing sched-chat-id) is wired into
-            // Phase 14's Start Over flow + the page-level layout. Until
-            // then, a hard navigation is the safe path.
-            window.location.assign("/book-v2?reset=1");
+            // 2026-05-17 fix: call submitStartOverV2 directly so the row
+            // is wiped (status='ended' otherwise sticks per the terminal-
+            // state rule in hydrate-session) + revalidate. Replaces the
+            // earlier ?reset=1 query-string approach which had no
+            // server-side handler.
+            const result = await submitStartOverV2({ chatId });
+            handleResult("submitStartOverV2 (schedule_another)", chatId, result);
           }}
           onClose={async () => {
             // No-op — the CompletedCard handles its own ghost state.

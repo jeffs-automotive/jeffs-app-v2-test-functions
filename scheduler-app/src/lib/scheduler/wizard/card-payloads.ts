@@ -102,45 +102,34 @@ export interface NewVehicleFormPayload {
 }
 
 /**
- * Step 7.1 — Service + concern picker (Phase 9c rebuild 2026-05-15).
+ * Step 7 — Service picker (2026-05-17 reshape per Chris's UX review).
  *
- * The card has TWO chip sections per chat-design.md "Architecture
- * amendment — 2026-05-14" + services-categories.md:
+ * Single-section chip picker. All 10 routine services are shown to the
+ * customer with their starting price + (optional) waived-fee note. The
+ * testing_services catalog is NO LONGER surfaced on this card — picking
+ * a diagnostic test is the diagnostic LLM's job, not the customer's
+ * (the testing list is long and confusing to a non-mechanic).
  *
- *   - `common_services` — routine chips that don't trigger a description
- *     (oil_change, tire_rotation, state_inspection, etc.).
- *   - `diagnostic_services` — routine-with-requires_explanation (e.g.
- *     check_battery, brake_inspection) UNION testing_services (battery_test,
- *     oil_leak_testing, etc.). Each carries a starting_price_cents so the
- *     customer sees the cost up front. The five "diagnostic-routine" chips
- *     (Brake Inspection, Check Battery, Warning Lights, Check Suspension,
- *     Check A/C) appear here without a price (their routine cousins don't
- *     charge a starting fee — the testing equivalents do).
+ * For chips with requires_explanation=TRUE (brake_inspection,
+ * check_battery, warning_lights, check_suspension, check_ac) the picker
+ * UI is identical; the diagnostic flow kicks in on submit via the
+ * concern_explanation queue.
  *
- * The customer picks any subset across BOTH sections. Submit emits
- * `{ picks: string[] }` (a flat list of every selected service_key). The
- * submit-service-and-concern-picker action splits the picks:
- *
+ * Submit emits `{ picks: string[] }`. The submit-service-and-concern-
+ * picker action splits the picks:
  *   - routine non-explanation → row.selected_simple_services[]
- *   - testing services        → row.approved_testing_services[]
- *   - anything needing a description → row.explanation_required_items[]
+ *   - routine with requires_explanation → row.explanation_required_items[]
  *     (the queue the wizard walks via Step 7.2 concern_explanation)
  */
 export interface ServiceConcernPickerPayload {
-  common_services: Array<{
+  routine_services: Array<{
     service_key: string;
     display_name: string;
-  }>;
-  diagnostic_services: Array<{
-    service_key: string;
-    display_name: string;
-    /** Integer cents; null for the routine-with-requires_explanation chips that
-     *  don't carry their own starting fee. The customer sees "Free" or "$XX.XX"
-     *  per the value. */
+    /** Integer cents. NULL means no price shown on the chip. 0 renders as "Free". */
     starting_price_cents: number | null;
-    /** Tagged so the submit action knows which table the pick came from
-     *  (different DB targets + different concern-category resolution path). */
-    source: "testing" | "routine";
+    /** Short customer-facing caveat shown under the price (e.g. brake
+     *  inspection's "Fee waived if a repair…"). NULL means no note. */
+    price_waived_note: string | null;
   }>;
 }
 

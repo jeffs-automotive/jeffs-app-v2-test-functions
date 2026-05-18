@@ -73,7 +73,7 @@ export function PartialVerificationGateCard({
   if (matched_axis === "name") {
     return (
       <Card aria-labelledby="partial-verify-title">
-        <Card.Eyebrow>Step 3.5 · Quick check</Card.Eyebrow>
+        <Card.Eyebrow>Quick check</Card.Eyebrow>
         <Card.Title id="partial-verify-title">
           Found your name{echoName ? `, ${echoName}` : ""} — but the phone
           doesn&apos;t match what we have on file.
@@ -123,7 +123,7 @@ export function PartialVerificationGateCard({
   // case orchestrator-side logic ever surfaces matched_axis='phone'.
   return (
     <Card aria-labelledby="partial-verify-title">
-      <Card.Eyebrow>Step 3.5 · Quick check</Card.Eyebrow>
+      <Card.Eyebrow>Quick check</Card.Eyebrow>
       <Card.Title id="partial-verify-title">
         We can&apos;t fully verify this combination from here.
       </Card.Title>

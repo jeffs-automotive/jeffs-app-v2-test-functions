@@ -61,10 +61,10 @@ export function ClarificationQuestionCard({
   }
 
   const eyebrowText = category
-    ? `Step 7.4 · A few details · ${category}`
+    ? `A few details · ${category}`
     : service_key
-      ? `Step 7.4 · A few details · ${service_key}`
-      : "Step 7.4 · A few details";
+      ? `A few details · ${service_key}`
+      : "A few details";
 
   return (
     <Card aria-labelledby={`clarify-${question_id}-title`}>

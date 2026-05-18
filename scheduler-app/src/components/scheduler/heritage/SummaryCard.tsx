@@ -154,7 +154,7 @@ export function SummaryCard({
 
   return (
     <Card aria-labelledby="summary-title">
-      <Card.Eyebrow>Step 10 · Review before confirming</Card.Eyebrow>
+      <Card.Eyebrow>Review before confirming</Card.Eyebrow>
       <Card.Title id="summary-title">
         Quick look — does this all look right? ✅
       </Card.Title>

@@ -283,7 +283,7 @@ export function NewCustomerInfoCard({
 
   return (
     <Card aria-labelledby="new-customer-info-title">
-      <Card.Eyebrow>Step 4 · Set up your account</Card.Eyebrow>
+      <Card.Eyebrow>Set up your account</Card.Eyebrow>
       <Card.Title id="new-customer-info-title">
         Welcome to Jeff&apos;s, {first_name}! 👋
       </Card.Title>

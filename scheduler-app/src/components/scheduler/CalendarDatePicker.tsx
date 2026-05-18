@@ -103,8 +103,20 @@ export function CalendarDatePicker({
     setPicked(iso);
     try {
       await onSubmit({ selected_date: iso });
-    } finally {
+      // 2026-05-17 fix: keep `submitting=true` after a successful submit.
+      // The parent re-renders (via router.refresh()) and unmounts this
+      // component, so the lingering disabled state is gone the moment the
+      // next card renders. Resetting it in a `finally` previously created
+      // a window where the buttons re-enabled BEFORE the new RSC arrived —
+      // the customer would tap another date thinking "nothing happened",
+      // and the second submit would win, leaving them feeling like the
+      // calendar advanced on a timer with whichever date they tapped last.
+    } catch (e) {
+      // Only reset on a hard throw (rare — server actions return
+      // discriminated results, they don't normally reject). Lets the
+      // customer retry without a full reload.
       setSubmitting(false);
+      throw e;
     }
   }
 
@@ -132,7 +144,7 @@ export function CalendarDatePicker({
   return (
     <Card aria-labelledby="calendar-heading">
       <Card.Eyebrow>
-        Step 9 · {type === "waiter" ? "Wait while we work" : "Drop off"}
+        {type === "waiter" ? "Wait while we work" : "Drop off"}
       </Card.Eyebrow>
       <Card.Title id="calendar-heading">
         Pick a date that works 📅
@@ -265,6 +277,20 @@ export function CalendarDatePicker({
               (610) 253-6565
             </a>
             .
+          </p>
+        ) : null}
+
+        {submitting ? (
+          <p
+            role="status"
+            aria-live="polite"
+            className="mt-3 flex items-center gap-2 text-[14px] font-medium text-brand-burgundy-700"
+          >
+            <span
+              aria-hidden
+              className="inline-block h-3 w-3 animate-pulse rounded-full bg-brand-burgundy-700"
+            />
+            Reserving your date — one moment…
           </p>
         ) : null}
       </Card.Body>
