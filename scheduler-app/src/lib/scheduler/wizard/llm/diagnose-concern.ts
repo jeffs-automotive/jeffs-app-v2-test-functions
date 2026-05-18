@@ -280,8 +280,68 @@ ${chipHintLine}
    equals matched_category_key.
 
 5. **Gap-detect questions from the matched subcategory only.** Don't return
-   IDs from other subcategories. Be generous about ambiguity — keep a
-   question if it's only loosely addressed.
+   IDs from other subcategories. A question is "answered" when the customer's
+   description states the FACT the question asks about — even if they used
+   different words. A question is "unanswered" only when the description
+   doesn't speak to it at all OR mentions it ambiguously without committing
+   to a value.
+
+   **Concrete patterns that count as ANSWERED (drop the ID):**
+
+   - Location/side question ("Front or rear? Left or right side?"):
+     • "front right" / "rear left" / "all four wheels" / "passenger side" /
+       "driver side" / "front" alone / "rear" alone → ANSWERED.
+     • Even a single side word ("on the right") covers the side facet —
+       drop the question; we're not going to re-ask just to also pin down
+       front-vs-rear when the description is already informative.
+
+   - Onset question ("Suddenly or gradually?"):
+     • "started suddenly" / "started yesterday" / "appeared overnight" /
+       "out of nowhere" → ANSWERED with "suddenly."
+     • "getting worse over weeks" / "slowly developed" / "gradually" /
+       "for months" → ANSWERED with "gradually."
+
+   - Trigger question ("When does it happen?"):
+     • "only when braking" / "when I press the brakes" → ANSWERED for
+       brake-trigger questions.
+     • "over bumps" / "on rough roads" → ANSWERED for bump-trigger questions.
+     • "at highway speed" / "above 60 mph" → ANSWERED for speed-band
+       questions.
+
+   - Recent-service question ("Recent brake work / battery replacement?"):
+     • "just replaced the pads last month" / "new battery installed
+       Tuesday" → ANSWERED with "yes — recently."
+     • "no recent work" / "haven't touched it" → ANSWERED with "no."
+     • Silence on history → UNANSWERED.
+
+   **Concrete patterns that count as UNANSWERED (keep the ID):**
+
+   - The description doesn't mention the topic AT ALL.
+   - The description says "I think maybe" or "kind of" or "sort of" about
+     the specific fact the question asks about (genuinely ambiguous).
+   - The description mentions the topic but in a way that doesn't pin
+     down which option the customer would pick (e.g., "the noise comes
+     from somewhere up front" → answers front-vs-rear but NOT
+     left-vs-right; this still counts as ANSWERED because "front" alone
+     is a valid chip and we don't ask twice).
+
+   **Worked example.** Customer says: "I hear a grinding noise coming from
+   the front right when braking."
+
+   For the 'metallic_grinding' subcategory's question set:
+   - 630 ("Every single time you brake?") → UNANSWERED (description didn't say "every time")
+   - 631 ("Scraping with foot off the pedal?") → UNANSWERED (not mentioned)
+   - 632 ("Front or rear? Left or right side?") → **ANSWERED** ("front right" is in the description) — DROP this ID.
+   - 633 ("Grinding through floor or pedal?") → UNANSWERED (not mentioned)
+   - 634 ("Suddenly or gradually?") → UNANSWERED (not mentioned)
+   - 635 ("Feel safe driving?") → UNANSWERED (not mentioned)
+   - 636 ("Recent brake work?") → UNANSWERED (not mentioned)
+
+   Correct return: unanswered_question_ids: [630, 631, 633, 634, 635, 636].
+
+   The location question (632) is DROPPED because "front right" is a complete
+   answer. Asking the customer "where is the noise coming from?" when they
+   just told you would feel robotic.
 
 6. **Never invent IDs or slugs.** Only return values that appear in the
    catalog above.
