@@ -13,6 +13,7 @@
 | alternator_testing | Alternator testing (simple electrical) | ALT TESTING | 8995 | Starting price | electrical, warning_light | true |
 | battery_test | Battery test | BATT TEST | 0 | Free | electrical, warning_light | true |
 | brake_inspection | Brake inspection | BRAKE INSPECT | 3999 | Waived if brake repair is approved | brakes, noise, pulling | true |
+| check_ac | A/C performance check | AC CHECK | 8995 | Waived if a repair or more testing is needed and approved | hvac | true |
 | coolant_leak_testing | Coolant leak / overheating testing | COOL LEAK TEST | 10995 | Includes coolant | leak, smoke, smell, performance | true |
 | coolant_leak_testing_euro | Coolant leak / overheating testing — Euro vehicle | EURO COOL LEAK TEST | 19995 | Includes coolant | leak, smoke, smell, performance | true |
 | electrical_testing_general | Electrical system testing (non-alternator/battery) | ELEC TESTING | 17999 | Starting price | electrical | true |
