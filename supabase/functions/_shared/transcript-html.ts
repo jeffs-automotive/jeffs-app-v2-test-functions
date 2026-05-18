@@ -38,6 +38,42 @@ export interface TranscriptViewModel {
   sentiment?: "positive" | "neutral" | "negative" | null;
   appointment_id?: number | null;
   appointment_starts_at?: string | null;
+  /** Waiter vs. drop-off — drives the summary header label. Added 2026-05-18
+   *  redesign. */
+  appointment_type?: "waiter" | "dropoff" | null;
+  /** Tekmetric admin URL for the appointment (shop.tekmetric.com/admin/...).
+   *  Added 2026-05-18 — surfaced in the summary header per Chris's directive
+   *  "should also have the link to the appointment." */
+  appointment_link?: string | null;
+  /** Title written to Tekmetric (e.g., "[TM] Christopher Goodson, 2019 Kia
+   *  Optima SI IM BRAKE INSPECT"). Renders in the summary header. */
+  appointment_title?: string | null;
+  /** Tekmetric description (e.g., "Routine: state_inspection_emissions ·
+   *  Concern: brakes are grinding · Testing approved: brake_inspection"). */
+  appointment_description?: string | null;
+  /** Structured per-event list summarizing what the customer chose during
+   *  the wizard. Replaces the raw chat-bubble replay as the primary read.
+   *  Added 2026-05-18 per Chris's directive: "If they verify their personal
+   *  information it should just say customer verified their info, or
+   *  customer added a vehicle." Empty array → activity block is omitted. */
+  activity?: Array<{
+    kind:
+      | "identity_verified"
+      | "identity_provided"
+      | "vehicle_added"
+      | "vehicle_selected"
+      | "routine_services_picked"
+      | "concern_described"
+      | "clarification_answered"
+      | "testing_approved"
+      | "testing_declined"
+      | "routine_round2_added"
+      | "appointment_chosen";
+    label: string;
+    /** Optional detail line(s). May contain newlines (rendered as
+     *  white-space:pre-wrap). */
+    detail?: string | null;
+  }>;
   pricing_discussed?: Array<{
     display_name: string;
     starting_price_cents: number;
@@ -79,13 +115,29 @@ function escapeHtml(s: string): string {
     .replace(/'/g, "&#39;");
 }
 
-function fmtDateTime(iso: string): string {
+export function fmtDateTime(iso: string): string {
   try {
     return new Date(iso).toLocaleString("en-US", {
       timeZone: "America/New_York",
       year: "numeric",
       month: "short",
       day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+function fmtFriendlyDay(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString("en-US", {
+      timeZone: "America/New_York",
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+      year: "numeric",
       hour: "numeric",
       minute: "2-digit",
     });
@@ -237,9 +289,50 @@ export function buildTranscriptHtml(view: TranscriptViewModel): string {
     })
     .join("");
 
-  const apptLine =
-    view.appointment_id && view.appointment_starts_at
-      ? `<p style="margin:4px 0;"><strong>Appointment:</strong> #${view.appointment_id} — ${fmtDateTime(view.appointment_starts_at)}</p>`
+  // ─── Summary header (2026-05-18 redesign) ─────────────────────────────
+  // Top-of-email "at a glance" block. Per Chris: services + when + wait-
+  // or-drop-off + appointment link.
+  const apptTypeLabel =
+    view.appointment_type === "waiter"
+      ? "Wait"
+      : view.appointment_type === "dropoff"
+        ? "Drop-off"
+        : null;
+  const apptWhen = view.appointment_starts_at
+    ? fmtFriendlyDay(view.appointment_starts_at)
+    : null;
+  const apptLinkHtml = view.appointment_link
+    ? `<p style="margin:8px 0 0 0;font-size:14px;"><a href="${escapeHtml(view.appointment_link)}" style="color:${BRAND_PRIMARY};text-decoration:underline;">Open in Tekmetric →</a></p>`
+    : "";
+  const summaryBlock =
+    view.appointment_id || apptWhen || view.appointment_description
+      ? `<div style="margin:0 0 20px 0;padding:16px 18px;background:#fbf8f1;border:1px solid ${BRAND_ACCENT};border-radius:4px;">
+           <p style="margin:0 0 4px 0;font-size:11px;color:${BRAND_PRIMARY};font-weight:600;text-transform:uppercase;letter-spacing:0.6px;">Appointment summary</p>
+           ${apptWhen ? `<p style="margin:4px 0 0 0;font-size:15px;font-weight:600;color:#222;">${escapeHtml(apptWhen)}${apptTypeLabel ? ` · ${apptTypeLabel}` : ""}</p>` : ""}
+           ${view.appointment_id ? `<p style="margin:4px 0 0 0;font-size:13px;color:#666;">Tekmetric appointment <strong>#${view.appointment_id}</strong></p>` : ""}
+           ${view.appointment_description ? `<p style="margin:8px 0 0 0;font-size:14px;color:#333;white-space:pre-wrap;">${escapeHtml(view.appointment_description)}</p>` : ""}
+           ${view.appointment_title ? `<p style="margin:6px 0 0 0;font-size:12px;color:#888;font-family:Menlo,Monaco,monospace;">${escapeHtml(view.appointment_title)}</p>` : ""}
+           ${apptLinkHtml}
+         </div>`
+      : "";
+
+  // ─── Customer-activity block ──────────────────────────────────────────
+  // Structured event list — replaces the raw chat-bubble replay as the
+  // primary read. Each event has a label (e.g., "Verified personal info")
+  // + an optional detail line.
+  const activityBlock =
+    view.activity && view.activity.length > 0
+      ? `<h3 style="margin:24px 0 12px 0;color:${BRAND_PRIMARY};font-size:14px;text-transform:uppercase;letter-spacing:0.5px;">What the customer did</h3>
+         <ol style="margin:0 0 16px 0;padding:0 0 0 0;list-style:none;">
+           ${view.activity
+             .map(
+               (e) => `<li style="margin:0 0 10px 0;padding:10px 14px;background:#fafaf7;border-left:3px solid ${BRAND_ACCENT};border-radius:2px;">
+                 <div style="font-size:14px;font-weight:600;color:#222;">${escapeHtml(e.label)}</div>
+                 ${e.detail ? `<div style="margin-top:4px;font-size:13px;color:#555;white-space:pre-wrap;line-height:1.45;">${escapeHtml(e.detail)}</div>` : ""}
+               </li>`,
+             )
+             .join("")}
+         </ol>`
       : "";
 
   return `<!DOCTYPE html>
@@ -256,20 +349,21 @@ export function buildTranscriptHtml(view: TranscriptViewModel): string {
       <p style="margin:4px 0;color:#666;font-size:14px;">Channel: ${view.channel.toUpperCase()} · Outcome: ${escapeHtml(view.outcome)}</p>
     </div>
 
+    ${summaryBlock}
     ${errorsBlock}
     ${sentimentBlock}
 
     <div style="margin-bottom:16px;font-size:14px;">
       <p style="margin:4px 0;"><strong>Customer:</strong> ${escapeHtml(view.customer_name)}${view.customer_phone_e164 ? ` · ${escapeHtml(view.customer_phone_e164)}` : ""}</p>
-      ${apptLine}
       <p style="margin:4px 0;color:#666;">Started ${fmtDateTime(view.started_at)} · Ended ${fmtDateTime(view.ended_at)} · Session ${escapeHtml(view.session_id.slice(0, 8))}…</p>
     </div>
 
     ${customerCapturesBlock}
+    ${activityBlock}
     ${pricingBlock}
 
-    <h3 style="margin:24px 0 8px 0;color:${BRAND_PRIMARY};font-size:14px;text-transform:uppercase;letter-spacing:0.5px;">Conversation</h3>
-    ${messagesHtml}
+    <h3 style="margin:32px 0 8px 0;color:#888;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">Raw conversation log (for reference)</h3>
+    <div style="font-size:12px;color:#666;">${messagesHtml}</div>
 
     <div style="margin-top:32px;padding-top:16px;border-top:1px solid #eee;font-size:11px;color:#999;">
       Sent automatically by appointments.jeffsautomotive.com — Phase 1 scheduler.

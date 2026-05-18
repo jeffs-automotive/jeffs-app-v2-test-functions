@@ -33,20 +33,62 @@ the work lands.
 - **Follow-up tracking** — CAT-2 (option-array refinement per
   service-writer review).
 
-### CAT-2 · Subcategory option-array refinement
+### CAT-2 · Subcategory option-array refinement — **REOPENED 2026-05-18 (BLOCKER)**
 
-- **What** — the brakes (and eventually the other 13) seed used
-  heuristic options inferred from question wording: "Yes/No/Not
-  sure" for most, multi-choice where the question text named
-  conditions. Service-writer review may want sharper choices
-  (e.g., "Pulsates worse cold or hot?" might benefit from a
-  4-option scale instead of 3).
-- **Why deferred** — first-pass options unblock the LLM filter.
-  Refinement is a product decision, not a bug.
-- **When to revisit** — once Chris/Jeff run live tests + give
-  feedback per category. Easier path: ship the
-  `upload_concern_category_md` MCP tool so service writers refresh
-  options without code changes.
+- **What** — comprehensive rewrite of `concern_questions.options`
+  needed. Direct DB audit on 2026-05-18 found **740 of 913
+  active questions have generic `[Yes/No/Sometimes-Not-sure]`
+  options** — including questions whose text clearly demands
+  a different answer shape:
+  - "Does the sound feel like it is coming from the front or
+    rear? Left or right side?" (id 632, metallic_grinding) →
+    needs `[Front, Rear, All four wheels, Not sure]` and
+    should be multi-select (customer may pick rear + left).
+  - "Did this sound start suddenly, or build up over several
+    weeks?" (id 634, metallic_grinding) → needs `[Suddenly,
+    Built up gradually, Not sure]`.
+  - "Did the noise start suddenly, or has it been getting worse
+    gradually?" (id 98), "Did this start suddenly, or has it
+    been getting worse over weeks or months?" (id 458), etc.
+    Pattern repeats across noise, performance, hvac,
+    electrical, pulling, steering, tires, vibration,
+    warning_light.
+- **Root cause** — the initial seed wave (created
+  2026-05-15T23:59 via an MD-upload tool that pre-dated the
+  current migration set) heuristically wrote yes/no/sometimes
+  for ANY question whose text didn't have an obvious enum.
+  The 2026-05-16 brake-seed migration (and part1/part2)
+  ON CONFLICT (shop_id, subcategory_id, question_text) DO
+  NOTHING'd — so where it tried to insert the CORRECT row
+  with matching text, it was skipped because the bad-options
+  row was already there. The only rows the migration actually
+  landed are typo-corrected duplicates (e.g., "louder" vs
+  "loiuder").
+- **Customer impact** — REPRODUCED LIVE 2026-05-18 by Chris
+  in a real wizard run on production: the diagnostic flow
+  asked "Does the sound feel like it is coming from the
+  front or rear?" and offered only Yes/No/Sometimes chips.
+  Customer cannot answer the question correctly.
+- **Why STILL deferred (but now urgent)** — the fix is a
+  full catalog rewrite (~913 rows). Touches 14 categories +
+  131 active subcategories. Needs to be one migration that:
+  1. Soft-deletes the duplicate-subcategory rows (22 of
+     them — slug drift between apostrophe-stripped versions
+     like `won_t_crank_just_clicks` vs `wont_crank_just_clicks`).
+     Pick the canonical (cleaner) slug per pair and reattach
+     questions to it.
+  2. UPDATEs `options` for each question where the current
+     options are inconsistent with the question text.
+  3. Adds a `multi_select BOOLEAN DEFAULT FALSE` column +
+     sets TRUE for location/side/area-type questions.
+  4. Updates `ClarificationQuestionCard.tsx` to render a
+     multi-select mode (with a Confirm button) when the
+     catalog flag is set.
+- **When to revisit** — before any further user-facing
+  rollout. Highest priority of any deferred catalog item.
+- **Source** — Chris's 2026-05-18 11:36 AM ET live wizard
+  run. Reproduced via direct DB query on test project
+  `itzdasxobllfiuolmbxu`.
 
 ### CAT-3 · `concern_questions.category` ↔ `concern_subcategories.category` consistency
 
