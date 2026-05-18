@@ -36,6 +36,16 @@ import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 
 const SHOP_ID = 7476;
 
+/**
+ * Synthetic service_key for the "💬 Other Issue" fixed pseudo-chip in
+ * the picker. NOT a row in routine_services or testing_services — the
+ * submit action recognises it explicitly and creates an
+ * explanation_required_items entry whose downstream diagnostic flow
+ * has no pre-resolved category (the LLM classifies from free text).
+ */
+const OTHER_ISSUE_SERVICE_KEY = "other_issue";
+const OTHER_ISSUE_DISPLAY_NAME = "Other issue";
+
 const submitServiceAndConcernPickerSchema = z.object({
   chatId: z.string().min(1),
   picks: z.array(z.string().min(1)),
@@ -120,6 +130,19 @@ async function submitServiceAndConcernPickerV2Impl(
     const unknownPicks: string[] = [];
 
     for (const key of uniquePicks) {
+      // Other Issue is a fixed pseudo-chip (not in any DB table). Treat
+      // it as a requires_explanation chip with no pre-resolved category
+      // — the diagnostic LLM classifies + recommends from the customer's
+      // free-text description in the next step.
+      if (key === OTHER_ISSUE_SERVICE_KEY) {
+        explanationItems.push({
+          service_key: OTHER_ISSUE_SERVICE_KEY,
+          display_name: OTHER_ISSUE_DISPLAY_NAME,
+          explanation_text: "",
+          category: null,
+        });
+        continue;
+      }
       const routine = routineByKey.get(key);
       if (routine) {
         if (routine.requires_explanation) {

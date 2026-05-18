@@ -167,4 +167,61 @@ describe("<ServiceAndConcernPicker />", () => {
     const btn = screen.getByRole("button", { name: "Custom Service" });
     expect(btn).toBeInTheDocument();
   });
+
+  it("renders the Other Issue pseudo-chip below the routine grid", () => {
+    render(
+      <ServiceAndConcernPicker
+        routine_services={sampleRoutine}
+        onSubmit={vi.fn()}
+      />,
+    );
+    // Other Issue is always present regardless of routine_services contents.
+    expect(
+      screen.getByRole("button", { name: /Other issue/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("submits 'other_issue' when the Other Issue pseudo-chip is picked", async () => {
+    const onSubmit = vi.fn();
+    render(
+      <ServiceAndConcernPicker
+        routine_services={sampleRoutine}
+        onSubmit={onSubmit}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Other issue/i }));
+    await userEvent.click(screen.getByRole("button", { name: /continue/i }));
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    const arg = onSubmit.mock.calls[0]![0] as { picks: string[] };
+    expect(arg.picks).toContain("other_issue");
+  });
+
+  it("allows picking Other Issue alongside routine chips", async () => {
+    const onSubmit = vi.fn();
+    render(
+      <ServiceAndConcernPicker
+        routine_services={sampleRoutine}
+        onSubmit={onSubmit}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Oil Change/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Other issue/i }));
+    await userEvent.click(screen.getByRole("button", { name: /continue/i }));
+    const arg = onSubmit.mock.calls[0]![0] as { picks: string[] };
+    expect(new Set(arg.picks)).toEqual(new Set(["oil_change", "other_issue"]));
+  });
+
+  it("Other Issue picked alone satisfies the 'pick at least one' guard", async () => {
+    const onSubmit = vi.fn();
+    render(
+      <ServiceAndConcernPicker
+        routine_services={sampleRoutine}
+        onSubmit={onSubmit}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Other issue/i }));
+    await userEvent.click(screen.getByRole("button", { name: /continue/i }));
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
 });

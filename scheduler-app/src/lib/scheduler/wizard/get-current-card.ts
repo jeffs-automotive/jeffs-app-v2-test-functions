@@ -332,6 +332,7 @@ export async function getCurrentCard(
           service_key: next.service_key,
           display_name: next.display_name || next.service_key,
           lead_in_bubble: buildConcernExplanationLeadIn(
+            next.service_key,
             next.display_name || next.service_key,
           ),
         },
@@ -374,74 +375,38 @@ export async function getCurrentCard(
     }
 
     case "testing_service_approval": {
-      // Per chat-design.md "Architecture amendment — 2026-05-14" §Step 7
-      // redesign D2: this step is SKIPPED in the new design (customer
-      // already picked their testing services explicitly at Step 7.1).
+      // 2026-05-17 restoration: render the actual approval card per
+      // chat-design.md §7.5. The prior auto-flip-to-second_routine_pass
+      // behavior was based on a misread of the 2026-05-14 amendment;
+      // the canonical design always had this step alive.
       //
-      // Bug audit 2026-05-16: previously this returned an empty
-      // testing_service_approval payload + a comment claiming WizardSurface
-      // would auto-skip. WizardSurface has NO case for this step (it falls
-      // through to NotYetMigrated). Net effect: any legacy row at this step
-      // showed the migration placeholder — a dead-end visible as an
-      // escalation-shaped failure.
-      //
-      // Fix: write the row to second_routine_pass inline + recurse on this
-      // function to return the second_routine_pass payload. Safe because:
-      //   - testing_service_approval should never be reached in V2;
-      //   - the write is idempotent (re-running won't change anything);
-      //   - returning the second-pass payload here means the customer
-      //     sees the next valid card on this render, without a placeholder.
-      await supabase
-        .from("customer_chat_sessions")
-        .update({
-          current_step: "second_routine_pass",
-          last_active_at: new Date().toISOString(),
-        })
-        .eq("id", chatId);
-      // Re-invoke this function with the row's updated current_step so
-      // we return the right payload. We pass the already-loaded row data
-      // via a quick reconstruction (avoiding a second DB read).
-      const rowCopy = { ...row, current_step: "second_routine_pass" } as Record<
-        string,
-        unknown
-      >;
-      (rowCopy as { current_step: WizardStep }).current_step =
-        "second_routine_pass";
-      // Inline the second_routine_pass payload build here rather than
-      // recursing (which would require re-reading the row).
-      let commonServices: Array<{ service_key: string; display_name: string }> =
-        [];
-      try {
-        const allRoutine = await getRoutineServicesForChips();
-        const { data: explanationFlags } = await supabase
-          .from("routine_services")
-          .select("service_key, requires_explanation")
-          .eq("shop_id", 7476)
-          .eq("active", true);
-        const requiresExplanationByKey = new Map<string, boolean>();
-        for (const r of (explanationFlags ?? []) as Array<{
-          service_key: string;
-          requires_explanation: boolean;
-        }>) {
-          requiresExplanationByKey.set(r.service_key, r.requires_explanation);
-        }
-        commonServices = allRoutine
-          .filter((r) => !requiresExplanationByKey.get(r.service_key))
-          .map((r) => ({
-            service_key: r.service_key,
-            display_name: r.display_name,
-          }));
-      } catch (e) {
-        Sentry.captureException(e, {
-          tags: { surface: "get_current_card_testing_service_approval_migrate" },
-          level: "warning",
-        });
-      }
+      // Payload comes from row.recommended_testing_services (written by
+      // run-diagnostics after the per-concern LLM pass). Each entry has
+      // service_key + display_name + description + starting_price_cents
+      // + source_concerns. We strip source_concerns from the customer-
+      // facing payload — that's audit-only context.
+      const raw = (row as Record<string, unknown>).recommended_testing_services;
+      const services = Array.isArray(raw)
+        ? (raw as Array<Record<string, unknown>>)
+            .map((entry) => ({
+              service_key:
+                typeof entry.service_key === "string" ? entry.service_key : "",
+              display_name:
+                typeof entry.display_name === "string" ? entry.display_name : "",
+              starting_price_cents:
+                typeof entry.starting_price_cents === "number"
+                  ? entry.starting_price_cents
+                  : 0,
+              notes:
+                typeof entry.description === "string" ? entry.description : null,
+            }))
+            .filter((s) => s.service_key.length > 0 && s.display_name.length > 0)
+        : [];
       return {
-        step: "second_routine_pass",
+        step: "testing_service_approval",
         payload: {
-          common_services: commonServices,
-          already_picked: collectPickedServiceKeys(row),
+          services,
+          category: null,
         },
       };
     }
@@ -1037,11 +1002,22 @@ function parseClarificationQuestionsPending(raw: unknown): PendingQuestion[] {
 
 /**
  * Stock lead-in bubble for the Step 7.2 concern_explanation card. Per
- * chat-design.md §7.2 the bubble varies by service kind; for Phase 9c v1
- * we use a single conversational template. Future revision could load
- * a per-service or per-category bubble template from the DB.
+ * chat-design.md §7.2 the bubble varies by service kind:
+ *
+ *   - "💬 Other Issue" gets the empathetic open-ended prompt because the
+ *     customer has no specific service in mind — they need permission to
+ *     describe what's wrong in their own words.
+ *   - Every other requires_explanation chip (Brake Inspection, Check
+ *     Battery, Warning Lights, Check Suspension, Check A/C) gets a
+ *     concise per-service prompt.
  */
-function buildConcernExplanationLeadIn(displayName: string): string {
+function buildConcernExplanationLeadIn(
+  serviceKey: string,
+  displayName: string,
+): string {
+  if (serviceKey === "other_issue") {
+    return "I'm sorry to hear you're dealing with this. Can you tell me what's going on with your car? 🤔";
+  }
   return `Got it — tell me a bit about ${displayName.toLowerCase()}. What are you noticing? 🤔`;
 }
 

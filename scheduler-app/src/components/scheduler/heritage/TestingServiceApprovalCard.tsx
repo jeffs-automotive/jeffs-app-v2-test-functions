@@ -81,8 +81,7 @@ export function TestingServiceApprovalCard({
   return (
     <Card aria-labelledby="testing-approval-title">
       <Card.Eyebrow>
-        Step 7.5 · Testing we&apos;d recommend
-        {category ? ` · ${category}` : ""}
+        Testing we&apos;d recommend{category ? ` · ${category}` : ""}
       </Card.Eyebrow>
       <Card.Title id="testing-approval-title">
         We&apos;d like to look at a couple of things.

@@ -5,30 +5,39 @@ import { useState, type FormEvent } from "react";
 import { Button, Card, Chip } from "@/components/ui";
 
 /**
- * ServiceAndConcernPicker — single-section chip picker
- * (2026-05-17 reshape from the Phase 9c two-section design).
+ * ServiceAndConcernPicker — Step 7.1 service + concern picker.
+ *
+ * 2026-05-17 single-section reshape from the Phase 9c two-section design.
+ * 2026-05-17 (later) — restored the "💬 Other Issue" fixed pseudo-chip
+ * per chat-design.md §7.1 ("'Other Issue' is a fixed pseudo-chip that
+ * always requires explanation"). The customer can pick this when none
+ * of the 10 routine services fits — the diagnostic LLM then classifies
+ * their free-text description across the full 20-category catalog
+ * (14 testing services + 6 'other' subcategories) and recommends
+ * a testing service OR forwards to an advisor.
  *
  * Per Chris's UX review:
  *
  *   "The diagnostic services should not be shown. It is up to the
  *    diagnostic LLM to choose which diagnostic service to recommend.
- *    The customer may not know which one to choose and it's a long
- *    list and can be confusing. […] [10 routine services] should all
- *    be shown as routine service. And they should also show the
- *    pricing for those services. The A/C performance check and the
- *    brake inspection should both have a note that says 'fee is
- *    waived if a repair or more testing is needed and approved'"
+ *    The customer may not know which one to choose…"
  *
- * Each chip surfaces:
+ * Each routine chip surfaces:
  *   - Display name
  *   - Starting price ($XX.XX, "Free", or omitted for null)
  *   - Optional waived-fee caveat below the price line
  *
- * Customer picks any subset and submits. The submit action handles the
- * diagnostic-routine split (chips with requires_explanation=TRUE drill
- * into the per-concern description flow; the rest are committed
- * directly to the appointment).
+ * The Other Issue chip is rendered below the grid, separated by a gold
+ * rule per the spec mockup. No price (free-form entry; the LLM picks
+ * whether a testing service applies).
+ *
+ * Customer picks any subset across both sections and submits. The
+ * submit action splits picks into: routine non-explanation chips →
+ * row.selected_simple_services[]; routine-with-explanation chips +
+ * Other Issue → row.explanation_required_items[] (the concern_explanation
+ * queue).
  */
+const OTHER_ISSUE_SERVICE_KEY = "other_issue";
 
 export interface RoutineServiceChip {
   service_key: string;
@@ -151,6 +160,33 @@ export function ServiceAndConcernPicker({
               </ul>
             </fieldset>
           )}
+
+          {/* Other Issue pseudo-chip — chat-design.md §7.1 lays this out
+              below the routine grid, separated by a gold rule, as the
+              "I have a concern that doesn't fit the chips above" escape
+              hatch. When picked, the concern_explanation card prompts
+              for a free-text description and the diagnostic LLM
+              classifies + (optionally) recommends a testing service. */}
+          <div className="mt-5 border-t border-rule pt-4">
+            <Chip
+              selected={selected.has(OTHER_ISSUE_SERVICE_KEY)}
+              disabled={disabled || pending}
+              onClick={() => toggle(OTHER_ISSUE_SERVICE_KEY)}
+              className="flex h-full min-h-20 w-full flex-col items-start gap-1 py-3 text-left"
+              aria-describedby="other-issue-help"
+            >
+              <span className="flex w-full items-center justify-between gap-2">
+                <span className="font-medium">💬 Other issue</span>
+              </span>
+              <span
+                id="other-issue-help"
+                className="block text-[12px] italic leading-snug text-ink-tertiary"
+              >
+                Describe what&apos;s going on and we&apos;ll figure out the
+                right next step.
+              </span>
+            </Chip>
+          </div>
 
           {error && (
             <p

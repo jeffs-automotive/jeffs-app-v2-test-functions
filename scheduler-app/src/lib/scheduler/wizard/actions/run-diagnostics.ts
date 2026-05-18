@@ -1,33 +1,36 @@
 "use server";
 
 /**
- * runDiagnosticsV2 — Phase 9a (2026-05-14) Server Action.
+ * runDiagnosticsV2 — Phase 1 restoration (2026-05-17).
  *
- * Per chat-design.md "Architecture amendment — 2026-05-14" §Step 7 redesign:
- * The customer has explicitly picked one or more services at Step 7.1 and
- * described their concern per-service at Step 7.2 (concern_explanation
- * cards). This action runs the diagnostic LLM gap-detection ONCE — in
- * parallel — across every description, aggregates the unanswered question
- * IDs into a pending queue, and advances the wizard to either:
+ * Per chat-design.md §7.3 + Chris's 2026-05-17 design clarification:
+ * the customer has filled in concern_explanation text for one or more
+ * Step 7.1 picks (5 routine requires_explanation chips + the "💬 Other
+ * Issue" pseudo-chip). This action runs the diagnostic LLM ONCE per
+ * concern in parallel — each call classifies + gap-detects + recommends.
  *
- *   - 'clarification_question' — when there are 1+ unanswered questions
- *   - 'second_routine_pass'    — when every description already covered
- *                                its category's questionnaire
+ * Per-concern LLM behaviour (see diagnoseConcern):
+ *   - Picks ONE of 20 categories (14 testing services + 6 'other'
+ *     subcategories), or returns null when the description doesn't fit.
+ *   - Picks a subcategory whose questions match the customer's symptoms.
+ *   - Returns the question IDs the description did NOT answer.
  *
- * Triggering: Phase 9b's diagnostic_loading card calls this action on
- * mount (useEffect + startTransition). The card itself is just a "thinking…"
- * UI; this Server Action does the actual work.
+ * Aggregation across concerns:
+ *   - recommended_testing_services: dedup by service_key, accumulate the
+ *     source_concerns[] (which picker chips triggered each recommendation).
+ *   - clarification_questions_pending: flat queue across all concerns,
+ *     each entry tagged with its source service_key + subcategory.
  *
- * The row's `explanation_required_items` is the input shape:
- *   [{ service_key: string, explanation_text: string, category?: string }, ...]
- * Phase 8's transient free-text-concern shape (service_key='concern') is
- * handled defensively: it falls through to category='other'.
+ * Routing after persist:
+ *   - pending queue non-empty → clarification_question (one-card-at-a-time)
+ *   - pending empty + recommendations non-empty → testing_service_approval
+ *   - pending empty + recommendations empty → second_routine_pass with the
+ *     "we'll forward this to a service advisor" Jeff-bubble (all concerns
+ *     either matched a 'other' subcategory OR couldn't be categorized)
  *
- * Failure modes (all surface to Sentry; user-facing result is still ok=true
- * with a pending queue computed from fail-safe defaults):
- *   - testing_services / routine_services lookup error  → category='other'
- *   - concern_category_guidelines miss for the resolved → category='other'
- *   - diagnoseConcern LLM error                         → all questions stay pending
+ * Idempotency: re-invocations after diagnostic_processing_complete=true
+ * skip the LLM and re-route based on existing row state. Lets the
+ * diagnostic_loading card mount/unmount on refresh without re-running.
  */
 import * as Sentry from "@sentry/nextjs";
 import { z } from "zod";
@@ -35,13 +38,21 @@ import { z } from "zod";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
-import { diagnoseConcern } from "@/lib/scheduler/wizard/llm/diagnose-concern";
-import { loadConcernContext } from "@/lib/scheduler/wizard/llm/load-concern-context";
-import { resolveServiceCategory } from "@/lib/scheduler/wizard/llm/resolve-service-category";
+import {
+  diagnoseConcern,
+  type DiagnoseConcernChipHint,
+  type DiagnoseConcernResult,
+} from "@/lib/scheduler/wizard/llm/diagnose-concern";
+import {
+  loadDiagnosticCatalog,
+  isTestingService,
+  type CatalogCategory,
+  type CatalogQuestion,
+  type DiagnosticCatalog,
+} from "@/lib/scheduler/wizard/llm/load-diagnostic-catalog";
 import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 import { logError } from "@/lib/scheduler/wizard/log-error";
-
-const FALLBACK_CATEGORY = "other";
+import { routeAfterDiagnostics } from "@/lib/scheduler/wizard/route-after-diagnostics";
 
 const inputSchema = z.object({
   chatId: z.string().min(1),
@@ -49,10 +60,22 @@ const inputSchema = z.object({
 
 export type RunDiagnosticsV2Args = z.infer<typeof inputSchema>;
 
+const SHOP_ID = 7476;
+const OTHER_ISSUE_SERVICE_KEY = "other_issue";
+
 interface ExplanationItem {
   service_key: string;
+  display_name: string;
   explanation_text: string;
   category: string | null;
+}
+
+interface RecommendedService {
+  service_key: string;
+  display_name: string;
+  description: string | null;
+  starting_price_cents: number;
+  source_concerns: string[];
 }
 
 interface PendingQuestionEntry {
@@ -61,6 +84,7 @@ interface PendingQuestionEntry {
   options: Array<{ label: string; value: string }>;
   service_key: string;
   category: string;
+  subcategory_slug: string;
 }
 
 function parseExplanationItems(raw: unknown): ExplanationItem[] {
@@ -71,6 +95,8 @@ function parseExplanationItems(raw: unknown): ExplanationItem[] {
       const obj = entry as Record<string, unknown>;
       const service_key =
         typeof obj.service_key === "string" ? obj.service_key : null;
+      const display_name =
+        typeof obj.display_name === "string" ? obj.display_name : service_key;
       const explanation_text =
         typeof obj.explanation_text === "string" ? obj.explanation_text : "";
       if (!service_key) return null;
@@ -78,7 +104,12 @@ function parseExplanationItems(raw: unknown): ExplanationItem[] {
         typeof obj.category === "string" && obj.category.length > 0
           ? obj.category
           : null;
-      return { service_key, explanation_text, category } satisfies ExplanationItem;
+      return {
+        service_key,
+        display_name: display_name ?? service_key,
+        explanation_text,
+        category,
+      } satisfies ExplanationItem;
     })
     .filter((x): x is ExplanationItem => x !== null);
 }
@@ -90,6 +121,167 @@ function parseVehicleNotes(raw: unknown): string | null {
     return obj.notes;
   }
   return null;
+}
+
+function parseRecommendedServices(raw: unknown): RecommendedService[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") return null;
+      const obj = entry as Record<string, unknown>;
+      const service_key =
+        typeof obj.service_key === "string" ? obj.service_key : null;
+      const display_name =
+        typeof obj.display_name === "string" ? obj.display_name : null;
+      const starting_price_cents =
+        typeof obj.starting_price_cents === "number"
+          ? obj.starting_price_cents
+          : null;
+      if (!service_key || !display_name || starting_price_cents === null) {
+        return null;
+      }
+      const description =
+        typeof obj.description === "string" ? obj.description : null;
+      const source_concerns = Array.isArray(obj.source_concerns)
+        ? (obj.source_concerns as unknown[]).filter(
+            (x): x is string => typeof x === "string",
+          )
+        : [];
+      return {
+        service_key,
+        display_name,
+        description,
+        starting_price_cents,
+        source_concerns,
+      } satisfies RecommendedService;
+    })
+    .filter((x): x is RecommendedService => x !== null);
+}
+
+function parsePendingQuestions(raw: unknown): PendingQuestionEntry[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") return null;
+      const obj = entry as Record<string, unknown>;
+      const question_id =
+        typeof obj.question_id === "number" ? obj.question_id : null;
+      const question_text =
+        typeof obj.question_text === "string" ? obj.question_text : null;
+      if (question_id === null || question_text === null) return null;
+      const optsRaw = Array.isArray(obj.options) ? obj.options : [];
+      const options = optsRaw
+        .map((o) => {
+          if (!o || typeof o !== "object") return null;
+          const oo = o as Record<string, unknown>;
+          return typeof oo.label === "string" && typeof oo.value === "string"
+            ? { label: oo.label, value: oo.value }
+            : null;
+        })
+        .filter((x): x is { label: string; value: string } => x !== null);
+      const service_key =
+        typeof obj.service_key === "string" ? obj.service_key : "";
+      const category =
+        typeof obj.category === "string" ? obj.category : "other";
+      const subcategory_slug =
+        typeof obj.subcategory_slug === "string" ? obj.subcategory_slug : "";
+      return {
+        question_id,
+        question_text,
+        options,
+        service_key,
+        category,
+        subcategory_slug,
+      } satisfies PendingQuestionEntry;
+    })
+    .filter((x): x is PendingQuestionEntry => x !== null);
+}
+
+/**
+ * Routine-chip → concern_categories[] map for the 5 requires_explanation
+ * routine chips. Lets us build the LLM chip hint without a separate DB
+ * trip per concern. Pulled live from routine_services at action start;
+ * cached only for the duration of one runDiagnostics call.
+ */
+async function loadRoutineChipConcernCategories(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+): Promise<Map<string, string[]>> {
+  const { data, error } = await supabase
+    .from("routine_services")
+    .select("service_key, concern_categories")
+    .eq("shop_id", SHOP_ID)
+    .eq("active", true)
+    .eq("requires_explanation", true);
+  if (error) {
+    Sentry.captureMessage(
+      "run_diagnostics_v2 routine_services chip-hint lookup failed",
+      { level: "warning", extra: { error: error.message } },
+    );
+    return new Map();
+  }
+  const out = new Map<string, string[]>();
+  for (const row of (data ?? []) as Array<{
+    service_key: string;
+    concern_categories: string[] | null;
+  }>) {
+    out.set(row.service_key, row.concern_categories ?? []);
+  }
+  return out;
+}
+
+function buildChipHint(
+  item: ExplanationItem,
+  routineChipCats: Map<string, string[]>,
+  catalog: DiagnosticCatalog,
+): DiagnoseConcernChipHint | null {
+  if (item.service_key === OTHER_ISSUE_SERVICE_KEY) {
+    return {
+      chip_service_key: OTHER_ISSUE_SERVICE_KEY,
+      chip_display_name: item.display_name,
+      chip_concern_categories: [],
+    };
+  }
+  const routineCats = routineChipCats.get(item.service_key);
+  if (routineCats !== undefined) {
+    return {
+      chip_service_key: item.service_key,
+      chip_display_name: item.display_name,
+      chip_concern_categories: routineCats,
+    };
+  }
+  // Defensive — testing-service-keyed concerns (shouldn't happen in the
+  // current picker but kept for backward compat). Pull concern_categories
+  // from the catalog rather than a fresh DB hit.
+  for (const c of catalog.categories) {
+    if (isTestingService(c) && c.service_key === item.service_key) {
+      return {
+        chip_service_key: item.service_key,
+        chip_display_name: item.display_name,
+        chip_concern_categories: c.concern_categories,
+      };
+    }
+  }
+  return null;
+}
+
+/**
+ * Look up a question record (text + options) by its ID across the
+ * catalog. Used when turning LLM-returned IDs into pending queue
+ * entries with the human-facing fields.
+ */
+function findQuestionInCatalog(
+  catalog: DiagnosticCatalog,
+  matchedCat: CatalogCategory,
+  subcategorySlug: string,
+  question_id: number,
+): CatalogQuestion | null {
+  if (matchedCat.kind === "other_subcategory") {
+    if (matchedCat.subcategory_slug !== subcategorySlug) return null;
+    return matchedCat.questions.find((q) => q.id === question_id) ?? null;
+  }
+  const sub = matchedCat.subcategories.find((s) => s.slug === subcategorySlug);
+  if (!sub) return null;
+  return sub.questions.find((q) => q.id === question_id) ?? null;
 }
 
 async function runDiagnosticsV2Impl(
@@ -104,12 +296,6 @@ async function runDiagnosticsV2Impl(
   }
   const { chatId } = parsed.data;
 
-  // Pattern-extension fix 2026-05-16: this action previously had no
-  // top-level try/catch. Uncaught throws from supabase reads,
-  // Promise.all over diagnoseConcern, or applyWizardTransition would
-  // escape as raw Server Action rejections. Wrapping the body to
-  // match the rest of the V2 action suite — {ok:false} envelope on
-  // any failure + logError for triage.
   try {
     return await runDiagnosticsBody(chatId);
   } catch (e) {
@@ -134,18 +320,10 @@ async function runDiagnosticsBody(
 ): Promise<WizardTransitionResult> {
   const supabase = createSupabaseAdminClient();
 
-  // ── 1. Load the row ──────────────────────────────────────────────────────
-  //
-  // Bug audit 2026-05-16: clarification_questions_pending was missing from
-  // this SELECT, so the idempotency-resume branch below ALWAYS read it as
-  // undefined → []. The customer's clarification queue got silently dropped
-  // on every page refresh in the diagnostic_loading step, and they were
-  // advanced to second_routine_pass with no questions answered. Added the
-  // column to the projection.
   const { data: row, error: rowErr } = await supabase
     .from("customer_chat_sessions")
     .select(
-      "id, explanation_required_items, new_vehicle_info, diagnostic_processing_complete, clarification_questions_pending",
+      "id, explanation_required_items, new_vehicle_info, diagnostic_processing_complete, clarification_questions_pending, recommended_testing_services",
     )
     .eq("id", chatId)
     .maybeSingle();
@@ -159,148 +337,141 @@ async function runDiagnosticsBody(
     return { ok: false, error: msg };
   }
 
-  // Idempotency: if diagnostic_processing_complete is already true, this is
-  // a re-mount of the loading card after a navigation/refresh. Don't re-run
-  // the LLM — just advance based on the existing pending queue.
+  // Idempotency — diagnostic_processing_complete=true means the LLM
+  // already ran for this session's current explanation queue. Just
+  // re-route based on the persisted pending + recommendation state.
   if (row.diagnostic_processing_complete) {
-    const pendingExisting = Array.isArray(
+    const existingPending = parsePendingQuestions(
       (row as Record<string, unknown>).clarification_questions_pending,
-    )
-      ? ((row as Record<string, unknown>).clarification_questions_pending as PendingQuestionEntry[])
-      : [];
-    return applyWizardTransition({
-      chatId,
-      nextStep: pendingExisting.length > 0
-        ? "clarification_question"
-        : "second_routine_pass",
+    );
+    const existingRecs = parseRecommendedServices(
+      (row as Record<string, unknown>).recommended_testing_services,
+    );
+    const { nextStep, jeffBubble } = routeAfterDiagnostics({
+      pending_count: existingPending.length,
+      recommendation_count: existingRecs.length,
     });
+    return applyWizardTransition({ chatId, nextStep, jeffBubble });
   }
 
   const items = parseExplanationItems(row.explanation_required_items);
   const vehicleNotes = parseVehicleNotes(row.new_vehicle_info);
 
-  // Empty queue → skip diagnostic loop entirely. Mark complete + advance to
-  // second_routine_pass so the customer keeps flowing.
   if (items.length === 0) {
+    // No concerns to process — skip directly to second_routine_pass.
     return applyWizardTransition({
       chatId,
       updates: {
         diagnostic_processing_complete: true,
         clarification_questions_pending: [],
+        recommended_testing_services: [],
       },
       nextStep: "second_routine_pass",
     });
   }
 
-  // ── 2. Resolve category per item (parallel) ──────────────────────────────
-  const categoryResolved: string[] = await Promise.all(
-    items.map(async (item): Promise<string> => {
-      if (item.category) return item.category;
-      try {
-        const cat = await resolveServiceCategory(supabase, item.service_key);
-        return cat ?? FALLBACK_CATEGORY;
-      } catch (e) {
-        Sentry.captureException(e, {
-          tags: {
-            surface: "run_diagnostics_v2_resolve_category",
-            service_key: item.service_key,
-          },
-          level: "warning",
-        });
-        return FALLBACK_CATEGORY;
-      }
-    }),
-  );
+  // ── Load supporting context in parallel ──────────────────────────────
+  const [catalog, routineChipCats] = await Promise.all([
+    loadDiagnosticCatalog(supabase),
+    loadRoutineChipConcernCategories(supabase),
+  ]);
 
-  // ── 3. Load per-category context (one trip per UNIQUE category) ──────────
-  const uniqueCategories: string[] = Array.from(new Set(categoryResolved));
-  const contextEntries = await Promise.all(
-    uniqueCategories.map(async (cat) => {
-      try {
-        const ctx = await loadConcernContext(supabase, cat);
-        return [cat, ctx] as const;
-      } catch (e) {
-        Sentry.captureException(e, {
-          tags: {
-            surface: "run_diagnostics_v2_load_context",
-            category: cat,
-          },
-          level: "warning",
-        });
-        return [cat, null] as const;
-      }
-    }),
-  );
-  const contextByCategory = new Map(contextEntries);
-
-  // ── 4. Per-item diagnoseConcern in parallel ──────────────────────────────
-  const diagnoseResults = await Promise.all(
-    items.map(async (item, idx) => {
-      const category = categoryResolved[idx] ?? FALLBACK_CATEGORY;
-      const ctx = contextByCategory.get(category);
-      if (!ctx) {
-        // No guideline row for this category — return empty pending list
-        // (we can't ask questions we don't have). Sentry already captured
-        // the load failure (above) OR the row just doesn't exist yet (which
-        // means the migration's seed didn't include this category).
-        return {
-          item,
-          category,
-          unanswered_question_ids: [] as number[],
-          parsed_ok: false,
-          context: null,
-        } as const;
-      }
+  // ── Per-concern LLM call in parallel ─────────────────────────────────
+  const perConcernResults = await Promise.all(
+    items.map(async (item): Promise<{
+      item: ExplanationItem;
+      result: DiagnoseConcernResult;
+      matchedCat: CatalogCategory | null;
+    }> => {
+      const hint = buildChipHint(item, routineChipCats, catalog);
       const result = await diagnoseConcern({
-        category,
-        guideline_prose: ctx.guideline_prose,
-        category_display_label: ctx.display_label,
-        questions: ctx.questions,
+        catalog,
         customer_description: item.explanation_text,
+        customer_chip_hint: hint,
         vehicle_notes: vehicleNotes,
       });
-      return {
-        item,
-        category,
-        unanswered_question_ids: result.unanswered_question_ids,
-        parsed_ok: result.parsed_ok,
-        context: ctx,
-      } as const;
+      // Find the matched category record for question lookup. We re-walk
+      // the catalog here (cheap — ≤20 entries) rather than expose it from
+      // diagnoseConcern's signature.
+      let matchedCat: CatalogCategory | null = null;
+      if (result.matched_category_key) {
+        for (const c of catalog.categories) {
+          if (
+            (c.kind === "testing_service" &&
+              c.service_key === result.matched_category_key) ||
+            (c.kind === "other_subcategory" &&
+              c.subcategory_slug === result.matched_category_key)
+          ) {
+            matchedCat = c;
+            break;
+          }
+        }
+      }
+      return { item, result, matchedCat };
     }),
   );
 
-  // ── 5. Aggregate into the pending queue ──────────────────────────────────
+  // ── Aggregate recommendations ────────────────────────────────────────
+  const recsByService = new Map<string, RecommendedService>();
+  for (const r of perConcernResults) {
+    const rec = r.result.recommended_testing_service;
+    if (!rec) continue;
+    const existing = recsByService.get(rec.service_key);
+    if (existing) {
+      if (!existing.source_concerns.includes(r.item.service_key)) {
+        existing.source_concerns.push(r.item.service_key);
+      }
+      continue;
+    }
+    recsByService.set(rec.service_key, {
+      service_key: rec.service_key,
+      display_name: rec.display_name,
+      description: rec.description,
+      starting_price_cents: rec.starting_price_cents,
+      source_concerns: [r.item.service_key],
+    });
+  }
+  const recommended_testing_services: RecommendedService[] = Array.from(
+    recsByService.values(),
+  );
+
+  // ── Aggregate pending questions ──────────────────────────────────────
   const pending: PendingQuestionEntry[] = [];
-  for (const r of diagnoseResults) {
-    if (!r.context) continue;
-    for (const qid of r.unanswered_question_ids) {
-      const q = r.context.questions.find((x) => x.id === qid);
+  for (const r of perConcernResults) {
+    if (!r.matchedCat || !r.result.matched_subcategory_slug) continue;
+    const subSlug = r.result.matched_subcategory_slug;
+    const parentCategory =
+      r.matchedCat.kind === "testing_service"
+        ? // Find which concern_subcategory.category the subcategory belongs to.
+          r.matchedCat.subcategories.find((s) => s.slug === subSlug)
+            ?.concern_category ?? "other"
+        : "other";
+    for (const qid of r.result.unanswered_question_ids) {
+      const q = findQuestionInCatalog(catalog, r.matchedCat, subSlug, qid);
       if (!q) continue;
       pending.push({
         question_id: q.id,
         question_text: q.question_text,
         options: q.options,
         service_key: r.item.service_key,
-        category: r.category,
+        category: parentCategory,
+        subcategory_slug: subSlug,
       });
     }
   }
 
-  // ── 6. Persist + advance ─────────────────────────────────────────────────
-  const nextStep = pending.length > 0
-    ? ("clarification_question" as const)
-    : ("second_routine_pass" as const);
-
-  const jeffBubble = pending.length > 0
-    ? "Got it — a few quick questions to make sure we test the right things. 🔎"
-    : "All set — let me check the schedule! 📅";
-
+  // ── Persist + advance ────────────────────────────────────────────────
+  const { nextStep, jeffBubble } = routeAfterDiagnostics({
+    pending_count: pending.length,
+    recommendation_count: recommended_testing_services.length,
+  });
   return applyWizardTransition({
     chatId,
     updates: {
       diagnostic_processing_complete: true,
       clarification_questions_pending: pending,
       clarification_questions_answered: {},
+      recommended_testing_services,
     },
     nextStep,
     jeffBubble,

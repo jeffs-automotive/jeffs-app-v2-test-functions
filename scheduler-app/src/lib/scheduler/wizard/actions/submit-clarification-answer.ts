@@ -29,6 +29,7 @@ import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
 import { logError } from "@/lib/scheduler/wizard/log-error";
 import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
+import { routeAfterDiagnostics } from "@/lib/scheduler/wizard/route-after-diagnostics";
 
 const inputSchema = z.object({
   chatId: z.string().min(1),
@@ -100,6 +101,24 @@ function parseAnswered(raw: unknown): Record<string, string> {
   return out;
 }
 
+/**
+ * Count the recommended_testing_services entries on the row without
+ * fully reshaping the payload — just need a non-zero check for routing.
+ */
+function countRecommendedServices(raw: unknown): number {
+  if (!Array.isArray(raw)) return 0;
+  let n = 0;
+  for (const entry of raw) {
+    if (entry && typeof entry === "object") {
+      const e = entry as Record<string, unknown>;
+      if (typeof e.service_key === "string" && e.service_key.length > 0) {
+        n += 1;
+      }
+    }
+  }
+  return n;
+}
+
 async function submitClarificationAnswerV2Impl(
   args: SubmitClarificationAnswerV2Args,
 ): Promise<WizardTransitionResult> {
@@ -122,7 +141,7 @@ async function submitClarificationAnswerV2Impl(
     const { data: row, error: rowErr } = await supabase
       .from("customer_chat_sessions")
       .select(
-        "id, clarification_questions_pending, clarification_questions_answered",
+        "id, clarification_questions_pending, clarification_questions_answered, recommended_testing_services",
       )
       .eq("id", chatId)
       .maybeSingle();
@@ -133,16 +152,20 @@ async function submitClarificationAnswerV2Impl(
 
     const pending = parsePending(row.clarification_questions_pending);
     const answered = parseAnswered(row.clarification_questions_answered);
+    const recsCount = countRecommendedServices(
+      (row as Record<string, unknown>).recommended_testing_services,
+    );
 
     const head = pending[0];
     if (!head) {
       // Queue already drained (likely a stale submit after a refresh).
-      // Just skip ahead to second_routine_pass without changing answered
-      // state.
-      return applyWizardTransition({
-        chatId,
-        nextStep: "second_routine_pass",
+      // Re-route based on whether the diagnostic LLM left any
+      // recommendations on the row.
+      const { nextStep, jeffBubble } = routeAfterDiagnostics({
+        pending_count: 0,
+        recommendation_count: recsCount,
       });
+      return applyWizardTransition({ chatId, nextStep, jeffBubble });
     }
 
     if (head.question_id !== question_id) {
@@ -180,13 +203,15 @@ async function submitClarificationAnswerV2Impl(
       ? "I'm not sure"
       : head.options.find((o) => o.value === action.value)?.label ?? action.value;
 
-    const nextStep = nextPending.length > 0
-      ? ("clarification_question" as const)
-      : ("second_routine_pass" as const);
-
-    const jeffBubble = nextPending.length > 0
-      ? undefined
-      : "Thanks — that's everything I needed. Let me check the schedule! 📅";
+    // Route at queue-drain time the same way run-diagnostics does:
+    //   - more questions → clarification_question (next one)
+    //   - drained + recommendations exist → testing_service_approval
+    //   - drained + no recommendations → second_routine_pass + forward-
+    //     to-advisor bubble
+    const { nextStep, jeffBubble } = routeAfterDiagnostics({
+      pending_count: nextPending.length,
+      recommendation_count: recsCount,
+    });
 
     return applyWizardTransition({
       chatId,

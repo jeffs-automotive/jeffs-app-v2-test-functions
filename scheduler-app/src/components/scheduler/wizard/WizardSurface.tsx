@@ -55,6 +55,7 @@ import { PhoneNameCard } from "@/components/scheduler/heritage/PhoneNameCard";
 import { SecondRoutinePassCard } from "@/components/scheduler/heritage/SecondRoutinePassCard";
 import { ServiceAndConcernPicker } from "@/components/scheduler/ServiceAndConcernPicker";
 import { SummaryCard } from "@/components/scheduler/heritage/SummaryCard";
+import { TestingServiceApprovalCard } from "@/components/scheduler/heritage/TestingServiceApprovalCard";
 import { VehiclePicker } from "@/components/scheduler/VehiclePicker";
 import { WaiterTimePicker } from "@/components/scheduler/WaiterTimePicker";
 import { WizardBackBar } from "./WizardBackBar";
@@ -80,6 +81,7 @@ import { submitSecondRoutinePassV2 } from "@/lib/scheduler/wizard/actions/submit
 import { submitServiceAndConcernPickerV2 } from "@/lib/scheduler/wizard/actions/submit-service-and-concern-picker";
 import { submitStartOverV2 } from "@/lib/scheduler/wizard/actions/submit-start-over";
 import { submitSummaryV2 } from "@/lib/scheduler/wizard/actions/submit-summary";
+import { submitTestingServiceApprovalV2 } from "@/lib/scheduler/wizard/actions/submit-testing-service-approval";
 import { submitVehiclePickV2 } from "@/lib/scheduler/wizard/actions/submit-vehicle-pick";
 import { submitWaiterTimeV2 } from "@/lib/scheduler/wizard/actions/submit-waiter-time";
 import type { WizardCard } from "@/lib/scheduler/wizard/card-payloads";
@@ -395,6 +397,22 @@ function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
                   : { kind: "answer", value: answer },
             });
             handleResult("submitClarificationAnswerV2", chatId, result);
+          }}
+        />
+      );
+
+    case "testing_service_approval":
+      return (
+        <TestingServiceApprovalCard
+          services={card.payload.services}
+          category={card.payload.category ?? undefined}
+          onSubmit={async ({ approved, declined }) => {
+            const result = await submitTestingServiceApprovalV2({
+              chatId,
+              approved,
+              declined,
+            });
+            handleResult("submitTestingServiceApprovalV2", chatId, result);
           }}
         />
       );
