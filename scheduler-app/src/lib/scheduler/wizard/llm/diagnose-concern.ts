@@ -148,7 +148,13 @@ function fmtPriceForLLM(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
-function buildSystemPrompt(args: DiagnoseConcernArgs): string {
+/**
+ * Exported for the diagnose-concern eval harness (scripts/eval-diagnose-
+ * concern.ts) so it can capture the verbatim system prompt sent to the
+ * LLM. Not used in the wizard hot path; the action calls diagnoseConcern
+ * directly which builds the prompt internally.
+ */
+export function buildSystemPrompt(args: DiagnoseConcernArgs): string {
   const testingServices = args.catalog.categories.filter(isTestingService);
   const otherSubcategories = args.catalog.categories.filter(isOtherSubcategory);
 
@@ -284,7 +290,7 @@ ${chipHintLine}
    subcategory + the customer's actual words. No formatting.`;
 }
 
-function buildUserPrompt(args: DiagnoseConcernArgs): string {
+export function buildUserPrompt(args: DiagnoseConcernArgs): string {
   const parts: string[] = [
     `# Customer's description\n${args.customer_description.trim()}`,
   ];
@@ -405,11 +411,21 @@ export async function diagnoseConcern(
     tokensOut = Number(usage.outputTokens ?? 0);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    Sentry.captureException(e, {
-      tags: { surface: "diagnose_concern_llm" },
-      level: "warning",
-      extra: { description_len: desc.length },
-    });
+    // Defensive: Sentry may not be initialised in non-Next.js contexts
+    // (e.g., the scripts/eval-diagnose-concern.ts CLI harness). The
+    // module namespace is frozen so we can't monkey-patch; instead wrap
+    // the call so failSafe still runs with the real LLM error message.
+    // In production this try/catch never triggers — Sentry is alive.
+    try {
+      Sentry.captureException(e, {
+        tags: { surface: "diagnose_concern_llm" },
+        level: "warning",
+        extra: { description_len: desc.length },
+      });
+    } catch {
+      // Sentry unavailable — proceed with the fail-safe; the real error
+      // still makes it back to the caller via error_message.
+    }
     return failSafe(`llm_call_failed: ${msg.slice(0, 200)}`);
   }
 
