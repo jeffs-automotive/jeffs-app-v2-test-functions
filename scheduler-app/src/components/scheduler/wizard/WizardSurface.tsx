@@ -385,6 +385,7 @@ function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
           question_id={card.payload.question_id}
           question_text={card.payload.question_text}
           options={card.payload.options}
+          multi_select={card.payload.multi_select}
           service_key={card.payload.service_key ?? undefined}
           category={card.payload.category ?? undefined}
           onSubmit={async ({ question_id, answer }) => {

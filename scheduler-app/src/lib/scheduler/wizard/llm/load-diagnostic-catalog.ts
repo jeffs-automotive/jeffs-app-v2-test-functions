@@ -37,6 +37,12 @@ export interface CatalogQuestion {
   question_text: string;
   options: Array<{ label: string; value: string }>;
   display_order: number;
+  /** TRUE when the customer can naturally pick multiple options
+   *  simultaneously (e.g., location questions: "front + left").
+   *  Drives single-tap vs multi-chip + Continue rendering in
+   *  `ClarificationQuestionCard`. Added 2026-05-18 with the CAT-2
+   *  catalog rebuild. */
+  multi_select: boolean;
 }
 
 export interface CatalogSubcategory {
@@ -106,6 +112,7 @@ interface QuestionRow {
   display_order: number;
   subcategory_id: number;
   active: boolean;
+  multi_select: boolean;
 }
 
 function normalizeOptions(
@@ -145,7 +152,7 @@ export async function loadDiagnosticCatalog(
     supabase
       .from("concern_questions")
       .select(
-        "id, question_text, options, display_order, subcategory_id, active",
+        "id, question_text, options, display_order, subcategory_id, active, multi_select",
       )
       .eq("shop_id", SHOP_ID)
       .eq("active", true)
@@ -176,6 +183,7 @@ export async function loadDiagnosticCatalog(
       question_text: q.question_text,
       options: normalizeOptions(q.options),
       display_order: q.display_order,
+      multi_select: q.multi_select === true,
     });
     questionsBySub.set(q.subcategory_id, arr);
   }

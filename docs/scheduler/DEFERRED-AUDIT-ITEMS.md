@@ -33,7 +33,36 @@ the work lands.
 - **Follow-up tracking** — CAT-2 (option-array refinement per
   service-writer review).
 
-### CAT-2 · Subcategory option-array refinement — **REOPENED 2026-05-18 (BLOCKER)**
+### CAT-2 · Subcategory option-array refinement — **RESOLVED 2026-05-18**
+
+- **Resolution** — migration
+  `20260518163925_scheduler_concern_catalog_canonical_rebuild.sql`
+  rebuilt the catalog from `scheduler-app/scripts/canonical-concern-catalog.ts`.
+  - 14 categories, 105 subcategories, 729 questions canonical
+  - 42 multi-select questions (location, "where do you feel it" patterns)
+  - Schema: added `concern_questions.multi_select BOOLEAN NOT NULL
+    DEFAULT FALSE`
+  - DB push verified `canonical rebuild OK: 105 subcategories, 729
+    questions (42 multi-select)`
+- **Code changes shipped together**:
+  - `load-diagnostic-catalog.ts` surfaces `multi_select` in
+    `CatalogQuestion`
+  - `run-diagnostics` embeds `multi_select` in pending queue entries
+  - `submit-clarification-answer` accepts `string | string[]` answer
+    values; validates per-option-value and rejects shape mismatches
+  - `ClarificationQuestionCard` renders multi-select mode (chips toggle,
+    Continue button) when `multi_select` is true
+  - `card-payloads.ts` + `get-current-card.ts` + `WizardSurface.tsx`
+    thread the flag through
+  - `transcript-dispatcher` handles `string | string[]` in the
+    customer-activity block
+- **Source-of-truth audit artifact** —
+  `scheduler-app/scripts/canonical-concern-catalog.ts` (3000+ lines).
+  Re-running `node --experimental-strip-types
+  scheduler-app/scripts/generate-catalog-migration.ts` produces the
+  migration SQL from the TS data file.
+
+### CAT-2 (historical context)
 
 - **What** — comprehensive rewrite of `concern_questions.options`
   needed. Direct DB audit on 2026-05-18 found **740 of 913

@@ -513,9 +513,11 @@ function buildCustomerActivity(
   }
 
   // 5. Clarification Q&A (Step 7.4) — each answered question rendered as
-  //    question text + chosen option label.
+  //    question text + chosen option label. Stored value is either a
+  //    string (single-select or "skipped") or string[] (multi-select,
+  //    added 2026-05-18 with CAT-2 catalog rebuild).
   const answered = session.clarification_questions_answered as
-    | Record<string, string>
+    | Record<string, string | string[]>
     | null;
   if (answered && typeof answered === "object") {
     const ids = Object.keys(answered).sort((a, b) => Number(a) - Number(b));
@@ -524,14 +526,26 @@ function buildCustomerActivity(
       const qid = Number(idStr);
       const value = answered[idStr];
       const lookup = questionLookup.get(qid);
+      // Helper: map an option value to its label (or fallback to value).
+      const labelFor = (v: string): string =>
+        lookup?.options.find((o) => o.value === v)?.label ?? v;
+
+      let answerLabel: string;
+      if (Array.isArray(value)) {
+        // Multi-select: join chosen labels with " · ".
+        answerLabel = value.length === 0
+          ? "(no answer)"
+          : value.map(labelFor).join(" · ");
+      } else if (value === "skipped") {
+        answerLabel = "(skipped)";
+      } else {
+        answerLabel = labelFor(value);
+      }
       if (!lookup) {
-        qaLines.push(`Q#${idStr}: ${value}`);
+        qaLines.push(`Q#${idStr}: ${answerLabel}`);
         continue;
       }
-      const optLabel =
-        lookup.options.find((o) => o.value === value)?.label ??
-        (value === "skipped" ? "(skipped)" : value);
-      qaLines.push(`• ${lookup.question_text} — ${optLabel}`);
+      qaLines.push(`• ${lookup.question_text} — ${answerLabel}`);
     }
     if (qaLines.length > 0) {
       events.push({

@@ -85,6 +85,10 @@ interface PendingQuestionEntry {
   service_key: string;
   category: string;
   subcategory_slug: string;
+  /** Mirrors `concern_questions.multi_select` so the card knows whether
+   *  to render multi-chip + Continue (true) or single-tap-to-submit
+   *  (false). Added 2026-05-18 with the CAT-2 catalog rebuild. */
+  multi_select: boolean;
 }
 
 function parseExplanationItems(raw: unknown): ExplanationItem[] {
@@ -185,6 +189,7 @@ function parsePendingQuestions(raw: unknown): PendingQuestionEntry[] {
         typeof obj.category === "string" ? obj.category : "other";
       const subcategory_slug =
         typeof obj.subcategory_slug === "string" ? obj.subcategory_slug : "";
+      const multi_select = obj.multi_select === true;
       return {
         question_id,
         question_text,
@@ -192,6 +197,7 @@ function parsePendingQuestions(raw: unknown): PendingQuestionEntry[] {
         service_key,
         category,
         subcategory_slug,
+        multi_select,
       } satisfies PendingQuestionEntry;
     })
     .filter((x): x is PendingQuestionEntry => x !== null);
@@ -481,6 +487,7 @@ async function runDiagnosticsBody(
         service_key: r.item.service_key,
         category: parentCategory,
         subcategory_slug: subSlug,
+        multi_select: q.multi_select,
       });
     }
   }

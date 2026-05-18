@@ -34,11 +34,16 @@ import { routeAfterDiagnostics } from "@/lib/scheduler/wizard/route-after-diagno
 const inputSchema = z.object({
   chatId: z.string().min(1),
   question_id: z.number().int().positive(),
-  // either { action: 'answer', value: '<option_value>' } or { action: 'skip' }
+  // { action: 'answer', value: '<option_value>' | ['v1','v2',...] } for
+  // single OR multi-select; { action: 'skip' } either way.
+  // Array shape added 2026-05-18 with the CAT-2 catalog rebuild.
   action: z.union([
     z.object({
       kind: z.literal("answer"),
-      value: z.string().min(1).max(120),
+      value: z.union([
+        z.string().min(1).max(120),
+        z.array(z.string().min(1).max(120)).min(1).max(20),
+      ]),
     }),
     z.object({ kind: z.literal("skip") }),
   ]),
@@ -52,6 +57,10 @@ interface PendingQuestionEntry {
   options: Array<{ label: string; value: string }>;
   service_key: string;
   category: string;
+  /** Mirrors `concern_questions.multi_select`. Drives validation:
+   *  multi-select questions accept string[] of values; single-select
+   *  accept a single string. Added 2026-05-18 with CAT-2 rebuild. */
+  multi_select: boolean;
 }
 
 function parsePending(raw: unknown): PendingQuestionEntry[] {
@@ -81,22 +90,33 @@ function parsePending(raw: unknown): PendingQuestionEntry[] {
           (x): x is { label: string; value: string } => x !== null,
         );
       if (question_id === null || question_text === null) return null;
+      const multi_select = obj.multi_select === true;
       return {
         question_id,
         question_text,
         options,
         service_key,
         category,
+        multi_select,
       } satisfies PendingQuestionEntry;
     })
     .filter((x): x is PendingQuestionEntry => x !== null);
 }
 
-function parseAnswered(raw: unknown): Record<string, string> {
+function parseAnswered(
+  raw: unknown,
+): Record<string, string | string[]> {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
-  const out: Record<string, string> = {};
+  const out: Record<string, string | string[]> = {};
   for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-    if (typeof v === "string") out[k] = v;
+    if (typeof v === "string") {
+      out[k] = v;
+    } else if (
+      Array.isArray(v) &&
+      v.every((x): x is string => typeof x === "string")
+    ) {
+      out[k] = v;
+    }
   }
   return out;
 }
@@ -184,24 +204,75 @@ async function submitClarificationAnswerV2Impl(
       return { ok: false, error: "queue_head_mismatch" };
     }
 
-    // Validate the answer value is one of the allowed options when 'answer'.
+    // Validate the answer values when 'answer'. Multi-select questions
+    // accept string[]; single-select accept a single string. Validation
+    // rejects: shape mismatches, empty arrays, unknown option values,
+    // and duplicate values in the array.
     if (action.kind === "answer") {
-      const valid = head.options.some((o) => o.value === action.value);
-      if (!valid) {
-        return { ok: false, error: "invalid_option_value" };
+      if (head.multi_select) {
+        const values = Array.isArray(action.value)
+          ? action.value
+          : [action.value];
+        if (values.length === 0) {
+          return { ok: false, error: "empty_answer" };
+        }
+        const seen = new Set<string>();
+        for (const v of values) {
+          if (seen.has(v)) {
+            return { ok: false, error: "duplicate_option_value" };
+          }
+          seen.add(v);
+          if (!head.options.some((o) => o.value === v)) {
+            return { ok: false, error: "invalid_option_value" };
+          }
+        }
+      } else {
+        if (Array.isArray(action.value)) {
+          return { ok: false, error: "array_value_for_single_select" };
+        }
+        const valid = head.options.some((o) => o.value === action.value);
+        if (!valid) {
+          return { ok: false, error: "invalid_option_value" };
+        }
       }
     }
 
-    const writeValue = action.kind === "skip" ? "skipped" : action.value;
-    const nextAnswered: Record<string, string> = {
+    // Storage shape:
+    //   skipped → "skipped"
+    //   single-select → "value" (string, back-compat)
+    //   multi-select  → ["v1","v2"] (array — handled by consumers since 2026-05-18)
+    //
+    // The single-select-with-array-value case is already validation-rejected
+    // above (`array_value_for_single_select`), so by this point single-select
+    // implies action.value is a single string.
+    let writeValue: string | string[];
+    if (action.kind === "skip") {
+      writeValue = "skipped";
+    } else if (head.multi_select) {
+      writeValue = Array.isArray(action.value) ? action.value : [action.value];
+    } else {
+      // Single-select: validated above; action.value is a string.
+      writeValue = action.value as string;
+    }
+
+    const nextAnswered: Record<string, string | string[]> = {
       ...answered,
       [String(question_id)]: writeValue,
     };
     const nextPending = pending.slice(1);
 
-    const userBubble = action.kind === "skip"
-      ? "I'm not sure"
-      : head.options.find((o) => o.value === action.value)?.label ?? action.value;
+    // Customer-facing bubble shows the chosen label(s) joined with " · ".
+    // Capture head's options in a local so the nested closure keeps TS's
+    // narrowing (head is non-null here per the early-return above).
+    const headOptions = head.options;
+    const lookupLabel = (v: string): string =>
+      headOptions.find((o) => o.value === v)?.label ?? v;
+    const userBubble =
+      action.kind === "skip"
+        ? "I'm not sure"
+        : Array.isArray(writeValue)
+          ? writeValue.map(lookupLabel).join(" · ")
+          : lookupLabel(writeValue);
 
     // Route at queue-drain time the same way run-diagnostics does:
     //   - more questions → clarification_question (next one)

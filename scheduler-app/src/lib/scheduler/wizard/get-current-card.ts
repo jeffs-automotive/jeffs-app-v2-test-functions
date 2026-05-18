@@ -359,6 +359,7 @@ export async function getCurrentCard(
             options: [],
             service_key: null,
             category: null,
+            multi_select: false,
           },
         };
       }
@@ -370,6 +371,7 @@ export async function getCurrentCard(
           options: head.options,
           service_key: head.service_key,
           category: head.category,
+          multi_select: head.multi_select,
         },
       };
     }
@@ -960,6 +962,7 @@ interface PendingQuestion {
   options: Array<{ label: string; value: string }>;
   service_key: string | null;
   category: string | null;
+  multi_select: boolean;
 }
 
 function parseClarificationQuestionsPending(raw: unknown): PendingQuestion[] {
@@ -995,6 +998,7 @@ function parseClarificationQuestionsPending(raw: unknown): PendingQuestion[] {
         typeof e.category === "string" && e.category.length > 0
           ? e.category
           : null,
+      multi_select: e.multi_select === true,
     });
   }
   return out;

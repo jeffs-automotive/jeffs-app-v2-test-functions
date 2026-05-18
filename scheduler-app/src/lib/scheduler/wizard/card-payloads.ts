@@ -152,6 +152,11 @@ export interface ClarificationQuestionPayload {
   options: Array<{ label: string; value: string }>;
   service_key: string | null;
   category: string | null;
+  /** TRUE → the card lets the customer toggle multiple chips on/off then
+   *  taps Continue. FALSE → single-tap-to-submit. Sourced from
+   *  `concern_questions.multi_select`. Added 2026-05-18 with the CAT-2
+   *  catalog rebuild. */
+  multi_select: boolean;
 }
 
 /** Step 7.5 — Testing service approval. */
