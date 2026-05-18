@@ -38,6 +38,6 @@
     "out",
     "playwright-report",
     "test-results",
-    "scripts/generate-catalog-migration.ts"
+    "scripts"
   ]
 }
