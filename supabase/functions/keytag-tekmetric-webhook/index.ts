@@ -992,6 +992,15 @@ Deno.serve(async (req: Request) => {
     }
 
     // ── Branch 3: payment_made ───────────────────────────────────────────
+    // The payment webhook payload itself doesn't say whether the payment
+    // closed the balance — it just reports an individual transaction. A
+    // partial A/R payment (e.g. customer pays deductible while an extended
+    // warranty insurer still owes the rest) used to release the tag here,
+    // leaving the physical keys in the shop disconnected from any tracked
+    // tag. Per Chris 2026-05-17: GET the RO and only release when Tekmetric
+    // has flipped its status to POSTED_PAID (5). Any other status → leave
+    // the tag posted_ar; the nightly bulk-reconcile catches missed
+    // releases via its reverse pass (ORP manual review).
     if (eventKind === "payment_made") {
       const arPayment = data.arPayment === true;
       const succeeded = data.paymentStatus === "SUCCEEDED";
@@ -1009,6 +1018,58 @@ Deno.serve(async (req: Request) => {
         return new Response(JSON.stringify({ ok: true, action: "noop" }), { status: 200 });
       }
 
+      // Defensive: confirm the RO is actually POSTED_PAID before releasing.
+      // Conservative on every failure mode — Tekmetric 404, network error,
+      // missing status field — so we never release on a partial payment.
+      let ro;
+      try {
+        ro = await getRepairOrderById(sb, SHOP_ID, roId);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        await markProcessed(
+          eventId,
+          "payment_skipped_ro_get_failed",
+          { payment_id: paymentId, ro_id: roId },
+          msg,
+        );
+        return new Response(
+          JSON.stringify({ ok: true, action: "payment_skipped_ro_get_failed", ro_id: roId }),
+          { status: 200 },
+        );
+      }
+      if (!ro) {
+        await markProcessed(eventId, "payment_skipped_ro_not_found", {
+          payment_id: paymentId,
+          ro_id: roId,
+          reason: "tekmetric_returned_404_for_ro_in_payment_webhook",
+        });
+        return new Response(
+          JSON.stringify({ ok: true, action: "payment_skipped_ro_not_found", ro_id: roId }),
+          { status: 200 },
+        );
+      }
+
+      const verifiedStatusId = ro.repairOrderStatus?.id;
+      if (verifiedStatusId !== TEKMETRIC_RO_STATUS.POSTED_PAID) {
+        await markProcessed(eventId, "payment_skipped_ro_still_in_ar", {
+          payment_id: paymentId,
+          ro_id: roId,
+          ro_number: ro.repairOrderNumber,
+          verified_status_id: verifiedStatusId,
+          verified_status_name: ro.repairOrderStatus?.name,
+          reason: "partial_payment_or_ar_balance_remaining",
+        });
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            action: "payment_skipped_ro_still_in_ar",
+            ro_id: roId,
+            verified_status_id: verifiedStatusId,
+          }),
+          { status: 200 },
+        );
+      }
+
       const { data: releasedRows } = await sb.rpc("release_keytag_for_ro", {
         p_ro_id: roId,
         p_reason: "payment_webhook",
@@ -1021,7 +1082,7 @@ Deno.serve(async (req: Request) => {
           p_action: "released",
           p_source: "webhook",
           p_ro_id: roId,
-          p_ro_number: null,
+          p_ro_number: ro.repairOrderNumber,
           p_prior_status: "posted_ar",
           p_new_status: "available",
           p_user_label: null,
