@@ -73,7 +73,8 @@ Here's what I can do for the scheduler at appointments.jeffsautomotive.com:
 
 **Edit the diagnostic concern checklists**
 
-- **Upload a refined checklist for one category** — "Upload the updated brakes concern doc" (paste the markdown content)
+- **Upload a refined checklist for one category** — "Upload the updated brakes concern doc" (each question can now carry its own answer-options + a `[multi]` prefix for multi-select; see `concerns/{cat}/{cat}-concerns.md` for the format)
+- **Upload a refined guideline prose for one category** — "Upload the updated brakes guideline" (the prose the diagnostic LLM reads BEFORE the questions; one paragraph per category at `concerns/{cat}/{cat}-guideline.md`)
 - **View the current guideline prose for a category** — "Show me the brakes guideline"
 
 **Edit availability**
@@ -84,11 +85,14 @@ Here's what I can do for the scheduler at appointments.jeffsautomotive.com:
 
 **Bulk replace from MD files** (the editable docs in `docs/scheduler/`)
 
-- **Testing services** — "Upload the updated testing services" (paste / attach `testing-services.md`)
-- **Routine services** — "Upload the updated routine services"
-- **Appointment limits** — "Upload the updated appointment limits"
-- **Closed dates** — "Upload the updated closed dates"
-- **One concern category** — "Upload the updated {category} concern doc" (one of: noise, vibration, pulling, smell, smoke, leak, warning_light, performance, electrical, hvac, brakes, steering, tires, other)
+If your Claude Desktop has the filesystem MCP set up for the repo, just say *"Upload the updated X"* and Claude reads the file directly. Otherwise, paste the MD content into chat and Claude uses the pasted block.
+
+- **Testing services** — "Upload the updated testing services" (`testing-services.md`)
+- **Routine services** — "Upload the updated routine services" (`routine-services.md`)
+- **Appointment limits** — "Upload the updated appointment limits" (`appointment-default-limits.md`)
+- **Closed dates** — "Upload the updated closed dates" (`closed-dates.md`)
+- **One concern category — questions** — "Upload the updated {category} concern doc" (`concerns/{cat}/{cat}-concerns.md`; one of: noise, vibration, pulling, smell, smoke, leak, warning_light, performance, electrical, hvac, brakes, steering, tires, other)
+- **One concern category — guideline prose** — "Upload the updated {category} guideline" (`concerns/{cat}/{cat}-guideline.md`)
 
 **What I won't do**
 
