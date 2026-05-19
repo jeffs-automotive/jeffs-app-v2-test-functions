@@ -39,6 +39,7 @@ import {
   RESOLVED_SERVICE_ROLE_KEY,
 } from "../_shared/scheduler-auth.ts";
 import { logEdgeError } from "../_shared/log-edge-error.ts";
+import { withSentryScope } from "../_shared/sentry-edge.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SHOP_ID = parseInt(
@@ -416,7 +417,7 @@ async function runSync(): Promise<SyncResult> {
 
 // ─── HTTP handler ────────────────────────────────────────────────────────────
 
-Deno.serve(async (req) => {
+Deno.serve((req) => withSentryScope(req, "appointments-sync", async () => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: CORS_HEADERS });
   }
@@ -453,4 +454,4 @@ Deno.serve(async (req) => {
     );
     return jsonResponse({ ok: false, error: msg }, 500);
   }
-});
+}));

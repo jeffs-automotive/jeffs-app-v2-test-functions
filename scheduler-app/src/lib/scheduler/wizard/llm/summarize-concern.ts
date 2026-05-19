@@ -183,6 +183,15 @@ export async function summarizeConcern(
       prompt: buildUserPrompt(args),
       schema: Schema,
       maxOutputTokens: MAX_OUTPUT_TOKENS,
+      // OBS-5: emit Vercel AI SDK telemetry. See diagnose-concern.ts for
+      // the recordInputs/recordOutputs rationale (customer-stated concern
+      // text is PII).
+      experimental_telemetry: {
+        isEnabled: true,
+        functionId: "summarize-concern",
+        recordInputs: false,
+        recordOutputs: false,
+      },
     });
     const usage = result.usage ?? { inputTokens: 0, outputTokens: 0 };
     return {

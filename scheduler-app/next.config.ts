@@ -73,9 +73,15 @@ export default withSentryConfig(nextConfig, {
   // Sentry transport.
   tunnelRoute: "/monitoring",
 
-  // Disable the React component name plugin — it's noisy at compile time
-  // and the value-add is minimal for our wizard surface.
-  reactComponentAnnotation: { enabled: false },
+  // Bundler-specific options live under `webpack.*` (and `_experimental.*`
+  // for Turbopack) since @sentry/nextjs v10. The top-level form is deprecated
+  // and slated for removal in a future major (likely v11). See:
+  // https://docs.sentry.io/platforms/javascript/guides/nextjs/configuration/build/
+  webpack: {
+    // Disable the React component name plugin — it's noisy at compile time
+    // and the value-add is minimal for our wizard surface.
+    reactComponentAnnotation: { enabled: false },
+  },
 
   // Source-map upload is fine to keep on by default; auth-token-gated.
 });

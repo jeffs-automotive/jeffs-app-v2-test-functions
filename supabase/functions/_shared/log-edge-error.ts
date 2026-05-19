@@ -21,6 +21,7 @@
 // Best-effort: failures to write the row are logged to console.warn and
 // the original error path proceeds.
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
+import { Sentry } from "./sentry-edge.ts";
 
 export type LogEdgeErrorLevel = "fatal" | "error" | "warning" | "info";
 
@@ -82,5 +83,31 @@ export async function logEdgeError(
         original_message: message,
       }),
     );
+  }
+
+  // OBS-4 (2026-05-19): also push to Sentry if initialized. Belt-and-suspenders
+  // with the scheduler_error_log row insert above — Sentry surfaces the event
+  // for live triage + alerting; the row preserves it for SQL-queryable
+  // historical analysis. Either path failing doesn't break the other.
+  // No-op when EDGE_FN_SENTRY_DSN secret is unset.
+  try {
+    Sentry.captureMessage(args.message ?? args.error_code ?? args.surface, {
+      level: (args.level ?? "error") as "fatal" | "error" | "warning" | "info",
+      tags: {
+        origin: "edge-fn",
+        origin_id: args.origin_id ?? args.surface,
+        surface: args.surface,
+        error_code: args.error_code ?? "unknown",
+      },
+      extra: {
+        session_id: args.session_id ?? null,
+        step_at_error: stepAtError,
+        context: args.context ?? null,
+        stack,
+      },
+    });
+  } catch {
+    // Sentry capture failures are silent — the scheduler_error_log row above
+    // is the primary persistence.
   }
 }

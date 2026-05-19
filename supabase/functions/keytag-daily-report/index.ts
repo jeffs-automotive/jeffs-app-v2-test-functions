@@ -37,6 +37,7 @@ import {
   RESOLVED_SERVICE_ROLE_KEY,
 } from "../_shared/scheduler-auth.ts";
 import { logEdgeError } from "../_shared/log-edge-error.ts";
+import { withSentryScope } from "../_shared/sentry-edge.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
@@ -427,7 +428,7 @@ async function sendViaResend(args: {
 
 // ─── HTTP handler ────────────────────────────────────────────────────────────
 
-Deno.serve(async (req) => {
+Deno.serve((req) => withSentryScope(req, "keytag-daily-report", async () => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: CORS_HEADERS });
   }
@@ -577,4 +578,4 @@ Deno.serve(async (req) => {
     forced: force,
     deduped: send.deduped ?? false,
   });
-});
+}));

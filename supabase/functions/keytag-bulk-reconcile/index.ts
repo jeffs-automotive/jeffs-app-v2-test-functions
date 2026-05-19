@@ -80,6 +80,7 @@ import {
   RESOLVED_SERVICE_ROLE_KEY,
 } from "../_shared/scheduler-auth.ts";
 import { logEdgeError } from "../_shared/log-edge-error.ts";
+import { withSentryScope } from "../_shared/sentry-edge.ts";
 import {
   issueManualReview,
   type ManualReviewOption,
@@ -1212,7 +1213,7 @@ async function sendOrphanEmail(
 
 // ── Main handler ────────────────────────────────────────────────────────────
 
-Deno.serve(async (req: Request) => {
+Deno.serve((req: Request) => withSentryScope(req, "keytag-bulk-reconcile", async () => {
   // Bearer auth (matches keytag-daily-report, transcript-dispatcher, etc.)
   const authCheck = checkSchedulerBearer(req, "keytag-bulk-reconcile");
   if (!authCheck.ok) {
@@ -1357,4 +1358,4 @@ Deno.serve(async (req: Request) => {
       },
     );
   }
-});
+}));

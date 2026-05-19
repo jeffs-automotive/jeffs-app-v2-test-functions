@@ -168,6 +168,15 @@ export async function parseCustomerNote(
       prompt: buildUserPrompt(args),
       schema: Schema,
       maxOutputTokens: MAX_OUTPUT_TOKENS,
+      // OBS-5: emit Vercel AI SDK telemetry. See diagnose-concern.ts for
+      // the recordInputs/recordOutputs rationale (post-booking customer
+      // notes are PII).
+      experimental_telemetry: {
+        isEnabled: true,
+        functionId: "parse-customer-note",
+        recordInputs: false,
+        recordOutputs: false,
+      },
     });
     parsed = result.object;
     const usage = result.usage ?? { inputTokens: 0, outputTokens: 0 };

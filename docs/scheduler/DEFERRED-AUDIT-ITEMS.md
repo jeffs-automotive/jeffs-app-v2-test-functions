@@ -176,96 +176,142 @@ the work lands.
   "all Tekmetric 4xx/5xx events" without joining via
   Vercel-side records. Or if Vercel-side coverage degrades.
 
-### OBS-3 · Sentry SDK in Deno edge functions
+### OBS-3 · Sentry SDK in Deno edge functions — PARTIALLY RESOLVED 2026-05-19
 
-- **What** — Deno edge fns currently log via
-  `console.error(JSON.stringify(...))` → Supabase Log Drain →
-  Sentry. Per `observability.md` rule 5, the canonical pattern is
-  explicit `Sentry.captureMessage`. The Vercel side does this
-  natively; the Deno side does NOT have `@sentry/deno` imported.
-- **Why deferred** — adding the Sentry Deno SDK requires init
-  (DSN env var, integration setup), and the existing log-drain
-  path was expected to deliver the same events. Pure consistency /
-  explicitness win. **However:** see OBS-4 — the log-drain path
-  isn't actually firing, so the Deno-side observability gap is
-  bigger than originally assumed.
-- **When to revisit** — soon, once OBS-4 is investigated. If the
-  Log Drain can't be fixed easily, fall back to wiring `@sentry/deno`
-  directly.
-- **Source** — R6 Stream E NICE-4; updated 2026-05-18 multi-agent audit.
+- **Resolution** — `@sentry/deno` wired into 4 high-value scheduler-relevant
+  edge functions (appointments-sync, transcript-dispatcher,
+  keytag-bulk-reconcile, keytag-daily-report) via the new
+  `_shared/sentry-edge.ts` module + `withSentryScope(req, surface, handler)`
+  wrapper around each `Deno.serve` entry point. `_shared/log-edge-error.ts`
+  extended to ALSO fire `Sentry.captureMessage` when initialized — every
+  `scheduler_error_log` row now belt-and-suspenders surfaces on Sentry.
+  See OBS-4 entry for why this was paired with the Log Drain fallback.
+- **Still deferred (the remaining ~10 edge functions)** — `mcp-auth`,
+  `orchestrator-mcp`, `scheduler-{booking,otp,step2}-direct`,
+  `tekmetric-{api-testing,bootstrap,find-ro-by-keytag,list-wip-keytags,
+  webhook}`, `keytag-{seed-from-tekmetric,tekmetric-webhook}` — these
+  haven't been wrapped yet. Same one-line import + wrap pattern as the 4
+  shipped ones; can be done piecemeal as each function gets touched.
+- **When to revisit each remaining fn** — when next touching the fn for an
+  unrelated change. Don't do a big sweep; just wire each one as you ship
+  the next edit to it.
+- **Source** — R6 Stream E NICE-4; updated 2026-05-18 multi-agent audit;
+  partial resolution 2026-05-19.
 
-### OBS-4 · Supabase Log Drain → Sentry not firing (NEW 2026-05-18)
+### OBS-4 · Supabase Log Drain → Sentry not firing — PARTIALLY RESOLVED 2026-05-19
 
-- **What** — Sentry project `jeffs-app-v2-supabase`
-  (DSN `f291fea0…`) exists as the intended drain target, but has
-  **zero events** in the last 14 days (verified via Sentry MCP —
-  `errors` dataset returns "No results found"; `logs` dataset
-  returns "No results found"; no events anywhere in the org tagged
-  `source:supabase`). The architecture doc claims Log Drain routes
-  Postgres / Auth / Realtime / Edge Function logs to Sentry but
-  this is not actually happening in 2026-05.
-- **Impact** — RAISE EXCEPTION in `_shared/tools/*.ts`, migration
-  errors, pg_cron failures (the `BEGIN…EXCEPTION` wraps log to
-  `scheduler_error_log` but that doesn't reach Sentry), Edge
-  Function uncaughts — all of these are invisible at the Sentry
-  layer. Triage relies on querying `scheduler_error_log` table
-  directly + Supabase dashboard logs.
-- **Why deferred** — until 2026-05-18 audit, the architecture doc
-  asserted Log Drain was working. Need to verify Supabase dashboard
-  setup (Project Settings → Log Drains → Sentry endpoint) and
-  whether the drain webhook URL is correct + the project DSN
-  matches.
-- **When to revisit** — before any rollout beyond Jeff's test
-  environment. Without Log Drain firing, edge-function silent
-  failures will accumulate undetected.
-- **Source** — 2026-05-18 Sentry MCP audit.
+- **Root cause (verified 2026-05-19 via Supabase MCP `get_organization`)** —
+  Supabase Log Drains require **Team or Enterprise** plan. Org
+  `Jeff's Automotive` is on **Pro**. The dashboard UI exists but the feature
+  is gated. The architecture doc's `observability.md` rule D4
+  ("MANDATORY infrastructure") is structurally unfulfillable on the current
+  plan. MCP has no `create_log_drain` tool — config is dashboard-only or via
+  Management API.
+- **Resolution shipped (Option A: Deno SDK fallback)** — wired
+  `@sentry/deno` directly into 4 scheduler-relevant edge fns
+  (appointments-sync, transcript-dispatcher, keytag-bulk-reconcile,
+  keytag-daily-report) via the new `_shared/sentry-edge.ts` module +
+  `withSentryScope` wrapper. New secret `EDGE_FN_SENTRY_DSN` points at the
+  same `jeffs-app-v2-supabase` Sentry project the drain would have used.
+  This closes the edge-function surface for OBS-3 + OBS-4 simultaneously.
+- **Still gapped (Postgres / Auth / Realtime / Storage layers)** — These
+  Supabase-internal logs still need the Log Drain to reach Sentry. RAISE
+  EXCEPTION in SQL functions, migration errors, pg_cron failures all stay
+  invisible at the Sentry layer. The defense-in-depth path is
+  `BEGIN…EXCEPTION` wraps writing to `scheduler_error_log` (already in
+  place for all 4 scheduler crons per migration `20260516200000`).
+- **When to fully resolve (Option B)** — upgrade Supabase to Team plan
+  ($599/mo base + per-drain hours + events) when rolling out beyond Jeff's
+  test environment. Then Project Settings → Log Drains → New Sentry drain →
+  paste DSN `https://f291fea017068329aa672e0df463dbe9@o4511066499055616.ingest.us.sentry.io/4511311571124224`.
+  Verify via `mcp__sentry__search_events` dataset=`logs` within ~5 min.
+- **Doc correction needed** — `.claude/rules/observability.md` D4 must be
+  reframed from "MANDATORY" to "Recommended; requires Supabase Team plan.
+  Edge fn surface covered by `_shared/sentry-edge.ts` fallback on lower
+  plans." (Rule lives in dotfiles — change in same commit.)
+- **Source** — 2026-05-18 multi-agent audit + 2026-05-19 OBS-4 deep-dive
+  agent + Chris's Sentry-vs-Supabase plan clarification + 2026-05-19 Option
+  A wiring + deploy.
 
-### OBS-5 · LLM call spans not captured in Sentry (NEW 2026-05-18)
+### OBS-5 · LLM call spans not captured in Sentry — RESOLVED 2026-05-19
 
-- **What** — Sentry has zero spans matching `span.op:gen_ai.*` or
-  spans with descriptions referencing `claude-haiku-4-5` / `haiku` /
-  `claude` in the last 7d. Server Action transactions ARE captured
-  (`serverAction/runDiagnosticsV2` etc.), but the inner AI SDK calls
-  don't get spans. When the LLM succeeds, there's no span data
-  telling you how long it took, how many tokens it consumed, or
-  which model was used.
-- **Why deferred** — `instrument-action.ts` only captures Server
-  Action boundaries via `Sentry.withServerActionInstrumentation`;
-  it doesn't add nested spans around the AI SDK calls. AI SDK 5's
-  auto-instrumentation hooks for OpenTelemetry `gen_ai.*` semantic
-  conventions aren't enabled. Lower priority than OBS-4 since
-  failure-path capture works (errors land in Sentry).
-- **Impact** — LLM-1 hallucination tracking, latency trending, and
-  per-model cost analysis are blind. Can't answer "are diagnostic
-  calls getting slower" or "which model fails most often."
-- **When to revisit** — when LLM-1 prompt-tuning iteration starts
-  (need latency + token data to verify improvements) OR when AI
-  cost auditing becomes a question.
-- **Source** — 2026-05-18 Sentry MCP audit.
+- **Resolution** — two-piece fix shipped:
+  1. `Sentry.vercelAIIntegration({ force: true })` added to
+     `scheduler-app/sentry.server.config.ts` integrations array.
+     `force: true` is MANDATORY on Vercel because the `ai` package gets
+     bundled (not externalized) in Next.js production builds, which defeats
+     the integration's auto-detection. Per Sentry docs:
+     https://docs.sentry.io/platforms/javascript/guides/nextjs/configuration/integrations/vercelai/
+  2. `experimental_telemetry: { isEnabled: true, functionId, recordInputs:
+     false, recordOutputs: false }` added to the `generateObject` call in
+     each of the 3 LLM helpers (diagnose-concern, summarize-concern,
+     parse-customer-note). `recordInputs/recordOutputs: false` is the PII
+     guard — customer concern text + post-booking notes are PII (vehicle
+     complaints may include phone-like patterns, plate numbers, free-form
+     descriptions).
+- **Compatibility verified** — `@sentry/nextjs@10.52.0` ≥ required 10.6.0
+  for the vercelAIIntegration; `ai@5.0.186` in supported range ≥3.0.0
+  ≤6.0.0. No new dependencies, no version bumps. tsc --noEmit clean.
+- **Expected output** — Sentry AI Agents Insights view auto-activates once
+  `gen_ai.*` spans arrive with `gen_ai.system: anthropic` /
+  `gen_ai.request.model: claude-haiku-4-5` / `gen_ai.usage.input_tokens` etc.
+  Nested INSIDE existing `serverAction/runDiagnosticsV2` transactions —
+  trace view shows action → LLM → token chain.
+- **Sample rate** — production `tracesSampleRate: 0.1` means ~10% of LLM
+  calls produce visible spans. Matches Server Action sampling. Raise via
+  `tracesSampler` selectively if cost monitoring needs every call.
+- **Source** — 2026-05-18 multi-agent audit + 2026-05-19 OBS-5 deep-dive
+  agent + Vercel AI SDK docs verified via Context7.
 
-### OBS-6 · `beforeSend` PII redaction only handles phone + OTP, not email/name (NEW 2026-05-18)
+### OBS-6a · `beforeSend` PII redaction — Vercel-side hardening — RESOLVED 2026-05-19
 
-- **What** — `scheduler-app/sentry.server.config.ts` `beforeSend`
-  scrubs `+1NNNNNNNNNN` phone numbers and 6-digit OTP codes via
-  regex. The doc comment block at L46-48 mentions
-  `first_name → drop, last_name → drop, email → drop` but **no
-  code performs those replacements**. Architecture doc §12
-  previously claimed email/name redaction was implemented; it
-  is not.
-- **Why no current leak** — verified via Sentry MCP that
-  `user.email = null` on all 56 events in the last 14d. No code
-  path populates `Sentry.setUser({email, name})`, so the
-  PII fields never enter the Sentry payload in the first place.
-  The redaction is a safety net that doesn't exist; today's safety
-  comes from not having anything to redact.
-- **Why deferred** — currently zero exposure; adding the
-  defensive scrub is cheap (~10 lines of regex) but not urgent.
-- **When to revisit** — if any code in `scheduler-app/` adds
-  `Sentry.setUser({email,name})` OR if an event's `extra` /
-  `contexts` payload starts including customer email/name fields.
-  Add now if doing a comprehensive observability sweep.
-- **Source** — 2026-05-18 Sentry MCP audit + Sentry config file
-  inspection.
+- **Resolution** — replaced the prior stringify-based scrubber in
+  `scheduler-app/sentry.server.config.ts` with a structural walker:
+  - Recursively visits `event.user` / `event.contexts` / `event.extra` /
+    `event.breadcrumbs[*].data` / `event.request` (data + headers +
+    query_string)
+  - Key-blocklist scrub (case-insensitive) for `email` / `first_name` /
+    `last_name` / `name` / `customer_name` / `customername` /
+    `primary_email` / `entered_*name` / `verified_*name` / `edited_emails` /
+    `edited_phones` / `phone*` / `address*` / `street_address` / `city` /
+    `state` / `zip` / `postal_code` / `tekmetric_error_text` → value
+    replaced with `"[redacted]"`
+  - String regex pass (applied to every leaf string visited + to
+    `event.message` + every `event.exception.values[].value`):
+    - email pattern → `[email]`
+    - E.164 US/CA phones → `+1******NNNN` (preserve last 4)
+    - 6-digit OTP near `code`/`otp_code`/`otp` keys → `[REDACTED]`
+  - Fail-closed: any scrubbing exception → drop event entirely
+- **Mirror in `_shared/sentry-edge.ts`** — identical blocklist + regexes
+  applied to events captured from the 4 OBS-3-wrapped edge functions. The
+  edge-side and Vercel-side scrubbers share the same allow/deny semantics.
+- **Defends surfaces** (per OBS-6 audit map):
+  - `tekmetric_error_text` echoes in extra (4 sites: submit-new-customer-info,
+    submit-customer-info-edit, submit-new-vehicle, submit-customer-notes)
+  - Postgres constraint violation messages in error.value
+  - staff-notification subject embedded in exception.value
+  - submit-otp extra.response with verifyResult shape
+  - future regression sites (addBreadcrumb with customer data, etc.)
+- **Does NOT defend** the Supabase Log Drain → Sentry channel (which
+  bypasses `beforeSend`). See OBS-6b below — currently moot since Log
+  Drains require Supabase Team plan (org is Pro per OBS-4 finding).
+- **Source** — 2026-05-18 multi-agent audit + 2026-05-19 OBS-6 deep-dive
+  agent + 2026-05-19 implementation.
+
+### OBS-6b · Sentry server-side Data Scrubbing for Log Drain — DEFERRED (gated by OBS-4 Option B)
+
+- **What** — When/if the Supabase Log Drain → Sentry path activates (Option
+  B of OBS-4 — requires Team plan), `beforeSend` does NOT run on those
+  events because Log Drain uses direct HTTP ingestion. Sentry project-level
+  Data Scrubbing rules (Settings → Security & Privacy) would be the only
+  filter at that layer. Without it, a single Postgres RAISE EXCEPTION
+  mentioning `customer.email` ships PII to Sentry unscrubbed.
+- **Why deferred** — Log Drain isn't enabled (Pro plan blocks it). When/if
+  upgraded to Team plan, configure project-level scrubbing alongside the
+  drain in the same dashboard pass.
+- **When to revisit** — concurrent with OBS-4 Option B (Supabase plan
+  upgrade).
+- **Source** — 2026-05-19 OBS-6 audit; extracted from former OBS-6 entry.
 
 ---
 
@@ -450,22 +496,27 @@ files
   reflect actual default behavior.
 - **Source** — 2026-05-18 Vercel MCP audit.
 
-### CLN-7 · Sentry `reactComponentAnnotation` config is deprecated (NEW 2026-05-18)
+### CLN-7 · Sentry `reactComponentAnnotation` config deprecated — RESOLVED 2026-05-19
 
-- **What** — Build logs include the warning
-  `[@sentry/nextjs] DEPRECATION WARNING: reactComponentAnnotation
-  is deprecated and will be removed in a future version. Use
-  webpack.reactComponentAnnotation instead.` Current config in
-  `scheduler-app/next.config.ts:78` is
-  `reactComponentAnnotation: { enabled: false }` at the top
-  level of the Sentry options.
-- **Why deferred** — cosmetic, no runtime impact. Will become
-  a build break when @sentry/nextjs ships the breaking change.
-- **When to revisit** — next `@sentry/nextjs` major version bump,
-  or any deliberate Sentry config cleanup.
-- **Fix** — move to `webpack: { reactComponentAnnotation: { enabled:
-  false } }` per Sentry's current docs.
-- **Source** — 2026-05-18 Vercel MCP audit (build log inspection).
+- **Resolution** — moved `reactComponentAnnotation: { enabled: false }`
+  from top-level Sentry options to the `webpack:` namespace in
+  `scheduler-app/next.config.ts`. Matches the new shape introduced in
+  `@sentry/nextjs` v10 for the Webpack-vs-Turbopack split.
+- **Compatibility verified** — single coherent `@sentry/nextjs@10.52.0`
+  line per `npm ls`, no `UNMET PEER` warnings. No `nextConfig.webpack(...)`
+  override exists → no collision with Sentry's `webpack:` namespace.
+  tsc --noEmit clean.
+- **Other deprecations checked** — project-wide grep for
+  `disableLogger` / `automaticVercelMonitors` / `autoInstrumentServerFunctions` /
+  `autoInstrumentMiddleware` / `autoInstrumentAppDirectory` /
+  `excludeServerRoutes` / `widenClientFileUpload` / `hideSourceMaps` /
+  `unstable_sentryWebpackPluginOptions` / `disableSentryWebpackConfig` /
+  `disableManifestInjection` returned ZERO additional hits. Nothing else
+  needed bundling.
+- **Removal timeline** — Sentry hasn't committed a removal version.
+  Realistic expectation: `@sentry/nextjs@11.0.0`.
+- **Source** — 2026-05-18 Vercel MCP audit + 2026-05-19 CLN-7 deep-dive
+  agent + 2026-05-19 implementation.
 
 ---
 

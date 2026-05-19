@@ -464,6 +464,17 @@ export async function diagnoseConcern(
       prompt: buildUserPrompt(args),
       schema: Schema,
       maxOutputTokens: MAX_OUTPUT_TOKENS,
+      // OBS-5: emit Vercel AI SDK telemetry so Sentry can capture gen_ai.*
+      // spans (model, tokens, latency). Pairs with vercelAIIntegration in
+      // sentry.server.config.ts. recordInputs/recordOutputs DELIBERATELY
+      // false — customer concern text is PII (vehicle complaints can include
+      // phone-like patterns, plate numbers, free-form descriptions).
+      experimental_telemetry: {
+        isEnabled: true,
+        functionId: "diagnose-concern",
+        recordInputs: false,
+        recordOutputs: false,
+      },
     });
     parsed = result.object;
     const usage = result.usage ?? { inputTokens: 0, outputTokens: 0 };
