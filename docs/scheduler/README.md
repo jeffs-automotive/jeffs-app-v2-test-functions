@@ -6,7 +6,7 @@ the files here, then ask Claude to upload them — Claude calls the right
 admin tool, parses the markdown, and applies the change to the DB.
 
 > **Looking for the architecture / code map?** See
-> [`../../.claude/memory/scheduler_system_architecture.md`](../../.claude/memory/scheduler_system_architecture.md) —
+> [`../../.claude/memory/scheduler/scheduler_system_architecture.md`](../../.claude/memory/scheduler/scheduler_system_architecture.md) —
 > the canonical table of contents for the Next.js app, edge functions,
 > DB schema, crons, RLS posture, deployment, and Sentry config. Lives
 > as a memory file (sibling of `keytag_system_architecture.md`) so it's
@@ -19,7 +19,7 @@ admin tool, parses the markdown, and applies the change to the DB.
 | File | What it controls | Claude tool to upload |
 |------|------------------|------------------------|
 | [`testing-services.md`](./testing-services.md) | The 14 diagnostic/testing services + their pricing (`starting_price_cents`) + which concern categories they map to | `upload_testing_services_md` |
-| [`routine-services.md`](./routine-services.md) | The 10 routine-service picker chips (oil change, tire rotate, brake inspection, etc.). NO pricing on routine services in Phase 1. | `upload_routine_services_md` |
+| [`routine-services.md`](./routine-services.md) | The 10 routine-service picker chips (oil change, tire rotate, brake inspection, etc.) + `starting_price_cents` and `price_waived_note` columns (added 2026-05-17 — see migration `20260518010416_scheduler_routine_services_pricing.sql`). | `upload_routine_services_md` |
 | [`appointment-default-limits.md`](./appointment-default-limits.md) | Weekly capacity pattern — waiter-slot counts and drop-off totals for each day of the week | `upload_appointment_default_limits_md` |
 | [`closed-dates.md`](./closed-dates.md) | One-off closures + holidays. Sundays are auto-managed via a cron; don't list them here. | `upload_closed_dates_md` |
 | [`concerns/{slug}/{slug}-concerns.md`](./concerns/) (14 files) | The diagnostic-LLM's symptom checklists. One markdown doc per concern category — each has 6-12 symptom sub-categories and 5-7 plain-language questions per sub-category. Now carries answer-options + multi_select inline (see new format below). | `upload_concern_category_md` (one category per call) |

@@ -12,6 +12,8 @@ extension waves). Maintained in-tree so future sessions / developers
 pick it up. Add new entries as deferrals happen; remove entries when
 the work lands.
 
+**Last full audit:** 2026-05-18 (6-agent parallel audit: codebase, Supabase MCP, Vercel MCP, Sentry MCP, docs/scheduler, .claude/memory mapping). 18 factual errors found in architecture doc; corrections landed in same commit. New OBS items: OBS-4 (Log Drain not firing), OBS-5 (LLM spans not captured), OBS-6 (PII redaction code only handles phone+OTP). New CLN items: CLN-6 (maxDuration unset), CLN-7 (deprecation warning). New MD item: MD-1 (closed-dates upload pending). Resolved: LLM-2. **Initial audit surfaced OBS-7 as an active blocker but Chris correctly noted the deploy path is GitHub push → Vercel auto-deploy; re-verification via Vercel MCP and Sentry release tagging proved the AI_LoadAPIKeyError was confined to releases before `59561f6` (deployed 2026-05-18 15:21 UTC) — see Historical resolved items below.**
+
 ---
 
 ## Catalog data
@@ -183,12 +185,87 @@ the work lands.
   natively; the Deno side does NOT have `@sentry/deno` imported.
 - **Why deferred** — adding the Sentry Deno SDK requires init
   (DSN env var, integration setup), and the existing log-drain
-  path delivers the same events. Pure consistency / explicitness
-  win.
-- **When to revisit** — if log-drain coverage drops, OR a future
-  migration adopts a structured-tracing approach that needs
-  explicit Sentry spans in Deno.
-- **Source** — R6 Stream E NICE-4.
+  path was expected to deliver the same events. Pure consistency /
+  explicitness win. **However:** see OBS-4 — the log-drain path
+  isn't actually firing, so the Deno-side observability gap is
+  bigger than originally assumed.
+- **When to revisit** — soon, once OBS-4 is investigated. If the
+  Log Drain can't be fixed easily, fall back to wiring `@sentry/deno`
+  directly.
+- **Source** — R6 Stream E NICE-4; updated 2026-05-18 multi-agent audit.
+
+### OBS-4 · Supabase Log Drain → Sentry not firing (NEW 2026-05-18)
+
+- **What** — Sentry project `jeffs-app-v2-supabase`
+  (DSN `f291fea0…`) exists as the intended drain target, but has
+  **zero events** in the last 14 days (verified via Sentry MCP —
+  `errors` dataset returns "No results found"; `logs` dataset
+  returns "No results found"; no events anywhere in the org tagged
+  `source:supabase`). The architecture doc claims Log Drain routes
+  Postgres / Auth / Realtime / Edge Function logs to Sentry but
+  this is not actually happening in 2026-05.
+- **Impact** — RAISE EXCEPTION in `_shared/tools/*.ts`, migration
+  errors, pg_cron failures (the `BEGIN…EXCEPTION` wraps log to
+  `scheduler_error_log` but that doesn't reach Sentry), Edge
+  Function uncaughts — all of these are invisible at the Sentry
+  layer. Triage relies on querying `scheduler_error_log` table
+  directly + Supabase dashboard logs.
+- **Why deferred** — until 2026-05-18 audit, the architecture doc
+  asserted Log Drain was working. Need to verify Supabase dashboard
+  setup (Project Settings → Log Drains → Sentry endpoint) and
+  whether the drain webhook URL is correct + the project DSN
+  matches.
+- **When to revisit** — before any rollout beyond Jeff's test
+  environment. Without Log Drain firing, edge-function silent
+  failures will accumulate undetected.
+- **Source** — 2026-05-18 Sentry MCP audit.
+
+### OBS-5 · LLM call spans not captured in Sentry (NEW 2026-05-18)
+
+- **What** — Sentry has zero spans matching `span.op:gen_ai.*` or
+  spans with descriptions referencing `claude-haiku-4-5` / `haiku` /
+  `claude` in the last 7d. Server Action transactions ARE captured
+  (`serverAction/runDiagnosticsV2` etc.), but the inner AI SDK calls
+  don't get spans. When the LLM succeeds, there's no span data
+  telling you how long it took, how many tokens it consumed, or
+  which model was used.
+- **Why deferred** — `instrument-action.ts` only captures Server
+  Action boundaries via `Sentry.withServerActionInstrumentation`;
+  it doesn't add nested spans around the AI SDK calls. AI SDK 5's
+  auto-instrumentation hooks for OpenTelemetry `gen_ai.*` semantic
+  conventions aren't enabled. Lower priority than OBS-4 since
+  failure-path capture works (errors land in Sentry).
+- **Impact** — LLM-1 hallucination tracking, latency trending, and
+  per-model cost analysis are blind. Can't answer "are diagnostic
+  calls getting slower" or "which model fails most often."
+- **When to revisit** — when LLM-1 prompt-tuning iteration starts
+  (need latency + token data to verify improvements) OR when AI
+  cost auditing becomes a question.
+- **Source** — 2026-05-18 Sentry MCP audit.
+
+### OBS-6 · `beforeSend` PII redaction only handles phone + OTP, not email/name (NEW 2026-05-18)
+
+- **What** — `scheduler-app/sentry.server.config.ts` `beforeSend`
+  scrubs `+1NNNNNNNNNN` phone numbers and 6-digit OTP codes via
+  regex. The doc comment block at L46-48 mentions
+  `first_name → drop, last_name → drop, email → drop` but **no
+  code performs those replacements**. Architecture doc §12
+  previously claimed email/name redaction was implemented; it
+  is not.
+- **Why no current leak** — verified via Sentry MCP that
+  `user.email = null` on all 56 events in the last 14d. No code
+  path populates `Sentry.setUser({email, name})`, so the
+  PII fields never enter the Sentry payload in the first place.
+  The redaction is a safety net that doesn't exist; today's safety
+  comes from not having anything to redact.
+- **Why deferred** — currently zero exposure; adding the
+  defensive scrub is cheap (~10 lines of regex) but not urgent.
+- **When to revisit** — if any code in `scheduler-app/` adds
+  `Sentry.setUser({email,name})` OR if an event's `extra` /
+  `contexts` payload starts including customer email/name fields.
+  Add now if doing a comprehensive observability sweep.
+- **Source** — 2026-05-18 Sentry MCP audit + Sentry config file
+  inspection.
 
 ---
 
@@ -292,19 +369,30 @@ guard already shipped, but pre-confirm window still exists)
   edge fn would be the natural place to add a probe.
 - **Source** — R6 pattern-extension 2026-05-16 commit `c5ba41e`.
 
-### CLN-2 · `orchestrator-direct` cloud-side function prune
+### CLN-2 · `orchestrator-direct` cloud-side function prune — RESOLVED 2026-05-19
 
-- **What** — `supabase/functions/orchestrator-direct/` was
-  deleted in Phase 16; the `config.toml` block was removed in
-  R6 batch 1 (`197e3c8`). The deployed function on
-  `*.functions.supabase.co` may still serve traffic if Tekmetric
-  webhooks or AI SDK tools ever hit it.
-- **Why deferred** — requires `supabase functions delete
-  orchestrator-direct` from the CLI; Chris does cloud-side
-  deletes manually per `deployment.md`.
-- **When to revisit** — next time Chris runs a deploy round.
-  Recovery from accidental delete is trivial (the function is
-  intentionally unreferenced).
+- **Resolution** — `supabase functions delete orchestrator-direct
+  --project-ref itzdasxobllfiuolmbxu` executed successfully on
+  2026-05-19. Output: "Deleted Function orchestrator-direct from
+  project itzdasxobllfiuolmbxu." Verified no live caller via grep
+  across local source — all 20 file matches were comments / docs /
+  state JSON / type annotations / historical changelog entries.
+  The `ORCHESTRATOR_URL` Vercel env var is only used as a URL
+  template by 4 V2 clients (scheduler-step2-direct,
+  scheduler-otp-direct, scheduler-booking-direct,
+  fire-transcript-dispatch) which substitute the trailing path
+  segment with the correct function name — they never actually
+  hit `orchestrator-direct` itself.
+- **Historical context** — `supabase/functions/orchestrator-direct/`
+  was deleted from local source in Phase 16; the `config.toml`
+  block was removed in R6 batch 1 (`197e3c8`). The cloud function
+  remained orphaned (version 25, last updated 2026-05-16 01:03 ET)
+  until this delete. One Sentry event `OrchestratorError: Network
+  error calling orchestrator-direct` (issue
+  `JEFFS-APP-V2-TEST-FUNCTIONS-2`) was from pre-refactor code that
+  has since been replaced.
+- **Source of resolution** — 2026-05-19 cleanup pass following
+  the 2026-05-18 multi-agent audit.
 
 ### CLN-3 · Hardcoded `shop_phone: "6102536565"` across multiple
 files
@@ -318,12 +406,6 @@ files
   Should read from `shops.phone` or `appointment_default_limits`
   config column.
 - **Source** — R4 Stream A NICE-A-2.
-
-### CLN-4 · `next-safe-action` — REMOVED
-
-Was deferred from R4 (auto-mode blocked the package.json edit).
-**Removed in R6 batch A (commit `e679001`).** Listed here for
-historical reference; can delete this entry next cleanup.
 
 ### CLN-5 · Architectural-exception doc for V2 row-as-truth pattern
 
@@ -342,6 +424,164 @@ historical reference; can delete this entry next cleanup.
   another module-level architectural exception is needed
   (parallel structure).
 - **Source** — R6 Stream B.
+
+### CLN-6 · `maxDuration: 300` not actually set on any route handler (NEW 2026-05-18)
+
+- **What** — `scheduler-app/next.config.ts:10` comment claims
+  `maxDuration is set on the route handler itself (export const
+  maxDuration = 300)`. Reality verified 2026-05-18 via grep:
+  zero `export const maxDuration` exports in `scheduler-app/`.
+  The only existing route handler
+  (`app/api/scheduler/mark-abandoned/route.ts`) only exports
+  `runtime = "nodejs"` + `dynamic = "force-dynamic"`. No
+  `vercel.json` exists.
+- **Impact** — Server Actions invoking long Anthropic completions
+  (the 3 wizard LLM helpers) inherit Vercel's default function
+  timeout (60s on Pro plan, possibly stricter on Hobby).
+  Long Anthropic completions over 60s would be cut off mid-flight.
+  Currently invisible because no real customer traffic
+  (`live: false` flag on Vercel project) — no runtime logs in 24h.
+- **Why deferred** — currently unobservable; turns into a real
+  bug when traffic starts. The architecture doc was already
+  asserting maxDuration was set, so the gap was masked.
+- **When to revisit** — before public rollout. Either (a) add
+  `export const maxDuration = 300` to the route handler + verify
+  Server Actions are covered, or (b) update the doc comment to
+  reflect actual default behavior.
+- **Source** — 2026-05-18 Vercel MCP audit.
+
+### CLN-7 · Sentry `reactComponentAnnotation` config is deprecated (NEW 2026-05-18)
+
+- **What** — Build logs include the warning
+  `[@sentry/nextjs] DEPRECATION WARNING: reactComponentAnnotation
+  is deprecated and will be removed in a future version. Use
+  webpack.reactComponentAnnotation instead.` Current config in
+  `scheduler-app/next.config.ts:78` is
+  `reactComponentAnnotation: { enabled: false }` at the top
+  level of the Sentry options.
+- **Why deferred** — cosmetic, no runtime impact. Will become
+  a build break when @sentry/nextjs ships the breaking change.
+- **When to revisit** — next `@sentry/nextjs` major version bump,
+  or any deliberate Sentry config cleanup.
+- **Fix** — move to `webpack: { reactComponentAnnotation: { enabled:
+  false } }` per Sentry's current docs.
+- **Source** — 2026-05-18 Vercel MCP audit (build log inspection).
+
+---
+
+## Content / MD docs
+
+### MD-1 · `docs/scheduler/closed-dates.md` lists 9 holidays NOT in DB (NEW 2026-05-18; format verified 2026-05-19)
+
+- **What** — `docs/scheduler/closed-dates.md` lists 9 explicit
+  holidays (memorial-day, independence-day, labor-day,
+  thanksgiving, day-after-thanksgiving, christmas-eve,
+  christmas-day, new-years-eve, new-years-day). Querying the DB
+  for `closed_dates` shop=7476 returns **only `source='default-sunday'`
+  rows** (105 of them; 0 explicit holidays). The MD was never
+  uploaded via `upload_closed_dates_md` after the 2026-05-18
+  regeneration pass.
+- **Format check (2026-05-19)** — the MD is **the current format**,
+  not an older version. Verified by reading the
+  `uploadClosedDatesMd` parser in
+  `supabase/functions/_shared/tools/scheduler-admin.ts:1330`:
+  `CLOSED_COLUMNS = ["closed_date", "reason"]` — the MD has
+  exactly those two columns. The MD is ready to upload as-is.
+- **Architecture doc gap (now corrected)** —
+  `scheduler_system_architecture.md` 2026-05-18 (latest+4) section
+  claimed "closed-dates.md | Matches DB future-set (Sundays
+  auto-managed by cron; 9 holidays listed)" — that was misleading:
+  the holidays are in the MD but not in DB.
+- **Why deferred** — Chris needs to decide: upload via
+  `upload_closed_dates_md` to seed the 9 holidays into the DB,
+  OR strip them from the MD if the holidays should be left to
+  Tekmetric's own calendar. Either side fixes the drift.
+- **Customer impact** — currently zero (no real customer traffic,
+  no domain mapped). When traffic starts, customers attempting to
+  book on a "documented" holiday would succeed and the booking
+  would hit Tekmetric. If Tekmetric is closed that day, the staff
+  cleans up manually.
+- **When to revisit** — before public rollout. Quick decision +
+  fast fix.
+- **Source** — 2026-05-18 docs/scheduler audit (sub-agent); format
+  check 2026-05-19.
+
+---
+
+## LLM quality
+
+### LLM-1 · `diagnoseConcern` hallucination on subcategory slugs / question IDs
+
+- **What** — 6 of 50 concerns in the 2026-05-18 eval failed with
+  `"No object generated: response did not match schema"`. The LLM
+  returned subcategory slugs or question IDs that don't exist in the
+  catalog, causing Zod schema validation to reject the response.
+  Failing concerns: brake grinding after recent replacement, steering
+  wheel vibration over 60 mph, car shaking on right side, A/C blows
+  warm (two variants), pulls to one side.
+- **Why deferred** — the fail-safe path (forward-to-advisor) is
+  triggered for these cases, so customers aren't stuck; they're just
+  routed to advisor contact instead of getting diagnostic questions.
+  Prompt-tuning is a separate quality pass, not a launch blocker.
+- **When to revisit** — before any public rollout beyond Jeff's test
+  environment. Target: < 5% schema-fail rate (currently 12%).
+  Approach: tighten the prompt to enumerate only slug values actually
+  present in the injected catalog block; add a "if unsure, return
+  matched_category_key=null" fallback instruction.
+- **Source** — `docs/scheduler/diagnose-eval-2026-05-18T12-10-40-771Z.md`
+  (50-concern eval run).
+
+### LLM-2 · `other` subcategory count drift vs spec — RESOLVED 2026-05-18
+
+- **Resolution** — 2026-05-18 multi-agent audit verified the DB has
+  exactly **6 active `other` subcategories** for shop=7476, matching
+  `chat-design.md §7.1` spec. The CAT-2 canonical rebuild migration
+  (`20260518163925_scheduler_concern_catalog_canonical_rebuild.sql`)
+  seeded the correct set. The earlier "10 subcategories" finding
+  was stale — pre-CAT-2.
+- The 6 subcategories: `after_a_recent_accident_or_impact`,
+  `after_recent_service_or_repair_work`,
+  `car_has_been_sitting_unused_for_a_long_time`,
+  `general_check_up_or_pre_trip_inspection`,
+  `multiple_symptoms_not_sure_what_category`,
+  `safety_concern_dont_feel_safe_driving_it`.
+- **Source of resolution** — 2026-05-18 Supabase MCP audit
+  (sub-agent direct query: `SELECT slug FROM concern_subcategories
+  WHERE category='other' AND active=true AND shop_id=7476;`
+  returned 6 rows).
+
+### OBS-7 · `AI_LoadAPIKeyError` in `runDiagnosticsV2` — RESOLVED 2026-05-18 (transient)
+
+- **What** — Sentry issue
+  [`JEFFS-APP-V2-TEST-FUNCTIONS-B`](https://jeffs-automotive.sentry.io/issues/?query=JEFFS-APP-V2-TEST-FUNCTIONS-B):
+  6 events between 2026-05-16T16:55Z and 2026-05-18T02:29:54Z, all
+  tagged with releases `98cbac0` / `c7a3614` / `74f1c76` /
+  `ef4efce`. Culprit `serverAction/runDiagnosticsV2`. Error
+  `AI_LoadAPIKeyError: Anthropic API key is missing.`
+- **Resolution** — Vercel auto-deploys on every push to `main`. The
+  `ANTHROPIC_API_KEY` env var was added to Vercel 2026-05-17 ~16:00 UTC,
+  and every subsequent deployment (releases `59561f6` at 2026-05-18
+  15:21 UTC and 8 deploys onward through current HEAD `d4d9db7` at
+  2026-05-19 01:08 UTC) picked it up automatically. Zero
+  AI_LoadAPIKeyError events have fired since (verified via Sentry
+  MCP — last 24h events come from releases `59561f6` / `dfaac2e` /
+  `2618f84` / `f557db0` and none are AI_LoadAPIKeyError).
+- **Initial audit misread (kept for transparency)** — the 2026-05-18
+  audit pass initially classified this as an ACTIVE pre-launch
+  blocker, assuming the doc's stated deploy path (`vercel deploy
+  --prod` CLI) was canonical and that a manual redeploy was needed.
+  Chris pointed out the actual deploy path is `git push origin main`
+  → Vercel auto-deploy. Re-verification via Vercel MCP showed the
+  current `main` HEAD `d4d9db7` IS the active production deploy and
+  has `ANTHROPIC_API_KEY` available at runtime. **No intervention
+  required.** Architecture doc §11 was corrected in the same pass
+  to document push-to-main as the canonical deploy trigger.
+- **Lesson learned** — when assessing "is this issue still active",
+  cross-check Sentry events' `release` tag against the current
+  Vercel deploy SHA. Events tagged with an older release SHA are
+  from older deployments that may already be replaced.
+- **Source** — 2026-05-18 multi-agent audit + Chris's correction +
+  Sentry MCP re-verification.
 
 ---
 
@@ -415,11 +655,11 @@ buttons missing `role="radiogroup"` semantics
 - **When to revisit** — next keytag-domain audit OR before V2.1.
 - **Source** — R6 Stream E "Open gaps".
 
-### TEST-2 · Component tests for the 25 V2 actions
+### TEST-2 · Component tests for the 26 V2 actions
 
-- **What** — only 1 of 26 V2 actions has a unit test
-  (`submit-start-over.test.ts`). Phase 17 ("Test suite
-  migration") is the canonical owner per
+- **What** — only 1 of 27 V2 actions has a unit test
+  (`submit-start-over.test.ts`). The remaining 26 are uncovered.
+  Phase 17 ("Test suite migration") is the canonical owner per
   `scheduler-refactor-state.json`.
 - **Why deferred** — Phase 17 is its own work-stream; we don't
   want to fragment test writing across rounds.

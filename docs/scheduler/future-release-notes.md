@@ -83,11 +83,27 @@ Per the appointment-post.md empirical findings (2026-05-16), `confirmationStatus
 - **Workaround:** color is the visual channel (red=waiter, navy=dropoff, orange=tow). `appointments-sync` derives our local `appointment_type` from color for capacity tracking.
 - **Long-term fix:** file a Tekmetric support ticket asking them to honor `appointmentOption` on POST/PATCH. If they expose the field properly, our POST builder can send it and we can drop the color-derivation hack in `appointments-sync`.
 
-### PATCH `description` for post-booking customer notes (Phase 13)
+### PATCH `description` for post-booking customer notes — **SHIPPED (Phase 13)**
 
-- **Status:** confirmed working in 2026-05-16 testing.
-- **Phase 13 work:** when customer enters a note on the post-confirmation card, PATCH the appointment's description to append the note.
-- **Implementation note:** GET the existing description first, then PATCH with `existing + "\n\nCustomer note: " + new`. Avoid overwriting.
+- **Status:** ~~DEFERRED~~ → **COMPLETE as of 2026-05-16.**
+  `appendAppointmentDescription` op in `scheduler-booking-direct` GETs the
+  existing description, appends `"\n\nCustomer note: <text>"`, PATCHes Tekmetric,
+  and mirrors to the local `appointments` shadow. `submit-customer-notes.ts`
+  calls this on approve/raw-submit. No further work needed here.
+- **Reference:** Phase 13 completion note in `scheduler-refactor-state.json`.
+
+## Pre-launch quality gates (must be resolved before public rollout)
+
+### Diagnostic LLM prompt-tuning (LLM-1)
+
+- **Issue:** 6 of 50 concerns in the 2026-05-18 eval return `"No object generated: response did not match schema"` — the LLM hallucinated subcategory slugs or question IDs not in the catalog. Current fail rate: 12%. These route to forward-to-advisor (safe fallback), but the diagnostic path is bypassed.
+- **Target:** < 5% schema-fail rate.
+- **Approach:** narrow the prompt to enumerate only slug/ID values injected in the catalog block; add an explicit "if unsure, return `matched_category_key=null`" escape hatch so the model fails clean instead of hallucinating.
+- **Failing cases:** brake grinding (post-replacement), steering vibration >60 mph, car shaking right side, A/C blows warm (×2), pulls to one side.
+- **File:** `scheduler-app/src/lib/scheduler/wizard/llm/diagnose-concern.ts` (`buildSystemPrompt` + `buildUserPrompt`).
+- **Tracker:** DEFERRED-AUDIT-ITEMS.md LLM-1.
+
+---
 
 ## Forever-deferred (not on roadmap, just noted)
 
