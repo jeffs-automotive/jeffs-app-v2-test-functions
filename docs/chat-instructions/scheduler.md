@@ -1,7 +1,33 @@
 # Scheduler domain — chat agent rules
 
 Consult this file whenever the user mentions any of:
-**scheduler, appointment, booking, /book, testing service, routine service, concern, diagnostic, "describe concern", brake inspection, check battery, warning lights, check suspension, A/C check, concern questions, sub-category, pricing, price change, "set price", closed dates, appointment limits, availability, orphan customer, sync appointments** in a shop context.
+**scheduler, appointment, booking, /book, testing service, routine service, concern, diagnostic, "describe concern", brake inspection, check battery, warning lights, check suspension, A/C check, concern questions, sub-category, pricing, price change, "set price", closed dates, appointment limits, availability, orphan customer, sync appointments, revert upload, undo upload** in a shop context.
+
+---
+
+## Per-MD edit guides (open one of these when the user asks to change content for that specific table)
+
+The detailed format spec + dry-run-then-confirm flow + examples for each MD type live in dedicated files:
+
+- [`scheduler/edit-testing-services.md`](./scheduler/edit-testing-services.md) — 15 diagnostic services. Option B per-service-block MD. New fields: `description`, `example_keywords`. Two-step dry-run-then-confirm flow.
+- [`scheduler/edit-routine-services.md`](./scheduler/edit-routine-services.md) — 10 picker chips. Same Option B format. New columns: `description` (added 2026-05-19), `starting_price_cents`, `price_waived_note`. Two-step flow.
+- [`scheduler/edit-concerns.md`](./scheduler/edit-concerns.md) — `{cat}-concerns.md` checklists + `{cat}-guideline.md` per-category prose. Hierarchical sub-cat + question format with `[multi]` chips. Two-step flow.
+- [`scheduler/edit-closed-dates.md`](./scheduler/edit-closed-dates.md) — holidays + one-off closures. Sundays auto-managed by cron — don't list them here.
+- [`scheduler/edit-appointment-default-limits.md`](./scheduler/edit-appointment-default-limits.md) — per-day-of-week capacity pattern. Note the Sunday-is-closed cascading cron behavior.
+- [`scheduler/revert-upload.md`](./scheduler/revert-upload.md) — undo a recent successful bulk upload via `revert_md_upload(upload_id)`. 30-day snapshot retention. Currently supports testing_services + routine_services.
+
+**Two-step flow (mandatory for all bulk uploads since 2026-05-19):**
+1. Call upload tool with `dry_run: true` (DEFAULT) → tool returns diff_summary + validation_errors + validation_warnings + confirm_token.
+2. SHOW the diff to the advisor. Get explicit "yes".
+3. Re-call with `dry_run: false` + `expected_confirm_token: <token from step 1>` to actually apply.
+4. On apply success, the response includes `audit_log_id` — save it (needed for revert).
+
+**Validation rules** (same on bulk-upload AND single-row `patch_*_service_fields` paths since 2026-05-19):
+- `service_key` matches `^[a-z0-9_]+$`
+- `concern_categories` ⊆ 14 canonical slugs (noise, vibration, pulling, smell, smoke, leak, warning_light, performance, electrical, hvac, brakes, steering, tires, other)
+- `starting_price_cents` non-negative integer
+- `description` 10-500 chars (when present)
+- `abbreviation` ≤30 chars
 
 ---
 

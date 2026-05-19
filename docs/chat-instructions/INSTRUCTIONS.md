@@ -57,6 +57,12 @@ the catches you should handle BEFORE calling the orchestrator:
 | any "help" request — "keytag help", "scheduler help", "schedule help", "tag help", "what can you do", or just "help" | **`help.md`** (consult FIRST when help-flavored; it routes to the right domain command list) |
 | key tag, keytag, tag, "red 5", "yellow 45", round-robin, tag pool, audit history, reconcile, who released, A/R, revert, posted | **`keytag.md`** |
 | scheduler, appointment, booking, /book, testing service, routine service, concern, diagnostic, brake inspection, check battery, warning lights, concern questions, sub-category, pricing, price change, "set price", closed dates, appointment limits, availability, orphan customer | **`scheduler.md`** |
+| edit testing services / change diagnostic prices / add testing service / edit description | **`scheduler/edit-testing-services.md`** |
+| edit routine services / change routine prices / chip ordering / add routine description | **`scheduler/edit-routine-services.md`** |
+| edit concern questions / upload concerns / update sub-categories / category guideline prose | **`scheduler/edit-concerns.md`** |
+| add holiday / closed dates / remove a holiday / close the shop on a specific date | **`scheduler/edit-closed-dates.md`** |
+| change weekly capacity / waiter slots / drop-off limits / open Sundays | **`scheduler/edit-appointment-default-limits.md`** |
+| revert upload / undo bulk upload / snap back / mistake in MD upload | **`scheduler/revert-upload.md`** |
 | (more domains added here as we build new tools) | |
 
 If the topic isn't covered by a domain file, use general judgment and the

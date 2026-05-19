@@ -15,6 +15,7 @@
 // deactivated.
 
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
+import { validatePatchFields } from "../scheduler-field-validators.ts";
 
 export interface TestingServiceRow {
   service_key: string;
@@ -263,7 +264,26 @@ export async function patchTestingServiceFields(
   | { action: "updated"; service_id: string; fields_changed: string[] }
   | { action: "not_found"; service_key: string }
   | { action: "no_changes"; service_id: string }
+  | { action: "validation_error"; service_key: string; message: string }
 > {
+  // 2026-05-19: same validators as the bulk MD-upload path. See
+  // _shared/scheduler-field-validators.ts. Reject BEFORE the lookup so we
+  // don't spend a query on input that would fail anyway.
+  const validation = validatePatchFields({
+    service_key: args.service_key,
+    abbreviation: args.abbreviation,
+    starting_price_cents: args.starting_price_cents,
+    description: args.description,
+    concern_categories: args.concern_categories,
+  });
+  if (!validation.ok) {
+    return {
+      action: "validation_error",
+      service_key: args.service_key,
+      message: validation.message ?? "validation failed",
+    };
+  }
+
   const { data: existing, error: lookupErr } = await sb
     .from("testing_services")
     .select(
@@ -429,6 +449,7 @@ export async function patchRoutineServiceFields(
     starting_price_cents?: number | null;
     price_waived_note?: string | null;
     active?: boolean;
+    description?: string | null;
     updated_by_oauth_client_id: string;
     updated_by_name: string;
   },
@@ -436,11 +457,29 @@ export async function patchRoutineServiceFields(
   | { action: "updated"; service_id: string; fields_changed: string[] }
   | { action: "not_found"; service_key: string }
   | { action: "no_changes"; service_id: string }
+  | { action: "validation_error"; service_key: string; message: string }
 > {
+  // 2026-05-19: same validators as the bulk MD-upload path. See
+  // _shared/scheduler-field-validators.ts.
+  const validation = validatePatchFields({
+    service_key: args.service_key,
+    abbreviation: args.abbreviation,
+    starting_price_cents: args.starting_price_cents,
+    description: args.description,
+    concern_categories: args.concern_categories,
+  });
+  if (!validation.ok) {
+    return {
+      action: "validation_error",
+      service_key: args.service_key,
+      message: validation.message ?? "validation failed",
+    };
+  }
+
   const { data: existing, error: lookupErr } = await sb
     .from("routine_services")
     .select(
-      "id, display_name, abbreviation, display_order, wait_eligible, requires_explanation, concern_categories, starting_price_cents, price_waived_note, active",
+      "id, display_name, abbreviation, display_order, wait_eligible, requires_explanation, concern_categories, starting_price_cents, price_waived_note, description, active",
     )
     .eq("shop_id", shopId)
     .eq("service_key", args.service_key)
@@ -471,6 +510,7 @@ export async function patchRoutineServiceFields(
   setIfChanged("concern_categories", args.concern_categories);
   setIfChanged("starting_price_cents", args.starting_price_cents);
   setIfChanged("price_waived_note", args.price_waived_note);
+  setIfChanged("description", args.description);
   setIfChanged("active", args.active);
 
   if (changed.length === 0) {

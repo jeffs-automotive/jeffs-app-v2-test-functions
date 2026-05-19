@@ -28,14 +28,57 @@ import {
   coerceDate,
   coerceInt,
   coerceOptions,
+  formatPriceCents,
   mdTableFromRows,
+  parseBool as parseBoolField,
   parseConcernCategoryGuidelineMd,
   parseConcernCategoryMd,
+  parseCsvList,
+  parseIntField,
+  parseMdSections,
   parseMdTable,
+  parsePriceCents,
+  parseStringField,
+  serializeMdSections,
   sha256Hex,
   slugifyForConcernSubcategory,
   type ParsedConcernSubcategory,
+  type ParsedMdSection,
+  type SectionSpec,
 } from "../scheduler-admin-md.ts";
+
+// ─── Shared catalog helpers (used by both service-catalog uploaders) ───
+
+/** The 14 canonical concern_category slugs. */
+const CONCERN_CATEGORY_SLUGS = new Set([
+  "noise", "vibration", "pulling", "smell", "smoke", "leak", "warning_light",
+  "performance", "electrical", "hvac", "brakes", "steering", "tires", "other",
+]);
+
+const MAX_DESCRIPTION_LEN = 500;
+const MIN_DESCRIPTION_LEN = 10;
+const MAX_ABBREVIATION_LEN = 30;
+const PRICE_CHANGE_WARN_PCT = 0.5; // warn if a price moves >50% in either direction
+
+export interface ValidationFinding {
+  /** Either a service_key (Option B) or a row_index (Option A legacy). */
+  key: string;
+  field: string;
+  level: "error" | "warning";
+  message: string;
+}
+
+/**
+ * Compute a confirm_token from md_content + computed diff. The dry_run call
+ * returns this; the apply call must pass it back unchanged. Prevents
+ * "the advisor approved version X but we apply version Y" race conditions.
+ */
+async function computeConfirmToken(
+  mdHash: string,
+  diffSummary: Record<string, unknown>,
+): Promise<string> {
+  return await sha256Hex(JSON.stringify({ md: mdHash, diff: diffSummary }));
+}
 
 // ─── Shared types ───────────────────────────────────────────────────────────
 
@@ -55,7 +98,15 @@ export interface UploadResult {
   duplicate_upload?: boolean;
   parse_errors?: Array<{ line_number: number; message: string }>;
   validation_errors?: Array<{ row_index: number; field: string; message: string }>;
+  /** Soft warnings (e.g. price moved >50%, service being removed). Surface to advisor for review even on dry_run apply. */
+  validation_warnings?: ValidationFinding[];
   diff_summary?: Record<string, unknown>;
+  /** When dry_run=true, the call did NOT write to DB. Advisor must call again with dry_run=false + confirm_token to apply. */
+  dry_run?: boolean;
+  /** Returned from dry_run; must be passed back unchanged on the apply call. */
+  confirm_token?: string;
+  /** Set on a successful apply — the audit-log row id, usable with revert_md_upload. */
+  audit_log_id?: number;
   error_message?: string;
 }
 
@@ -66,27 +117,44 @@ async function logAdminAudit(
   args: {
     audit: AdminAudit;
     table_name: string;
-    operation: "upload_md" | "manual_change" | "export_md";
+    operation: "upload_md" | "manual_change" | "export_md" | "revert_upload";
     rows_added?: number;
     rows_modified?: number;
     rows_deactivated?: number;
     md_content_hash?: string;
     diff_summary?: Record<string, unknown>;
+    pre_state_snapshot?: Record<string, unknown> | null;
     error_message?: string;
   },
-): Promise<void> {
-  await sb.from("scheduler_admin_audit_log").insert({
-    oauth_client_id: args.audit.oauth_client_id,
-    user_label: args.audit.display_name,
-    table_name: args.table_name,
-    operation: args.operation,
-    rows_added: args.rows_added ?? 0,
-    rows_modified: args.rows_modified ?? 0,
-    rows_deactivated: args.rows_deactivated ?? 0,
-    md_content_hash: args.md_content_hash ?? null,
-    diff_summary: args.diff_summary ?? null,
-    error_message: args.error_message ?? null,
-  });
+): Promise<number | null> {
+  const { data, error } = await sb
+    .from("scheduler_admin_audit_log")
+    .insert({
+      oauth_client_id: args.audit.oauth_client_id,
+      user_label: args.audit.display_name,
+      table_name: args.table_name,
+      operation: args.operation,
+      rows_added: args.rows_added ?? 0,
+      rows_modified: args.rows_modified ?? 0,
+      rows_deactivated: args.rows_deactivated ?? 0,
+      md_content_hash: args.md_content_hash ?? null,
+      diff_summary: args.diff_summary ?? null,
+      pre_state_snapshot: args.pre_state_snapshot ?? null,
+      error_message: args.error_message ?? null,
+    })
+    .select("id")
+    .single();
+  if (error) {
+    console.warn(JSON.stringify({
+      level: "warning",
+      msg: "scheduler_admin_audit_log_insert_failed",
+      detail: error.message,
+      table_name: args.table_name,
+      operation: args.operation,
+    }));
+    return null;
+  }
+  return (data?.id as number) ?? null;
 }
 
 // ─── Duplicate-upload short-circuit ─────────────────────────────────────────

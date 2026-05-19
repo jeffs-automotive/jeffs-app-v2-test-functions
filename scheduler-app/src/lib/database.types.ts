@@ -1,4 +1,5 @@
-﻿export type Json =
+npm warn exec The following package was not found and will be installed: supabase@2.100.1
+export type Json =
   | string
   | number
   | boolean
@@ -525,6 +526,7 @@ export type Database = {
           created_at: string
           display_order: number
           id: number
+          multi_select: boolean
           options: Json
           question_text: string
           shop_id: number
@@ -539,6 +541,7 @@ export type Database = {
           created_at?: string
           display_order?: number
           id?: number
+          multi_select?: boolean
           options: Json
           question_text: string
           shop_id: number
@@ -553,6 +556,7 @@ export type Database = {
           created_at?: string
           display_order?: number
           id?: number
+          multi_select?: boolean
           options?: Json
           question_text?: string
           shop_id?: number
@@ -1436,6 +1440,7 @@ export type Database = {
           active: boolean
           concern_categories: string[] | null
           created_at: string
+          description: string | null
           display_name: string
           display_order: number
           id: string
@@ -1454,6 +1459,7 @@ export type Database = {
           active?: boolean
           concern_categories?: string[] | null
           created_at?: string
+          description?: string | null
           display_name: string
           display_order: number
           id?: string
@@ -1472,6 +1478,7 @@ export type Database = {
           active?: boolean
           concern_categories?: string[] | null
           created_at?: string
+          description?: string | null
           display_name?: string
           display_order?: number
           id?: string
@@ -1496,9 +1503,11 @@ export type Database = {
           oauth_client_id: string | null
           occurred_at: string
           operation: string
+          pre_state_snapshot: Json | null
           rows_added: number
           rows_deactivated: number
           rows_modified: number
+          snapshot_pruned_at: string | null
           table_name: string
           user_label: string | null
         }
@@ -1510,9 +1519,11 @@ export type Database = {
           oauth_client_id?: string | null
           occurred_at?: string
           operation: string
+          pre_state_snapshot?: Json | null
           rows_added?: number
           rows_deactivated?: number
           rows_modified?: number
+          snapshot_pruned_at?: string | null
           table_name: string
           user_label?: string | null
         }
@@ -1524,9 +1535,11 @@ export type Database = {
           oauth_client_id?: string | null
           occurred_at?: string
           operation?: string
+          pre_state_snapshot?: Json | null
           rows_added?: number
           rows_deactivated?: number
           rows_modified?: number
+          snapshot_pruned_at?: string | null
           table_name?: string
           user_label?: string | null
         }
@@ -2270,3 +2283,5 @@ export const Constants = {
     Enums: {},
   },
 } as const
+A new version of Supabase CLI is available: v2.100.1 (currently installed v)
+We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli

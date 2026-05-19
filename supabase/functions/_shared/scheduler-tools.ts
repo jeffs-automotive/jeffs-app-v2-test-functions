@@ -71,21 +71,27 @@ import {
   patchRoutineServiceFields,
 } from "./tools/scheduler-pricing.ts";
 import {
-  uploadRoutineServicesMd,
-  uploadTestingServicesMd,
   uploadConcernQuestionsMd,
   uploadConcernCategoryMd,
   uploadConcernCategoryGuidelineMd,
   uploadAppointmentDefaultLimitsMd,
   uploadClosedDatesMd,
-  exportRoutineServicesMd,
-  exportTestingServicesMd,
   exportConcernQuestionsMd,
   exportAppointmentDefaultLimitsMd,
   exportClosedDatesMd,
   runAppointmentsSync,
   findOrphanCustomers,
 } from "./tools/scheduler-admin.ts";
+// 2026-05-19: testing_services + routine_services moved to Option B
+// per-service-block uploaders with dry_run + snapshot + revert. See
+// scheduler-admin-catalog.ts for the new implementations.
+import {
+  uploadRoutineServicesMdV2,
+  uploadTestingServicesMdV2,
+  exportRoutineServicesMdV2,
+  exportTestingServicesMdV2,
+  revertMdUpload,
+} from "./tools/scheduler-admin-catalog.ts";
 
 import type { ToolCallRecorder } from "./orchestrator-tools.ts";
 
@@ -890,41 +896,109 @@ export function getSchedulerTools(args: SchedulerToolsArgs) {
 
       upload_routine_services_md: tool({
         description:
-          "Bulk-update the routine_services catalog from a markdown table. " +
-          "Required columns: service_key, display_name, abbreviation, " +
-          "display_order, wait_eligible, requires_explanation, active. " +
-          "Diff-based: rows present in MD = upsert; rows in DB but missing " +
-          "from MD = soft-delete (set active=false). Idempotent on identical " +
-          "uploads (md_content_hash check). Logs to scheduler_admin_audit_log " +
-          "with structured diff_summary. Returns: { ok, rows_added, " +
-          "rows_modified, rows_deactivated, diff_summary, parse_errors?, " +
-          "validation_errors?, error_message? }.",
+          "Bulk-update the routine_services catalog from an Option B " +
+          "per-service-block MD (`## service_key` headings with Field: value " +
+          "lines underneath). Fields supported: Display name, Abbreviation, " +
+          "Display order, Wait eligible, Requires explanation, Concern " +
+          "categories (comma-separated; from the 14 canonical slugs), " +
+          "Starting price ($XX.XX/Free/(none)), Price waived note, " +
+          "Description (customer-facing 1-2 sentences; 10-500 chars), Active. " +
+          "TWO-STEP FLOW: (1) Call with dry_run=true (DEFAULT) to get diff + " +
+          "validation report + warnings + confirm_token. Show the report to " +
+          "the advisor. (2) On approval, call again with dry_run=false AND " +
+          "expected_confirm_token=<token from step 1> to apply. Validation " +
+          "errors block apply; warnings (>50% price moves, deactivations) are " +
+          "surfaced for approval but don't block. On apply, pre_state_snapshot " +
+          "is captured for revert_md_upload. Returns: { ok, dry_run, " +
+          "rows_added, rows_modified, rows_deactivated, diff_summary, " +
+          "validation_errors?, validation_warnings?, confirm_token, " +
+          "audit_log_id?, error_message? }.",
         inputSchema: z.object({
           md_content: z
             .string()
             .min(1)
-            .describe("Full markdown file content as a string."),
+            .describe("Full Option B per-service-block MD as a string."),
+          dry_run: z
+            .boolean()
+            .optional()
+            .default(true)
+            .describe(
+              "DEFAULT true. Set false to actually apply (also requires expected_confirm_token).",
+            ),
+          expected_confirm_token: z
+            .string()
+            .optional()
+            .describe(
+              "Required when dry_run=false. Pass the confirm_token returned by the prior dry_run call.",
+            ),
         }),
         execute: recorded(recorder, "upload_routine_services_md", (input) =>
-          uploadRoutineServicesMd(sb, shopId, { md_content: input.md_content, audit }),
+          uploadRoutineServicesMdV2(sb, shopId, {
+            md_content: input.md_content,
+            audit,
+            dry_run: input.dry_run,
+            expected_confirm_token: input.expected_confirm_token,
+          }),
         ),
       }),
 
       upload_testing_services_md: tool({
         description:
-          "Bulk-update the testing_services catalog from a markdown table. " +
-          "Required columns: service_key, display_name, abbreviation, " +
-          "starting_price_cents, notes, concern_categories (comma-separated), " +
-          "active. Diff-based with auto-soft-delete (same shape as " +
-          "upload_routine_services_md). starting_price_cents is integer cents " +
-          "(4995 = $49.95). concern_categories MUST be drawn from the 14 valid " +
-          "categories. Returns: { ok, rows_added, rows_modified, " +
-          "rows_deactivated, diff_summary, … }.",
+          "Bulk-update the testing_services catalog from an Option B " +
+          "per-service-block MD. Fields supported: Display name, Abbreviation, " +
+          "Starting price ($XX.XX/Free), Notes (advisor-side), Description " +
+          "(customer-facing 1-2 sentences; 10-500 chars), Example keywords " +
+          "(comma-separated LLM routing hints), Concern categories " +
+          "(comma-separated from 14 canonical slugs), Active. " +
+          "Same TWO-STEP dry_run-then-apply flow as upload_routine_services_md. " +
+          "Validation blocks invalid slugs / out-of-range prices / bad concern " +
+          "categories / too-short or too-long descriptions. Warnings surface " +
+          ">50% price moves + deactivations + soft-deletes-by-omission for " +
+          "advisor review. pre_state_snapshot captured on apply for revert.",
         inputSchema: z.object({
           md_content: z.string().min(1),
+          dry_run: z.boolean().optional().default(true),
+          expected_confirm_token: z.string().optional(),
         }),
         execute: recorded(recorder, "upload_testing_services_md", (input) =>
-          uploadTestingServicesMd(sb, shopId, { md_content: input.md_content, audit }),
+          uploadTestingServicesMdV2(sb, shopId, {
+            md_content: input.md_content,
+            audit,
+            dry_run: input.dry_run,
+            expected_confirm_token: input.expected_confirm_token,
+          }),
+        ),
+      }),
+
+      revert_md_upload: tool({
+        description:
+          "Undo a previous bulk MD upload by audit_log_id. Reads the " +
+          "pre_state_snapshot JSONB captured at upload time and restores " +
+          "every affected row to its prior state (modified → reverted, " +
+          "added → deactivated). REJECTS revert-of-revert chains (can only " +
+          "revert operation=upload_md rows). REJECTS if snapshot was pruned " +
+          "(30-day retention). Use the same TWO-STEP flow as the uploaders: " +
+          "(1) dry_run=true (DEFAULT) returns the revert plan for advisor " +
+          "review, (2) dry_run=false applies. Supports testing_services and " +
+          "routine_services only. Returns: { ok, upload_id, table_name, " +
+          "original_md_content_hash, original_diff, revert_plan: { restore[], " +
+          "deactivate[], no_op_count }, dry_run, revert_audit_log_id?, " +
+          "error_message? }.",
+        inputSchema: z.object({
+          upload_id: z
+            .number()
+            .int()
+            .describe(
+              "The audit_log_id returned by the upload to revert. Find via list_admin_audits or the upload result.",
+            ),
+          dry_run: z.boolean().optional().default(true),
+        }),
+        execute: recorded(recorder, "revert_md_upload", (input) =>
+          revertMdUpload(sb, shopId, {
+            upload_id: input.upload_id,
+            audit,
+            dry_run: input.dry_run,
+          }),
         ),
       }),
 
@@ -1141,6 +1215,13 @@ export function getSchedulerTools(args: SchedulerToolsArgs) {
             .describe(
               "Short customer-facing caveat shown under the price (e.g. 'Fee waived if a repair or more testing is needed and approved'). Pass null to clear.",
             ),
+          description: z
+            .string()
+            .nullable()
+            .optional()
+            .describe(
+              "Customer-facing 1-2 sentence chip caption (10-500 chars). Added 2026-05-19. Pass null to clear.",
+            ),
           active: z.boolean().optional(),
         }),
         execute: recorded(recorder, "patch_routine_service_fields", (input) =>
@@ -1162,6 +1243,7 @@ export function getSchedulerTools(args: SchedulerToolsArgs) {
             ...(input.price_waived_note !== undefined && {
               price_waived_note: input.price_waived_note,
             }),
+            ...(input.description !== undefined && { description: input.description }),
             ...(input.active !== undefined && { active: input.active }),
             updated_by_oauth_client_id: audit.oauth_client_id,
             updated_by_name: audit.display_name,
@@ -1208,23 +1290,23 @@ export function getSchedulerTools(args: SchedulerToolsArgs) {
 
       export_routine_services_md: tool({
         description:
-          "Export the current routine_services catalog as a markdown table " +
-          "(round-trippable through upload_routine_services_md). Useful for " +
-          "advisors to download, edit locally, then upload back. Returns: " +
-          "{ md_content, row_count }.",
+          "Export the current routine_services catalog as Option B " +
+          "per-service-block markdown (round-trippable through " +
+          "upload_routine_services_md). Useful for advisors to download, " +
+          "edit locally, then upload back. Returns: { md_content, row_count }.",
         inputSchema: z.object({}),
         execute: recorded(recorder, "export_routine_services_md", () =>
-          exportRoutineServicesMd(sb, shopId),
+          exportRoutineServicesMdV2(sb, shopId),
         ),
       }),
 
       export_testing_services_md: tool({
         description:
-          "Export the current testing_services catalog as a markdown table. " +
+          "Export the current testing_services catalog as Option B per-service-block markdown. " +
           "Returns: { md_content, row_count }.",
         inputSchema: z.object({}),
         execute: recorded(recorder, "export_testing_services_md", () =>
-          exportTestingServicesMd(sb, shopId),
+          exportTestingServicesMdV2(sb, shopId),
         ),
       }),
 
