@@ -264,12 +264,13 @@ export async function getCurrentCard(
         display_name: string;
         starting_price_cents: number | null;
         price_waived_note: string | null;
+        description: string | null;
       }> = [];
       try {
         const { data: rows, error: rowsErr } = await supabase
           .from("routine_services")
           .select(
-            "service_key, display_name, display_order, starting_price_cents, price_waived_note",
+            "service_key, display_name, display_order, starting_price_cents, price_waived_note, description",
           )
           .eq("shop_id", 7476)
           .eq("active", true)
@@ -285,12 +286,14 @@ export async function getCurrentCard(
             display_name: string;
             starting_price_cents: number | null;
             price_waived_note: string | null;
+            description: string | null;
           }>
         ).map((r) => ({
           service_key: r.service_key,
           display_name: r.display_name,
           starting_price_cents: r.starting_price_cents,
           price_waived_note: r.price_waived_note,
+          description: r.description,
         }));
       } catch (e) {
         Sentry.captureException(e, {

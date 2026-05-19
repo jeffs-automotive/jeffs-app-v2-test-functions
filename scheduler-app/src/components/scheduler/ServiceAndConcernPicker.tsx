@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 
-import { Button, Card, Chip } from "@/components/ui";
+import { Button, Card } from "@/components/ui";
 
 /**
  * ServiceAndConcernPicker — Step 7.1 service + concern picker.
@@ -16,24 +16,32 @@ import { Button, Card, Chip } from "@/components/ui";
  * (14 testing services + 6 'other' subcategories) and recommends
  * a testing service OR forwards to an advisor.
  *
- * Per Chris's UX review:
+ * 2026-05-19 layout shift (Chris's directive):
+ *   - One service per line (was 2-column grid)
+ *   - Rectangular tiles with marketing-style 6px corner radius
+ *     (matches --radius-card; was pill-shaped chips)
+ *   - Description renders under the title at the full tile width
+ *     with normal padding before wrap (was no description at all)
+ *
+ * Per Chris's prior UX review (2026-05-17):
  *
  *   "The diagnostic services should not be shown. It is up to the
  *    diagnostic LLM to choose which diagnostic service to recommend.
  *    The customer may not know which one to choose…"
  *
- * Each routine chip surfaces:
- *   - Display name
- *   - Starting price ($XX.XX, "Free", or omitted for null)
- *   - Optional waived-fee caveat below the price line
+ * Each routine tile surfaces:
+ *   - Display name (left of header row)
+ *   - Starting price right-aligned in the header row
+ *     ($XX.XX, "Free", or omitted for null)
+ *   - Description (full-width, wraps naturally) — optional
+ *   - Waived-fee caveat (italic, below description) — optional
  *
- * The Other Issue chip is rendered below the grid, separated by a gold
- * rule per the spec mockup. No price (free-form entry; the LLM picks
- * whether a testing service applies).
+ * The Other Issue tile is rendered below the list, separated by a gold
+ * rule per the spec mockup. No price.
  *
  * Customer picks any subset across both sections and submits. The
- * submit action splits picks into: routine non-explanation chips →
- * row.selected_simple_services[]; routine-with-explanation chips +
+ * submit action splits picks into: routine non-explanation tiles →
+ * row.selected_simple_services[]; routine-with-explanation tiles +
  * Other Issue → row.explanation_required_items[] (the concern_explanation
  * queue).
  */
@@ -46,6 +54,9 @@ export interface RoutineServiceChip {
   starting_price_cents: number | null;
   /** Optional small caveat shown under the price (e.g. "Fee waived if…"). */
   price_waived_note: string | null;
+  /** Customer-facing 1-2 sentence description shown under the title.
+   *  null → no description rendered (tile collapses to title + price). */
+  description: string | null;
 }
 
 export interface ServiceAndConcernPickerProps {
@@ -58,6 +69,53 @@ function formatPrice(cents: number | null): string | null {
   if (cents === null) return null;
   if (cents === 0) return "Free";
   return `$${(cents / 100).toFixed(2)}`;
+}
+
+/**
+ * Rectangular tile button used by the picker. Slightly-rounded
+ * corners (6px / --radius-card) — the "marketing button" feel Chris
+ * specified. Full-width within its container. Selected state inverts
+ * to burgundy; deselected shows a neutral paper-200 fill with a thin
+ * rule border that strengthens on hover. Mirrors the keyboard +
+ * focus-ring behavior of the prior Chip primitive.
+ */
+function ServiceTile({
+  selected,
+  disabled,
+  onClick,
+  ariaDescribedBy,
+  children,
+}: {
+  selected: boolean;
+  disabled: boolean;
+  onClick: () => void;
+  ariaDescribedBy?: string;
+  children: ReactNode;
+}) {
+  const base =
+    "block w-full px-4 py-3 text-left " +
+    "rounded-[var(--radius-card)] " +
+    "transition-colors duration-150 ease-out " +
+    "focus-visible:outline-2 focus-visible:outline-offset-2 " +
+    "focus-visible:outline-brand-burgundy-500 " +
+    "disabled:opacity-50 disabled:cursor-not-allowed";
+  const state = selected
+    ? "bg-brand-burgundy-700 text-paper-100 hover:bg-brand-burgundy-800 " +
+      "border border-brand-burgundy-700"
+    : "bg-paper-200 text-ink hover:bg-paper-300 " +
+      "border border-rule hover:border-rule-strong";
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      aria-describedby={ariaDescribedBy}
+      disabled={disabled}
+      onClick={onClick}
+      className={`${base} ${state}`}
+    >
+      {children}
+    </button>
+  );
 }
 
 export function ServiceAndConcernPicker({
@@ -96,6 +154,9 @@ export function ServiceAndConcernPicker({
     }
   }
 
+  const otherIssueSelected = selected.has(OTHER_ISSUE_SERVICE_KEY);
+  const isLocked = disabled || pending;
+
   return (
     <Card aria-labelledby="service-concern-heading">
       <Card.Eyebrow>What can we help with?</Card.Eyebrow>
@@ -119,7 +180,7 @@ export function ServiceAndConcernPicker({
             <fieldset>
               <legend className="sr-only">Routine services</legend>
               <ul
-                className="grid gap-3 sm:grid-cols-2"
+                className="flex flex-col gap-3"
                 role="group"
                 aria-label="Routine services"
               >
@@ -128,32 +189,53 @@ export function ServiceAndConcernPicker({
                   const isSelected = selected.has(s.service_key);
                   return (
                     <li key={s.service_key}>
-                      <Chip
+                      <ServiceTile
                         selected={isSelected}
-                        disabled={disabled || pending}
+                        disabled={isLocked}
                         onClick={() => toggle(s.service_key)}
-                        // `min-h-20` (80px) is the height of the waived-note
-                        // variant (2-line caveat below the price). Forcing it
-                        // on every chip means single-line chips get blank
-                        // space below the price but match the tallest chip's
-                        // height — the grid reads as a uniform tile set
-                        // instead of jagged rows.
-                        className="flex h-full min-h-20 w-full flex-col items-start gap-1 py-3 text-left"
                       >
-                        <span className="flex w-full items-center justify-between gap-2">
-                          <span className="font-medium">{s.display_name}</span>
+                        <div className="flex w-full items-baseline justify-between gap-3">
+                          <span className="text-[15px] font-medium leading-tight">
+                            {s.display_name}
+                          </span>
                           {price && (
-                            <span className="shrink-0 text-[13px] font-semibold text-brand-burgundy-800">
+                            <span
+                              className={
+                                "shrink-0 text-[13px] font-semibold " +
+                                (isSelected
+                                  ? "text-paper-100"
+                                  : "text-brand-burgundy-800")
+                              }
+                            >
                               {price}
                             </span>
                           )}
-                        </span>
-                        {s.price_waived_note ? (
-                          <span className="block text-[12px] italic leading-snug text-ink-tertiary">
-                            {s.price_waived_note}
-                          </span>
+                        </div>
+                        {s.description ? (
+                          <p
+                            className={
+                              "mt-1 text-[13px] leading-snug " +
+                              (isSelected
+                                ? "text-paper-200"
+                                : "text-ink-secondary")
+                            }
+                          >
+                            {s.description}
+                          </p>
                         ) : null}
-                      </Chip>
+                        {s.price_waived_note ? (
+                          <p
+                            className={
+                              "mt-1 text-[12px] italic leading-snug " +
+                              (isSelected
+                                ? "text-paper-200"
+                                : "text-ink-tertiary")
+                            }
+                          >
+                            {s.price_waived_note}
+                          </p>
+                        ) : null}
+                      </ServiceTile>
                     </li>
                   );
                 })}
@@ -161,31 +243,37 @@ export function ServiceAndConcernPicker({
             </fieldset>
           )}
 
-          {/* Other Issue pseudo-chip — chat-design.md §7.1 lays this out
-              below the routine grid, separated by a gold rule, as the
+          {/* Other Issue pseudo-tile — chat-design.md §7.1 lays this out
+              below the routine list, separated by a gold rule, as the
               "I have a concern that doesn't fit the chips above" escape
               hatch. When picked, the concern_explanation card prompts
               for a free-text description and the diagnostic LLM
               classifies + (optionally) recommends a testing service. */}
           <div className="mt-5 border-t border-rule pt-4">
-            <Chip
-              selected={selected.has(OTHER_ISSUE_SERVICE_KEY)}
-              disabled={disabled || pending}
+            <ServiceTile
+              selected={otherIssueSelected}
+              disabled={isLocked}
               onClick={() => toggle(OTHER_ISSUE_SERVICE_KEY)}
-              className="flex h-full min-h-20 w-full flex-col items-start gap-1 py-3 text-left"
-              aria-describedby="other-issue-help"
+              ariaDescribedBy="other-issue-help"
             >
-              <span className="flex w-full items-center justify-between gap-2">
-                <span className="font-medium">💬 Other issue</span>
-              </span>
-              <span
+              <div className="flex w-full items-baseline justify-between gap-3">
+                <span className="text-[15px] font-medium leading-tight">
+                  💬 Other issue
+                </span>
+              </div>
+              <p
                 id="other-issue-help"
-                className="block text-[12px] italic leading-snug text-ink-tertiary"
+                className={
+                  "mt-1 text-[13px] leading-snug " +
+                  (otherIssueSelected
+                    ? "text-paper-200"
+                    : "text-ink-secondary")
+                }
               >
                 Describe what&apos;s going on and we&apos;ll figure out the
                 right next step.
-              </span>
-            </Chip>
+              </p>
+            </ServiceTile>
           </div>
 
           {error && (

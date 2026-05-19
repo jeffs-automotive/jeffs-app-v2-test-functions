@@ -21,12 +21,15 @@ const sampleRoutine = [
     display_name: "Oil Change",
     starting_price_cents: 5995,
     price_waived_note: null,
+    description: null,
   },
   {
     service_key: "tire_rotation",
     display_name: "Tire Rotation",
     starting_price_cents: 2995,
     price_waived_note: null,
+    description:
+      "Standard tire rotation — front to back, in 30 minutes or less.",
   },
   {
     service_key: "brake_inspection",
@@ -34,12 +37,14 @@ const sampleRoutine = [
     starting_price_cents: 3999,
     price_waived_note:
       "Fee waived if a repair or more testing is needed and approved",
+    description: null,
   },
   {
     service_key: "check_battery",
     display_name: "Check Battery",
     starting_price_cents: 0,
     price_waived_note: null,
+    description: null,
   },
 ];
 
@@ -158,6 +163,7 @@ describe("<ServiceAndConcernPicker />", () => {
             display_name: "Custom Service",
             starting_price_cents: null,
             price_waived_note: null,
+            description: null,
           },
         ]}
         onSubmit={vi.fn()}
@@ -166,6 +172,21 @@ describe("<ServiceAndConcernPicker />", () => {
     // Button accessible name should be just the display name — no price token.
     const btn = screen.getByRole("button", { name: "Custom Service" });
     expect(btn).toBeInTheDocument();
+  });
+
+  it("renders the description under the title when present", () => {
+    render(
+      <ServiceAndConcernPicker
+        routine_services={sampleRoutine}
+        onSubmit={vi.fn()}
+      />,
+    );
+    // Tire Rotation is the fixture row with a description.
+    expect(
+      screen.getByRole("button", {
+        name: /Tire Rotation.*\$29\.95.*Standard tire rotation/,
+      }),
+    ).toBeInTheDocument();
   });
 
   it("renders the Other Issue pseudo-chip below the routine grid", () => {

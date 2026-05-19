@@ -130,6 +130,10 @@ export interface ServiceConcernPickerPayload {
     /** Short customer-facing caveat shown under the price (e.g. brake
      *  inspection's "Fee waived if a repair…"). NULL means no note. */
     price_waived_note: string | null;
+    /** Customer-facing 1-2 sentence description, shown under the title
+     *  on the picker tile. NULL means no description rendered. Added
+     *  2026-05-19 with the rectangular one-per-line tile layout. */
+    description: string | null;
   }>;
 }
 
