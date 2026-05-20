@@ -47,18 +47,11 @@ import {
   type SectionSpec,
 } from "../scheduler-admin-md.ts";
 
-// ─── Shared catalog helpers (used by both service-catalog uploaders) ───
-
-/** The 14 canonical concern_category slugs. */
-const CONCERN_CATEGORY_SLUGS = new Set([
-  "noise", "vibration", "pulling", "smell", "smoke", "leak", "warning_light",
-  "performance", "electrical", "hvac", "brakes", "steering", "tires", "other",
-]);
-
-const MAX_DESCRIPTION_LEN = 500;
-const MIN_DESCRIPTION_LEN = 10;
-const MAX_ABBREVIATION_LEN = 30;
-const PRICE_CHANGE_WARN_PCT = 0.5; // warn if a price moves >50% in either direction
+// NOTE: catalog-uploader helpers (CONCERN_CATEGORY_SLUGS Set form,
+// MAX_DESCRIPTION_LEN, etc.) live in ./scheduler-admin-catalog.ts where the
+// service-catalog uploaders moved during the d62447f Option B refactor.
+// The legacy concern-category uploaders in THIS file use the array form of
+// CONCERN_CATEGORY_SLUGS declared near the bottom (search ConcernCategorySlug).
 
 export interface ValidationFinding {
   /** Either a service_key (Option B) or a row_index (Option A legacy). */
