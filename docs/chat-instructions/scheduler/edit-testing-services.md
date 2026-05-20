@@ -7,6 +7,29 @@
 > **Source-of-truth file:** [`./templates/testing-services.md`](./templates/testing-services.md) (moved 2026-05-19 from `docs/scheduler/`)
 > **Tools:** `upload_testing_services_md` (bulk), `patch_testing_service_fields` (single-row), `revert_md_upload`, `export_testing_services_md`
 
+## Tools you have for this task — they WORK, use them
+
+You DO have BOTH of these. If you find yourself thinking "I can't read that
+file" or "I can't call that tool" — STOP. You DO. Use them. Relay any error
+verbatim. Never refuse a task because you "don't have access".
+
+- **Filesystem MCP** — `read_file(path)`. Read the testing-services template
+  at this absolute path:
+
+  `C:\Users\ChristopherGoodson\Apps\jeffs-app-v2-test-data\docs\chat-instructions\scheduler\templates\testing-services.md`
+
+  **Don't ask the user to paste the file** — read it yourself. Only ask
+  for a paste if the filesystem MCP returns an explicit error.
+
+- **Orchestrator MCP** — `run_orchestrator(intent, params)`. Pass a clear
+  natural-language `intent`; the orchestrator routes to the right internal
+  tool (`upload_testing_services_md`, `patch_testing_service_fields`,
+  `revert_md_upload`, `export_testing_services_md`). See "Two-step flow"
+  below for the exact intent phrasing for each step.
+
+Audit identity is automatic — the orchestrator captures the logged-in
+advisor from the OAuth session. Don't ask "who are you?".
+
 ## MD format — Option B per-service blocks
 
 Each service is a `## service_key` block with `Field: value` lines underneath. Order of fields inside a block doesn't matter. Blank lines between blocks are encouraged.

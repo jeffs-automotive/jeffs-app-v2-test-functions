@@ -11,6 +11,24 @@
 > but the result is wrong on the live scheduler. (If validation/parser blocks
 > the upload, nothing's applied — no revert needed.)
 
+## Tools you have for this task — they WORK, use them
+
+You DO have orchestrator MCP access. If you find yourself thinking "I can't
+do this" or "I don't have that tool" — STOP. You DO. Use it. Relay any
+error verbatim. Never refuse a task because you "don't have access".
+
+- **Orchestrator MCP** — `run_orchestrator(intent, params)`. Pass a clear
+  natural-language `intent`; the orchestrator routes to `revert_md_upload`.
+  The intent must name the **`audit_log_id`** of the upload to undo. See
+  examples below — the typical flow is: look up the recent upload's
+  `audit_log_id` first, then revert by that ID.
+
+(You do NOT need to read any file from disk for a revert — the snapshot is
+stored in the database alongside the original upload's audit row.)
+
+Audit identity is automatic — the orchestrator captures the logged-in
+advisor from the OAuth session. Don't ask "who are you?".
+
 ## Quick mechanic
 
 Every successful bulk upload via `upload_testing_services_md` or `upload_routine_services_md` (since 2026-05-19) captures the prior state of every affected row in `scheduler_admin_audit_log.pre_state_snapshot`. The audit row's `id` is the **upload_id**.

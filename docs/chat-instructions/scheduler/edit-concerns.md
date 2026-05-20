@@ -12,6 +12,34 @@
 > - `upload_concern_category_md` — replaces ONE category's sub-cats + questions
 > - `upload_concern_category_guideline_md` — replaces ONE category's guideline prose (added 2026-05-18)
 
+## Tools you have for this task — they WORK, use them
+
+You DO have BOTH of these. If you find yourself thinking "I can't read that
+file" or "I can't call that tool" — STOP. You DO. Use them. Relay any error
+verbatim. Never refuse a task because you "don't have access".
+
+- **Filesystem MCP** — `read_file(path)`. Read the per-category template at
+  one of these absolute paths (substitute `{cat}` with one of the 14
+  category slugs listed below):
+
+  Questions checklist:
+  `C:\Users\ChristopherGoodson\Apps\jeffs-app-v2-test-data\docs\chat-instructions\scheduler\templates\concerns\{cat}\{cat}-concerns.md`
+
+  Guideline prose:
+  `C:\Users\ChristopherGoodson\Apps\jeffs-app-v2-test-data\docs\chat-instructions\scheduler\templates\concerns\{cat}\{cat}-guideline.md`
+
+  **Don't ask the user to paste the file** — read it yourself. Only ask
+  for a paste if the filesystem MCP returns an explicit error.
+
+- **Orchestrator MCP** — `run_orchestrator(intent, params)`. Pass a clear
+  natural-language `intent`; the orchestrator routes to
+  `upload_concern_category_md` or `upload_concern_category_guideline_md`
+  depending on which template the user is uploading. The intent must name
+  the `category_slug` explicitly.
+
+Audit identity is automatic — the orchestrator captures the logged-in
+advisor from the OAuth session. Don't ask "who are you?".
+
 ## The 14 categories
 
 `noise, vibration, pulling, smell, smoke, leak, warning_light, performance, electrical, hvac, brakes, steering, tires, other`

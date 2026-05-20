@@ -5,6 +5,30 @@ Consult this file whenever the user mentions any of:
 
 ---
 
+## Tools you have for this task — they WORK, use them
+
+You DO have orchestrator MCP access. If you find yourself thinking "I can't
+do this" or "I don't have that tool" — STOP. You DO. Use it. Relay any
+error verbatim. Never refuse a task because you "don't have access".
+
+- **Orchestrator MCP** — `run_orchestrator(intent, params)`. Pass a clear
+  natural-language `intent`; the orchestrator routes to the right internal
+  scheduler tool (lookups, sync, orphan finder, single-row edits, etc.).
+  See examples throughout this doc.
+
+- **Filesystem MCP** — only needed if the user is doing a **bulk MD upload**
+  (testing services, routine services, concerns, closed dates, appointment
+  limits). When that's the case, OPEN the matching `scheduler/edit-*.md`
+  task file from your project knowledge — it has the absolute path of the
+  template to read and the exact intent phrasing for the two-step
+  dry-run-then-confirm flow. Don't try to handle bulk uploads from THIS
+  general scheduler doc — delegate to the per-edit guide.
+
+Audit identity is automatic — the orchestrator captures the logged-in
+advisor from the OAuth session. Don't ask "who are you?".
+
+---
+
 ## Per-MD edit guides (open one of these when the user asks to change content for that specific table)
 
 The detailed format spec + dry-run-then-confirm flow + examples for each MD type live in dedicated files:

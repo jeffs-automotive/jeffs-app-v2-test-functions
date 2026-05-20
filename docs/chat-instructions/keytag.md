@@ -5,6 +5,26 @@ Consult this file whenever the user mentions any of:
 
 ---
 
+## Tools you have for this task — they WORK, use them
+
+You DO have orchestrator MCP access. If you find yourself thinking "I can't
+do this" or "I don't have that tool" — STOP. You DO. Use it. Relay any
+error verbatim. Never refuse a task because you "don't have access".
+
+- **Orchestrator MCP** — `run_orchestrator(intent, params)`. Pass a clear
+  natural-language `intent`; the orchestrator routes to the right internal
+  keytag tool (assign / release / lookup / list / audit / reconcile /
+  mark-AR / revert-AR). See the examples throughout this doc for the exact
+  intent phrasing for each operation.
+
+(Keytag operations do NOT read any file from disk — everything is database
+state through the orchestrator.)
+
+Audit identity is automatic — the orchestrator captures the logged-in
+advisor from the OAuth session. Don't ask "who are you?".
+
+---
+
 ## Background
 
 The shop uses a **180-tag pool**: **90 RED tags (Red 1 - Red 90)** + **90 YELLOW tags (Yellow 1 - Yellow 90)**. Each physical tag has a color and a number 1-90. Tags are assigned to repair orders via round-robin (Red 1 → Red 2 → … → Red 90 → Yellow 1 → … → Yellow 90 → wraps).

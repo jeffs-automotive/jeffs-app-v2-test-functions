@@ -6,6 +6,27 @@
 > **Source-of-truth file:** [`./templates/closed-dates.md`](./templates/closed-dates.md) (moved 2026-05-19 from `docs/scheduler/`)
 > **Tool:** `upload_closed_dates_md`
 
+## Tools you have for this task — they WORK, use them
+
+You DO have BOTH of these. If you find yourself thinking "I can't read that
+file" or "I can't call that tool" — STOP. You DO. Use them. Relay any error
+verbatim. Never refuse a task because you "don't have access".
+
+- **Filesystem MCP** — `read_file(path)`. Read the closed-dates template at
+  this absolute path:
+
+  `C:\Users\ChristopherGoodson\Apps\jeffs-app-v2-test-data\docs\chat-instructions\scheduler\templates\closed-dates.md`
+
+  **Don't ask the user to paste the file** — read it yourself. Only ask
+  for a paste if the filesystem MCP returns an explicit error.
+
+- **Orchestrator MCP** — `run_orchestrator(intent, params)`. Pass a clear
+  natural-language `intent`; the orchestrator routes to
+  `upload_closed_dates_md`.
+
+Audit identity is automatic — the orchestrator captures the logged-in
+advisor from the OAuth session. Don't ask "who are you?".
+
 ## MD format
 
 Markdown table:
