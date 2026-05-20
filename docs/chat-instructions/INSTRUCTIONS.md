@@ -46,6 +46,60 @@ let the orchestrator infer "the user invoking this conversation".
 
 ---
 
+## Reading template files from disk (filesystem MCP)
+
+When the user asks to **"upload the updated X"** (testing services, routine services,
+appointment limits, closed dates, a concern checklist, or a category guideline), the
+source-of-truth MD file is on disk — **NOT in your project knowledge.** Read it via
+the **filesystem MCP** (`read_file` tool) before invoking the orchestrator. Do not
+ask the user to paste it unless the filesystem MCP returns an access error.
+
+**Repo root on disk (test sandbox):**
+`C:\Users\ChristopherGoodson\Apps\jeffs-app-v2-test-data`
+
+**Path resolution rule.** Every `./templates/X.md` reference inside the
+`scheduler/edit-*.md` guides resolves to:
+
+`C:\Users\ChristopherGoodson\Apps\jeffs-app-v2-test-data\docs\chat-instructions\scheduler\templates\X.md`
+
+Concrete examples — use these absolute paths when calling `read_file`:
+
+| Edit guide reference | Absolute path on disk |
+|---|---|
+| `./templates/testing-services.md` | `…\jeffs-app-v2-test-data\docs\chat-instructions\scheduler\templates\testing-services.md` |
+| `./templates/routine-services.md` | `…\scheduler\templates\routine-services.md` |
+| `./templates/closed-dates.md` | `…\scheduler\templates\closed-dates.md` |
+| `./templates/appointment-default-limits.md` | `…\scheduler\templates\appointment-default-limits.md` |
+| `./templates/concerns/{cat}/{cat}-concerns.md` | `…\scheduler\templates\concerns\{cat}\{cat}-concerns.md` |
+| `./templates/concerns/{cat}/{cat}-guideline.md` | `…\scheduler\templates\concerns\{cat}\{cat}-guideline.md` |
+
+(`{cat}` is one of the 14 concern categories: `noise, vibration, pulling, smell,
+smoke, leak, warning_light, performance, electrical, hvac, brakes, steering, tires, other`.)
+
+**Typical flow** (user says "Upload the updated testing services"):
+
+1. **Read** the template via filesystem MCP `read_file` at the absolute path above.
+2. **Dry-run** via `run_orchestrator` with an intent like *"Upload the testing
+   services MD with this content (dry-run): `<full file content>`"* — the orchestrator
+   defaults to `dry_run: true` and returns `diff_summary` + `validation_errors` +
+   `validation_warnings` + `confirm_token`.
+3. **Surface** the diff + any warnings to the advisor. Wait for an explicit "yes".
+4. **Apply** by re-calling `run_orchestrator` with intent *"Apply the testing-services
+   upload with confirm_token `<token>`"* — orchestrator applies with `dry_run: false`.
+5. **Save** the returned `audit_log_id` (needed for `revert_md_upload` if the advisor
+   wants to undo later).
+
+**If the filesystem MCP returns "directory not allowed"** for a path under the repo
+root, the FS extension needs an updated allow-list. Tell the advisor:
+
+> "I can't read template files from disk — the filesystem MCP doesn't have permission
+> for the repo path. Quick fix: open Claude Desktop → Settings → Extensions →
+> Filesystem → Settings → Allowed Directories → add
+> `C:\Users\ChristopherGoodson\Apps\jeffs-app-v2-test-data`, then restart Claude
+> Desktop. In the meantime, paste the MD content into chat and I'll use the pasted block."
+
+---
+
 ## Domain knowledge files
 
 Before sending a shop action to the orchestrator, consult the matching domain file in
