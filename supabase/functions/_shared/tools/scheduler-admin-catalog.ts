@@ -430,7 +430,10 @@ async function _uploadCatalogV2<TRow extends {
   }
 
   const currentByKey = new Map<string, TRow>();
-  for (const row of (currentRows ?? []) as TRow[]) {
+  // `.from(config.tableName)` with a runtime string falls back to
+  // postgrest-js GenericStringError[]; the fetchErr branch above already
+  // discriminates real errors, so the remaining rows are safe to widen.
+  for (const row of (currentRows ?? []) as unknown as TRow[]) {
     currentByKey.set(row.service_key, row);
   }
 
@@ -766,7 +769,10 @@ export async function exportTestingServicesMdV2(
     .eq("shop_id", shopId)
     .order("service_key", { ascending: true });
   if (error) throw new Error(`testing_services export failed: ${error.message}`);
-  const md = serializeMdSections((data ?? []) as Record<string, unknown>[], "service_key", TESTING_EXPORT_SPEC);
+  // see scheduler-admin-catalog.ts:433 comment — runtime table name +
+  // un-parameterized SupabaseClient yields GenericStringError[]; cast
+  // via unknown after the error branch is discriminated.
+  const md = serializeMdSections((data ?? []) as unknown as Record<string, unknown>[], "service_key", TESTING_EXPORT_SPEC);
   return { md_content: md, row_count: (data ?? []).length };
 }
 
@@ -780,7 +786,8 @@ export async function exportRoutineServicesMdV2(
     .eq("shop_id", shopId)
     .order("display_order", { ascending: true });
   if (error) throw new Error(`routine_services export failed: ${error.message}`);
-  const md = serializeMdSections((data ?? []) as Record<string, unknown>[], "service_key", ROUTINE_EXPORT_SPEC);
+  // see comment on exportTestingServicesMdV2.
+  const md = serializeMdSections((data ?? []) as unknown as Record<string, unknown>[], "service_key", ROUTINE_EXPORT_SPEC);
   return { md_content: md, row_count: (data ?? []).length };
 }
 

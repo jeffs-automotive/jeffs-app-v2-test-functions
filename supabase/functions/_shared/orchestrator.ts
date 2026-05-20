@@ -608,7 +608,12 @@ async function resolveCustomerSession(
   if (!sessionRow) {
     throw new Error(`session_not_found: ${customerSessionId}`);
   }
-  const row = sessionRow as Record<string, unknown>;
+  // sb.from() with a string-literal table name still falls back to the
+  // postgrest-js GenericStringError shape because the SupabaseClient
+  // here isn't parameterized on a Database type. Standard `as unknown as
+  // T` double-cast per matching codebase convention (see
+  // transcript-dispatcher/index.ts:669 + 780, scheduler-step2-direct:469).
+  const row = sessionRow as unknown as Record<string, unknown>;
 
   const sessionLabel = `scheduler:${customerSessionId.slice(0, 8)}`;
   const cutoff = new Date(

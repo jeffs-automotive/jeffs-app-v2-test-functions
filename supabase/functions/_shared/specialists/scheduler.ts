@@ -314,7 +314,8 @@ interface ParsedDirective {
 /**
  * Legacy free-form JSON parser. RETAINED as a defensive fallback in case
  * the Output.object path returns nothing parseable for some reason — but
- * normal flow uses result.output (structured) directly, NOT this function.
+ * normal flow uses result.experimental_output (structured) directly, NOT
+ * this function.
  */
 function tryParseDirective(text: string): ParsedDirective | null {
   // Strip whitespace + optional code fences (defensive — Haiku occasionally wraps).
@@ -384,9 +385,17 @@ export async function runSchedulerSpecialist(
     // Structured-output migration 2026-05-13 (audit Commit G): force the
     // final response to match SchedulerDirectiveSchema. Eliminates the
     // free-form-text + manual JSON.parse fragility class that caused the
-    // 2026-05-13 Step 2 escalation bug. The result's `output` field is
-    // typed by the schema; no more tryParseDirective on result.text.
-    output: Output.object({
+    // 2026-05-13 Step 2 escalation bug. The result's `experimental_output`
+    // field is typed by the schema; no more tryParseDirective on
+    // result.text.
+    //
+    // 2026-05-20 fix: was named `output` (typo for the AI SDK v5 API
+    // contract). v5's CallSettings exposes `experimental_output`, NOT
+    // `output` — see /vercel/ai/ai_5_0_0 docs "Generate Text with
+    // Structured Output". The wrong key was silently ignored, so this
+    // path had been dead since the migration and every request fell
+    // through to tryParseDirective(result.text).
+    experimental_output: Output.object({
       schema: SchedulerDirectiveSchema,
     }),
   });
@@ -403,13 +412,15 @@ export async function runSchedulerSpecialist(
     }
   }
 
-  // Structured output is the canonical path. `result.output` is typed
-  // by SchedulerDirectiveSchema. Defensive fallback to tryParseDirective
-  // on result.text only if `output` is somehow missing (shouldn't happen
-  // with AI SDK v5 + Anthropic, but the legacy parser is cheap to keep
-  // as a safety net while we observe the new path in production).
-  const structured = (result as unknown as { output?: ParsedDirective })
-    .output;
+  // Structured output is the canonical path. `result.experimental_output`
+  // is typed by SchedulerDirectiveSchema. Defensive fallback to
+  // tryParseDirective on result.text only if `experimental_output` is
+  // somehow missing (shouldn't happen with AI SDK v5 + Anthropic, but the
+  // legacy parser is cheap to keep as a safety net while we observe the
+  // new path in production).
+  const structured =
+    (result as unknown as { experimental_output?: ParsedDirective })
+      .experimental_output;
   let directive: string;
   let data: Record<string, unknown> | undefined;
   let flags: Record<string, unknown> | undefined;
