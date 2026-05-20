@@ -5,7 +5,7 @@
  * matches the natural answer space of the question's text — Yes/No for
  * propositions, location chips for "front or rear / left or right",
  * speed-band chips for "at what speed", etc. The mapping was derived from
- * the source-of-truth markdown files at docs/scheduler/concerns/*.
+ * the source-of-truth markdown files at docs/chat-instructions/scheduler/templates/concerns/* (moved 2026-05-19 from docs/scheduler/concerns/).
  *
  * Used by the migration seeder to overwrite the legacy yes/no/sometimes
  * defaults written by earlier migrations.

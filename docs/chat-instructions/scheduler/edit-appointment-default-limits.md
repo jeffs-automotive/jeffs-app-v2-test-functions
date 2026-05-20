@@ -3,7 +3,7 @@
 > **What this controls:** the per-day-of-week capacity pattern. Drives how
 > many waiter slots + drop-off slots are offered to customers per weekday.
 >
-> **Source-of-truth file:** [`docs/scheduler/appointment-default-limits.md`](../../scheduler/appointment-default-limits.md)
+> **Source-of-truth file:** [`./templates/appointment-default-limits.md`](./templates/appointment-default-limits.md) (moved 2026-05-19 from `docs/scheduler/`)
 > **Tool:** `upload_appointment_default_limits_md`
 
 ## MD format

@@ -522,9 +522,9 @@ files
 
 ## Content / MD docs
 
-### MD-1 · `docs/scheduler/closed-dates.md` lists 9 holidays NOT in DB (NEW 2026-05-18; format verified 2026-05-19)
+### MD-1 · `docs/chat-instructions/scheduler/templates/closed-dates.md` lists 9 holidays NOT in DB (NEW 2026-05-18; format verified 2026-05-19)
 
-- **What** — `docs/scheduler/closed-dates.md` lists 9 explicit
+- **What** — `docs/chat-instructions/scheduler/templates/closed-dates.md` lists 9 explicit
   holidays (memorial-day, independence-day, labor-day,
   thanksgiving, day-after-thanksgiving, christmas-eve,
   christmas-day, new-years-eve, new-years-day). Querying the DB

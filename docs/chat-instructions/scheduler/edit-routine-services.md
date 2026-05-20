@@ -5,7 +5,7 @@
 > (oil change, alignment); five are "diagnostic-routine" — they kick off the
 > concern-explanation flow when picked.
 >
-> **Source-of-truth file:** [`docs/scheduler/routine-services.md`](../../scheduler/routine-services.md)
+> **Source-of-truth file:** [`./templates/routine-services.md`](./templates/routine-services.md) (moved 2026-05-19 from `docs/scheduler/`)
 > **Tools:** `upload_routine_services_md` (bulk), `patch_routine_service_fields` (single-row), `revert_md_upload`, `export_routine_services_md`
 
 ## MD format — Option B per-service blocks

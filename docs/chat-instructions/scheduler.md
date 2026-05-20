@@ -202,7 +202,7 @@ When uploading an updated concern MD: the parser honors options + multi_select. 
 
 `concern_category_guidelines` is a different table from `concern_questions`. It holds the per-category **prose paragraph** the diagnostic LLM reads BEFORE the questionnaire — it shapes how the LLM phrases follow-up questions and what facets it prioritizes.
 
-There IS now an upload tool: `upload_concern_category_guideline_md`. Edit `docs/scheduler/concerns/{slug}/{slug}-guideline.md`, then ask Claude:
+There IS now an upload tool: `upload_concern_category_guideline_md`. Edit `./scheduler/templates/concerns/{slug}/{slug}-guideline.md` (moved 2026-05-19 from `docs/scheduler/concerns/`), then ask Claude:
 
 > "Upload the updated brakes guideline."
 

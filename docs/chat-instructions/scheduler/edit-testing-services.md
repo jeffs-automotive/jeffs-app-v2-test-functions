@@ -4,7 +4,7 @@
 > can recommend from a customer's free-text concern. Each has a customer-facing
 > price, description, abbreviation, and concern-category tags.
 >
-> **Source-of-truth file:** [`docs/scheduler/testing-services.md`](../../scheduler/testing-services.md)
+> **Source-of-truth file:** [`./templates/testing-services.md`](./templates/testing-services.md) (moved 2026-05-19 from `docs/scheduler/`)
 > **Tools:** `upload_testing_services_md` (bulk), `patch_testing_service_fields` (single-row), `revert_md_upload`, `export_testing_services_md`
 
 ## MD format — Option B per-service blocks

@@ -48,7 +48,9 @@ Here's what I can do for keytags (180-tag pool: Red 1–90 + Yellow 1–90):
 
 ## Section 2 — Scheduler help
 
-Here's what I can do for the scheduler at appointments.jeffsautomotive.com:
+Here's what I can do for the scheduler at appointments.jeffsautomotive.com.
+
+> **Detailed per-MD edit guides** live under [`docs/chat-instructions/scheduler/`](./scheduler/) — one file per content type with examples + the dry-run-then-confirm flow + revert. The summary below points at the right guide for each task.
 
 **View / look up**
 
@@ -58,48 +60,79 @@ Here's what I can do for the scheduler at appointments.jeffsautomotive.com:
 - **Find orphan customers** — "Are any customers orphaned in our cache?" (cached locally but deleted in Tekmetric)
 - **Sync appointments now** — "Sync appointments from Tekmetric"
 
-**Edit pricing (testing services only — routine services have no pricing in Phase 1)**
+**Edit testing services** (15 diagnostic services + pricing + descriptions + concern_categories)
 
 - **Change one price** — "Set brake_inspection price to $45" (I'll confirm if it's a big change)
-- **Add a keyword / description / category to a testing service** — "Add 'corroded terminals' to battery_test keywords"
+- **Edit a customer-facing description** — "Update brake_inspection description to '...'"
+- **Add a keyword / category to a testing service** — "Add 'corroded terminals' to battery_test keywords"
 - **Add a brand-new testing service** — "Add a transmission_scan service at $179.95, category performance"
 - **Deactivate a testing service** — "Remove TPMS testing" (soft-deletes — won't appear to customers, history preserved)
 
-**Edit routine services (chips on the picker — no pricing field)**
+See [`scheduler/edit-testing-services.md`](./scheduler/edit-testing-services.md) for the full format spec + examples.
 
+**Edit routine services** (10 picker chips + pricing + waived-fee notes + descriptions — descriptions added 2026-05-19, currently NULL pending backfill)
+
+- **Change a routine price** — "Set oil_change price to $69.95" (pass `null` to clear)
+- **Set a waived-fee note** — "Add waived note to brake_inspection: 'Fee waived if approved'"
+- **Add a customer-facing description** — "Set oil_change description to 'Synthetic-blend oil + filter + visual.'"
 - **Change a routine chip's settings** — "Flip check_battery requires_explanation to true"
 - **Reorder the picker chips** — "Move oil_change to position 1"
 - **Deactivate a routine chip** — "Remove tire_rotation"
 
-**Edit the diagnostic concern checklists**
+See [`scheduler/edit-routine-services.md`](./scheduler/edit-routine-services.md) for the format spec + examples.
 
-- **Upload a refined checklist for one category** — "Upload the updated brakes concern doc" (each question can now carry its own answer-options + a `[multi]` prefix for multi-select; see `concerns/{cat}/{cat}-concerns.md` for the format)
-- **Upload a refined guideline prose for one category** — "Upload the updated brakes guideline" (the prose the diagnostic LLM reads BEFORE the questions; one paragraph per category at `concerns/{cat}/{cat}-guideline.md`)
+**Edit the diagnostic concern checklists + guidelines**
+
+- **Upload a refined checklist for one category** — "Upload the updated brakes concern doc" (each question can carry its own answer-options + a `[multi]` prefix for multi-select)
+- **Upload a refined guideline prose for one category** — "Upload the updated brakes guideline" (the prose the diagnostic LLM reads BEFORE the questions)
 - **View the current guideline prose for a category** — "Show me the brakes guideline"
+
+See [`scheduler/edit-concerns.md`](./scheduler/edit-concerns.md).
 
 **Edit availability**
 
-- **Change weekly capacity** — "Upload the updated appointment limits"
-- **Add a holiday** — "Block off 2026-07-04" (or upload the updated closed-dates list)
+- **Change weekly capacity** — "Upload the updated appointment limits" (see [`scheduler/edit-appointment-default-limits.md`](./scheduler/edit-appointment-default-limits.md))
+- **Add a holiday** — "Block off 2026-07-04" (see [`scheduler/edit-closed-dates.md`](./scheduler/edit-closed-dates.md))
 - **List future closures** — "What dates are blocked?"
 
-**Bulk replace from MD files** (the editable docs in `docs/scheduler/`)
+**Bulk replace from MD files** — templates live at [`docs/chat-instructions/scheduler/templates/`](./scheduler/templates/)
 
 If your Claude Desktop has the filesystem MCP set up for the repo, just say *"Upload the updated X"* and Claude reads the file directly. Otherwise, paste the MD content into chat and Claude uses the pasted block.
 
-- **Testing services** — "Upload the updated testing services" (`testing-services.md`)
-- **Routine services** — "Upload the updated routine services" (`routine-services.md`)
-- **Appointment limits** — "Upload the updated appointment limits" (`appointment-default-limits.md`)
-- **Closed dates** — "Upload the updated closed dates" (`closed-dates.md`)
-- **One concern category — questions** — "Upload the updated {category} concern doc" (`concerns/{cat}/{cat}-concerns.md`; one of: noise, vibration, pulling, smell, smoke, leak, warning_light, performance, electrical, hvac, brakes, steering, tires, other)
-- **One concern category — guideline prose** — "Upload the updated {category} guideline" (`concerns/{cat}/{cat}-guideline.md`)
+- **Testing services** — "Upload the updated testing services" (`templates/testing-services.md`)
+- **Routine services** — "Upload the updated routine services" (`templates/routine-services.md`)
+- **Appointment limits** — "Upload the updated appointment limits" (`templates/appointment-default-limits.md`)
+- **Closed dates** — "Upload the updated closed dates" (`templates/closed-dates.md`)
+- **One concern category — questions** — "Upload the updated {category} concern doc" (`templates/concerns/{cat}/{cat}-concerns.md`; one of: noise, vibration, pulling, smell, smoke, leak, warning_light, performance, electrical, hvac, brakes, steering, tires, other)
+- **One concern category — guideline prose** — "Upload the updated {category} guideline" (`templates/concerns/{cat}/{cat}-guideline.md`)
+
+**Two-step preview-then-apply flow (since 2026-05-19) — ALWAYS use for bulk uploads**
+
+Every bulk upload tool defaults to `dry_run: true`. The flow:
+
+1. First call — I get back a diff (added / modified / deactivated counts + per-row deltas) + any validation errors + soft warnings (e.g. >50% price changes, deactivations) + a `confirm_token`.
+2. I show you the diff. You say "yes" or push back.
+3. Second call — I pass `dry_run: false` + the `expected_confirm_token` from step 1 to actually apply. Token mismatch (because something changed in between) → reject + start over.
+
+Single-row patches (`patch_testing_service_fields`, `patch_routine_service_fields`) run the SAME validators as bulk, so a single edit catches the same typos.
+
+**Undo a bulk upload — `revert_md_upload`**
+
+If a bulk upload looked OK in the dry-run but is wrong on the live scheduler:
+
+- "Undo the last testing-services upload" — I find the audit_log_id, dry-run the revert (shows what'll be restored), and on your "yes" I apply it.
+- 30-day retention on snapshots — older uploads can't be auto-reverted.
+- No revert-of-revert chains — to undo a revert, do a fresh bulk upload.
+
+See [`scheduler/revert-upload.md`](./scheduler/revert-upload.md) for the full flow.
 
 **What I won't do**
 
-- Set a price on a routine service (routine services have no pricing field).
 - Use a concern category that isn't one of the 14 valid slugs.
 - Edit past `closed_dates` (history is immutable — future-only).
 - Bulk-delete (e.g. "delete all testing services") — pick specific ones to deactivate.
+- Apply a bulk upload without showing you the diff first (the dry-run is mandatory).
+- Revert a `revert_upload` row — no revert-of-revert chains.
 - Make appointments for customers — customers book through the wizard at appointments.jeffsautomotive.com. I administer the data behind it.
 
 ---

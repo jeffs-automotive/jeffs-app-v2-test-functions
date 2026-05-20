@@ -1,35 +1,47 @@
-# Scheduler — editable .md files
+# Scheduler — editable template .md files
 
 This folder holds the source-of-truth markdown documents that drive the
 customer-facing scheduler at **appointments.jeffsautomotive.com**. Edit
-the files here, then ask Claude to upload them — Claude calls the right
-admin tool, parses the markdown, and applies the change to the DB.
+the files here, then ask Claude Desktop to upload them — Claude calls
+the right admin tool, parses the markdown, and applies the change to
+the DB.
+
+**Location history:** moved 2026-05-19 from `docs/scheduler/` into
+`docs/chat-instructions/scheduler/templates/` to co-locate the
+editable templates with the per-MD edit guides one level up at
+[`docs/chat-instructions/scheduler/`](../).
+
+**Two-step flow (as of 2026-05-19):** every bulk upload defaults to
+`dry_run: true`. The orchestrator returns a diff + validation report
++ confirm_token — show it to the advisor, get explicit "yes", then
+re-call with `dry_run: false` + the token to actually apply. See
+[`../edit-testing-services.md`](../edit-testing-services.md) for the
+canonical example of the flow. `revert_md_upload(upload_id)` undoes a
+recent successful upload within the 30-day snapshot retention.
 
 > **Looking for the architecture / code map?** See
-> [`../../.claude/memory/scheduler/scheduler_system_architecture.md`](../../.claude/memory/scheduler/scheduler_system_architecture.md) —
+> [`../../../../.claude/memory/scheduler/scheduler_system_architecture.md`](../../../../.claude/memory/scheduler/scheduler_system_architecture.md) —
 > the canonical table of contents for the Next.js app, edge functions,
-> DB schema, crons, RLS posture, deployment, and Sentry config. Lives
-> as a memory file (sibling of `keytag_system_architecture.md`) so it's
-> auto-loaded at session start. This `docs/scheduler/` folder is the
-> *content* admin tools upload; the architecture doc is the *system
-> map* of how that content is consumed.
+> DB schema, crons, RLS posture, deployment, and Sentry config. This
+> templates/ folder is the *content* admin tools upload; the architecture
+> doc is the *system map* of how that content is consumed.
 
 ## What's in here
 
-| File | What it controls | Claude tool to upload |
-|------|------------------|------------------------|
-| [`testing-services.md`](./testing-services.md) | The 14 diagnostic/testing services + their pricing (`starting_price_cents`) + which concern categories they map to | `upload_testing_services_md` |
-| [`routine-services.md`](./routine-services.md) | The 10 routine-service picker chips (oil change, tire rotate, brake inspection, etc.) + `starting_price_cents` and `price_waived_note` columns (added 2026-05-17 — see migration `20260518010416_scheduler_routine_services_pricing.sql`). | `upload_routine_services_md` |
-| [`appointment-default-limits.md`](./appointment-default-limits.md) | Weekly capacity pattern — waiter-slot counts and drop-off totals for each day of the week | `upload_appointment_default_limits_md` |
-| [`closed-dates.md`](./closed-dates.md) | One-off closures + holidays. Sundays are auto-managed via a cron; don't list them here. | `upload_closed_dates_md` |
-| [`concerns/{slug}/{slug}-concerns.md`](./concerns/) (14 files) | The diagnostic-LLM's symptom checklists. One markdown doc per concern category — each has 6-12 symptom sub-categories and 5-7 plain-language questions per sub-category. Now carries answer-options + multi_select inline (see new format below). | `upload_concern_category_md` (one category per call) |
-| [`concerns/{slug}/{slug}-guideline.md`](./concerns/) (14 files) | The per-category prose paragraph the diagnostic LLM reads BEFORE each category's questionnaire. Shapes how the LLM phrases follow-up questions and what facets it prioritizes. Added 2026-05-18. | `upload_concern_category_guideline_md` (one category per call) |
-| [`prompts/README.md`](./prompts/) | **Read-only** snapshots of the LLM system prompts (`diagnose-concern`, `summarize-concern`). Code-only edits — no upload tool. | — |
+| File | What it controls | Claude tool to upload | Edit guide |
+|------|------------------|------------------------|------------|
+| [`testing-services.md`](./testing-services.md) | The 15 diagnostic/testing services + their pricing, descriptions, notes, concern_categories | `upload_testing_services_md` | [`edit-testing-services.md`](../edit-testing-services.md) |
+| [`routine-services.md`](./routine-services.md) | The 10 routine-service picker chips + `starting_price_cents`, `price_waived_note`, `description` (latter added 2026-05-19; backfill TBD per MD-2). | `upload_routine_services_md` | [`edit-routine-services.md`](../edit-routine-services.md) |
+| [`appointment-default-limits.md`](./appointment-default-limits.md) | Weekly capacity pattern — waiter-slot counts and drop-off totals for each day of the week | `upload_appointment_default_limits_md` | [`edit-appointment-default-limits.md`](../edit-appointment-default-limits.md) |
+| [`closed-dates.md`](./closed-dates.md) | One-off closures + holidays. Sundays are auto-managed via a cron; don't list them here. | `upload_closed_dates_md` | [`edit-closed-dates.md`](../edit-closed-dates.md) |
+| [`concerns/{slug}/{slug}-concerns.md`](./concerns/) (14 files) | The diagnostic-LLM's symptom checklists. One MD per concern category — 6-12 sub-categories × 5-7 plain-language questions, each with answer-options + multi_select inline. | `upload_concern_category_md` (one category per call) | [`edit-concerns.md`](../edit-concerns.md) |
+| [`concerns/{slug}/{slug}-guideline.md`](./concerns/) (14 files) | The per-category prose paragraph the diagnostic LLM reads BEFORE each category's questionnaire. | `upload_concern_category_guideline_md` (one category per call) | [`edit-concerns.md`](../edit-concerns.md) |
+| [`prompts/README.md`](./prompts/) + `diagnose-concern.md` + `summarize-concern.md` | **Read-only** snapshots of the LLM system prompts. Code-only edits via the TypeScript `buildSystemPrompt()` functions — no upload tool. | — | — |
 
 ## The 14 concern-category MDs
 
 ```
-docs/scheduler/concerns/
+docs/chat-instructions/scheduler/templates/concerns/
 ├── brakes/brakes-concerns.md
 ├── electrical/electrical-concerns.md
 ├── hvac/hvac-concerns.md

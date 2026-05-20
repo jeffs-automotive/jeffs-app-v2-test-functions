@@ -4,9 +4,9 @@
 > - `concern_questions` — sub-category checklists (5-7 questions per sub-cat, with answer options + multi-select flag)
 > - `concern_category_guidelines` — per-category prose paragraph the LLM reads BEFORE the questionnaire
 >
-> **Source-of-truth files:**
-> - [`docs/scheduler/concerns/{cat}/{cat}-concerns.md`](../../scheduler/concerns/) — one per category (14 total)
-> - [`docs/scheduler/concerns/{cat}/{cat}-guideline.md`](../../scheduler/concerns/) — one per category (14 total)
+> **Source-of-truth files** (moved 2026-05-19 from `docs/scheduler/concerns/`):
+> - [`./templates/concerns/{cat}/{cat}-concerns.md`](./templates/concerns/) — one per category (14 total)
+> - [`./templates/concerns/{cat}/{cat}-guideline.md`](./templates/concerns/) — one per category (14 total)
 >
 > **Tools:**
 > - `upload_concern_category_md` — replaces ONE category's sub-cats + questions
@@ -123,7 +123,7 @@ If a guideline upload landed but the new prose tanks LLM accuracy, revert via [`
 
 > Advisor: "Upload the updated brakes guideline."
 
-→ Read `docs/scheduler/concerns/brakes/brakes-guideline.md` (via filesystem MCP) OR ask advisor to paste content
+→ Read `./templates/concerns/brakes/brakes-guideline.md` (via filesystem MCP) OR ask advisor to paste content
 → Dry-run: `upload_concern_category_guideline_md(category_slug='brakes', md_content=<content>, dry_run=true)`
 → Show diff (prose-diff if substantial; "Updated prose" otherwise) + confirm token
 → Apply on approval

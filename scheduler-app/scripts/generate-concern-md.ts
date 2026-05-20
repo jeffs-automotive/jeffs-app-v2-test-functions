@@ -1,6 +1,7 @@
 /**
- * generate-concern-md — emit the 14 docs/scheduler/concerns/{cat}/{cat}-concerns.md
- * files from `canonical-concern-catalog.ts`.
+ * generate-concern-md — emit the 14 docs/chat-instructions/scheduler/templates/concerns/{cat}/{cat}-concerns.md
+ * files from `canonical-concern-catalog.ts`. Templates moved 2026-05-19 from
+ * docs/scheduler/concerns/.
  *
  * Run from repo root:
  *   node --experimental-strip-types scheduler-app/scripts/generate-concern-md.ts
@@ -70,7 +71,7 @@ for (const cat of CANONICAL_CATALOG) {
   const catSlug = cat.category;
   const mdPath = resolve(
     REPO_ROOT,
-    `docs/scheduler/concerns/${catSlug}/${catSlug}-concerns.md`,
+    `docs/chat-instructions/scheduler/templates/concerns/${catSlug}/${catSlug}-concerns.md`,
   );
 
   // Preserve any sources block from the prior file (citation history).

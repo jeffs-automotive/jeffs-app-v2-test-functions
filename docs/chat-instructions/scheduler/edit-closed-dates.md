@@ -3,7 +3,7 @@
 > **What this controls:** the future closed-dates set (holidays + one-off
 > closures). Sundays are NOT in here — they're auto-managed by a weekly cron.
 >
-> **Source-of-truth file:** [`docs/scheduler/closed-dates.md`](../../scheduler/closed-dates.md)
+> **Source-of-truth file:** [`./templates/closed-dates.md`](./templates/closed-dates.md) (moved 2026-05-19 from `docs/scheduler/`)
 > **Tool:** `upload_closed_dates_md`
 
 ## MD format
@@ -64,7 +64,7 @@ See [`revert-upload.md`](./revert-upload.md). Note: `closed_dates` revert suppor
 
 > Advisor: "Add day-after-christmas, 2026-12-26."
 
-→ Edit `docs/scheduler/closed-dates.md` to add `| 2026-12-26 | day-after-christmas |`
+→ Edit `./templates/closed-dates.md` to add `| 2026-12-26 | day-after-christmas |`
 → Dry-run upload
 → "Adding **2026-12-26 = day-after-christmas**. Apply?"
 → On yes: apply with confirm token
