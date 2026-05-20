@@ -1,4 +1,4 @@
-// llm-testing — Anthropic Haiku 4.5 diagnostic concern eval endpoint.
+// llm-testing — diagnostic concern eval endpoint (Vercel AI Gateway).
 //
 // Mirrors the diagnostic prompt + schema + post-validation that the
 // customer wizard's `diagnoseConcern` helper sends to Anthropic
@@ -24,7 +24,7 @@
 import "@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { generateObject } from "npm:ai@^5";
-import { anthropic } from "npm:@ai-sdk/anthropic@^2";
+import { gateway } from "npm:@ai-sdk/gateway@^2";
 import { z } from "npm:zod@^4";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -32,7 +32,14 @@ const SERVICE_ROLE_KEY =
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
   Deno.env.get("SUPABASE_SECRET_KEY")!;
 const SHOP_ID = parseInt(Deno.env.get("TEKMETRIC_SHOP_ID") ?? "7476", 10);
-const MODEL = Deno.env.get("DIAGNOSE_CONCERN_MODEL") ?? "claude-haiku-4-5";
+// Models are addressed via the Vercel AI Gateway in `creator/model-name`
+// form. Credential is the AI_GATEWAY_API_KEY env (must be set as a
+// Supabase edge-fn secret). 2026-05-20 — swapped from
+// `anthropic/claude-haiku-4-5` to `google/gemini-2.5-flash` after batch 1
+// of the diagnostic LLM test surfaced 4/25 schema-validation failures
+// from Haiku 4.5. Gemini 2.5 Flash has VALIDATED mode for strict
+// constrained decoding — better fit for the long-context Zod schema.
+const MODEL = Deno.env.get("DIAGNOSE_CONCERN_MODEL") ?? "google/gemini-2.5-flash";
 const MAX_OUTPUT_TOKENS = 1024;
 const OTHER_CONCERN_CATEGORY = "other";
 
@@ -709,7 +716,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   try {
     const result = await generateObject({
-      model: anthropic(MODEL),
+      model: gateway(MODEL),
       system: systemPrompt,
       prompt: userPrompt,
       schema: Schema,

@@ -27,7 +27,11 @@
  * That assumption never matched the canonical spec; this version
  * restores the original classify + recommend + gap-detect behavior.
  *
- * Model: Haiku 4.5 default. Override via DIAGNOSE_CONCERN_MODEL env var.
+ * Model: gemini-2.5-flash via Vercel AI Gateway (`google/gemini-2.5-flash`).
+ * Override via DIAGNOSE_CONCERN_MODEL env var with any AI-Gateway model id
+ * in `creator/model-name` form (e.g. `anthropic/claude-haiku-4-5`,
+ * `google/gemini-2.5-pro`). Swapped from `anthropic/claude-haiku-4-5`
+ * 2026-05-20 — see DEFAULT_MODEL comment block below.
  *
  * Fail-safe: any LLM/Zod error returns
  *   { matched_category_key: null, matched_subcategory_slug: null,
@@ -35,7 +39,7 @@
  * which routes to forward-to-advisor. The customer's free-text is still
  * persisted in explanation_text and forwarded in the transcript email.
  */
-import { anthropic } from "@ai-sdk/anthropic";
+import { gateway } from "@ai-sdk/gateway";
 import * as Sentry from "@sentry/nextjs";
 import { generateObject } from "ai";
 import { z } from "zod";
@@ -50,7 +54,21 @@ import {
   isTestingService,
 } from "./load-diagnostic-catalog";
 
-const DEFAULT_MODEL = "claude-haiku-4-5";
+// Models are addressed via the Vercel AI Gateway in `creator/model-name`
+// form. ONE credential (AI_GATEWAY_API_KEY, auto-injected by Vercel on
+// deploys; manual env elsewhere) proxies all providers — no per-provider
+// API key in this codebase. To swap models, change the string OR set
+// DIAGNOSE_CONCERN_MODEL env var.
+//
+// 2026-05-20 — switched from `anthropic/claude-haiku-4-5` to
+// `google/gemini-2.5-flash` to address the 16% schema-validation failure
+// rate Haiku 4.5 showed in batch 1 of the diagnostic LLM test (4/25
+// "No object generated: response did not match schema"). Gemini 2.5
+// Flash has VALIDATED mode for strict constrained decoding which should
+// be more reliable on long-context Zod schemas. Apples-to-apples
+// flash-tier swap; escalation path is `google/gemini-2.5-pro` if Flash
+// also struggles.
+const DEFAULT_MODEL = "google/gemini-2.5-flash";
 const MAX_OUTPUT_TOKENS = 1024;
 
 export interface DiagnoseConcernChipHint {
@@ -459,7 +477,7 @@ export async function diagnoseConcern(
   let tokensOut = 0;
   try {
     const result = await generateObject({
-      model: anthropic(model),
+      model: gateway(model),
       system: buildSystemPrompt(args),
       prompt: buildUserPrompt(args),
       schema: Schema,
