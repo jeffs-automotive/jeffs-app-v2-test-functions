@@ -7,8 +7,9 @@
  * 2026-05-14" + the migration plan in scheduler-refactor-state.json.
  *
  * Per chat-design.md 2026-05-13 visual lock: Heritage Editorial layout
- * (paper background, Fraunces serif title, label-eyebrow tagline,
- * gold-rule separators). BookPageShell owns the layout.
+ * (paper background, Poppins-700 title, label-eyebrow tagline, gold-rule
+ * separators). BookPageShell owns the layout. (Title font swapped from
+ * Fraunces to Poppins 2026-05-20 — see scheduler_system_architecture.md.)
  */
 import { BookPageShell } from "@/components/scheduler/wizard/BookPageShell";
 

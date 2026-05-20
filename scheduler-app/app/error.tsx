@@ -41,14 +41,15 @@ export default function Error({
         padding: "2rem",
         backgroundColor: "#F5F1E8",
         color: "#2A2622",
-        fontFamily: '"Inter", system-ui, -apple-system, sans-serif',
+        fontFamily: '"Poppins", system-ui, -apple-system, sans-serif',
       }}
     >
       <div style={{ maxWidth: "32rem", textAlign: "center" }}>
         <h1
           style={{
-            fontFamily: '"Fraunces", Georgia, serif',
+            fontFamily: '"Poppins", system-ui, -apple-system, sans-serif',
             fontSize: "2rem",
+            fontWeight: 700,
             marginBottom: "1rem",
             color: "#96003C",
           }}

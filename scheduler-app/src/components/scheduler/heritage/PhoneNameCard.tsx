@@ -17,7 +17,7 @@ import { Button, Card, Field, Input } from "@/components/ui";
  * Names: trimmed, capitalize-first auto-applied per chat-design.md ("Sarah"
  * not "sarah") so the chat bubble greeting reads naturally.
  *
- * Heritage style: Fraunces title, Inter form fields, gold-rule card boundary,
+ * Heritage style: Poppins title + form fields, gold-rule card boundary,
  * 8px fade-in on mount, mobile-first 44px tap targets.
  */
 

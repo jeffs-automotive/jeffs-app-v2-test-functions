@@ -29,7 +29,7 @@ import { Button, Card } from "@/components/ui";
  * - Resend button appears after 30s cooldown elapses
  * - Attempts-remaining counter surfaces after wrong code (closes G7)
  * - 3-strike escalation hint surfaces at attempts_remaining <= 1
- * - Heritage styling: Fraunces title, paper card surface, ink-secondary
+ * - Heritage styling: Poppins title, paper card surface, ink-secondary
  *   description, status-error countdown when expired
  */
 

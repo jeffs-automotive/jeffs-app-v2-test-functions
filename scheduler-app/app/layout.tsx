@@ -1,27 +1,21 @@
 import type { Metadata } from "next";
-import { Fraunces, Inter } from "next/font/google";
+import { Poppins } from "next/font/google";
 import "./globals.css";
 
-// Heritage Editorial typography:
-//   - Fraunces (variable serif) for h1/h2/h3 — warm, modern, sturdy.
-//   - Inter (variable sans) for body, buttons, form input — neutral + readable.
-// Both load with display: 'swap' so the page paints with system fallback
-// while the web fonts arrive, then upgrades seamlessly.
+// Marketing-standard typography (swapped 2026-05-20 from Fraunces+Inter pair):
+//   - Poppins (geometric sans) for everything — headings use heavier weights,
+//     body uses 400/500. Single font in different weights is the canonical
+//     marketing-landing-page pattern (cf. Poppins is the #1 most-used Google
+//     Font for marketing landing pages globally).
+//   - display: 'swap' so the page paints with system fallback while the web
+//     font arrives, then upgrades seamlessly.
 
-// Fraunces is a variable font; using `variable` weight + axes for the editorial
-// SOFT softness + WONK character. Specifying explicit weight strings conflicts
-// with the axes config per next/font v15 — pick one or the other.
-const fraunces = Fraunces({
+const poppins = Poppins({
   subsets: ["latin"],
-  variable: "--font-fraunces",
-  display: "swap",
-  axes: ["SOFT", "WONK"],
-});
-
-// Inter is variable too; let Next.js pull the full variable weight range.
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-inter",
+  variable: "--font-poppins",
+  // Poppins is NOT a variable font in next/font/google — must enumerate
+  // weights explicitly. 400/500 for body + 600/700 for headings.
+  weight: ["400", "500", "600", "700"],
   display: "swap",
 });
 
@@ -39,7 +33,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${fraunces.variable} ${inter.variable}`}>
+    <html lang="en" className={poppins.variable}>
       <body className="min-h-dvh">{children}</body>
     </html>
   );

@@ -19,7 +19,7 @@ import {
  *
  * Composition slots:
  *   - <Card.Eyebrow>Step 3 · Verify phone</Card.Eyebrow>   (uppercase small)
- *   - <Card.Title>Verify your phone</Card.Title>           (serif Fraunces)
+ *   - <Card.Title>Verify your phone</Card.Title>           (Poppins 600)
  *   - <Card.Description>...</Card.Description>             (sans muted)
  *   - <Card.Body>...input/fields here...</Card.Body>
  *   - <Card.Actions>...buttons here...</Card.Actions>      (right-aligned by default)

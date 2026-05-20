@@ -15,10 +15,12 @@
  *   - Gold is a RULE LINE + accent role — never a fill on big surfaces.
  *   - Charcoal body text (not pure black). Easier on the eye, more editorial.
  *
- * Fonts:
- *   --font-display = Fraunces (serif; for h1/h2 + section headings)
- *   --font-sans    = Inter (for body, buttons, form input)
- *   Both loaded via next/font in app/layout.tsx; injected as CSS vars at <html>.
+ * Fonts (swapped 2026-05-20 to marketing-standard single-font system):
+ *   --font-sans    = Poppins (geometric sans; body + UI at 400/500)
+ *   --font-display = Poppins (same font, used at heavier weights 600/700
+ *                    for h1/h2/h3 so the type system feels cohesive while
+ *                    still differentiating headings from body)
+ *   Loaded via next/font in app/layout.tsx; injected as CSS var at <html>.
  *
  * Tailwind v4: @theme inline lifts these into utility classes
  *   (e.g. text-brand-burgundy-700, font-display, bg-paper).
@@ -72,8 +74,11 @@
   --color-status-ok-fg: #3D4A21;
 
   /* ─── Fonts (loaded via next/font in layout.tsx) ────────────────────────── */
-  --font-sans: var(--font-inter), system-ui, -apple-system, "Segoe UI", "Roboto", sans-serif;
-  --font-display: var(--font-fraunces), "Iowan Old Style", Georgia, "Times New Roman", serif;
+  /* Single font (Poppins) used for both roles; headings get a heavier weight
+   * via the h1/h2/h3 rule below. Fallback chain mirrors Inter's old fallbacks
+   * so the system-font paint before Poppins arrives stays close in metrics. */
+  --font-sans: var(--font-poppins), system-ui, -apple-system, "Segoe UI", "Roboto", sans-serif;
+  --font-display: var(--font-poppins), system-ui, -apple-system, "Segoe UI", "Roboto", sans-serif;
 
   /* ─── Spacing scale (default Tailwind kept; only motion/radius adjusted) ─ */
   --radius-card: 6px;    /* cards are minimally rounded — editorial-feel */
@@ -108,13 +113,13 @@ body {
 
 h1, h2, h3 {
   font-family: var(--font-display);
-  letter-spacing: -0.005em;
+  letter-spacing: -0.01em;  /* Poppins benefits from slight negative tracking */
   color: var(--color-ink);
 }
 
-h1 { font-weight: 500; }
-h2 { font-weight: 500; }
-h3 { font-weight: 500; }
+h1 { font-weight: 700; }  /* Poppins 700 = display weight for marketing hero */
+h2 { font-weight: 600; }  /* Poppins 600 = SemiBold for sub-headings */
+h3 { font-weight: 600; }
 
 /* Small-caps section labels — Aesop-style. Use .label-eyebrow class. */
 .label-eyebrow {
