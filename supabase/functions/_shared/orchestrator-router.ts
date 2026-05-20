@@ -93,30 +93,59 @@ Specialist descriptions:
   - "code ORP-A4B72C" / "I got an email about ARN-X3K9P2" / "code + option"
   - NEVER allowed for caller_context='customer'.
 
-- **scheduler**: Appointment booking + customer lookup. Triggers:
-  - "book an appointment for Sarah Johnson" / "schedule a waiter"
-  - "what slots do you have Friday" / "earliest available dropoff"
-  - "verify customer +16105557777" / "lookup phone for Tekmetric"
-  - "hold a 8am slot for John Doe's 2020 Civic"
-  - "reschedule appointment 12345" / "cancel appointment 12345"
-  - Customer wizard turns: phone entry, OTP, vehicle pick, slot pick, confirm.
+- **scheduler**: Appointment booking + customer lookup + ALL advisor
+  administration of the scheduler's predefined-data tables. Triggers:
+  - Booking & lookup:
+    - "book an appointment for Sarah Johnson" / "schedule a waiter"
+    - "what slots do you have Friday" / "earliest available dropoff"
+    - "verify customer +16105557777" / "lookup phone for Tekmetric"
+    - "hold a 8am slot for John Doe's 2020 Civic"
+    - "reschedule appointment 12345" / "cancel appointment 12345"
+    - Customer wizard turns: phone entry, OTP, vehicle pick, slot pick, confirm.
+  - Advisor administration (caller_context='advisor' ONLY):
+    - "upload the updated testing services" / "upload testing-services.md"
+    - "upload the updated routine services"
+    - "upload the updated brakes concern doc" / "upload brakes guideline"
+    - "upload the updated appointment limits" / "upload closed dates"
+    - "dry run the testing services upload" / "preview the upload"
+    - "apply the testing services upload" / "confirm the upload with token X"
+    - "set brake_inspection price to $45" / "change battery test description"
+    - "deactivate tpms_testing" / "remove TPMS testing"
+    - "add a new testing service for transmission scans"
+    - "what's the current price of brake_inspection" / "show testing service Y"
+    - "list routine services" / "list concern questions for brakes"
+    - "show the brakes guideline prose"
+    - "undo the last testing-services upload" / "revert audit log id 42"
+    - "block off 2026-07-04" / "block tomorrow morning"
+    - "find orphan customers" / "sync appointments from Tekmetric"
+    - ANY mention of admin-data words: upload, edit, change price, set price,
+      deactivate, revert, snapshot, dry-run, confirm token, audit log,
+      block date, closed dates, capacity limits.
 
-- **diagnostic**: Concern Q&A + testing-service recommendation. Triggers:
-  - "I hear a noise from the front when braking" (raw concern explanation)
+- **diagnostic**: A CUSTOMER explaining a free-form vehicle symptom (caller_context
+  ='customer'). The diagnostic LLM classifies the symptom into a concern
+  category and asks clarifying questions to recommend testing services.
+  This is NEVER the right choice for an advisor uploading or editing the
+  testing-services catalog — that's scheduler-admin. Triggers:
+  - "I hear a noise from the front when braking" (customer narrating a symptom)
   - "my car is pulling to the left"
   - "the AC isn't blowing cold"
-  - "what testing service do I need for a check-engine light?"
-  - When the chat agent has captured a free-form symptom and needs to
-    classify category + decide which clarification questions to ask + which
-    testing services to recommend.
+  - "the check engine light just came on, what's wrong"
 
 Routing rules:
 - If the intent is ambiguous, prefer the safer specialist (read-only / lookup
   before write).
 - For advisor caller_context, default to 'keytag' when the intent mentions
-  RO numbers + tag colors. Default to 'scheduler' for booking-shaped intents.
-  Default to 'diagnostic' for concern-explanation-shaped intents.
+  RO numbers + tag colors. Default to 'scheduler' for booking-shaped intents
+  AND for ALL admin/data-management intents (uploads, price edits,
+  deactivations, reverts, capacity blocks, audit lookups). Advisors do NOT
+  use the diagnostic specialist — that's a customer-side flow.
 - For customer caller_context, NEVER return 'keytag' — that's advisor-only.
+  Customer free-form symptom narration → 'diagnostic'.
+- The phrase "testing service" by itself does NOT imply diagnostic. An
+  ADVISOR saying "upload testing services" is administering the catalog
+  (scheduler); a CUSTOMER saying "what testing service do I need for X" is
+  describing a symptom (diagnostic). Use caller_context to disambiguate.
 - Return EXACTLY one specialist from the allowed list above. Do not invent
   new specialist names.`;
 }

@@ -203,7 +203,11 @@ function handleToolsList(): unknown {
 class RpcInvalidParams extends Error {}
 class RpcMethodNotFound extends Error {}
 
-async function handleToolsCall(params: unknown, userLabel: string): Promise<unknown> {
+async function handleToolsCall(
+  params: unknown,
+  userLabel: string,
+  clientId: string,
+): Promise<unknown> {
   if (!params || typeof params !== "object") {
     throw new RpcInvalidParams("tools/call: params must be an object with name + arguments");
   }
@@ -229,11 +233,23 @@ async function handleToolsCall(params: unknown, userLabel: string): Promise<unkn
   // for the intent. Existing keytag traffic continues to land on the keytag
   // specialist unchanged; new advisor-driven booking / diagnostic intents now
   // route correctly without needing a new MCP tool.
+  //
+  // include_admin_tools: orchestrator-mcp ONLY accepts advisor traffic
+  // (OAuth-authenticated Claude Desktop), so we always expose the scheduler
+  // specialist's admin tool registry (upload_*_md, patch_*_fields,
+  // deactivate_*, revert_md_upload, run_appointments_sync, etc.). The audit
+  // identity comes from the OAuth bearer's clientId + userLabel and is
+  // written to scheduler_admin_audit_log on every successful write.
   const orchestratorResult = await runOrchestrator(sb, SHOP_ID, {
     caller_context: "advisor",
     intent,
     params: userParams,
     user_label: userLabel,
+    include_admin_tools: true,
+    admin_audit: {
+      oauth_client_id: clientId,
+      display_name: userLabel,
+    },
   });
 
   const text = JSON.stringify(orchestratorResult);
@@ -301,7 +317,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
         return jsonRpcResponse({ jsonrpc: "2.0", id, result: handleToolsList() });
 
       case "tools/call": {
-        const result = await handleToolsCall(rpcReq.params, auth.userLabel);
+        const result = await handleToolsCall(
+          rpcReq.params,
+          auth.userLabel,
+          auth.clientId,
+        );
         return jsonRpcResponse({ jsonrpc: "2.0", id, result });
       }
 
