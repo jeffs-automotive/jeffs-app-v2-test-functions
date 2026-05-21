@@ -558,6 +558,19 @@ export function parseConcernCategoryMd(content: string): ParsedConcernDoc {
       continue;
     }
 
+    // HTML comments — skip both single-line and multi-line so they don't get
+    // appended to the previous question via the continuation-line collector
+    // at the bottom of this loop.
+    if (line.startsWith("<!--")) {
+      if (line.includes("-->")) {
+        continue;
+      }
+      let j = i + 1;
+      while (j < bodyLines.length && !(bodyLines[j] ?? "").includes("-->")) j++;
+      i = j;
+      continue;
+    }
+
     const subMatch = line.match(SUB_HEADER);
     if (subMatch) {
       if (currentSub && currentSub.questions.length === 0) {
@@ -767,7 +780,25 @@ export function parseMdSections(md: string): ParsedMdSections {
     const line = raw.trim();
     const lineNo = i + 1;
 
-    if (line === "" || line.startsWith("<!--") || line.startsWith("---")) {
+    if (line === "" || line.startsWith("---")) {
+      continue;
+    }
+
+    // HTML comments — handle BOTH single-line (`<!-- ... -->` on one line) AND
+    // multi-line (open `<!--` here, closing `-->` on a later line). Walks past
+    // intermediate lines so they don't get mis-parsed as Field lines. Without
+    // this, a between-section multi-line comment like:
+    //   <!-- ====
+    //        BANNER
+    //   ==== -->
+    // would skip the `<!--` line, then choke on the BANNER line as a Field.
+    if (line.startsWith("<!--")) {
+      if (line.includes("-->")) {
+        continue; // single-line comment closed on same line
+      }
+      let j = i + 1;
+      while (j < lines.length && !lines[j].includes("-->")) j++;
+      i = j; // jump past the closing line
       continue;
     }
 
