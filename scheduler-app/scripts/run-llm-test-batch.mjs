@@ -29,41 +29,40 @@ import { fileURLToPath } from "node:url";
 // CONFIG (edit per batch)
 // ════════════════════════════════════════════════════════════════════
 
-const BATCH_LABEL = "llm-test-5-anthropic-sdk-2stage-052026";
+const BATCH_LABEL = "llm-test-9-anthropic-sdk-multisymptom-borderline-vague-052026";
 const OUTPUT_DIR_RELATIVE = "docs/chat-instructions/diagnostic-llm-tests";
 const FUNCTION_URL =
   "https://itzdasxobllfiuolmbxu.supabase.co/functions/v1/llm-testing";
 
 const CONCERNS = [
-  // ── Common single-symptom (10) ──────────────────────────────────────
-  "My car makes a loud knocking noise when I first start it in the morning but it stops after about a minute",
-  "Brakes squeak really bad when I'm coming to a stop especially at slow speeds",
-  "AC blows hot air on the driver side but cold on the passenger side",
-  "When I turn the steering wheel all the way left I hear a clicking noise",
-  "Battery keeps dying overnight even though it's only 2 years old",
-  "There's a sweet syrupy smell coming from under the hood after driving for a while",
-  "White smoke coming out the tailpipe when I accelerate hard",
-  "Brake pedal goes almost to the floor before the brakes engage",
-  "Steering wheel pulls hard to the right whenever I let go on the highway",
-  "Tires wearing unevenly on the front passenger side, looks like cupping",
-  // ── Warning lights (4) ─────────────────────────────────────────────
-  "Check engine light came on yesterday but car drives normal",
-  "ABS light just turned on a few minutes ago and stayed on",
-  "Airbag light is flashing intermittently",
-  "Oil pressure light flickers when I come to a stop at idle",
-  // ── Edge cases — 'other' situations (6) ────────────────────────────
-  "Car has been sitting in my driveway for 8 months, want to make sure it's road ready before driving it",
-  "Just got rear-ended last week and now the car pulls left, want to make sure suspension is OK",
-  "Going on a 1500 mile road trip next weekend, want a complete check before I go",
-  "Just had new tires installed at Discount Tire yesterday and now I feel a vibration at 65mph",
-  "Engine bay smells like burning oil after I drive for like 20 minutes",
-  "Squealing high-pitched noise from the front right wheel when I brake but only sometimes",
-  // ── Vague / multi-symptom (5) ──────────────────────────────────────
-  "Something just feels off, can't really describe it",
-  "Car shakes when braking at highway speeds AND the check engine light is on AND it pulls left",
-  "It's making a weird noise",
-  "I think my transmission is slipping but I'm not really sure",
-  "The car just isn't right anymore",
+  // ── Multi-symptom (10) ──────────────────────────────────────────────
+  "Brakes squeal AND my steering wheel shakes when I stop hard",
+  "Engine runs rough AND my heat is barely working",
+  "Battery dies overnight AND I hear a clicking sound when I try to start",
+  "AC stopped working AND I smell coolant",
+  "Car pulls to the right AND the brakes feel spongy",
+  "Loud thump from rear when I brake AND I see fluid spots on my driveway",
+  "Check engine light came on AND the gas mileage tanked",
+  "Car shakes at highway speeds AND tires look fine",
+  "Hesitates on acceleration AND I hear a popping sound",
+  "Idles rough AND smells like gas inside the cabin",
+  // ── Borderline-vague (10) ───────────────────────────────────────────
+  "Sometimes it does this thing where it kinda jerks",
+  "Acts weird in the morning before warming up",
+  "Maintenance light is something I should probably get checked",
+  "I think I need an inspection",
+  "Im not really sure but it feels off",
+  "Want to make sure everything is good before a road trip",
+  "I bought this car used and want a complete check",
+  "Lights look different than they used to be",
+  "Car is making a noise I cant describe",
+  "I just want it looked at",
+  // ── Advisor handoff / service request (5) ───────────────────────────
+  "Buddy of mine said I need a head gasket",
+  "The other shop said I need brakes",
+  "Want a second opinion on what my dealer told me",
+  "Need an oil change and tire rotation",
+  "Need a state inspection",
 ];
 
 // ════════════════════════════════════════════════════════════════════
@@ -288,7 +287,7 @@ async function main() {
   };
 
   const lines = [];
-  lines.push(`# LLM diagnostic test — batch 5 (Haiku 4.5, Anthropic SDK + native structured outputs, May 2026)`);
+  lines.push(`# LLM diagnostic test — batch 9 (Haiku, Path C, multi-symptom + borderline-vague, May 2026)`);
   lines.push("");
   lines.push(`**Ran:** ${new Date().toISOString()}`);
   lines.push(`**Architecture:** two-stage classifier (refactor 2026-05-20)`);
