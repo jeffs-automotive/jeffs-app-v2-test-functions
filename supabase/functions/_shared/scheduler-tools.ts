@@ -88,8 +88,10 @@ import {
 import {
   uploadRoutineServicesMdV2,
   uploadTestingServicesMdV2,
+  uploadSubcategoryServiceMapMdV2,
   exportRoutineServicesMdV2,
   exportTestingServicesMdV2,
+  exportSubcategoryServiceMapMdV2,
   revertMdUpload,
 } from "./tools/scheduler-admin-catalog.ts";
 
@@ -970,6 +972,51 @@ export function getSchedulerTools(args: SchedulerToolsArgs) {
         ),
       }),
 
+      upload_subcategory_service_map_md: tool({
+        description:
+          "Bulk-update the subcategory → testing_service mapping from a " +
+          "wide markdown table. Required columns: category, subcategory_slug, " +
+          "testing_service_keys. The mapping column lives on " +
+          "concern_subcategories.eligible_testing_service_keys (text[], 1:N). " +
+          "When non-empty, the diagnostic LLM routes ONLY to the listed " +
+          "services for that subcategory (testing_services.concern_categories[] " +
+          "is ignored for that row). When the cell is blank / '(none)', the " +
+          "subcategory falls back to concern_categories[]-based fan-out " +
+          "(legacy behavior). Rows OMITTED from the MD are LEFT ALONE " +
+          "(never silently cleared). Same TWO-STEP dry_run-then-apply flow " +
+          "as upload_testing_services_md. Validation blocks: unknown " +
+          "(category, subcategory_slug), unknown / inactive service_keys, " +
+          "non-canonical category slug, duplicate rows. pre_state_snapshot " +
+          "captured on apply for revert.",
+        inputSchema: z.object({
+          md_content: z.string().min(1),
+          dry_run: z.boolean().optional().default(true),
+          expected_confirm_token: z.string().optional(),
+        }),
+        execute: recorded(recorder, "upload_subcategory_service_map_md", (input) =>
+          uploadSubcategoryServiceMapMdV2(sb, shopId, {
+            md_content: input.md_content,
+            audit,
+            dry_run: input.dry_run,
+            expected_confirm_token: input.expected_confirm_token,
+          }),
+        ),
+      }),
+
+      export_subcategory_service_map_md: tool({
+        description:
+          "Export the current subcategory → testing_service mapping as a " +
+          "wide markdown table (round-trippable through " +
+          "upload_subcategory_service_map_md). Includes every ACTIVE row " +
+          "from concern_subcategories grouped by category. Rows with no " +
+          "mapping show '(none)' in the testing_service_keys column. " +
+          "Returns: { md_content, row_count }.",
+        inputSchema: z.object({}),
+        execute: recorded(recorder, "export_subcategory_service_map_md", () =>
+          exportSubcategoryServiceMapMdV2(sb, shopId),
+        ),
+      }),
+
       revert_md_upload: tool({
         description:
           "Undo a previous bulk MD upload by audit_log_id. Reads the " +
@@ -980,7 +1027,8 @@ export function getSchedulerTools(args: SchedulerToolsArgs) {
           "(30-day retention). Use the same TWO-STEP flow as the uploaders: " +
           "(1) dry_run=true (DEFAULT) returns the revert plan for advisor " +
           "review, (2) dry_run=false applies. Supports testing_services and " +
-          "routine_services only. Returns: { ok, upload_id, table_name, " +
+          "routine_services only (mapping-table revert: open follow-up). " +
+          "Returns: { ok, upload_id, table_name, " +
           "original_md_content_hash, original_diff, revert_plan: { restore[], " +
           "deactivate[], no_op_count }, dry_run, revert_audit_log_id?, " +
           "error_message? }.",

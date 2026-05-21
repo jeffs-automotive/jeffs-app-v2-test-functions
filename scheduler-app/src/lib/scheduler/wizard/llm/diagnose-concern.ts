@@ -347,6 +347,7 @@ export function buildStage2SystemPrompt(
           slug: matchedCategory.subcategory_slug,
           display_label: matchedCategory.display_label,
           concern_category: "other",
+          eligible_testing_service_keys: [],
           questions: matchedCategory.questions,
         },
       ]

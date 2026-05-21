@@ -105,6 +105,7 @@ Specialist descriptions:
   - Advisor administration (caller_context='advisor' ONLY):
     - "upload the updated testing services" / "upload testing-services.md"
     - "upload the updated routine services"
+    - "upload the updated subcategory service mappings" / "upload subcategory-service-map.md" / "upload subcategory mapping" / "change which testing service ABS light routes to"
     - "upload the updated brakes concern doc" / "upload brakes guideline"
     - "upload the updated appointment limits" / "upload closed dates"
     - "dry run the testing services upload" / "preview the upload"

@@ -101,7 +101,17 @@ Starting price: $39.99
 Notes: Brake inspection is $39.99. If a brake repair is needed and approved, brake inspection fee is waived.
 Description: The technician will inspect the brake pads, rotors, and calipers for wear and proper operation, and check brake lines, hoses, and fluid level for leaks or damage. The system will be evaluated to ensure safe, reliable braking performance.
 Example keywords: (none)
-Concern categories: brakes, noise, pulling, warning_light
+Concern categories: brakes, noise
+Active: true
+
+## brake_inspection_warning_light
+Display name: Brake inspection with Warning Light
+Abbreviation: BRAKE INSPECT
+Starting price: $89.95
+Notes: (none)
+Description: The technician will inspect the brake pads, rotors, and calipers for wear and proper operation, and check brake lines, hoses, and fluid level for leaks or damage. The system will be evaluated to ensure safe, reliable braking performance.
+Example keywords: Red brake light on
+Concern categories: brakes, noise, warning_light
 Active: true
 
 ## charging_starting_testing

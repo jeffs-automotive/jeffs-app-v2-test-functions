@@ -77,6 +77,13 @@ interface CatalogSubcategory {
   slug: string;
   display_label: string;
   concern_category: string;
+  /** Explicit subcategory → testing_service mapping (1:N). When this
+   *  array is non-empty, the catalog loader uses it as the ONLY
+   *  eligibility signal — testing_services.concern_categories[] is
+   *  ignored for this subcategory. When empty (the default), the
+   *  loader falls back to concern_categories[] resolution. Mirrors
+   *  the scheduler-app definition in load-diagnostic-catalog.ts. */
+  eligible_testing_service_keys: string[];
   questions: CatalogQuestion[];
 }
 
@@ -138,7 +145,9 @@ async function loadCatalog(): Promise<DiagnosticCatalog> {
       .order("display_name", { ascending: true }),
     sb
       .from("concern_subcategories")
-      .select("id, slug, category, display_label, display_order, active")
+      .select(
+        "id, slug, category, display_label, display_order, active, eligible_testing_service_keys",
+      )
       .eq("shop_id", SHOP_ID)
       .eq("active", true)
       .order("display_order", { ascending: true }),
@@ -169,6 +178,7 @@ async function loadCatalog(): Promise<DiagnosticCatalog> {
     display_label: string;
     display_order: number;
     active: boolean;
+    eligible_testing_service_keys: string[] | null;
   }>;
   const questionRows = (questionRes.data ?? []) as Array<{
     id: number;
@@ -193,13 +203,20 @@ async function loadCatalog(): Promise<DiagnosticCatalog> {
     questionsBySub.set(q.subcategory_id, arr);
   }
 
+  // Mirror of scheduler-app/src/lib/scheduler/wizard/llm/load-diagnostic-catalog.ts
+  // Two indexes: explicit mapping wins; concern_categories[] is the fallback.
   const subsByCategory = new Map<string, CatalogSubcategory[]>();
+  const subsByExplicitMap = new Map<string, CatalogSubcategory[]>();
   const otherSubcategories: CatalogSubcategory[] = [];
   for (const row of subRows) {
+    const eligible = Array.isArray(row.eligible_testing_service_keys)
+      ? row.eligible_testing_service_keys
+      : [];
     const sub: CatalogSubcategory = {
       slug: row.slug,
       display_label: row.display_label,
       concern_category: row.category,
+      eligible_testing_service_keys: eligible,
       questions: (questionsBySub.get(row.id) ?? []).sort(
         (a, b) => a.display_order - b.display_order,
       ),
@@ -208,15 +225,30 @@ async function loadCatalog(): Promise<DiagnosticCatalog> {
       otherSubcategories.push(sub);
       continue;
     }
-    const arr = subsByCategory.get(row.category) ?? [];
-    arr.push(sub);
-    subsByCategory.set(row.category, arr);
+    if (eligible.length > 0) {
+      for (const serviceKey of eligible) {
+        const arr = subsByExplicitMap.get(serviceKey) ?? [];
+        arr.push(sub);
+        subsByExplicitMap.set(serviceKey, arr);
+      }
+    } else {
+      const arr = subsByCategory.get(row.category) ?? [];
+      arr.push(sub);
+      subsByCategory.set(row.category, arr);
+    }
   }
 
   const testingCategories: TestingServiceCategory[] = testingRows.map((row) => {
     const cats = row.concern_categories ?? [];
     const subs: CatalogSubcategory[] = [];
     const seen = new Set<string>();
+    // (a) Explicit mappings first.
+    for (const s of subsByExplicitMap.get(row.service_key) ?? []) {
+      if (seen.has(s.slug)) continue;
+      seen.add(s.slug);
+      subs.push(s);
+    }
+    // (b) Fallback fan-out for unmapped subcategories.
     for (const c of cats) {
       for (const s of subsByCategory.get(c) ?? []) {
         if (seen.has(s.slug)) continue;
@@ -425,6 +457,7 @@ function buildStage2SystemPrompt(
           slug: matchedCategory.subcategory_slug,
           display_label: matchedCategory.display_label,
           concern_category: "other",
+          eligible_testing_service_keys: [],
           questions: matchedCategory.questions,
         },
       ]

@@ -42,6 +42,7 @@ instructions. Don't try to recall from memory — open the file.
 | "Put Red 5 on RO 152222" / "Release the tag from RO 152300" / "Who has Yellow 30?" / "Give RO 152222 a tag" / "Run reconcile" / "What did mike do today?" / "Mark RO X as A/R" / "Revert RO X back to WIP" | **`keytag.md`** |
 | "Upload the updated testing services" / "Set brake_inspection price to $45" / "Add a transmission_scan service" / "Update the battery_test description" / "Deactivate TPMS testing" | **`scheduler/edit-testing-services.md`** |
 | "Upload the updated routine services" / "Set oil_change description to …" / "Add waived note to brake_inspection" / "Move oil_change to position 1" / "Deactivate tire_rotation" | **`scheduler/edit-routine-services.md`** |
+| "Upload the updated subcategory mappings" / "Route ABS lights to abs_traction_stability_testing" / "Make engine_temperature_light eligible under coolant and CEL testing" / "Clear the mapping for X" | **`scheduler/edit-subcategory-service-map.md`** |
 | "Upload the updated brakes concern doc" / "Upload the brakes guideline" / "Update electrical sub-categories" / "Show me the brakes guideline prose" | **`scheduler/edit-concerns.md`** |
 | "Block off 2026-07-04" / "Add Christmas as a closed date" / "List future closures" / "Upload the closed dates" | **`scheduler/edit-closed-dates.md`** |
 | "Change weekly capacity to 8 waiter slots Tuesdays" / "Open Sundays" / "Upload appointment limits" | **`scheduler/edit-appointment-default-limits.md`** |

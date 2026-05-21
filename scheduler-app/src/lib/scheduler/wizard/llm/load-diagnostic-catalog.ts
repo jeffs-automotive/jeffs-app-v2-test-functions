@@ -50,8 +50,21 @@ export interface CatalogSubcategory {
   display_label: string;
   /** Parent concern_category (e.g., "brakes", "noise", "other"). Used
    *  to bridge from a testing_service's concern_categories[] to the
-   *  eligible subcategory set. */
+   *  eligible subcategory set when this subcategory has no explicit
+   *  mapping (eligible_testing_service_keys is empty). */
   concern_category: string;
+  /** Explicit subcategory → testing_service mapping (1:N). When this
+   *  array is non-empty, the catalog loader uses it as the ONLY
+   *  eligibility signal — testing_services.concern_categories[] is
+   *  ignored for this subcategory. When empty (the default), the
+   *  loader falls back to concern_categories[] resolution.
+   *
+   *  Edited by advisors via upload_subcategory_service_map_md
+   *  (orchestrator-mcp admin tool). Added 2026-05-20 to support
+   *  fine-grained routing for warning_light subcategories (CEL/ABS/
+   *  traction/SRS/EPS/oil-pressure/engine-temp) to their dedicated
+   *  testing services. */
+  eligible_testing_service_keys: string[];
   questions: CatalogQuestion[];
 }
 
@@ -103,6 +116,7 @@ interface SubcategoryRow {
   display_label: string;
   display_order: number;
   active: boolean;
+  eligible_testing_service_keys: string[] | null;
 }
 
 interface QuestionRow {
@@ -145,7 +159,9 @@ export async function loadDiagnosticCatalog(
       .order("display_name", { ascending: true }),
     supabase
       .from("concern_subcategories")
-      .select("id, slug, category, display_label, display_order, active")
+      .select(
+        "id, slug, category, display_label, display_order, active, eligible_testing_service_keys",
+      )
       .eq("shop_id", SHOP_ID)
       .eq("active", true)
       .order("display_order", { ascending: true }),
@@ -188,17 +204,33 @@ export async function loadDiagnosticCatalog(
     questionsBySub.set(q.subcategory_id, arr);
   }
 
-  // Build subcategory records keyed by their parent concern_category so
-  // each testing_service's concern_categories[] can fan-out to the right
-  // subcategory set without an O(N²) scan per service.
+  // Build subcategory records. Track TWO indexes:
+  //   subsByCategory   — fallback path: for subcategories with NO
+  //                      explicit mapping (eligible_testing_service_keys
+  //                      empty), the loader fans them out via the
+  //                      testing_services.concern_categories[] tag.
+  //   subsByExplicitMap — primary path: for subcategories WITH an
+  //                       explicit eligible_testing_service_keys entry,
+  //                       the loader fans them out by the EXACT
+  //                       service_keys listed (ignoring the
+  //                       concern_categories[] tag entirely for this
+  //                       subcategory).
+  //
+  // Both indexes exclude OTHER_CONCERN_CATEGORY rows — those are
+  // elevated to top-level categories and bypass both paths.
   const subsByCategory = new Map<string, CatalogSubcategory[]>();
+  const subsByExplicitMap = new Map<string, CatalogSubcategory[]>();
   const otherSubcategories: CatalogSubcategory[] = [];
 
   for (const row of subRows) {
+    const eligible = Array.isArray(row.eligible_testing_service_keys)
+      ? row.eligible_testing_service_keys
+      : [];
     const sub: CatalogSubcategory = {
       slug: row.slug,
       display_label: row.display_label,
       concern_category: row.category,
+      eligible_testing_service_keys: eligible,
       questions: (questionsBySub.get(row.id) ?? []).sort(
         (a, b) => a.display_order - b.display_order,
       ),
@@ -207,16 +239,43 @@ export async function loadDiagnosticCatalog(
       otherSubcategories.push(sub);
       continue;
     }
-    const arr = subsByCategory.get(row.category) ?? [];
-    arr.push(sub);
-    subsByCategory.set(row.category, arr);
+    if (eligible.length > 0) {
+      // Explicit mapping takes precedence. Register under each listed
+      // service_key. Falls back to concern_categories[] are NOT applied
+      // to this subcategory.
+      for (const serviceKey of eligible) {
+        const arr = subsByExplicitMap.get(serviceKey) ?? [];
+        arr.push(sub);
+        subsByExplicitMap.set(serviceKey, arr);
+      }
+    } else {
+      // Fallback path: classic concern_categories[] fan-out.
+      const arr = subsByCategory.get(row.category) ?? [];
+      arr.push(sub);
+      subsByCategory.set(row.category, arr);
+    }
   }
 
-  // 14 testing services with their reachable subcategories.
+  // Each testing_service's eligible subcategory set is the UNION of:
+  //   (a) subcategories that explicitly map to this service_key, AND
+  //   (b) subcategories with NO explicit mapping whose parent
+  //       concern_category is in this service's concern_categories[].
+  // De-duped by slug across both paths.
   const testingCategories: TestingServiceCategory[] = testingRows.map((row) => {
     const cats = row.concern_categories ?? [];
     const subs: CatalogSubcategory[] = [];
     const seen = new Set<string>();
+
+    // (a) Explicit mappings — primary path.
+    for (const s of subsByExplicitMap.get(row.service_key) ?? []) {
+      if (seen.has(s.slug)) continue;
+      seen.add(s.slug);
+      subs.push(s);
+    }
+
+    // (b) Fallback fan-out by concern_categories[] tag — only pulls
+    //     subcategories with NO explicit mapping (subsByCategory only
+    //     contains unmapped rows by construction).
     for (const c of cats) {
       for (const s of subsByCategory.get(c) ?? []) {
         // De-dup across concern_categories (e.g., brake_inspection has
@@ -227,6 +286,7 @@ export async function loadDiagnosticCatalog(
         subs.push(s);
       }
     }
+
     return {
       kind: "testing_service",
       service_key: row.service_key,
