@@ -1,25 +1,27 @@
-// llm-testing — diagnostic concern eval endpoint (Vercel AI Gateway).
+// llm-testing — two-stage diagnostic concern eval endpoint (Vercel AI Gateway).
 //
-// Mirrors the diagnostic prompt + schema + post-validation that the
-// customer wizard's `diagnoseConcern` helper sends to Anthropic
-// (scheduler-app/src/lib/scheduler/wizard/llm/diagnose-concern.ts).
-// Lets us run test batches of customer concerns against the EXACT same
-// prompt the prod wizard uses, without standing up the full Next.js app
-// locally — useful for prompt-tuning and regression checks.
+// Mirrors the two-stage diagnostic prompt + schema + post-validation that
+// scheduler-app/src/lib/scheduler/wizard/llm/diagnose-concern.ts uses in prod
+// (refactored 2026-05-20). Lets us run test batches against the EXACT same
+// pipeline the prod wizard uses, without standing up the full Next.js app.
 //
-// Returns BOTH the raw LLM output AND the post-validated state so the
-// caller can detect hallucinations (LLM returned a slug not in catalog)
-// and silent filtering (question IDs dropped during validation).
+// Two stages:
+//   Stage 1 — match category (brief catalog, ~5-8 KB prompt)
+//   Stage 2 — pick subcategory + gap-detect questions (single category, ~2-5 KB)
 //
-// **MAINTENANCE WARNING:** the system prompt + schema below are a
-// snapshot of scheduler-app's diagnose-concern.ts as of 2026-05-20.
-// When that prompt changes, this function must be re-deployed with
-// the matching prompt or the eval results stop reflecting prod.
+// Returns BOTH the raw LLM output AND the post-validated state PER STAGE so
+// the test harness can detect hallucinations (LLM returned a slug not in
+// catalog) and silent filtering (question IDs that got dropped) at each
+// stage independently.
+//
+// MAINTENANCE WARNING: the prompt + schema are a snapshot of
+// diagnose-concern.ts as of 2026-05-20 (two-stage refactor). When that
+// file's prompt changes, this function must be re-deployed with the
+// matching prompt or eval results stop reflecting prod.
 //
 // POST /llm-testing
 // Body: { "concern_text": string, "chip_hint"?: { ... } }
-// Returns: { catalog_size, model, raw, validated, latency_ms,
-//            tokens_in, tokens_out, error_message }
+// Response: see ResponseShape below.
 
 import "@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -32,14 +34,17 @@ const SERVICE_ROLE_KEY =
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
   Deno.env.get("SUPABASE_SECRET_KEY")!;
 const SHOP_ID = parseInt(Deno.env.get("TEKMETRIC_SHOP_ID") ?? "7476", 10);
-// Models are addressed via the Vercel AI Gateway in `creator/model-name`
-// form. Credential is the AI_GATEWAY_API_KEY env (must be set as a
-// Supabase edge-fn secret). 2026-05-20 — swapped from
-// `anthropic/claude-haiku-4-5` to `google/gemini-2.5-flash` after batch 1
-// of the diagnostic LLM test surfaced 4/25 schema-validation failures
-// from Haiku 4.5. Gemini 2.5 Flash has VALIDATED mode for strict
-// constrained decoding — better fit for the long-context Zod schema.
-const MODEL = Deno.env.get("DIAGNOSE_CONCERN_MODEL") ?? "google/gemini-2.5-flash";
+
+// Per-stage model envs (single-env fallback for legacy compat).
+const STAGE1_MODEL =
+  Deno.env.get("DIAGNOSE_CONCERN_STAGE1_MODEL") ??
+  Deno.env.get("DIAGNOSE_CONCERN_MODEL") ??
+  "google/gemini-2.5-flash";
+const STAGE2_MODEL =
+  Deno.env.get("DIAGNOSE_CONCERN_STAGE2_MODEL") ??
+  Deno.env.get("DIAGNOSE_CONCERN_MODEL") ??
+  "google/gemini-2.5-flash";
+
 const MAX_OUTPUT_TOKENS = 1024;
 const OTHER_CONCERN_CATEGORY = "other";
 
@@ -247,8 +252,7 @@ async function loadCatalog(): Promise<DiagnosticCatalog> {
   return { categories: [...testingCategories, ...otherCategories] };
 }
 
-// Module-scope cache (1-min TTL). Warm invocations skip the catalog
-// load — 25 sequential test calls reuse the same snapshot.
+// Module-scope cache (1-min TTL) — warm invocations skip the catalog load.
 let catalogCache: { catalog: DiagnosticCatalog; loadedAt: number } | null =
   null;
 const CACHE_TTL_MS = 60_000;
@@ -263,44 +267,33 @@ async function getCatalog(): Promise<DiagnosticCatalog> {
 }
 
 // ════════════════════════════════════════════════════════════════════
-// PROMPT BUILDER + SCHEMA (ported verbatim from diagnose-concern.ts)
+// STAGE 1 + STAGE 2 SCHEMAS + PROMPTS (snapshot of diagnose-concern.ts)
 // ════════════════════════════════════════════════════════════════════
 
-const Schema = z.object({
+const Stage1Schema = z.object({
   matched_category_key: z
     .string()
     .nullable()
     .describe(
-      "Either a testing_services.service_key (one of the 14) OR an 'other' subcategory slug (one of the 6). " +
-        "Return null when the description is too vague to categorize OR doesn't fit any catalog entry.",
+      "Either a testing_services.service_key from the catalog above OR an " +
+        "'other' subcategory slug. Return null when the description is too " +
+        "vague to categorize OR doesn't fit any catalog entry.",
     ),
+  reasoning: z.string().max(280),
+});
+
+const Stage2Schema = z.object({
   matched_subcategory_slug: z
     .string()
     .nullable()
     .describe(
-      "The subcategory slug whose questions best match the customer's symptoms. " +
-        "For testing-service matches: one of that service's eligible subcategories. " +
-        "For 'other' subcategory matches: same value as matched_category_key. " +
-        "null when matched_category_key is null.",
+      "The subcategory slug whose questions best match the customer's " +
+        "symptoms. MUST appear in the subcategory list above. null only if " +
+        "you genuinely can't pick.",
     ),
-  unanswered_question_ids: z
-    .array(z.number().int().positive())
-    .describe(
-      "IDs from the matched subcategory's question set that the description did NOT meaningfully answer. " +
-        "Empty when the description covers everything OR when matched_category_key is null.",
-    ),
-  reasoning: z
-    .string()
-    .max(280)
-    .describe(
-      "One sentence citing (a) the chosen category + subcategory and (b) the customer words that drove the match. Audit-only.",
-    ),
+  unanswered_question_ids: z.array(z.number().int().positive()),
+  reasoning: z.string().max(280),
 });
-
-function fmtPriceForLLM(cents: number): string {
-  if (cents === 0) return "Free";
-  return `$${(cents / 100).toFixed(2)}`;
-}
 
 interface ChipHint {
   chip_service_key: string;
@@ -308,7 +301,20 @@ interface ChipHint {
   chip_concern_categories: string[];
 }
 
-function buildSystemPrompt(
+function fmtPriceForLLM(cents: number): string {
+  if (cents === 0) return "Free";
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+function buildChipHintLine(chipHint: ChipHint | null): string {
+  if (!chipHint) return "No chip hint — classify from description alone.";
+  if (chipHint.chip_service_key === "other_issue") {
+    return `The customer picked the "💬 Other Issue" pseudo-chip — no pre-classification; classify from description alone.`;
+  }
+  return `The customer picked the "${chipHint.chip_display_name}" chip (related concern_categories: ${chipHint.chip_concern_categories.join(", ") || "none"}). Use this as a soft prior.`;
+}
+
+function buildStage1SystemPrompt(
   catalog: DiagnosticCatalog,
   chipHint: ChipHint | null,
 ): string {
@@ -317,14 +323,10 @@ function buildSystemPrompt(
 
   const testingServicesBlock = testingServices
     .map((t, i) => {
-      const subList =
-        t.subcategories.map((s) => s.slug).join(", ") ||
-        "(no subcategories seeded)";
       return [
         `${i + 1}. service_key="${t.service_key}" — ${t.display_name} (${fmtPriceForLLM(t.starting_price_cents)})`,
         `   What we'd do: ${t.description ?? "—"}`,
         `   Concern categories tagged: ${t.concern_categories.join(", ") || "(none)"}`,
-        `   Eligible subcategories: ${subList}`,
       ].join("\n");
     })
     .join("\n\n");
@@ -336,68 +338,24 @@ function buildSystemPrompt(
     )
     .join("\n");
 
-  const subcategoriesById = new Map<
-    string,
-    {
-      display_label: string;
-      questions: typeof testingServices[number]["subcategories"][number]["questions"];
-    }
-  >();
-  for (const t of testingServices) {
-    for (const s of t.subcategories) {
-      if (!subcategoriesById.has(s.slug)) {
-        subcategoriesById.set(s.slug, {
-          display_label: s.display_label,
-          questions: s.questions,
-        });
-      }
-    }
-  }
-  for (const o of otherSubcategories) {
-    if (!subcategoriesById.has(o.subcategory_slug)) {
-      subcategoriesById.set(o.subcategory_slug, {
-        display_label: o.display_label,
-        questions: o.questions,
-      });
-    }
-  }
-
-  const questionsBlock = Array.from(subcategoriesById.entries())
-    .map(([slug, group]) => {
-      const lines = group.questions
-        .map((q) => {
-          const optionLabels = q.options.map((o) => o.label).join(" / ");
-          return `    - id=${q.id}: "${q.question_text}" (options: ${optionLabels})`;
-        })
-        .join("\n");
-      return `  ## subcategory_slug="${slug}" — ${group.display_label}\n${lines || "    (no questions seeded yet)"}`;
-    })
-    .join("\n\n");
-
-  const chipHintLine = chipHint
-    ? chipHint.chip_service_key === "other_issue"
-      ? `The customer picked the "💬 Other Issue" pseudo-chip — no pre-classification; classify from description alone, considering all 20 categories.`
-      : `The customer picked the "${chipHint.chip_display_name}" chip (related concern_categories: ${chipHint.chip_concern_categories.join(", ") || "none"}). Use this as a soft prior — prefer testing services tagged with one of those concern_categories unless the description clearly says otherwise.`
-    : "No chip hint — classify from description alone.";
-
-  return `You are the diagnostic categorisation helper for Jeff's Automotive. A customer
-typed a description of what's wrong with their car. Your job:
-
-  1. Pick ONE category from the 20 below — either a testing_service or an
-     'other' subcategory.
-  2. Pick the subcategory whose questions best match the customer's symptoms.
-  3. Return the IDs of subcategory questions the description did NOT answer.
+  return `You are the diagnostic categorisation helper for Jeff's Automotive
+(Stage 1: category match). A customer typed a description of what's wrong
+with their car. Your job: pick ONE category from the catalog below.
 
 If the description is too vague or doesn't fit any category clearly, return
 matched_category_key=null. Empty/very-short descriptions count as "doesn't fit."
 
-# Category catalog (20 items)
+You will NOT be asked to pick a subcategory or generate clarification
+questions in this stage — that's Stage 2's job, which only runs if you pick
+a testing service. Just classify the description into a single category.
 
-## Testing services (14) — these drive a recommendation + fee
+# Category catalog
+
+## Testing services — these drive a recommendation + fee
 
 ${testingServicesBlock}
 
-## 'Other' situations (6) — these route to a service advisor (no testing service, no fee)
+## 'Other' situations — these route to a service advisor (no testing service, no fee)
 
 These elevated subcategories cover concerns that don't map to a specific test:
 multiple symptoms at once, recent accidents, work just done elsewhere, safety
@@ -405,217 +363,150 @@ worries, general inspections, cars that have been sitting.
 
 ${otherSubcategoriesBlock}
 
-# Question catalog (grouped by subcategory)
-
-${questionsBlock}
-
 # Customer's pre-selection (context)
 
-${chipHintLine}
+${buildChipHintLine(chipHint)}
 
 # Decision rules
 
 1. **Match category to the customer's actual symptoms.** Read the description
-   carefully and pick the category whose subcategories cover the described
-   issue. The chip hint is a prior, not a constraint — if the customer picked
-   Brake Inspection but described an A/C problem, match the A/C-relevant
-   testing service (or the relevant 'other' subcategory if no test fits).
+   carefully and pick the category whose name + "What we'd do" + tags best fit
+   the described issue. The chip hint is a prior, not a constraint.
 
 2. **'Other' subcategory matches are valid AND useful.** If the customer's
    description is about a situation (recent accident, car has been sitting,
    pre-trip check, multiple symptoms at once with no primary), match the
-   appropriate 'other' subcategory_slug. Don't try to force a testing service
-   when the situation truly doesn't fit one.
+   appropriate 'other' subcategory_slug.
 
 3. **Couldn't categorize is a valid answer.** When the description is too
    vague ("car feels weird", "something's off", < ~5 useful words), return
    matched_category_key=null. The system will forward to a service advisor.
 
-4. **Subcategory must belong to the matched category.** For testing-service
-   matches, the subcategory must appear in that service's "Eligible
-   subcategories" list above. For 'other' matches, matched_subcategory_slug
-   equals matched_category_key.
+4. **Never invent IDs or slugs.** Only return values that appear above.
 
-5. **Gap-detect questions from the matched subcategory only.** Don't return
-   IDs from other subcategories. A question is "answered" when the customer's
-   description states the FACT the question asks about — even if they used
-   different words. A question is "unanswered" only when the description
-   doesn't speak to it at all OR mentions it ambiguously without committing
-   to a value.
+5. **Reasoning is for the audit log.** One sentence.`;
+}
+
+function buildStage2SystemPrompt(
+  matchedCategory: CatalogCategory,
+  chipHint: ChipHint | null,
+): string {
+  const subcategories: CatalogSubcategory[] = isOtherSubcategory(matchedCategory)
+    ? [
+        {
+          slug: matchedCategory.subcategory_slug,
+          display_label: matchedCategory.display_label,
+          concern_category: "other",
+          questions: matchedCategory.questions,
+        },
+      ]
+    : matchedCategory.subcategories;
+
+  const matchedHeader = isTestingService(matchedCategory)
+    ? `service_key="${matchedCategory.service_key}" — ${matchedCategory.display_name}`
+    : `subcategory_slug="${matchedCategory.subcategory_slug}" — ${matchedCategory.display_label}`;
+
+  const subcategoryBlock = subcategories
+    .map((s) => {
+      const lines = s.questions
+        .map((q) => {
+          const optionLabels = q.options.map((o) => o.label).join(" / ");
+          return `    - id=${q.id}: "${q.question_text}" (options: ${optionLabels})`;
+        })
+        .join("\n");
+      return `  ## subcategory_slug="${s.slug}" — ${s.display_label}\n${lines || "    (no questions seeded yet)"}`;
+    })
+    .join("\n\n");
+
+  return `You are the diagnostic categorisation helper for Jeff's Automotive
+(Stage 2: subcategory pick + question gap-detect). Stage 1 already matched
+the customer's description to a category:
+
+  ${matchedHeader}
+
+Your job has two parts:
+
+  1. **Pick the subcategory** whose questions best match the customer's
+     symptoms. The subcategory MUST be one of the slugs listed below.
+     ${subcategories.length === 1 ? "(For 'other' matches there is only ONE choice — pick it.)" : ""}
+  2. **Gap-detect questions** — return the IDs of subcategory questions
+     the description did NOT meaningfully answer.
+
+# Subcategory + question catalog (this category only)
+
+${subcategoryBlock}
+
+# Customer's pre-selection (context from Stage 1)
+
+${buildChipHintLine(chipHint)}
+
+# Decision rules
+
+1. **Subcategory must appear in the list above.** Don't invent slugs.
+
+2. **Gap-detect questions from the matched subcategory only.** Don't return
+   IDs from a different subcategory. A question is "answered" when the
+   customer's description states the FACT the question asks about — even if
+   they used different words. A question is "unanswered" only when the
+   description doesn't speak to it at all OR mentions it ambiguously without
+   committing to a value.
 
    **Concrete patterns that count as ANSWERED (drop the ID):**
 
-   - Location/side question ("Front or rear? Left or right side?"):
-     • "front right" / "rear left" / "all four wheels" / "passenger side" /
-       "driver side" / "front" alone / "rear" alone → ANSWERED.
-     • Even a single side word ("on the right") covers the side facet —
-       drop the question; we're not going to re-ask just to also pin down
-       front-vs-rear when the description is already informative.
+   - Location/side question: "front right" / "rear left" / "all four wheels" /
+     "passenger side" / "driver side" / "front" alone / "rear" alone → ANSWERED.
+     Even a single side word ("on the right") covers the side facet — drop the
+     question.
 
    - Onset question ("Suddenly or gradually?"):
-     • "started suddenly" / "started yesterday" / "appeared overnight" /
-       "out of nowhere" → ANSWERED with "suddenly."
-     • "getting worse over weeks" / "slowly developed" / "gradually" /
-       "for months" → ANSWERED with "gradually."
+     • "started suddenly" / "appeared overnight" → ANSWERED with "suddenly."
+     • "getting worse over weeks" / "gradually" → ANSWERED with "gradually."
 
    - Trigger question ("When does it happen?"):
-     • "only when braking" / "when I press the brakes" → ANSWERED for
-       brake-trigger questions.
+     • "only when braking" → ANSWERED for brake-trigger questions.
      • "over bumps" / "on rough roads" → ANSWERED for bump-trigger questions.
-     • "at highway speed" / "above 60 mph" → ANSWERED for speed-band
-       questions.
+     • "at highway speed" / "above 60 mph" → ANSWERED for speed-band questions.
 
-   - Recent-service question ("Recent brake work / battery replacement?"):
-     • "just replaced the pads last month" / "new battery installed
-       Tuesday" → ANSWERED with "yes — recently."
-     • "no recent work" / "haven't touched it" → ANSWERED with "no."
+   - Recent-service question:
+     • "just replaced the pads last month" → ANSWERED with "yes — recently."
+     • "no recent work" → ANSWERED with "no."
      • Silence on history → UNANSWERED.
 
    **Concrete patterns that count as UNANSWERED (keep the ID):**
 
    - The description doesn't mention the topic AT ALL.
-   - The description says "I think maybe" or "kind of" or "sort of" about
-     the specific fact the question asks about (genuinely ambiguous).
-   - The description mentions the topic but in a way that doesn't pin
-     down which option the customer would pick (e.g., "the noise comes
-     from somewhere up front" → answers front-vs-rear but NOT
-     left-vs-right; this still counts as ANSWERED because "front" alone
-     is a valid chip and we don't ask twice).
+   - The description says "I think maybe" or "kind of" about the specific fact
+     the question asks about.
 
-   **Worked example.** Customer says: "I hear a grinding noise coming from
-   the front right when braking."
+   **Worked example.** Customer: "I hear a grinding noise from the front right
+   when braking." For 'metallic_grinding':
+   - "Every time you brake?" → UNANSWERED
+   - "Scraping with foot off the pedal?" → UNANSWERED
+   - "Front or rear? Left or right?" → **ANSWERED** (DROP)
+   - "Grinding through floor or pedal?" → UNANSWERED
+   - "Suddenly or gradually?" → UNANSWERED
+   - "Feel safe driving?" → UNANSWERED
+   - "Recent brake work?" → UNANSWERED
+   Correct: drop only the location ID; return the other 6.
 
-   For the 'metallic_grinding' subcategory's question set:
-   - 630 ("Every single time you brake?") → UNANSWERED (description didn't say "every time")
-   - 631 ("Scraping with foot off the pedal?") → UNANSWERED (not mentioned)
-   - 632 ("Front or rear? Left or right side?") → **ANSWERED** ("front right" is in the description) — DROP this ID.
-   - 633 ("Grinding through floor or pedal?") → UNANSWERED (not mentioned)
-   - 634 ("Suddenly or gradually?") → UNANSWERED (not mentioned)
-   - 635 ("Feel safe driving?") → UNANSWERED (not mentioned)
-   - 636 ("Recent brake work?") → UNANSWERED (not mentioned)
+3. **Never invent IDs or slugs.** Only return values that appear above.
 
-   Correct return: unanswered_question_ids: [630, 631, 633, 634, 635, 636].
-
-   The location question (632) is DROPPED because "front right" is a complete
-   answer. Asking the customer "where is the noise coming from?" when they
-   just told you would feel robotic.
-
-6. **Never invent IDs or slugs.** Only return values that appear in the
-   catalog above.
-
-7. **Reasoning is for the audit log.** One sentence citing the matched
-   subcategory + the customer's actual words. No formatting.`;
+4. **Reasoning is for the audit log.** One sentence.`;
 }
 
 function buildUserPrompt(
-  customer_description: string,
-  vehicle_notes: string | null,
+  customerDescription: string,
+  vehicleNotes: string | null,
 ): string {
   const parts: string[] = [
-    `# Customer's description\n${customer_description.trim()}`,
+    `# Customer's description\n${customerDescription.trim()}`,
   ];
-  if (vehicle_notes && vehicle_notes.trim().length > 0) {
+  if (vehicleNotes && vehicleNotes.trim().length > 0) {
     parts.push(
-      `# Vehicle notes (from Step 6, may not be relevant)\n${vehicle_notes.trim()}`,
+      `# Vehicle notes (from Step 6, may not be relevant)\n${vehicleNotes.trim()}`,
     );
   }
   return parts.join("\n\n");
-}
-
-// ════════════════════════════════════════════════════════════════════
-// POST-VALIDATION (ported from diagnose-concern.ts:506-543)
-// ════════════════════════════════════════════════════════════════════
-
-interface ValidatedResult {
-  matched_category_key: string | null;
-  matched_kind: "testing_service" | "other_subcategory" | null;
-  matched_subcategory_slug: string | null;
-  unanswered_question_ids: number[];
-  recommended_testing_service: {
-    service_key: string;
-    display_name: string;
-    starting_price_cents: number;
-  } | null;
-}
-
-function validate(
-  catalog: DiagnosticCatalog,
-  raw: z.infer<typeof Schema>,
-): ValidatedResult {
-  const empty: ValidatedResult = {
-    matched_category_key: null,
-    matched_kind: null,
-    matched_subcategory_slug: null,
-    unanswered_question_ids: [],
-    recommended_testing_service: null,
-  };
-
-  if (!raw.matched_category_key) return empty;
-
-  // Find matched category
-  let matchedCat: CatalogCategory | null = null;
-  for (const c of catalog.categories) {
-    if (isTestingService(c) && c.service_key === raw.matched_category_key) {
-      matchedCat = c;
-      break;
-    }
-    if (
-      isOtherSubcategory(c) &&
-      c.subcategory_slug === raw.matched_category_key
-    ) {
-      matchedCat = c;
-      break;
-    }
-  }
-  if (!matchedCat) return empty;
-
-  // Validate subcategory slug
-  const eligibleSubSlugs = new Set<string>();
-  if (isOtherSubcategory(matchedCat)) {
-    eligibleSubSlugs.add(matchedCat.subcategory_slug);
-  } else {
-    for (const s of matchedCat.subcategories) eligibleSubSlugs.add(s.slug);
-  }
-  const subSlug =
-    raw.matched_subcategory_slug &&
-    eligibleSubSlugs.has(raw.matched_subcategory_slug)
-      ? raw.matched_subcategory_slug
-      : null;
-
-  // Filter question IDs to those in the matched subcategory
-  let validIds: number[] = [];
-  if (subSlug) {
-    const eligibleQIds = new Set<number>();
-    if (isOtherSubcategory(matchedCat)) {
-      for (const q of matchedCat.questions) eligibleQIds.add(q.id);
-    } else {
-      const sub = matchedCat.subcategories.find((s) => s.slug === subSlug);
-      if (sub) for (const q of sub.questions) eligibleQIds.add(q.id);
-    }
-    const dedup = Array.from(new Set(raw.unanswered_question_ids));
-    validIds = dedup.filter((id) => eligibleQIds.has(id));
-  }
-
-  if (isTestingService(matchedCat)) {
-    return {
-      matched_category_key: matchedCat.service_key,
-      matched_kind: "testing_service",
-      matched_subcategory_slug: subSlug,
-      unanswered_question_ids: validIds,
-      recommended_testing_service: {
-        service_key: matchedCat.service_key,
-        display_name: matchedCat.display_name,
-        starting_price_cents: matchedCat.starting_price_cents,
-      },
-    };
-  }
-  return {
-    matched_category_key: matchedCat.subcategory_slug,
-    matched_kind: "other_subcategory",
-    matched_subcategory_slug: matchedCat.subcategory_slug,
-    unanswered_question_ids: validIds,
-    recommended_testing_service: null,
-  };
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -629,6 +520,29 @@ function corsResp(body: unknown, status = 200): Response {
   });
 }
 
+interface Stage1Block {
+  model: string;
+  raw: z.infer<typeof Stage1Schema> | null;
+  validated_category_key: string | null;
+  system_prompt_chars: number;
+  latency_ms: number;
+  tokens_in: number;
+  tokens_out: number;
+  error_message: string | null;
+}
+
+interface Stage2Block {
+  model: string;
+  raw: z.infer<typeof Stage2Schema> | null;
+  validated_subcategory_slug: string | null;
+  validated_unanswered_question_ids: number[];
+  system_prompt_chars: number;
+  latency_ms: number;
+  tokens_in: number;
+  tokens_out: number;
+  error_message: string | null;
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: CORS_HEADERS });
@@ -638,9 +552,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return corsResp({
       ok: true,
       function: "llm-testing",
-      version: "0.1.0",
-      model: MODEL,
-      hint: "POST { concern_text, chip_hint? } to run one concern through the diagnostic LLM.",
+      version: "0.2.0",
+      arch: "two-stage",
+      stage1_model: STAGE1_MODEL,
+      stage2_model: STAGE2_MODEL,
+      hint: "POST { concern_text, chip_hint? } to run one concern through the two-stage diagnostic LLM.",
     });
   }
 
@@ -648,7 +564,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return corsResp({ ok: false, error: "method_not_allowed" }, 405);
   }
 
-  // Parse body
   let body: {
     concern_text?: string;
     chip_hint?: ChipHint | null;
@@ -675,21 +590,21 @@ Deno.serve(async (req: Request): Promise<Response> => {
   };
   const vehicleNotes = body.vehicle_notes ?? null;
 
-  // Catalog (cached for warm invocations)
   const catalog = await getCatalog();
   const testingCount = catalog.categories.filter(isTestingService).length;
   const otherCount = catalog.categories.filter(isOtherSubcategory).length;
 
-  // Short-circuit on near-empty (mirrors diagnose-concern.ts:436)
+  // Short-circuit on near-empty descriptions.
   const t0 = Date.now();
   if (concernText.length < 3) {
     return corsResp({
       ok: true,
+      arch: "two-stage",
       catalog_size: catalog.categories.length,
       testing_service_count: testingCount,
       other_subcategory_count: otherCount,
-      model: MODEL,
-      raw: null,
+      stage1: null,
+      stage2: null,
       validated: {
         matched_category_key: null,
         matched_kind: null,
@@ -701,57 +616,201 @@ Deno.serve(async (req: Request): Promise<Response> => {
       tokens_in: 0,
       tokens_out: 0,
       error_message: "SHORT_CIRCUIT (desc<3 chars)",
-      system_prompt_chars: 0,
     });
   }
 
-  // LLM call
-  const systemPrompt = buildSystemPrompt(catalog, chipHint);
+  // ── Stage 1 ────────────────────────────────────────────────────────
+  const stage1SystemPrompt = buildStage1SystemPrompt(catalog, chipHint);
   const userPrompt = buildUserPrompt(concernText, vehicleNotes);
 
-  let raw: z.infer<typeof Schema> | null = null;
-  let errorMessage: string | null = null;
-  let tokensIn = 0;
-  let tokensOut = 0;
+  const stage1: Stage1Block = {
+    model: STAGE1_MODEL,
+    raw: null,
+    validated_category_key: null,
+    system_prompt_chars: stage1SystemPrompt.length,
+    latency_ms: 0,
+    tokens_in: 0,
+    tokens_out: 0,
+    error_message: null,
+  };
 
+  const s1Start = Date.now();
   try {
-    const result = await generateObject({
-      model: gateway(MODEL),
-      system: systemPrompt,
+    const r = await generateObject({
+      model: gateway(STAGE1_MODEL),
+      system: stage1SystemPrompt,
       prompt: userPrompt,
-      schema: Schema,
+      schema: Stage1Schema,
       maxOutputTokens: MAX_OUTPUT_TOKENS,
+      providerOptions: { gateway: { caching: "auto" } },
     });
-    raw = result.object;
-    const usage = result.usage ?? { inputTokens: 0, outputTokens: 0 };
-    tokensIn = Number(usage.inputTokens ?? 0);
-    tokensOut = Number(usage.outputTokens ?? 0);
+    stage1.raw = r.object;
+    stage1.tokens_in = Number(r.usage?.inputTokens ?? 0);
+    stage1.tokens_out = Number(r.usage?.outputTokens ?? 0);
   } catch (e) {
-    errorMessage = e instanceof Error ? e.message : String(e);
+    stage1.error_message = e instanceof Error ? e.message : String(e);
+  }
+  stage1.latency_ms = Date.now() - s1Start;
+
+  // Validate Stage 1 against catalog.
+  let matchedCat: CatalogCategory | null = null;
+  if (stage1.raw && stage1.raw.matched_category_key) {
+    for (const c of catalog.categories) {
+      if (
+        isTestingService(c) &&
+        c.service_key === stage1.raw.matched_category_key
+      ) {
+        matchedCat = c;
+        break;
+      }
+      if (
+        isOtherSubcategory(c) &&
+        c.subcategory_slug === stage1.raw.matched_category_key
+      ) {
+        matchedCat = c;
+        break;
+      }
+    }
+  }
+  stage1.validated_category_key = matchedCat
+    ? (isTestingService(matchedCat)
+        ? matchedCat.service_key
+        : matchedCat.subcategory_slug)
+    : null;
+
+  // If Stage 1 didn't yield a valid match, short-circuit (no Stage 2).
+  if (!matchedCat) {
+    const validated = {
+      matched_category_key: null as string | null,
+      matched_kind: null as "testing_service" | "other_subcategory" | null,
+      matched_subcategory_slug: null as string | null,
+      unanswered_question_ids: [] as number[],
+      recommended_testing_service: null as null | {
+        service_key: string;
+        display_name: string;
+        starting_price_cents: number;
+      },
+    };
+    let topErr: string | null = null;
+    if (stage1.error_message) topErr = `stage1_failed: ${stage1.error_message.slice(0, 200)}`;
+    else if (stage1.raw && stage1.raw.matched_category_key) {
+      topErr = `invalid_category_key:${stage1.raw.matched_category_key.slice(0, 50)}`;
+    }
+    return corsResp({
+      ok: true,
+      arch: "two-stage",
+      catalog_size: catalog.categories.length,
+      testing_service_count: testingCount,
+      other_subcategory_count: otherCount,
+      stage1,
+      stage2: null,
+      validated,
+      latency_ms: Date.now() - t0,
+      tokens_in: stage1.tokens_in,
+      tokens_out: stage1.tokens_out,
+      error_message: topErr,
+    });
   }
 
-  const validated = raw
-    ? validate(catalog, raw)
-    : {
-        matched_category_key: null,
-        matched_kind: null as const,
-        matched_subcategory_slug: null,
-        unanswered_question_ids: [],
-        recommended_testing_service: null,
-      };
+  // ── Stage 2 ────────────────────────────────────────────────────────
+  const stage2SystemPrompt = buildStage2SystemPrompt(matchedCat, chipHint);
+
+  const stage2: Stage2Block = {
+    model: STAGE2_MODEL,
+    raw: null,
+    validated_subcategory_slug: null,
+    validated_unanswered_question_ids: [],
+    system_prompt_chars: stage2SystemPrompt.length,
+    latency_ms: 0,
+    tokens_in: 0,
+    tokens_out: 0,
+    error_message: null,
+  };
+
+  const s2Start = Date.now();
+  try {
+    const r = await generateObject({
+      model: gateway(STAGE2_MODEL),
+      system: stage2SystemPrompt,
+      prompt: userPrompt,
+      schema: Stage2Schema,
+      maxOutputTokens: MAX_OUTPUT_TOKENS,
+      providerOptions: { gateway: { caching: "auto" } },
+    });
+    stage2.raw = r.object;
+    stage2.tokens_in = Number(r.usage?.inputTokens ?? 0);
+    stage2.tokens_out = Number(r.usage?.outputTokens ?? 0);
+  } catch (e) {
+    stage2.error_message = e instanceof Error ? e.message : String(e);
+  }
+  stage2.latency_ms = Date.now() - s2Start;
+
+  // Validate Stage 2 against the matched category's eligible subcategories.
+  const eligibleSubSlugs = new Set<string>();
+  if (isOtherSubcategory(matchedCat)) {
+    eligibleSubSlugs.add(matchedCat.subcategory_slug);
+  } else {
+    for (const s of matchedCat.subcategories) eligibleSubSlugs.add(s.slug);
+  }
+
+  const subSlug =
+    stage2.raw?.matched_subcategory_slug &&
+    eligibleSubSlugs.has(stage2.raw.matched_subcategory_slug)
+      ? stage2.raw.matched_subcategory_slug
+      : null;
+  stage2.validated_subcategory_slug = subSlug;
+
+  if (subSlug && stage2.raw) {
+    const eligibleQIds = new Set<number>();
+    if (isOtherSubcategory(matchedCat)) {
+      for (const q of matchedCat.questions) eligibleQIds.add(q.id);
+    } else {
+      const sub = matchedCat.subcategories.find((s) => s.slug === subSlug);
+      if (sub) for (const q of sub.questions) eligibleQIds.add(q.id);
+    }
+    const dedup = Array.from(new Set(stage2.raw.unanswered_question_ids));
+    stage2.validated_unanswered_question_ids = dedup.filter((id) =>
+      eligibleQIds.has(id),
+    );
+  }
+
+  // ── Compose final validated state ──────────────────────────────────
+  const validated = {
+    matched_category_key: isTestingService(matchedCat)
+      ? matchedCat.service_key
+      : matchedCat.subcategory_slug,
+    matched_kind: isTestingService(matchedCat)
+      ? ("testing_service" as const)
+      : ("other_subcategory" as const),
+    matched_subcategory_slug: subSlug,
+    unanswered_question_ids: stage2.validated_unanswered_question_ids,
+    recommended_testing_service: isTestingService(matchedCat)
+      ? {
+          service_key: matchedCat.service_key,
+          display_name: matchedCat.display_name,
+          starting_price_cents: matchedCat.starting_price_cents,
+        }
+      : null,
+  };
+
+  // Top-level error_message: Stage 2 errors degrade to a partial result.
+  let topErr: string | null = null;
+  if (stage2.error_message) {
+    topErr = `stage2_failed: ${stage2.error_message.slice(0, 200)}`;
+  }
 
   return corsResp({
     ok: true,
+    arch: "two-stage",
     catalog_size: catalog.categories.length,
     testing_service_count: testingCount,
     other_subcategory_count: otherCount,
-    model: MODEL,
-    raw,
+    stage1,
+    stage2,
     validated,
     latency_ms: Date.now() - t0,
-    tokens_in: tokensIn,
-    tokens_out: tokensOut,
-    error_message: errorMessage,
-    system_prompt_chars: systemPrompt.length,
+    tokens_in: stage1.tokens_in + stage2.tokens_in,
+    tokens_out: stage1.tokens_out + stage2.tokens_out,
+    error_message: topErr,
   });
 });
