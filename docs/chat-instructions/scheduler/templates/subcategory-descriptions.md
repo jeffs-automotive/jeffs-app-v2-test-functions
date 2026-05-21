@@ -43,10 +43,10 @@ Positive examples:
   - "Brakes squeal when I let off the pedal, goes away when I press harder"
   - "High pitch whistle from the wheels when I'm braking"
 Negative examples:
-  - "Grinding or scraping like metal on metal when I brake" → metallic_grinding
-  - "Squeaking sound when I go over bumps in the road" → noise/squeaking_or_creaking_over_bumps
-  - "Whining noise from under the hood, not the wheels" → noise/high_pitched_whining_under_the_hood
-  - "Squealing only when I turn the steering wheel, not when braking" → steering/noise_when_turning_the_steering_wheel
+  - ""Grinding or scraping like metal on metal when I brake" → metallic_grinding"
+  - ""Squeaking sound when I go over bumps in the road" → noise/squeaking_or_creaking_over_bumps"
+  - ""Whining noise from under the hood, not the wheels" → noise/high_pitched_whining_under_the_hood"
+  - ""Squealing only when I turn the steering wheel, not when braking" → steering/noise_when_turning_the_steering_wheel"
 Synonyms: squeal, squeaking, squeaky brakes, screech, screeching, screaming brakes, chirping, whistle, high-pitched brake noise, brake whine, brakes squeak, brake squealing, pad wear indicator, brake noise
 
 ## brakes/metallic_grinding
@@ -59,10 +59,10 @@ Positive examples:
   - "Harsh grinding noise when braking — feel it through the floor"
   - "It's grinding really bad now, started as a squeak a few weeks ago"
 Negative examples:
-  - "High-pitched squealing when I brake, not really grinding" → high_pitched_squealing
-  - "Grinding noise even when I'm not pressing the brakes" → noise/humming_or_whirring_at_speed
-  - "Grinding sound only when turning, not braking" → noise/popping_or_clicking_when_turning
-  - "Pedal vibrates and shakes when I brake, no grinding" → pulsating_or_vibrating_pedal
+  - ""High-pitched squealing when I brake, not really grinding" → high_pitched_squealing"
+  - ""Grinding noise even when I'm not pressing the brakes" → noise/humming_or_whirring_at_speed"
+  - ""Grinding sound only when turning, not braking" → noise/popping_or_clicking_when_turning"
+  - ""Pedal vibrates and shakes when I brake, no grinding" → pulsating_or_vibrating_pedal"
 Synonyms: grinding, grind, metal grinding, metal on metal, metal-on-metal, scraping, scrape, gritty noise, growling, growl, gnashing, brake grinding, rotor scrape, rotor on metal, worn pads scraping
 
 ## brakes/spongy_or_soft_pedal
@@ -75,10 +75,10 @@ Positive examples:
   - "Pedal goes down farther than it used to before the car starts slowing"
   - "Brake pedal feels low and squishy compared to normal"
 Negative examples:
-  - "Pedal slowly sinks all the way to the floor when I hold pressure" → pedal_sinks_to_floor
-  - "Pedal is really stiff and hard to push down" → hard_or_unresponsive_pedal
-  - "Pedal pulsates and vibrates when I brake hard" → pulsating_or_vibrating_pedal
-  - "Brake warning light is on but pedal feels fine" → warning_light/brake_system_red_light
+  - ""Pedal slowly sinks all the way to the floor when I hold pressure" → pedal_sinks_to_floor"
+  - ""Pedal is really stiff and hard to push down" → hard_or_unresponsive_pedal"
+  - ""Pedal pulsates and vibrates when I brake hard" → pulsating_or_vibrating_pedal"
+  - ""Brake warning light is on but pedal feels fine" → warning_light/brake_system_red_light"
 Synonyms: spongy, soft, mushy, squishy, soft pedal, spongy pedal, mushy pedal, low pedal, pumping brakes, pump the brakes, soft brakes, weak pedal, brakes feel weird, air in brake lines, brake fluid leak, soggy pedal
 
 ## brakes/pedal_sinks_to_floor
@@ -91,10 +91,10 @@ Positive examples:
   - "I have to keep adjusting my foot because the pedal sinks while I'm stopped"
   - "Pedal pumps up when I tap it but then drops again if I hold it"
 Negative examples:
-  - "Pedal feels spongy and soft but doesn't keep sinking" → spongy_or_soft_pedal
-  - "Pedal is rock hard, won't go down at all" → hard_or_unresponsive_pedal
-  - "Brake fluid is leaking onto my driveway" → leak/clear_yellow_or_light_brown_puddle_brake_fluid
-  - "Red brake light came on but pedal still feels normal" → warning_light/brake_system_red_light
+  - ""Pedal feels spongy and soft but doesn't keep sinking" → spongy_or_soft_pedal"
+  - ""Pedal is rock hard, won't go down at all" → hard_or_unresponsive_pedal"
+  - ""Brake fluid is leaking onto my driveway" → leak/clear_yellow_or_light_brown_puddle_brake_fluid"
+  - ""Red brake light came on but pedal still feels normal" → warning_light/brake_system_red_light"
 Synonyms: pedal sinks, pedal goes to floor, pedal drops, pedal creeps down, sinking pedal, dropping pedal, pedal falls to floor, pedal to the floorboard, master cylinder bypass, bypassing master cylinder, no pedal pressure, pedal won't hold, brake pedal fade, fading pedal
 
 ## brakes/pulsating_or_vibrating_pedal
@@ -107,11 +107,11 @@ Positive examples:
   - "Car shudders when I brake — like a thump-thump-thump through the pedal"
   - "After driving down a mountain pass, the brake pedal started pulsing badly"
 Negative examples:
-  - "Steering wheel shakes at 70 mph even when I'm not braking" → vibration/steering_wheel_shake_at_highway_speed
-  - "Whole car shakes over bumps and rough roads" → vibration/shaking_or_bouncing_over_bumps_and_rough_roads
-  - "Pedal feels soft and mushy, no vibration" → spongy_or_soft_pedal
-  - "Grinding noise when I brake but pedal feels normal" → metallic_grinding
-Synonyms: pulsating, pulsing, pulses, vibrates, vibration, vibrating, shudder, shudders, shuddering, shake, shakes, judder, juddering, throbbing pedal, thumping pedal, brake shimmy, brake shake, warped rotors, DTV, rotor thickness variation, rhythmic pedal feel
+  - ""Steering wheel shakes at 70 mph even when I'm not braking" → vibration/steering_wheel_shake_at_highway_speed"
+  - ""Whole car shakes over bumps and rough roads" → vibration/shaking_or_bouncing_over_bumps_and_rough_roads"
+  - ""Pedal feels soft and mushy, no vibration" → spongy_or_soft_pedal"
+  - ""Grinding noise when I brake but pedal feels normal" → metallic_grinding"
+Synonyms: pulsating, pulsing, pulses, vibrates, vibration, vibrating, shudder, shudders, shuddering, shake, shakes, judder, juddering, throbbing pedal, thumping pedal, brake shimmy, brake shake, warped rotors, DTV, rotor thickness variation
 
 ## brakes/hard_or_unresponsive_pedal
 Description: The brake pedal feels unusually stiff, hard, or rock-like — the customer has to press much harder than normal to get the car to slow down, or in the worst case the pedal barely moves at all. Customers often describe it as "feels like stepping on a rock," "like the pedal turned to wood," or "I can't push it down." Almost always caused by a failed brake booster (most common), a leaking or disconnected vacuum hose to the booster, a seized caliper or guide pin, or in rare cases a kinked brake line. Often accompanied by a hissing sound under the hood when braking or rough engine idle when the pedal is pressed. Distinct from spongy_or_soft_pedal (the opposite — soft and gives easily) and from pedal_sinks_to_floor (where the pedal moves freely but doesn't build pressure).
@@ -123,10 +123,10 @@ Positive examples:
   - "Pedal feels like wood, no give at all"
   - "Hissing sound when I press the brakes and the pedal is super stiff"
 Negative examples:
-  - "Brake pedal feels soft and spongy" → spongy_or_soft_pedal
-  - "Pedal slowly sinks to the floor when I hold pressure" → pedal_sinks_to_floor
-  - "Pedal vibrates and pulses when I brake hard" → pulsating_or_vibrating_pedal
-  - "Hissing under the dash but pedal feels normal" → noise/hissing_noise
+  - ""Brake pedal feels soft and spongy" → spongy_or_soft_pedal"
+  - ""Pedal slowly sinks to the floor when I hold pressure" → pedal_sinks_to_floor"
+  - ""Pedal vibrates and pulses when I brake hard" → pulsating_or_vibrating_pedal"
+  - ""Hissing under the dash but pedal feels normal" → noise/hissing_noise"
 Synonyms: hard pedal, stiff pedal, hard to push, won't push down, rock-hard pedal, pedal like wood, unresponsive pedal, no power assist, brake booster failure, vacuum leak, hard brakes, stiff brakes, frozen pedal, locked pedal, pedal won't depress
 
 ## electrical/wont_crank_just_clicks
@@ -138,11 +138,11 @@ Positive examples:
   - "Car won't start, dashboard lights come on but it just clicks when I twist the key"
   - "Push the start button and nothing, just a clicking sound under the hood"
 Negative examples:
-  - "Engine cranks but really slowly before it starts" → slow_crank_sluggish_start
-  - "Car was fine yesterday, dead this morning, third time this week I've needed a jump" → battery_drains_overnight
-  - "It cranks fine but won't catch / won't fire when it's cold" → performance/hard_to_start_when_cold
-  - "Cranks normal but won't start once it's hot" → performance/hard_to_start_when_hot
-  - "Was driving down the highway when the dash went dark and the engine quit" → car_died_while_driving_electrical
+  - ""Engine cranks but really slowly before it starts" → slow_crank_sluggish_start"
+  - ""Car was fine yesterday, dead this morning, third time this week I've needed a jump" → battery_drains_overnight"
+  - ""It cranks fine but won't catch / won't fire when it's cold" → performance/hard_to_start_when_cold"
+  - ""Cranks normal but won't start once it's hot" → performance/hard_to_start_when_hot"
+  - ""Was driving down the highway when the dash went dark and the engine quit" → car_died_while_driving_electrical"
 Synonyms: clicking, just clicks, click click click, rapid clicking, machine gun clicking, single click, one click, no crank, won't crank, won't turn over, dead battery click, solenoid click, starter clicking, key turn click, no start clicks, doesn't turn over just clicks
 
 ## electrical/slow_crank_sluggish_start
@@ -154,10 +154,10 @@ Positive examples:
   - "Cranks really slowly in the morning but starts fine once it's warmed up"
   - "Starter sounds weak and labored, like the battery doesn't have enough oomph"
 Negative examples:
-  - "Just clicks, the engine doesn't turn over at all" → wont_crank_just_clicks
-  - "Engine cranks at normal speed but won't fire up when it's cold" → performance/hard_to_start_when_cold
-  - "Engine cranks normal but won't start when it's hot after I stop for gas" → performance/hard_to_start_when_hot
-  - "Dies overnight in the parking lot, fine all day when driving" → battery_drains_overnight
+  - ""Just clicks, the engine doesn't turn over at all" → wont_crank_just_clicks"
+  - ""Engine cranks at normal speed but won't fire up when it's cold" → performance/hard_to_start_when_cold"
+  - ""Engine cranks normal but won't start when it's hot after I stop for gas" → performance/hard_to_start_when_hot"
+  - ""Dies overnight in the parking lot, fine all day when driving" → battery_drains_overnight"
 Synonyms: slow crank, sluggish crank, lazy crank, weak crank, struggling to start, labored start, slow turning over, rrr rrr rrr, weak starter sound, tired starter, slow starter, sluggish start, hard cranking, taking forever to start
 
 ## electrical/battery_drains_overnight
@@ -169,10 +169,10 @@ Positive examples:
   - "Something is killing my battery overnight — by morning it's drained down completely"
   - "I jump it, drive all day no problem, come back in the morning and it's dead again"
 Negative examples:
-  - "Battery is weak and slow to crank every time I start it" → slow_crank_sluggish_start
-  - "Just clicks when I turn the key right now, never started this morning" → wont_crank_just_clicks
-  - "Car was running and then suddenly the dash went dark and it died on the highway" → car_died_while_driving_electrical
-  - "Battery light is on but the car is still running" → warning_light/battery_charging_light
+  - ""Battery is weak and slow to crank every time I start it" → slow_crank_sluggish_start"
+  - ""Just clicks when I turn the key right now, never started this morning" → wont_crank_just_clicks"
+  - ""Car was running and then suddenly the dash went dark and it died on the highway" → car_died_while_driving_electrical"
+  - ""Battery light is on but the car is still running" → warning_light/battery_charging_light"
 Synonyms: battery drain, parasitic draw, parasitic drain, phantom drain, battery dies overnight, dead in the morning, battery keeps dying, drains when sitting, needs a jump every morning, won't hold a charge, battery goes dead when parked, frequent jump-starts, repeated jump starts, something draining the battery
 
 ## electrical/dim_or_flickering_lights
@@ -184,10 +184,10 @@ Positive examples:
   - "Headlights look weak and yellow lately, getting dimmer the longer I drive"
   - "Dash lights flicker on and off while the car is running, like a strobe"
 Negative examples:
-  - "Only the driver-side headlight is out — the other one is fine" → accessory_doesnt_work
-  - "Radio resets, gauges jump around, dome light comes on by itself" → multiple_random_electrical_glitches
-  - "Battery-shaped warning light came on while driving" → warning_light/battery_charging_light
-  - "Headlights got dim and then the car shut off completely on the highway" → car_died_while_driving_electrical
+  - ""Only the driver-side headlight is out — the other one is fine" → accessory_doesnt_work"
+  - ""Radio resets, gauges jump around, dome light comes on by itself" → multiple_random_electrical_glitches"
+  - ""Battery-shaped warning light came on while driving" → warning_light/battery_charging_light"
+  - ""Headlights got dim and then the car shut off completely on the highway" → car_died_while_driving_electrical"
 Synonyms: dim headlights, dim lights, flickering lights, flickering headlights, pulsing lights, strobing lights, lights getting dim, lights brighten with RPM, headlights weak, dash lights dim, instrument lights flicker, lights dim at idle, lights dim under load, alternator failing, charging system weak
 
 ## electrical/accessory_doesnt_work
@@ -200,15 +200,15 @@ Positive examples:
   - "Cigarette lighter / 12V outlet stopped giving any power, my phone won't charge"
   - "Driver door lock won't lock or unlock from the switch, the other three doors are fine"
 Negative examples:
-  - "Radio resets AND gauges jump AND dome light flickers all together" → multiple_random_electrical_glitches
-  - "All four windows AND the radio AND the wipers all stopped at the same time" → multiple_random_electrical_glitches (shared-fuse/big-circuit failure, not one accessory)
-  - "Headlights are dim and flicker when I drive" → dim_or_flickering_lights
-  - "Heater fan won't blow at all" → hvac/vents_dont_blow_strongly
-  - "Battery-shaped warning light is on" → warning_light/battery_charging_light
+  - ""Radio resets AND gauges jump AND dome light flickers all together" → multiple_random_electrical_glitches"
+  - ""All four windows AND the radio AND the wipers all stopped at the same time" → multiple_random_electrical_glitches (shared-fuse/big-circuit failure, not one accessory)"
+  - ""Headlights are dim and flicker when I drive" → dim_or_flickering_lights"
+  - ""Heater fan won't blow at all" → hvac/vents_dont_blow_strongly"
+  - ""Battery-shaped warning light is on" → warning_light/battery_charging_light"
 Synonyms: window won't work, radio dead, radio won't turn on, dome light out, wipers don't work, power lock broken, power mirror not working, cigarette lighter not working, USB port dead, accessory not working, single circuit dead, blown fuse, one window stuck, sunroof won't open, seat heater not working, power seat not moving
 
 ## electrical/multiple_random_electrical_glitches
-Description: Multiple unrelated electrical things in the car are misbehaving at the same time — and the pattern feels random, intermittent, or weather-related. Customers describe "electrical gremlins": the radio resets itself, the gauges jump or sweep, warning lights flash on and off for no reason, the dome light comes on by itself, the door locks cycle, the wipers turn on randomly. Often worse over bumps, after a car wash, in humid weather, or after recent electrical / aftermarket work. Most common root causes are a bad ground / corroded ground strap, water intrusion into a module, low battery voltage, or a failing body control module (BCM). Distinct from accessory_doesnt_work — that's ONE thing dead and stable; this is MANY things misbehaving. Distinct from dim_or_flickering_lights — that's purely a brightness symptom; this is a broad mix of symptoms across unrelated circuits. Distinct from warning_light/multiple_warning_lights_at_once — that one is specifically about dashboard warning icons being lit; THIS subcategory covers a wider grab-bag of weirdness (resets, gauge sweeps, accessories cycling).
+Description: Multiple unrelated electrical things in the car are misbehaving at the same time — and the pattern feels random, intermittent, or weather-related. Customers describe "electrical gremlins": the radio resets itself, the gauges jump or sweep, warning lights flash on and off for no reason, the dome light comes on by itself, the door locks cycle, the wipers turn on randomly. Often worse over bumps, after a car wash, in humid weather, or after recent electrical / aftermarket work. Distinct from accessory_doesnt_work — that's ONE thing dead and stable; this is MANY things misbehaving. Distinct from dim_or_flickering_lights — that's purely a brightness symptom; this is a broad mix of symptoms across unrelated circuits. Distinct from warning_light/multiple_warning_lights_at_once — that one is specifically about dashboard warning icons being lit; THIS subcategory covers a wider grab-bag of weirdness (resets, gauge sweeps, accessories cycling).
 Positive examples:
   - "Bunch of weird stuff happening — radio resets, gauges jump around, dome light comes on by itself"
   - "Electrical gremlins all over the place — locks cycle on their own, wipers turn on randomly, dash lights flicker"
@@ -216,14 +216,14 @@ Positive examples:
   - "Multiple things acting up at once — gets worse over bumpy roads and after rain"
   - "Random electrical issues started after I had a stereo installed, ever since the car has been glitchy"
 Negative examples:
-  - "Only my driver window doesn't work, everything else is fine" → accessory_doesnt_work
-  - "Headlights dim and brighten with the engine RPM" → dim_or_flickering_lights
-  - "Three warning lights came on at the same time — ABS, traction, and check engine" → warning_light/multiple_warning_lights_at_once
-  - "Buzzing sound from the dash when the headlights are on" → noise/electrical_buzzing
+  - ""Only my driver window doesn't work, everything else is fine" → accessory_doesnt_work"
+  - ""Headlights dim and brighten with the engine RPM" → dim_or_flickering_lights"
+  - ""Three warning lights came on at the same time — ABS, traction, and check engine" → warning_light/multiple_warning_lights_at_once"
+  - ""Buzzing sound from the dash when the headlights are on" → noise/electrical_buzzing"
 Synonyms: electrical gremlins, random electrical issues, weird electrical problems, intermittent electrical, multiple things glitching, electrical bugs, ghost in the machine, things acting up, glitchy car, multiple weird symptoms, random resets, gauge sweep, gauges jumping, locks cycling, bad ground symptoms, after car wash electrical, after rain electrical
 
 ## electrical/car_died_while_driving_electrical
-Description: The car was running and then died / shut off while in motion — and the failure pattern points to the ELECTRICAL / charging system rather than the engine itself. Telltale signs customers describe: the headlights and dash got progressively dim before the shutdown, the battery / CHARGE warning light came on shortly before, the radio cut out, the power steering went heavy, and finally everything just went dark "like flipping a switch." After it dies, it often won't crank back over or only gives a click. Most common cause is a failing alternator that drained the battery while driving until the car ran out of stored electricity; also possible are a broken main battery cable, a failed serpentine belt that turns the alternator, or a fusible link blowing. Distinct from performance/stalling_while_driving_under_load — that one is engine-side (sputtering, hesitation, stumbling under throttle) with no electrical warnings; here the FIRST signs are electrical (dimming lights, battery light, dashboard going dark). Distinct from battery_drains_overnight — that's a car that dies WHILE SITTING; this one died WHILE DRIVING.
+Description: The car was running and then died / shut off while in motion — and the failure pattern points to the ELECTRICAL / charging system rather than the engine itself. Telltale signs customers describe: the headlights and dash got progressively dim before the shutdown, the battery / CHARGE warning light came on shortly before, the radio cut out, the power steering went heavy, and finally everything just went dark "like flipping a switch." After it dies, it often won't crank back over or only gives a click. Distinct from performance/stalling_while_driving_under_load — that one is engine-side (sputtering, hesitation, stumbling under throttle) with no electrical warnings; here the FIRST signs are electrical (dimming lights, battery light, dashboard going dark). Distinct from battery_drains_overnight — that's a car that dies WHILE SITTING; this one died WHILE DRIVING.
 Positive examples:
   - "Lights went dim, battery light came on, then the car just shut off on the highway"
   - "Everything went dark while I was driving — dash, radio, headlights — then the engine quit"
@@ -231,11 +231,11 @@ Positive examples:
   - "Was driving and suddenly lost all power like flipping a switch, dashboard went black"
   - "Battery light came on a few miles back and then the car coasted to a stop and won't start again"
 Negative examples:
-  - "Engine sputtered and stumbled and lost power going uphill, no warning lights" → performance/stalling_while_driving_under_load
-  - "Car kept dying in the parking lot overnight" → battery_drains_overnight
-  - "Battery light came on but the car is still running fine" → warning_light/battery_charging_light
-  - "Just clicks when I try to start it this morning, never moved from the driveway" → wont_crank_just_clicks
-  - "Engine stalls at stoplights but restarts immediately" → performance/stalling_at_idle_or_when_stopping
+  - ""Engine sputtered and stumbled and lost power going uphill, no warning lights" → performance/stalling_while_driving_under_load"
+  - ""Car kept dying in the parking lot overnight" → battery_drains_overnight"
+  - ""Battery light came on but the car is still running fine" → warning_light/battery_charging_light"
+  - ""Just clicks when I try to start it this morning, never moved from the driveway" → wont_crank_just_clicks"
+  - ""Engine stalls at stoplights but restarts immediately" → performance/stalling_at_idle_or_when_stopping"
 Synonyms: car died while driving, shut off while driving, lost power while driving, dashboard went dark, everything shut off, alternator died on the road, car quit driving, lost all electrical power, total electrical failure, charging system failed, battery died while driving, coasted to a stop, car stranded me on the road
 
 ## hvac/ac_blows_warm_or_hot_air
@@ -247,11 +247,11 @@ Positive examples:
   - "Turn the AC to max cold and I just get warm air out of the vents"
   - "Compressor isn't kicking in — no click when I turn AC on"
 Negative examples:
-  - "AC is on but it's just not as cold as last summer" → ac_is_weak_not_cold_enough
-  - "AC blows cold but the airflow is really weak" → vents_dont_blow_strongly
-  - "Heater blows cold air" → heat_doesnt_work
-  - "Driver side is cold but passenger side is warm" → one_zone_works_but_another_doesnt
-  - "AC blows cold for 5 minutes then turns warm, then cold again" → ac_is_weak_not_cold_enough
+  - ""AC is on but it's just not as cold as last summer" → ac_is_weak_not_cold_enough"
+  - ""AC blows cold but the airflow is really weak" → vents_dont_blow_strongly"
+  - ""Heater blows cold air" → heat_doesnt_work"
+  - ""Driver side is cold but passenger side is warm" → one_zone_works_but_another_doesnt"
+  - ""AC blows cold for 5 minutes then turns warm, then cold again" → ac_is_weak_not_cold_enough"
 Synonyms: AC, A/C, air conditioning, air con, climate control, no cool air, no cold air, blowing warm, blowing hot, AC not working, AC dead, AC out, refrigerant low, freon low, needs recharge, AC recharge, compressor not engaging, no AC click
 
 ## hvac/ac_is_weak_not_cold_enough
@@ -264,11 +264,11 @@ Positive examples:
   - "It blows cool air but you really have to crank it to feel anything"
   - "Cooling is fine on cool days but useless on hot days"
 Negative examples:
-  - "AC is blowing warm air, no cooling at all" → ac_blows_warm_or_hot_air
-  - "AC is cold but the airflow is really weak out of the vents" → vents_dont_blow_strongly
-  - "Heater doesn't get warm — heat doesn't work" → heat_doesnt_work
-  - "One side blows cold, other side blows warm" → one_zone_works_but_another_doesnt
-  - "Musty smell from the vents along with weak cooling" → bad_smell_from_vents
+  - ""AC is blowing warm air, no cooling at all" → ac_blows_warm_or_hot_air"
+  - ""AC is cold but the airflow is really weak out of the vents" → vents_dont_blow_strongly"
+  - ""Heater doesn't get warm — heat doesn't work" → heat_doesnt_work"
+  - ""One side blows cold, other side blows warm" → one_zone_works_but_another_doesnt"
+  - ""Musty smell from the vents along with weak cooling" → bad_smell_from_vents"
 Synonyms: AC, A/C, air conditioning, climate control, weak AC, weak cooling, not cold enough, lukewarm, barely cool, marginal cooling, low refrigerant, slow leak, freon low, AC underperforming, cycling AC, intermittent cooling, AC freezes up
 
 ## hvac/heat_doesnt_work
@@ -281,11 +281,11 @@ Positive examples:
   - "Engine runs cool, gauge stays low, and I get no heat in the cabin"
   - "Heat blows warm for the first 5 minutes then goes cold"
 Negative examples:
-  - "AC blows warm in the summer" → ac_blows_warm_or_hot_air
-  - "Heat is hot but the airflow from the vents is really weak" → vents_dont_blow_strongly
-  - "Heat is fine on the driver side but cold on the passenger side" → one_zone_works_but_another_doesnt
-  - "Engine temp warning light is on" → engine_temperature_light
-  - "Windows fog up even with heat on" → foggy_or_hard_to_defog_windows
+  - ""AC blows warm in the summer" → ac_blows_warm_or_hot_air"
+  - ""Heat is hot but the airflow from the vents is really weak" → vents_dont_blow_strongly"
+  - ""Heat is fine on the driver side but cold on the passenger side" → one_zone_works_but_another_doesnt"
+  - ""Engine temp warning light is on" → engine_temperature_light"
+  - ""Windows fog up even with heat on" → foggy_or_hard_to_defog_windows"
 Synonyms: heat, heater, heating, no heat, cold heat, heater blows cold, heater not warming, defroster not warming, thermostat stuck, low coolant, heater core, heater core clogged, takes forever to warm, slow to warm, engine runs cool, blend door stuck
 
 ## hvac/vents_dont_blow_strongly
@@ -297,11 +297,11 @@ Positive examples:
   - "Blower stopped working completely — no air comes out at all"
   - "Air comes out fine on max but is weak on low and medium"
 Negative examples:
-  - "AC isn't cold enough" → ac_is_weak_not_cold_enough
-  - "AC blows warm air" → ac_blows_warm_or_hot_air
-  - "Rattling noise from the dash when fan is on" → strange_noise_from_vents
-  - "Driver side has no air but passenger side is fine" → one_zone_works_but_another_doesnt
-  - "Defrost vents don't blow air on the windshield" → foggy_or_hard_to_defog_windows
+  - ""AC isn't cold enough" → ac_is_weak_not_cold_enough"
+  - ""AC blows warm air" → ac_blows_warm_or_hot_air"
+  - ""Rattling noise from the dash when fan is on" → strange_noise_from_vents"
+  - ""Driver side has no air but passenger side is fine" → one_zone_works_but_another_doesnt"
+  - ""Defrost vents don't blow air on the windshield" → foggy_or_hard_to_defog_windows"
 Synonyms: blower motor, blower fan, fan, vent airflow, weak airflow, no airflow, fan dead, fan only works on high, fan speeds don't work, blower resistor, cabin air filter, cabin filter clogged, intake blocked, fan won't turn on, mode door stuck, recirc door stuck
 
 ## hvac/foggy_or_hard_to_defog_windows
@@ -314,11 +314,11 @@ Positive examples:
   - "Rear window defroster doesn't work — lines on the back glass don't heat up"
   - "Windows fog over the second I get more than one passenger in the car"
 Negative examples:
-  - "Heater blows cold air" → heat_doesnt_work
-  - "AC is weak" → ac_is_weak_not_cold_enough
-  - "Wipers don't clear the windshield" → (out of HVAC scope; would be vibration/visibility category)
-  - "Sweet smell from the vents" → bad_smell_from_vents
-  - "Weak airflow from all vents including defrost" → vents_dont_blow_strongly
+  - ""Heater blows cold air" → heat_doesnt_work"
+  - ""AC is weak" → ac_is_weak_not_cold_enough"
+  - ""Wipers don't clear the windshield" → (out of HVAC scope; would be vibration/visibility category)"
+  - ""Sweet smell from the vents" → bad_smell_from_vents"
+  - ""Weak airflow from all vents including defrost" → vents_dont_blow_strongly"
 Synonyms: defroster, defogger, defog, windshield fog, foggy windows, foggy windshield, defrost not working, defrost weak, rear defroster, rear window defogger, back glass defroster, defroster grid, oily film on windshield, cabin humidity, AC won't engage with defrost, fresh air stuck
 
 ## hvac/strange_noise_from_vents
@@ -330,11 +330,11 @@ Positive examples:
   - "Grinding noise from behind the glove box, sounds like leaves in the blower"
   - "Tick tick tick from the dash right after I start the car, then it stops"
 Negative examples:
-  - "Buzzing noise from the dash all the time, fan-independent" → electrical_buzzing
-  - "Hissing under the hood after I shut the car off" → hissing_noise
-  - "Vents barely blow any air" → vents_dont_blow_strongly
-  - "AC compressor squeals" → high_pitched_whining_under_the_hood
-  - "Rattling underneath the car" → rattling_underneath_the_car
+  - ""Buzzing noise from the dash all the time, fan-independent" → electrical_buzzing"
+  - ""Hissing under the hood after I shut the car off" → hissing_noise"
+  - ""Vents barely blow any air" → vents_dont_blow_strongly"
+  - ""AC compressor squeals" → high_pitched_whining_under_the_hood"
+  - ""Rattling underneath the car" → rattling_underneath_the_car"
 Synonyms: vent noise, dashboard noise, behind the dash noise, blower noise, blower motor noise, blower rattle, blend door clicking, actuator clicking, vent whistle, vent whistling, vent rattle, vent rattling, AC clicking, fan grinding, fan squeak, leaves in vents, debris in blower
 
 ## hvac/bad_smell_from_vents
@@ -346,12 +346,12 @@ Positive examples:
   - "Burning smell from the dashboard vents when fan is on high"
   - "Moldy smell from the AC, gets worse on humid days"
 Negative examples:
-  - "Burning smell from under the hood" → burnt_oil_smell
-  - "Exhaust smell in the cabin while driving" → exhaust_fumes_inside_the_cabin
-  - "Rotten egg smell" → rotten_egg_sulfur_smell
-  - "Gas smell outside the car, not through the vents" → gasoline_fuel_smell
-  - "AC blows warm" → ac_blows_warm_or_hot_air
-  - "Sweet smell from the engine bay, not through the vents" → sweet_smell_maple_syrup_antifreeze
+  - ""Burning smell from under the hood" → burnt_oil_smell"
+  - ""Exhaust smell in the cabin while driving" → exhaust_fumes_inside_the_cabin"
+  - ""Rotten egg smell" → rotten_egg_sulfur_smell"
+  - ""Gas smell outside the car, not through the vents" → gasoline_fuel_smell"
+  - ""AC blows warm" → ac_blows_warm_or_hot_air"
+  - ""Sweet smell from the engine bay, not through the vents" → sweet_smell_maple_syrup_antifreeze"
 Synonyms: AC smell, vent smell, vent odor, musty smell, mildew smell, moldy smell, dirty sock smell, sweet smell, antifreeze smell, coolant smell, heater core leak, burning smell, electrical smell, plastic burning, foul vent air, evaporator smell, AC stinks, AC stinks like mildew
 
 ## hvac/one_zone_works_but_another_doesnt
@@ -363,11 +363,11 @@ Positive examples:
   - "Heat works on the driver side but the passenger side stays cold"
   - "When I turn the temperature dial on the passenger side nothing changes — it just stays cold"
 Negative examples:
-  - "AC blows warm from every vent" → ac_blows_warm_or_hot_air
-  - "Heater doesn't work at all" → heat_doesnt_work
-  - "Vents are weak on every side" → vents_dont_blow_strongly
-  - "Clicking from the dash, both sides work fine" → strange_noise_from_vents
-  - "Defroster doesn't work" → foggy_or_hard_to_defog_windows
+  - ""AC blows warm from every vent" → ac_blows_warm_or_hot_air"
+  - ""Heater doesn't work at all" → heat_doesnt_work"
+  - ""Vents are weak on every side" → vents_dont_blow_strongly"
+  - ""Clicking from the dash, both sides work fine" → strange_noise_from_vents"
+  - ""Defroster doesn't work" → foggy_or_hard_to_defog_windows"
 Synonyms: dual zone, dual climate, two zone, zone problem, driver side hot passenger cold, passenger side warm driver cold, one side cold one side hot, left vent right vent different, rear climate not working, blend door actuator, blend door, climate door, temperature door, asymmetric temperature, uneven temperature
 
 ## leak/brown_or_black_puddle_engine_oil
@@ -379,10 +379,10 @@ Positive examples:
   - "There's a slick brown spot under the motor and the oil light came on"
   - "Greasy black puddle, smells like burning oil after I drive"
 Negative examples:
-  - "Thick dark fluid under the rear axle that smells like rotten eggs" → thick_dark_brown_puddle_gear_or_differential_oil
-  - "Bright red fluid under the middle of the car" → red_or_pink_puddle_transmission_or_power_steering
-  - "Green slimy puddle under the radiator" → green_orange_yellow_or_pink_puddle_coolant
-  - "Blue smoke from the tailpipe" → smoke/blue_smoke_from_exhaust
+  - ""Thick dark fluid under the rear axle that smells like rotten eggs" → thick_dark_brown_puddle_gear_or_differential_oil"
+  - ""Bright red fluid under the middle of the car" → red_or_pink_puddle_transmission_or_power_steering"
+  - ""Green slimy puddle under the radiator" → green_orange_yellow_or_pink_puddle_coolant"
+  - ""Blue smoke from the tailpipe" → smoke/blue_smoke_from_exhaust"
 Synonyms: motor oil, engine oil, oil leak, oil drip, oil pan leak, valve cover leak, oily puddle, black oil spot, brown oil stain, petroleum leak
 
 ## leak/green_orange_yellow_or_pink_puddle_coolant
@@ -395,11 +395,11 @@ Positive examples:
   - "Snot-green slimy fluid dripping under the hood area"
   - "Bright blue coolant looking stuff under my Honda"
 Negative examples:
-  - "Bright red puddle under the middle of the car" → red_or_pink_puddle_transmission_or_power_steering
-  - "Light blue watery puddle near the front wheel, no smell" → blue_or_light_blue_puddle_washer_fluid
-  - "Sweet smell inside the cabin when the heat is on, no puddle outside" → smell/sweet_smell_maple_syrup_antifreeze
-  - "Foggy windows and wet passenger floor" → hvac/foggy_or_hard_to_defog_windows
-  - "Clear water under the car after running the AC" → clear_odorless_puddle_water_or_ac_condensation
+  - ""Bright red puddle under the middle of the car" → red_or_pink_puddle_transmission_or_power_steering"
+  - ""Light blue watery puddle near the front wheel, no smell" → blue_or_light_blue_puddle_washer_fluid"
+  - ""Sweet smell inside the cabin when the heat is on, no puddle outside" → smell/sweet_smell_maple_syrup_antifreeze"
+  - ""Foggy windows and wet passenger floor" → hvac/foggy_or_hard_to_defog_windows"
+  - ""Clear water under the car after running the AC" → clear_odorless_puddle_water_or_ac_condensation"
 Synonyms: antifreeze, coolant, radiator fluid, ethylene glycol, Dex-Cool, green coolant, orange coolant, pink coolant, yellow coolant, blue coolant, sweet-smelling leak, radiator leak
 
 ## leak/red_or_pink_puddle_transmission_or_power_steering
@@ -411,10 +411,10 @@ Positive examples:
   - "ATF-looking fluid under the car and it's slipping in gear"
   - "Reddish puddle near the steering, whining when I turn"
 Negative examples:
-  - "Bright neon pink fluid right under the radiator, smells sweet" → green_orange_yellow_or_pink_puddle_coolant
-  - "Dark brown oily puddle under the engine" → brown_or_black_puddle_engine_oil
-  - "Thick dark fluid that smells like sulfur" → thick_dark_brown_puddle_gear_or_differential_oil
-  - "Clear yellow oily spot near a wheel" → clear_yellow_or_light_brown_puddle_brake_fluid
+  - ""Bright neon pink fluid right under the radiator, smells sweet" → green_orange_yellow_or_pink_puddle_coolant"
+  - ""Dark brown oily puddle under the engine" → brown_or_black_puddle_engine_oil"
+  - ""Thick dark fluid that smells like sulfur" → thick_dark_brown_puddle_gear_or_differential_oil"
+  - ""Clear yellow oily spot near a wheel" → clear_yellow_or_light_brown_puddle_brake_fluid"
 Synonyms: ATF, automatic transmission fluid, transmission fluid, transmission leak, power steering fluid, PSF, red fluid leak, pink oily puddle, hydraulic fluid leak, steering rack leak
 
 ## leak/clear_yellow_or_light_brown_puddle_brake_fluid
@@ -426,10 +426,10 @@ Positive examples:
   - "Slippery clear fluid near the brake line, pedal goes almost to the floor"
   - "Amber-colored drips on the driver side near the firewall"
 Negative examples:
-  - "Clear puddle under the front of the car after running AC, no oil to it" → clear_odorless_puddle_water_or_ac_condensation
-  - "Yellow neon coolant under the radiator" → green_orange_yellow_or_pink_puddle_coolant
-  - "Brown oil leak under the engine" → brown_or_black_puddle_engine_oil
-  - "Hard brake pedal, no puddle anywhere" → other/brake_concern_no_leak
+  - ""Clear puddle under the front of the car after running AC, no oil to it" → clear_odorless_puddle_water_or_ac_condensation"
+  - ""Yellow neon coolant under the radiator" → green_orange_yellow_or_pink_puddle_coolant"
+  - ""Brown oil leak under the engine" → brown_or_black_puddle_engine_oil"
+  - ""Hard brake pedal, no puddle anywhere" → other/brake_concern_no_leak"
 Synonyms: brake fluid, brake fluid leak, DOT 3, DOT 4, hydraulic brake fluid, master cylinder leak, brake line leak, caliper leak, wheel cylinder leak, soft pedal leak
 
 ## leak/clear_odorless_puddle_water_or_ac_condensation
@@ -441,10 +441,10 @@ Positive examples:
   - "Looks like plain water, evaporates pretty quick"
   - "Tap-water looking drip near the front, nothing oily about it"
 Negative examples:
-  - "Clear slippery puddle near a wheel and the brake pedal is soft" → clear_yellow_or_light_brown_puddle_brake_fluid
-  - "Wet carpet on the passenger floor and the windows fog up" → hvac/foggy_or_hard_to_defog_windows
-  - "Sweet smell inside the car when I run the heater" → smell/sweet_smell_maple_syrup_antifreeze
-  - "Green slimy puddle, not clear water" → green_orange_yellow_or_pink_puddle_coolant
+  - ""Clear slippery puddle near a wheel and the brake pedal is soft" → clear_yellow_or_light_brown_puddle_brake_fluid"
+  - ""Wet carpet on the passenger floor and the windows fog up" → hvac/foggy_or_hard_to_defog_windows"
+  - ""Sweet smell inside the car when I run the heater" → smell/sweet_smell_maple_syrup_antifreeze"
+  - ""Green slimy puddle, not clear water" → green_orange_yellow_or_pink_puddle_coolant"
 Synonyms: AC condensation, air conditioning water, AC drip, condensate, water under car, clear water leak, harmless puddle, AC drain, evaporator drain, normal water dripping
 
 ## leak/thick_dark_brown_puddle_gear_or_differential_oil
@@ -456,10 +456,10 @@ Positive examples:
   - "Heavy dark brown grease-looking stuff under the differential"
   - "Gear oil leaking from the transfer case area, dusty greasy mess"
 Negative examples:
-  - "Brown oily puddle under the engine" → brown_or_black_puddle_engine_oil
-  - "Red fluid under the transmission" → red_or_pink_puddle_transmission_or_power_steering
-  - "Black smoke from tailpipe" → smoke/black_smoke_from_exhaust
-  - "Grinding noise from the rear with no leak" → noise/grinding_or_rumbling_from_rear
+  - ""Brown oily puddle under the engine" → brown_or_black_puddle_engine_oil"
+  - ""Red fluid under the transmission" → red_or_pink_puddle_transmission_or_power_steering"
+  - ""Black smoke from tailpipe" → smoke/black_smoke_from_exhaust"
+  - ""Grinding noise from the rear with no leak" → noise/grinding_or_rumbling_from_rear"
 Synonyms: gear oil, differential fluid, diff oil, axle oil, hypoid gear oil, transfer case fluid, rear end fluid, sulfur smell leak, rotten egg smell oil, gear lube
 
 ## leak/blue_or_light_blue_puddle_washer_fluid
@@ -471,10 +471,10 @@ Positive examples:
   - "Thin blue puddle, washer reservoir keeps going empty"
   - "Light bluish-green watery drip near the front, nothing sticky about it"
 Negative examples:
-  - "Bright blue slimy fluid right under the radiator, smells sweet" → green_orange_yellow_or_pink_puddle_coolant
-  - "Clear watery puddle, no color" → clear_odorless_puddle_water_or_ac_condensation
-  - "Wipers won't move at all" → other/wiper_motor_concern
-  - "Window won't roll up" → electrical/power_window_failure
+  - ""Bright blue slimy fluid right under the radiator, smells sweet" → green_orange_yellow_or_pink_puddle_coolant"
+  - ""Clear watery puddle, no color" → clear_odorless_puddle_water_or_ac_condensation"
+  - ""Wipers won't move at all" → other/wiper_motor_concern"
+  - ""Window won't roll up" → electrical/power_window_failure"
 Synonyms: washer fluid, windshield washer fluid, wiper fluid, washer reservoir leak, windshield cleaner, blue fluid leak, watery blue puddle, washer bottle leak
 
 ## noise/engine_ticking_or_tapping
@@ -486,11 +486,11 @@ Positive examples:
   - "Lifter tick — quiets down after about a minute of driving"
   - "Sounds like a clock or a metronome coming from up top when it idles"
 Negative examples:
-  - "Deep heavy knock from down low that gets worse when I accelerate" → deep_knocking_from_the_engine
-  - "High whine under the hood that changes with engine RPM" → high_pitched_whining_under_the_hood
-  - "Constant buzzing from the dash even when the car is off" → electrical_buzzing
-  - "Clicking only when I turn the steering wheel sharply" → popping_or_clicking_when_turning
-  - "Hissing from under the hood after I shut it off" → hissing_noise
+  - ""Deep heavy knock from down low that gets worse when I accelerate" → deep_knocking_from_the_engine"
+  - ""High whine under the hood that changes with engine RPM" → high_pitched_whining_under_the_hood"
+  - ""Constant buzzing from the dash even when the car is off" → electrical_buzzing"
+  - ""Clicking only when I turn the steering wheel sharply" → popping_or_clicking_when_turning"
+  - ""Hissing from under the hood after I shut it off" → hissing_noise"
 Synonyms: tick, ticking, tap, tapping, click, clicking, sewing machine, typewriter, lifter tick, lifter tap, valve tick, valve tap, injector tick, valvetrain tick, clatter, clacking, top-end noise, clicky clacky
 
 ## noise/clunking_over_bumps
@@ -502,11 +502,11 @@ Positive examples:
   - "Thunk-thunk over rough roads — feels like something is loose underneath"
   - "Hollow knock from the front end every time I hit a bump in the road"
 Negative examples:
-  - "Squeak or creak when I go over bumps" → squeaking_or_creaking_over_bumps
-  - "Tinny rattle underneath when I'm driving normally" → rattling_underneath_the_car
-  - "Clunk only when I turn the steering wheel" → popping_or_clicking_when_turning
-  - "Clunking that goes with bumps AND happens when I turn into my driveway" → steering/clunking_knocking_or_rough_ride_over_bumps
-  - "Deep knock from the engine when I accelerate" → deep_knocking_from_the_engine
+  - ""Squeak or creak when I go over bumps" → squeaking_or_creaking_over_bumps"
+  - ""Tinny rattle underneath when I'm driving normally" → rattling_underneath_the_car"
+  - ""Clunk only when I turn the steering wheel" → popping_or_clicking_when_turning"
+  - ""Clunking that goes with bumps AND happens when I turn into my driveway" → steering/clunking_knocking_or_rough_ride_over_bumps"
+  - ""Deep knock from the engine when I accelerate" → deep_knocking_from_the_engine"
 Synonyms: clunk, clunking, thud, thump, thunk, bang, knock, clank, clanking, clatter, bump noise, suspension clunk, pothole noise, hollow clunk, metallic thud, jolt, bonk
 
 ## noise/humming_or_whirring_at_speed
@@ -518,11 +518,11 @@ Positive examples:
   - "Sounds like an airplane taking off when I'm on the highway"
   - "Wheel area is making a humming noise — quiets down when I stop"
 Negative examples:
-  - "Whining noise under the hood that goes up with engine speed" → high_pitched_whining_under_the_hood
-  - "Hum only when AC is on" → hissing_noise
-  - "Steady road noise that doesn't change when I steer" → tires/loud_road_noise_drone_or_growl
-  - "Buzzing from the dashboard or fuse box" → electrical_buzzing
-  - "Light ticking from the top of the engine" → engine_ticking_or_tapping
+  - ""Whining noise under the hood that goes up with engine speed" → high_pitched_whining_under_the_hood"
+  - ""Hum only when AC is on" → hissing_noise"
+  - ""Steady road noise that doesn't change when I steer" → tires/loud_road_noise_drone_or_growl"
+  - ""Buzzing from the dashboard or fuse box" → electrical_buzzing"
+  - ""Light ticking from the top of the engine" → engine_ticking_or_tapping"
 Synonyms: hum, humming, whir, whirring, drone, droning, growl, growling, roar, roaring, rumble, rumbling, wheel bearing noise, hum at speed, airplane noise, propeller sound
 
 ## noise/high_pitched_whining_under_the_hood
@@ -534,11 +534,11 @@ Positive examples:
   - "Steady whine from up front that gets louder when I turn on the headlights"
   - "Sounds like a turbine or a jet engine under the hood"
 Negative examples:
-  - "Humming from the wheel area that gets worse with speed" → humming_or_whirring_at_speed
-  - "Whine only when turning the steering wheel" → steering/noise_when_turning_the_steering_wheel
-  - "Squealing brakes when I come to a stop" → brakes/high_pitched_squealing
-  - "Buzzing from the fuse box even with engine off" → electrical_buzzing
-  - "Ticking from the top of the engine at idle" → engine_ticking_or_tapping
+  - ""Humming from the wheel area that gets worse with speed" → humming_or_whirring_at_speed"
+  - ""Whine only when turning the steering wheel" → steering/noise_when_turning_the_steering_wheel"
+  - ""Squealing brakes when I come to a stop" → brakes/high_pitched_squealing"
+  - ""Buzzing from the fuse box even with engine off" → electrical_buzzing"
+  - ""Ticking from the top of the engine at idle" → engine_ticking_or_tapping"
 Synonyms: whine, whining, whirr, whirring, squeal, squealing, screech, screeching, belt squeal, alternator whine, power steering whine, serpentine belt noise, high-pitched, jet engine sound, turbine
 
 ## noise/rattling_underneath_the_car
@@ -550,11 +550,11 @@ Positive examples:
   - "Buzzing rattle from below when I rev the engine"
   - "Sounds like loose change shaking around under the car"
 Negative examples:
-  - "Clunk only when I hit a bump" → clunking_over_bumps
-  - "Rattling from the dash vents when the blower is on high" → hvac/strange_noise_from_vents
-  - "Buzzing from inside the dashboard" → electrical_buzzing
-  - "Ticking from the top of the engine" → engine_ticking_or_tapping
-  - "Hissing from under the hood" → hissing_noise
+  - ""Clunk only when I hit a bump" → clunking_over_bumps"
+  - ""Rattling from the dash vents when the blower is on high" → hvac/strange_noise_from_vents"
+  - ""Buzzing from inside the dashboard" → electrical_buzzing"
+  - ""Ticking from the top of the engine" → engine_ticking_or_tapping"
+  - ""Hissing from under the hood" → hissing_noise"
 Synonyms: rattle, rattling, clatter, clattering, buzz, tinny, can of marbles, can of rocks, loose change, heat shield rattle, exhaust rattle, catalytic converter rattle, cat rattle, vibrating metal, shaking metal
 
 ## noise/hissing_noise
@@ -566,11 +566,11 @@ Positive examples:
   - "Steady hiss when the engine is idling — runs rough too"
   - "Steam-like noise and the temperature gauge is high"
 Negative examples:
-  - "Electrical buzzing from the dash" → electrical_buzzing
-  - "High whine under the hood that goes with the engine" → high_pitched_whining_under_the_hood
-  - "Hiss coming from one of my tires" → tires/flat_or_low_tire
-  - "Rattle underneath when I'm idling" → rattling_underneath_the_car
-  - "Whoosh sound from the vents" → hvac/strange_noise_from_vents
+  - ""Electrical buzzing from the dash" → electrical_buzzing"
+  - ""High whine under the hood that goes with the engine" → high_pitched_whining_under_the_hood"
+  - ""Hiss coming from one of my tires" → tires/flat_or_low_tire"
+  - ""Rattle underneath when I'm idling" → rattling_underneath_the_car"
+  - ""Whoosh sound from the vents" → hvac/strange_noise_from_vents"
 Synonyms: hiss, hissing, psss, pssh, air leak, steam, steaming, escape of air, sssss sound, refrigerant hiss, vacuum leak, coolant hiss, sizzle, sizzling
 
 ## noise/popping_or_clicking_when_turning
@@ -582,11 +582,11 @@ Positive examples:
   - "Sounds like a card in bicycle spokes when I turn the wheel hard"
   - "Tick-tick-tick during tight turns, faster the tighter I go"
 Negative examples:
-  - "Clunk over bumps" → clunking_over_bumps
-  - "Creak when I turn the steering wheel while parked" → steering/noise_when_turning_the_steering_wheel
-  - "Squeak going over bumps" → squeaking_or_creaking_over_bumps
-  - "Light tick from the engine at idle" → engine_ticking_or_tapping
-  - "Whine when I crank the steering wheel hard at low speed" → high_pitched_whining_under_the_hood
+  - ""Clunk over bumps" → clunking_over_bumps"
+  - ""Creak when I turn the steering wheel while parked" → steering/noise_when_turning_the_steering_wheel"
+  - ""Squeak going over bumps" → squeaking_or_creaking_over_bumps"
+  - ""Light tick from the engine at idle" → engine_ticking_or_tapping"
+  - ""Whine when I crank the steering wheel hard at low speed" → high_pitched_whining_under_the_hood"
 Synonyms: pop, popping, click, clicking, clack, clacking, tick, ticking, snap, CV joint noise, axle click, turn click, parking lot pop, click on turns, popping on turns
 
 ## noise/deep_knocking_from_the_engine
@@ -598,11 +598,11 @@ Positive examples:
   - "Loud banging from the engine bay — louder under throttle"
   - "Engine is making a thudding sound from the bottom — oil light flickered too"
 Negative examples:
-  - "Light rapid tapping from the top of the engine" → engine_ticking_or_tapping
-  - "Clunk from the suspension when I hit a bump" → clunking_over_bumps
-  - "Knocking noise only when I turn the steering wheel" → popping_or_clicking_when_turning
-  - "Pinging or rattling only under hard acceleration with cheap gas" → performance/pinging_or_pre_ignition
-  - "Buzzing electrical sound from the dash" → electrical_buzzing
+  - ""Light rapid tapping from the top of the engine" → engine_ticking_or_tapping"
+  - ""Clunk from the suspension when I hit a bump" → clunking_over_bumps"
+  - ""Knocking noise only when I turn the steering wheel" → popping_or_clicking_when_turning"
+  - ""Pinging or rattling only under hard acceleration with cheap gas" → performance/pinging_or_pre_ignition"
+  - ""Buzzing electrical sound from the dash" → electrical_buzzing"
 Synonyms: knock, knocking, deep knock, rod knock, bottom-end knock, heavy thump, hammering, bang, banging, thud, thudding, pound, pounding, sledgehammer sound, lower-engine noise, bottom-of-engine knock, piston slap
 
 ## noise/squeaking_or_creaking_over_bumps
@@ -614,11 +614,11 @@ Positive examples:
   - "Groaning sound from underneath when I go over uneven pavement"
   - "Sounds like dry rubber twisting when I roll into my driveway"
 Negative examples:
-  - "Hard metallic clunk over bumps" → clunking_over_bumps
-  - "Squealing brakes when I stop" → brakes/high_pitched_squealing
-  - "Creak when I turn the wheel sitting still" → steering/noise_when_turning_the_steering_wheel
-  - "Whining under the hood with engine RPM" → high_pitched_whining_under_the_hood
-  - "Squeaky wipers across the windshield" → other/wiper_noise
+  - ""Hard metallic clunk over bumps" → clunking_over_bumps"
+  - ""Squealing brakes when I stop" → brakes/high_pitched_squealing"
+  - ""Creak when I turn the wheel sitting still" → steering/noise_when_turning_the_steering_wheel"
+  - ""Whining under the hood with engine RPM" → high_pitched_whining_under_the_hood"
+  - ""Squeaky wipers across the windshield" → other/wiper_noise"
 Synonyms: squeak, squeaking, creak, creaking, groan, groaning, squeal, rubbery squeak, dry bushing noise, suspension squeak, bushing creak, ball joint creak, old door sound, porch step sound
 
 ## noise/electrical_buzzing
@@ -630,11 +630,11 @@ Positive examples:
   - "Continuous electrical buzz under the hood near the battery"
   - "Sounds like a beehive coming from the dash area"
 Negative examples:
-  - "Hissing from under the hood" → hissing_noise
-  - "High whine that rises with the engine" → high_pitched_whining_under_the_hood
-  - "Buzz/rattle from the AC vents when blower is on high" → hvac/strange_noise_from_vents
-  - "Humming wheel bearing at highway speed" → humming_or_whirring_at_speed
-  - "Tick from the engine valvetrain" → engine_ticking_or_tapping
+  - ""Hissing from under the hood" → hissing_noise"
+  - ""High whine that rises with the engine" → high_pitched_whining_under_the_hood"
+  - ""Buzz/rattle from the AC vents when blower is on high" → hvac/strange_noise_from_vents"
+  - ""Humming wheel bearing at highway speed" → humming_or_whirring_at_speed"
+  - ""Tick from the engine valvetrain" → engine_ticking_or_tapping"
 Synonyms: buzz, buzzing, electrical buzz, electrical hum, dash buzz, fuse box buzz, relay buzz, alternator buzz, beehive sound, vibration tone, 60-cycle hum, electrical noise, steady hum, drone (electrical)
 
 ## other/multiple_symptoms_not_sure_what_category
@@ -646,13 +646,13 @@ Positive examples:
   - "Multiple problems — battery light, a hissing noise, and it pulls to the left"
   - "Honestly I don't know what category — it's making noises, the AC is weak, and I smell something burning"
 Negative examples:
-  - "My brakes squeal and feel mushy" → brakes/spongy_or_soft_pedal (same system; pick the most urgent brake subcategory)
-  - "The car shakes and the steering wheel vibrates at highway speed" → vibration/steering_wheel_shake_at_highway_speed (same root cause)
-  - "Multiple warning lights came on at once" → warning_light/multiple_warning_lights_at_once
-  - "Heat doesn't work and AC is weak" → hvac/heat_doesnt_work or hvac/ac_is_weak_not_cold_enough (same HVAC system; pick the more urgent one)
-  - "It's making a lot of different noises" → noise/<the loudest or most worrying noise>
-  - "My car has multiple issues but they all started after I hit a curb" → other/after_a_recent_accident_or_impact (accident context dominates)
-  - "Lots of things wrong but everything started after my last oil change" → other/after_recent_service_or_repair_work (post-service context dominates)
+  - ""My brakes squeal and feel mushy" → brakes/spongy_or_soft_pedal (same system; pick the most urgent brake subcategory)"
+  - ""The car shakes and the steering wheel vibrates at highway speed" → vibration/steering_wheel_shake_at_highway_speed (same root cause)"
+  - ""Multiple warning lights came on at once" → warning_light/multiple_warning_lights_at_once"
+  - ""Heat doesn't work and AC is weak" → hvac/heat_doesnt_work or hvac/ac_is_weak_not_cold_enough (same HVAC system; pick the more urgent one)"
+  - ""It's making a lot of different noises" → noise/<the loudest or most worrying noise>"
+  - ""My car has multiple issues but they all started after I hit a curb" → other/after_a_recent_accident_or_impact (accident context dominates)"
+  - ""Lots of things wrong but everything started after my last oil change" → other/after_recent_service_or_repair_work (post-service context dominates)"
 Synonyms: multiple problems, several issues, a few things going on, lots of stuff wrong, bunch of things wrong at once, multiple symptoms, not sure where to start, don't know what category, a few different things, several symptoms, three things wrong, everything seems off
 
 ## other/after_a_recent_accident_or_impact
@@ -665,12 +665,12 @@ Positive examples:
   - "Curbed it pretty hard turning into the driveway, want to get it looked at"
   - "Got into an accident on the highway, insurance is sending me in for inspection"
 Negative examples:
-  - "Car pulls to the right" (no accident mentioned) → pulling/steady_drift_while_cruising
-  - "Steering wheel shakes at highway speed" (no impact mentioned) → vibration/steering_wheel_shake_at_highway_speed
-  - "Bouncing or shaking over bumps" (chronic, no accident named) → vibration/shaking_or_bouncing_over_bumps_and_rough_roads
-  - "Car pulls left after I got new tires put on" → pulling/pull_that_started_after_recent_tire_or_service_work (service work, NOT accident)
-  - "Hit a small bump and now there's a rattle" (a bump, not an impact event) → noise/rattling_underneath_the_car (rattle is the symptom; bump too minor to be the framing)
-  - "Don't feel safe driving it" with no accident mentioned → other/safety_concern_dont_feel_safe_driving_it
+  - ""Car pulls to the right" (no accident mentioned) → pulling/steady_drift_while_cruising"
+  - ""Steering wheel shakes at highway speed" (no impact mentioned) → vibration/steering_wheel_shake_at_highway_speed"
+  - ""Bouncing or shaking over bumps" (chronic, no accident named) → vibration/shaking_or_bouncing_over_bumps_and_rough_roads"
+  - ""Car pulls left after I got new tires put on" → pulling/pull_that_started_after_recent_tire_or_service_work (service work, NOT accident)"
+  - ""Hit a small bump and now there's a rattle" (a bump, not an impact event) → noise/rattling_underneath_the_car (rattle is the symptom; bump too minor to be the framing)"
+  - ""Don't feel safe driving it" with no accident mentioned → other/safety_concern_dont_feel_safe_driving_it"
 Synonyms: accident, collision, crash, fender bender, rear-ended, rear end, hit something, hit a deer, hit a curb, curbed it, hit a pothole, ran over something, impact, struck, got into an accident, insurance claim, after the wreck, post-collision
 
 ## other/after_recent_service_or_repair_work
@@ -683,12 +683,12 @@ Positive examples:
   - "Had brake work done a month ago and now I'm having a different problem"
   - "It's under warranty from another shop and the original repair didn't hold"
 Negative examples:
-  - "Pull started right after I got new tires" → pulling/pull_that_started_after_recent_tire_or_service_work
-  - "New vibration after tire rotation" → tires/recent_tire_work_then_new_symptom
-  - "Brakes squeal" (no recent service named) → brakes/high_pitched_squealing
-  - "Check engine light came on" (no recent service named) → warning_light/check_engine_light
-  - "Hit a curb after I got my car back from the shop" → other/after_a_recent_accident_or_impact (accident is the dominant trigger)
-  - "Multiple things wrong since the last service" → other/after_recent_service_or_repair_work (this — post-service framing dominates)
+  - ""Pull started right after I got new tires" → pulling/pull_that_started_after_recent_tire_or_service_work"
+  - ""New vibration after tire rotation" → tires/recent_tire_work_then_new_symptom"
+  - ""Brakes squeal" (no recent service named) → brakes/high_pitched_squealing"
+  - ""Check engine light came on" (no recent service named) → warning_light/check_engine_light"
+  - ""Hit a curb after I got my car back from the shop" → other/after_a_recent_accident_or_impact (accident is the dominant trigger)"
+  - ""Multiple things wrong since the last service" → other/after_recent_service_or_repair_work (this — post-service framing dominates)"
 Synonyms: comeback, came back, just had it serviced, recently repaired, after the shop, after the dealer, post-repair, post-service, under warranty, warranty work, just got it back, picked it up yesterday, same problem returned, fix didn't hold, recurring issue, dealership work, just had work done
 
 ## other/safety_concern_dont_feel_safe_driving_it
@@ -701,13 +701,13 @@ Positive examples:
   - "Afraid something is going to fail while I'm driving"
   - "Doesn't feel safe — I want it towed in just to be sure"
 Negative examples:
-  - "Brake pedal goes to the floor" → brakes/pedal_sinks_to_floor (named symptom — that's the route, even though it IS a safety issue)
-  - "Can barely turn the steering wheel" → steering/hard_to_turn_heavy_steering
-  - "Car died on the highway and won't restart" → electrical/car_died_while_driving_electrical
-  - "Smoke coming from under the hood" → smoke/smoke_from_under_the_hood
-  - "Brakes don't feel right — pedal is soft" → brakes/spongy_or_soft_pedal (named symptom)
-  - "Steering wheel shakes really bad at highway speed and I'm scared" → vibration/steering_wheel_shake_at_highway_speed (named symptom — the fear is secondary)
-  - "Don't feel safe after I got rear-ended" → other/after_a_recent_accident_or_impact (accident context dominates)
+  - ""Brake pedal goes to the floor" → brakes/pedal_sinks_to_floor (named symptom — that's the route, even though it IS a safety issue)"
+  - ""Can barely turn the steering wheel" → steering/hard_to_turn_heavy_steering"
+  - ""Car died on the highway and won't restart" → electrical/car_died_while_driving_electrical"
+  - ""Smoke coming from under the hood" → smoke/smoke_from_under_the_hood"
+  - ""Brakes don't feel right — pedal is soft" → brakes/spongy_or_soft_pedal (named symptom)"
+  - ""Steering wheel shakes really bad at highway speed and I'm scared" → vibration/steering_wheel_shake_at_highway_speed (named symptom — the fear is secondary)"
+  - ""Don't feel safe after I got rear-ended" → other/after_a_recent_accident_or_impact (accident context dominates)"
 Synonyms: not safe, unsafe, don't feel safe, scared to drive, afraid to drive, nervous driving it, don't trust it, doesn't feel right, something's not right, worried about driving it, afraid it'll break down, feels dangerous, want it towed, won't drive it, scared to take it on the highway
 
 ## other/general_check_up_or_pre_trip_inspection
@@ -721,13 +721,13 @@ Positive examples:
   - "Peace of mind inspection — no issues, just want it gone over"
   - "Daughter's heading to college, want the car looked at before she goes"
 Negative examples:
-  - "Going on a road trip and the brakes are squealing" → brakes/high_pitched_squealing (named symptom dominates)
-  - "Just bought this used and the check engine light is on" → warning_light/check_engine_light
-  - "Want a check-up because I'm hearing a noise" → noise/<the specific noise>
-  - "Multiple warning lights — want a check" → warning_light/multiple_warning_lights_at_once
-  - "Pre-trip check, but it also pulls to the right" → pulling/steady_drift_while_cruising (named symptom dominates)
-  - "Haven't driven it in months and want it checked" → other/car_has_been_sitting_unused_for_a_long_time (sat-unused context dominates)
-Synonyms: general inspection, check-up, peace of mind, pre-trip inspection, pre trip check, pre-purchase inspection, PPI, used car inspection, road trip check, going on a trip, just bought it, just purchased, looked it over, once-over, annual check, want it gone over, bumper to bumper check, nothing wrong but, no issues just want, multi-point inspection, general check
+  - ""Going on a road trip and the brakes are squealing" → brakes/high_pitched_squealing (named symptom dominates)"
+  - ""Just bought this used and the check engine light is on" → warning_light/check_engine_light"
+  - ""Want a check-up because I'm hearing a noise" → noise/<the specific noise>"
+  - ""Multiple warning lights — want a check" → warning_light/multiple_warning_lights_at_once"
+  - ""Pre-trip check, but it also pulls to the right" → pulling/steady_drift_while_cruising (named symptom dominates)"
+  - ""Haven't driven it in months and want it checked" → other/car_has_been_sitting_unused_for_a_long_time (sat-unused context dominates)"
+Synonyms: general inspection, check-up, peace of mind, pre-trip inspection, pre trip check, pre-purchase inspection, PPI, used car inspection, road trip check, going on a trip, just bought it, just purchased, looked it over, once-over, annual check, want it gone over, bumper to bumper check, nothing wrong but, no issues just want, multi-point inspection
 
 ## other/car_has_been_sitting_unused_for_a_long_time
 Description: Customer's description names that the car has been STORED or NOT DRIVEN for an extended period (weeks, months, years) as the framing context. Pick this when the dormant-storage context is what brings them in — whether or not they've already tried to start it. The advisor needs to coordinate towing, multi-system inspection (battery, fluids, fuel, tires, brakes, rodent damage), and possibly a recommissioning service. Distinct from electrical/battery_drains_overnight (which is about a battery problem on an ACTIVELY-driven car, NOT a car that's been parked for months) and from electrical/wont_crank_just_clicks (when the customer names the no-crank symptom on a regularly-driven car).
@@ -740,13 +740,13 @@ Positive examples:
   - "Was deployed overseas, car sat for 18 months, just got back"
   - "Inherited a car that's been sitting — needs to come in"
 Negative examples:
-  - "Battery is dead — it won't start" (no mention of long storage) → electrical/wont_crank_just_clicks
-  - "Battery drains overnight" (active daily driver) → electrical/battery_drains_overnight
-  - "Won't start in the morning" (regular use, just hard to start) → performance/hard_to_start_when_cold
-  - "Sat overnight and now it won't start" (overnight, not long-term) → electrical/wont_crank_just_clicks
-  - "Tires are dry-rotted from sitting" (specific tire symptom named) → tires/dry_rot_sidewall_cracking
-  - "Has been sitting and now I want to take it on a road trip" → other/car_has_been_sitting_unused_for_a_long_time (sat-unused dominates; trip is downstream)
-  - "Sitting because I got into an accident" → other/after_a_recent_accident_or_impact (accident is the trigger)
+  - ""Battery is dead — it won't start" (no mention of long storage) → electrical/wont_crank_just_clicks"
+  - ""Battery drains overnight" (active daily driver) → electrical/battery_drains_overnight"
+  - ""Won't start in the morning" (regular use, just hard to start) → performance/hard_to_start_when_cold"
+  - ""Sat overnight and now it won't start" (overnight, not long-term) → electrical/wont_crank_just_clicks"
+  - ""Tires are dry-rotted from sitting" (specific tire symptom named) → tires/dry_rot_sidewall_cracking"
+  - ""Has been sitting and now I want to take it on a road trip" → other/car_has_been_sitting_unused_for_a_long_time (sat-unused dominates; trip is downstream)"
+  - ""Sitting because I got into an accident" → other/after_a_recent_accident_or_impact (accident is the trigger)"
 Synonyms: been sitting, hasn't been driven, sat in the garage, sat in storage, garage queen, barn find, hasn't moved, parked for months, parked for years, dormant, long-term storage, hasn't started in months, hasn't run in a while, stored for the winter, parked outside, sat out in the weather, didn't drive it all winter, inherited, project car that sat
 
 ## performance/hesitation_or_lag_when_accelerating
@@ -758,10 +758,10 @@ Positive examples:
   - "Pedal feels laggy — I press it and the engine takes a moment to wake up"
   - "Briefly bogs down when I floor it, then catches up and goes normally"
 Negative examples:
-  - "Car has no power at all and won't pick up speed even pedal to the floor" → low_power_or_wont_accelerate_normally
-  - "Engine bucks and jerks like it's skipping a beat when I accelerate" → engine_misfire_or_bucking_feeling
-  - "RPMs go up and down on their own while I'm cruising" → surging_or_rpms_going_up_and_down
-  - "Engine dies when I come to a stop" → stalling_at_idle_or_when_stopping
+  - ""Car has no power at all and won't pick up speed even pedal to the floor" → low_power_or_wont_accelerate_normally"
+  - ""Engine bucks and jerks like it's skipping a beat when I accelerate" → engine_misfire_or_bucking_feeling"
+  - ""RPMs go up and down on their own while I'm cruising" → surging_or_rpms_going_up_and_down"
+  - ""Engine dies when I come to a stop" → stalling_at_idle_or_when_stopping"
 Synonyms: hesitates, hesitation, stumble, stumbles, lag, laggy, delay, hiccup, hiccups, pause, pauses, bogs down briefly, takes a second, slow to respond, throttle lag, accelerator lag, gas pedal delay, sluggish off the line
 
 ## performance/rough_idle_or_shaking_at_a_stop
@@ -773,11 +773,11 @@ Positive examples:
   - "Engine sounds choppy and uneven at stoplights but smooths out when I drive"
   - "RPM needle dances up and down and the car feels jittery when I'm stopped"
 Negative examples:
-  - "Whole car shakes at idle but the engine sounds normal" → vibration/shaking_at_idle_while_stopped
-  - "Engine completely dies when I come to a stop" → stalling_at_idle_or_when_stopping
-  - "RPMs surge up and down on their own without me touching the pedal" → surging_or_rpms_going_up_and_down
-  - "Engine shakes only when I accelerate, not at idle" → engine_misfire_or_bucking_feeling
-  - "Steering wheel shakes at highway speed" → vibration/steering_wheel_shake_at_highway_speed
+  - ""Whole car shakes at idle but the engine sounds normal" → vibration/shaking_at_idle_while_stopped"
+  - ""Engine completely dies when I come to a stop" → stalling_at_idle_or_when_stopping"
+  - ""RPMs surge up and down on their own without me touching the pedal" → surging_or_rpms_going_up_and_down"
+  - ""Engine shakes only when I accelerate, not at idle" → engine_misfire_or_bucking_feeling"
+  - ""Steering wheel shakes at highway speed" → vibration/steering_wheel_shake_at_highway_speed"
 Synonyms: rough idle, shaky idle, lopey idle, choppy idle, sputtering idle, engine shudders at stop, engine vibrates at stoplight, uneven idle, unstable idle, RPM bouncing at idle, engine misses at idle, engine runs rough in park
 
 ## performance/stalling_at_idle_or_when_stopping
@@ -789,10 +789,10 @@ Positive examples:
   - "Engine just turns off when I'm idling — happens more when the AC is on"
   - "Whenever I come to a stop the car wants to die, especially when it's hot outside"
 Negative examples:
-  - "Engine cuts out while I'm driving on the highway" → stalling_while_driving_under_load
-  - "Engine shakes at idle but doesn't actually die" → rough_idle_or_shaking_at_a_stop
-  - "Car cranks and cranks but won't start in the morning" → hard_to_start_when_cold
-  - "Won't even crank — just a click when I turn the key" → electrical/wont_crank_just_clicks
+  - ""Engine cuts out while I'm driving on the highway" → stalling_while_driving_under_load"
+  - ""Engine shakes at idle but doesn't actually die" → rough_idle_or_shaking_at_a_stop"
+  - ""Car cranks and cranks but won't start in the morning" → hard_to_start_when_cold"
+  - ""Won't even crank — just a click when I turn the key" → electrical/wont_crank_just_clicks"
 Synonyms: stalls at idle, dies at red light, shuts off at stop, engine quits at stop, dies coming to a stop, conks out at idle, stalls in drive-through, engine cuts out at idle, idle stall, killed at stop sign
 
 ## performance/stalling_while_driving_under_load
@@ -804,10 +804,10 @@ Positive examples:
   - "Sputtered for a second and then just quit on me at 55 mph"
   - "Stalled out under acceleration on the on-ramp"
 Negative examples:
-  - "Engine dies only when I come to a stop at lights" → stalling_at_idle_or_when_stopping
-  - "Car loses power on hills but keeps running" → low_power_or_wont_accelerate_normally
-  - "Engine bucks and jerks but doesn't actually die" → engine_misfire_or_bucking_feeling
-  - "Cranks but won't start when I try to leave in the morning" → hard_to_start_when_cold
+  - ""Engine dies only when I come to a stop at lights" → stalling_at_idle_or_when_stopping"
+  - ""Car loses power on hills but keeps running" → low_power_or_wont_accelerate_normally"
+  - ""Engine bucks and jerks but doesn't actually die" → engine_misfire_or_bucking_feeling"
+  - ""Cranks but won't start when I try to leave in the morning" → hard_to_start_when_cold"
 Synonyms: stalls while driving, dies on highway, engine cuts out, shuts off while driving, lost power suddenly, car died at speed, conked out, quit while moving, engine quit, suddenly stalled, stalled under load, died on the freeway
 
 ## performance/hard_to_start_when_cold
@@ -819,10 +819,10 @@ Positive examples:
   - "Engine has to crank a long time after sitting all night, then runs rough for the first minute"
   - "Won't catch on the first try when it's cold — have to crank it again"
 Negative examples:
-  - "Hard to start right after I drove it and parked for 10 minutes" → hard_to_start_when_hot
-  - "Won't crank at all — just makes a clicking sound" → electrical/wont_crank_just_clicks
-  - "Cranks slow and sounds weak when I turn the key" → electrical/slow_crank_sluggish_start
-  - "Starts fine but idles rough for a few minutes" → rough_idle_or_shaking_at_a_stop
+  - ""Hard to start right after I drove it and parked for 10 minutes" → hard_to_start_when_hot"
+  - ""Won't crank at all — just makes a clicking sound" → electrical/wont_crank_just_clicks"
+  - ""Cranks slow and sounds weak when I turn the key" → electrical/slow_crank_sluggish_start"
+  - ""Starts fine but idles rough for a few minutes" → rough_idle_or_shaking_at_a_stop"
 Synonyms: hard cold start, won't start in the morning, slow to start when cold, takes forever to start cold, cranks but won't fire when cold, cold start problem, hard start after sitting, won't fire up overnight, sluggish cold start, no-start when cold
 
 ## performance/hard_to_start_when_hot
@@ -834,10 +834,10 @@ Positive examples:
   - "Cranks fine but takes forever to actually catch when the engine is hot"
   - "Have to hold the gas down to get it to start after driving in summer traffic"
 Negative examples:
-  - "Hard to start in the morning after sitting overnight" → hard_to_start_when_cold
-  - "Engine dies while driving, not when starting" → stalling_while_driving_under_load
-  - "Cranks slow when I turn the key" → electrical/slow_crank_sluggish_start
-  - "Won't crank at all" → electrical/wont_crank_just_clicks
+  - ""Hard to start in the morning after sitting overnight" → hard_to_start_when_cold"
+  - ""Engine dies while driving, not when starting" → stalling_while_driving_under_load"
+  - ""Cranks slow when I turn the key" → electrical/slow_crank_sluggish_start"
+  - ""Won't crank at all" → electrical/wont_crank_just_clicks"
 Synonyms: hard hot start, won't start when hot, vapor lock, heat soak, hard restart after driving, hot-start problem, won't fire when hot, cranks but won't start hot, no-start when warm, hard to start at gas station
 
 ## performance/low_power_or_wont_accelerate_normally
@@ -849,10 +849,10 @@ Positive examples:
   - "Like it's stuck in limp mode — won't accelerate past 3,000 RPM"
   - "Lost a lot of power and my gas mileage tanked at the same time"
 Negative examples:
-  - "Car hesitates for a second when I press the gas, then catches up" → hesitation_or_lag_when_accelerating
-  - "Engine bucks and jerks during acceleration" → engine_misfire_or_bucking_feeling
-  - "Engine just shut off while I was driving" → stalling_while_driving_under_load
-  - "RPMs surge up and down on their own" → surging_or_rpms_going_up_and_down
+  - ""Car hesitates for a second when I press the gas, then catches up" → hesitation_or_lag_when_accelerating"
+  - ""Engine bucks and jerks during acceleration" → engine_misfire_or_bucking_feeling"
+  - ""Engine just shut off while I was driving" → stalling_while_driving_under_load"
+  - ""RPMs surge up and down on their own" → surging_or_rpms_going_up_and_down"
 Synonyms: no power, low power, no acceleration, feels weak, drags, dragging, sluggish, won't pick up speed, won't accelerate, feels held back, limp mode, reduced engine power, stuck in gear, engine revs but car doesn't move, like emergency brake is on, bogged down, weak engine
 
 ## performance/surging_or_rpms_going_up_and_down
@@ -864,10 +864,10 @@ Positive examples:
   - "Feels like the car is hunting for the right idle speed"
   - "Lurches forward at low speeds even when my foot is off the gas"
 Negative examples:
-  - "Engine bucks and jerks like it's misfiring" → engine_misfire_or_bucking_feeling
-  - "Engine shakes and runs rough at idle but RPMs are steady" → rough_idle_or_shaking_at_a_stop
-  - "Pedal goes lifeless and car feels weak when I accelerate" → low_power_or_wont_accelerate_normally
-  - "Engine dies at stoplights" → stalling_at_idle_or_when_stopping
+  - ""Engine bucks and jerks like it's misfiring" → engine_misfire_or_bucking_feeling"
+  - ""Engine shakes and runs rough at idle but RPMs are steady" → rough_idle_or_shaking_at_a_stop"
+  - ""Pedal goes lifeless and car feels weak when I accelerate" → low_power_or_wont_accelerate_normally"
+  - ""Engine dies at stoplights" → stalling_at_idle_or_when_stopping"
 Synonyms: surging, surges, idle surge, RPM surge, RPM hunting, idle hunting, RPMs bouncing, RPMs swinging, engine races on its own, engine fluctuates, oscillating idle, unstable RPM, revs up and down, throttle ghosting, lurching at low speed
 
 ## performance/engine_misfire_or_bucking_feeling
@@ -879,12 +879,12 @@ Positive examples:
   - "Check engine light is flashing and the car jerks every few seconds"
   - "Feels like the car keeps trying to stall but catches itself — bucks really hard"
 Negative examples:
-  - "Brief delay when I press the gas, then it goes normally" → hesitation_or_lag_when_accelerating
-  - "RPMs smoothly go up and down on their own" → surging_or_rpms_going_up_and_down
-  - "Car just feels weak and won't pick up speed" → low_power_or_wont_accelerate_normally
-  - "Engine shakes only at idle, not while driving" → rough_idle_or_shaking_at_a_stop
-  - "Engine completely shut off while driving" → stalling_while_driving_under_load
-Synonyms: misfire, misfires, misfiring, bucking, bucks, jerking, jerks, kicking, kicks, stumbling, stumbles, skipping, skips, skip-a-beat, sputters under load, jerks under acceleration, cylinder misfire, running on 3 cylinders, engine kicking, jerks when I floor it, popping under acceleration
+  - ""Brief delay when I press the gas, then it goes normally" → hesitation_or_lag_when_accelerating"
+  - ""RPMs smoothly go up and down on their own" → surging_or_rpms_going_up_and_down"
+  - ""Car just feels weak and won't pick up speed" → low_power_or_wont_accelerate_normally"
+  - ""Engine shakes only at idle, not while driving" → rough_idle_or_shaking_at_a_stop"
+  - ""Engine completely shut off while driving" → stalling_while_driving_under_load"
+Synonyms: misfire, misfires, misfiring, bucking, bucks, jerking, jerks, kicking, kicks, stumbling, stumbles, skipping, skips, skip-a-beat, sputters under load, jerks under acceleration, cylinder misfire, running on 3 cylinders, engine kicking, jerks when I floor it
 
 ## pulling/pulling_only_when_braking
 Description: The car veers or pulls toward one side only when the brake pedal is pressed, then tracks straight again once the brakes are released. Typically caused by a stuck or sticking brake caliper, a collapsed brake hose, contaminated brake fluid, or uneven pad wear on one side — one wheel's brake grips harder than the other and tugs the car that direction. Distinct from steady_drift_while_cruising (which pulls all the time, not just when braking) and from the brakes/* subcategories that cover pedal feel (spongy, hard, pulsating) or noise (squealing, grinding) without a directional pull.
@@ -895,11 +895,11 @@ Positive examples:
   - "When I brake on the highway it veers into the next lane"
   - "Smells like burning brake on one wheel and pulls when I stop"
 Negative examples:
-  - "Brake pedal pulsates when I stop" → brakes/pulsating_or_vibrating_pedal
-  - "Pedal sinks to the floor when I press it" → brakes/pedal_sinks_to_floor
-  - "Brakes squeal but car drives straight" → brakes/high_pitched_squealing
-  - "Car drifts to the right all the time, not just when braking" → steady_drift_while_cruising
-  - "Pedal feels hard, takes a lot of force to stop" → brakes/hard_or_unresponsive_pedal
+  - ""Brake pedal pulsates when I stop" → brakes/pulsating_or_vibrating_pedal"
+  - ""Pedal sinks to the floor when I press it" → brakes/pedal_sinks_to_floor"
+  - ""Brakes squeal but car drives straight" → brakes/high_pitched_squealing"
+  - ""Car drifts to the right all the time, not just when braking" → steady_drift_while_cruising"
+  - ""Pedal feels hard, takes a lot of force to stop" → brakes/hard_or_unresponsive_pedal"
 Synonyms: pulls when braking, brakes pull, veers when stopping, pulls to one side when I brake, tugs when slowing down, sticking caliper pull, brake pull, drifts during braking, jerks when braking
 
 ## pulling/steady_drift_while_cruising
@@ -911,11 +911,11 @@ Positive examples:
   - "Won't track straight — always wants to go right no matter what road I'm on"
   - "I feel like I'm fighting the steering wheel to stay in my lane"
 Negative examples:
-  - "Only pulls when I brake" → pulling_only_when_braking
-  - "Only drifts on certain roads or in certain lanes" → drift_that_follows_the_roads_slope
-  - "Car wanders both ways, never settles" → wandering_or_drifting_in_both_directions
-  - "Started pulling right after I got new tires" → pull_that_started_after_recent_tire_or_service_work
-  - "Steering wheel is off-center when I'm going straight" → steering/steering_wheel_off_center_when_driving_straight
+  - ""Only pulls when I brake" → pulling_only_when_braking"
+  - ""Only drifts on certain roads or in certain lanes" → drift_that_follows_the_roads_slope"
+  - ""Car wanders both ways, never settles" → wandering_or_drifting_in_both_directions"
+  - ""Started pulling right after I got new tires" → pull_that_started_after_recent_tire_or_service_work"
+  - ""Steering wheel is off-center when I'm going straight" → steering/steering_wheel_off_center_when_driving_straight"
 Synonyms: pulls to one side, drifts, drifts right, drifts left, won't track straight, wants to go one way, lateral pull, alignment pull, leads to one side, tracks off, won't drive straight, fights the wheel
 
 ## pulling/pulling_only_during_acceleration
@@ -927,11 +927,11 @@ Positive examples:
   - "Front-wheel drive car, tugs sideways when I floor it"
   - "Wheel twists to one side under hard acceleration, fine at cruise"
 Negative examples:
-  - "Pulls all the time, not just when accelerating" → steady_drift_while_cruising
-  - "Only pulls when I brake" → pulling_only_when_braking
-  - "Engine feels weak and sluggish when I accelerate" → performance/lacks_power_or_acceleration
-  - "Steering feels loose and wanders all over" → wandering_or_drifting_in_both_directions
-  - "Clunking from the front end when I accelerate" → noise/clunking_or_knocking_from_front_end
+  - ""Pulls all the time, not just when accelerating" → steady_drift_while_cruising"
+  - ""Only pulls when I brake" → pulling_only_when_braking"
+  - ""Engine feels weak and sluggish when I accelerate" → performance/lacks_power_or_acceleration"
+  - ""Steering feels loose and wanders all over" → wandering_or_drifting_in_both_directions"
+  - ""Clunking from the front end when I accelerate" → noise/clunking_or_knocking_from_front_end"
 Synonyms: torque steer, pulls during acceleration, tugs when accelerating, pulls when I gas it, jerks under acceleration, twists wheel during acceleration, FWD pull, pulls when I step on it, acceleration pull, drifts under throttle
 
 ## pulling/drift_that_follows_the_roads_slope
@@ -943,11 +943,11 @@ Positive examples:
   - "Pull reverses when I cross a bridge that's tilted the other direction"
   - "Always drifts toward the shoulder no matter which road I'm on, but never on flat ground"
 Negative examples:
-  - "Pulls the same direction on every single road, even flat parking lots" → steady_drift_while_cruising
-  - "Only pulls when I brake" → pulling_only_when_braking
-  - "Only pulls when I accelerate" → pulling_only_during_acceleration
-  - "Started right after I got new tires" → pull_that_started_after_recent_tire_or_service_work
-  - "Car wanders both ways, doesn't follow the road" → wandering_or_drifting_in_both_directions
+  - ""Pulls the same direction on every single road, even flat parking lots" → steady_drift_while_cruising"
+  - ""Only pulls when I brake" → pulling_only_when_braking"
+  - ""Only pulls when I accelerate" → pulling_only_during_acceleration"
+  - ""Started right after I got new tires" → pull_that_started_after_recent_tire_or_service_work"
+  - ""Car wanders both ways, doesn't follow the road" → wandering_or_drifting_in_both_directions"
 Synonyms: road crown drift, slope drift, drifts with the road, follows the crown, tracks with the road, leans toward the shoulder, only pulls on certain roads, crowned road pull, lane-dependent drift, normal road drift
 
 ## pulling/pull_that_started_after_recent_tire_or_service_work
@@ -959,11 +959,11 @@ Positive examples:
   - "Got new tires put on and it's been pulling ever since"
   - "Had front-end work done last month and the car's been tugging to one side"
 Negative examples:
-  - "Has always pulled to the right, no recent service" → steady_drift_while_cruising
-  - "Only pulls when I brake — had brake work recently" → pulling_only_when_braking
-  - "Recent service and the car runs rough, doesn't pull" → other/after_recent_service_or_repair_work
-  - "New tires and now it vibrates at highway speed" → vibration/vibration_at_highway_speed
-  - "Recent tire work and now low pressure warning is on" → tires/low_pressure_warning_light_only
+  - ""Has always pulled to the right, no recent service" → steady_drift_while_cruising"
+  - ""Only pulls when I brake — had brake work recently" → pulling_only_when_braking"
+  - ""Recent service and the car runs rough, doesn't pull" → other/after_recent_service_or_repair_work"
+  - ""New tires and now it vibrates at highway speed" → vibration/vibration_at_highway_speed"
+  - ""Recent tire work and now low pressure warning is on" → tires/low_pressure_warning_light_only"
 Synonyms: pulls after new tires, pulls after alignment, drifts after tire rotation, post-alignment pull, tire conicity, new tires pulling, alignment made it worse, started pulling after service, post-tire-work pull, drifts since the shop
 
 ## pulling/wandering_or_drifting_in_both_directions
@@ -975,11 +975,11 @@ Positive examples:
   - "Steering feels loose and the car won't stay in its lane"
   - "Wanders back and forth at highway speed, especially over bumps"
 Negative examples:
-  - "Pulls steady to the right, same direction every time" → steady_drift_while_cruising
-  - "Steering wheel feels loose but car tracks straight" → steering/loose_or_sloppy_steering
-  - "Steering wheel is tilted off-center when going straight" → steering/steering_wheel_off_center_when_driving_straight
-  - "Front end clunks over bumps" → noise/clunking_or_knocking_from_front_end
-  - "Vibrates at highway speed but goes straight" → vibration/vibration_at_highway_speed
+  - ""Pulls steady to the right, same direction every time" → steady_drift_while_cruising"
+  - ""Steering wheel feels loose but car tracks straight" → steering/loose_or_sloppy_steering"
+  - ""Steering wheel is tilted off-center when going straight" → steering/steering_wheel_off_center_when_driving_straight"
+  - ""Front end clunks over bumps" → noise/clunking_or_knocking_from_front_end"
+  - ""Vibrates at highway speed but goes straight" → vibration/vibration_at_highway_speed"
 Synonyms: wanders, wandering, drifts both ways, all over the road, won't stay straight, loose front end, sloppy tracking, unpredictable steering, drifts side to side, tramlining, front end wander, hunts left and right, loose steering feel
 
 ## smell/sweet_smell_maple_syrup_antifreeze
@@ -992,11 +992,11 @@ Positive examples:
   - "There's a sweet pancake-syrup smell when I park, no leak I can find yet"
   - "Sweet chemical smell, almost like cough syrup, from the engine area"
 Negative examples:
-  - "Bright green puddle under the front of the car" → leak/green_orange_yellow_or_pink_puddle_coolant
-  - "Sweet smell coming through the vents when the heat is on, windows fog up" → hvac/bad_smell_from_vents
-  - "Sweet smell AND wet passenger floor carpet" → hvac/bad_smell_from_vents
-  - "Burning oil smell from under the hood" → burnt_oil_smell
-  - "Sticky red puddle under the middle of the car" → leak/red_or_pink_puddle_transmission_or_power_steering
+  - ""Bright green puddle under the front of the car" → leak/green_orange_yellow_or_pink_puddle_coolant"
+  - ""Sweet smell coming through the vents when the heat is on, windows fog up" → hvac/bad_smell_from_vents"
+  - ""Sweet smell AND wet passenger floor carpet" → hvac/bad_smell_from_vents"
+  - ""Burning oil smell from under the hood" → burnt_oil_smell"
+  - ""Sticky red puddle under the middle of the car" → leak/red_or_pink_puddle_transmission_or_power_steering"
 Synonyms: sweet smell, syrupy smell, maple syrup smell, pancake syrup smell, antifreeze smell, coolant smell, glycol smell, sweet chemical smell, sugary smell, cough syrup smell, sweet engine smell, sweet odor from under hood, sweet smell when driving, sweet smell when warm
 
 ## smell/burnt_oil_smell
@@ -1009,11 +1009,11 @@ Positive examples:
   - "I keep smelling oil burning — like a drip on the exhaust manifold"
   - "Hot petroleum smell from under the hood, no smoke I can see yet"
 Negative examples:
-  - "Dark brown oily puddle in my driveway" → leak/brown_or_black_puddle_engine_oil
-  - "Burning rubber smell from one of the wheels after braking" → burning_rubber_hot_brake_smell
-  - "Sharp burning plastic smell from the dash" → burning_electrical_plastic_smell
-  - "Sweet maple syrup smell from under the hood" → sweet_smell_maple_syrup_antifreeze
-  - "Black smoke from the tailpipe and burning oil smell" → smoke/blue_or_gray_smoke_from_tailpipe
+  - ""Dark brown oily puddle in my driveway" → leak/brown_or_black_puddle_engine_oil"
+  - ""Burning rubber smell from one of the wheels after braking" → burning_rubber_hot_brake_smell"
+  - ""Sharp burning plastic smell from the dash" → burning_electrical_plastic_smell"
+  - ""Sweet maple syrup smell from under the hood" → sweet_smell_maple_syrup_antifreeze"
+  - ""Black smoke from the tailpipe and burning oil smell" → smoke/blue_or_gray_smoke_from_tailpipe"
 Synonyms: burnt oil smell, burning oil smell, hot oil smell, burning motor oil, burning engine oil, oil burning smell, greasy burning smell, hot petroleum smell, oil on exhaust smell, valve cover leak smell, oil dripping on manifold smell, smoldering oil smell
 
 ## smell/gasoline_fuel_smell
@@ -1026,11 +1026,11 @@ Positive examples:
   - "Whole garage smells like gasoline when I park"
   - "Gas fumes when I start the car cold in the morning"
 Negative examples:
-  - "Exhaust / tailpipe smell inside the car when driving" → exhaust_fumes_inside_the_cabin
-  - "Rotten egg smell from the exhaust" → rotten_egg_sulfur_smell
-  - "Engine sputters and stalls under throttle, no smell" → performance/stalling_while_driving_under_load
-  - "Burning oil smell from the engine bay" → burnt_oil_smell
-  - "Sweet syrup smell from the engine" → sweet_smell_maple_syrup_antifreeze
+  - ""Exhaust / tailpipe smell inside the car when driving" → exhaust_fumes_inside_the_cabin"
+  - ""Rotten egg smell from the exhaust" → rotten_egg_sulfur_smell"
+  - ""Engine sputters and stalls under throttle, no smell" → performance/stalling_while_driving_under_load"
+  - ""Burning oil smell from the engine bay" → burnt_oil_smell"
+  - ""Sweet syrup smell from the engine" → sweet_smell_maple_syrup_antifreeze"
 Synonyms: gas smell, gasoline smell, gasoline odor, fuel smell, petrol smell, raw gas smell, gas fumes, fuel fumes, smell of gasoline, car smells like gas, gas leak smell, smell of fuel inside cabin, gas cap smell, evap leak smell, fuel vapor smell
 
 ## smell/rotten_egg_sulfur_smell
@@ -1043,11 +1043,11 @@ Positive examples:
   - "Awful sulfur stench from under the hood, maybe near the battery"
   - "Hydrogen sulfide / rotten egg smell when the engine is hot"
 Negative examples:
-  - "General exhaust / tailpipe smell in the cabin" → exhaust_fumes_inside_the_cabin
-  - "Thick dark fluid under the rear axle that smells like sulfur" → leak/thick_dark_brown_puddle_gear_or_differential_oil
-  - "Burning rubber from a wheel after braking" → burning_rubber_hot_brake_smell
-  - "Gas / fuel smell, not eggy" → gasoline_fuel_smell
-  - "Black smoke from the tailpipe" → smoke/black_smoke_from_tailpipe
+  - ""General exhaust / tailpipe smell in the cabin" → exhaust_fumes_inside_the_cabin"
+  - ""Thick dark fluid under the rear axle that smells like sulfur" → leak/thick_dark_brown_puddle_gear_or_differential_oil"
+  - ""Burning rubber from a wheel after braking" → burning_rubber_hot_brake_smell"
+  - ""Gas / fuel smell, not eggy" → gasoline_fuel_smell"
+  - ""Black smoke from the tailpipe" → smoke/black_smoke_from_tailpipe"
 Synonyms: rotten egg smell, rotten eggs, sulfur smell, sulphur smell, eggy smell, hydrogen sulfide smell, H2S smell, swampy smell, sewer smell from exhaust, foul exhaust smell, sulfurous smell, bad egg smell, sulfur from tailpipe, sulfur from battery
 
 ## smell/burning_electrical_plastic_smell
@@ -1060,11 +1060,11 @@ Positive examples:
   - "Burning hair / burning plastic smell, lights are flickering at the same time"
   - "Sharp burning smell from under the dash when I run the heater fan"
 Negative examples:
-  - "Greasy burning oil smell from under the hood" → burnt_oil_smell
-  - "Burning rubber smell from a wheel after I brake" → burning_rubber_hot_brake_smell
-  - "Lights flicker but no burning smell" → electrical/dim_or_flickering_lights
-  - "Multiple random electrical glitches, no smell" → electrical/multiple_random_electrical_glitches
-  - "Musty / mildew smell from the carpet" → musty_mildew_smell_from_vents
+  - ""Greasy burning oil smell from under the hood" → burnt_oil_smell"
+  - ""Burning rubber smell from a wheel after I brake" → burning_rubber_hot_brake_smell"
+  - ""Lights flicker but no burning smell" → electrical/dim_or_flickering_lights"
+  - ""Multiple random electrical glitches, no smell" → electrical/multiple_random_electrical_glitches"
+  - ""Musty / mildew smell from the carpet" → musty_mildew_smell_from_vents"
 Synonyms: burning plastic smell, burning electrical smell, electrical burning smell, melting plastic smell, melting wires smell, burning wires smell, burning electronics, burning circuit smell, acrid burning smell, chemical burning smell, hot wire smell, burning hair smell, fuse box burning smell, hot insulation smell, plasticky burning smell
 
 ## smell/burning_rubber_hot_brake_smell
@@ -1077,11 +1077,11 @@ Positive examples:
   - "Brakes smell hot and burnt after a long drive on the highway"
   - "Burning rubber smell when I get out, one wheel is way hotter than the others"
 Negative examples:
-  - "Burning oil smell from under the hood" → burnt_oil_smell
-  - "Burning plastic / electrical smell from the dash" → burning_electrical_plastic_smell
-  - "Grinding noise when I press the brake pedal" → brakes/metallic_grinding
-  - "Visible smoke coming from a wheel" → smoke/smoke_or_burning_smell_from_a_wheel
-  - "Sweet / syrupy smell from the engine area" → sweet_smell_maple_syrup_antifreeze
+  - ""Burning oil smell from under the hood" → burnt_oil_smell"
+  - ""Burning plastic / electrical smell from the dash" → burning_electrical_plastic_smell"
+  - ""Grinding noise when I press the brake pedal" → brakes/metallic_grinding"
+  - ""Visible smoke coming from a wheel" → smoke/smoke_or_burning_smell_from_a_wheel"
+  - ""Sweet / syrupy smell from the engine area" → sweet_smell_maple_syrup_antifreeze"
 Synonyms: burning rubber smell, hot brake smell, hot brakes smell, brakes burning, brakes burning smell, scorched smell from wheel, acrid wheel smell, burnt brake smell, overheated brakes smell, dragging brake smell, parking brake burning, stuck caliper smell, brake pad burning, hot rubber smell, friction burning smell
 
 ## smell/musty_mildew_smell_from_vents
@@ -1094,11 +1094,11 @@ Positive examples:
   - "Funky locker-room smell from the back seat"
   - "Mildew smell from the carpet, no obvious wet spot"
 Negative examples:
-  - "Musty smell when I turn on the AC" → hvac/bad_smell_from_vents
-  - "Dirty sock smell from the vents" → hvac/bad_smell_from_vents
-  - "Moldy smell from the dash when heat is on" → hvac/bad_smell_from_vents
-  - "Sweet syrupy smell, not musty" → sweet_smell_maple_syrup_antifreeze
-  - "Burning electrical smell from the dash" → burning_electrical_plastic_smell
+  - ""Musty smell when I turn on the AC" → hvac/bad_smell_from_vents"
+  - ""Dirty sock smell from the vents" → hvac/bad_smell_from_vents"
+  - ""Moldy smell from the dash when heat is on" → hvac/bad_smell_from_vents"
+  - ""Sweet syrupy smell, not musty" → sweet_smell_maple_syrup_antifreeze"
+  - ""Burning electrical smell from the dash" → burning_electrical_plastic_smell"
 Synonyms: musty smell, moldy smell, mildew smell, mildewy smell, funky smell, dirty sock smell, gym sock smell, locker room smell, wet dog smell, damp basement smell, swampy smell, stale smell, mold smell, mildew odor, basement smell, damp smell, dank smell, wet carpet smell, sour smell
 
 ## smell/exhaust_fumes_inside_the_cabin
@@ -1111,11 +1111,11 @@ Positive examples:
   - "Smoky exhaust smell in the cabin, hissing noise too"
   - "Fumes coming inside the car, getting headaches when I drive"
 Negative examples:
-  - "Rotten egg / sulfur smell from the exhaust" → rotten_egg_sulfur_smell
-  - "Raw gasoline / fuel smell inside the car" → gasoline_fuel_smell
-  - "Burning oil smell from under the hood" → burnt_oil_smell
-  - "Musty / moldy smell from the vents" → hvac/bad_smell_from_vents
-  - "Black smoke from the tailpipe" → smoke/black_smoke_from_tailpipe
+  - ""Rotten egg / sulfur smell from the exhaust" → rotten_egg_sulfur_smell"
+  - ""Raw gasoline / fuel smell inside the car" → gasoline_fuel_smell"
+  - ""Burning oil smell from under the hood" → burnt_oil_smell"
+  - ""Musty / moldy smell from the vents" → hvac/bad_smell_from_vents"
+  - ""Black smoke from the tailpipe" → smoke/black_smoke_from_tailpipe"
 Synonyms: exhaust smell, exhaust fumes, tailpipe smell, exhaust in cabin, fumes inside car, exhaust in the car, smoky cabin smell, exhaust leak smell, manifold leak smell, CO smell, carbon monoxide leak, exhaust coming through vents, muffler smell inside, smoky burnt smell inside, exhaust gas in cabin
 
 ## smoke/white_smoke_from_tailpipe
@@ -1127,11 +1127,11 @@ Positive examples:
   - "White cloud out the back, temperature gauge is running high"
   - "Persistent white smoke from the exhaust pipe, doesn't go away when the engine warms up"
 Negative examples:
-  - "A little white steam from the tailpipe on cold mornings that goes away" → (normal — no subcategory)
-  - "Blue smoke from the tailpipe when I start it up" → blue_or_gray_smoke_from_tailpipe
-  - "Black smoke from the exhaust when I floor it" → black_smoke_from_tailpipe
-  - "Sweet smell but no visible smoke" → sweet_smell_maple_syrup_antifreeze
-  - "Smoke coming from under the hood, not the tailpipe" → smoke_from_under_the_hood
+  - ""A little white steam from the tailpipe on cold mornings that goes away" → (normal — no subcategory)"
+  - ""Blue smoke from the tailpipe when I start it up" → blue_or_gray_smoke_from_tailpipe"
+  - ""Black smoke from the exhaust when I floor it" → black_smoke_from_tailpipe"
+  - ""Sweet smell but no visible smoke" → sweet_smell_maple_syrup_antifreeze"
+  - ""Smoke coming from under the hood, not the tailpipe" → smoke_from_under_the_hood"
 Synonyms: white smoke, white exhaust, white cloud, white vapor, steam from exhaust, coolant smoke, head gasket smoke, thick white smoke, milky exhaust, sweet smoke, syrupy smoke
 
 ## smoke/blue_or_gray_smoke_from_tailpipe
@@ -1143,11 +1143,11 @@ Positive examples:
   - "I keep having to add a quart of oil and there's no leak — there's gray smoke too"
   - "Blue smoke when I let off the gas going downhill"
 Negative examples:
-  - "White smoke from the tailpipe with a sweet smell" → white_smoke_from_tailpipe
-  - "Black smoke when I accelerate hard" → black_smoke_from_tailpipe
-  - "Burning oil smell but I don't see smoke" → burnt_oil_smell
-  - "Smoke coming from under the hood after a long drive" → smoke_from_under_the_hood
-  - "Oil dripping on the ground in the driveway" → brown_or_black_puddle_engine_oil
+  - ""White smoke from the tailpipe with a sweet smell" → white_smoke_from_tailpipe"
+  - ""Black smoke when I accelerate hard" → black_smoke_from_tailpipe"
+  - ""Burning oil smell but I don't see smoke" → burnt_oil_smell"
+  - ""Smoke coming from under the hood after a long drive" → smoke_from_under_the_hood"
+  - ""Oil dripping on the ground in the driveway" → brown_or_black_puddle_engine_oil"
 Synonyms: blue smoke, gray smoke, grey smoke, oil smoke, burning oil smoke, bluish exhaust, smoky exhaust, oily smoke, exhaust smoke on startup, smoke on acceleration
 
 ## smoke/black_smoke_from_tailpipe
@@ -1159,11 +1159,11 @@ Positive examples:
   - "Fuel mileage tanked and there's black smoke from the back"
   - "Check engine light came on and now black smoke when I accelerate"
 Negative examples:
-  - "White smoke from the tailpipe, sweet smell" → white_smoke_from_tailpipe
-  - "Blue smoke when I start it cold" → blue_or_gray_smoke_from_tailpipe
-  - "Diesel puffs a tiny bit of black smoke only on hard acceleration, otherwise fine" → (normal — no subcategory)
-  - "Strong gas smell but no visible smoke" → gasoline_fuel_smell
-  - "Black smoke from under the hood" → smoke_from_under_the_hood
+  - ""White smoke from the tailpipe, sweet smell" → white_smoke_from_tailpipe"
+  - ""Blue smoke when I start it cold" → blue_or_gray_smoke_from_tailpipe"
+  - ""Diesel puffs a tiny bit of black smoke only on hard acceleration, otherwise fine" → (normal — no subcategory)"
+  - ""Strong gas smell but no visible smoke" → gasoline_fuel_smell"
+  - ""Black smoke from under the hood" → smoke_from_under_the_hood"
 Synonyms: black smoke, dark smoke, sooty smoke, soot from exhaust, rich smoke, fuel smoke, dirty exhaust, dark exhaust cloud, black puff from tailpipe, rolling coal
 
 ## smoke/smoke_from_under_the_hood
@@ -1175,11 +1175,11 @@ Positive examples:
   - "Wisps of smoke from under the hood after I drive for a while"
   - "Smoke from the engine compartment and a burning plastic smell"
 Negative examples:
-  - "Burning oil smell but I don't see any smoke" → burnt_oil_smell
-  - "Burning plastic smell but no visible smoke" → burning_electrical_plastic_smell
-  - "White smoke from the tailpipe" → white_smoke_from_tailpipe
-  - "Sweet smell, coolant low, no smoke" → sweet_smell_maple_syrup_antifreeze
-  - "Smoke coming out of one wheel" → smoke_or_burning_smell_from_a_wheel
+  - ""Burning oil smell but I don't see any smoke" → burnt_oil_smell"
+  - ""Burning plastic smell but no visible smoke" → burning_electrical_plastic_smell"
+  - ""White smoke from the tailpipe" → white_smoke_from_tailpipe"
+  - ""Sweet smell, coolant low, no smoke" → sweet_smell_maple_syrup_antifreeze"
+  - ""Smoke coming out of one wheel" → smoke_or_burning_smell_from_a_wheel"
 Synonyms: engine smoke, smoke from engine, smoke under hood, hood smoke, smoking engine, engine bay smoke, steam from hood, vapor from engine, smoking under the bonnet, engine smoking
 
 ## smoke/smoke_or_burning_smell_from_a_wheel
@@ -1191,11 +1191,11 @@ Positive examples:
   - "Smoke off all four wheels after a long downhill"
   - "I think I left the parking brake on and now there's smoke from the back wheel"
 Negative examples:
-  - "Burning rubber smell but I don't see smoke from the wheels" → burning_rubber_hot_brake_smell
-  - "Grinding noise when I brake" → metallic_grinding
-  - "Smoke from under the hood" → smoke_from_under_the_hood
-  - "Hot brake smell after a long downhill, no smoke" → burning_rubber_hot_brake_smell
-  - "Car pulls when braking, no smoke" → pulling_only_when_braking
+  - ""Burning rubber smell but I don't see smoke from the wheels" → burning_rubber_hot_brake_smell"
+  - ""Grinding noise when I brake" → metallic_grinding"
+  - ""Smoke from under the hood" → smoke_from_under_the_hood"
+  - ""Hot brake smell after a long downhill, no smoke" → burning_rubber_hot_brake_smell"
+  - ""Car pulls when braking, no smoke" → pulling_only_when_braking"
 Synonyms: smoking wheel, smoke from tire, smoking brakes, hot wheel, brake smoke, wheel on fire, smoke from rim, burning brake smoke, dragging brake smoke, stuck caliper smoke
 
 ## smoke/smoke_or_strong_smell_inside_the_cabin
@@ -1207,11 +1207,11 @@ Positive examples:
   - "Burning smell from the vents got really strong, I had to pull over"
   - "Smoke coming through the dash when I turned the heat on"
 Negative examples:
-  - "Exhaust fumes smell inside the car but no smoke" → exhaust_fumes_inside_the_cabin
-  - "Burning plastic smell but no visible smoke and not sure where it's from" → burning_electrical_plastic_smell
-  - "Musty smell from the AC vents" → musty_mildew_smell_from_vents
-  - "Smoke coming up from under the hood" → smoke_from_under_the_hood
-  - "Sweet smell from the vents, no smoke" → bad_smell_from_vents
+  - ""Exhaust fumes smell inside the car but no smoke" → exhaust_fumes_inside_the_cabin"
+  - ""Burning plastic smell but no visible smoke and not sure where it's from" → burning_electrical_plastic_smell"
+  - ""Musty smell from the AC vents" → musty_mildew_smell_from_vents"
+  - ""Smoke coming up from under the hood" → smoke_from_under_the_hood"
+  - ""Sweet smell from the vents, no smoke" → bad_smell_from_vents"
 Synonyms: smoke in cabin, smoke inside car, smoke from vents, dashboard smoke, cabin smoke, smoke in the car, haze inside car, smoke from dash, vent smoke, interior smoke, smoking dashboard
 
 ## steering/hard_to_turn_heavy_steering
@@ -1223,11 +1223,11 @@ Positive examples:
   - "Wheel is heavy at low speeds but feels normal on the highway"
   - "Almost lost the power steering — it went stiff overnight"
 Negative examples:
-  - "Steering wheel feels loose with a lot of play" → loose_or_sloppy_steering
-  - "Whining noise when I turn the wheel but it turns fine" → noise_when_turning_the_steering_wheel
-  - "Steering wheel is tilted to one side when I drive straight" → steering_wheel_off_center_when_driving_straight
-  - "Whine from under the hood, gets louder as engine revs" → noise/high_pitched_whining_under_the_hood
-  - "Red puddle under the front of the car" → leak/red_or_pink_puddle_transmission_or_power_steering
+  - ""Steering wheel feels loose with a lot of play" → loose_or_sloppy_steering"
+  - ""Whining noise when I turn the wheel but it turns fine" → noise_when_turning_the_steering_wheel"
+  - ""Steering wheel is tilted to one side when I drive straight" → steering_wheel_off_center_when_driving_straight"
+  - ""Whine from under the hood, gets louder as engine revs" → noise/high_pitched_whining_under_the_hood"
+  - ""Red puddle under the front of the car" → leak/red_or_pink_puddle_transmission_or_power_steering"
 Synonyms: hard to turn, stiff steering, heavy steering, hard to steer, tight steering, hard to crank the wheel, lost power steering, no power assist, steering feels heavy, takes effort to turn, wheel won't turn easy, stiff wheel, hard wheel, manual steering feel
 
 ## steering/loose_or_sloppy_steering
@@ -1239,11 +1239,11 @@ Positive examples:
   - "I have to constantly correct to keep it going straight"
   - "Car kind of lags behind the steering wheel — I turn and then it turns a second later"
 Negative examples:
-  - "Steering wheel is hard to turn, takes a lot of effort" → hard_to_turn_heavy_steering
-  - "Car wanders both ways even though the wheel feels tight" → pulling/wandering_or_drifting_in_both_directions
-  - "Steering wheel is tilted off-center going straight" → steering_wheel_off_center_when_driving_straight
-  - "Car pulls steady to the right all the time" → pulling/steady_drift_while_cruising
-  - "Clunk when I hit bumps, felt in the wheel" → clunking_knocking_or_rough_ride_over_bumps
+  - ""Steering wheel is hard to turn, takes a lot of effort" → hard_to_turn_heavy_steering"
+  - ""Car wanders both ways even though the wheel feels tight" → pulling/wandering_or_drifting_in_both_directions"
+  - ""Steering wheel is tilted off-center going straight" → steering_wheel_off_center_when_driving_straight"
+  - ""Car pulls steady to the right all the time" → pulling/steady_drift_while_cruising"
+  - ""Clunk when I hit bumps, felt in the wheel" → clunking_knocking_or_rough_ride_over_bumps"
 Synonyms: loose steering, sloppy steering, play in the wheel, steering wheel play, wheel wiggles, deadband, dead zone, vague steering, floaty steering, disconnected steering, wheel lag, steering lag, slop in the wheel, excessive free play, rubbery steering, mushy steering, loose front end feel
 
 ## steering/steering_wheel_off_center_when_driving_straight
@@ -1255,11 +1255,11 @@ Positive examples:
   - "Just had an alignment and now the steering wheel isn't centered"
   - "Hit a curb and ever since the wheel sits off to the left"
 Negative examples:
-  - "Steering wheel is straight but car pulls to the right" → pulling/steady_drift_while_cruising
-  - "Wheel feels loose with a lot of play" → loose_or_sloppy_steering
-  - "Wheel shakes at highway speed" → steering_wheel_shakes_at_highway_speed
-  - "Drifts on crowned roads, fine on flat parking lots" → pulling/drift_that_follows_the_roads_slope
-  - "Car wanders both ways" → pulling/wandering_or_drifting_in_both_directions
+  - ""Steering wheel is straight but car pulls to the right" → pulling/steady_drift_while_cruising"
+  - ""Wheel feels loose with a lot of play" → loose_or_sloppy_steering"
+  - ""Wheel shakes at highway speed" → steering_wheel_shakes_at_highway_speed"
+  - ""Drifts on crowned roads, fine on flat parking lots" → pulling/drift_that_follows_the_roads_slope"
+  - ""Car wanders both ways" → pulling/wandering_or_drifting_in_both_directions"
 Synonyms: steering wheel off-center, wheel not straight, crooked steering wheel, wheel tilted, wheel cocked, wheel sits off-center, wheel isn't centered, wheel position off, steering wheel turned to one side going straight, off-center after alignment, logo not straight, wheel pointed left, wheel pointed right
 
 ## steering/noise_when_turning_the_steering_wheel
@@ -1271,15 +1271,15 @@ Positive examples:
   - "Creak from the steering column when I turn the wheel while parked"
   - "Growling noise from under the hood every time I crank the wheel"
 Negative examples:
-  - "Clicking from the front wheels when I turn at parking-lot speed" → noise/popping_or_clicking_when_turning
-  - "Whine under the hood all the time, gets louder with RPM" → noise/high_pitched_whining_under_the_hood
-  - "Squeak going over bumps" → noise/squeaking_or_creaking_over_bumps
-  - "Steering wheel is hard to turn but no noise" → hard_to_turn_heavy_steering
-  - "Clunk when I hit a bump, felt in the wheel" → clunking_knocking_or_rough_ride_over_bumps
+  - ""Clicking from the front wheels when I turn at parking-lot speed" → noise/popping_or_clicking_when_turning"
+  - ""Whine under the hood all the time, gets louder with RPM" → noise/high_pitched_whining_under_the_hood"
+  - ""Squeak going over bumps" → noise/squeaking_or_creaking_over_bumps"
+  - ""Steering wheel is hard to turn but no noise" → hard_to_turn_heavy_steering"
+  - ""Clunk when I hit a bump, felt in the wheel" → clunking_knocking_or_rough_ride_over_bumps"
 Synonyms: whine when turning, groan when turning, moan when turning, growl when turning, hum when turning, creak when turning, power steering whine, power steering noise, steering pump noise, noise turning the wheel, noise turning steering wheel, whining steering, groaning steering, power steering moan, wheel noise
 
 ## steering/steering_wheel_shakes_at_highway_speed
-Description: The steering wheel shakes, shimmies, or wobbles in the driver's hands at highway speed — typically starting between 50 and 70 mph, often steady at a given speed and sometimes smoothing out at higher speeds. The customer's primary framing is the WHEEL ITSELF shaking (not the seat, not the whole car). Most commonly caused by a tire that's out of balance (lost wheel weight, irregular tire wear), a bent wheel, a worn wheel bearing, or — in severe oscillating cases triggered by hitting a bump on solid-axle trucks/SUVs (Ford Super Duty, Jeep Wrangler) — "death wobble" from worn track bars / ball joints / steering damper. Distinct from vibration/steering_wheel_shake_at_highway_speed (which is the SAME physical symptom but framed differently by the customer — choose this STEERING subcategory when the customer says "the wheel shakes" or "shimmy in the wheel"; choose the vibration subcategory when the customer says "vibration in the wheel" or describes it as part of a broader car-vibration complaint). Also distinct from clunking_knocking_or_rough_ride_over_bumps (which is bump-triggered, not speed-triggered) and from pulling_drifting_or_wandering_on_the_road (which is a directional issue, not a shake).
+Description: The steering wheel shakes, shimmies, or wobbles in the driver's hands at highway speed — typically starting between 50 and 70 mph, often steady at a given speed and sometimes smoothing out at higher speeds. The customer's primary framing is the WHEEL ITSELF shaking (not the seat, not the whole car). Distinct from vibration/steering_wheel_shake_at_highway_speed (which is the SAME physical symptom but framed differently by the customer — choose this STEERING subcategory when the customer says "the wheel shakes" or "shimmy in the wheel"; choose the vibration subcategory when the customer says "vibration in the wheel" or describes it as part of a broader car-vibration complaint). Also distinct from clunking_knocking_or_rough_ride_over_bumps (which is bump-triggered, not speed-triggered) and from pulling_drifting_or_wandering_on_the_road (which is a directional issue, not a shake).
 Positive examples:
   - "Steering wheel shakes really bad around 60 mph"
   - "Wheel shimmies in my hands on the highway"
@@ -1287,15 +1287,15 @@ Positive examples:
   - "Just the steering wheel shaking, the seat feels fine"
   - "Hit a pothole and now the wheel goes into a violent shake at 50 mph — death wobble"
 Negative examples:
-  - "Whole car vibrates at highway speed, not just the wheel" → vibration/steering_wheel_shake_at_highway_speed
-  - "Vibration through the seat and floor at speed" → vibration/steering_wheel_shake_at_highway_speed
-  - "Steering wheel shakes only when I press the brakes" → vibration/vibration_or_pulsing_when_braking
-  - "Car shakes at idle when stopped" → vibration/shaking_at_idle_while_stopped
-  - "Wheel feels loose but doesn't shake" → loose_or_sloppy_steering
+  - ""Whole car vibrates at highway speed, not just the wheel" → vibration/steering_wheel_shake_at_highway_speed"
+  - ""Vibration through the seat and floor at speed" → vibration/steering_wheel_shake_at_highway_speed"
+  - ""Steering wheel shakes only when I press the brakes" → vibration/vibration_or_pulsing_when_braking"
+  - ""Car shakes at idle when stopped" → vibration/shaking_at_idle_while_stopped"
+  - ""Wheel feels loose but doesn't shake" → loose_or_sloppy_steering"
 Synonyms: steering wheel shake, steering wheel shakes, wheel shimmy, shimmy in the wheel, wheel wobble, wheel wobbles, shaky wheel, wheel vibration at speed, wheel shudders, wheel quivers in my hands, death wobble, highway speed shake, wheel goes into a shake, front-end shimmy, balance shake, wheel weight off
 
 ## steering/pulling_drifting_or_wandering_on_the_road
-Description: A pulling, drifting, or wandering complaint where the customer's primary framing mixes wheel-feel with car-direction — they describe the car not tracking straight AND the steering wheel feeling involved (drifts, wanders, has to fight the wheel) without cleanly separating the two. Most commonly caused by wheel alignment out of spec, uneven tire pressure or wear, worn tie rods / ball joints / wheel bearings, or a tire defect (conicity). When the customer's complaint is clearly ONLY about the car's directional track (pulls steady to the right, drifts on crowned roads, pulls only when braking) route to the appropriate pulling/* subcategory instead; this steering subcategory is for the broader / wheel-feel-mixed framing. Distinct from pulling/steady_drift_while_cruising (which is a clean directional-only complaint that always pulls one way), pulling/drift_that_follows_the_roads_slope (slope-dependent), pulling/wandering_or_drifting_in_both_directions (clean bi-directional wander complaint), and loose_or_sloppy_steering (where the wheel itself has play but the car tracks straight).
+Description: A pulling, drifting, or wandering complaint where the customer's primary framing mixes wheel-feel with car-direction — they describe the car not tracking straight AND the steering wheel feeling involved (drifts, wanders, has to fight the wheel) without cleanly separating the two. Most commonly caused by wheel alignment out of spec, uneven tire pressure or wear, worn tie rods / ball joints / wheel bearings, or a tire defect (conicity). Distinct from pulling/steady_drift_while_cruising (which is a clean directional-only complaint that always pulls one way), pulling/drift_that_follows_the_roads_slope (slope-dependent), pulling/wandering_or_drifting_in_both_directions (clean bi-directional wander complaint), and loose_or_sloppy_steering (where the wheel itself has play but the car tracks straight).
 Positive examples:
   - "Car kind of drifts and the wheel feels weird"
   - "Wheel wants to pull to the right and I'm always correcting"
@@ -1303,17 +1303,17 @@ Positive examples:
   - "Pulls to one side and the wheel feels loose at the same time"
   - "Something's wrong with the steering — it won't drive straight"
 Negative examples:
-  - "Pulls steady to the right on every road" → pulling/steady_drift_while_cruising
-  - "Only pulls when I brake" → pulling/pulling_only_when_braking
-  - "Only pulls when I accelerate" → pulling/pulling_only_during_acceleration
-  - "Drifts on crowned roads, straight in parking lots" → pulling/drift_that_follows_the_roads_slope
-  - "Car wanders both ways constantly" → pulling/wandering_or_drifting_in_both_directions
-  - "Wheel is loose with play but car tracks straight" → loose_or_sloppy_steering
-  - "Steering wheel is tilted but car drives straight" → steering_wheel_off_center_when_driving_straight
+  - ""Pulls steady to the right on every road" → pulling/steady_drift_while_cruising"
+  - ""Only pulls when I brake" → pulling/pulling_only_when_braking"
+  - ""Only pulls when I accelerate" → pulling/pulling_only_during_acceleration"
+  - ""Drifts on crowned roads, straight in parking lots" → pulling/drift_that_follows_the_roads_slope"
+  - ""Car wanders both ways constantly" → pulling/wandering_or_drifting_in_both_directions"
+  - ""Wheel is loose with play but car tracks straight" → loose_or_sloppy_steering"
+  - ""Steering wheel is tilted but car drives straight" → steering_wheel_off_center_when_driving_straight"
 Synonyms: car drifts, car wanders, won't drive straight, wheel pulls, steering pulls, drifts and wanders, fighting the wheel, can't drive straight, pulls and wanders, steering feels off, drifts to one side, wheel wants to go, won't track straight, hunts back and forth, weaves on the road
 
 ## steering/clunking_knocking_or_rough_ride_over_bumps
-Description: A clunk, knock, jolt, or harsh impact transmitted up through the steering wheel and front end when the car goes over bumps, potholes, speed bumps, or rough pavement — the driver feels the hit IN THE WHEEL (sometimes as a kickback or shudder) and often describes the ride as "rough" or "jarring" compared to before. Frequently accompanied by continued bouncing after the bump (worn struts/shocks), excessive body lean in corners, or fluid streaks down the strut posts. Most commonly caused by worn struts/shocks, worn strut mounts, worn ball joints, worn tie rod ends, worn sway bar end links, or worn control arm bushings. Distinct from noise/clunking_over_bumps (which is the same family of components but framed as a NOISE the customer HEARS from underneath rather than an IMPACT felt in the wheel — choose this steering subcategory when the customer's primary report is "felt in the wheel" or "rough ride") and from vibration/shaking_or_bouncing_over_bumps_and_rough_roads (which is a whole-car bouncing / oscillation complaint after a bump, not a discrete clunk-felt-in-the-wheel).
+Description: A clunk, knock, jolt, or harsh impact transmitted up through the steering wheel and front end when the car goes over bumps, potholes, speed bumps, or rough pavement — the driver feels the hit IN THE WHEEL (sometimes as a kickback or shudder) and often describes the ride as "rough" or "jarring" compared to before. Frequently accompanied by continued bouncing after the bump (worn struts/shocks), excessive body lean in corners, or fluid streaks down the strut posts. Distinct from noise/clunking_over_bumps (which is the same family of components but framed as a NOISE the customer HEARS from underneath rather than an IMPACT felt in the wheel — choose this steering subcategory when the customer's primary report is "felt in the wheel" or "rough ride") and from vibration/shaking_or_bouncing_over_bumps_and_rough_roads (which is a whole-car bouncing / oscillation complaint after a bump, not a discrete clunk-felt-in-the-wheel).
 Positive examples:
   - "Big clunk through the steering wheel every time I hit a bump"
   - "Wheel kicks back hard when I roll over a pothole"
@@ -1321,12 +1321,12 @@ Positive examples:
   - "Knocking I can feel in the steering wheel going over speed bumps"
   - "Ride is jarring and I feel the impact in my hands"
 Negative examples:
-  - "Clunk from underneath I can hear but don't feel in the wheel" → noise/clunking_over_bumps
-  - "Whole car bounces three times after every bump" → vibration/shaking_or_bouncing_over_bumps_and_rough_roads
-  - "Click only when I turn at parking-lot speed" → noise/popping_or_clicking_when_turning
-  - "Squeak going over bumps" → noise/squeaking_or_creaking_over_bumps
-  - "Steering wheel shakes at highway speed" → steering_wheel_shakes_at_highway_speed
-  - "Wheel feels loose with play" → loose_or_sloppy_steering
+  - ""Clunk from underneath I can hear but don't feel in the wheel" → noise/clunking_over_bumps"
+  - ""Whole car bounces three times after every bump" → vibration/shaking_or_bouncing_over_bumps_and_rough_roads"
+  - ""Click only when I turn at parking-lot speed" → noise/popping_or_clicking_when_turning"
+  - ""Squeak going over bumps" → noise/squeaking_or_creaking_over_bumps"
+  - ""Steering wheel shakes at highway speed" → steering_wheel_shakes_at_highway_speed"
+  - ""Wheel feels loose with play" → loose_or_sloppy_steering"
 Synonyms: clunk through the wheel, clunk in the steering wheel, knock through the steering, felt in the wheel, kickback through the wheel, kickback from bumps, rough ride felt in the wheel, jarring ride, harsh impact through the wheel, wheel kicks over bumps, jolt through the steering, bump steer feeling, worn struts feel, bouncing through the wheel
 
 ## tires/visible_damage_nail_screw_bulge_cut
@@ -1338,11 +1338,11 @@ Positive examples:
   - "Hit a curb and now there's a bulge in the side of the tire"
   - "Big gash in my tire — looks like I ran over something sharp"
 Negative examples:
-  - "Tire keeps going flat but I don't see anything in it" → tire_going_flat_losing_air
-  - "Tire pressure light keeps coming on" → low_pressure_warning_light_only
-  - "Lots of little cracks on the sidewall of my tires" → dry_rot_sidewall_cracking
-  - "Tires are wearing on the inside edge" → uneven_tire_wear_bald_spots
-  - "Hit a pothole hard and now the car shakes" → vibration/steering_wheel_shake_at_highway_speed
+  - ""Tire keeps going flat but I don't see anything in it" → tire_going_flat_losing_air"
+  - ""Tire pressure light keeps coming on" → low_pressure_warning_light_only"
+  - ""Lots of little cracks on the sidewall of my tires" → dry_rot_sidewall_cracking"
+  - ""Tires are wearing on the inside edge" → uneven_tire_wear_bald_spots"
+  - ""Hit a pothole hard and now the car shakes" → vibration/steering_wheel_shake_at_highway_speed"
 Synonyms: nail in tire, screw in tire, sidewall bulge, tire bubble, sidewall bubble, tire blister, gash in tire, cut in tire, slash in tire, tire damage, puncture, object stuck in tire, hole in tire, sidewall damage, curb damage, pothole damage
 
 ## tires/tire_going_flat_losing_air
@@ -1354,15 +1354,15 @@ Positive examples:
   - "One of my tires is slowly losing air"
   - "Pulled into the driveway and heard hissing, now the tire is soft"
 Negative examples:
-  - "There's a nail in my tire" → visible_damage_nail_screw_bulge_cut
-  - "Bubble on the sidewall" → visible_damage_nail_screw_bulge_cut
-  - "Just the TPMS light is on, tires look fine" → low_pressure_warning_light_only
-  - "Sidewall is all cracked from sitting" → dry_rot_sidewall_cracking
-  - "Tire pressure light came on after the cold snap" → warning_light/tpms_tire_pressure_light
+  - ""There's a nail in my tire" → visible_damage_nail_screw_bulge_cut"
+  - ""Bubble on the sidewall" → visible_damage_nail_screw_bulge_cut"
+  - ""Just the TPMS light is on, tires look fine" → low_pressure_warning_light_only"
+  - ""Sidewall is all cracked from sitting" → dry_rot_sidewall_cracking"
+  - ""Tire pressure light came on after the cold snap" → warning_light/tpms_tire_pressure_light"
 Synonyms: losing air, going flat, won't hold air, slow leak, tire leak, flat tire, low tire, soft tire, deflating tire, leaks down, needs air, keeps going low, tire keeps losing pressure, slow flat
 
 ## tires/low_pressure_warning_light_only
-Description: The customer's ONLY framing is that a low-tire-pressure warning has appeared on the dashboard — they may or may not have confirmed any tire is actually low, and they have not named visible damage or active air loss. Common causes include cold-weather pressure drop, a tire that needs topping off, a TPMS sensor that needs to relearn after a fill-up or tire service, or a failing TPMS sensor battery. NOTE on routing: this subcategory has a parallel sibling at `warning_light/tpms_tire_pressure_light`. When the customer LEADS with warning-light language ("TPMS light came on", "yellow horseshoe symbol on my dash") the warning_light sibling is canonical and preferred. Route to THIS subcategory when the customer LEADS with tire-pressure language ("my tire pressure light is on", "low tire pressure warning") AND the framing stays tire-focused. Both exist for graceful fallback. Distinct from tires/tire_going_flat_losing_air (where the customer has confirmed a tire is actually losing air, beyond just the light) and from tires/recent_tire_work_then_new_symptom (when the light is one of multiple new symptoms following recent tire work — route there instead).
+Description: The customer's ONLY framing is that a low-tire-pressure warning has appeared on the dashboard — they may or may not have confirmed any tire is actually low, and they have not named visible damage or active air loss. Common causes include cold-weather pressure drop, a tire that needs topping off, a TPMS sensor that needs to relearn after a fill-up or tire service, or a failing TPMS sensor battery. NOTE on routing: this subcategory has a parallel sibling at `warning_light/tpms_tire_pressure_light`. When the customer LEADS with warning-light language ("TPMS light came on", "yellow horseshoe symbol on my dash") the warning_light sibling is canonical and preferred. Both exist for graceful fallback. Distinct from tires/tire_going_flat_losing_air (where the customer has confirmed a tire is actually losing air, beyond just the light) and from tires/recent_tire_work_then_new_symptom (when the light is one of multiple new symptoms following recent tire work — route there instead).
 Positive examples:
   - "My low tire pressure light is on"
   - "Tire pressure warning came on this morning"
@@ -1370,11 +1370,11 @@ Positive examples:
   - "I added air but the light won't go off"
   - "Low pressure warning light, tires look fine to me"
 Negative examples:
-  - "TPMS light came on" → warning_light/tpms_tire_pressure_light (warning-light framing)
-  - "Tire keeps going flat" → tire_going_flat_losing_air
-  - "Got a nail in my tire and the light is on" → visible_damage_nail_screw_bulge_cut
-  - "Had new tires put on yesterday and now the light is on" → recent_tire_work_then_new_symptom
-  - "Tire pressure light AND check engine light came on" → warning_light/multiple_warning_lights_at_once
+  - ""TPMS light came on" → warning_light/tpms_tire_pressure_light (warning-light framing)"
+  - ""Tire keeps going flat" → tire_going_flat_losing_air"
+  - ""Got a nail in my tire and the light is on" → visible_damage_nail_screw_bulge_cut"
+  - ""Had new tires put on yesterday and now the light is on" → recent_tire_work_then_new_symptom"
+  - ""Tire pressure light AND check engine light came on" → warning_light/multiple_warning_lights_at_once"
 Synonyms: TPMS light, tire pressure light, low pressure warning, low tire pressure light, yellow horseshoe light, tire warning, pressure warning, TPMS warning, low tire light, dashboard tire light
 
 ## tires/uneven_tire_wear_bald_spots
@@ -1386,11 +1386,11 @@ Positive examples:
   - "Shop told me my tires are cupping"
   - "Bald spots on my tire — like patchy worn areas"
 Negative examples:
-  - "Sidewall has lots of small cracks" → dry_rot_sidewall_cracking
-  - "I just want to buy new tires" → just_want_new_tires
-  - "Steering wheel shakes at highway speed" → vibration/steering_wheel_shake_at_highway_speed
-  - "Car pulls to the right on flat roads" → pulling/steady_drift_while_cruising
-  - "Got a nail in the tire" → visible_damage_nail_screw_bulge_cut
+  - ""Sidewall has lots of small cracks" → dry_rot_sidewall_cracking"
+  - ""I just want to buy new tires" → just_want_new_tires"
+  - ""Steering wheel shakes at highway speed" → vibration/steering_wheel_shake_at_highway_speed"
+  - ""Car pulls to the right on flat roads" → pulling/steady_drift_while_cruising"
+  - ""Got a nail in the tire" → visible_damage_nail_screw_bulge_cut"
 Synonyms: uneven wear, bald spots, inside edge wear, outside edge wear, center wear, edge wear, scalloping, cupping, feathering, worn tread, bald tire, balding tires, choppy wear, patchy wear, tire wearing funny, wearing crooked, tire worn unevenly, scalloped tread
 
 ## tires/dry_rot_sidewall_cracking
@@ -1402,11 +1402,11 @@ Positive examples:
   - "Rubber on my tires looks dry and brittle, with cracks"
   - "Car's been sitting and now the tires are all cracked"
 Negative examples:
-  - "Big gash in the sidewall from hitting something" → visible_damage_nail_screw_bulge_cut
-  - "Bulge on the sidewall" → visible_damage_nail_screw_bulge_cut
-  - "Inside edge of the tread is wearing fast" → uneven_tire_wear_bald_spots
-  - "Tire keeps losing air slowly" → tire_going_flat_losing_air
-  - "Car has been sitting for two years, I want a full check" → other/car_has_been_sitting_unused_for_a_long_time
+  - ""Big gash in the sidewall from hitting something" → visible_damage_nail_screw_bulge_cut"
+  - ""Bulge on the sidewall" → visible_damage_nail_screw_bulge_cut"
+  - ""Inside edge of the tread is wearing fast" → uneven_tire_wear_bald_spots"
+  - ""Tire keeps losing air slowly" → tire_going_flat_losing_air"
+  - ""Car has been sitting for two years, I want a full check" → other/car_has_been_sitting_unused_for_a_long_time"
 Synonyms: dry rot, dry-rotted tires, sidewall cracking, sidewall cracks, weather checking, weather cracking, ozone cracking, rubber cracks, cracked sidewall, brittle rubber, chalky rubber, hairline cracks, surface cracks, aged tires, old tires, tire cracking
 
 ## tires/just_want_new_tires
@@ -1418,11 +1418,11 @@ Positive examples:
   - "How much would it cost to get 4 new tires installed?"
   - "Want to do tires — what do you guys recommend?"
 Negative examples:
-  - "Tires are wearing on the inside edge, probably need new ones" → uneven_tire_wear_bald_spots (diagnostic framing)
-  - "Sidewalls are all cracked, I think I need new tires" → dry_rot_sidewall_cracking (diagnostic framing)
-  - "Tire keeps going flat, might as well replace it" → tire_going_flat_losing_air (diagnostic framing)
-  - "Got a nail and probably need a new tire" → visible_damage_nail_screw_bulge_cut (diagnostic framing)
-  - "Want an alignment with my new tires" → just_want_new_tires (still the dominant request — advisor can add alignment to the quote)
+  - ""Tires are wearing on the inside edge, probably need new ones" → uneven_tire_wear_bald_spots (diagnostic framing)"
+  - ""Sidewalls are all cracked, I think I need new tires" → dry_rot_sidewall_cracking (diagnostic framing)"
+  - ""Tire keeps going flat, might as well replace it" → tire_going_flat_losing_air (diagnostic framing)"
+  - ""Got a nail and probably need a new tire" → visible_damage_nail_screw_bulge_cut (diagnostic framing)"
+  - ""Want an alignment with my new tires" → just_want_new_tires (still the dominant request — advisor can add alignment to the quote)"
 Synonyms: new tires, want to buy tires, tire quote, tire shopping, set of 4, set of four, replace tires, install tires, buy tires, tire purchase, need tires, looking for tires, tire recommendation, tire installation quote, four new tires, get tires
 
 ## tires/recent_tire_work_then_new_symptom
@@ -1434,15 +1434,15 @@ Positive examples:
   - "Just had tires put on and the TPMS light is still on"
   - "Shop balanced my tires Monday and it still shakes worse than before"
 Negative examples:
-  - "Started pulling to the right after new tires" → pulling/pull_that_started_after_recent_tire_or_service_work
-  - "Had brake job done and now it makes noise" → other/after_recent_service_or_repair_work
-  - "Tire pressure light came on this morning, no recent work" → low_pressure_warning_light_only
-  - "Tire has been losing air for months, no recent service" → tire_going_flat_losing_air
-  - "Sidewall has cracks, no tire work done recently" → dry_rot_sidewall_cracking
+  - ""Started pulling to the right after new tires" → pulling/pull_that_started_after_recent_tire_or_service_work"
+  - ""Had brake job done and now it makes noise" → other/after_recent_service_or_repair_work"
+  - ""Tire pressure light came on this morning, no recent work" → low_pressure_warning_light_only"
+  - ""Tire has been losing air for months, no recent service" → tire_going_flat_losing_air"
+  - ""Sidewall has cracks, no tire work done recently" → dry_rot_sidewall_cracking"
 Synonyms: new symptom after tire work, vibration after new tires, noise after tire rotation, TPMS won't clear after tire service, leak came back after patch, leak after plug, shaking after balance, comeback after tire work, post-tire-work issue, problem after tires installed, returned after tire service
 
 ## vibration/steering_wheel_shake_at_highway_speed
-Description: The steering wheel shakes, shimmies, or wobbles in the driver's hands once the car reaches highway speeds — usually starting around 50-65 mph, often peaking in a narrow speed band and easing off above or below it. The customer typically describes feeling the shake THROUGH the wheel (in their hands), and the shake gets progressively worse the longer they drive at that speed. Most often caused by an out-of-balance wheel/tire assembly, a bent rim from pothole damage, separated tire belts, worn wheel bearings, or front suspension wear. Distinct from steering/steering_wheel_shakes_at_highway_speed (which is the same physical event reported as a STEERING / wheel-feel complaint — "the wheel feels loose and wobbly," "I can't keep it steady" — this vibration/ subcategory captures the same shake reported as a VIBRATION the driver feels), and distinct from brakes/pulsating_or_vibrating_pedal (which only happens while braking — this one happens at speed without touching the brake) and from vibration/vibration_or_pulsing_when_braking (which is brake-triggered, not speed-triggered).
+Description: The steering wheel shakes, shimmies, or wobbles in the driver's hands once the car reaches highway speeds — usually starting around 50-65 mph, often peaking in a narrow speed band and easing off above or below it. The customer typically describes feeling the shake THROUGH the wheel (in their hands), and the shake gets progressively worse the longer they drive at that speed. Distinct from steering/steering_wheel_shakes_at_highway_speed (which is the same physical event reported as a STEERING / wheel-feel complaint — "the wheel feels loose and wobbly," "I can't keep it steady" — this vibration/ subcategory captures the same shake reported as a VIBRATION the driver feels), and distinct from brakes/pulsating_or_vibrating_pedal (which only happens while braking — this one happens at speed without touching the brake) and from vibration/vibration_or_pulsing_when_braking (which is brake-triggered, not speed-triggered).
 Positive examples:
   - "Steering wheel shakes really bad at 65 mph but smooths out if I slow down or speed up"
   - "Bad shimmy through the steering wheel once I hit highway speeds — feels like the front end is dancing"
@@ -1451,16 +1451,16 @@ Positive examples:
   - "Front end started shimmying at highway speed after I hit that big pothole last week"
   - "Steering wheel wobbles back and forth when I'm cruising — gets worse the faster I go"
 Negative examples:
-  - "Steering wheel shakes ONLY when I press the brake pedal" → vibration_or_pulsing_when_braking
-  - "Whole car shudders when I brake from highway speed" → vibration_or_pulsing_when_braking
-  - "Wheel feels loose and sloppy, lots of play before the car turns" → steering/loose_or_sloppy_steering
-  - "Car shakes at idle but not at speed" → shaking_at_idle_while_stopped
-  - "Vibration only when I'm accelerating hard or going uphill" → shaking_when_speeding_up_or_going_uphill
-  - "Constant buzz at any speed — never changes" → constant_vibration_that_doesnt_change_with_speed
-Synonyms: shake, shaking, shimmy, shimmying, wobble, wobbling, vibration, vibrates, vibrating, tremor, jitter, dancing wheel, steering wheel shake, wheel shimmy, highway vibration, freeway shake, balance shake, out of balance, wheel hop, front-end shake, washing machine
+  - ""Steering wheel shakes ONLY when I press the brake pedal" → vibration_or_pulsing_when_braking"
+  - ""Whole car shudders when I brake from highway speed" → vibration_or_pulsing_when_braking"
+  - ""Wheel feels loose and sloppy, lots of play before the car turns" → steering/loose_or_sloppy_steering"
+  - ""Car shakes at idle but not at speed" → shaking_at_idle_while_stopped"
+  - ""Vibration only when I'm accelerating hard or going uphill" → shaking_when_speeding_up_or_going_uphill"
+  - ""Constant buzz at any speed — never changes" → constant_vibration_that_doesnt_change_with_speed"
+Synonyms: shake, shaking, shimmy, shimmying, wobble, wobbling, vibration, vibrates, vibrating, tremor, jitter, dancing wheel, steering wheel shake, wheel shimmy, highway vibration, freeway shake, balance shake, out of balance, wheel hop, front-end shake
 
 ## vibration/vibration_or_pulsing_when_braking
-Description: The WHOLE CAR — or the steering wheel, or the driver's seat — shudders, vibrates, or pulses RHYTHMICALLY when the customer presses the brake pedal, especially when slowing down from highway speed or coming down a long hill. Pulsing typically gets worse the harder the pedal is pressed and may fade or disappear when the car comes to a complete stop. Almost always caused by uneven rotor thickness (warped rotors / DTV), heat-distorted rotors after hard or sustained braking, or uneven pad deposits on the rotor face. Distinct from brakes/pulsating_or_vibrating_pedal (which is the SAME physical event reported as a PEDAL-feel complaint — "the pedal pulses back at my foot." This vibration/ subcategory is for customers who describe the WHOLE-CAR shake, steering-wheel shake, or seat shake during braking rather than the pedal feel). Also distinct from steering_wheel_shake_at_highway_speed (which happens at speed even WITHOUT braking — typically wheel balance) and from shaking_or_bouncing_over_bumps_and_rough_roads (which is bump-triggered, not brake-triggered).
+Description: The WHOLE CAR — or the steering wheel, or the driver's seat — shudders, vibrates, or pulses RHYTHMICALLY when the customer presses the brake pedal, especially when slowing down from highway speed or coming down a long hill. Pulsing typically gets worse the harder the pedal is pressed and may fade or disappear when the car comes to a complete stop. Distinct from brakes/pulsating_or_vibrating_pedal (which is the SAME physical event reported as a PEDAL-feel complaint — "the pedal pulses back at my foot." This vibration/ subcategory is for customers who describe the WHOLE-CAR shake, steering-wheel shake, or seat shake during braking rather than the pedal feel). Also distinct from steering_wheel_shake_at_highway_speed (which happens at speed even WITHOUT braking — typically wheel balance) and from shaking_or_bouncing_over_bumps_and_rough_roads (which is bump-triggered, not brake-triggered).
 Positive examples:
   - "Whole car shudders when I brake from highway speed — really bad shake"
   - "Steering wheel and the seat both vibrate hard when I press the brakes"
@@ -1469,12 +1469,12 @@ Positive examples:
   - "Front end shudders back and forth when I'm coming to a stop"
   - "Seat of my pants is shaking when I brake — like the rotors are warped in the back"
 Negative examples:
-  - "Pedal itself pulses up and down against my foot" → brakes/pulsating_or_vibrating_pedal
-  - "Steering wheel shakes at 65 mph even when I'm not braking" → steering_wheel_shake_at_highway_speed
-  - "Whole car bounces over every bump in the road" → shaking_or_bouncing_over_bumps_and_rough_roads
-  - "Car shakes only when accelerating" → shaking_when_speeding_up_or_going_uphill
-  - "Pulls to one side when I brake" → pulling/pulling_only_when_braking
-  - "Grinding noise when I brake but no shake" → brakes/metallic_grinding
+  - ""Pedal itself pulses up and down against my foot" → brakes/pulsating_or_vibrating_pedal"
+  - ""Steering wheel shakes at 65 mph even when I'm not braking" → steering_wheel_shake_at_highway_speed"
+  - ""Whole car bounces over every bump in the road" → shaking_or_bouncing_over_bumps_and_rough_roads"
+  - ""Car shakes only when accelerating" → shaking_when_speeding_up_or_going_uphill"
+  - ""Pulls to one side when I brake" → pulling/pulling_only_when_braking"
+  - ""Grinding noise when I brake but no shake" → brakes/metallic_grinding"
 Synonyms: shudder, shuddering, shake when braking, vibrate when braking, pulsing when braking, judder, juddering, brake shudder, brake shake, brake shimmy, whole car shake, seat shake, body shake when braking, warped rotor shake, rotor shake, throbbing when braking, rhythmic shake, vibration through the car
 
 ## vibration/shaking_at_idle_while_stopped
@@ -1487,12 +1487,12 @@ Positive examples:
   - "Sitting still in park the car trembles all over — engine doesn't sound rough though"
   - "Whole car shudders when I'm stopped, especially when the AC kicks on"
 Negative examples:
-  - "Engine sounds rough and sputters at idle, RPM bounces around" → performance/rough_idle_or_shaking_at_a_stop
-  - "Engine actually dies when I come to a stop" → performance/stalling_at_idle_or_when_stopping
-  - "Steering wheel shakes at highway speed" → steering_wheel_shake_at_highway_speed
-  - "Constant vibration at every speed including driving" → constant_vibration_that_doesnt_change_with_speed
-  - "Car shakes only when I'm accelerating" → shaking_when_speeding_up_or_going_uphill
-  - "Whole car shudders when I brake" → vibration_or_pulsing_when_braking
+  - ""Engine sounds rough and sputters at idle, RPM bounces around" → performance/rough_idle_or_shaking_at_a_stop"
+  - ""Engine actually dies when I come to a stop" → performance/stalling_at_idle_or_when_stopping"
+  - ""Steering wheel shakes at highway speed" → steering_wheel_shake_at_highway_speed"
+  - ""Constant vibration at every speed including driving" → constant_vibration_that_doesnt_change_with_speed"
+  - ""Car shakes only when I'm accelerating" → shaking_when_speeding_up_or_going_uphill"
+  - ""Whole car shudders when I brake" → vibration_or_pulsing_when_braking"
 Synonyms: shake at idle, shaking at idle, shake at stop, idle shake, idle vibration, vibrates at idle, engine mount shake, motor mount shake, broken engine mount, broken motor mount, car shudders at stop, trembles at idle, jumps at idle, car shakes at red light, whole car shake idle, body shake at stop, tremor at idle, vibrates in drive
 
 ## vibration/shaking_when_speeding_up_or_going_uphill
@@ -1505,16 +1505,16 @@ Positive examples:
   - "Bad shake from the floor when I floor it — could be a CV axle, there's grease on the inside of my tire"
   - "Whole car shudders when the transmission is working hard on hills"
 Negative examples:
-  - "Steering wheel shakes at 65 mph even when I'm coasting" → steering_wheel_shake_at_highway_speed
-  - "Car shakes when I brake from highway speed" → vibration_or_pulsing_when_braking
-  - "Shake at idle when I'm stopped" → shaking_at_idle_while_stopped
-  - "Clicking noise only when I turn the steering wheel sharp" → noise/popping_or_clicking_when_turning
-  - "Engine bucks and jerks like it's misfiring when I accelerate" → performance/engine_misfire_or_bucking_feeling
-  - "Just feels like the car has no power when I press the gas" → performance/low_power_or_wont_accelerate_normally
+  - ""Steering wheel shakes at 65 mph even when I'm coasting" → steering_wheel_shake_at_highway_speed"
+  - ""Car shakes when I brake from highway speed" → vibration_or_pulsing_when_braking"
+  - ""Shake at idle when I'm stopped" → shaking_at_idle_while_stopped"
+  - ""Clicking noise only when I turn the steering wheel sharp" → noise/popping_or_clicking_when_turning"
+  - ""Engine bucks and jerks like it's misfiring when I accelerate" → performance/engine_misfire_or_bucking_feeling"
+  - ""Just feels like the car has no power when I press the gas" → performance/low_power_or_wont_accelerate_normally"
 Synonyms: shakes when accelerating, vibration under acceleration, acceleration shake, shake on hills, shake going uphill, rumble strip feeling, CV axle vibration, driveshaft vibration, U-joint shake, torque-load shake, throttle-on vibration, shakes under load, shudders under power, shake when passing, accelerator vibration, shake under throttle
 
 ## vibration/shaking_or_bouncing_over_bumps_and_rough_roads
-Description: The car shakes, bounces, jolts, or rides harshly when the customer goes over bumps, potholes, expansion joints, speed bumps, or rough/uneven pavement — and the ride feels much rougher than it used to. After a single bump, the car may keep bouncing two, three, or four times instead of settling once. Often paired with poor handling, body roll in turns, nose-dive when braking, or the front end "diving down." Most often caused by worn-out shocks/struts, broken coil springs, blown strut mounts, or worn suspension bushings. Distinct from noise/clunking_over_bumps (which is the SAME trigger reported as a SOUND complaint — a hard metallic thud/clunk over bumps — this vibration/ subcategory is for customers describing RIDE QUALITY: the shake, bounce, harshness, or roughness, not the noise) and from steering/clunking_knocking_or_rough_ride_over_bumps (which is bump-feel transmitted through the STEERING WHEEL — this one is felt through the whole body / seat / chassis). Also distinct from constant_vibration_that_doesnt_change_with_speed (which is there even on smooth pavement).
+Description: The car shakes, bounces, jolts, or rides harshly when the customer goes over bumps, potholes, expansion joints, speed bumps, or rough/uneven pavement — and the ride feels much rougher than it used to. After a single bump, the car may keep bouncing two, three, or four times instead of settling once. Distinct from noise/clunking_over_bumps (which is the SAME trigger reported as a SOUND complaint — a hard metallic thud/clunk over bumps — this vibration/ subcategory is for customers describing RIDE QUALITY: the shake, bounce, harshness, or roughness, not the noise) and from steering/clunking_knocking_or_rough_ride_over_bumps (which is bump-feel transmitted through the STEERING WHEEL — this one is felt through the whole body / seat / chassis). Also distinct from constant_vibration_that_doesnt_change_with_speed (which is there even on smooth pavement).
 Positive examples:
   - "Car bounces three or four times after every bump instead of settling — ride feels really rough"
   - "Every pothole feels like it's going through the whole car — really jarring"
@@ -1523,16 +1523,16 @@ Positive examples:
   - "Car feels really jittery and bouncy on rough roads, like the suspension isn't doing anything"
   - "Hits every bump hard now and the back end is jumping around"
 Negative examples:
-  - "Hard metallic clunk over bumps but the ride itself feels okay" → noise/clunking_over_bumps
-  - "Clunking and rough ride over bumps, also feels it in the steering wheel" → steering/clunking_knocking_or_rough_ride_over_bumps
-  - "Squeak or creak when I roll over bumps" → noise/squeaking_or_creaking_over_bumps
-  - "Steering wheel shakes at highway speed on smooth pavement" → steering_wheel_shake_at_highway_speed
-  - "Constant vibration even on perfectly smooth road" → constant_vibration_that_doesnt_change_with_speed
-  - "Whole car shakes when I brake" → vibration_or_pulsing_when_braking
-Synonyms: bouncy, bounces, bouncing, bouncing over bumps, rough ride, harsh ride, jarring, jolts, jolty, jittery, shakes over bumps, suspension shake, suspension bounce, no damping, bouncing after bump, bottom out, bottoming out, front-end dive, nose dive, ride feels rough, ride quality bad, springy suspension, pogo-stick feeling
+  - ""Hard metallic clunk over bumps but the ride itself feels okay" → noise/clunking_over_bumps"
+  - ""Clunking and rough ride over bumps, also feels it in the steering wheel" → steering/clunking_knocking_or_rough_ride_over_bumps"
+  - ""Squeak or creak when I roll over bumps" → noise/squeaking_or_creaking_over_bumps"
+  - ""Steering wheel shakes at highway speed on smooth pavement" → steering_wheel_shake_at_highway_speed"
+  - ""Constant vibration even on perfectly smooth road" → constant_vibration_that_doesnt_change_with_speed"
+  - ""Whole car shakes when I brake" → vibration_or_pulsing_when_braking"
+Synonyms: bouncy, bounces, bouncing, bouncing over bumps, rough ride, harsh ride, jarring, jolts, jolty, jittery, shakes over bumps, suspension shake, suspension bounce, no damping, bouncing after bump, bottom out, bottoming out, front-end dive, nose dive, ride feels rough
 
 ## vibration/constant_vibration_that_doesnt_change_with_speed
-Description: A steady, constant vibration, hum, or buzz that the customer feels at ALL speeds — parking-lot crawl, city driving, and highway cruise alike — and that does NOT change pitch or intensity with road speed, engine RPM, braking, or accelerating. Often described as feeling it through the floor or the seat as much as the steering wheel, like a constant low-frequency tremor humming through the body of the car. Less common than the speed-dependent / brake-triggered / acceleration-triggered shakes; usually caused by a broken driveshaft center support bearing, a bent wheel that's bad enough to vibrate at every speed, a thrown wheel weight, a tire with a thrown belt or internal damage from a patch/plug going wrong, or a failed accessory pulley creating a continuous imbalance. Distinct from steering_wheel_shake_at_highway_speed (which has a clear onset speed and goes away outside the band), from shaking_at_idle_while_stopped (which goes away once driving), and from shaking_when_speeding_up_or_going_uphill (which goes away when coasting). The defining feature here is "it's there all the time, doesn't matter what I'm doing."
+Description: A steady, constant vibration, hum, or buzz that the customer feels at ALL speeds — parking-lot crawl, city driving, and highway cruise alike — and that does NOT change pitch or intensity with road speed, engine RPM, braking, or accelerating. Often described as feeling it through the floor or the seat as much as the steering wheel, like a constant low-frequency tremor humming through the body of the car. Distinct from steering_wheel_shake_at_highway_speed (which has a clear onset speed and goes away outside the band), from shaking_at_idle_while_stopped (which goes away once driving), and from shaking_when_speeding_up_or_going_uphill (which goes away when coasting). The defining feature here is "it's there all the time, doesn't matter what I'm doing."
 Positive examples:
   - "There's a constant vibration through the floor no matter how fast or slow I'm going"
   - "Car has a steady hum and shake at 25 mph, 45 mph, 65 mph — same the whole time"
@@ -1541,12 +1541,12 @@ Positive examples:
   - "Tremor through the whole car that's there from the moment I start driving until I stop"
   - "Vibration doesn't get worse with speed or braking — just constantly there"
 Negative examples:
-  - "Shake only at 60 mph, goes away below 50 or above 70" → steering_wheel_shake_at_highway_speed
-  - "Vibration only when I press the brake pedal" → vibration_or_pulsing_when_braking
-  - "Only shakes when I accelerate" → shaking_when_speeding_up_or_going_uphill
-  - "Only shakes when I'm stopped at a light" → shaking_at_idle_while_stopped
-  - "Shakes over every bump and pothole" → shaking_or_bouncing_over_bumps_and_rough_roads
-  - "Humming wheel bearing noise that gets louder with speed" → noise/humming_or_whirring_at_speed
+  - ""Shake only at 60 mph, goes away below 50 or above 70" → steering_wheel_shake_at_highway_speed"
+  - ""Vibration only when I press the brake pedal" → vibration_or_pulsing_when_braking"
+  - ""Only shakes when I accelerate" → shaking_when_speeding_up_or_going_uphill"
+  - ""Only shakes when I'm stopped at a light" → shaking_at_idle_while_stopped"
+  - ""Shakes over every bump and pothole" → shaking_or_bouncing_over_bumps_and_rough_roads"
+  - ""Humming wheel bearing noise that gets louder with speed" → noise/humming_or_whirring_at_speed"
 Synonyms: constant vibration, steady vibration, always vibrating, vibrating all the time, vibration at every speed, continuous shake, constant tremor, steady hum, steady buzz, low-frequency vibration, hum through the floor, vibration that doesn't change, non-speed-dependent vibration, droning vibration, persistent vibration, vibration everywhere, always shaking, doesn't matter the speed
 
 ## warning_light/check_engine_light
@@ -1560,11 +1560,11 @@ Positive examples:
   - "Engine light came on, smells like rotten eggs, car is running fine otherwise"
   - "My MIL is on — pulled a code and it said P0420"
 Negative examples:
-  - "Dashboard says SERVICE ENGINE SOON and it's about time for an oil change" → service_engine_soon_or_maintenance_required_light
-  - "Got a MAINT REQD message on the dash, car drives perfectly fine" → service_engine_soon_or_maintenance_required_light
-  - "Check engine light AND battery light AND ABS light all came on at once" → multiple_warning_lights_at_once
-  - "Red oil can icon came on, no engine light" → oil_pressure_light
-  - "Engine is overheating, temperature light is on" → engine_temperature_light
+  - ""Dashboard says SERVICE ENGINE SOON and it's about time for an oil change" → service_engine_soon_or_maintenance_required_light"
+  - ""Got a MAINT REQD message on the dash, car drives perfectly fine" → service_engine_soon_or_maintenance_required_light"
+  - ""Check engine light AND battery light AND ABS light all came on at once" → multiple_warning_lights_at_once"
+  - ""Red oil can icon came on, no engine light" → oil_pressure_light"
+  - ""Engine is overheating, temperature light is on" → engine_temperature_light"
 Synonyms: check engine light, CEL, check engine, engine light, MIL, malfunction indicator lamp, malfunction indicator light, yellow engine light, amber engine light, orange engine light, engine icon, engine symbol, engine outline, OBD-II light, OBD light, flashing engine light, blinking engine light, code light, diagnostic light, trouble code light
 
 ## warning_light/service_engine_soon_or_maintenance_required_light
@@ -1578,11 +1578,11 @@ Positive examples:
   - "Honda Maintenance Minder is showing code A1 — what does that mean?"
   - "It says SERVICE A on my Mercedes dashboard, nothing else is wrong"
 Negative examples:
-  - "Check engine light came on and the car is running rough" → check_engine_light
-  - "Yellow engine-shape icon, no other words, engine misfiring" → check_engine_light
-  - "CEL is flashing, car is shaking under acceleration" → check_engine_light
-  - "Red oil can light came on" → oil_pressure_light
-  - "Temperature gauge is in the red and the temp light is on" → engine_temperature_light
+  - ""Check engine light came on and the car is running rough" → check_engine_light"
+  - ""Yellow engine-shape icon, no other words, engine misfiring" → check_engine_light"
+  - ""CEL is flashing, car is shaking under acceleration" → check_engine_light"
+  - ""Red oil can light came on" → oil_pressure_light"
+  - ""Temperature gauge is in the red and the temp light is on" → engine_temperature_light"
 Synonyms: service engine soon, SES light, service engine soon light, maintenance required, MAINT REQD, maintenance required soon, service due, service reminder, oil change reminder, wrench light, wrench icon, spanner light, scheduled maintenance light, Toyota maintenance light, Honda maintenance minder, service A, service B, mileage reminder, oil life light, maint reqd light
 
 ## warning_light/battery_charging_light
@@ -1596,11 +1596,11 @@ Positive examples:
   - "Yellow battery-shaped light on my dash, dim headlights, dashboard lights flicker"
   - "Battery light came on and the car died about ten minutes later, had to jump it"
 Negative examples:
-  - "Dashboard lights are dim but I don't see any specific warning light" → electrical/dim_or_flickering_lights
-  - "Car won't crank, just clicks when I turn the key" → electrical/wont_crank_just_clicks
-  - "Many warning lights lit up at the same time" → multiple_warning_lights_at_once
-  - "Engine temperature light is on, not the battery light" → engine_temperature_light
-  - "Car cranks slowly when I start it cold, no warning light" → electrical/slow_crank_sluggish_start
+  - ""Dashboard lights are dim but I don't see any specific warning light" → electrical/dim_or_flickering_lights"
+  - ""Car won't crank, just clicks when I turn the key" → electrical/wont_crank_just_clicks"
+  - ""Many warning lights lit up at the same time" → multiple_warning_lights_at_once"
+  - ""Engine temperature light is on, not the battery light" → engine_temperature_light"
+  - ""Car cranks slowly when I start it cold, no warning light" → electrical/slow_crank_sluggish_start"
 Synonyms: battery light, battery warning light, charging light, charging system light, alternator light, alternator warning, ALT light, BATT light, red battery icon, battery symbol, battery-shaped light, battery icon with plus minus, charging system warning, low voltage light, voltage warning light, no-charge light
 
 ## warning_light/oil_pressure_light
@@ -1614,11 +1614,11 @@ Positive examples:
   - "Red light with an oil can and drip is glowing — what should I do?"
   - "Low oil pressure warning popped up, was overdue for an oil change by 3,000 miles"
 Negative examples:
-  - "Dashboard says SERVICE DUE — I think I'm overdue for an oil change" → service_engine_soon_or_maintenance_required_light
-  - "Deep knocking from the engine, no light on" → noise/deep_knocking_from_the_engine
-  - "Engine temperature light is on, not the oil light" → engine_temperature_light
-  - "Oil is leaking under the car, no warning light yet" → leak/black_oil_leak_under_engine
-  - "Check engine light is on, no oil light" → check_engine_light
+  - ""Dashboard says SERVICE DUE — I think I'm overdue for an oil change" → service_engine_soon_or_maintenance_required_light"
+  - ""Deep knocking from the engine, no light on" → noise/deep_knocking_from_the_engine"
+  - ""Engine temperature light is on, not the oil light" → engine_temperature_light"
+  - ""Oil is leaking under the car, no warning light yet" → leak/black_oil_leak_under_engine"
+  - ""Check engine light is on, no oil light" → check_engine_light"
 Synonyms: oil pressure light, oil light, low oil pressure light, oil can light, oil can icon, oil can with drip, red oil light, oil warning light, genie lamp light, Aladdin lamp light, engine oil light, low oil pressure warning, oil pressure warning, red oil symbol, oil drop icon, oil drip icon, oil pressure indicator
 
 ## warning_light/engine_temperature_light
@@ -1632,11 +1632,11 @@ Positive examples:
   - "Engine overheating warning popped up — I pulled over right away"
   - "Hot light came on, I checked and the coolant reservoir is bone dry"
 Negative examples:
-  - "White steam pouring out from under the hood" → smoke/smoke_from_under_the_hood
-  - "Sweet smell like maple syrup or pancake syrup in the car" → smell/sweet_smell_maple_syrup_antifreeze
-  - "Coolant is leaking under the car, light hasn't come on" → leak/green_or_orange_or_pink_coolant_leak
-  - "Oil pressure light is on, not the temp light" → oil_pressure_light
-  - "Check engine light, no temp warning" → check_engine_light
+  - ""White steam pouring out from under the hood" → smoke/smoke_from_under_the_hood"
+  - ""Sweet smell like maple syrup or pancake syrup in the car" → smell/sweet_smell_maple_syrup_antifreeze"
+  - ""Coolant is leaking under the car, light hasn't come on" → leak/green_or_orange_or_pink_coolant_leak"
+  - ""Oil pressure light is on, not the temp light" → oil_pressure_light"
+  - ""Check engine light, no temp warning" → check_engine_light"
 Synonyms: engine temperature light, temperature warning light, temp light, coolant temperature light, coolant warning light, overheat light, overheating light, red thermometer light, thermometer icon, thermometer in waves, thermometer-with-waves, hot engine light, HOT warning, engine hot light, ECT light, red temp light, temperature gauge in red, overheating warning
 
 ## warning_light/tpms_tire_pressure_light
@@ -1650,11 +1650,11 @@ Positive examples:
   - "Tire pressure light came on after I had new tires put on last week"
   - "TPMS warning, all four tires look fine visually but the light won't go off"
 Negative examples:
-  - "My front passenger tire looks really low and the light is on" → tires/low_pressure_warning_light_only
-  - "Tire is completely flat on the side of the road" → tires/visible_low_or_flat_tire
-  - "Slow leak in my tire — keeps going down every few days" → tires/slow_leak_pressure_drops_repeatedly
-  - "Tire pressure is fine but the car pulls to one side" → pulling/pulls_to_one_side
-  - "Red brake light, not the tire light" → brake_system_red_light
+  - ""My front passenger tire looks really low and the light is on" → tires/low_pressure_warning_light_only"
+  - ""Tire is completely flat on the side of the road" → tires/visible_low_or_flat_tire"
+  - ""Slow leak in my tire — keeps going down every few days" → tires/slow_leak_pressure_drops_repeatedly"
+  - ""Tire pressure is fine but the car pulls to one side" → pulling/pulls_to_one_side"
+  - ""Red brake light, not the tire light" → brake_system_red_light"
 Synonyms: TPMS light, TPMS warning, tire pressure light, tire pressure warning, low tire pressure light, low pressure light, horseshoe light, horseshoe icon, horseshoe with exclamation point, U-shape light, tire-shape light, tire icon with exclamation, yellow tire light, tire warning light, flat tire light, tire monitor light, tire monitoring light, tire pressure indicator, pressure sensor light
 
 ## warning_light/abs_anti_lock_brake_light
@@ -1668,11 +1668,11 @@ Positive examples:
   - "ABS light just came on this morning, never on before"
   - "ABS and traction control lights both on, brakes work normal otherwise"
 Negative examples:
-  - "Red brake light is on, parking brake is released" → brake_system_red_light
-  - "Red BRAKE light glowing — brake pedal feels soft" → brake_system_red_light
-  - "Just the yellow traction-control-with-skid-lines icon, no ABS letters" → traction_control_stability_light
-  - "Both red brake AND yellow ABS are on at the same time" → brake_system_red_light
-  - "Several different warning lights all came on at once" → multiple_warning_lights_at_once
+  - ""Red brake light is on, parking brake is released" → brake_system_red_light"
+  - ""Red BRAKE light glowing — brake pedal feels soft" → brake_system_red_light"
+  - ""Just the yellow traction-control-with-skid-lines icon, no ABS letters" → traction_control_stability_light"
+  - ""Both red brake AND yellow ABS are on at the same time" → brake_system_red_light"
+  - ""Several different warning lights all came on at once" → multiple_warning_lights_at_once"
 Synonyms: ABS light, ABS warning light, ABS warning, anti-lock brake light, antilock brake light, anti-lock brake warning, ABS letters, ABS in circle, yellow ABS light, amber ABS light, ABS system light, ABS sensor light, wheel speed sensor light, anti-skid light
 
 ## warning_light/brake_system_red_light
@@ -1686,11 +1686,11 @@ Positive examples:
   - "Brake light came on, can't tell if my emergency brake is fully off"
   - "Red light with the word BRAKE in it just lit up while I was driving"
 Negative examples:
-  - "Yellow ABS letters light came on, brakes still work normal" → abs_anti_lock_brake_light
-  - "Brake pedal feels soft and spongy, no warning light" → brakes/spongy_or_soft_pedal
-  - "Pedal sinks to the floor at red lights, no light on" → brakes/pedal_sinks_to_floor
-  - "Brakes squealing every time I stop, no light" → brakes/high_pitched_squealing
-  - "Multiple warning lights came on at once" → multiple_warning_lights_at_once
+  - ""Yellow ABS letters light came on, brakes still work normal" → abs_anti_lock_brake_light"
+  - ""Brake pedal feels soft and spongy, no warning light" → brakes/spongy_or_soft_pedal"
+  - ""Pedal sinks to the floor at red lights, no light on" → brakes/pedal_sinks_to_floor"
+  - ""Brakes squealing every time I stop, no light" → brakes/high_pitched_squealing"
+  - ""Multiple warning lights came on at once" → multiple_warning_lights_at_once"
 Synonyms: red brake light, BRAKE light, brake warning light, brake system light, red BRAKE warning, red exclamation brake light, parking brake light, e-brake light, emergency brake light, hand brake light, brake fluid light, low brake fluid light, hydraulic brake light, brake hydraulic warning, red (!) light, red brake symbol, red brake icon
 
 ## warning_light/airbag_srs_light
@@ -1704,11 +1704,11 @@ Positive examples:
   - "Airbag light flashing a pattern of short and long blinks"
   - "SRS light came on after a small fender bender, no airbags deployed"
 Negative examples:
-  - "Check engine light is on, not the airbag light" → check_engine_light
-  - "Red brake light, parking brake is off" → brake_system_red_light
-  - "Multiple warning lights including airbag came on after battery died" → multiple_warning_lights_at_once
-  - "Seat belt buzzer is going off, no warning light" → other/seat_belt_warning_only
-  - "Several different lights came on at the same time" → multiple_warning_lights_at_once
+  - ""Check engine light is on, not the airbag light" → check_engine_light"
+  - ""Red brake light, parking brake is off" → brake_system_red_light"
+  - ""Multiple warning lights including airbag came on after battery died" → multiple_warning_lights_at_once"
+  - ""Seat belt buzzer is going off, no warning light" → other/seat_belt_warning_only"
+  - ""Several different lights came on at the same time" → multiple_warning_lights_at_once"
 Synonyms: airbag light, airbag warning light, SRS light, SRS warning, supplemental restraint system light, air bag light, AIRBAG light, AIR BAG light, person and airbag icon, person seatbelt symbol, seatbelt-with-circle light, airbag malfunction light, airbag fault light, restraint system light, occupancy sensor light, SRS triangle
 
 ## warning_light/traction_control_stability_light
@@ -1722,11 +1722,11 @@ Positive examples:
   - "Little car-skidding symbol came on after I drove through snow"
   - "ESC warning light came on after my alignment was done"
 Negative examples:
-  - "Yellow ABS letters on my dash" → abs_anti_lock_brake_light
-  - "Red brake light is on, parking brake released" → brake_system_red_light
-  - "Tire pressure warning light came on" → tpms_tire_pressure_light
-  - "Several lights came on at the same time" → multiple_warning_lights_at_once
-  - "Car is actually sliding and losing grip on wet roads, no light yet" → handling/loss_of_traction_or_grip
+  - ""Yellow ABS letters on my dash" → abs_anti_lock_brake_light"
+  - ""Red brake light is on, parking brake released" → brake_system_red_light"
+  - ""Tire pressure warning light came on" → tpms_tire_pressure_light"
+  - ""Several lights came on at the same time" → multiple_warning_lights_at_once"
+  - ""Car is actually sliding and losing grip on wet roads, no light yet" → handling/loss_of_traction_or_grip"
 Synonyms: traction control light, TCS light, TC light, stability control light, ESC light, ESP light, DSC light, VSC light, VDC light, electronic stability light, stability program light, traction warning light, anti-skid light, slip indicator light, slipping car light, sliding car icon, car-with-skid-lines symbol, traction off light, TRAC OFF light, stability off light
 
 ## warning_light/power_steering_eps_light
@@ -1740,11 +1740,11 @@ Positive examples:
   - "EPAS light came on, steering wheel feels really stiff"
   - "Power steering warning came on, wheel is hard to turn especially when parking"
 Negative examples:
-  - "Steering wheel is hard to turn but I don't see any warning light" → steering/hard_to_turn_steering_wheel
-  - "Whining noise when I turn the wheel, no warning light" → noise/whining_when_turning_the_steering_wheel
-  - "Power steering fluid leaking, no warning light yet" → leak/red_or_pink_power_steering_fluid_leak
-  - "Multiple warning lights came on at the same time including EPS" → multiple_warning_lights_at_once
-  - "Check engine light is on, no steering light" → check_engine_light
+  - ""Steering wheel is hard to turn but I don't see any warning light" → steering/hard_to_turn_steering_wheel"
+  - ""Whining noise when I turn the wheel, no warning light" → noise/whining_when_turning_the_steering_wheel"
+  - ""Power steering fluid leaking, no warning light yet" → leak/red_or_pink_power_steering_fluid_leak"
+  - ""Multiple warning lights came on at the same time including EPS" → multiple_warning_lights_at_once"
+  - ""Check engine light is on, no steering light" → check_engine_light"
 Synonyms: power steering light, power steering warning, EPS light, EPS warning, EPAS light, electric power steering light, PS light, PSCM light, steering wheel light, steering wheel icon, steering wheel with exclamation, steering wheel with !, steering assist light, power assist light, steering fault light, power steering fault, hard-steering warning
 
 ## warning_light/multiple_warning_lights_at_once
@@ -1758,10 +1758,9 @@ Positive examples:
   - "My whole dash is lit up with warnings, car is also running rough"
   - "Bunch of warning lights came on after I jump-started the car"
 Negative examples:
-  - "Just the check engine light, nothing else" → check_engine_light
-  - "Only the red brake light, parking brake released" → brake_system_red_light
-  - "ABS light and traction control light both on" → abs_anti_lock_brake_light
-  - "Battery light and dim headlights" → battery_charging_light
-  - "Airbag light by itself" → airbag_srs_light
+  - ""Just the check engine light, nothing else" → check_engine_light"
+  - ""Only the red brake light, parking brake released" → brake_system_red_light"
+  - ""ABS light and traction control light both on" → abs_anti_lock_brake_light"
+  - ""Battery light and dim headlights" → battery_charging_light"
+  - ""Airbag light by itself" → airbag_srs_light"
 Synonyms: multiple warning lights, multiple lights, lots of lights, many lights, all warning lights, all dashboard lights, all lights on, all lights came on, dashboard lit up, Christmas tree dashboard, lit up like a Christmas tree, every light on, every warning light, several warning lights, three lights, three warning lights, lots of warnings, dashboard going crazy, every light glowing, panel full of lights
-
