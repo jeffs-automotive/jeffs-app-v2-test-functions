@@ -51,6 +51,8 @@ instructions. Don't try to recall from memory — open the file.
 | "Upload the updated testing services" / "Set brake_inspection price to $45" / "Add a transmission_scan service" / "Update the battery_test description" / "Deactivate TPMS testing" | **`scheduler/edit-testing-services.md`** |
 | "Upload the updated routine services" / "Set oil_change description to …" / "Add waived note to brake_inspection" / "Move oil_change to position 1" / "Deactivate tire_rotation" | **`scheduler/edit-routine-services.md`** |
 | "Upload the updated subcategory mappings" / "Route ABS lights to abs_traction_stability_testing" / "Make engine_temperature_light eligible under coolant and CEL testing" / "Clear the mapping for X" | **`scheduler/edit-subcategory-service-map.md`** |
+| "Upload subcategory descriptions" / "Edit description for high_pitched_squealing" / "Add positive examples to bad_smell_from_vents" / "Update synonyms for AC subcategory" / "Tighten the brakes/metallic_grinding description" | **`scheduler/edit-subcategory-descriptions.md`** |
+| "Upload question required facts" / "Tag question 688 with required_facts" / "Add speed_specific_mph to question 727" / "Clear required_facts on question 1234" | **`scheduler/edit-question-required-facts.md`** |
 | "Upload the updated brakes concern doc" / "Upload the brakes guideline" / "Update electrical sub-categories" / "Show me the brakes guideline prose" | **`scheduler/edit-concerns.md`** |
 | "Block off 2026-07-04" / "Add Christmas as a closed date" / "List future closures" / "Upload the closed dates" | **`scheduler/edit-closed-dates.md`** |
 | "Change weekly capacity to 8 waiter slots Tuesdays" / "Open Sundays" / "Upload appointment limits" | **`scheduler/edit-appointment-default-limits.md`** |

@@ -89,9 +89,13 @@ import {
   uploadRoutineServicesMdV2,
   uploadTestingServicesMdV2,
   uploadSubcategoryServiceMapMdV2,
+  uploadSubcategoryDescriptionsMdV2,
+  uploadQuestionRequiredFactsMdV2,
   exportRoutineServicesMdV2,
   exportTestingServicesMdV2,
   exportSubcategoryServiceMapMdV2,
+  exportSubcategoryDescriptionsMdV2,
+  exportQuestionRequiredFactsMdV2,
   revertMdUpload,
 } from "./tools/scheduler-admin-catalog.ts";
 
@@ -1014,6 +1018,99 @@ export function getSchedulerTools(args: SchedulerToolsArgs) {
         inputSchema: z.object({}),
         execute: recorded(recorder, "export_subcategory_service_map_md", () =>
           exportSubcategoryServiceMapMdV2(sb, shopId),
+        ),
+      }),
+
+      upload_subcategory_descriptions_md: tool({
+        description:
+          "Bulk-update the stage-1 classifier metadata on " +
+          "concern_subcategories (description, positive_examples, " +
+          "negative_examples, synonyms) from a per-subcategory-block MD. " +
+          "Heading is the composite `## <category>/<slug>` because " +
+          "subcategory slugs are unique only within a category. Fields " +
+          "per block: Description (2-3 sentences; 10-1000 chars; LLM-facing), " +
+          "Positive examples (comma-list OR multi-line `- ` entries; cap 10), " +
+          "Negative examples (same format; you MAY append ` → other_slug` for " +
+          "advisor reference — the arrow + target are stripped at parse time; " +
+          "cap 10), Synonyms (comma-list; cap 20). Rows OMITTED from the MD " +
+          "are LEFT ALONE (never silently cleared). " +
+          "Same TWO-STEP dry_run-then-apply flow as upload_testing_services_md. " +
+          "Validation blocks: missing Description, length out-of-range, " +
+          "examples/synonyms over cap, unknown (category, slug), inactive " +
+          "subcategory (warning, not error), duplicate (category, slug) in " +
+          "same upload. pre_state_snapshot captured on apply for revert.",
+        inputSchema: z.object({
+          md_content: z.string().min(1),
+          dry_run: z.boolean().optional().default(true),
+          expected_confirm_token: z.string().optional(),
+        }),
+        execute: recorded(recorder, "upload_subcategory_descriptions_md", (input) =>
+          uploadSubcategoryDescriptionsMdV2(sb, shopId, {
+            md_content: input.md_content,
+            audit,
+            dry_run: input.dry_run,
+            expected_confirm_token: input.expected_confirm_token,
+          }),
+        ),
+      }),
+
+      export_subcategory_descriptions_md: tool({
+        description:
+          "Export every active subcategory's stage-1 classifier metadata " +
+          "(description, positive_examples, negative_examples, synonyms) " +
+          "as a per-block MD (round-trippable through " +
+          "upload_subcategory_descriptions_md). Grouped by category then " +
+          "display_order. Empty fields render as '(none)'. " +
+          "Returns: { md_content, row_count }.",
+        inputSchema: z.object({}),
+        execute: recorded(recorder, "export_subcategory_descriptions_md", () =>
+          exportSubcategoryDescriptionsMdV2(sb, shopId),
+        ),
+      }),
+
+      upload_question_required_facts_md: tool({
+        description:
+          "Bulk-update concern_questions.required_facts (the list of " +
+          "ExtractedFacts slot names that must be present in the LLM's " +
+          "stage-1 extracted facts for a question to count as 'answered' " +
+          "by the stage-3 question-gate) from a wide markdown table. " +
+          "Required columns: question_id, required_facts. " +
+          "question_id is the integer primary key on concern_questions. " +
+          "required_facts is a comma-list of slot names from the 29 " +
+          "canonical ExtractedFacts keys (location_side, location_axle, " +
+          "speed_band, speed_specific_mph, onset_timing, ...). Blank cell " +
+          "or '(none)' CLEARS the list (question falls back to free-text " +
+          "'answered' marking). Rows OMITTED from the MD are LEFT ALONE. " +
+          "Same TWO-STEP dry_run-then-apply flow as upload_testing_services_md. " +
+          "Validation blocks: non-integer question_id, unknown question_id " +
+          "(not in concern_questions for this shop), unknown slot names " +
+          "(not in EXTRACTED_FACTS_ALL_KEYS), duplicate question_id in " +
+          "same upload. pre_state_snapshot captured on apply for revert.",
+        inputSchema: z.object({
+          md_content: z.string().min(1),
+          dry_run: z.boolean().optional().default(true),
+          expected_confirm_token: z.string().optional(),
+        }),
+        execute: recorded(recorder, "upload_question_required_facts_md", (input) =>
+          uploadQuestionRequiredFactsMdV2(sb, shopId, {
+            md_content: input.md_content,
+            audit,
+            dry_run: input.dry_run,
+            expected_confirm_token: input.expected_confirm_token,
+          }),
+        ),
+      }),
+
+      export_question_required_facts_md: tool({
+        description:
+          "Export the current required_facts list per active question as a " +
+          "wide markdown table (round-trippable through " +
+          "upload_question_required_facts_md). One row per concern_questions " +
+          "row (active=true). Rows with no required_facts show '(none)'. " +
+          "Returns: { md_content, row_count }.",
+        inputSchema: z.object({}),
+        execute: recorded(recorder, "export_question_required_facts_md", () =>
+          exportQuestionRequiredFactsMdV2(sb, shopId),
         ),
       }),
 

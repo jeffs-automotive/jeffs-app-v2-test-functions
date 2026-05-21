@@ -106,6 +106,8 @@ Specialist descriptions:
     - "upload the updated testing services" / "upload testing-services.md"
     - "upload the updated routine services"
     - "upload the updated subcategory service mappings" / "upload subcategory-service-map.md" / "upload subcategory mapping" / "change which testing service ABS light routes to"
+    - "upload subcategory descriptions" / "edit description for high_pitched_squealing" / "add positive examples to bad_smell_from_vents" / "update synonyms for the AC subcategory" / "tighten the brakes metallic_grinding description"
+    - "upload question required facts" / "tag question 688 with speed_specific_mph" / "add hvac_mode to question 967" / "clear required_facts on question 1234"
     - "upload the updated brakes concern doc" / "upload brakes guideline"
     - "upload the updated appointment limits" / "upload closed dates"
     - "dry run the testing services upload" / "preview the upload"

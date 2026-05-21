@@ -1,5 +1,6 @@
 /**
- * loadDiagnosticCatalog — Phase 1 (2026-05-17 restoration).
+ * loadDiagnosticCatalog — Phase 1 (2026-05-17 restoration; three-stage
+ * classifier enrichment 2026-05-21).
  *
  * Builds the 20-option catalog the diagnostic LLM picks from when
  * categorising a customer's free-text concern:
@@ -11,6 +12,16 @@
  *     to peer status; they carry their own question set but no
  *     recommended testing service (these route to the "we'll forward
  *     to a service advisor" outcome).
+ *
+ * Each subcategory also carries (added 2026-05-21 with the three-stage
+ * classifier migration):
+ *   - description — short prose paragraph for Stage 2 LLM disambiguation
+ *   - positive_examples — customer-quote-style phrases that SHOULD match
+ *   - negative_examples — customer-quote-style phrases that should NOT match
+ *   - synonyms — alternate words customers use for the same subcategory
+ * Each question carries:
+ *   - required_facts — canonical facts the question elicits, used by
+ *     the Stage 3 mapper for required-fact gap-detect.
  *
  * One DB round-trip per source table (3 total: testing_services,
  * concern_subcategories, concern_questions). Returns a snapshot the
@@ -43,6 +54,14 @@ export interface CatalogQuestion {
    *  `ClarificationQuestionCard`. Added 2026-05-18 with the CAT-2
    *  catalog rebuild. */
   multi_select: boolean;
+  /** Canonical facts this question elicits from the customer (e.g.,
+   *  ["location", "side"] for "Where is the noise coming from?").
+   *  Drives the Stage 3 three-stage classifier's required-fact
+   *  gap-detect: a question is "answered" when EVERY fact in this
+   *  array appears in the customer's description. Added 2026-05-21
+   *  with the three-stage classifier migration. Defaults to `[]`
+   *  when not seeded. */
+  required_facts: string[];
 }
 
 export interface CatalogSubcategory {
@@ -65,6 +84,28 @@ export interface CatalogSubcategory {
    *  traction/SRS/EPS/oil-pressure/engine-temp) to their dedicated
    *  testing services. */
   eligible_testing_service_keys: string[];
+  /** Short prose paragraph the three-stage classifier (Stage 2) shows
+   *  the LLM to disambiguate this subcategory from its peers.
+   *  Authoritative meaning of the slug in advisor-facing language.
+   *  Added 2026-05-21 with the three-stage classifier migration.
+   *  Defaults to `''` when not seeded. */
+  description: string;
+  /** Short customer-quote-style phrases that SHOULD match this
+   *  subcategory (e.g., "grinding when I brake" for brake_grind).
+   *  Used by the Stage 2 LLM to anchor the match. Added 2026-05-21.
+   *  Defaults to `[]` when not seeded. */
+  positive_examples: string[];
+  /** Short customer-quote-style phrases that should NOT match this
+   *  subcategory even though they look similar (e.g., "grinding when
+   *  I turn" → steering, not brakes). Used by the Stage 2 LLM to
+   *  rule out near-miss subcategories. Added 2026-05-21. Defaults to
+   *  `[]` when not seeded. */
+  negative_examples: string[];
+  /** Alternate words customers use for this subcategory (e.g.,
+   *  ["squeak", "squeal", "scream"] for brake_squeal). Helps Stage 2
+   *  LLM map informal language to the canonical slug. Added
+   *  2026-05-21. Defaults to `[]` when not seeded. */
+  synonyms: string[];
   questions: CatalogQuestion[];
 }
 
@@ -117,6 +158,10 @@ interface SubcategoryRow {
   display_order: number;
   active: boolean;
   eligible_testing_service_keys: string[] | null;
+  description: string | null;
+  positive_examples: string[] | null;
+  negative_examples: string[] | null;
+  synonyms: string[] | null;
 }
 
 interface QuestionRow {
@@ -127,6 +172,7 @@ interface QuestionRow {
   subcategory_id: number;
   active: boolean;
   multi_select: boolean;
+  required_facts: string[] | null;
 }
 
 function normalizeOptions(
@@ -160,7 +206,7 @@ export async function loadDiagnosticCatalog(
     supabase
       .from("concern_subcategories")
       .select(
-        "id, slug, category, display_label, display_order, active, eligible_testing_service_keys",
+        "id, slug, category, display_label, display_order, active, eligible_testing_service_keys, description, positive_examples, negative_examples, synonyms",
       )
       .eq("shop_id", SHOP_ID)
       .eq("active", true)
@@ -168,7 +214,7 @@ export async function loadDiagnosticCatalog(
     supabase
       .from("concern_questions")
       .select(
-        "id, question_text, options, display_order, subcategory_id, active, multi_select",
+        "id, question_text, options, display_order, subcategory_id, active, multi_select, required_facts",
       )
       .eq("shop_id", SHOP_ID)
       .eq("active", true)
@@ -200,6 +246,7 @@ export async function loadDiagnosticCatalog(
       options: normalizeOptions(q.options),
       display_order: q.display_order,
       multi_select: q.multi_select === true,
+      required_facts: Array.isArray(q.required_facts) ? q.required_facts : [],
     });
     questionsBySub.set(q.subcategory_id, arr);
   }
@@ -231,6 +278,14 @@ export async function loadDiagnosticCatalog(
       display_label: row.display_label,
       concern_category: row.category,
       eligible_testing_service_keys: eligible,
+      description: row.description ?? "",
+      positive_examples: Array.isArray(row.positive_examples)
+        ? row.positive_examples
+        : [],
+      negative_examples: Array.isArray(row.negative_examples)
+        ? row.negative_examples
+        : [],
+      synonyms: Array.isArray(row.synonyms) ? row.synonyms : [],
       questions: (questionsBySub.get(row.id) ?? []).sort(
         (a, b) => a.display_order - b.display_order,
       ),
