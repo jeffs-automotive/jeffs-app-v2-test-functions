@@ -39,11 +39,11 @@ const SHOP_ID = parseInt(Deno.env.get("TEKMETRIC_SHOP_ID") ?? "7476", 10);
 const STAGE1_MODEL =
   Deno.env.get("DIAGNOSE_CONCERN_STAGE1_MODEL") ??
   Deno.env.get("DIAGNOSE_CONCERN_MODEL") ??
-  "google/gemini-2.5-flash";
+  "anthropic/claude-haiku-4-5";
 const STAGE2_MODEL =
   Deno.env.get("DIAGNOSE_CONCERN_STAGE2_MODEL") ??
   Deno.env.get("DIAGNOSE_CONCERN_MODEL") ??
-  "google/gemini-2.5-flash";
+  "anthropic/claude-haiku-4-5";
 
 const MAX_OUTPUT_TOKENS = 1024;
 const OTHER_CONCERN_CATEGORY = "other";

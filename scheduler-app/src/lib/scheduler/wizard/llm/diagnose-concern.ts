@@ -90,7 +90,17 @@ import {
 
 // ─── Model + token budgets ──────────────────────────────────────────────────
 
-const DEFAULT_MODEL = "google/gemini-2.5-flash";
+// 2026-05-20 — defaulted to anthropic/claude-haiku-4-5 for BOTH stages after
+// batch 2 (Gemini 2-stage) showed Gemini struggling on Stage 2's int-array
+// schema (10/25 "No object generated" failures, consistent across prompt
+// sizes 4-36 KB). Anthropic + AI-Gateway caching is the actual realized
+// cost-win path (vercel.com/docs/ai-gateway/models-and-providers/
+// automatic-caching documents auto-cache markers for Anthropic; Gemini
+// support is ambiguous). Per-stage env overrides still work — set
+// DIAGNOSE_CONCERN_STAGE1_MODEL or DIAGNOSE_CONCERN_STAGE2_MODEL to any
+// AI-Gateway model id in `creator/model-name` form to swap individual
+// stages without redeploying.
+const DEFAULT_MODEL = "anthropic/claude-haiku-4-5";
 const MAX_OUTPUT_TOKENS = 1024;
 
 function resolveStage1Model(): string {

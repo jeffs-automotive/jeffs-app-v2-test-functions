@@ -29,7 +29,7 @@ import { fileURLToPath } from "node:url";
 // CONFIG (edit per batch)
 // ════════════════════════════════════════════════════════════════════
 
-const BATCH_LABEL = "llm-test-2-gemini-2stage-052026";
+const BATCH_LABEL = "llm-test-3-haiku-2stage-052026";
 const OUTPUT_DIR_RELATIVE = "docs/chat-instructions/diagnostic-llm-tests";
 const FUNCTION_URL =
   "https://itzdasxobllfiuolmbxu.supabase.co/functions/v1/llm-testing";
@@ -288,7 +288,7 @@ async function main() {
   };
 
   const lines = [];
-  lines.push(`# LLM diagnostic test — batch 2 (Gemini, two-stage, May 2026)`);
+  lines.push(`# LLM diagnostic test — batch 3 (Haiku, two-stage, May 2026)`);
   lines.push("");
   lines.push(`**Ran:** ${new Date().toISOString()}`);
   lines.push(`**Architecture:** two-stage classifier (refactor 2026-05-20)`);
