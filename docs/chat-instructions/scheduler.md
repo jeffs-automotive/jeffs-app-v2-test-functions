@@ -1,7 +1,7 @@
 # Scheduler domain — chat agent rules
 
 Consult this file whenever the user mentions any of:
-**scheduler, appointment, booking, /book, testing service, routine service, concern, diagnostic, "describe concern", brake inspection, check battery, warning lights, check suspension, A/C check, concern questions, sub-category, pricing, price change, "set price", closed dates, appointment limits, availability, orphan customer, sync appointments, revert upload, undo upload** in a shop context.
+**scheduler, appointment, booking, /book, testing service, routine service, concern, diagnostic, "describe concern", brake inspection, check battery, warning lights, check suspension, A/C check, concern questions, sub-category, subcategory description, subcategory mapping, required facts, fact gating, pricing, price change, "set price", closed dates, appointment limits, availability, orphan customer, sync appointments, revert upload, undo upload** in a shop context.
 
 ---
 
@@ -45,12 +45,15 @@ advisor from the OAuth session. Don't ask "who are you?".
 
 The detailed format spec + dry-run-then-confirm flow + examples for each MD type live in dedicated files:
 
-- [`scheduler/edit-testing-services.md`](./scheduler/edit-testing-services.md) — 15 diagnostic services. Option B per-service-block MD. New fields: `description`, `example_keywords`. Two-step dry-run-then-confirm flow.
+- [`scheduler/edit-testing-services.md`](./scheduler/edit-testing-services.md) — 22 diagnostic services (post-2026-05-19 refactor: 15 → 22 active + 3 deprecated; warning-light routing got 6 net-new services). Option B per-service-block MD. Fields: `description`, `example_keywords`. Two-step dry-run-then-confirm flow.
 - [`scheduler/edit-routine-services.md`](./scheduler/edit-routine-services.md) — 10 picker chips. Same Option B format. New columns: `description` (added 2026-05-19), `starting_price_cents`, `price_waived_note`. Two-step flow.
 - [`scheduler/edit-concerns.md`](./scheduler/edit-concerns.md) — `{cat}-concerns.md` checklists + `{cat}-guideline.md` per-category prose. Hierarchical sub-cat + question format with `[multi]` chips. Two-step flow.
+- [`scheduler/edit-subcategory-service-map.md`](./scheduler/edit-subcategory-service-map.md) — **(NEW 2026-05-20)** wide-table MD mapping each subcategory_slug to its eligible testing_service_keys. When set, this 1:N mapping overrides the category-level eligibility. Two-step flow.
+- [`scheduler/edit-subcategory-descriptions.md`](./scheduler/edit-subcategory-descriptions.md) — **(NEW 2026-05-21)** per-block MD with description + positive_examples + negative_examples + synonyms per subcategory. Drives Stage-2 of the 3-stage diagnostic classifier (subcategory pick). 105 active blocks. Two-step flow.
+- [`scheduler/edit-question-required-facts.md`](./scheduler/edit-question-required-facts.md) — **(NEW 2026-05-21)** wide-table MD mapping each question_id to its ExtractedFacts slot requirements (29 canonical slots). Drives Stage-3 of the classifier (deterministic question-gate after fact extraction). 729 active question rows. Two-step flow.
 - [`scheduler/edit-closed-dates.md`](./scheduler/edit-closed-dates.md) — holidays + one-off closures. Sundays auto-managed by cron — don't list them here.
 - [`scheduler/edit-appointment-default-limits.md`](./scheduler/edit-appointment-default-limits.md) — per-day-of-week capacity pattern. Note the Sunday-is-closed cascading cron behavior.
-- [`scheduler/revert-upload.md`](./scheduler/revert-upload.md) — undo a recent successful bulk upload via `revert_md_upload(upload_id)`. 30-day snapshot retention. Currently supports testing_services + routine_services.
+- [`scheduler/revert-upload.md`](./scheduler/revert-upload.md) — undo a recent successful bulk upload via `revert_md_upload(upload_id)`. 30-day snapshot retention. Supports all bulk uploads (testing_services, routine_services, concern_categories, subcategory-service-map, subcategory-descriptions, question-required-facts, appointment-default-limits, closed_dates).
 
 **Two-step flow (mandatory for all bulk uploads since 2026-05-19):**
 1. Call upload tool with `dry_run: true` (DEFAULT) → tool returns diff_summary + validation_errors + validation_warnings + confirm_token.
@@ -84,6 +87,9 @@ Customers interact with the wizard directly. **Advisors don't book on behalf of 
 - Add / edit / deactivate **routine services** (NO pricing — Phase 1 design)
 - Edit the **concern checklists** the diagnostic LLM uses (one markdown doc per category)
 - Edit the **per-category guideline prose** the diagnostic LLM reads
+- Edit the **subcategory → testing-service mapping** (which testing service each subcategory routes to)
+- Edit the **subcategory descriptions** (rich Stage-2 label text — description + examples + synonyms)
+- Edit the **question required-facts** (Stage-3 fact gating — which extracted facts auto-answer each clarification question)
 - Edit **appointment availability** (default per-day limits, blackout dates)
 - Trigger **appointment sync** from Tekmetric on demand
 - Find **orphan customers** (locally cached but deleted in Tekmetric)
@@ -118,13 +124,16 @@ Each category has 6-12 **sub-categories** (specific symptom patterns) with 5-7 p
 | `patch_routine_service_fields` | **Partial-field update** for routine services |
 | `deactivate_routine_service` | Soft-delete a routine chip |
 | `upload_concern_category_md` | Upload ONE category's hierarchical .md checklist. Parses sub-categories + numbered questions, **answer-options + multi_select** (added 2026-05-18), diff-based upsert + soft-delete absent rows, audit-logged with md_content_hash |
-| `upload_concern_category_guideline_md` | **(NEW 2026-05-18)** Upload ONE category's diagnostic-guideline prose paragraph. Single-row upsert keyed on `(shop_id, category)`. The diagnostic LLM reads this prose BEFORE the per-subcategory questions. |
+| `upload_concern_category_guideline_md` | **(2026-05-18)** Upload ONE category's diagnostic-guideline prose paragraph. Single-row upsert keyed on `(shop_id, category)`. The diagnostic LLM reads this prose BEFORE the per-subcategory questions. |
 | `upload_concern_questions_md` | **LEGACY** — flat-table format upload (pre-sub-category). Still works but `upload_concern_category_md` is the forward path. |
 | `upload_routine_services_md` | Bulk replace the routine-services catalog from an MD table |
 | `upload_testing_services_md` | Bulk replace the testing-services catalog (with prices) from an MD table |
+| `upload_subcategory_service_map_md` | **(NEW 2026-05-20)** Replace the subcategory → testing_service eligibility mapping (wide-table MD: category \| subcategory_slug \| testing_service_keys). Cardinality 1:N (a subcategory can be eligible under multiple testing_services). When set, overrides the parent category's testing_services list for that subcategory. |
+| `upload_subcategory_descriptions_md` | **(NEW 2026-05-21)** Replace the subcategory description catalog (per-block MD: `## category/slug` heading + Description + Positive examples + Negative examples + Synonyms). Drives Stage-2 of the 3-stage diagnostic classifier — the LLM picks ONE subcategory based on rich Stage-2 label text. 105 active subcategories. |
+| `upload_question_required_facts_md` | **(NEW 2026-05-21)** Replace the question fact-gating map (wide-table MD: question_id \| required_facts). Each row tags ONE concern_question with the ExtractedFacts slot names (from 29 canonical keys) that must all be present in Stage-1 extracted facts for the deterministic mapper to mark the question as already-answered. Empty = safe over-ask default. |
 | `upload_appointment_default_limits_md` | Replace per-day-of-week capacity defaults |
 | `upload_closed_dates_md` | Replace the FUTURE closed-dates set (past dates are immutable) |
-| `export_*_md` | Round-trip exports — download current state as MD, edit locally, upload back |
+| `export_*_md` | Round-trip exports — download current state as MD, edit locally, upload back. Includes `export_subcategory_service_map_md`, `export_subcategory_descriptions_md`, `export_question_required_facts_md`. |
 | `run_appointments_sync` | On-demand call to the appointments-sync edge function (catches up the local appointments shadow from Tekmetric) |
 
 **Call each tool directly by name** through the Orchestrator MCP connector — your client lists them via `tools/list`. The table above lists the most relevant tools for this task; `tools/list` will show the full catalog with each tool's JSON Schema.
@@ -443,7 +452,7 @@ When the audit log returns multiple rows, structure newest-first with the time, 
 >
 > > Brakes are about FEEL plus SOUND plus DISTANCE. We want: WHAT THE CUSTOMER NOTICES (squealing, grinding, pedal goes soft, pedal feels hard, pedal pulses, takes longer to stop, pulls one way when braking), WHEN it shows up (hard stops, light stops, only when cold, only when hot), and any WARNING LIGHT on. Last brake service date helps if they remember it.
 >
-> *(Note: there's no upload tool for guidelines yet — that's a Phase 9c follow-up.)*
+> *(To edit: have Chris update `templates/concerns/brakes/brakes-guideline.md`, then ask Claude to "upload the updated brakes guideline" — calls `upload_concern_category_guideline_md`.)*
 
 ### Example 12: Deactivate a service
 

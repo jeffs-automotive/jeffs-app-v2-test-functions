@@ -561,26 +561,25 @@ files
 
 ## LLM quality
 
-### LLM-1 · `diagnoseConcern` hallucination on subcategory slugs / question IDs
+### LLM-1 · `diagnoseConcern` hallucination on subcategory slugs / question IDs — RESOLVED 2026-05-21
 
-- **What** — 6 of 50 concerns in the 2026-05-18 eval failed with
-  `"No object generated: response did not match schema"`. The LLM
-  returned subcategory slugs or question IDs that don't exist in the
-  catalog, causing Zod schema validation to reject the response.
-  Failing concerns: brake grinding after recent replacement, steering
-  wheel vibration over 60 mph, car shaking on right side, A/C blows
-  warm (two variants), pulls to one side.
-- **Why deferred** — the fail-safe path (forward-to-advisor) is
-  triggered for these cases, so customers aren't stuck; they're just
-  routed to advisor contact instead of getting diagnostic questions.
-  Prompt-tuning is a separate quality pass, not a launch blocker.
-- **When to revisit** — before any public rollout beyond Jeff's test
-  environment. Target: < 5% schema-fail rate (currently 12%).
-  Approach: tighten the prompt to enumerate only slug values actually
-  present in the injected catalog block; add a "if unsure, return
-  matched_category_key=null" fallback instruction.
-- **Source** — `docs/scheduler/diagnose-eval-2026-05-18T12-10-40-771Z.md`
-  (50-concern eval run).
+- **Resolution** — superseded by the 3-stage classifier refactor (functions
+  commit `5e7bba5`, deployed 2026-05-21). The new pipeline uses Anthropic SDK
+  native structured outputs (`output_format: json_schema` + `betas:
+  ["structured-outputs-2025-11-13"]`) with constrained decoding, which makes
+  it impossible for the LLM to emit a subcategory_slug or question_id
+  outside the injected catalog. Schema-fail rate dropped to 0/25 on batches
+  5-9 (vs 12% under the original AI SDK + Anthropic generateObject path).
+- **Stage progression that closed this:**
+  - Stage 1 (category pick): brief catalog, constrained-enum output. 0/25 fails.
+  - Stage 2 (subcategory pick): per-category subcategory list, constrained-enum. 0/25 fails.
+  - Stage 3 (fact extraction): 29-slot ExtractedFacts schema with enum-constrained
+    values; deterministic mapper consumes facts (no LLM judgment on which
+    question_ids are answered — pure TS).
+- **Quality measurements** — see `docs/chat-instructions/diagnostic-llm-tests/`
+  for the batch-by-batch progression from llm-test-1 (single-stage Anthropic,
+  60% match) through llm-test-9 (3-stage Anthropic SDK, 88%+ match with 0
+  hallucinations / 0 silent filters).
 
 ### LLM-2 · `other` subcategory count drift vs spec — RESOLVED 2026-05-18
 

@@ -60,7 +60,7 @@ Here's what I can do for the scheduler at appointments.jeffsautomotive.com.
 - **Find orphan customers** — "Are any customers orphaned in our cache?" (cached locally but deleted in Tekmetric)
 - **Sync appointments now** — "Sync appointments from Tekmetric"
 
-**Edit testing services** (15 diagnostic services + pricing + descriptions + concern_categories)
+**Edit testing services** (22 diagnostic services + pricing + descriptions + concern_categories)
 
 - **Change one price** — "Set brake_inspection price to $45" (I'll confirm if it's a big change)
 - **Edit a customer-facing description** — "Update brake_inspection description to '...'"
@@ -89,6 +89,30 @@ See [`scheduler/edit-routine-services.md`](./scheduler/edit-routine-services.md)
 
 See [`scheduler/edit-concerns.md`](./scheduler/edit-concerns.md).
 
+**Edit subcategory → testing-service mapping** (which testing service each subcategory routes to)
+
+- **Upload the full mapping** — "Upload the updated subcategory mappings"
+- **Change one route** — "Route ABS lights to abs_traction_stability_testing" or "Make engine_temperature_light eligible under coolant and CEL testing"
+- **Clear one mapping** — "Clear the testing-service mapping for high_pitched_squealing" (falls back to category-level eligibility)
+
+See [`scheduler/edit-subcategory-service-map.md`](./scheduler/edit-subcategory-service-map.md).
+
+**Edit subcategory descriptions** (rich Stage-2 label text — description + positive/negative examples + synonyms that the diagnostic LLM uses to pick the right subcategory)
+
+- **Upload all subcategory descriptions** — "Upload subcategory descriptions"
+- **Edit one subcategory's description** — "Tighten the description for high_pitched_squealing" or "Update the brakes/metallic_grinding description"
+- **Add examples** — "Add positive examples to bad_smell_from_vents" or "Update synonyms for the AC subcategory"
+
+See [`scheduler/edit-subcategory-descriptions.md`](./scheduler/edit-subcategory-descriptions.md).
+
+**Edit question required-facts** (Stage-3 fact gating — which extracted facts auto-answer each clarification question, so the wizard doesn't re-ask what the customer already said)
+
+- **Upload the full required-facts map** — "Upload question required facts"
+- **Tag one question** — "Tag question 688 with speed_specific_mph" or "Add hvac_mode to question 967"
+- **Clear one question's gating** — "Clear required_facts on question 1234" (falls back to safe over-ask)
+
+See [`scheduler/edit-question-required-facts.md`](./scheduler/edit-question-required-facts.md).
+
 **Edit availability**
 
 - **Change weekly capacity** — "Upload the updated appointment limits" (see [`scheduler/edit-appointment-default-limits.md`](./scheduler/edit-appointment-default-limits.md))
@@ -101,6 +125,9 @@ If your Claude Desktop has the filesystem MCP set up for the repo, just say *"Up
 
 - **Testing services** — "Upload the updated testing services" (`templates/testing-services.md`)
 - **Routine services** — "Upload the updated routine services" (`templates/routine-services.md`)
+- **Subcategory → testing-service mapping** — "Upload the updated subcategory mappings" (`templates/subcategory-service-map.md`)
+- **Subcategory descriptions** — "Upload subcategory descriptions" (`templates/subcategory-descriptions.md`)
+- **Question required-facts** — "Upload question required facts" (`templates/question-required-facts.md`)
 - **Appointment limits** — "Upload the updated appointment limits" (`templates/appointment-default-limits.md`)
 - **Closed dates** — "Upload the updated closed dates" (`templates/closed-dates.md`)
 - **One concern category — questions** — "Upload the updated {category} concern doc" (`templates/concerns/{cat}/{cat}-concerns.md`; one of: noise, vibration, pulling, smell, smoke, leak, warning_light, performance, electrical, hvac, brakes, steering, tires, other)
