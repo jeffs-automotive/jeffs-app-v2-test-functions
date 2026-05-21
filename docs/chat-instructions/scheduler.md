@@ -28,24 +28,24 @@ error verbatim. Never refuse a task because you "don't have access".
 
   DON'T try to call `run_orchestrator` — REMOVED 2026-05-20.
 
-- **Filesystem MCP** — only needed if the user is doing a **bulk MD upload**.
-  All template files live under one folder:
+- **Filesystem MCP** — RARELY needed. As of the 2026-05-21 architecture
+  change, the orchestrator fetches all template files from the project's
+  GitHub main branch ITSELF. You do not need to read MD files for upload
+  operations — just call the matching `upload_*_md` tool with `{ dry_run: true }`
+  and the orchestrator fetches the file directly. See `INSTRUCTIONS.md` →
+  "What 'upload' MEANS in this project" for the canonical 3-step recipe.
 
+  **Filesystem MCP is only useful for:**
+  - Diagnostic reads when the advisor asks "what's currently in the
+    {testing-services / etc.} file?" — use the corresponding
+    `export_*_md` tool first; only fall back to filesystem MCP if export
+    isn't available.
+  - The advisor asks for a power-user inline-content override (legacy
+    `md_content` path), which is almost never needed.
+
+  Template files live at:
   `C:\Users\ChristopherGoodson\Apps\jeffs-app-v2-test-data\docs\chat-instructions\scheduler\templates\`
-
-  Each `scheduler/edit-*.md` task doc names the specific filename within
-  that folder (e.g., `testing-services.md`, `subcategory-descriptions.md`).
-  For concern checklists + guidelines, the path adds one nesting level:
-  `templates\concerns\{cat}\{cat}-concerns.md` (or `{cat}-guideline.md`).
-  When the user asks for a bulk upload, OPEN the matching `scheduler/edit-*.md`
-  task doc from your project knowledge for the format + the dry-run-then-
-  confirm flow — don't handle bulk uploads from THIS general scheduler doc.
-
-  **"Upload" = call the orchestrator MCP tool, NOT attach to project
-  knowledge.** See `INSTRUCTIONS.md` → "What 'upload' MEANS in this project"
-  for the canonical 4-step recipe. File sizes up to several MB are fine —
-  DON'T refuse based on a perceived size limit; pass the content and let
-  the tool surface a real error if one occurs.
+  but you should not normally need that path.
 
 Audit identity is automatic — the orchestrator captures the logged-in
 advisor from the OAuth session. Don't ask "who are you?".

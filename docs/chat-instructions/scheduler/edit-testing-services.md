@@ -9,50 +9,36 @@
 
 ## When the advisor says "upload the updated testing services" — exact recipe
 
-Follow these 4 steps. Don't skip, don't reorder, don't add Claude Desktop
-project-knowledge attachment. The orchestrator tool IS the upload — your
-job is to wire the file content into the tool argument.
+The orchestrator fetches the template from the project's main branch on
+GitHub automatically. **You do NOT need to read the file.** Just call the
+tool with no file content.
 
 ```
-Step 1: read_file({ path: "<templates folder>\testing-services.md" })
-        → returns the full MD content as a string
+Step 1: upload_testing_services_md({ dry_run: true })
+        → orchestrator fetches the file from GitHub, parses, returns
+          { diff_summary, validation_errors, validation_warnings, confirm_token }
 
-Step 2: upload_testing_services_md({
-          md_content: <content from step 1>,
-          dry_run: true                  // DEFAULT — explicit for clarity
-        })
-        → returns { diff_summary, validation_errors, validation_warnings, confirm_token }
+Step 2: Render the diff to the advisor in plain language. Wait for explicit "yes".
 
-Step 3: Render the diff to the advisor in plain language. Wait for explicit "yes".
-        Do NOT call step 4 without that confirmation.
-
-Step 4: upload_testing_services_md({
-          md_content: <SAME content from step 1, byte-for-byte>,
+Step 3: upload_testing_services_md({
           dry_run: false,
-          expected_confirm_token: <token from step 2>
+          expected_confirm_token: <token from step 1>
         })
         → returns { audit_log_id, applied_changes }
-        Save the audit_log_id — needed if revert is requested.
 ```
 
-**The templates folder path is in `scheduler.md` (Filesystem MCP section).**
-You append `testing-services.md` to that folder path.
+That's it. No Filesystem MCP. No bash. No file content handling.
+
+**Why no file content?** The orchestrator pulls `docs/chat-instructions/
+scheduler/templates/testing-services.md` from main automatically. Source
+of truth is what's on main — make sure the advisor pushed their edits to
+main BEFORE calling this tool.
 
 For single-field edits ("set brake_inspection price to $45") use
-`patch_testing_service_fields` directly — no MD upload, no dry-run.
+`patch_testing_service_fields` directly — no MD flow needed.
 
-**Common Haiku mistakes to avoid:**
-
-- ❌ Treating "upload" as "attach the file to Claude Desktop's project
-  knowledge". It's NOT — you call the orchestrator tool. Project files
-  are routing/instructions; the database holds the data.
-- ❌ Refusing based on a perceived file size limit. Files up to several MB
-  are fine; pass the content and let the tool surface a real error.
-- ❌ Asking the user to paste the file content. You have Filesystem MCP —
-  read it yourself.
-- ❌ Skipping the dry_run step and going straight to apply. The
-  `expected_confirm_token` is REQUIRED on the apply call; you only get
-  it from a dry_run.
+**Power-user escape hatches:** `source_branch: "feature-x"` or
+`md_content: "..."` for testing changes before pushing to main.
 
 ## Tools you have for this task — they WORK, use them
 

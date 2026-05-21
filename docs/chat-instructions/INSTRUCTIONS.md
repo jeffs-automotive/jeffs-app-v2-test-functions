@@ -45,54 +45,62 @@ similar referring to scheduler data (testing services, routine services,
 concerns, subcategory descriptions, required facts, closed dates,
 appointment limits, etc.), it means EXACTLY this:
 
-1. **Read the source file from disk** using `read_file(...)` on the
-   Filesystem MCP. The path comes from `scheduler.md` (Filesystem MCP
-   section — points at the templates folder) + the filename named in
-   the matching `scheduler/edit-*.md` task doc.
-2. **Pass the full file content** as the `md_content` argument to the
-   matching `upload_*_md` tool on the Orchestrator MCP. The tool defaults
-   to `dry_run: true` — it returns a diff + a confirm_token.
-3. **Show the diff to the advisor** and get explicit "yes".
-4. **Re-call the same tool** with `dry_run: false` + `expected_confirm_token`
-   from step 2. That writes the changes to the database.
+1. **Call the matching `upload_*_md` tool on the Orchestrator MCP with
+   no file content**, just `{ dry_run: true }`. The orchestrator fetches
+   the canonical template file from the project's GitHub repo (main branch)
+   on its own, parses it, and returns a diff + confirm_token.
+2. **Show the diff to the advisor** in plain language and get explicit "yes".
+3. **Call the same tool again** with `{ dry_run: false, expected_confirm_token: <token from step 1> }`.
+   That writes the changes to the database.
+
+**You do NOT read the file. You do NOT use Filesystem MCP. You do NOT
+pass file content.** The orchestrator handles all of that server-side.
 
 **"Upload" NEVER means:**
 
 - ❌ "Add this file to the Claude Desktop project knowledge files." Project
   files are for ROUTING + INSTRUCTIONS, not data. Data goes to the DB via
   the orchestrator tool.
-- ❌ "Attach the file to this conversation." The orchestrator tool needs
-  the content passed as a `md_content` string argument, not as an
-  attachment.
-- ❌ "I should refuse because the file is too big." Files up to several MB
-  are fine — the orchestrator handles them. A 200KB markdown file is
-  routine. If the tool returns an actual size error, relay it verbatim;
-  don't pre-emptively refuse based on a guess.
+- ❌ "Attach the file to this conversation." Not needed — the orchestrator
+  fetches the file from GitHub itself.
+- ❌ "Read the file with Filesystem MCP and pass the content." Not needed;
+  the orchestrator does the fetch. (Filesystem MCP IS still available as
+  an escape hatch for power-user testing — see below.)
+- ❌ "I should refuse because the file is too big." File size doesn't
+  involve you at all — the orchestrator fetches it directly from GitHub.
 
 **Concretely, when the advisor says "upload subcategory descriptions":**
 
 ```
-Step 1: read_file({ path: "<templates folder>\subcategory-descriptions.md" })
-        → returns the full MD content as a string
+Step 1: upload_subcategory_descriptions_md({ dry_run: true })
+        → orchestrator fetches the file from GitHub main,
+          parses, returns { diff_summary, validation_errors,
+          validation_warnings, confirm_token }
 
-Step 2: upload_subcategory_descriptions_md({
-          md_content: <content from step 1>,
-          dry_run: true
-        })
-        → returns { diff_summary, validation_errors, validation_warnings, confirm_token }
+Step 2: Show the advisor the diff. Wait for "yes".
 
-Step 3: Show the advisor the diff in plain language. Wait for "yes".
-
-Step 4: upload_subcategory_descriptions_md({
-          md_content: <same content as step 1>,
+Step 3: upload_subcategory_descriptions_md({
           dry_run: false,
-          expected_confirm_token: <token from step 2>
+          expected_confirm_token: <token from step 1>
         })
         → returns { audit_log_id, applied_changes }
 ```
 
 The same shape applies to every `upload_*_md` tool. The per-task doc
-(`scheduler/edit-*.md`) names the exact tool + filename for that task.
+(`scheduler/edit-*.md`) names the exact tool for that task.
+
+**Source-of-truth rule:** the orchestrator fetches from the `main` branch
+of the project repo. The advisor must push their edits to main BEFORE
+calling upload. If they ask "did my upload land?" and the answer doesn't
+match what they expect, the most common cause is unpushed local edits —
+ask them to confirm their last `git push` landed.
+
+**Escape hatches** (rarely needed, mention to advanced advisors only):
+
+- `source_branch: "feature-x"` — fetch from a feature branch to test
+  changes before merging to main
+- `md_content: "..."` — pass inline content directly (legacy path; only
+  for genuinely local-only testing without a git commit)
 
 ---
 

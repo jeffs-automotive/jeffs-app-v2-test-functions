@@ -20,75 +20,54 @@ advisor names the category (`brakes`, `electrical`, `hvac`, `leak`, `noise`,
 `vibration`, `warning_light`) and whether they're uploading the checklist
 or the guideline.
 
-Follow these 4 steps. Don't skip, don't reorder, don't add Claude Desktop
-project-knowledge attachment. The orchestrator tool IS the upload — your
-job is to wire the file content into the tool argument.
+The orchestrator fetches the template from main automatically. **You do
+NOT need to read the file.** Just call the tool with `category_slug`.
 
-### A. Uploading a CATEGORY CHECKLIST (sub-categories + questions)
+### A. Category CHECKLIST (sub-categories + questions)
 
 ```
-Step 1: read_file({ path: "<templates folder>\concerns\{cat}\{cat}-concerns.md" })
-        → returns the full MD content as a string
-
-Step 2: upload_concern_category_md({
-          category_slug: "{cat}",        // brakes / electrical / hvac / etc.
-          md_content: <content from step 1>,
+Step 1: upload_concern_category_md({
+          category_slug: "{cat}",
           dry_run: true
         })
-        → returns { diff_summary, validation_errors, validation_warnings, confirm_token }
+        → orchestrator fetches concerns/{cat}/{cat}-concerns.md from GitHub,
+          parses, returns diff + confirm_token
 
-Step 3: Render the diff to the advisor in plain language. Wait for explicit "yes".
+Step 2: Render diff. Wait for "yes".
 
-Step 4: upload_concern_category_md({
+Step 3: upload_concern_category_md({
           category_slug: "{cat}",
-          md_content: <SAME content from step 1, byte-for-byte>,
           dry_run: false,
-          expected_confirm_token: <token from step 2>
+          expected_confirm_token: <token from step 1>
         })
-        → returns { audit_log_id, applied_changes }
 ```
 
-### B. Uploading a CATEGORY GUIDELINE (prose paragraph the LLM reads first)
+### B. Category GUIDELINE (prose paragraph the LLM reads first)
 
 ```
-Step 1: read_file({ path: "<templates folder>\concerns\{cat}\{cat}-guideline.md" })
-
-Step 2: upload_concern_category_guideline_md({
+Step 1: upload_concern_category_guideline_md({
           category_slug: "{cat}",
-          md_content: <content from step 1>,
           dry_run: true
         })
-        → returns { diff_summary, validation_errors, validation_warnings, confirm_token }
+        → fetches concerns/{cat}/{cat}-guideline.md from GitHub
 
-Step 3: Render the diff. Wait for "yes".
+Step 2: Render diff. Wait for "yes".
 
-Step 4: upload_concern_category_guideline_md({
+Step 3: upload_concern_category_guideline_md({
           category_slug: "{cat}",
-          md_content: <SAME content from step 1>,
           dry_run: false,
-          expected_confirm_token: <token from step 2>
+          expected_confirm_token: <token>
         })
 ```
 
-**The templates folder path is in `scheduler.md` (Filesystem MCP section).**
-You append `concerns\{cat}\{cat}-concerns.md` or `concerns\{cat}\{cat}-guideline.md`
-to that folder path.
+**Why no file content?** Orchestrator fetches the category's MD from
+`docs/chat-instructions/scheduler/templates/concerns/{slug}/{slug}-concerns.md`
+(or `-guideline.md`) on the main branch automatically. Make sure advisor
+pushed edits to main first.
 
-**Common Haiku mistakes to avoid:**
-
-- ❌ Treating "upload" as "attach the file to Claude Desktop's project
-  knowledge". It's NOT — you call the orchestrator tool. Project files
-  are routing/instructions; the database holds the data.
-- ❌ Refusing based on a perceived file size limit. Files up to several MB
-  are fine; pass the content and let the tool surface a real error.
-- ❌ Asking the user to paste the file content. You have Filesystem MCP —
-  read it yourself.
-- ❌ Skipping the dry_run step and going straight to apply. The
-  `expected_confirm_token` is REQUIRED on the apply call.
-- ❌ Forgetting `category_slug` — these tools take BOTH `category_slug` AND
-  `md_content`. Missing the slug → INVALID_PARAMS error.
-- ❌ Mixing up the two tools — `_md` is the checklist; `_guideline_md` is
-  the prose. They write different tables.
+**Escape hatches:** `source_branch: "feature-x"` or `md_content: "..."`.
+Mixing up the two tools (checklist vs guideline) writes different DB
+tables — pick the one the advisor named.
 
 ## Tools you have for this task — they WORK, use them
 

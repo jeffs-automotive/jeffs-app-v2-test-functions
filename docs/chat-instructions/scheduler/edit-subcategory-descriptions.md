@@ -11,49 +11,39 @@
 
 ## When the advisor says "upload subcategory descriptions" — exact recipe
 
-Follow these 4 steps. Don't skip, don't reorder, don't add Claude Desktop
-project-knowledge attachment. The orchestrator tool IS the upload — your
-job is to wire the file content into the tool argument.
+The orchestrator fetches the template from the project's main branch on
+GitHub automatically. **You do NOT need to read the file.** Just call the
+tool with no file content.
 
 ```
-Step 1: read_file({ path: "<templates folder>\subcategory-descriptions.md" })
-        → returns the full MD content (a ~218KB string — this is normal,
-          DON'T refuse based on size, the orchestrator handles it)
+Step 1: upload_subcategory_descriptions_md({ dry_run: true })
+        → orchestrator fetches the file from GitHub, parses, returns
+          { diff_summary, validation_errors, validation_warnings, confirm_token }
 
-Step 2: upload_subcategory_descriptions_md({
-          md_content: <content from step 1>,
-          dry_run: true                  // DEFAULT — explicit for clarity
-        })
-        → returns { diff_summary, validation_errors, validation_warnings, confirm_token }
+Step 2: Render the diff to the advisor in plain language. Wait for explicit "yes".
+        Do NOT proceed without that confirmation.
 
-Step 3: Render the diff to the advisor in plain language. Wait for explicit "yes".
-        Do NOT call step 4 without that confirmation.
-
-Step 4: upload_subcategory_descriptions_md({
-          md_content: <SAME content from step 1, byte-for-byte>,
+Step 3: upload_subcategory_descriptions_md({
           dry_run: false,
-          expected_confirm_token: <token from step 2>
+          expected_confirm_token: <token from step 1>
         })
         → returns { audit_log_id, applied_changes }
         Save the audit_log_id — needed if revert is requested.
 ```
 
-**The templates folder path is in `scheduler.md` (Filesystem MCP section).**
-You append `subcategory-descriptions.md` to that folder path.
+That's it. No Filesystem MCP. No bash. No file content handling.
 
-**Common Haiku mistakes to avoid:**
+**Why no file content?** The orchestrator pulls `docs/chat-instructions/
+scheduler/templates/subcategory-descriptions.md` from the project's main
+branch automatically. The source of truth is what's on main — so make
+sure the advisor pushed their edits to main BEFORE calling this tool.
 
-- ❌ Treating "upload" as "attach the file to Claude Desktop's project
-  knowledge". It's NOT — you call the orchestrator tool. Project files
-  are routing/instructions; the database holds the data.
-- ❌ Refusing because the file is ~218KB. That's well within MCP's payload
-  budget (several MB) and the orchestrator's request limit. Pass the
-  content; the tool will tell you if it really hits a limit.
-- ❌ Asking the user to paste the file content. You have Filesystem MCP —
-  read it yourself.
-- ❌ Skipping the dry_run step and going straight to apply. The
-  `expected_confirm_token` is REQUIRED on the apply call; you only get
-  it from a dry_run.
+**Power-user escape hatches** (rarely needed):
+
+- `source_branch: "feature-x"` — fetch from a feature branch instead of
+  main, for testing changes before merging
+- `md_content: "..."` — pass inline content directly (legacy path; only
+  needed for genuinely local-only testing without a git commit)
 
 ## Tools you have for this task — they WORK, use them
 

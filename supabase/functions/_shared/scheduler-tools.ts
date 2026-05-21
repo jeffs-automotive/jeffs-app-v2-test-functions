@@ -99,6 +99,8 @@ import {
   revertMdUpload,
 } from "./tools/scheduler-admin-catalog.ts";
 
+import { resolveMdContent } from "./fetch-template-from-repo.ts";
+
 import type { ToolCallRecorder } from "./orchestrator-tools.ts";
 
 // Re-export so consumers don't have to import from two places
@@ -902,28 +904,22 @@ export function getSchedulerTools(args: SchedulerToolsArgs) {
 
       upload_routine_services_md: tool({
         description:
-          "Bulk-update the routine_services catalog from an Option B " +
-          "per-service-block MD (`## service_key` headings with Field: value " +
-          "lines underneath). Fields supported: Display name, Abbreviation, " +
-          "Display order, Wait eligible, Requires explanation, Concern " +
-          "categories (comma-separated; from the 14 canonical slugs), " +
-          "Starting price ($XX.XX/Free/(none)), Price waived note, " +
-          "Description (customer-facing 1-2 sentences; 10-500 chars), Active. " +
+          "Bulk-update the routine_services catalog from a per-service-block " +
+          "MD. **DEFAULT BEHAVIOR (RECOMMENDED): call with no arguments** — " +
+          "the orchestrator fetches the canonical template from the project " +
+          "repo's main branch at `docs/chat-instructions/scheduler/templates/" +
+          "routine-services.md`. Chat-agent does NOT need to read the file. " +
           "TWO-STEP FLOW: (1) Call with dry_run=true (DEFAULT) to get diff + " +
-          "validation report + warnings + confirm_token. Show the report to " +
-          "the advisor. (2) On approval, call again with dry_run=false AND " +
-          "expected_confirm_token=<token from step 1> to apply. Validation " +
-          "errors block apply; warnings (>50% price moves, deactivations) are " +
-          "surfaced for approval but don't block. On apply, pre_state_snapshot " +
-          "is captured for revert_md_upload. Returns: { ok, dry_run, " +
-          "rows_added, rows_modified, rows_deactivated, diff_summary, " +
-          "validation_errors?, validation_warnings?, confirm_token, " +
-          "audit_log_id?, error_message? }.",
+          "validation report + warnings + confirm_token. (2) On approval, " +
+          "call again with dry_run=false AND expected_confirm_token=<token> " +
+          "to apply. Validation errors block apply; warnings (>50% price " +
+          "moves, deactivations) are surfaced for approval but don't block. " +
+          "On apply, pre_state_snapshot captured for revert_md_upload. " +
+          "Returns: { ok, dry_run, rows_added, rows_modified, " +
+          "rows_deactivated, diff_summary, validation_errors?, " +
+          "validation_warnings?, confirm_token, audit_log_id?, " +
+          "error_message? }.",
         inputSchema: z.object({
-          md_content: z
-            .string()
-            .min(1)
-            .describe("Full Option B per-service-block MD as a string."),
           dry_run: z
             .boolean()
             .optional()
@@ -937,74 +933,105 @@ export function getSchedulerTools(args: SchedulerToolsArgs) {
             .describe(
               "Required when dry_run=false. Pass the confirm_token returned by the prior dry_run call.",
             ),
+          md_content: z
+            .string()
+            .optional()
+            .describe(
+              "OPTIONAL — pass inline MD content (escape hatch for testing). When omitted, the orchestrator fetches the file from the repo (default behavior).",
+            ),
+          source_branch: z
+            .string()
+            .optional()
+            .describe(
+              "OPTIONAL — branch to fetch from. Default 'main'. Use this to test changes on a feature branch before merging.",
+            ),
         }),
-        execute: recorded(recorder, "upload_routine_services_md", (input) =>
-          uploadRoutineServicesMdV2(sb, shopId, {
-            md_content: input.md_content,
+        execute: recorded(recorder, "upload_routine_services_md", async (input) => {
+          const { md_content } = await resolveMdContent(
+            "docs/chat-instructions/scheduler/templates/routine-services.md",
+            input,
+          );
+          return uploadRoutineServicesMdV2(sb, shopId, {
+            md_content,
             audit,
             dry_run: input.dry_run,
             expected_confirm_token: input.expected_confirm_token,
-          }),
-        ),
+          });
+        }),
       }),
 
       upload_testing_services_md: tool({
         description:
-          "Bulk-update the testing_services catalog from an Option B " +
-          "per-service-block MD. Fields supported: Display name, Abbreviation, " +
-          "Starting price ($XX.XX/Free), Notes (advisor-side), Description " +
-          "(customer-facing 1-2 sentences; 10-500 chars), Example keywords " +
-          "(comma-separated LLM routing hints), Concern categories " +
-          "(comma-separated from 14 canonical slugs), Active. " +
-          "Same TWO-STEP dry_run-then-apply flow as upload_routine_services_md. " +
-          "Validation blocks invalid slugs / out-of-range prices / bad concern " +
+          "Bulk-update the testing_services catalog from a per-service-block " +
+          "MD. **DEFAULT BEHAVIOR (RECOMMENDED): call with no md_content** — " +
+          "orchestrator fetches `docs/chat-instructions/scheduler/templates/" +
+          "testing-services.md` from the repo's main branch. Same TWO-STEP " +
+          "dry_run-then-apply flow as upload_routine_services_md. Validation " +
+          "blocks invalid slugs / out-of-range prices / bad concern " +
           "categories / too-short or too-long descriptions. Warnings surface " +
           ">50% price moves + deactivations + soft-deletes-by-omission for " +
           "advisor review. pre_state_snapshot captured on apply for revert.",
         inputSchema: z.object({
-          md_content: z.string().min(1),
           dry_run: z.boolean().optional().default(true),
           expected_confirm_token: z.string().optional(),
+          md_content: z.string().optional().describe(
+            "OPTIONAL — inline MD escape hatch; default is to fetch from repo.",
+          ),
+          source_branch: z.string().optional().describe(
+            "OPTIONAL — branch override. Default 'main'.",
+          ),
         }),
-        execute: recorded(recorder, "upload_testing_services_md", (input) =>
-          uploadTestingServicesMdV2(sb, shopId, {
-            md_content: input.md_content,
+        execute: recorded(recorder, "upload_testing_services_md", async (input) => {
+          const { md_content } = await resolveMdContent(
+            "docs/chat-instructions/scheduler/templates/testing-services.md",
+            input,
+          );
+          return uploadTestingServicesMdV2(sb, shopId, {
+            md_content,
             audit,
             dry_run: input.dry_run,
             expected_confirm_token: input.expected_confirm_token,
-          }),
-        ),
+          });
+        }),
       }),
 
       upload_subcategory_service_map_md: tool({
         description:
-          "Bulk-update the subcategory → testing_service mapping from a " +
-          "wide markdown table. Required columns: category, subcategory_slug, " +
-          "testing_service_keys. The mapping column lives on " +
-          "concern_subcategories.eligible_testing_service_keys (text[], 1:N). " +
-          "When non-empty, the diagnostic LLM routes ONLY to the listed " +
-          "services for that subcategory (testing_services.concern_categories[] " +
-          "is ignored for that row). When the cell is blank / '(none)', the " +
-          "subcategory falls back to concern_categories[]-based fan-out " +
-          "(legacy behavior). Rows OMITTED from the MD are LEFT ALONE " +
-          "(never silently cleared). Same TWO-STEP dry_run-then-apply flow " +
-          "as upload_testing_services_md. Validation blocks: unknown " +
-          "(category, subcategory_slug), unknown / inactive service_keys, " +
-          "non-canonical category slug, duplicate rows. pre_state_snapshot " +
-          "captured on apply for revert.",
+          "Bulk-update the subcategory → testing_service mapping. " +
+          "**DEFAULT BEHAVIOR (RECOMMENDED): call with no md_content** — " +
+          "orchestrator fetches `docs/chat-instructions/scheduler/templates/" +
+          "subcategory-service-map.md` from the repo's main branch. The " +
+          "mapping column lives on concern_subcategories." +
+          "eligible_testing_service_keys (text[], 1:N). When non-empty, the " +
+          "diagnostic LLM routes ONLY to the listed services for that " +
+          "subcategory; when blank / '(none)', falls back to legacy " +
+          "concern_categories[]-based fan-out. Rows OMITTED from the MD " +
+          "are LEFT ALONE. Same TWO-STEP flow as upload_testing_services_md. " +
+          "Validation blocks: unknown (category, subcategory_slug), unknown " +
+          "/ inactive service_keys, non-canonical category slug, duplicate " +
+          "rows. pre_state_snapshot captured on apply for revert.",
         inputSchema: z.object({
-          md_content: z.string().min(1),
           dry_run: z.boolean().optional().default(true),
           expected_confirm_token: z.string().optional(),
+          md_content: z.string().optional().describe(
+            "OPTIONAL — inline MD escape hatch; default is to fetch from repo.",
+          ),
+          source_branch: z.string().optional().describe(
+            "OPTIONAL — branch override. Default 'main'.",
+          ),
         }),
-        execute: recorded(recorder, "upload_subcategory_service_map_md", (input) =>
-          uploadSubcategoryServiceMapMdV2(sb, shopId, {
-            md_content: input.md_content,
+        execute: recorded(recorder, "upload_subcategory_service_map_md", async (input) => {
+          const { md_content } = await resolveMdContent(
+            "docs/chat-instructions/scheduler/templates/subcategory-service-map.md",
+            input,
+          );
+          return uploadSubcategoryServiceMapMdV2(sb, shopId, {
+            md_content,
             audit,
             dry_run: input.dry_run,
             expected_confirm_token: input.expected_confirm_token,
-          }),
-        ),
+          });
+        }),
       }),
 
       export_subcategory_service_map_md: tool({
@@ -1023,35 +1050,44 @@ export function getSchedulerTools(args: SchedulerToolsArgs) {
 
       upload_subcategory_descriptions_md: tool({
         description:
-          "Bulk-update the stage-1 classifier metadata on " +
-          "concern_subcategories (description, positive_examples, " +
-          "negative_examples, synonyms) from a per-subcategory-block MD. " +
-          "Heading is the composite `## <category>/<slug>` because " +
-          "subcategory slugs are unique only within a category. Fields " +
-          "per block: Description (2-3 sentences; 10-1000 chars; LLM-facing), " +
-          "Positive examples (comma-list OR multi-line `- ` entries; cap 10), " +
-          "Negative examples (same format; you MAY append ` → other_slug` for " +
-          "advisor reference — the arrow + target are stripped at parse time; " +
-          "cap 10), Synonyms (comma-list; cap 20). Rows OMITTED from the MD " +
-          "are LEFT ALONE (never silently cleared). " +
-          "Same TWO-STEP dry_run-then-apply flow as upload_testing_services_md. " +
-          "Validation blocks: missing Description, length out-of-range, " +
-          "examples/synonyms over cap, unknown (category, slug), inactive " +
-          "subcategory (warning, not error), duplicate (category, slug) in " +
-          "same upload. pre_state_snapshot captured on apply for revert.",
+          "Bulk-update stage-2-classifier metadata on concern_subcategories " +
+          "(description, positive_examples, negative_examples, synonyms). " +
+          "**DEFAULT BEHAVIOR (RECOMMENDED): call with no md_content** — " +
+          "orchestrator fetches `docs/chat-instructions/scheduler/templates/" +
+          "subcategory-descriptions.md` from the repo's main branch. " +
+          "Heading is the composite `## <category>/<slug>`. Fields per block: " +
+          "Description (2-3 sentences; 10-1000 chars; LLM-facing), Positive " +
+          "examples (comma-list OR multi-line `- ` entries; cap 10), " +
+          "Negative examples (same format; ` → other_slug` arrow + target " +
+          "stripped at parse; cap 10), Synonyms (comma-list; cap 20). Rows " +
+          "OMITTED from the MD are LEFT ALONE. Same TWO-STEP flow as " +
+          "upload_testing_services_md. Validation blocks: missing " +
+          "Description, length out-of-range, examples/synonyms over cap, " +
+          "unknown (category, slug), inactive subcategory (warning), " +
+          "duplicate (category, slug) in same upload. pre_state_snapshot " +
+          "captured on apply for revert.",
         inputSchema: z.object({
-          md_content: z.string().min(1),
           dry_run: z.boolean().optional().default(true),
           expected_confirm_token: z.string().optional(),
+          md_content: z.string().optional().describe(
+            "OPTIONAL — inline MD escape hatch; default is to fetch from repo.",
+          ),
+          source_branch: z.string().optional().describe(
+            "OPTIONAL — branch override. Default 'main'.",
+          ),
         }),
-        execute: recorded(recorder, "upload_subcategory_descriptions_md", (input) =>
-          uploadSubcategoryDescriptionsMdV2(sb, shopId, {
-            md_content: input.md_content,
+        execute: recorded(recorder, "upload_subcategory_descriptions_md", async (input) => {
+          const { md_content } = await resolveMdContent(
+            "docs/chat-instructions/scheduler/templates/subcategory-descriptions.md",
+            input,
+          );
+          return uploadSubcategoryDescriptionsMdV2(sb, shopId, {
+            md_content,
             audit,
             dry_run: input.dry_run,
             expected_confirm_token: input.expected_confirm_token,
-          }),
-        ),
+          });
+        }),
       }),
 
       export_subcategory_descriptions_md: tool({
@@ -1070,35 +1106,43 @@ export function getSchedulerTools(args: SchedulerToolsArgs) {
 
       upload_question_required_facts_md: tool({
         description:
-          "Bulk-update concern_questions.required_facts (the list of " +
-          "ExtractedFacts slot names that must be present in the LLM's " +
-          "stage-1 extracted facts for a question to count as 'answered' " +
-          "by the stage-3 question-gate) from a wide markdown table. " +
-          "Required columns: question_id, required_facts. " +
-          "question_id is the integer primary key on concern_questions. " +
-          "required_facts is a comma-list of slot names from the 29 " +
-          "canonical ExtractedFacts keys (location_side, location_axle, " +
-          "speed_band, speed_specific_mph, onset_timing, ...). Blank cell " +
-          "or '(none)' CLEARS the list (question falls back to free-text " +
-          "'answered' marking). Rows OMITTED from the MD are LEFT ALONE. " +
-          "Same TWO-STEP dry_run-then-apply flow as upload_testing_services_md. " +
-          "Validation blocks: non-integer question_id, unknown question_id " +
-          "(not in concern_questions for this shop), unknown slot names " +
-          "(not in EXTRACTED_FACTS_ALL_KEYS), duplicate question_id in " +
-          "same upload. pre_state_snapshot captured on apply for revert.",
+          "Bulk-update concern_questions.required_facts — the list of " +
+          "ExtractedFacts slot names that must be present in stage-3 " +
+          "extracted facts for a question to count as 'answered' by the " +
+          "deterministic question-gate. **DEFAULT BEHAVIOR (RECOMMENDED): " +
+          "call with no md_content** — orchestrator fetches `docs/chat-" +
+          "instructions/scheduler/templates/question-required-facts.md` " +
+          "from the repo's main branch. Wide-table format. Required " +
+          "columns: question_id, required_facts. required_facts is a " +
+          "comma-list of slot names from the 29 canonical keys " +
+          "(location_side, speed_band, onset_timing, ...); blank or " +
+          "'(none)' CLEARS the list. Rows OMITTED are LEFT ALONE. Same " +
+          "TWO-STEP flow as upload_testing_services_md. Validation blocks: " +
+          "non-integer question_id, unknown question_id, unknown slot names " +
+          "(not in EXTRACTED_FACTS_ALL_KEYS), duplicate question_id. " +
+          "pre_state_snapshot captured on apply for revert.",
         inputSchema: z.object({
-          md_content: z.string().min(1),
           dry_run: z.boolean().optional().default(true),
           expected_confirm_token: z.string().optional(),
+          md_content: z.string().optional().describe(
+            "OPTIONAL — inline MD escape hatch; default is to fetch from repo.",
+          ),
+          source_branch: z.string().optional().describe(
+            "OPTIONAL — branch override. Default 'main'.",
+          ),
         }),
-        execute: recorded(recorder, "upload_question_required_facts_md", (input) =>
-          uploadQuestionRequiredFactsMdV2(sb, shopId, {
-            md_content: input.md_content,
+        execute: recorded(recorder, "upload_question_required_facts_md", async (input) => {
+          const { md_content } = await resolveMdContent(
+            "docs/chat-instructions/scheduler/templates/question-required-facts.md",
+            input,
+          );
+          return uploadQuestionRequiredFactsMdV2(sb, shopId, {
+            md_content,
             audit,
             dry_run: input.dry_run,
             expected_confirm_token: input.expected_confirm_token,
-          }),
-        ),
+          });
+        }),
       }),
 
       export_question_required_facts_md: tool({
@@ -1149,15 +1193,9 @@ export function getSchedulerTools(args: SchedulerToolsArgs) {
 
       upload_concern_questions_md: tool({
         description:
-          "Bulk-update the concern_questions catalog from a markdown table. " +
-          "Required columns: category, question_text, options, display_order, " +
-          "active. category must be one of the 14 valid values. options is the " +
-          "JSON array (e.g. '[{\"label\":\"Front\",\"value\":\"front\"}]') OR " +
-          "the shorthand 'value:label; value2:label2'. Natural-key matching " +
-          "is by (category, question_text) since rows have no service_key. " +
-          "Returns: { ok, rows_added, rows_modified, rows_deactivated, … }. " +
-          "LEGACY — for the new sub-category-aware flow (Phase 9b+), prefer " +
-          "upload_concern_category_md.",
+          "LEGACY — flat-table format. For the sub-category-aware flow " +
+          "(Phase 9b+), prefer upload_concern_category_md. This tool still " +
+          "requires inline md_content (no repo-fetch default — legacy path).",
         inputSchema: z.object({
           md_content: z.string().min(1),
         }),
@@ -1204,21 +1242,26 @@ export function getSchedulerTools(args: SchedulerToolsArgs) {
             ),
           md_content: z
             .string()
-            .min(1)
+            .optional()
             .describe(
-              "Full markdown file content. Must have an H1 (# CategoryName), " +
-                "one or more '-- {Sub-Category Name} Checklist --' section " +
-                "headers, and numbered questions under each. Lines after a " +
-                "`---` horizontal rule (e.g. 'Sources consulted:') are ignored.",
+              "OPTIONAL — inline MD escape hatch. Default behavior fetches " +
+                "`docs/chat-instructions/scheduler/templates/concerns/" +
+                "{category_slug}/{category_slug}-concerns.md` from the repo's " +
+                "main branch.",
             ),
+          source_branch: z.string().optional().describe(
+            "OPTIONAL — branch override. Default 'main'.",
+          ),
         }),
-        execute: recorded(recorder, "upload_concern_category_md", (input) =>
-          uploadConcernCategoryMd(sb, shopId, {
+        execute: recorded(recorder, "upload_concern_category_md", async (input) => {
+          const defaultPath = `docs/chat-instructions/scheduler/templates/concerns/${input.category_slug}/${input.category_slug}-concerns.md`;
+          const { md_content } = await resolveMdContent(defaultPath, input);
+          return uploadConcernCategoryMd(sb, shopId, {
             category_slug: input.category_slug,
-            md_content: input.md_content,
+            md_content,
             audit,
-          }),
-        ),
+          });
+        }),
       }),
 
       upload_concern_category_guideline_md: tool({
@@ -1257,22 +1300,29 @@ export function getSchedulerTools(args: SchedulerToolsArgs) {
             ),
           md_content: z
             .string()
-            .min(1)
+            .optional()
             .describe(
-              "Full markdown file content. Must have an H1 + at least one " +
-                "non-blank prose line. Lines below a `---` horizontal rule " +
-                "are ignored (treat as notes / sources).",
+              "OPTIONAL — inline MD escape hatch. Default behavior fetches " +
+                "`docs/chat-instructions/scheduler/templates/concerns/" +
+                "{category_slug}/{category_slug}-guideline.md` from the repo's " +
+                "main branch.",
             ),
+          source_branch: z.string().optional().describe(
+            "OPTIONAL — branch override. Default 'main'.",
+          ),
         }),
         execute: recorded(
           recorder,
           "upload_concern_category_guideline_md",
-          (input) =>
-            uploadConcernCategoryGuidelineMd(sb, shopId, {
+          async (input) => {
+            const defaultPath = `docs/chat-instructions/scheduler/templates/concerns/${input.category_slug}/${input.category_slug}-guideline.md`;
+            const { md_content } = await resolveMdContent(defaultPath, input);
+            return uploadConcernCategoryGuidelineMd(sb, shopId, {
               category_slug: input.category_slug,
-              md_content: input.md_content,
+              md_content,
               audit,
-            }),
+            });
+          },
         ),
       }),
 
@@ -1398,39 +1448,63 @@ export function getSchedulerTools(args: SchedulerToolsArgs) {
 
       upload_appointment_default_limits_md: tool({
         description:
-          "Bulk-update the appointment_default_limits table from a markdown " +
-          "table. Required columns: day_of_week (0=Sun..6=Sat), is_closed, " +
+          "Bulk-update the appointment_default_limits table. " +
+          "**DEFAULT BEHAVIOR (RECOMMENDED): call with no md_content** — " +
+          "orchestrator fetches `docs/chat-instructions/scheduler/templates/" +
+          "appointment-default-limits.md` from the repo's main branch. " +
+          "Required columns: day_of_week (0=Sun..6=Sat), is_closed, " +
           "waiter_8am_slots, waiter_9am_slots, dropoff_total, notes. Phase 1 " +
           "expects exactly 7 rows (one per day of week). Returns: { ok, " +
           "rows_added, rows_modified, … }.",
         inputSchema: z.object({
-          md_content: z.string().min(1),
+          md_content: z.string().optional().describe(
+            "OPTIONAL — inline MD escape hatch; default is to fetch from repo.",
+          ),
+          source_branch: z.string().optional().describe(
+            "OPTIONAL — branch override. Default 'main'.",
+          ),
         }),
         execute: recorded(
           recorder,
           "upload_appointment_default_limits_md",
-          (input) =>
-            uploadAppointmentDefaultLimitsMd(sb, shopId, {
-              md_content: input.md_content,
+          async (input) => {
+            const { md_content } = await resolveMdContent(
+              "docs/chat-instructions/scheduler/templates/appointment-default-limits.md",
+              input,
+            );
+            return uploadAppointmentDefaultLimitsMd(sb, shopId, {
+              md_content,
               audit,
-            }),
+            });
+          },
         ),
       }),
 
       upload_closed_dates_md: tool({
         description:
-          "Replace the FUTURE closed_dates set from a markdown table. " +
-          "Required columns: closed_date (YYYY-MM-DD), reason. Past " +
-          "closed_dates are NEVER touched (immutable history). Rows in DB " +
-          "but missing from MD (and ≥ today) are deleted. Idempotent on " +
-          "duplicate uploads. Returns: { ok, rows_added, rows_modified, " +
-          "rows_deactivated, … }.",
+          "Replace the FUTURE closed_dates set. **DEFAULT BEHAVIOR " +
+          "(RECOMMENDED): call with no md_content** — orchestrator fetches " +
+          "`docs/chat-instructions/scheduler/templates/closed-dates.md` " +
+          "from the repo's main branch. Required columns: closed_date " +
+          "(YYYY-MM-DD), reason. Past closed_dates are NEVER touched " +
+          "(immutable history). Rows in DB but missing from MD (and ≥ " +
+          "today) are deleted. Idempotent on duplicate uploads. Returns: " +
+          "{ ok, rows_added, rows_modified, rows_deactivated, … }.",
         inputSchema: z.object({
-          md_content: z.string().min(1),
+          md_content: z.string().optional().describe(
+            "OPTIONAL — inline MD escape hatch; default is to fetch from repo.",
+          ),
+          source_branch: z.string().optional().describe(
+            "OPTIONAL — branch override. Default 'main'.",
+          ),
         }),
-        execute: recorded(recorder, "upload_closed_dates_md", (input) =>
-          uploadClosedDatesMd(sb, shopId, { md_content: input.md_content, audit }),
-        ),
+        execute: recorded(recorder, "upload_closed_dates_md", async (input) => {
+          const { md_content } = await resolveMdContent(
+            "docs/chat-instructions/scheduler/templates/closed-dates.md",
+            input,
+          );
+          return uploadClosedDatesMd(sb, shopId, { md_content, audit });
+        }),
       }),
 
       export_routine_services_md: tool({
