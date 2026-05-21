@@ -422,6 +422,49 @@ async function runDiagnosticsBody(
           error_message: result.error_message,
         },
       });
+      // TEMP DEBUG (2026-05-21): write the diagnose result to scheduler_audit_log
+      // so we can read it back via SQL. Production wizard is silently dropping
+      // recommendations even when the edge-function mirror with the same input
+      // returns valid matches — need the actual stage1/stage2 outcomes to
+      // diagnose. Remove this block once the bug is fixed.
+      try {
+        await supabase.from("scheduler_audit_log").insert({
+          session_id: chatId,
+          step: "service_concern_picker",
+          event_type: "diagnose_concern_result_debug",
+          event_detail: {
+            chip_service_key: item.service_key,
+            description_chars: item.explanation_text.length,
+            description_preview: item.explanation_text.slice(0, 200),
+            matched_kind: result.matched_kind,
+            matched_category_key: result.matched_category_key,
+            matched_subcategory_slug: result.matched_subcategory_slug,
+            recommended_service_key: result.recommended_testing_service?.service_key ?? null,
+            unanswered_count: result.unanswered_question_ids.length,
+            stage1_confidence: result.stage1_confidence,
+            stage2_confidence: result.stage2_confidence,
+            stage3_confidence: result.stage3_confidence,
+            parsed_ok: result.parsed_ok,
+            extracted_facts_present: result.extracted_facts !== null,
+            tokens_in: result.tokens_in,
+            tokens_out: result.tokens_out,
+            latency_ms: result.latency_ms,
+            error_message_truncated: (result.error_message ?? "").slice(0, 500),
+            catalog_size: catalog.categories.length,
+          },
+          model_used: result.model,
+          latency_ms: result.latency_ms,
+          input_tokens: result.tokens_in,
+          output_tokens: result.tokens_out,
+          error_message: result.error_message,
+        });
+      } catch (auditErr) {
+        // Audit failure must never break the wizard flow.
+        Sentry.captureException(auditErr, {
+          tags: { surface: "diagnose_debug_audit" },
+          level: "warning",
+        });
+      }
       // Find the matched category record for question lookup. We re-walk
       // the catalog here (cheap — ≤20 entries) rather than expose it from
       // diagnoseConcern's signature.
