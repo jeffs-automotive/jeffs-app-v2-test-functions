@@ -1,167 +1,755 @@
 # Question Required Facts
 
 <!--
-Each row maps one concern_questions.id to a comma-separated list of
-ExtractedFacts slot names that must be present in the Stage 1 LLM's
-extracted facts for the question to count as "answered" by the
-Stage 3 question-gate.
+Authored 2026-05-21 via 14 parallel Opus 4.7 research agents, one per concern
+category. Each agent decided which (if any) of the 29 canonical ExtractedFacts
+slots each active question's information need maps to, following five mapping
+principles (minimalism, conservatism over over-asking, logical-AND semantics,
+empty-default is safe, customer-natural-phrasing test).
 
-This MD does NOT create / modify / delete questions themselves — only
-the required_facts column. Use upload_concern_category_md to add /
-edit / remove questions; this file edits the fact-gating list ONLY.
+This file consolidates the 14 per-category drafts at:
+  .tmp/agent-output/required-facts-CATEGORY.md
+into the wide-table format the upload_question_required_facts_md tool expects.
 
-What required_facts does
-------------------------
-The 3-stage diagnostic LLM extracts atomic facts (slot values) from
-the customer's free-text description in Stage 1. Stage 3 then walks
-the active question list for the chosen subcategory and decides
-which questions are already answered by those extracted facts vs.
-which still need to be asked. A question with required_facts =
-['speed_specific_mph'] is treated as answered iff Stage 1's facts
-object has a non-null `speed_specific_mph`. Multiple slots means ALL
-must be present (logical AND).
+Total: 729 active questions across 14 categories. Rows with required_facts =
+(none) leave the column empty (= safe over-ask default; Stage 3 free-text
+answer-marker may still mark answered). Rows with one or more slot names
+require ALL slots to be present in Stage 1 extracted facts for the
+deterministic mapper to mark the question as answered.
 
-Empty cell → no fact gating (question is only marked answered if
-Stage 1's free-text answer-marker explicitly flagged it). This is
-the default for every question post-migration.
-
-Required columns: question_id, required_facts.
-  - question_id: positive integer; must exist in concern_questions
-    for this shop AND be active.
-  - required_facts: comma-list of ExtractedFacts slot names from the
-    29 canonical keys (see below), or blank / `(none)` / `-` to clear.
-
-Diff semantics
---------------
-  - Rows OMITTED from the MD are LEFT ALONE.
-  - Blank cell / `(none)` / `-` CLEARS the mapping (sets to '{}').
-  - Non-empty cell REPLACES the list (in MD order, de-duped).
-
-Validation rules (BLOCKS apply)
--------------------------------
-  - question_id is a positive integer
-  - question_id exists in concern_questions (active=true required only
-    for the question to TAKE EFFECT; inactive questions are upload-
-    accepted with a warning)
-  - every slot name is in the 29 canonical ExtractedFacts keys
-  - duplicate question_id in same upload
-
-WARNS (surface for confirmation; doesn't block)
------------------------------------------------
-  - Question is currently inactive (required_facts will be stored
-    but won't take effect until the question is reactivated)
-
-The 29 ExtractedFacts slots (with one-line examples)
-----------------------------------------------------
-  - location_side: left/right/both/varies/unsure
-      ("driver side", "passenger side", "both wheels")
-  - location_axle: front/rear/all/unsure
-      ("front wheels", "back of the car")
-  - speed_band: stopped/idle/low_speed/mid_speed/highway/specific_mph/all_speeds
-      ("on the highway", "in parking lots")
-  - speed_specific_mph: integer
-      ("shakes at 65 mph" → 65)
-  - onset_timing: cold_start/after_warming_up/at_startup/at_first_turn_on/
-      during_driving/at_stop/over_bumps/when_braking/when_accelerating/
-      when_turning/when_idling/always/intermittent
-      ("only when cold", "when I press the gas")
-  - started_when: just_now/today/days_ago/weeks_ago/months_ago/a_year_plus/
-      since_purchase/sudden_onset/gradually
-      ("started today", "gradually got worse")
-  - hvac_mode: ac/heat/defrost/fan_only/both_ac_and_heat/none
-      ("when I turn on the AC", "on defrost")
-  - airflow_state: strong_normal/weak_overall/only_on_highest_setting/
-      only_one_zone_blows/no_airflow/uneven_temperature_between_zones
-      ("only works on max fan", "no air at all")
-  - pedal_feel: normal/soft_spongy/hard_unresponsive/sinks_to_floor/
-      pulsating/grabby
-      ("pedal goes to the floor", "spongy brakes")
-  - smell_descriptor: sweet_or_maple_syrup/burnt_oil/gasoline_or_fuel/
-      rotten_egg_or_sulfur/burning_electrical_or_plastic/
-      burning_rubber_or_hot_brakes/musty_or_mildew/exhaust_inside_cabin/
-      other_burning
-      ("sweet smell", "burning oil")
-  - noise_descriptor: squealing_high_pitched/grinding_metallic/knocking_deep/
-      ticking_or_tapping/clunking/rattling/hissing/humming_or_whirring/
-      whining/popping_or_clicking/buzzing/creaking_or_squeaking/roaring/
-      scraping
-      ("metal-on-metal grinding", "clunk over bumps")
-  - smoke_color: white/blue_or_gray/black/steam_thin_wispy/visible_but_color_unclear
-      ("white smoke from the tailpipe")
-  - fluid_color: brown_or_black/green_or_orange_or_yellow_or_pink/red_or_pink/
-      clear_yellow_or_light_brown/clear_no_color/blue_or_light_blue/
-      thick_dark_brown
-      ("green puddle under the car")
-  - fluid_under_car_location: under_engine_front/under_middle/under_rear/
-      under_a_wheel/under_passenger_side/under_driver_side/unsure
-      ("puddle under the front")
-  - warning_light_named: free text
-      ("check engine", "TPMS", "ABS")
-  - warning_light_behavior: steady_on/flashing_or_blinking/comes_and_goes/
-      came_on_then_off/multiple_lights_at_once
-      ("CEL is blinking", "light came on then went off")
-  - engine_running: normal/rough_idle/misfiring/surging/stalls/wont_start/
-      slow_crank/wont_crank_just_clicks/died_while_driving/no_sound_at_all
-      ("won't start, just clicks", "shakes at idle")
-  - recent_action: brake_work/tire_rotation_or_replacement/tire_air_added/
-      oil_change/battery_or_alternator_work/alignment/general_service/
-      jump_started/ac_recharge_or_service/accident_or_impact/
-      hit_pothole_or_curb/car_wash_or_driven_through_water/car_sat_unused/
-      fuel_fill_up/none_mentioned
-      ("just had new brakes", "after my oil change")
-  - parking_brake_state: released/engaged_or_partially_engaged/customer_unsure
-      ("parking brake is off")
-  - tire_state: low_pressure/flat/visible_damage/sidewall_cracking/
-      uneven_wear/normal_or_unknown
-      ("got a nail in it", "sidewall is cracked")
-  - steering_feel: normal/heavy_or_hard_to_turn/loose_or_sloppy/
-      wheel_off_center_while_straight/stiff_one_direction_only
-      ("hard to steer", "loose steering")
-  - pull_direction: left/right/varies_or_wanders/no_pull
-      ("pulls to the left", "wanders side-to-side")
-  - lights_state: dim_or_flickering/dim_at_idle_brighten_when_revving/
-      normal/completely_dead
-      ("dim headlights", "lights brighten when I rev")
-  - accessory_affected: free text
-      ("driver window", "radio")
-  - weather_condition: cold_weather/hot_weather/rainy_or_wet/humid/
-      after_snow_or_ice/any_weather
-      ("only on cold mornings")
-  - sound_or_smoke_location_zone: under_hood/under_car/from_a_wheel/
-      behind_dashboard/from_vents/from_tailpipe/passenger_footwell/
-      inside_cabin_general/unsure
-      ("from under the hood", "from the front-right wheel")
-  - vehicle_powertrain: gasoline/diesel/hybrid/electric/turbocharged/not_stated
-      ("it's a diesel")
-  - drivable_state: drivable_normally/drivable_but_concerned/
-      not_drivable_needs_tow/stranded_now
-      ("can't drive it", "stuck on the road")
-  - customer_request_type: diagnose_problem/fix_a_known_problem/
-      replace_specific_part/routine_maintenance/pre_trip_inspection/
-      second_opinion/just_get_new_tires
-      ("want to diagnose the noise", "just need an oil change")
-
-Parallel-mirror obligation
---------------------------
-This list MUST stay in lock-step with EXTRACTED_FACTS_ALL_KEYS in
-scheduler-app/src/lib/scheduler/wizard/llm/extracted-facts.ts. The
-uploader's allow-list is a duplicate constant in
-supabase/functions/_shared/tools/scheduler-admin-catalog.ts. When
-the schema changes (slot added/removed/renamed), update all three
-in the same commit.
-
-Two-step flow: dry_run=true (default) → review diff →
-dry_run=false + expected_confirm_token=<token>.
-
-The 5 sample rows below illustrate the format — replace with the
-question_ids you're actually editing. Omitted question_ids are
-LEFT ALONE; you don't need to list the whole catalog.
+Upload via Claude Desktop: ask the orchestrator MCP "upload question required
+facts" - it will use upload_question_required_facts_md (two-step dry-run-
+then-confirm flow).
 -->
 
 | question_id | required_facts |
 | --- | --- |
-| 688 | speed_specific_mph |
-| 691 | location_side |
+| 623 | speed_band |
+| 624 | (none) |
+| 839 | (none) |
+| 626 | weather_condition |
+| 627 | recent_action |
+| 628 | (none) |
+| 629 | location_axle, location_side |
+| 630 | (none) |
+| 631 | (none) |
+| 632 | location_axle, location_side |
+| 633 | (none) |
+| 634 | started_when |
+| 635 | drivable_state |
+| 636 | recent_action |
+| 637 | (none) |
+| 638 | pedal_feel |
+| 639 | (none) |
+| 640 | (none) |
+| 641 | recent_action |
+| 642 | (none) |
+| 643 | (none) |
+| 644 | (none) |
+| 645 | (none) |
+| 646 | (none) |
+| 647 | recent_action |
+| 648 | speed_band |
+| 649 | (none) |
+| 864 | (none) |
+| 651 | (none) |
+| 652 | (none) |
+| 653 | recent_action |
+| 654 | (none) |
+| 655 | (none) |
+| 656 | (none) |
+| 657 | (none) |
+| 658 | (none) |
+| 873 | recent_action |
+| 874 | engine_running |
+| 875 | lights_state |
+| 876 | recent_action |
+| 877 | (none) |
+| 878 | recent_action |
+| 879 | started_when |
+| 880 | (none) |
+| 525 | engine_running |
+| 526 | weather_condition |
+| 527 | (none) |
+| 528 | (none) |
+| 529 | recent_action |
+| 530 | lights_state |
+| 531 | engine_running |
+| 532 | (none) |
+| 533 | (none) |
+| 534 | (none) |
+| 535 | (none) |
+| 536 | (none) |
+| 537 | (none) |
+| 538 | weather_condition |
+| 539 | lights_state |
+| 540 | lights_state |
+| 541 | warning_light_named |
+| 542 | lights_state |
+| 543 | smell_descriptor |
+| 544 | noise_descriptor |
+| 545 | recent_action |
+| 1631 | accessory_affected |
+| 1632 | (none) |
+| 1633 | started_when |
+| 1634 | (none) |
+| 1635 | (none) |
+| 1636 | (none) |
+| 1637 | (none) |
+| 553 | (none) |
+| 554 | (none) |
+| 555 | onset_timing |
+| 556 | weather_condition |
+| 557 | recent_action |
+| 558 | recent_action |
+| 559 | warning_light_named |
+| 560 | lights_state |
+| 561 | (none) |
+| 562 | warning_light_named |
+| 563 | noise_descriptor |
+| 564 | engine_running |
+| 565 | (none) |
+| 566 | recent_action |
+| 567 | (none) |
+| 568 | (none) |
+| 569 | speed_band |
+| 570 | (none) |
+| 571 | recent_action |
+| 572 | started_when |
+| 573 | (none) |
+| 574 | (none) |
+| 575 | (none) |
+| 576 | (none) |
+| 577 | speed_band |
+| 578 | smell_descriptor |
+| 579 | started_when |
+| 580 | weather_condition |
+| 937 | (none) |
+| 938 | onset_timing |
+| 939 | (none) |
+| 940 | (none) |
+| 941 | (none) |
+| 942 | airflow_state |
+| 943 | recent_action |
+| 944 | airflow_state |
+| 945 | (none) |
+| 946 | (none) |
+| 947 | (none) |
+| 948 | (none) |
+| 949 | started_when |
+| 950 | (none) |
+| 595 | weather_condition |
+| 596 | (none) |
+| 597 | (none) |
+| 598 | (none) |
+| 599 | (none) |
+| 600 | (none) |
+| 601 | (none) |
+| 602 | noise_descriptor |
+| 603 | (none) |
+| 604 | (none) |
+| 605 | (none) |
+| 606 | (none) |
+| 607 | (none) |
+| 608 | sound_or_smoke_location_zone |
+| 965 | smell_descriptor |
+| 966 | onset_timing |
 | 967 | hvac_mode |
-| 727 | recent_action, warning_light_behavior |
-| 716 | location_side, location_axle |
+| 968 | (none) |
+| 969 | (none) |
+| 970 | recent_action |
+| 971 | (none) |
+| 972 | location_side |
+| 973 | airflow_state |
+| 974 | hvac_mode |
+| 975 | (none) |
+| 976 | (none) |
+| 977 | recent_action |
+| 978 | (none) |
+| 323 | fluid_under_car_location |
+| 324 | (none) |
+| 325 | (none) |
+| 326 | warning_light_named |
+| 327 | (none) |
+| 328 | (none) |
+| 329 | (none) |
+| 986 | fluid_color |
+| 987 | smell_descriptor |
+| 988 | (none) |
+| 989 | fluid_under_car_location |
+| 990 | (none) |
+| 991 | (none) |
+| 992 | (none) |
+| 993 | fluid_under_car_location |
+| 994 | steering_feel |
+| 995 | (none) |
+| 996 | fluid_color |
+| 997 | (none) |
+| 998 | (none) |
+| 999 | (none) |
+| 1000 | pedal_feel |
+| 1001 | pedal_feel |
+| 1002 | warning_light_named |
+| 1003 | (none) |
+| 1004 | fluid_under_car_location |
+| 1005 | (none) |
+| 1006 | (none) |
+| 1736 | (none) |
+| 1737 | fluid_color |
+| 1738 | fluid_under_car_location |
+| 1739 | (none) |
+| 1740 | (none) |
+| 1741 | (none) |
+| 1742 | recent_action |
+| 1743 | fluid_under_car_location |
+| 1744 | smell_descriptor |
+| 1745 | (none) |
+| 1746 | (none) |
+| 1747 | (none) |
+| 1748 | (none) |
+| 1749 | (none) |
+| 1021 | fluid_color |
+| 1022 | fluid_under_car_location |
+| 1023 | (none) |
+| 1024 | (none) |
+| 1025 | (none) |
+| 1026 | (none) |
+| 1027 | weather_condition |
+| 71 | onset_timing |
+| 72 | (none) |
+| 73 | (none) |
+| 74 | (none) |
+| 75 | (none) |
+| 76 | onset_timing |
+| 77 | onset_timing |
+| 78 | (none) |
+| 79 | location_axle |
+| 80 | location_side |
+| 81 | (none) |
+| 82 | (none) |
+| 83 | recent_action |
+| 84 | speed_band |
+| 85 | (none) |
+| 86 | (none) |
+| 87 | (none) |
+| 88 | (none) |
+| 89 | (none) |
+| 90 | (none) |
+| 91 | (none) |
+| 92 | (none) |
+| 93 | (none) |
+| 94 | onset_timing |
+| 95 | weather_condition |
+| 96 | (none) |
+| 97 | (none) |
+| 98 | started_when |
+| 99 | onset_timing |
+| 100 | onset_timing |
+| 101 | (none) |
+| 102 | (none) |
+| 103 | recent_action |
+| 104 | (none) |
+| 105 | speed_band |
+| 106 | (none) |
+| 107 | hvac_mode |
+| 108 | (none) |
+| 109 | (none) |
+| 110 | sound_or_smoke_location_zone |
+| 111 | (none) |
+| 112 | (none) |
+| 113 | (none) |
+| 114 | (none) |
+| 115 | (none) |
+| 116 | (none) |
+| 117 | (none) |
+| 118 | onset_timing |
+| 119 | recent_action |
+| 120 | onset_timing |
+| 121 | onset_timing |
+| 122 | onset_timing |
+| 123 | (none) |
+| 124 | (none) |
+| 125 | (none) |
+| 126 | (none) |
+| 127 | onset_timing |
+| 128 | onset_timing |
+| 129 | (none) |
+| 130 | (none) |
+| 131 | speed_band |
+| 132 | weather_condition |
+| 133 | (none) |
+| 134 | (none) |
+| 135 | sound_or_smoke_location_zone |
+| 136 | accessory_affected |
+| 137 | lights_state |
+| 138 | (none) |
+| 139 | engine_running |
+| 140 | weather_condition |
+| 758 | (none) |
+| 759 | (none) |
+| 760 | (none) |
+| 761 | (none) |
+| 762 | (none) |
+| 763 | recent_action |
+| 764 | (none) |
+| 765 | (none) |
+| 766 | recent_action |
+| 767 | (none) |
+| 768 | (none) |
+| 769 | steering_feel |
+| 770 | (none) |
+| 771 | (none) |
+| 772 | (none) |
+| 773 | (none) |
+| 774 | (none) |
+| 775 | (none) |
+| 776 | (none) |
+| 777 | (none) |
+| 778 | (none) |
+| 1848 | drivable_state |
+| 1849 | drivable_state |
+| 1850 | (none) |
+| 1851 | pedal_feel |
+| 1852 | steering_feel |
+| 1853 | (none) |
+| 1854 | drivable_state |
+| 786 | customer_request_type |
+| 787 | (none) |
+| 788 | (none) |
+| 789 | (none) |
+| 790 | (none) |
+| 791 | (none) |
+| 792 | (none) |
+| 793 | (none) |
+| 794 | (none) |
+| 795 | (none) |
+| 796 | engine_running |
+| 797 | vehicle_powertrain |
+| 798 | (none) |
+| 799 | drivable_state |
+| 455 | (none) |
+| 456 | speed_band |
+| 457 | warning_light_behavior |
+| 458 | started_when |
+| 459 | recent_action |
+| 460 | (none) |
+| 461 | (none) |
+| 462 | speed_band |
+| 463 | (none) |
+| 464 | hvac_mode |
+| 465 | warning_light_behavior |
+| 466 | smell_descriptor |
+| 467 | engine_running |
+| 468 | (none) |
+| 469 | onset_timing |
+| 470 | hvac_mode |
+| 471 | (none) |
+| 472 | onset_timing |
+| 473 | warning_light_behavior |
+| 474 | engine_running |
+| 475 | weather_condition |
+| 476 | speed_band |
+| 477 | (none) |
+| 478 | engine_running |
+| 479 | warning_light_behavior |
+| 480 | (none) |
+| 481 | (none) |
+| 482 | (none) |
+| 1168 | engine_running |
+| 1169 | engine_running |
+| 1170 | weather_condition |
+| 1171 | recent_action |
+| 1172 | (none) |
+| 1173 | started_when |
+| 1174 | warning_light_behavior |
+| 1175 | (none) |
+| 1176 | (none) |
+| 1177 | weather_condition |
+| 1178 | (none) |
+| 1179 | engine_running |
+| 1180 | smell_descriptor |
+| 1181 | engine_running |
+| 1182 | (none) |
+| 1183 | (none) |
+| 1184 | warning_light_behavior |
+| 1185 | (none) |
+| 1186 | (none) |
+| 1187 | noise_descriptor |
+| 1188 | speed_band |
+| 1189 | speed_band |
+| 1190 | engine_running |
+| 1191 | onset_timing |
+| 1192 | hvac_mode |
+| 1193 | warning_light_behavior |
+| 1194 | recent_action |
+| 1195 | (none) |
+| 511 | engine_running |
+| 512 | warning_light_behavior |
+| 513 | (none) |
+| 514 | weather_condition |
+| 515 | noise_descriptor |
+| 516 | (none) |
+| 517 | onset_timing |
+| 183 | (none) |
+| 184 | (none) |
+| 185 | recent_action |
+| 186 | (none) |
+| 187 | (none) |
+| 188 | (none) |
+| 189 | pull_direction |
+| 190 | (none) |
+| 191 | recent_action |
+| 192 | recent_action |
+| 193 | steering_feel |
+| 194 | tire_state |
+| 195 | recent_action |
+| 196 | (none) |
+| 197 | onset_timing |
+| 198 | (none) |
+| 199 | (none) |
+| 200 | (none) |
+| 201 | (none) |
+| 202 | recent_action |
+| 203 | weather_condition |
+| 1224 | (none) |
+| 1225 | (none) |
+| 1226 | (none) |
+| 1227 | (none) |
+| 1228 | (none) |
+| 1229 | started_when |
+| 1230 | (none) |
+| 211 | recent_action |
+| 212 | started_when |
+| 213 | (none) |
+| 214 | speed_band |
+| 215 | (none) |
+| 216 | (none) |
+| 217 | (none) |
+| 218 | pull_direction |
+| 219 | steering_feel |
+| 220 | (none) |
+| 221 | (none) |
+| 222 | tire_state |
+| 223 | steering_feel |
+| 224 | speed_band |
+| 225 | hvac_mode |
+| 226 | sound_or_smoke_location_zone |
+| 227 | (none) |
+| 228 | (none) |
+| 229 | (none) |
+| 230 | onset_timing |
+| 231 | fluid_color |
+| 232 | (none) |
+| 233 | sound_or_smoke_location_zone |
+| 234 | smoke_color |
+| 235 | (none) |
+| 236 | (none) |
+| 237 | (none) |
+| 238 | recent_action |
+| 239 | onset_timing |
+| 240 | sound_or_smoke_location_zone |
+| 241 | (none) |
+| 242 | recent_action |
+| 243 | (none) |
+| 244 | warning_light_named |
+| 245 | onset_timing |
+| 246 | sound_or_smoke_location_zone |
+| 247 | (none) |
+| 248 | warning_light_named |
+| 249 | engine_running |
+| 250 | (none) |
+| 251 | (none) |
+| 252 | onset_timing |
+| 253 | (none) |
+| 254 | hvac_mode |
+| 255 | sound_or_smoke_location_zone |
+| 256 | (none) |
+| 257 | accessory_affected |
+| 258 | (none) |
+| 259 | (none) |
+| 260 | onset_timing |
+| 261 | location_axle, location_side |
+| 262 | parking_brake_state |
+| 263 | (none) |
+| 264 | (none) |
+| 265 | (none) |
+| 266 | steering_feel |
+| 267 | hvac_mode |
+| 268 | (none) |
+| 269 | (none) |
+| 270 | (none) |
+| 271 | (none) |
+| 272 | (none) |
+| 273 | (none) |
+| 274 | (none) |
+| 275 | (none) |
+| 276 | hvac_mode |
+| 277 | (none) |
+| 278 | (none) |
+| 279 | (none) |
+| 280 | (none) |
+| 281 | onset_timing |
+| 282 | (none) |
+| 283 | smell_descriptor |
+| 284 | (none) |
+| 285 | (none) |
+| 286 | smoke_color |
+| 287 | (none) |
+| 288 | onset_timing |
+| 289 | onset_timing |
+| 290 | (none) |
+| 291 | (none) |
+| 292 | smell_descriptor |
+| 293 | vehicle_powertrain |
+| 294 | (none) |
+| 295 | onset_timing |
+| 296 | vehicle_powertrain |
+| 297 | (none) |
+| 298 | engine_running |
+| 299 | (none) |
+| 300 | warning_light_behavior |
+| 301 | smell_descriptor |
+| 302 | smell_descriptor |
+| 303 | (none) |
+| 304 | (none) |
+| 305 | (none) |
+| 306 | recent_action |
+| 307 | onset_timing |
+| 308 | (none) |
+| 309 | location_side, location_axle |
+| 310 | pull_direction |
+| 311 | (none) |
+| 312 | parking_brake_state |
+| 313 | pedal_feel |
+| 314 | smell_descriptor |
+| 315 | (none) |
+| 316 | hvac_mode |
+| 317 | smell_descriptor |
+| 318 | (none) |
+| 319 | (none) |
+| 320 | (none) |
+| 321 | (none) |
+| 322 | drivable_state |
+| 660 | speed_band |
+| 661 | started_when |
+| 662 | steering_feel |
+| 663 | fluid_color, fluid_under_car_location |
+| 664 | noise_descriptor |
+| 665 | (none) |
+| 666 | (none) |
+| 667 | (none) |
+| 668 | (none) |
+| 669 | (none) |
+| 670 | recent_action |
+| 671 | (none) |
+| 672 | speed_band |
+| 673 | (none) |
+| 674 | steering_feel |
+| 675 | recent_action |
+| 676 | recent_action |
+| 677 | pull_direction |
+| 678 | recent_action |
+| 679 | (none) |
+| 680 | (none) |
+| 681 | noise_descriptor |
+| 682 | speed_band |
+| 683 | (none) |
+| 684 | (none) |
+| 685 | sound_or_smoke_location_zone |
+| 686 | (none) |
+| 687 | weather_condition |
+| 688 | speed_band |
+| 689 | onset_timing |
+| 690 | (none) |
+| 691 | (none) |
+| 692 | recent_action |
+| 693 | recent_action |
+| 694 | tire_state |
+| 695 | pull_direction |
+| 696 | pull_direction |
+| 697 | (none) |
+| 698 | onset_timing |
+| 699 | recent_action |
+| 700 | recent_action |
+| 701 | recent_action |
+| 702 | (none) |
+| 703 | (none) |
+| 704 | (none) |
+| 705 | (none) |
+| 706 | location_side, location_axle |
+| 707 | (none) |
+| 708 | (none) |
+| 709 | location_axle, location_side |
+| 710 | tire_state |
+| 711 | (none) |
+| 712 | tire_state |
+| 713 | drivable_state |
+| 714 | (none) |
+| 715 | started_when |
+| 716 | location_axle, location_side |
+| 717 | started_when |
+| 718 | (none) |
+| 719 | (none) |
+| 720 | recent_action |
+| 721 | tire_state |
+| 722 | drivable_state |
+| 723 | warning_light_behavior |
+| 724 | warning_light_behavior |
+| 725 | tire_state |
+| 726 | weather_condition |
+| 727 | recent_action |
+| 728 | recent_action |
+| 729 | warning_light_behavior |
+| 730 | (none) |
+| 731 | location_axle |
+| 732 | (none) |
+| 733 | recent_action |
+| 734 | (none) |
+| 735 | pull_direction |
+| 736 | (none) |
+| 737 | tire_state |
+| 738 | (none) |
+| 739 | (none) |
+| 740 | (none) |
+| 741 | (none) |
+| 742 | tire_state |
+| 743 | (none) |
+| 744 | location_axle |
+| 745 | (none) |
+| 746 | (none) |
+| 747 | (none) |
+| 748 | weather_condition |
+| 749 | recent_action |
+| 750 | (none) |
+| 751 | recent_action |
+| 752 | (none) |
+| 753 | (none) |
+| 754 | speed_band |
+| 755 | (none) |
+| 756 | (none) |
+| 757 | (none) |
+| 141 | speed_band |
+| 142 | (none) |
+| 143 | (none) |
+| 144 | (none) |
+| 145 | recent_action |
+| 146 | recent_action |
+| 147 | pull_direction |
+| 148 | onset_timing |
+| 149 | pedal_feel |
+| 150 | speed_band |
+| 151 | (none) |
+| 152 | (none) |
+| 153 | recent_action |
+| 154 | pull_direction |
+| 155 | onset_timing |
+| 156 | (none) |
+| 157 | (none) |
+| 158 | warning_light_behavior |
+| 159 | engine_running |
+| 160 | onset_timing |
+| 161 | (none) |
+| 162 | onset_timing |
+| 163 | (none) |
+| 164 | (none) |
+| 165 | (none) |
+| 166 | onset_timing |
+| 167 | (none) |
+| 168 | (none) |
+| 169 | (none) |
+| 170 | (none) |
+| 171 | pull_direction |
+| 172 | (none) |
+| 173 | (none) |
+| 174 | (none) |
+| 175 | tire_state |
+| 1476 | speed_band |
+| 1477 | speed_band |
+| 1478 | (none) |
+| 1479 | recent_action |
+| 1480 | (none) |
+| 1481 | recent_action |
+| 1482 | (none) |
+| 372 | warning_light_behavior |
+| 373 | engine_running |
+| 374 | smell_descriptor |
+| 375 | recent_action |
+| 376 | smoke_color |
+| 377 | warning_light_behavior |
+| 378 | noise_descriptor |
+| 2219 | warning_light_named |
+| 2220 | (none) |
+| 2221 | drivable_state |
+| 2222 | (none) |
+| 2223 | (none) |
+| 2224 | recent_action |
+| 385 | started_when |
+| 386 | engine_running |
+| 387 | lights_state |
+| 388 | accessory_affected |
+| 389 | recent_action |
+| 390 | noise_descriptor |
+| 391 | (none) |
+| 392 | drivable_state |
+| 393 | (none) |
+| 394 | recent_action |
+| 395 | noise_descriptor |
+| 396 | warning_light_behavior |
+| 397 | (none) |
+| 398 | warning_light_behavior |
+| 399 | (none) |
+| 400 | smoke_color |
+| 401 | (none) |
+| 402 | fluid_color |
+| 403 | (none) |
+| 404 | (none) |
+| 405 | drivable_state |
+| 406 | weather_condition |
+| 407 | warning_light_behavior |
+| 408 | tire_state |
+| 409 | (none) |
+| 410 | recent_action |
+| 411 | recent_action |
+| 412 | warning_light_behavior |
+| 413 | (none) |
+| 414 | (none) |
+| 415 | pedal_feel |
+| 416 | pull_direction |
+| 417 | recent_action |
+| 418 | recent_action |
+| 419 | warning_light_behavior |
+| 420 | parking_brake_state |
+| 421 | pedal_feel |
+| 422 | (none) |
+| 423 | (none) |
+| 424 | (none) |
+| 425 | fluid_under_car_location |
+| 426 | warning_light_behavior |
+| 427 | recent_action |
+| 428 | recent_action |
+| 429 | (none) |
+| 430 | (none) |
+| 431 | warning_light_behavior |
+| 432 | recent_action |
+| 433 | recent_action |
+| 434 | warning_light_behavior |
+| 435 | (none) |
+| 436 | (none) |
+| 437 | weather_condition |
+| 438 | recent_action |
+| 439 | (none) |
+| 440 | (none) |
+| 441 | steering_feel |
+| 442 | (none) |
+| 443 | noise_descriptor |
+| 444 | onset_timing |
+| 445 | recent_action |
+| 446 | fluid_color |
+| 447 | warning_light_behavior |
+| 448 | warning_light_named |
+| 449 | warning_light_behavior |
+| 450 | (none) |
+| 451 | engine_running |
+| 452 | smell_descriptor |
+| 453 | recent_action |
+| 454 | accessory_affected |
