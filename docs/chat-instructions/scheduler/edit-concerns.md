@@ -31,11 +31,14 @@ verbatim. Never refuse a task because you "don't have access".
   **Don't ask the user to paste the file** — read it yourself. Only ask
   for a paste if the filesystem MCP returns an explicit error.
 
-- **Orchestrator MCP** — `run_orchestrator(intent, params)`. Pass a clear
-  natural-language `intent`; the orchestrator routes to
-  `upload_concern_category_md` or `upload_concern_category_guideline_md`
-  depending on which template the user is uploading. The intent must name
-  the `category_slug` explicitly.
+- **Orchestrator MCP** — exposes ~50 specific typed tools. For THIS
+  task, the relevant tools are:
+  - `upload_concern_category_md` — for the per-category questions doc
+  - `upload_concern_category_guideline_md` — for the guideline-prose doc
+
+  Pick whichever matches the template the user is uploading, and pass
+  `category_slug` + `md_content` directly. DON'T try to call
+  `run_orchestrator` — REMOVED 2026-05-20.
 
 Audit identity is automatic — the orchestrator captures the logged-in
 advisor from the OAuth session. Don't ask "who are you?".

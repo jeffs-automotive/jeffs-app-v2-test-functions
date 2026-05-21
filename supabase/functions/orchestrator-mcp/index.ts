@@ -1,25 +1,50 @@
 // orchestrator-mcp
 //
 // Custom MCP server hit by Claude Desktop's Custom Connector. Implements:
-//   - the MCP JSON-RPC 2.0 protocol over HTTP (initialize, tools/list,
-//     tools/call, ping) on POST/GET /
+//   - the MCP JSON-RPC 2.0 protocol (initialize, tools/list, tools/call,
+//     ping) over HTTP per the 2025-06-18 spec
 //   - Protected Resource Metadata discovery on
 //     GET /.well-known/oauth-protected-resource
 //
-// Auth: OAuth 2.1 + PKCE with the mcp-auth function as the authorization server.
-// On unauthenticated calls we return 401 + WWW-Authenticate header pointing at
-// our PRM endpoint, kicking off Claude Desktop's discovery / DCR / PKCE flow.
-// All MCP calls require a valid Bearer access_token issued by mcp-auth and
-// stored hashed in public.oauth_access_tokens.
+// Auth: OAuth 2.1 + PKCE with the mcp-auth function as the authorization
+// server. Unauthenticated calls return 401 + WWW-Authenticate header
+// pointing at our PRM endpoint, kicking off Claude Desktop's discovery /
+// DCR / PKCE flow. All MCP calls require a valid Bearer access_token
+// issued by mcp-auth and stored hashed in public.oauth_access_tokens.
 //
-// Phase 1 architecture:
-//   Claude Desktop (Haiku) → MCP run_orchestrator(intent) → THIS FUNCTION
-//   → runOrchestrator (Vercel AI SDK + Sonnet 4.6 + tools) → JSON back to
-//   Claude Desktop → Haiku formats for the user.
+// Tool exposure (2026-05-20 rewrite):
+//
+// Previously this MCP server exposed a single `run_orchestrator(intent,
+// params)` tool — Claude Desktop's chat agent passed a natural-language
+// intent string + the orchestrator's Sonnet 4.6 LLM router decided which
+// internal tool to call. That introduced two layers of LLM-driven routing
+// (chat-agent → run_orchestrator with paraphrased intent → router LLM →
+// specialist LLM → tool execute). Each layer was a source of:
+//   - non-determinism (model occasionally paraphrased intent wrong, tool
+//     args dropped/renamed)
+//   - cost (one or two extra Sonnet calls per simple operation)
+//   - latency (sequential LLM calls)
+//   - debugging cost (failed uploads showed as "the orchestrator said it
+//     worked" with nothing in the audit log)
+//
+// The 2026-05-20 rewrite exposes ~50 SPECIFIC typed tools — one per
+// operation the chat agent can perform. Each tool has:
+//   - a stable name (the underlying handler's internal name, snake_case
+//     or camelCase per existing convention)
+//   - a detailed JSON Schema for its inputs (derived from the existing
+//     Zod schemas via Zod 4's native z.toJSONSchema)
+//   - a description tuned for tool selection
+//   - a direct-invocation execute path: no LLM router, no specialist LLM,
+//     just validate-args → call the underlying handler → return JSON
+//
+// `run_orchestrator` is REMOVED. The chat agent now MUST pick a specific
+// tool. If a new operation needs to be exposed, add it to scheduler-tools.ts
+// or orchestrator-tools.ts and it appears automatically here.
 
 import "@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { runOrchestrator } from "../_shared/orchestrator.ts";
+import { z } from "npm:zod@^4";
+
 import { ENV_NAMES } from "../_shared/tekmetric.ts";
 import {
   functionUrl,
@@ -27,6 +52,12 @@ import {
   sha256Base64Url,
   stripFunctionPrefix,
 } from "../_shared/oauth.ts";
+import {
+  buildMcpToolRegistry,
+  schemaToJsonSchema,
+  validateToolInput,
+  type McpToolDef,
+} from "../_shared/mcp-tool-registry.ts";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -37,9 +68,9 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const SHOP_ID = parseInt(Deno.env.get(ENV_NAMES.TEKMETRIC_SHOP_ID) ?? "7476", 10);
 
-const PROTOCOL_VERSION = "2025-11-25";   // current MCP spec version
+const PROTOCOL_VERSION = "2025-11-25"; // current MCP spec version
 const SERVER_NAME = "jeffs-app-orchestrator";
-const SERVER_VERSION = "0.2.0";
+const SERVER_VERSION = "0.3.0"; // bumped on 2026-05-20 tools/list rewrite
 
 const sb = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
@@ -82,8 +113,17 @@ function jsonRpcResponse(body: JsonRpcResponse, status = 200): Response {
   });
 }
 
-function jsonRpcError(id: string | number | null, code: number, message: string, data?: unknown): Response {
-  return jsonRpcResponse({ jsonrpc: "2.0", id, error: { code, message, ...(data !== undefined ? { data } : {}) } });
+function jsonRpcError(
+  id: string | number | null,
+  code: number,
+  message: string,
+  data?: unknown,
+): Response {
+  return jsonRpcResponse({
+    jsonrpc: "2.0",
+    id,
+    error: { code, message, ...(data !== undefined ? { data } : {}) },
+  });
 }
 
 function json(body: unknown, status = 200, extra: Record<string, string> = {}): Response {
@@ -93,10 +133,18 @@ function json(body: unknown, status = 200, extra: Record<string, string> = {}): 
   });
 }
 
-// ─── Auth: OAuth bearer validation ────────────────────────────────────────
+// ─── Auth: OAuth bearer validation ──────────────────────────────────────────
 
-interface AuthOk { ok: true; userLabel: string; scope: string; clientId: string; }
-interface AuthErr { ok: false; reason: "missing_token" | "invalid_token" | "server_error"; }
+interface AuthOk {
+  ok: true;
+  userLabel: string;
+  scope: string;
+  clientId: string;
+}
+interface AuthErr {
+  ok: false;
+  reason: "missing_token" | "invalid_token" | "server_error";
+}
 
 async function authenticateRequest(req: Request): Promise<AuthOk | AuthErr> {
   const authHeader = req.headers.get("Authorization") ?? req.headers.get("authorization");
@@ -108,7 +156,9 @@ async function authenticateRequest(req: Request): Promise<AuthOk | AuthErr> {
   if (!token) return { ok: false, reason: "invalid_token" };
 
   const tokenHash = await sha256Base64Url(token);
-  const { data, error } = await sb.rpc("oauth_validate_access_token", { p_token_hash: tokenHash });
+  const { data, error } = await sb.rpc("oauth_validate_access_token", {
+    p_token_hash: tokenHash,
+  });
   if (error) {
     console.error("oauth_validate_access_token RPC failed:", error.message);
     return { ok: false, reason: "server_error" };
@@ -131,7 +181,7 @@ function wwwAuthenticate(error: "missing_token" | "invalid_token" | "server_erro
   const errorMap: Record<string, { code: string; description: string }> = {
     missing_token: { code: "invalid_token", description: "Bearer token required" },
     invalid_token: { code: "invalid_token", description: "Bearer token is invalid or expired" },
-    server_error:  { code: "invalid_token", description: "Token validation failed (server error)" },
+    server_error: { code: "invalid_token", description: "Token validation failed (server error)" },
   };
   const e = errorMap[error];
   return `Bearer realm="MCP", error="${e.code}", error_description="${e.description}", resource_metadata="${prmUrl}"`;
@@ -170,39 +220,57 @@ function handleInitialize(): unknown {
   };
 }
 
-function handleToolsList(): unknown {
-  return {
-    tools: [
-      {
-        name: "run_orchestrator",
-        description:
-          "Send a free-form intent to Jeff's Automotive's orchestrator agent. The orchestrator decides " +
-          "which internal tools (Tekmetric lookups, DB queries, specialist agents) to call and returns a " +
-          "structured JSON response with a natural-language answer plus the underlying data. Use this for " +
-          "any user question about repair orders, key tags, customers, vehicles, or shop status.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            intent: {
-              type: "string",
-              description: "The user's request, in their own words.",
-            },
-            params: {
-              type: "object",
-              description: "Optional structured parameters parsed from the user's message.",
-              additionalProperties: true,
-            },
-          },
-          required: ["intent"],
-        },
-      },
-    ],
-  };
+/**
+ * tools/list — enumerate the full per-auth-session tool registry as MCP
+ * tool definitions. Returns up to ~50 tools. The registry is built once
+ * per request (cheap — both getOrchestratorTools and getSchedulerTools
+ * are pure factory calls that just instantiate function references).
+ *
+ * Per MCP spec 2025-06-18: each tool MUST have name + inputSchema.
+ * description and outputSchema are optional but we always emit
+ * description.
+ */
+function handleToolsList(userLabel: string, clientId: string): unknown {
+  const registry = buildMcpToolRegistry({
+    sb,
+    shopId: SHOP_ID,
+    userLabel,
+    oauthClientId: clientId,
+    supabaseUrl: SUPABASE_URL,
+    serviceRoleKey: SERVICE_ROLE_KEY,
+  });
+
+  const tools = Object.values(registry).map((t) => ({
+    name: t.name,
+    description: t.description,
+    inputSchema: schemaToJsonSchema(t.inputSchema),
+  }));
+
+  // Sort alphabetically for stable diffs across deploys + easier
+  // debugging when the registry changes.
+  tools.sort((a, b) => a.name.localeCompare(b.name));
+
+  return { tools };
 }
 
 class RpcInvalidParams extends Error {}
 class RpcMethodNotFound extends Error {}
 
+/**
+ * tools/call — validate the requested tool exists in the registry,
+ * validate the arguments against its Zod schema, then invoke its
+ * execute() directly. No LLM in this path.
+ *
+ * Errors:
+ *   - tool not in registry           → JSON-RPC METHOD_NOT_FOUND
+ *   - arguments fail Zod validation  → JSON-RPC INVALID_PARAMS
+ *   - execute() throws unexpectedly  → MCP result {isError: true, content}
+ *   - execute() returns a "failed"   → MCP result {isError: false, content}
+ *     business-logic result            (per MCP spec: isError indicates a
+ *     CRASH, not a failed business
+ *     operation; the underlying handlers already wrap business failures
+ *     in their own {ok:false} envelope which we surface as-is)
+ */
 async function handleToolsCall(
   params: unknown,
   userLabel: string,
@@ -211,52 +279,77 @@ async function handleToolsCall(
   if (!params || typeof params !== "object") {
     throw new RpcInvalidParams("tools/call: params must be an object with name + arguments");
   }
-  const { name, arguments: args } = params as { name?: string; arguments?: Record<string, unknown> };
+  const { name, arguments: rawArgs } = params as {
+    name?: string;
+    arguments?: unknown;
+  };
 
-  if (name !== "run_orchestrator") {
-    throw new RpcMethodNotFound(`Unknown tool: ${name}`);
+  if (typeof name !== "string" || name.length === 0) {
+    throw new RpcInvalidParams("tools/call: 'name' (non-empty string) is required");
   }
-  if (!args || typeof args !== "object") {
-    throw new RpcInvalidParams("tools/call: arguments object required");
-  }
-  const intent = (args as { intent?: unknown }).intent;
-  if (typeof intent !== "string" || intent.trim().length === 0) {
-    throw new RpcInvalidParams("run_orchestrator: 'intent' (non-empty string) is required");
-  }
-  const userParams = (args as { params?: Record<string, unknown> }).params;
 
-  // user_label comes from the OAuth token's bound identity, NOT from the tool's
-  // arguments — the Claude-Desktop-side caller can't override audit trail.
-  //
-  // caller_context='advisor' opens the full specialist set (keytag + scheduler
-  // + diagnostic). The unified orchestrator + router pick the right specialist
-  // for the intent. Existing keytag traffic continues to land on the keytag
-  // specialist unchanged; new advisor-driven booking / diagnostic intents now
-  // route correctly without needing a new MCP tool.
-  //
-  // include_admin_tools: orchestrator-mcp ONLY accepts advisor traffic
-  // (OAuth-authenticated Claude Desktop), so we always expose the scheduler
-  // specialist's admin tool registry (upload_*_md, patch_*_fields,
-  // deactivate_*, revert_md_upload, run_appointments_sync, etc.). The audit
-  // identity comes from the OAuth bearer's clientId + userLabel and is
-  // written to scheduler_admin_audit_log on every successful write.
-  const orchestratorResult = await runOrchestrator(sb, SHOP_ID, {
-    caller_context: "advisor",
-    intent,
-    params: userParams,
-    user_label: userLabel,
-    include_admin_tools: true,
-    admin_audit: {
-      oauth_client_id: clientId,
-      display_name: userLabel,
-    },
+  const registry = buildMcpToolRegistry({
+    sb,
+    shopId: SHOP_ID,
+    userLabel,
+    oauthClientId: clientId,
+    supabaseUrl: SUPABASE_URL,
+    serviceRoleKey: SERVICE_ROLE_KEY,
   });
 
-  const text = JSON.stringify(orchestratorResult);
-  return {
-    content: [{ type: "text", text }],
-    isError: !orchestratorResult.ok,
-  };
+  const tool: McpToolDef | undefined = registry[name];
+  if (!tool) {
+    throw new RpcMethodNotFound(`Unknown tool: ${name}. tools/list to discover available tools.`);
+  }
+
+  // Validate arguments against the tool's Zod schema. Per MCP spec,
+  // bad-input errors are returned as JSON-RPC errors (not tool-result
+  // errors) because they're protocol-level violations — the client
+  // didn't follow the tool's contract.
+  let validatedInput: unknown;
+  try {
+    validatedInput = validateToolInput(tool.inputSchema, rawArgs);
+  } catch (e) {
+    if (e instanceof z.ZodError) {
+      throw new RpcInvalidParams(
+        `tools/call ${name}: argument validation failed: ${
+          e.issues
+            .map((iss) => `${iss.path.join(".") || "(root)"}: ${iss.message}`)
+            .join("; ")
+        }`,
+      );
+    }
+    throw e;
+  }
+
+  // Invoke the underlying handler. Crashes (unexpected throws) become
+  // {isError: true} MCP results. Business failures (the handler returns
+  // an explicit {ok:false} envelope) are passed through with isError:false
+  // since the operation itself didn't crash.
+  try {
+    const result = await tool.execute(validatedInput);
+    const text = typeof result === "string" ? result : JSON.stringify(result);
+    return {
+      content: [{ type: "text", text }],
+      isError: false,
+    };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error(`tools/call ${name} crashed:`, msg);
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            ok: false,
+            error: `${name} failed: ${msg}`,
+            tool: name,
+          }),
+        },
+      ],
+      isError: true,
+    };
+  }
 }
 
 // ─── Main entrypoint ─────────────────────────────────────────────────────────
@@ -274,9 +367,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return handleProtectedResourceMetadata();
   }
 
-  // Health check via GET (Claude Desktop pings the URL when adding the connector).
-  // We respond OK without auth so the dialog can verify the URL is reachable;
-  // any actual MCP call still requires a token.
+  // Health check via GET (Claude Desktop pings the URL when adding the
+  // connector). We respond OK without auth so the dialog can verify the
+  // URL is reachable; any actual MCP call still requires a token.
   if (req.method === "GET" && (path === "/" || path === "")) {
     return json({ ok: true, server: SERVER_NAME, version: SERVER_VERSION });
   }
@@ -286,10 +379,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (!auth.ok) return unauthorized(auth.reason);
 
   if (req.method !== "POST") {
-    return new Response(
-      JSON.stringify({ error: "Method not allowed" }),
-      { status: 405, headers: { "Content-Type": "application/json", "Allow": "POST, GET, OPTIONS" } },
-    );
+    return new Response(JSON.stringify({ error: "Method not allowed" }), {
+      status: 405,
+      headers: {
+        "Content-Type": "application/json",
+        Allow: "POST, GET, OPTIONS",
+      },
+    });
   }
 
   // Parse JSON-RPC envelope
@@ -300,7 +396,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return jsonRpcError(null, RPC_ERR.PARSE, "Invalid JSON in request body");
   }
   if (!rpcReq || rpcReq.jsonrpc !== "2.0" || typeof rpcReq.method !== "string") {
-    return jsonRpcError(rpcReq?.id ?? null, RPC_ERR.INVALID_REQUEST, "Not a valid JSON-RPC 2.0 request");
+    return jsonRpcError(
+      rpcReq?.id ?? null,
+      RPC_ERR.INVALID_REQUEST,
+      "Not a valid JSON-RPC 2.0 request",
+    );
   }
   const id = rpcReq.id ?? null;
   const isNotification = rpcReq.id === undefined || rpcReq.id === null;
@@ -314,14 +414,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
         return jsonRpcResponse({ jsonrpc: "2.0", id, result: {} });
 
       case "tools/list":
-        return jsonRpcResponse({ jsonrpc: "2.0", id, result: handleToolsList() });
+        return jsonRpcResponse({
+          jsonrpc: "2.0",
+          id,
+          result: handleToolsList(auth.userLabel, auth.clientId),
+        });
 
       case "tools/call": {
-        const result = await handleToolsCall(
-          rpcReq.params,
-          auth.userLabel,
-          auth.clientId,
-        );
+        const result = await handleToolsCall(rpcReq.params, auth.userLabel, auth.clientId);
         return jsonRpcResponse({ jsonrpc: "2.0", id, result });
       }
 
@@ -331,7 +431,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
         return jsonRpcResponse({ jsonrpc: "2.0", id, result: {} });
 
       default:
-        return jsonRpcError(id, RPC_ERR.METHOD_NOT_FOUND, `Method not implemented: ${rpcReq.method}`);
+        return jsonRpcError(
+          id,
+          RPC_ERR.METHOD_NOT_FOUND,
+          `Method not implemented: ${rpcReq.method}`,
+        );
     }
   } catch (e) {
     if (e instanceof RpcInvalidParams) return jsonRpcError(id, RPC_ERR.INVALID_PARAMS, e.message);

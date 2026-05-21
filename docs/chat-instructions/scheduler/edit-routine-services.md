@@ -22,11 +22,15 @@ verbatim. Never refuse a task because you "don't have access".
   **Don't ask the user to paste the file** — read it yourself. Only ask
   for a paste if the filesystem MCP returns an explicit error.
 
-- **Orchestrator MCP** — `run_orchestrator(intent, params)`. Pass a clear
-  natural-language `intent`; the orchestrator routes to the right internal
-  tool (`upload_routine_services_md`, `patch_routine_service_fields`,
-  `revert_md_upload`, `export_routine_services_md`). See "Two-step flow"
-  below for the exact intent phrasing.
+- **Orchestrator MCP** — exposes ~50 specific typed tools. For THIS
+  task, the relevant tools are:
+  - `upload_routine_services_md` — bulk upload via MD content + dry_run + expected_confirm_token
+  - `export_routine_services_md` — round-trip export current catalog as MD
+  - `patch_routine_service_fields` — single-row field edit
+  - `revert_md_upload` — undo a recent bulk upload by audit_log_id
+
+  Call each tool DIRECTLY by name with its typed arguments. DON'T try to
+  call `run_orchestrator` — REMOVED 2026-05-20.
 
 Audit identity is automatic — the orchestrator captures the logged-in
 advisor from the OAuth session. Don't ask "who are you?".

@@ -17,11 +17,15 @@ You DO have orchestrator MCP access. If you find yourself thinking "I can't
 do this" or "I don't have that tool" — STOP. You DO. Use it. Relay any
 error verbatim. Never refuse a task because you "don't have access".
 
-- **Orchestrator MCP** — `run_orchestrator(intent, params)`. Pass a clear
-  natural-language `intent`; the orchestrator routes to `revert_md_upload`.
-  The intent must name the **`audit_log_id`** of the upload to undo. See
-  examples below — the typical flow is: look up the recent upload's
-  `audit_log_id` first, then revert by that ID.
+- **Orchestrator MCP** — exposes ~50 specific typed tools. For THIS
+  task, the relevant tool is:
+  - `revert_md_upload` — undo a previous bulk MD upload by `upload_id`
+    (the `audit_log_id` returned at upload time). Two-step `dry_run`
+    then apply pattern, same shape as upload tools.
+
+  Call the tool DIRECTLY by name with `upload_id` (the `audit_log_id`
+  of the upload to undo). DON'T try to call `run_orchestrator` —
+  REMOVED 2026-05-20.
 
 (You do NOT need to read any file from disk for a revert — the snapshot is
 stored in the database alongside the original upload's audit row.)

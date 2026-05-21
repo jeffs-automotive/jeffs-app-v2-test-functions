@@ -10,7 +10,7 @@ data, find the right task file in the index below.
 
 ---
 
-## You have two MCP tools — they WORK. Use them. Assume access.
+## You have MCP tools — they WORK. Use them. Assume access.
 
 If you find yourself thinking "I don't have access to that tool" — STOP.
 You DO have access. Try the call. If it errors, RELAY the error verbatim
@@ -20,13 +20,21 @@ to the user. Never refuse a task because you "don't have the tool".
   advisor's machine. Used by every `scheduler/edit-*.md` task. Each task
   file gives you the exact absolute path to read.
 
-- **Orchestrator MCP** — `run_orchestrator(intent, params)`. Every shop-data
-  read or write goes through this. You pass a natural-language `intent`
-  string; the orchestrator routes it to the right internal tool and returns
-  a JSON result. Each task file shows the exact intent phrasing to use.
+- **Orchestrator MCP** — exposes ~50 specific typed tools (one per shop
+  operation). Examples: `upload_testing_services_md`, `lookup_customer_by_phone`,
+  `assignKeytagToRo`, `list_available_slots`, `block_appointment_capacity`,
+  `find_orphan_customers`, `runBulkReconcile`. Call the tool that matches
+  the user's request — DON'T try to pass a natural-language `intent` to
+  the orchestrator. There is NO `run_orchestrator` tool anymore (removed
+  2026-05-20); pick a specific tool from the catalog.
+
+  Each task file below documents the EXACT tool name + arguments to use
+  for each user-facing operation. Browse `tools/list` (your MCP client
+  exposes it automatically) for the full catalog with JSON Schemas.
 
 **Audit identity is automatic.** Don't ask "who are you?" — the orchestrator
-captures the logged-in advisor's identity from the OAuth session.
+captures the logged-in advisor's identity from the OAuth session and
+threads it into every write tool's audit columns.
 
 ---
 

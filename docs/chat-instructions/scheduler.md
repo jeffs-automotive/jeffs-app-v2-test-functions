@@ -11,10 +11,22 @@ You DO have orchestrator MCP access. If you find yourself thinking "I can't
 do this" or "I don't have that tool" — STOP. You DO. Use it. Relay any
 error verbatim. Never refuse a task because you "don't have access".
 
-- **Orchestrator MCP** — `run_orchestrator(intent, params)`. Pass a clear
-  natural-language `intent`; the orchestrator routes to the right internal
-  scheduler tool (lookups, sync, orphan finder, single-row edits, etc.).
-  See examples throughout this doc.
+- **Orchestrator MCP** — exposes ~50 specific typed scheduler + keytag
+  tools. Call each tool DIRECTLY by name with its typed arguments —
+  `tools/list` from your MCP client gives you the full catalog +
+  JSON Schema for each. The most common ones for scheduler reads /
+  one-off edits:
+  - `lookup_customer_by_phone`, `lookup_customer_by_name`, `lookup_vehicles_for_customer`
+  - `list_available_slots`, `get_earliest_available_slots`, `get_slot_capacity`
+  - `get_customer_upcoming_appointments`, `get_appointment_eligibility`
+  - `patch_testing_service_fields`, `patch_routine_service_fields`,
+    `upsert_testing_service`, `upsert_routine_service`,
+    `deactivate_testing_service`, `deactivate_routine_service`
+  - `block_appointment_capacity`, `unblock_appointment_capacity`
+  - `lookup_testing_service_pricing`, `list_routine_services`, `list_concern_questions`
+  - `find_orphan_customers`, `run_appointments_sync`
+
+  DON'T try to call `run_orchestrator` — REMOVED 2026-05-20.
 
 - **Filesystem MCP** — only needed if the user is doing a **bulk MD upload**
   (testing services, routine services, concerns, closed dates, appointment
@@ -115,7 +127,7 @@ Each category has 6-12 **sub-categories** (specific symptom patterns) with 5-7 p
 | `export_*_md` | Round-trip exports — download current state as MD, edit locally, upload back |
 | `run_appointments_sync` | On-demand call to the appointments-sync edge function (catches up the local appointments shadow from Tekmetric) |
 
-You don't call these directly — you call `run_orchestrator` and it routes to the right one. But knowing what's available helps you frame the intent.
+**Call each tool directly by name** through the Orchestrator MCP connector — your client lists them via `tools/list`. The table above lists the most relevant tools for this task; `tools/list` will show the full catalog with each tool's JSON Schema.
 
 ---
 
@@ -327,7 +339,7 @@ When the audit log returns multiple rows, structure newest-first with the time, 
 
 > **User:** Set brake inspection price to $45.
 >
-> **You:** *(call `run_orchestrator(intent: "Set the starting price for the brake_inspection testing service to 4500 cents")`)*
+> **You:** *(call `patch_testing_service_fields(service_key="brake_inspection", starting_price_cents=4500)`)*
 >
 > **You:** Updated **Brake Inspection** price to **$45.00**. (Changed: `starting_price_cents`.)
 
@@ -352,7 +364,7 @@ When the audit log returns multiple rows, structure newest-first with the time, 
 >
 > **User:** yes
 >
-> **You:** *(call `run_orchestrator(intent: "Upload the brakes concern category markdown with this content: <full pasted MD>")`)*
+> **You:** *(call `upload_concern_category_md(category_slug="brakes", md_content="<full pasted MD>")`)*
 >
 > **You:** Uploaded **brakes** concern doc. 7 sub-categories, 44 questions. (**1 added**: `vibration_when_braking`; 0 modified; 0 deactivated.)
 
@@ -403,7 +415,7 @@ When the audit log returns multiple rows, structure newest-first with the time, 
 
 > **User:** Are any customers orphaned?
 >
-> **You:** *(call `run_orchestrator(intent: "List orphan customers in the local cache")`)*
+> **You:** *(call `find_orphan_customers()`)*
 >
 > **You:** Found **2 orphan customers** (cached locally but no longer in Tekmetric):
 > - Customer ID 102233 (last activity 2026-04-15)
@@ -417,7 +429,7 @@ When the audit log returns multiple rows, structure newest-first with the time, 
 >
 > **You:** Running appointments sync — give me a few seconds…
 >
-> *(call `run_orchestrator(intent: "Run the appointments sync now")`)*
+> *(call `run_appointments_sync()`)*
 >
 > **You:** Sync done in 3.2s. **47** appointments in the rolling 7-day window. **0** soft-deleted, **2** newly added, **1** modified.
 
