@@ -41,6 +41,12 @@ error verbatim. Never refuse a task because you "don't have access".
   task doc from your project knowledge for the format + the dry-run-then-
   confirm flow — don't handle bulk uploads from THIS general scheduler doc.
 
+  **"Upload" = call the orchestrator MCP tool, NOT attach to project
+  knowledge.** See `INSTRUCTIONS.md` → "What 'upload' MEANS in this project"
+  for the canonical 4-step recipe. File sizes up to several MB are fine —
+  DON'T refuse based on a perceived size limit; pass the content and let
+  the tool surface a real error if one occurs.
+
 Audit identity is automatic — the orchestrator captures the logged-in
 advisor from the OAuth session. Don't ask "who are you?".
 

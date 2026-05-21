@@ -12,6 +12,84 @@
 > - `upload_concern_category_md` — replaces ONE category's sub-cats + questions
 > - `upload_concern_category_guideline_md` — replaces ONE category's guideline prose (added 2026-05-18)
 
+## When the advisor says "upload the {cat} concern doc" / "upload the {cat} guideline" — exact recipe
+
+Concerns are uploaded ONE CATEGORY AT A TIME (not all 14 at once). The
+advisor names the category (`brakes`, `electrical`, `hvac`, `leak`, `noise`,
+`other`, `performance`, `pulling`, `smell`, `smoke`, `steering`, `tires`,
+`vibration`, `warning_light`) and whether they're uploading the checklist
+or the guideline.
+
+Follow these 4 steps. Don't skip, don't reorder, don't add Claude Desktop
+project-knowledge attachment. The orchestrator tool IS the upload — your
+job is to wire the file content into the tool argument.
+
+### A. Uploading a CATEGORY CHECKLIST (sub-categories + questions)
+
+```
+Step 1: read_file({ path: "<templates folder>\concerns\{cat}\{cat}-concerns.md" })
+        → returns the full MD content as a string
+
+Step 2: upload_concern_category_md({
+          category_slug: "{cat}",        // brakes / electrical / hvac / etc.
+          md_content: <content from step 1>,
+          dry_run: true
+        })
+        → returns { diff_summary, validation_errors, validation_warnings, confirm_token }
+
+Step 3: Render the diff to the advisor in plain language. Wait for explicit "yes".
+
+Step 4: upload_concern_category_md({
+          category_slug: "{cat}",
+          md_content: <SAME content from step 1, byte-for-byte>,
+          dry_run: false,
+          expected_confirm_token: <token from step 2>
+        })
+        → returns { audit_log_id, applied_changes }
+```
+
+### B. Uploading a CATEGORY GUIDELINE (prose paragraph the LLM reads first)
+
+```
+Step 1: read_file({ path: "<templates folder>\concerns\{cat}\{cat}-guideline.md" })
+
+Step 2: upload_concern_category_guideline_md({
+          category_slug: "{cat}",
+          md_content: <content from step 1>,
+          dry_run: true
+        })
+        → returns { diff_summary, validation_errors, validation_warnings, confirm_token }
+
+Step 3: Render the diff. Wait for "yes".
+
+Step 4: upload_concern_category_guideline_md({
+          category_slug: "{cat}",
+          md_content: <SAME content from step 1>,
+          dry_run: false,
+          expected_confirm_token: <token from step 2>
+        })
+```
+
+**The templates folder path is in `scheduler.md` (Filesystem MCP section).**
+You append `concerns\{cat}\{cat}-concerns.md` or `concerns\{cat}\{cat}-guideline.md`
+to that folder path.
+
+**Common Haiku mistakes to avoid:**
+
+- ❌ Treating "upload" as "attach the file to Claude Desktop's project
+  knowledge". It's NOT — you call the orchestrator tool. Project files
+  are routing/instructions; the database holds the data.
+- ❌ Refusing based on a perceived file size limit. Files up to several MB
+  are fine; pass the content and let the tool surface a real error.
+- ❌ Asking the user to paste the file content. You have Filesystem MCP —
+  read it yourself.
+- ❌ Skipping the dry_run step and going straight to apply. The
+  `expected_confirm_token` is REQUIRED on the apply call.
+- ❌ Forgetting `category_slug` — these tools take BOTH `category_slug` AND
+  `md_content`. Missing the slug → INVALID_PARAMS error.
+- ❌ Mixing up the two tools — `_md` is the checklist; `_guideline_md` is
+  the prose. They write different tables.
+
 ## Tools you have for this task — they WORK, use them
 
 You DO have BOTH of these. If you find yourself thinking "I can't read that

@@ -38,6 +38,64 @@ threads it into every write tool's audit columns.
 
 ---
 
+## What "upload" MEANS in this project — read this carefully
+
+When the advisor says "upload {X}", "apply {X}", "push {X}", or anything
+similar referring to scheduler data (testing services, routine services,
+concerns, subcategory descriptions, required facts, closed dates,
+appointment limits, etc.), it means EXACTLY this:
+
+1. **Read the source file from disk** using `read_file(...)` on the
+   Filesystem MCP. The path comes from `scheduler.md` (Filesystem MCP
+   section — points at the templates folder) + the filename named in
+   the matching `scheduler/edit-*.md` task doc.
+2. **Pass the full file content** as the `md_content` argument to the
+   matching `upload_*_md` tool on the Orchestrator MCP. The tool defaults
+   to `dry_run: true` — it returns a diff + a confirm_token.
+3. **Show the diff to the advisor** and get explicit "yes".
+4. **Re-call the same tool** with `dry_run: false` + `expected_confirm_token`
+   from step 2. That writes the changes to the database.
+
+**"Upload" NEVER means:**
+
+- ❌ "Add this file to the Claude Desktop project knowledge files." Project
+  files are for ROUTING + INSTRUCTIONS, not data. Data goes to the DB via
+  the orchestrator tool.
+- ❌ "Attach the file to this conversation." The orchestrator tool needs
+  the content passed as a `md_content` string argument, not as an
+  attachment.
+- ❌ "I should refuse because the file is too big." Files up to several MB
+  are fine — the orchestrator handles them. A 200KB markdown file is
+  routine. If the tool returns an actual size error, relay it verbatim;
+  don't pre-emptively refuse based on a guess.
+
+**Concretely, when the advisor says "upload subcategory descriptions":**
+
+```
+Step 1: read_file({ path: "<templates folder>\subcategory-descriptions.md" })
+        → returns the full MD content as a string
+
+Step 2: upload_subcategory_descriptions_md({
+          md_content: <content from step 1>,
+          dry_run: true
+        })
+        → returns { diff_summary, validation_errors, validation_warnings, confirm_token }
+
+Step 3: Show the advisor the diff in plain language. Wait for "yes".
+
+Step 4: upload_subcategory_descriptions_md({
+          md_content: <same content as step 1>,
+          dry_run: false,
+          expected_confirm_token: <token from step 2>
+        })
+        → returns { audit_log_id, applied_changes }
+```
+
+The same shape applies to every `upload_*_md` tool. The per-task doc
+(`scheduler/edit-*.md`) names the exact tool + filename for that task.
+
+---
+
 ## Index — open the right task file for the topic
 
 When the user asks something matching the left column, OPEN the file on the

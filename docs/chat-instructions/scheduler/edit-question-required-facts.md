@@ -9,6 +9,51 @@
 > **Source-of-truth file:** [`./templates/question-required-facts.md`](./templates/question-required-facts.md)
 > **Tools:** `upload_question_required_facts_md` (bulk), `export_question_required_facts_md`, `revert_md_upload`
 
+## When the advisor says "upload question required facts" — exact recipe
+
+Follow these 4 steps. Don't skip, don't reorder, don't add Claude Desktop
+project-knowledge attachment. The orchestrator tool IS the upload — your
+job is to wire the file content into the tool argument.
+
+```
+Step 1: read_file({ path: "<templates folder>\question-required-facts.md" })
+        → returns the full MD content (a ~17KB string — fine to pass)
+
+Step 2: upload_question_required_facts_md({
+          md_content: <content from step 1>,
+          dry_run: true                  // DEFAULT — explicit for clarity
+        })
+        → returns { diff_summary, validation_errors, validation_warnings, confirm_token }
+
+Step 3: Render the diff to the advisor in plain language. Wait for explicit "yes".
+        Do NOT call step 4 without that confirmation.
+
+Step 4: upload_question_required_facts_md({
+          md_content: <SAME content from step 1, byte-for-byte>,
+          dry_run: false,
+          expected_confirm_token: <token from step 2>
+        })
+        → returns { audit_log_id, applied_changes }
+        Save the audit_log_id — needed if revert is requested.
+```
+
+**The templates folder path is in `scheduler.md` (Filesystem MCP section).**
+You append `question-required-facts.md` to that folder path.
+
+**Common Haiku mistakes to avoid:**
+
+- ❌ Treating "upload" as "attach the file to Claude Desktop's project
+  knowledge". It's NOT — you call the orchestrator tool. Project files
+  are routing/instructions; the database holds the data.
+- ❌ Refusing because of a perceived file size limit. This file is only
+  ~17KB. Even the 218KB subcategory-descriptions file is fine. Pass the
+  content; the tool will tell you if it really hits a limit.
+- ❌ Asking the user to paste the file content. You have Filesystem MCP —
+  read it yourself.
+- ❌ Skipping the dry_run step and going straight to apply. The
+  `expected_confirm_token` is REQUIRED on the apply call; you only get
+  it from a dry_run.
+
 ## Tools you have for this task — they WORK, use them
 
 You DO have BOTH of these. If you find yourself thinking "I can't read that
