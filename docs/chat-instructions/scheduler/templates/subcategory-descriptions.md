@@ -33,10 +33,6 @@ discriminate between adjacent subcategories. Every "Distinct from X" sentence
 in a description is load-bearing.
 -->
 
-<!-- ===============================================================
-     BRAKES - 6 subcategories
-=============================================================== -->
-
 ## brakes/high_pitched_squealing
 Description: A high-pitched squeal, squeak, screech, or chirp coming from one or more wheels when the customer applies the brakes, releases them, or sometimes just rolls along with the pedal lightly resting. The noise is typically continuous and sharp — like fingernails on a chalkboard or a tea kettle — and most often signals worn brake pads where the metal wear-indicator tab is now contacting the rotor, glazed pads, or surface contamination after the car sat overnight in rain or humidity. Distinct from metallic_grinding (which is harsher, deeper, metal-on-metal and indicates pads are completely worn through) and from noise/squeaking_or_creaking_over_bumps (which is suspension-related and happens going over bumps, not when braking).
 Positive examples:
@@ -132,10 +128,6 @@ Negative examples:
   - "Pedal vibrates and pulses when I brake hard" → pulsating_or_vibrating_pedal
   - "Hissing under the dash but pedal feels normal" → noise/hissing_noise
 Synonyms: hard pedal, stiff pedal, hard to push, won't push down, rock-hard pedal, pedal like wood, unresponsive pedal, no power assist, brake booster failure, vacuum leak, hard brakes, stiff brakes, frozen pedal, locked pedal, pedal won't depress
-
-<!-- ===============================================================
-     ELECTRICAL - 7 subcategories
-=============================================================== -->
 
 ## electrical/wont_crank_just_clicks
 Description: When the driver turns the key or presses the start button, the engine does not rotate at all — instead there is only a click (or a rapid stream of clicks that sounds like a machine gun). The starter motor is not turning the engine over. Dash lights and headlights may or may not come on, but if they do, they often dim noticeably during the click. Most often caused by a dead / weak battery, corroded battery terminals, or a failing starter / solenoid. Distinct from slow_crank_sluggish_start — there, the engine DOES rotate, just slowly. Distinct from battery_drains_overnight — if the customer mentions the car is regularly fine all day but keeps dying when parked, that's battery_drains_overnight even though it ends in a click.
@@ -245,10 +237,6 @@ Negative examples:
   - "Just clicks when I try to start it this morning, never moved from the driveway" → wont_crank_just_clicks
   - "Engine stalls at stoplights but restarts immediately" → performance/stalling_at_idle_or_when_stopping
 Synonyms: car died while driving, shut off while driving, lost power while driving, dashboard went dark, everything shut off, alternator died on the road, car quit driving, lost all electrical power, total electrical failure, charging system failed, battery died while driving, coasted to a stop, car stranded me on the road
-
-<!-- ===============================================================
-     HVAC - 8 subcategories
-=============================================================== -->
 
 ## hvac/ac_blows_warm_or_hot_air
 Description: Customer says the AC produces NO meaningful cooling — vent air feels the same as outside temperature, or actually warm/hot, even with AC set to max cold. A missing "click" from under the hood when AC is requested is a key tell that the compressor isn't engaging. Common causes: very low refrigerant from a leak, a failed compressor or compressor clutch, or an electrical fault stopping the compressor. Distinct from `ac_is_weak_not_cold_enough` — that is PARTIAL cooling (cool but not cold), whereas this is TOTAL absence of cooling. Distinct from `vents_dont_blow_strongly` — there the airflow VOLUME is weak; here plenty of air comes out but it isn't cold. If customer reports "warm AC plus a sweet smell", route smell first only if smell is the primary complaint; otherwise route here.
@@ -382,10 +370,6 @@ Negative examples:
   - "Defroster doesn't work" → foggy_or_hard_to_defog_windows
 Synonyms: dual zone, dual climate, two zone, zone problem, driver side hot passenger cold, passenger side warm driver cold, one side cold one side hot, left vent right vent different, rear climate not working, blend door actuator, blend door, climate door, temperature door, asymmetric temperature, uneven temperature
 
-<!-- ===============================================================
-     LEAK - 7 subcategories
-=============================================================== -->
-
 ## leak/brown_or_black_puddle_engine_oil
 Description: A slick, oily puddle that ranges from honey-amber (fresh oil) to brown or black (used oil), most often appearing under the front or middle of the car beneath the engine. The fluid feels thick and greasy between the fingers and usually smells of petroleum, sometimes burnt if it has been dripping onto hot exhaust. Distinct from the much thicker, sulfur-smelling gear oil that pools further back near an axle, and distinct from red transmission fluid which tends to drip nearer the center under the transmission.
 Positive examples:
@@ -492,12 +476,6 @@ Negative examples:
   - "Wipers won't move at all" → other/wiper_motor_concern
   - "Window won't roll up" → electrical/power_window_failure
 Synonyms: washer fluid, windshield washer fluid, wiper fluid, washer reservoir leak, windshield cleaner, blue fluid leak, watery blue puddle, washer bottle leak
-
-<!-- end leak/ subcategories -->
-
-<!-- ===============================================================
-     NOISE - 10 subcategories
-=============================================================== -->
 
 ## noise/engine_ticking_or_tapping
 Description: Light, rapid tapping or ticking from the upper part of the engine — most often described as a sewing-machine sound, a typewriter, or a small object tapping fast in time with engine speed. Usually loudest at idle or cold start, tied to camshaft speed, and sometimes quiets as oil pressure builds and the engine warms up. Common causes are low/dirty oil, worn hydraulic lifters, or fuel injector clicks. Distinct from deep_knocking_from_the_engine (which is a deeper, heavier, slower hammering from the lower block) and from electrical_buzzing (continuous electrical tone, not a discrete tap-tap-tap rhythm).
@@ -659,10 +637,6 @@ Negative examples:
   - "Tick from the engine valvetrain" → engine_ticking_or_tapping
 Synonyms: buzz, buzzing, electrical buzz, electrical hum, dash buzz, fuse box buzz, relay buzz, alternator buzz, beehive sound, vibration tone, 60-cycle hum, electrical noise, steady hum, drone (electrical)
 
-<!-- ===============================================================
-     OTHER - 6 subcategories
-=============================================================== -->
-
 ## other/multiple_symptoms_not_sure_what_category
 Description: Customer describes TWO OR MORE genuinely UNRELATED problems happening together — e.g., AC stopped working AND a noise from underneath AND a warning light. Pick this ONLY when the description names symptoms across multiple different systems that don't share an obvious common cause. If the customer describes a single symptom (even a strong or scary one), or multiple symptoms within the SAME system (e.g., "brakes squeal and feel mushy"), route to the matching concrete subcategory instead. Distinct from warning_light/multiple_warning_lights_at_once (which is specifically about dashboard lights with no other symptoms named) and from any single-system multi-symptom (which belongs in that system's category).
 Positive examples:
@@ -774,10 +748,6 @@ Negative examples:
   - "Has been sitting and now I want to take it on a road trip" → other/car_has_been_sitting_unused_for_a_long_time (sat-unused dominates; trip is downstream)
   - "Sitting because I got into an accident" → other/after_a_recent_accident_or_impact (accident is the trigger)
 Synonyms: been sitting, hasn't been driven, sat in the garage, sat in storage, garage queen, barn find, hasn't moved, parked for months, parked for years, dormant, long-term storage, hasn't started in months, hasn't run in a while, stored for the winter, parked outside, sat out in the weather, didn't drive it all winter, inherited, project car that sat
-
-<!-- ===============================================================
-     PERFORMANCE - 9 subcategories
-=============================================================== -->
 
 ## performance/hesitation_or_lag_when_accelerating
 Description: A momentary pause, stumble, or delay between when the driver presses the gas pedal and when the engine responds — feels like the car "hiccups" or briefly holds back before catching and pulling normally. Usually short (a second or two) and most noticeable when first stepping on the gas from a stop, while merging, or while passing. Common causes are dirty mass airflow sensor, weak ignition, vacuum leak, or transmission shift delay. Distinct from low_power_or_wont_accelerate_normally (which is SUSTAINED weakness, not a momentary pause) and from engine_misfire_or_bucking_feeling (which is jerky/bucking with skip-a-beat feel, not a smooth delay).
@@ -916,10 +886,6 @@ Negative examples:
   - "Engine completely shut off while driving" → stalling_while_driving_under_load
 Synonyms: misfire, misfires, misfiring, bucking, bucks, jerking, jerks, kicking, kicks, stumbling, stumbles, skipping, skips, skip-a-beat, sputters under load, jerks under acceleration, cylinder misfire, running on 3 cylinders, engine kicking, jerks when I floor it, popping under acceleration
 
-<!-- ===============================================================
-     PULLING - 6 subcategories
-=============================================================== -->
-
 ## pulling/pulling_only_when_braking
 Description: The car veers or pulls toward one side only when the brake pedal is pressed, then tracks straight again once the brakes are released. Typically caused by a stuck or sticking brake caliper, a collapsed brake hose, contaminated brake fluid, or uneven pad wear on one side — one wheel's brake grips harder than the other and tugs the car that direction. Distinct from steady_drift_while_cruising (which pulls all the time, not just when braking) and from the brakes/* subcategories that cover pedal feel (spongy, hard, pulsating) or noise (squealing, grinding) without a directional pull.
 Positive examples:
@@ -1015,10 +981,6 @@ Negative examples:
   - "Front end clunks over bumps" → noise/clunking_or_knocking_from_front_end
   - "Vibrates at highway speed but goes straight" → vibration/vibration_at_highway_speed
 Synonyms: wanders, wandering, drifts both ways, all over the road, won't stay straight, loose front end, sloppy tracking, unpredictable steering, drifts side to side, tramlining, front end wander, hunts left and right, loose steering feel
-
-<!-- ===============================================================
-     SMELL - 8 subcategories
-=============================================================== -->
 
 ## smell/sweet_smell_maple_syrup_antifreeze
 Description: A distinctive sweet, syrupy odor — most often described like maple syrup, pancake syrup, or "that antifreeze smell" — coming from the car. The smell is ethylene-glycol vapor from a coolant leak dripping onto hot engine parts, most noticeable after driving when the engine is fully warm. Distinct from `leak/green_orange_yellow_or_pink_puddle_coolant` — pick that leak slug when the customer LEADS with a visible green / orange / pink puddle; pick this `smell/` slug when they LEAD with the sweet odor and haven't mentioned a puddle. Distinct from `hvac/bad_smell_from_vents` — pick HVAC when the sweet smell is clearly arriving through the dash vents with the heat on (heater-core leak); pick this `smell/` slug when the sweet smell is from under the hood, around the outside of the car, or "just everywhere".
@@ -1156,12 +1118,6 @@ Negative examples:
   - "Black smoke from the tailpipe" → smoke/black_smoke_from_tailpipe
 Synonyms: exhaust smell, exhaust fumes, tailpipe smell, exhaust in cabin, fumes inside car, exhaust in the car, smoky cabin smell, exhaust leak smell, manifold leak smell, CO smell, carbon monoxide leak, exhaust coming through vents, muffler smell inside, smoky burnt smell inside, exhaust gas in cabin
 
-<!-- end smell/ subcategories -->
-
-<!-- ===============================================================
-     SMOKE - 6 subcategories
-=============================================================== -->
-
 ## smoke/white_smoke_from_tailpipe
 Description: Persistent white smoke coming out of the exhaust pipe at the back of the vehicle, often with a sweet or syrupy smell, frequently paired with a dropping coolant level or the temperature gauge creeping up. Typically caused by coolant leaking into the cylinders through a failed head gasket, cracked head, or bad intake gasket — the coolant gets burned along with the fuel and exits as white smoke. Distinct from normal cold-morning steam (thin wispy vapor that clears within a minute or two of warm-up, no smell — NOT this subcategory) and distinct from blue_or_gray_smoke_from_tailpipe (oil burning — oily smell, not sweet).
 Positive examples:
@@ -1257,10 +1213,6 @@ Negative examples:
   - "Smoke coming up from under the hood" → smoke_from_under_the_hood
   - "Sweet smell from the vents, no smoke" → bad_smell_from_vents
 Synonyms: smoke in cabin, smoke inside car, smoke from vents, dashboard smoke, cabin smoke, smoke in the car, haze inside car, smoke from dash, vent smoke, interior smoke, smoking dashboard
-
-<!-- ===============================================================
-     STEERING - 7 subcategories
-=============================================================== -->
 
 ## steering/hard_to_turn_heavy_steering
 Description: The steering wheel takes significantly more effort to turn than it used to — often most noticeable at low speeds in parking lots and during three-point turns, where the driver has to "crank the wheel" or use both hands. Most commonly caused by a low or leaking power steering fluid level, a failing power steering pump (often accompanied by a whine or groan), a loose or worn serpentine belt, an electric power steering (EPS) motor or module fault, or low tire pressure. Distinct from loose_or_sloppy_steering (which is the opposite problem — the wheel is too easy to move and has play) and from noise_when_turning_the_steering_wheel (which focuses on the SOUND of turning rather than the EFFORT).
@@ -1377,10 +1329,6 @@ Negative examples:
   - "Wheel feels loose with play" → loose_or_sloppy_steering
 Synonyms: clunk through the wheel, clunk in the steering wheel, knock through the steering, felt in the wheel, kickback through the wheel, kickback from bumps, rough ride felt in the wheel, jarring ride, harsh impact through the wheel, wheel kicks over bumps, jolt through the steering, bump steer feeling, worn struts feel, bouncing through the wheel
 
-<!-- ===============================================================
-     TIRES - 7 subcategories
-=============================================================== -->
-
 ## tires/visible_damage_nail_screw_bulge_cut
 Description: Customer has visually identified physical damage to a tire — a nail or screw sticking out, a bubble or bulge on the sidewall, a cut, gash, or slash in the rubber, or another object embedded in the tread. The damage itself is the framing concern, regardless of whether the tire is currently holding air. Pick this whenever the customer names a SPECIFIC visible object or visible deformation, even if they also mention air loss. Distinct from tires/tire_going_flat_losing_air (which is air loss with NO visible cause named) and from tires/dry_rot_sidewall_cracking (where the "damage" is age-related rubber cracking and weather checking, not impact or puncture damage).
 Positive examples:
@@ -1493,10 +1441,6 @@ Negative examples:
   - "Sidewall has cracks, no tire work done recently" → dry_rot_sidewall_cracking
 Synonyms: new symptom after tire work, vibration after new tires, noise after tire rotation, TPMS won't clear after tire service, leak came back after patch, leak after plug, shaking after balance, comeback after tire work, post-tire-work issue, problem after tires installed, returned after tire service
 
-<!-- ===============================================================
-     VIBRATION - 6 subcategories
-=============================================================== -->
-
 ## vibration/steering_wheel_shake_at_highway_speed
 Description: The steering wheel shakes, shimmies, or wobbles in the driver's hands once the car reaches highway speeds — usually starting around 50-65 mph, often peaking in a narrow speed band and easing off above or below it. The customer typically describes feeling the shake THROUGH the wheel (in their hands), and the shake gets progressively worse the longer they drive at that speed. Most often caused by an out-of-balance wheel/tire assembly, a bent rim from pothole damage, separated tire belts, worn wheel bearings, or front suspension wear. Distinct from steering/steering_wheel_shakes_at_highway_speed (which is the same physical event reported as a STEERING / wheel-feel complaint — "the wheel feels loose and wobbly," "I can't keep it steady" — this vibration/ subcategory captures the same shake reported as a VIBRATION the driver feels), and distinct from brakes/pulsating_or_vibrating_pedal (which only happens while braking — this one happens at speed without touching the brake) and from vibration/vibration_or_pulsing_when_braking (which is brake-triggered, not speed-triggered).
 Positive examples:
@@ -1604,10 +1548,6 @@ Negative examples:
   - "Shakes over every bump and pothole" → shaking_or_bouncing_over_bumps_and_rough_roads
   - "Humming wheel bearing noise that gets louder with speed" → noise/humming_or_whirring_at_speed
 Synonyms: constant vibration, steady vibration, always vibrating, vibrating all the time, vibration at every speed, continuous shake, constant tremor, steady hum, steady buzz, low-frequency vibration, hum through the floor, vibration that doesn't change, non-speed-dependent vibration, droning vibration, persistent vibration, vibration everywhere, always shaking, doesn't matter the speed
-
-<!-- ===============================================================
-     WARNING_LIGHT - 12 subcategories
-=============================================================== -->
 
 ## warning_light/check_engine_light
 Description: An amber, yellow, or orange dashboard warning light shaped like the OUTLINE OF AN ENGINE BLOCK — also called the malfunction indicator lamp (MIL). It illuminates because the OBD-II computer detected an actual PROBLEM (emissions, misfire, sensor, EVAP, O2, coil) and stored a diagnostic trouble code. STEADY = persistent issue (loose gas cap, failing sensor); FLASHING = severe live misfire actively damaging the catalytic converter — reduce power and get to a shop. Distinct from service_engine_soon_or_maintenance_required_light, which is a SCHEDULED-MAINTENANCE REMINDER (oil-change due — nothing is actually wrong; uses words "SERVICE ENGINE SOON" / "MAINT REQD" / wrench icon, NOT an engine-outline icon). Distinct from multiple_warning_lights_at_once when the CEL is on alongside several unrelated lights together (usually a charging-system / alternator failure rather than a simple DTC).

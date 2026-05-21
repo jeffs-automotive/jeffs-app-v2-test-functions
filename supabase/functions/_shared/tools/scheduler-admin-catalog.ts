@@ -1588,10 +1588,25 @@ function parseSubcategoryDescriptionsMd(md: string): SubcategoryDescriptionRow[]
     const line = raw.trim();
     const lineNo = i + 1;
 
-    if (line === "" || line.startsWith("<!--") || line.startsWith("---")) {
+    if (line === "" || line.startsWith("---")) {
       // Bullets immediately under a `Positive/Negative examples:` header span
       // blank-free blocks; an explicit blank line terminates the list collection.
       collecting = null;
+      continue;
+    }
+
+    // HTML comments — handle BOTH single-line (`<!-- ... -->` on one line) AND
+    // multi-line (open `<!--` on this line, closing `-->` on a later line).
+    // Walks past intermediate lines so they don't get mis-parsed as Field lines.
+    if (line.startsWith("<!--")) {
+      collecting = null;
+      if (line.includes("-->")) {
+        continue; // single-line comment closed on same line
+      }
+      // Multi-line: skip ahead until we find the closing `-->`.
+      let j = i + 1;
+      while (j < lines.length && !lines[j].includes("-->")) j++;
+      i = j; // jump past the closing line
       continue;
     }
 
