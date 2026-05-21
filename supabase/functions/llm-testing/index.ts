@@ -306,6 +306,17 @@ const STAGE1_JSON_SCHEMA = {
         "'other' subcategory slug. Return null when the description is too " +
         "vague to categorize OR doesn't fit any catalog entry.",
     },
+    confidence: {
+      type: "string",
+      enum: ["high", "medium", "low"],
+      description:
+        "Self-reported confidence in matched_category_key. 'high' = " +
+        "description clearly names the system/symptom that maps to ONE " +
+        "category (e.g., 'ABS light is on' → warning_light_general). " +
+        "'medium' = best of 2-3 plausible picks. 'low' = description too " +
+        "vague to be confident (prefer null + 'low' in this case). When " +
+        "matched_category_key is null, confidence MUST be 'low'.",
+    },
     reasoning: {
       type: "string",
       description:
@@ -313,7 +324,7 @@ const STAGE1_JSON_SCHEMA = {
         "and the customer words that drove the match. Audit-only.",
     },
   },
-  required: ["matched_category_key", "reasoning"],
+  required: ["matched_category_key", "confidence", "reasoning"],
 };
 
 const STAGE2_JSON_SCHEMA = {
@@ -326,6 +337,19 @@ const STAGE2_JSON_SCHEMA = {
         "The subcategory slug whose questions best match the customer's " +
         "symptoms. MUST appear in the subcategory list above. null only if " +
         "you genuinely can't pick (rare).",
+    },
+    confidence: {
+      type: "string",
+      enum: ["high", "medium", "low"],
+      description:
+        "Self-reported confidence in matched_subcategory_slug AND the " +
+        "unanswered_question_ids gap-detect. 'high' = description clearly " +
+        "maps to ONE subcategory and you're sure about which questions are " +
+        "answered. 'medium' = best of 2-3 plausible subcategory picks OR " +
+        "you're unsure about some of the gap-detect calls. 'low' = the " +
+        "description doesn't really fit any subcategory in the list above, " +
+        "or you're forcing a match. Low is a signal to downstream advisor " +
+        "review.",
     },
     unanswered_question_ids: {
       type: "array",
@@ -342,16 +366,23 @@ const STAGE2_JSON_SCHEMA = {
         "One sentence (keep under 280 characters). Audit-only.",
     },
   },
-  required: ["matched_subcategory_slug", "unanswered_question_ids", "reasoning"],
+  required: [
+    "matched_subcategory_slug",
+    "confidence",
+    "unanswered_question_ids",
+    "reasoning",
+  ],
 };
 
 const Stage1ResponseSchema = z.object({
   matched_category_key: z.string().nullable(),
+  confidence: z.enum(["high", "medium", "low"]),
   reasoning: z.string(),
 });
 
 const Stage2ResponseSchema = z.object({
   matched_subcategory_slug: z.string().nullable(),
+  confidence: z.enum(["high", "medium", "low"]),
   unanswered_question_ids: z.array(z.number().int().positive()),
   reasoning: z.string(),
 });
@@ -444,7 +475,18 @@ ${buildChipHintLine(chipHint)}
 
 4. **Never invent IDs or slugs.** Only return values that appear above.
 
-5. **Reasoning is for the audit log.** One sentence under 280 characters.`;
+5. **Reasoning is for the audit log.** One sentence under 280 characters.
+
+6. **Confidence is self-reported.** Pick one of high/medium/low:
+   - **high** — the description clearly names the system or symptom that
+     maps to ONE category (e.g., "ABS light is on" → warning_light_general;
+     "sweet smell under hood" → coolant_leak_testing). No realistic
+     alternative reading.
+   - **medium** — the matched category is the best of 2-3 plausible picks
+     (e.g., a vague "shake" that could be brakes or suspension).
+   - **low** — the description is vague enough that you're not really
+     sure. If this unsure, prefer matched_category_key=null. When null,
+     confidence MUST be 'low'.`;
 }
 
 function buildStage2SystemPrompt(
@@ -516,8 +558,25 @@ ${buildChipHintLine(chipHint)}
      "gradually" / "over weeks" → ANSWERED gradually.
    - Trigger: "only when braking" → drop brake-trigger Qs. "over bumps" →
      drop bump-trigger Qs. "at highway speed" → drop speed-band Qs.
+   - Speed-specific: "at exactly 65 mph" / "at highway speed" / "at 40
+     mph and up" → drop "at what speed?" Qs.
+   - System scoped to exactly the question's body-part: "steering wheel
+     shakes" → "whole car or just steering wheel?" is ANSWERED (steering
+     wheel). "Car shakes" → ANSWERED (whole car). "Brakes squeal" →
+     "are regular brakes still working normally?" is ANSWERED (yes).
+   - Trigger-system named: "when I run the heat" → "AC or heat or both?"
+     ANSWERED (heat). "AC works but smells when I turn it on" → ANSWERED
+     (AC).
+   - Light-name explicit: customer named the warning light verbatim
+     ("maintenance light", "service engine soon", "ABS light", "TPMS
+     light") → drop "which message does the dash say?" IDs.
    - Recent service: "just replaced X" / "no recent work" → ANSWERED.
      Silence on history → UNANSWERED.
+   - Action-already-taken: "I checked the tire pressures and the light
+     still won't go off" → drop "have you added air and the light still
+     won't turn off?" (semantically identical).
+   - Slow-vs-sudden via duration cue: "just filled it last week and it's
+     low again" → ANSWERED slow.
 
    UNANSWERED (keep the ID):
    - Topic not mentioned at all.
@@ -525,7 +584,16 @@ ${buildChipHintLine(chipHint)}
 
 3. **Never invent IDs or slugs.** Only return values that appear above.
 
-4. **Reasoning is for the audit log.** One sentence under 280 characters.`;
+4. **Reasoning is for the audit log.** One sentence under 280 characters.
+
+5. **Confidence is self-reported.** Pick one of high/medium/low:
+   - **high** — description clearly maps to ONE subcategory AND you're
+     confident in the gap-detect choices.
+   - **medium** — subcategory is the best of 2-3 plausible picks OR
+     you're unsure about some of the gap-detect calls.
+   - **low** — the description doesn't really fit any subcategory above,
+     OR you're forcing a match because Stage 1 picked a category but the
+     symptom feels off. Low is a signal to downstream advisor review.`;
 }
 
 function buildUserPrompt(
@@ -638,7 +706,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return corsResp({
       ok: true,
       function: "llm-testing",
-      version: "0.3.0",
+      version: "0.4.0",
       arch: "two-stage-anthropic-sdk-native-structured-outputs",
       stage1_model: STAGE1_MODEL,
       stage2_model: STAGE2_MODEL,

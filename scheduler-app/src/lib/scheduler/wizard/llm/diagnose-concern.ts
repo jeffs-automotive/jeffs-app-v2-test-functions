@@ -135,6 +135,13 @@ export interface DiagnoseConcernResult {
     starting_price_cents: number;
   } | null;
   unanswered_question_ids: number[];
+  /** Self-reported confidence from Stage 1 (category pick). 'low' on
+   *  failure / null match. Added 2026-05-21 as the leading signal for
+   *  routing to advisor handoff when the LLM is unsure. */
+  stage1_confidence: "high" | "medium" | "low";
+  /** Self-reported confidence from Stage 2 (subcategory pick + gap-detect).
+   *  'low' when Stage 2 didn't run (no Stage 1 match) or failed. */
+  stage2_confidence: "high" | "medium" | "low";
   parsed_ok: boolean;
   model: string;
   latency_ms: number;
@@ -168,6 +175,21 @@ const STAGE1_JSON_SCHEMA = {
         "'other' subcategory slug. Return null when the description is too " +
         "vague to categorize OR doesn't fit any catalog entry.",
     },
+    confidence: {
+      type: "string",
+      enum: ["high", "medium", "low"],
+      description:
+        "Your confidence in the matched_category_key. Use 'high' when the " +
+        "description clearly names the system or symptom that maps to one " +
+        "category (e.g., 'ABS light is on' → warning_light_general; " +
+        "'sweet smell under hood' → coolant_leak_testing); use 'medium' " +
+        "when 2-3 categories are plausible and you picked the best of them " +
+        "(e.g., a vague 'shake' that could be brakes or suspension); use " +
+        "'low' when the description is vague enough that the customer might " +
+        "be better served by an advisor handoff (and you'd return null in " +
+        "most such cases). When matched_category_key is null, confidence " +
+        "should be 'low'.",
+    },
     reasoning: {
       type: "string",
       description:
@@ -175,7 +197,7 @@ const STAGE1_JSON_SCHEMA = {
         "and the customer words that drove the match. Audit-only.",
     },
   },
-  required: ["matched_category_key", "reasoning"],
+  required: ["matched_category_key", "confidence", "reasoning"],
 } as const;
 
 const STAGE2_JSON_SCHEMA = {
@@ -188,6 +210,20 @@ const STAGE2_JSON_SCHEMA = {
         "The subcategory slug whose questions best match the customer's " +
         "symptoms. MUST appear in the subcategory list above. null only if " +
         "you genuinely can't pick (rare).",
+    },
+    confidence: {
+      type: "string",
+      enum: ["high", "medium", "low"],
+      description:
+        "Your confidence in the matched_subcategory_slug AND your " +
+        "unanswered_question_ids gap-detect. Use 'high' when the description " +
+        "clearly maps to one subcategory (e.g., 'check engine light is " +
+        "flashing' → check_engine_light with confident gap-detect); use " +
+        "'medium' when the subcategory is the best of 2-3 plausible picks; " +
+        "use 'low' when the description doesn't really fit any subcategory " +
+        "well OR when you're unsure which of the catalog's questions the " +
+        "description actually answers. Low confidence is a signal to a " +
+        "downstream advisor to verify the routing.",
     },
     unanswered_question_ids: {
       type: "array",
@@ -206,7 +242,12 @@ const STAGE2_JSON_SCHEMA = {
         "Audit-only.",
     },
   },
-  required: ["matched_subcategory_slug", "unanswered_question_ids", "reasoning"],
+  required: [
+    "matched_subcategory_slug",
+    "confidence",
+    "unanswered_question_ids",
+    "reasoning",
+  ],
 } as const;
 
 // ─── Zod schemas (client-side validation + TS type inference only) ────────
@@ -218,13 +259,21 @@ const STAGE2_JSON_SCHEMA = {
 //      drift between Anthropic's constrained-decoding output and our
 //      expected shape)
 
+/** Confidence buckets the LLM self-reports per stage. Discrete enum rather
+ *  than a 0-1 number because (a) Anthropic constrained-decoding handles
+ *  enums cleanly, (b) discrete buckets avoid false-precision in self-report,
+ *  (c) downstream branching becomes a clean switch on three values. */
+export type DiagnoseConcernConfidence = "high" | "medium" | "low";
+
 const Stage1ResponseSchema = z.object({
   matched_category_key: z.string().nullable(),
+  confidence: z.enum(["high", "medium", "low"]),
   reasoning: z.string(),
 });
 
 const Stage2ResponseSchema = z.object({
   matched_subcategory_slug: z.string().nullable(),
+  confidence: z.enum(["high", "medium", "low"]),
   unanswered_question_ids: z.array(z.number().int().positive()),
   reasoning: z.string(),
 });
@@ -332,7 +381,20 @@ ${chipHintLine}
 
 4. **Never invent IDs or slugs.** Only return values that appear above.
 
-5. **Reasoning is for the audit log.** One sentence under 280 characters.`;
+5. **Reasoning is for the audit log.** One sentence under 280 characters.
+
+6. **Confidence is self-reported.** Pick one of high/medium/low:
+   - **high** — the description clearly names the system or symptom that
+     maps to ONE category (e.g., "ABS light is on" → warning_light_general;
+     "sweet smell under hood" → coolant_leak_testing; "brake pedal sinks to
+     the floor" → brake_inspection). No realistic alternative reading.
+   - **medium** — the matched category is the best of 2-3 plausible picks
+     (e.g., a vague "shake" that could be brakes or suspension; a generic
+     "noise from the engine" that could be performance or noise).
+   - **low** — the description is vague enough that you're not really
+     sure (e.g., "the car feels weird", "something's off"). If you're
+     this unsure, prefer matched_category_key=null. When you DO return
+     null, confidence MUST be 'low'.`;
 }
 
 // ─── Stage 2 system prompt (ONE category's subcategories + questions) ───────
@@ -411,8 +473,27 @@ ${chipHintLine}
    - Trigger: "only when braking" → ANSWERED for brake-trigger questions.
      "over bumps" → ANSWERED for bump-trigger. "at highway speed" → ANSWERED
      for speed-band.
+   - Speed-specific: "at exactly 65 mph" / "at highway speed" /
+     "at 40 mph and up" → ANSWERED for "at what speed?" questions.
+   - System scoped to exactly the question's body-part: customer says
+     "steering wheel shakes" → "whole car or just the steering wheel?"
+     is ANSWERED (steering wheel). Customer says "the car shakes" →
+     ANSWERED (whole car). Customer says "brakes squeal" → "regular
+     brakes still working normally?" is ANSWERED (yes — they're
+     squealing but still working).
+   - Trigger-system named: customer says "when I run the heat" → "AC or
+     heat or both?" is ANSWERED (heat). Customer says "AC works but
+     smells when I turn it on" → ANSWERED (AC).
+   - Light-name explicit: customer named the warning light verbatim
+     ("maintenance light", "service engine soon", "ABS light",
+     "TPMS light") → drop "which message does the dash say?" IDs.
    - Recent service: "just replaced X" → ANSWERED yes-recently. "no recent
      work" → ANSWERED no. Silence → UNANSWERED.
+   - Action-already-taken: customer says "I checked the tire pressures
+     and the light still won't go off" → drop "have you added air and
+     the light still won't turn off?" (semantically identical).
+   - Slow-vs-sudden via duration cue: customer says "just filled it last
+     week and it's low again" → ANSWERED slow.
 
    **UNANSWERED (keep the ID):**
 
@@ -432,7 +513,22 @@ ${chipHintLine}
 
 3. **Never invent IDs or slugs.** Only return values that appear above.
 
-4. **Reasoning is for the audit log.** One sentence under 280 characters.`;
+4. **Reasoning is for the audit log.** One sentence under 280 characters.
+
+5. **Confidence is self-reported.** Pick one of high/medium/low:
+   - **high** — the description clearly maps to ONE subcategory in the
+     list above (e.g., "check engine light is flashing" → check_engine_light;
+     "musty smell when I run the heat" → bad_smell_from_vents). You're
+     also confident in your gap-detect choices (which questions the
+     customer answered vs left open).
+   - **medium** — the subcategory is the best of 2-3 plausible picks
+     (e.g., "loud thump from the rear when I brake" — could be brake
+     subcategory or suspension noise) OR you're unsure about which
+     questions the description answered.
+   - **low** — the description doesn't really fit any subcategory in
+     the list above, OR you're forcing a match because Stage 1 picked
+     a category but the symptom feels off. Low is a signal to a
+     downstream advisor to verify the routing.`;
 }
 
 // ─── Shared user prompt ─────────────────────────────────────────────────────
@@ -605,6 +701,8 @@ export async function diagnoseConcern(
     matched_subcategory_slug: null,
     recommended_testing_service: null,
     unanswered_question_ids: [],
+    stage1_confidence: "low",
+    stage2_confidence: "low",
     parsed_ok: false,
     model: stage1Model,
     latency_ms: Date.now() - startedAt,
@@ -621,6 +719,8 @@ export async function diagnoseConcern(
       matched_subcategory_slug: null,
       recommended_testing_service: null,
       unanswered_question_ids: [],
+      stage1_confidence: "low",
+      stage2_confidence: "low",
       parsed_ok: true,
       model: stage1Model,
       latency_ms: 0,
@@ -663,6 +763,8 @@ export async function diagnoseConcern(
       matched_subcategory_slug: null,
       recommended_testing_service: null,
       unanswered_question_ids: [],
+      stage1_confidence: stage1Result.data.confidence,
+      stage2_confidence: "low",
       parsed_ok: true,
       model: stage1Model,
       latency_ms: Date.now() - startedAt,
@@ -686,6 +788,8 @@ export async function diagnoseConcern(
         matched_subcategory_slug: null,
         recommended_testing_service: buildTestingServicePayload(matchedCat),
         unanswered_question_ids: [],
+        stage1_confidence: stage1Result.data!.confidence,
+        stage2_confidence: "low",
         parsed_ok: true,
         model: stage1Model,
         latency_ms: Date.now() - startedAt,
@@ -700,6 +804,8 @@ export async function diagnoseConcern(
       matched_subcategory_slug: null,
       recommended_testing_service: null,
       unanswered_question_ids: [],
+      stage1_confidence: stage1Result.data!.confidence,
+      stage2_confidence: "low",
       parsed_ok: true,
       model: stage1Model,
       latency_ms: Date.now() - startedAt,
@@ -745,6 +851,8 @@ export async function diagnoseConcern(
       matched_subcategory_slug: subSlug,
       recommended_testing_service: buildTestingServicePayload(matchedCat),
       unanswered_question_ids: unansweredIds,
+      stage1_confidence: stage1Result.data.confidence,
+      stage2_confidence: stage2Result.data.confidence,
       parsed_ok: true,
       model: stage1Model,
       latency_ms: Date.now() - startedAt,
@@ -760,6 +868,8 @@ export async function diagnoseConcern(
     matched_subcategory_slug: subSlug,
     recommended_testing_service: null,
     unanswered_question_ids: unansweredIds,
+    stage1_confidence: stage1Result.data.confidence,
+    stage2_confidence: stage2Result.data.confidence,
     parsed_ok: true,
     model: stage1Model,
     latency_ms: Date.now() - startedAt,

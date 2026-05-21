@@ -29,7 +29,7 @@ import { fileURLToPath } from "node:url";
 // CONFIG (edit per batch)
 // ════════════════════════════════════════════════════════════════════
 
-const BATCH_LABEL = "llm-test-9-anthropic-sdk-multisymptom-borderline-vague-052026";
+const BATCH_LABEL = "llm-test-10-anthropic-sdk-confidence-smoke-052126";
 const OUTPUT_DIR_RELATIVE = "docs/chat-instructions/diagnostic-llm-tests";
 const FUNCTION_URL =
   "https://itzdasxobllfiuolmbxu.supabase.co/functions/v1/llm-testing";
@@ -106,6 +106,9 @@ function analyzeSteps(call) {
       step3: "skipped — no edge-function response",
       step4: "skipped — no edge-function response",
       step5: "skipped — no edge-function response",
+      step6: "skipped — no edge-function response",
+      stage1Confidence: null,
+      stage2Confidence: null,
     };
   }
 
@@ -174,21 +177,44 @@ function analyzeSteps(call) {
     }
   }
 
-  // STEP 5 — generate reasoning (Stage 1 + Stage 2)
+  // STEP 5 — confidence (added 2026-05-21)
+  const s1Conf = stage1?.raw?.confidence ?? null;
+  const s2Conf = stage2?.raw?.confidence ?? null;
   let step5;
+  if (!s1Conf && !s2Conf) {
+    step5 = `missing — no confidence returned by either stage`;
+  } else if (!s1Conf) {
+    step5 = `S1 missing · S2: ${s2Conf}`;
+  } else if (!s2Conf) {
+    step5 = `S1: ${s1Conf} · S2 skipped`;
+  } else {
+    step5 = `S1: ${s1Conf} · S2: ${s2Conf}`;
+  }
+
+  // STEP 6 — reasoning (Stage 1 + Stage 2)
+  let step6;
   const s1Reason = stage1?.raw?.reasoning?.trim();
   const s2Reason = stage2?.raw?.reasoning?.trim();
   if (!s1Reason && !s2Reason) {
-    step5 = `missing — no reasoning returned by either stage`;
+    step6 = `missing — no reasoning returned by either stage`;
   } else if (!s1Reason) {
-    step5 = `S1 missing · S2: "${s2Reason}"`;
+    step6 = `S1 missing · S2: "${s2Reason}"`;
   } else if (!s2Reason) {
-    step5 = `S1: "${s1Reason}" · S2 skipped`;
+    step6 = `S1: "${s1Reason}" · S2 skipped`;
   } else {
-    step5 = `S1: "${s1Reason}" · S2: "${s2Reason}"`;
+    step6 = `S1: "${s1Reason}" · S2: "${s2Reason}"`;
   }
 
-  return { step1, step2, step3, step4, step5 };
+  return {
+    step1,
+    step2,
+    step3,
+    step4,
+    step5,
+    step6,
+    stage1Confidence: s1Conf,
+    stage2Confidence: s2Conf,
+  };
 }
 
 function renderConcernBlock(call, i, steps) {
@@ -203,7 +229,8 @@ function renderConcernBlock(call, i, steps) {
   lines.push(`  step 2 (vagueness check):          ${steps.step2}`);
   lines.push(`  step 3 (pick subcategory, S2):     ${steps.step3}`);
   lines.push(`  step 4 (gap-detect questions, S2): ${steps.step4}`);
-  lines.push(`  step 5 (generate reasoning):       ${steps.step5}`);
+  lines.push(`  step 5 (confidence):               ${steps.step5}`);
+  lines.push(`  step 6 (reasoning):                ${steps.step6}`);
 
   const v = call.body?.validated;
   lines.push(`matched category key: ${v?.matched_category_key ?? "null"}`);
@@ -284,10 +311,19 @@ async function main() {
     sumS2Latency: 0,
     sumTokensIn: 0,
     sumTokensOut: 0,
+    // Confidence buckets (added 2026-05-21)
+    s1ConfHigh: 0,
+    s1ConfMedium: 0,
+    s1ConfLow: 0,
+    s1ConfMissing: 0,
+    s2ConfHigh: 0,
+    s2ConfMedium: 0,
+    s2ConfLow: 0,
+    s2ConfMissing: 0,
   };
 
   const lines = [];
-  lines.push(`# LLM diagnostic test — batch 9 (Haiku, Path C, multi-symptom + borderline-vague, May 2026)`);
+  lines.push(`# LLM diagnostic test — batch 10 (Haiku, Path C, confidence + subcategory-mapping smoke, May 2026)`);
   lines.push("");
   lines.push(`**Ran:** ${new Date().toISOString()}`);
   lines.push(`**Architecture:** two-stage classifier (refactor 2026-05-20)`);
@@ -307,6 +343,7 @@ async function main() {
   lines.push(`- \`failed\` — that stage's LLM call errored or returned malformed structured output`);
   lines.push(`- \`short_circuit\` — pre-LLM short-circuit (desc<3 chars)`);
   lines.push(`- \`skipped\` — upstream step's outcome made this step a no-op`);
+  lines.push(`- step 5 (confidence): self-reported \`high\` / \`medium\` / \`low\` per stage. 'high' = clear single fit; 'medium' = best of 2-3 plausible; 'low' = vague / forced match. Used downstream to route low-confidence picks to advisor review.`);
   lines.push("");
   lines.push(`## Test cases`);
   lines.push("");
@@ -339,6 +376,18 @@ async function main() {
     stats.sumS2Latency += b.stage2?.latency_ms ?? 0;
     stats.sumTokensIn += b.tokens_in ?? 0;
     stats.sumTokensOut += b.tokens_out ?? 0;
+
+    // Confidence buckets
+    const s1c = steps.stage1Confidence;
+    if (s1c === "high") stats.s1ConfHigh += 1;
+    else if (s1c === "medium") stats.s1ConfMedium += 1;
+    else if (s1c === "low") stats.s1ConfLow += 1;
+    else stats.s1ConfMissing += 1;
+    const s2c = steps.stage2Confidence;
+    if (s2c === "high") stats.s2ConfHigh += 1;
+    else if (s2c === "medium") stats.s2ConfMedium += 1;
+    else if (s2c === "low") stats.s2ConfLow += 1;
+    else stats.s2ConfMissing += 1;
   }
 
   lines.push(`## Batch summary`);
@@ -359,6 +408,8 @@ async function main() {
   lines.push(`| sum stage-2 latencies | ${stats.sumS2Latency} ms |`);
   lines.push(`| sum input tokens | ${stats.sumTokensIn} |`);
   lines.push(`| sum output tokens | ${stats.sumTokensOut} |`);
+  lines.push(`| **stage 1** confidence: high / medium / low / missing | ${stats.s1ConfHigh} / ${stats.s1ConfMedium} / ${stats.s1ConfLow} / ${stats.s1ConfMissing} |`);
+  lines.push(`| **stage 2** confidence: high / medium / low / missing | ${stats.s2ConfHigh} / ${stats.s2ConfMedium} / ${stats.s2ConfLow} / ${stats.s2ConfMissing} |`);
   lines.push("");
 
   const __filename = fileURLToPath(import.meta.url);
