@@ -22,7 +22,7 @@
 //   KEYTAG_REPORT_TO_EMAIL    — override To address (default service@)
 //   KEYTAG_REPORT_FROM_EMAIL  — override From line (default alerts@)
 
-import "@supabase/functions-js/edge-runtime.d.ts";
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import {
   tekmetricGetJson,

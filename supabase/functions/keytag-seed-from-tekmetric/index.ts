@@ -18,7 +18,7 @@
 // = true). Caller passes anon or service_role JWT in Authorization header.
 // The function uses its own service_role client internally for DB writes.
 
-import "@supabase/functions-js/edge-runtime.d.ts";
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import {
   ENV_NAMES,

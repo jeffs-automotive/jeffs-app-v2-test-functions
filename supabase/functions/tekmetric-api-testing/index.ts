@@ -65,7 +65,7 @@
 //   - Response body is returned verbatim from Tekmetric. Tekmetric strings
 //     can contain PII; treat the response as sensitive when sharing.
 
-import "@supabase/functions-js/edge-runtime.d.ts";
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 import { tekmetricFetch } from "../_shared/tekmetric-client.ts";

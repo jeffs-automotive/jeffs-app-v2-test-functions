@@ -18,7 +18,7 @@
 // each stage independently. Same shape as the AI-SDK version this
 // replaces, so run-llm-test-batch.mjs needs no changes.
 
-import "@supabase/functions-js/edge-runtime.d.ts";
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import Anthropic from "npm:@anthropic-ai/sdk@^0.97";
 import { z } from "npm:zod@^4";

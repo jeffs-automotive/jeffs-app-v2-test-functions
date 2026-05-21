@@ -41,7 +41,7 @@
 // tool. If a new operation needs to be exposed, add it to scheduler-tools.ts
 // or orchestrator-tools.ts and it appears automatically here.
 
-import "@supabase/functions-js/edge-runtime.d.ts";
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { z } from "npm:zod@^4";
 

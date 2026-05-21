@@ -14,7 +14,7 @@
 //   - found:     { ok, found: true,  key_tag, ro_number, ro_id, ro_url, customer_id, vehicle_id, status, ... }
 //   - not found: { ok, found: false, key_tag, message }
 
-import "@supabase/functions-js/edge-runtime.d.ts";
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { findRoByKeyTag } from "../_shared/tools/repair-orders.ts";
 import { ENV_NAMES } from "../_shared/tekmetric.ts";

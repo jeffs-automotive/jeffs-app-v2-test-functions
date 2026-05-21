@@ -20,7 +20,7 @@
 //   RFC 8414 (AS Metadata)   https://datatracker.ietf.org/doc/html/rfc8414
 //   RFC 8707 (Resource Indicators) https://datatracker.ietf.org/doc/html/rfc8707
 
-import "@supabase/functions-js/edge-runtime.d.ts";
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import {
   ACCESS_TOKEN_TTL_SEC,

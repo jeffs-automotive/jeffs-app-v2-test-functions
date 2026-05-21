@@ -56,7 +56,7 @@
 // Returns JSON summary of actions taken, suitable for logging in
 // orchestrator-mcp tools or pg_cron audit.
 
-import "@supabase/functions-js/edge-runtime.d.ts";
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import {
   tekmetricFetch,

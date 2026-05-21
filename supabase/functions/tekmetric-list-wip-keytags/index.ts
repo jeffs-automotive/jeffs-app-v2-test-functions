@@ -7,7 +7,7 @@
 //
 // Returns: { ok, count, shop_id, results: [{ key_tag, ro_number, ro_id, ro_url, ... }] }
 
-import "@supabase/functions-js/edge-runtime.d.ts";
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { listWipKeyTags } from "../_shared/tools/repair-orders.ts";
 import { ENV_NAMES } from "../_shared/tekmetric.ts";

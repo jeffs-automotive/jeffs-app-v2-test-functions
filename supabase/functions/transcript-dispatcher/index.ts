@@ -26,7 +26,7 @@
 //   - ADD errors section sourced from scheduler_audit_log
 //   - ADD customer_notes_text + customer_question rendering (Steps 10.2/10.3)
 
-import "@supabase/functions-js/edge-runtime.d.ts";
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 
 import {

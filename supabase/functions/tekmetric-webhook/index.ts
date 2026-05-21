@@ -23,7 +23,7 @@
 //   .claude/rules/observability.md  — webhook idempotency + DLQ guidance
 //   migration 20260509235046_tekmetric_webhook_events.sql
 
-import "@supabase/functions-js/edge-runtime.d.ts";
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;

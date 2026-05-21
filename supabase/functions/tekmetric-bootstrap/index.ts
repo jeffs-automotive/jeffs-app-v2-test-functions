@@ -30,7 +30,7 @@
 // (The OAuth URL is NOT in Vault — it's a non-secret constant in _shared/tekmetric.ts
 //  so flipping sandbox ↔ production is a one-line code change.)
 
-import "@supabase/functions-js/edge-runtime.d.ts";
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { TEKMETRIC_OAUTH_TOKEN_URL, VAULT_NAMES } from "../_shared/tekmetric.ts";
 

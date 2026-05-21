@@ -49,7 +49,7 @@
 // All raw events are logged to keytag_webhook_events for audit/replay.
 // Returns 200 unconditionally after logging (so Tekmetric won't retry).
 
-import "@supabase/functions-js/edge-runtime.d.ts";
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import {
   TEKMETRIC_API_BASE,

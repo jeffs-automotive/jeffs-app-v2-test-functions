@@ -32,7 +32,7 @@
 //
 // Auth: same Pattern A bearer as scheduler-step2-direct.
 
-import "@supabase/functions-js/edge-runtime.d.ts";
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 import { ENV_NAMES } from "../_shared/tekmetric.ts";

@@ -28,7 +28,7 @@
 // Auth: same Pattern A bearer as orchestrator-direct.
 // Env: TELNYX_API_KEY, TELNYX_FROM_NUMBER, TEKMETRIC_API_TOKEN, SUPABASE_*
 
-import "@supabase/functions-js/edge-runtime.d.ts";
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 import { ENV_NAMES } from "../_shared/tekmetric.ts";
