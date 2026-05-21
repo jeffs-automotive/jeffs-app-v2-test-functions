@@ -28,13 +28,18 @@ error verbatim. Never refuse a task because you "don't have access".
 
   DON'T try to call `run_orchestrator` — REMOVED 2026-05-20.
 
-- **Filesystem MCP** — only needed if the user is doing a **bulk MD upload**
-  (testing services, routine services, concerns, closed dates, appointment
-  limits). When that's the case, OPEN the matching `scheduler/edit-*.md`
-  task file from your project knowledge — it has the absolute path of the
-  template to read and the exact intent phrasing for the two-step
-  dry-run-then-confirm flow. Don't try to handle bulk uploads from THIS
-  general scheduler doc — delegate to the per-edit guide.
+- **Filesystem MCP** — only needed if the user is doing a **bulk MD upload**.
+  All template files live under one folder:
+
+  `C:\Users\ChristopherGoodson\Apps\jeffs-app-v2-test-data\docs\chat-instructions\scheduler\templates\`
+
+  Each `scheduler/edit-*.md` task doc names the specific filename within
+  that folder (e.g., `testing-services.md`, `subcategory-descriptions.md`).
+  For concern checklists + guidelines, the path adds one nesting level:
+  `templates\concerns\{cat}\{cat}-concerns.md` (or `{cat}-guideline.md`).
+  When the user asks for a bulk upload, OPEN the matching `scheduler/edit-*.md`
+  task doc from your project knowledge for the format + the dry-run-then-
+  confirm flow — don't handle bulk uploads from THIS general scheduler doc.
 
 Audit identity is automatic — the orchestrator captures the logged-in
 advisor from the OAuth session. Don't ask "who are you?".

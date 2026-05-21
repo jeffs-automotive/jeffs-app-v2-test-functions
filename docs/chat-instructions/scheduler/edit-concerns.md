@@ -18,15 +18,13 @@ You DO have BOTH of these. If you find yourself thinking "I can't read that
 file" or "I can't call that tool" — STOP. You DO. Use them. Relay any error
 verbatim. Never refuse a task because you "don't have access".
 
-- **Filesystem MCP** — `read_file(path)`. Read the per-category template at
-  one of these absolute paths (substitute `{cat}` with one of the 14
-  category slugs listed below):
+- **Filesystem MCP** — `read_file(path)`. Read the per-category template from
+  the templates folder (folder path is in `scheduler.md` — Filesystem MCP
+  section). Concerns add one nesting level — substitute `{cat}` with one of
+  the 14 category slugs listed below:
 
-  Questions checklist:
-  `C:\Users\ChristopherGoodson\Apps\jeffs-app-v2-test-data\docs\chat-instructions\scheduler\templates\concerns\{cat}\{cat}-concerns.md`
-
-  Guideline prose:
-  `C:\Users\ChristopherGoodson\Apps\jeffs-app-v2-test-data\docs\chat-instructions\scheduler\templates\concerns\{cat}\{cat}-guideline.md`
+  - Questions checklist: `concerns\{cat}\{cat}-concerns.md`
+  - Guideline prose: `concerns\{cat}\{cat}-guideline.md`
 
   **Don't ask the user to paste the file** — read it yourself. Only ask
   for a paste if the filesystem MCP returns an explicit error.

@@ -15,13 +15,10 @@ You DO have BOTH of these. If you find yourself thinking "I can't read that
 file" or "I can't call that tool" — STOP. You DO. Use them. Relay any
 error verbatim. Never refuse a task because you "don't have access".
 
-- **Filesystem MCP** — `read_file(path)`. Read the question-required-facts
-  template at this absolute path:
-
-  `C:\Users\ChristopherGoodson\Apps\jeffs-app-v2-test-data\docs\chat-instructions\scheduler\templates\question-required-facts.md`
-
-  **Don't ask the user to paste the file** — read it yourself. Only ask for
-  a paste if the filesystem MCP returns an explicit error.
+- **Filesystem MCP** — `read_file(path)`. Read `question-required-facts.md`
+  from the templates folder. The folder path is in `scheduler.md` (Filesystem
+  MCP section). **Don't ask the user to paste the file** — read it yourself.
+  Only ask for a paste if the filesystem MCP returns an explicit error.
 
 - **Orchestrator MCP** — exposes ~50 specific typed tools. For THIS task,
   the relevant tools are:
