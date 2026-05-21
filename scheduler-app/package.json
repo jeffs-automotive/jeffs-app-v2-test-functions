@@ -19,6 +19,7 @@
     "@ai-sdk/anthropic": "^2.0.0",
     "@ai-sdk/gateway": "^2.0.91",
     "@ai-sdk/openai": "^2.0.0",
+    "@anthropic-ai/sdk": "^0.97.1",
     "@hookform/resolvers": "^3.0.0",
     "@sentry/nextjs": "^10.52.0",
     "@supabase/ssr": "^0.10.3",

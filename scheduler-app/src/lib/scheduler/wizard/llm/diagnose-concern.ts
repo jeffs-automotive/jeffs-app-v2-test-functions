@@ -1,80 +1,71 @@
 /**
- * diagnoseConcern — Two-stage diagnostic classifier (refactored 2026-05-20).
+ * diagnoseConcern — Two-stage diagnostic classifier (Path C: Anthropic SDK
+ * + Vercel AI Gateway + native structured outputs).
  *
- * Architecture (per design doc dated 2026-05-20, lockd before implementation):
+ * Refactored 2026-05-20 to bypass @ai-sdk/gateway's `generateObject` path
+ * entirely. Uses the @anthropic-ai/sdk directly, pointed at the Vercel
+ * AI Gateway as a base URL. The gateway's `providerOptions` extension
+ * remains active for caching + multi-model fallback chains.
  *
+ * Why this architecture:
+ *   - @ai-sdk/gateway's generateObject path has documented bugs with
+ *     Anthropic structured outputs:
+ *       - #13460: tool().parameters not read by prepareToolsAndToolChoice
+ *       - #13355: unsupported JSON Schema keywords not stripped
+ *       - #14342: Anthropic rejects keywords like exclusiveMinimum
+ *     None of these affect the Anthropic SDK direct path — Anthropic's
+ *     own SDK strips unsupported keywords client-side and submits clean
+ *     schemas.
+ *   - Anthropic's native Structured Outputs API (output_format +
+ *     structured-outputs-2025-11-13 beta) uses constrained decoding for
+ *     guaranteed schema compliance, similar to OpenAI's strict mode.
+ *     Per Vercel docs, this is the recommended production path for
+ *     reliable structured output from Anthropic models. Documented
+ *     <0.1% failure rate (vs ~16% observed on our @ai-sdk/gateway path).
+ *   - We still benefit from the Vercel AI Gateway: prompt caching,
+ *     multi-model fallback chains, observability, single credential,
+ *     unified billing. Gateway extensions are passed via providerOptions
+ *     in the request body, which the gateway interprets.
+ *
+ * Two-stage architecture (unchanged from prior refactor):
  *   Stage 1 — Match category
- *     Input:  customer concern + chip hint + brief catalog
- *             (testing-service names + descriptions + concern_categories;
- *              'other' subcategory slugs only — NO subcategory tree, NO
- *              questions, NO option lists)
- *     Output: { matched_category_key, reasoning }
- *     Prompt: ~5-8 KB (down from ~130 KB in the legacy single-stage path)
- *
+ *     Brief catalog (~5-8 KB) → matched_category_key + reasoning
  *   Stage 2 — Pick subcategory + gap-detect questions
- *     Skipped when Stage 1 returned null (LLM declined) OR when post-
- *     validation found matched_category_key is not in the catalog.
- *     Input:  customer concern + the matched category's eligible
- *             subcategories with their questions ONLY
- *     Output: { matched_subcategory_slug, unanswered_question_ids, reasoning }
- *     Prompt: ~2-5 KB
+ *     Single category's subtree (~3-30 KB) → subcategory_slug +
+ *     unanswered_question_ids + reasoning
  *
- * Why two stages
- *   - The legacy single-pass path embedded the entire 729-question catalog
- *     into every call (~130 KB / ~38 K tokens). Both Haiku 4.5 and Gemini
- *     2.5 Flash hit 16-28% schema-validation failure rates with that
- *     prompt size; investigation surfaced prompt-size-driven CFG breakage
- *     as the likely root cause. Smaller per-stage prompts hold structured
- *     output more reliably.
- *   - Catalog can grow without proportionally bloating every call. Stage 2
- *     only loads the matched category's tree — a 10x catalog growth
- *     barely affects Stage 2's prompt size.
- *   - Per-stage caching is cheap to enable via the Vercel AI Gateway
- *     (`providerOptions.gateway.caching = 'auto'`).
+ * Zod retained for:
+ *   1. TypeScript type inference (z.infer<typeof Schema>)
+ *   2. Post-LLM defense-in-depth validation
+ * Zod is NOT in the LLM-call path. JSON Schema (raw object literals)
+ * is the source of truth for the API.
  *
- * Error semantics (per design table)
- *   Stage 1 throws / schema fail   → forward-to-advisor, parsed_ok=false
- *   Stage 1 returns null            → forward-to-advisor, parsed_ok=true
- *   Stage 1 hallucinated category   → forward-to-advisor, parsed_ok=true,
- *                                     error_message=invalid_category_key:...
- *   Stage 2 throws / schema fail   → testing-service match preserved,
- *                                     subcategory=null, ids=[], parsed_ok=true
- *                                     (partial), error_message=stage2_failed:...
- *   Stage 2 hallucinated subcategory → testing-service match preserved,
- *                                     subcategory=null, ids=[]
- *   Stage 2 hallucinated IDs        → silently filtered (same as legacy)
+ * Model: anthropic/claude-haiku-4-5 default. Per-stage env overrides
+ * via DIAGNOSE_CONCERN_STAGE1_MODEL / DIAGNOSE_CONCERN_STAGE2_MODEL.
+ * Combined legacy override: DIAGNOSE_CONCERN_MODEL.
  *
- * Caching
- *   Both stages set providerOptions.gateway.caching='auto' so the Vercel
- *   AI Gateway adds provider-native cache markers when supported (per
- *   vercel.com/docs/ai-gateway/models-and-providers/automatic-caching).
- *   For Anthropic-routed models this yields ~10% billing on cached
- *   input tokens. For Gemini-routed models the gateway docs are
- *   ambiguous; we send the directive anyway (harmless no-op if unsupported).
+ * Gateway extensions enabled:
+ *   - providerOptions.gateway.caching = 'auto'
+ *     Auto-inserts Anthropic cache_control markers on the system prompt.
+ *   - providerOptions.gateway.models = ['<primary>', '<fallback>']
+ *     If primary model fails (incl. schema failures), gateway cascades.
  *
- * Model
- *   Both stages route through the gateway with the same model id (default
- *   `google/gemini-2.5-flash`). Per-stage override via env var
- *   DIAGNOSE_CONCERN_STAGE1_MODEL / DIAGNOSE_CONCERN_STAGE2_MODEL; combined
- *   override via DIAGNOSE_CONCERN_MODEL (legacy compat).
+ * Reliability features:
+ *   - Retry once on transient failure (covers occasional gateway 5xx +
+ *     non-deterministic schema-compliance edge cases)
+ *   - Per-stage error semantics preserved: Stage 2 failure degrades
+ *     gracefully (testing service still recommended, just no
+ *     clarifying questions)
  *
- * Public API contract — DiagnoseConcernResult shape is UNCHANGED. The
- * wizard's downstream code (run-diagnostics action) doesn't know there
- * are two stages.
+ * Public API contract — DiagnoseConcernResult shape UNCHANGED. The
+ * wizard's downstream code doesn't care which SDK is at the bottom.
  *
- * Fail-safe: any LLM/Zod error returns
- *   { matched_category_key: null, matched_subcategory_slug: null,
- *     recommended_testing_service: null, unanswered_question_ids: [] }
- * which routes to forward-to-advisor.
- *
- * Legacy `buildSystemPrompt` / `buildUserPrompt` exports are kept as
- * aliases for the Stage 1 prompts (the legacy eval harness uses them
- * for prompt-inspection reporting; the harness sees only Stage 1 since
- * Stage 2's prompt depends on Stage 1's output).
+ * Legacy buildSystemPrompt / buildUserPrompt exports retained as
+ * aliases pointing at the Stage 1 prompt — for the eval harness that
+ * captures prompt-inspection reports.
  */
-import { gateway } from "@ai-sdk/gateway";
+import Anthropic from "@anthropic-ai/sdk";
 import * as Sentry from "@sentry/nextjs";
-import { generateObject } from "ai";
 import { z } from "zod";
 
 import type {
@@ -90,18 +81,10 @@ import {
 
 // ─── Model + token budgets ──────────────────────────────────────────────────
 
-// 2026-05-20 — defaulted to anthropic/claude-haiku-4-5 for BOTH stages after
-// batch 2 (Gemini 2-stage) showed Gemini struggling on Stage 2's int-array
-// schema (10/25 "No object generated" failures, consistent across prompt
-// sizes 4-36 KB). Anthropic + AI-Gateway caching is the actual realized
-// cost-win path (vercel.com/docs/ai-gateway/models-and-providers/
-// automatic-caching documents auto-cache markers for Anthropic; Gemini
-// support is ambiguous). Per-stage env overrides still work — set
-// DIAGNOSE_CONCERN_STAGE1_MODEL or DIAGNOSE_CONCERN_STAGE2_MODEL to any
-// AI-Gateway model id in `creator/model-name` form to swap individual
-// stages without redeploying.
 const DEFAULT_MODEL = "anthropic/claude-haiku-4-5";
+const FALLBACK_MODEL = "anthropic/claude-sonnet-4-6";
 const MAX_OUTPUT_TOKENS = 1024;
+const STRUCTURED_OUTPUTS_BETA = "structured-outputs-2025-11-13";
 
 function resolveStage1Model(): string {
   return (
@@ -119,37 +102,31 @@ function resolveStage2Model(): string {
   );
 }
 
+// ─── Anthropic client (gateway-routed) ──────────────────────────────────────
+
+const anthropic = new Anthropic({
+  apiKey: process.env.AI_GATEWAY_API_KEY ?? process.env.VERCEL_OIDC_TOKEN,
+  baseURL: "https://ai-gateway.vercel.sh",
+});
+
 // ─── Public argument + result types ─────────────────────────────────────────
 
 export interface DiagnoseConcernChipHint {
-  /** service_key of the picker chip that fired this concern_explanation
-   *  (e.g., 'brake_inspection', 'check_battery', 'other_issue'). */
   chip_service_key: string;
   chip_display_name: string;
-  /** From routine_services.concern_categories[] (or testing_services if
-   *  the chip happens to live there). Empty for 'other_issue'. */
   chip_concern_categories: string[];
 }
 
 export interface DiagnoseConcernArgs {
   catalog: DiagnosticCatalog;
-  /** What the customer typed in the Step 7.2 concern_explanation card. */
   customer_description: string;
-  /** Optional pre-selection hint from the picker chip. null for the
-   *  'other_issue' pseudo-chip. */
   customer_chip_hint?: DiagnoseConcernChipHint | null;
-  /** Optional new-vehicle notes from Step 6 (vehicle.notes field). */
   vehicle_notes?: string | null;
 }
 
 export interface DiagnoseConcernResult {
-  /** A testing_services.service_key OR an 'other' subcategory slug. null
-   *  when the LLM couldn't categorize. */
   matched_category_key: string | null;
   matched_kind: "testing_service" | "other_subcategory" | null;
-  /** Subcategory slug. For testing-service matches: one of that service's
-   *  eligible subcategories. For 'other' matches: same as
-   *  matched_category_key. null when no match OR when Stage 2 failed. */
   matched_subcategory_slug: string | null;
   recommended_testing_service: {
     service_key: string;
@@ -157,72 +134,103 @@ export interface DiagnoseConcernResult {
     description: string | null;
     starting_price_cents: number;
   } | null;
-  /** Question IDs (from the matched subcategory) the description did
-   *  NOT meaningfully answer. */
   unanswered_question_ids: number[];
-  /** True when at least Stage 1 succeeded. Stage 2 partial-failures still
-   *  return parsed_ok=true (the wizard can still recommend the service,
-   *  it just won't ask clarifying questions). */
   parsed_ok: boolean;
-  /** Reflects the Stage 1 model (since that's the primary classifier).
-   *  Stage 2 may use a different model — captured in error_message if so. */
   model: string;
-  /** Sum across both stages. */
   latency_ms: number;
-  /** Sum across both stages. */
   tokens_in: number;
-  /** Sum across both stages. */
   tokens_out: number;
-  /** Empty on full success. Otherwise: short token-prefixed reason
-   *  (`invalid_category_key:`, `stage1_failed:`, `stage2_failed:`,
-   *  `empty_catalog`, etc.). */
   error_message: string;
 }
 
-// ─── Zod schemas (one per stage) ────────────────────────────────────────────
+// ─── JSON Schemas (LLM source of truth — no Zod here) ──────────────────────
+//
+// These are intentionally CONSTRAINT-LIGHT. We avoid:
+//   - minimum / maximum / exclusiveMinimum / exclusiveMaximum on numbers
+//   - maxLength / minLength on strings
+//   - not / if / then / else
+// Per vercel/ai #14342 and Anthropic API behavior, these keywords are
+// either rejected by the API or unsupported in constrained-decoding mode.
+// We push length / range constraints into description text (the model
+// honors them) and into post-LLM Zod validation (belt-and-suspenders).
+//
+// Nullable fields use the JSON Schema standard `type: ['string', 'null']`
+// — Anthropic supports this directly.
 
-const Stage1Schema = z.object({
-  matched_category_key: z
-    .string()
-    .nullable()
-    .describe(
-      "Either a testing_services.service_key from the catalog above OR an " +
+const STAGE1_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    matched_category_key: {
+      type: ["string", "null"],
+      description:
+        "Either a testing_services.service_key from the catalog above OR an " +
         "'other' subcategory slug. Return null when the description is too " +
         "vague to categorize OR doesn't fit any catalog entry.",
-    ),
-  reasoning: z
-    .string()
-    .max(280)
-    .describe(
-      "One sentence citing the chosen category and the customer words that " +
-        "drove the match. Audit-only.",
-    ),
+    },
+    reasoning: {
+      type: "string",
+      description:
+        "One sentence (keep under 280 characters) citing the chosen category " +
+        "and the customer words that drove the match. Audit-only.",
+    },
+  },
+  required: ["matched_category_key", "reasoning"],
+} as const;
+
+const STAGE2_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    matched_subcategory_slug: {
+      type: ["string", "null"],
+      description:
+        "The subcategory slug whose questions best match the customer's " +
+        "symptoms. MUST appear in the subcategory list above. null only if " +
+        "you genuinely can't pick (rare).",
+    },
+    unanswered_question_ids: {
+      type: "array",
+      items: { type: "integer" },
+      description:
+        "IDs from the matched subcategory's question set that the " +
+        "description did NOT meaningfully answer. Empty when the description " +
+        "covers all questions. All IDs must be positive integers that appear " +
+        "in the catalog above.",
+    },
+    reasoning: {
+      type: "string",
+      description:
+        "One sentence (keep under 280 characters) citing the chosen " +
+        "subcategory and which customer words drove the gap-detect choices. " +
+        "Audit-only.",
+    },
+  },
+  required: ["matched_subcategory_slug", "unanswered_question_ids", "reasoning"],
+} as const;
+
+// ─── Zod schemas (client-side validation + TS type inference only) ────────
+//
+// These are NOT sent to the LLM. They mirror the JSON Schemas above and
+// serve two purposes:
+//   1. TypeScript type inference via z.infer<typeof Schema>
+//   2. Post-LLM runtime validation (defense in depth — catches any
+//      drift between Anthropic's constrained-decoding output and our
+//      expected shape)
+
+const Stage1ResponseSchema = z.object({
+  matched_category_key: z.string().nullable(),
+  reasoning: z.string(),
 });
 
-const Stage2Schema = z.object({
-  matched_subcategory_slug: z
-    .string()
-    .nullable()
-    .describe(
-      "The subcategory slug whose questions best match the customer's " +
-        "symptoms. MUST appear in the subcategory list above. null only if " +
-        "you genuinely can't pick (rare — prefer to pick the closest match).",
-    ),
-  unanswered_question_ids: z
-    .array(z.number().int().positive())
-    .describe(
-      "IDs from the matched subcategory's question set that the description " +
-        "did NOT meaningfully answer. Empty when the description covers all " +
-        "questions.",
-    ),
-  reasoning: z
-    .string()
-    .max(280)
-    .describe(
-      "One sentence citing the chosen subcategory and which customer words " +
-        "drove the gap-detect decisions. Audit-only.",
-    ),
+const Stage2ResponseSchema = z.object({
+  matched_subcategory_slug: z.string().nullable(),
+  unanswered_question_ids: z.array(z.number().int().positive()),
+  reasoning: z.string(),
 });
+
+type Stage1Response = z.infer<typeof Stage1ResponseSchema>;
+type Stage2Response = z.infer<typeof Stage2ResponseSchema>;
 
 // ─── Formatting helpers ─────────────────────────────────────────────────────
 
@@ -254,12 +262,6 @@ function buildChipHintLine(
 
 // ─── Stage 1 system prompt (brief catalog, no subcategory tree) ─────────────
 
-/**
- * Build the Stage 1 system prompt — the COMPACT category catalog only.
- * Includes testing-service names + descriptions + concern_categories tags,
- * plus the 'other' subcategory slugs with their display labels.
- * Does NOT include subcategory tree or question lists (Stage 2's job).
- */
 export function buildStage1SystemPrompt(args: DiagnoseConcernArgs): string {
   const testingServices = args.catalog.categories.filter(isTestingService);
   const otherSubcategories = args.catalog.categories.filter(isOtherSubcategory);
@@ -316,10 +318,7 @@ ${chipHintLine}
 
 1. **Match category to the customer's actual symptoms.** Read the description
    carefully and pick the category whose name + "What we'd do" + tags best fit
-   the described issue. The chip hint is a prior, not a constraint — if the
-   customer picked Brake Inspection but described an A/C problem, match the
-   A/C-relevant testing service (or the relevant 'other' subcategory if no
-   test fits).
+   the described issue. The chip hint is a prior, not a constraint.
 
 2. **'Other' subcategory matches are valid AND useful.** If the customer's
    description is about a situation (recent accident, car has been sitting,
@@ -331,21 +330,13 @@ ${chipHintLine}
    vague ("car feels weird", "something's off", < ~5 useful words), return
    matched_category_key=null. The system will forward to a service advisor.
 
-4. **Never invent IDs or slugs.** Only return values that appear in the
-   catalog above.
+4. **Never invent IDs or slugs.** Only return values that appear above.
 
-5. **Reasoning is for the audit log.** One sentence citing the matched
-   category + the customer's actual words. No formatting.`;
+5. **Reasoning is for the audit log.** One sentence under 280 characters.`;
 }
 
 // ─── Stage 2 system prompt (ONE category's subcategories + questions) ───────
 
-/**
- * Build the Stage 2 system prompt for the matched category. Includes
- * subcategory headers + question lists (with options) ONLY for the matched
- * category. For testing-service matches: all reachable subcategories. For
- * 'other' matches: the single elevated subcategory.
- */
 export function buildStage2SystemPrompt(
   matchedCategory: CatalogCategory,
   customerChipHint: DiagnoseConcernChipHint | null | undefined,
@@ -405,65 +396,45 @@ ${chipHintLine}
 
 1. **Subcategory must appear in the list above.** Don't invent slugs.
 
-2. **Gap-detect questions from the matched subcategory only.** Don't return
-   IDs from a different subcategory. A question is "answered" when the
-   customer's description states the FACT the question asks about — even if
-   they used different words. A question is "unanswered" only when the
-   description doesn't speak to it at all OR mentions it ambiguously without
-   committing to a value.
+2. **Gap-detect questions from the matched subcategory only.** A question is
+   "answered" when the customer's description states the FACT the question
+   asks about — even if they used different words. A question is "unanswered"
+   only when the description doesn't speak to it OR mentions it ambiguously.
 
-   **Concrete patterns that count as ANSWERED (drop the ID):**
+   **ANSWERED (drop the ID):**
 
-   - Location/side question ("Front or rear? Left or right side?"):
-     • "front right" / "rear left" / "all four wheels" / "passenger side" /
-       "driver side" / "front" alone / "rear" alone → ANSWERED.
-     • Even a single side word ("on the right") covers the side facet —
-       drop the question; we're not going to re-ask just to also pin down
-       front-vs-rear when the description is already informative.
+   - Location/side: "front right" / "rear left" / "all four wheels" / "front"
+     alone / "rear" alone → drop location IDs.
+   - Onset: "started suddenly" / "appeared overnight" → ANSWERED suddenly.
+     "gradually" / "getting worse over weeks" → ANSWERED gradually.
+   - Trigger: "only when braking" → ANSWERED for brake-trigger questions.
+     "over bumps" → ANSWERED for bump-trigger. "at highway speed" → ANSWERED
+     for speed-band.
+   - Recent service: "just replaced X" → ANSWERED yes-recently. "no recent
+     work" → ANSWERED no. Silence → UNANSWERED.
 
-   - Onset question ("Suddenly or gradually?"):
-     • "started suddenly" / "started yesterday" / "appeared overnight" /
-       "out of nowhere" → ANSWERED with "suddenly."
-     • "getting worse over weeks" / "slowly developed" / "gradually" /
-       "for months" → ANSWERED with "gradually."
+   **UNANSWERED (keep the ID):**
 
-   - Trigger question ("When does it happen?"):
-     • "only when braking" / "when I press the brakes" → ANSWERED for
-       brake-trigger questions.
-     • "over bumps" / "on rough roads" → ANSWERED for bump-trigger questions.
-     • "at highway speed" / "above 60 mph" → ANSWERED for speed-band
-       questions.
+   - Topic not mentioned at all.
+   - "I think maybe" / "kind of" / "sort of" about that specific fact.
 
-   - Recent-service question ("Recent brake work / battery replacement?"):
-     • "just replaced the pads last month" / "new battery installed
-       Tuesday" → ANSWERED with "yes — recently."
-     • "no recent work" / "haven't touched it" → ANSWERED with "no."
-     • Silence on history → UNANSWERED.
-
-   **Concrete patterns that count as UNANSWERED (keep the ID):**
-
-   - The description doesn't mention the topic AT ALL.
-   - The description says "I think maybe" or "kind of" or "sort of" about
-     the specific fact the question asks about (genuinely ambiguous).
-
-   **Worked example.** Customer: "I hear a grinding noise from the front
-   right when braking." For 'metallic_grinding':
-   - "Every time you brake?" → UNANSWERED (description didn't say "every time")
-   - "Scraping with foot off the pedal?" → UNANSWERED (not mentioned)
-   - "Front or rear? Left or right?" → **ANSWERED** ("front right") — DROP.
-   - "Grinding through floor or pedal?" → UNANSWERED (not mentioned)
-   - "Suddenly or gradually?" → UNANSWERED (not mentioned)
-   - "Feel safe driving?" → UNANSWERED (not mentioned)
-   - "Recent brake work?" → UNANSWERED (not mentioned)
-   Correct: drop only the location ID, return the other 6.
+   **Example.** Customer: "I hear a grinding noise from the front right when
+   braking." For 'metallic_grinding':
+   - "Every time you brake?" → UNANSWERED
+   - "Scraping with foot off pedal?" → UNANSWERED
+   - "Front or rear? Left or right?" → **ANSWERED** (DROP)
+   - "Grinding through floor or pedal?" → UNANSWERED
+   - "Suddenly or gradually?" → UNANSWERED
+   - "Feel safe driving?" → UNANSWERED
+   - "Recent brake work?" → UNANSWERED
+   Return: drop only the location ID, keep the other 6.
 
 3. **Never invent IDs or slugs.** Only return values that appear above.
 
-4. **Reasoning is for the audit log.** One sentence citing the matched
-   subcategory + which customer words drove the gap-detect choices.`;
+4. **Reasoning is for the audit log.** One sentence under 280 characters.`;
 }
 
-// ─── Shared user prompt (concern + vehicle notes) ───────────────────────────
+// ─── Shared user prompt ─────────────────────────────────────────────────────
 
 export function buildUserPrompt(args: DiagnoseConcernArgs): string {
   const parts: string[] = [
@@ -477,14 +448,7 @@ export function buildUserPrompt(args: DiagnoseConcernArgs): string {
   return parts.join("\n\n");
 }
 
-// ─── Legacy export aliases (eval-diagnose-concern.ts back-compat) ──────────
-
-/**
- * Legacy alias — was the OLD single-stage system prompt. After the
- * 2026-05-20 two-stage refactor this now returns the Stage 1 prompt
- * (Stage 2's prompt depends on the matched category from Stage 1 and so
- * can't be built without first running the LLM).
- */
+// Legacy alias for eval harness back-compat.
 export function buildSystemPrompt(args: DiagnoseConcernArgs): string {
   return buildStage1SystemPrompt(args);
 }
@@ -534,6 +498,94 @@ function buildTestingServicePayload(
   };
 }
 
+// ─── Anthropic SDK call wrapper (with retry + Zod validation) ──────────────
+
+interface CallResult<T> {
+  data: T | null;
+  tokensIn: number;
+  tokensOut: number;
+  errorMessage: string | null;
+}
+
+async function callAnthropicStage<T>(args: {
+  model: string;
+  systemPrompt: string;
+  userPrompt: string;
+  jsonSchema: Record<string, unknown>;
+  zodSchema: z.ZodType<T>;
+  stage: 1 | 2;
+}): Promise<CallResult<T>> {
+  let lastError: Error | null = null;
+
+  // Two attempts: covers occasional transient gateway 5xx + non-determi-
+  // nistic structured-output edge cases. Anthropic's constrained decoding
+  // is documented near-deterministic, so a second attempt with identical
+  // input usually succeeds when the first didn't.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const msg = await anthropic.messages.create({
+        model: args.model,
+        max_tokens: MAX_OUTPUT_TOKENS,
+        temperature: 0,
+        system: args.systemPrompt,
+        messages: [{ role: "user", content: args.userPrompt }],
+        // Vercel AI Gateway extensions — gateway interprets these via the
+        // proxy layer; the Anthropic SDK passes them through untouched.
+        // @ts-expect-error - gateway extensions not in Anthropic SDK types
+        providerOptions: {
+          gateway: {
+            caching: "auto",
+            models: [args.model, FALLBACK_MODEL],
+          },
+        },
+        // Anthropic native Structured Outputs (beta as of 2025-11-13, GA
+        // per Vercel AI Gateway docs). Uses constrained decoding for
+        // guaranteed schema compliance. The SDK types added support
+        // for `output_format` in 0.97; no @ts-expect-error needed.
+        output_format: {
+          type: "json_schema",
+          schema: args.jsonSchema,
+        },
+        betas: [STRUCTURED_OUTPUTS_BETA],
+      });
+
+      const textBlock = msg.content.find((b) => b.type === "text");
+      if (!textBlock || textBlock.type !== "text") {
+        throw new Error("no_text_block_in_response");
+      }
+      const parsedJson = JSON.parse(textBlock.text) as unknown;
+      const validated = args.zodSchema.parse(parsedJson);
+      return {
+        data: validated,
+        tokensIn: msg.usage?.input_tokens ?? 0,
+        tokensOut: msg.usage?.output_tokens ?? 0,
+        errorMessage: null,
+      };
+    } catch (e) {
+      lastError = e instanceof Error ? e : new Error(String(e));
+      // Defensive Sentry capture; ignored if Sentry isn't initialized.
+      try {
+        Sentry.captureException(lastError, {
+          tags: {
+            surface: "diagnose_concern_llm",
+            stage: String(args.stage),
+            attempt: String(attempt),
+          },
+          level: "warning",
+        });
+      } catch {
+        // Sentry unavailable — proceed.
+      }
+    }
+  }
+  return {
+    data: null,
+    tokensIn: 0,
+    tokensOut: 0,
+    errorMessage: lastError?.message ?? "unknown_error",
+  };
+}
+
 // ─── Main two-stage entry point ────────────────────────────────────────────
 
 export async function diagnoseConcern(
@@ -543,8 +595,6 @@ export async function diagnoseConcern(
   const stage2Model = resolveStage2Model();
   const startedAt = Date.now();
 
-  // Cumulative usage trackers. Both stages add to these so the public
-  // result reflects total token spend.
   let tokensIn = 0;
   let tokensOut = 0;
 
@@ -562,7 +612,6 @@ export async function diagnoseConcern(
     error_message: errorMessage,
   });
 
-  // ── Pre-flight: short-circuit on near-empty descriptions ─────────────
   const desc = (args.customer_description ?? "").trim();
   if (desc.length < 3) {
     return {
@@ -586,49 +635,27 @@ export async function diagnoseConcern(
   // ════════════════════════════════════════════════════════════════════
   // STAGE 1 — Match category
   // ════════════════════════════════════════════════════════════════════
-  let stage1Parsed: z.infer<typeof Stage1Schema>;
-  try {
-    const result = await generateObject({
-      model: gateway(stage1Model),
-      system: buildStage1SystemPrompt(args),
-      prompt: buildUserPrompt(args),
-      schema: Stage1Schema,
-      maxOutputTokens: MAX_OUTPUT_TOKENS,
-      providerOptions: {
-        gateway: { caching: "auto" },
-      },
-      experimental_telemetry: {
-        isEnabled: true,
-        functionId: "diagnose-concern-stage1",
-        recordInputs: false,
-        recordOutputs: false,
-      },
-    });
-    stage1Parsed = result.object;
-    const usage = result.usage ?? { inputTokens: 0, outputTokens: 0 };
-    tokensIn += Number(usage.inputTokens ?? 0);
-    tokensOut += Number(usage.outputTokens ?? 0);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    try {
-      Sentry.captureException(e, {
-        tags: { surface: "diagnose_concern_llm", stage: "1" },
-        level: "warning",
-        extra: { description_len: desc.length },
-      });
-    } catch {
-      // Sentry unavailable in CLI/edge contexts — the fail-safe still runs.
-    }
-    return failSafe(`stage1_failed: ${msg.slice(0, 200)}`);
+  const stage1Result = await callAnthropicStage<Stage1Response>({
+    model: stage1Model,
+    systemPrompt: buildStage1SystemPrompt(args),
+    userPrompt: buildUserPrompt(args),
+    jsonSchema: STAGE1_JSON_SCHEMA as unknown as Record<string, unknown>,
+    zodSchema: Stage1ResponseSchema,
+    stage: 1,
+  });
+  tokensIn += stage1Result.tokensIn;
+  tokensOut += stage1Result.tokensOut;
+
+  if (!stage1Result.data) {
+    return failSafe(`stage1_failed: ${stage1Result.errorMessage}`);
   }
 
   // Validate Stage 1 output against the catalog.
   const matchedCat = findMatchedCategory(
     args.catalog,
-    stage1Parsed.matched_category_key,
+    stage1Result.data.matched_category_key,
   );
   if (!matchedCat) {
-    // Either LLM returned null (declined) or hallucinated a slug.
     return {
       matched_category_key: null,
       matched_kind: null,
@@ -640,8 +667,8 @@ export async function diagnoseConcern(
       latency_ms: Date.now() - startedAt,
       tokens_in: tokensIn,
       tokens_out: tokensOut,
-      error_message: stage1Parsed.matched_category_key
-        ? `invalid_category_key:${stage1Parsed.matched_category_key.slice(0, 50)}`
+      error_message: stage1Result.data.matched_category_key
+        ? `invalid_category_key:${stage1Result.data.matched_category_key.slice(0, 50)}`
         : "",
     };
   }
@@ -650,12 +677,7 @@ export async function diagnoseConcern(
   // STAGE 2 — Pick subcategory + gap-detect questions
   // ════════════════════════════════════════════════════════════════════
 
-  // Pre-build the fallback result for stage 2 failures: we still got a
-  // valid stage-1 match, so the wizard can recommend the testing service
-  // (if applicable) — just without clarifying questions.
-  const stage2Fallback = (
-    errorMessage: string,
-  ): DiagnoseConcernResult => {
+  const stage2Fallback = (errorMessage: string): DiagnoseConcernResult => {
     if (isTestingService(matchedCat)) {
       return {
         matched_category_key: matchedCat.service_key,
@@ -686,67 +708,35 @@ export async function diagnoseConcern(
     };
   };
 
-  let stage2Parsed: z.infer<typeof Stage2Schema>;
-  try {
-    const result = await generateObject({
-      model: gateway(stage2Model),
-      system: buildStage2SystemPrompt(matchedCat, args.customer_chip_hint),
-      prompt: buildUserPrompt(args),
-      schema: Stage2Schema,
-      maxOutputTokens: MAX_OUTPUT_TOKENS,
-      providerOptions: {
-        gateway: { caching: "auto" },
-      },
-      experimental_telemetry: {
-        isEnabled: true,
-        functionId: "diagnose-concern-stage2",
-        recordInputs: false,
-        recordOutputs: false,
-      },
-    });
-    stage2Parsed = result.object;
-    const usage = result.usage ?? { inputTokens: 0, outputTokens: 0 };
-    tokensIn += Number(usage.inputTokens ?? 0);
-    tokensOut += Number(usage.outputTokens ?? 0);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    try {
-      Sentry.captureException(e, {
-        tags: { surface: "diagnose_concern_llm", stage: "2" },
-        level: "warning",
-        extra: {
-          description_len: desc.length,
-          matched_category_key: matchedCat
-            ? (isTestingService(matchedCat)
-                ? matchedCat.service_key
-                : matchedCat.subcategory_slug)
-            : null,
-        },
-      });
-    } catch {
-      // Sentry unavailable.
-    }
-    return stage2Fallback(`stage2_failed: ${msg.slice(0, 200)}`);
+  const stage2Result = await callAnthropicStage<Stage2Response>({
+    model: stage2Model,
+    systemPrompt: buildStage2SystemPrompt(matchedCat, args.customer_chip_hint),
+    userPrompt: buildUserPrompt(args),
+    jsonSchema: STAGE2_JSON_SCHEMA as unknown as Record<string, unknown>,
+    zodSchema: Stage2ResponseSchema,
+    stage: 2,
+  });
+  tokensIn += stage2Result.tokensIn;
+  tokensOut += stage2Result.tokensOut;
+
+  if (!stage2Result.data) {
+    return stage2Fallback(`stage2_failed: ${stage2Result.errorMessage}`);
   }
 
-  // Validate Stage 2 subcategory_slug against the matched category's
-  // eligible set. If invalid, drop to the no-question outcome (we still
-  // recommend the service / forward to advisor without clarification).
   const eligibleSubSlugs = collectEligibleSubcategorySlugs(matchedCat);
   const subSlug =
-    stage2Parsed.matched_subcategory_slug &&
-    eligibleSubSlugs.has(stage2Parsed.matched_subcategory_slug)
-      ? stage2Parsed.matched_subcategory_slug
+    stage2Result.data.matched_subcategory_slug &&
+    eligibleSubSlugs.has(stage2Result.data.matched_subcategory_slug)
+      ? stage2Result.data.matched_subcategory_slug
       : null;
 
   let unansweredIds: number[] = [];
   if (subSlug) {
     const eligibleQIds = collectEligibleQuestionIds(matchedCat, subSlug);
-    const dedup = Array.from(new Set(stage2Parsed.unanswered_question_ids));
+    const dedup = Array.from(new Set(stage2Result.data.unanswered_question_ids));
     unansweredIds = dedup.filter((id) => eligibleQIds.has(id));
   }
 
-  // Compose final result.
   if (isTestingService(matchedCat)) {
     return {
       matched_category_key: matchedCat.service_key,

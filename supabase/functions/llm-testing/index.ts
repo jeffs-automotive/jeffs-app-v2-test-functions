@@ -1,51 +1,49 @@
-// llm-testing — two-stage diagnostic concern eval endpoint (Vercel AI Gateway).
+// llm-testing — Path C diagnostic concern eval (Anthropic SDK + AI Gateway).
 //
-// Mirrors the two-stage diagnostic prompt + schema + post-validation that
-// scheduler-app/src/lib/scheduler/wizard/llm/diagnose-concern.ts uses in prod
-// (refactored 2026-05-20). Lets us run test batches against the EXACT same
-// pipeline the prod wizard uses, without standing up the full Next.js app.
+// Mirrors scheduler-app/src/lib/scheduler/wizard/llm/diagnose-concern.ts
+// (Path C refactor 2026-05-20): native @anthropic-ai/sdk pointed at the
+// Vercel AI Gateway as base URL, using Anthropic's native structured
+// outputs API (output_format + structured-outputs-2025-11-13 beta) with
+// gateway.caching + gateway.models fallback chain via providerOptions.
 //
-// Two stages:
-//   Stage 1 — match category (brief catalog, ~5-8 KB prompt)
-//   Stage 2 — pick subcategory + gap-detect questions (single category, ~2-5 KB)
+// Why Path C: bypasses the @ai-sdk/gateway generateObject path's
+// documented Anthropic-compat bugs (#12020, #13355, #13460, #14342) by
+// using Anthropic's own SDK with Anthropic's own structured outputs API.
+// Anthropic SDK auto-strips unsupported JSON Schema keywords; the
+// Vercel AI SDK does not. Documented <0.1% schema-failure rate
+// (vs ~16% on the previous generateObject path).
 //
-// Returns BOTH the raw LLM output AND the post-validated state PER STAGE so
-// the test harness can detect hallucinations (LLM returned a slug not in
-// catalog) and silent filtering (question IDs that got dropped) at each
-// stage independently.
-//
-// MAINTENANCE WARNING: the prompt + schema are a snapshot of
-// diagnose-concern.ts as of 2026-05-20 (two-stage refactor). When that
-// file's prompt changes, this function must be re-deployed with the
-// matching prompt or eval results stop reflecting prod.
-//
-// POST /llm-testing
-// Body: { "concern_text": string, "chip_hint"?: { ... } }
-// Response: see ResponseShape below.
+// Response shape: stage1 + stage2 blocks with raw + validated state per
+// stage. Lets the harness detect hallucinations / silent filtering at
+// each stage independently. Same shape as the AI-SDK version this
+// replaces, so run-llm-test-batch.mjs needs no changes.
 
 import "@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { generateObject } from "npm:ai@^5";
-import { gateway } from "npm:@ai-sdk/gateway@^2";
+import Anthropic from "npm:@anthropic-ai/sdk@^0.97";
 import { z } from "npm:zod@^4";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY =
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
   Deno.env.get("SUPABASE_SECRET_KEY")!;
+const AI_GATEWAY_API_KEY = Deno.env.get("AI_GATEWAY_API_KEY")!;
 const SHOP_ID = parseInt(Deno.env.get("TEKMETRIC_SHOP_ID") ?? "7476", 10);
 
-// Per-stage model envs (single-env fallback for legacy compat).
+const DEFAULT_MODEL = "anthropic/claude-haiku-4-5";
+const FALLBACK_MODEL = "anthropic/claude-sonnet-4-6";
+const MAX_OUTPUT_TOKENS = 1024;
+const STRUCTURED_OUTPUTS_BETA = "structured-outputs-2025-11-13";
+
 const STAGE1_MODEL =
   Deno.env.get("DIAGNOSE_CONCERN_STAGE1_MODEL") ??
   Deno.env.get("DIAGNOSE_CONCERN_MODEL") ??
-  "anthropic/claude-haiku-4-5";
+  DEFAULT_MODEL;
 const STAGE2_MODEL =
   Deno.env.get("DIAGNOSE_CONCERN_STAGE2_MODEL") ??
   Deno.env.get("DIAGNOSE_CONCERN_MODEL") ??
-  "anthropic/claude-haiku-4-5";
+  DEFAULT_MODEL;
 
-const MAX_OUTPUT_TOKENS = 1024;
 const OTHER_CONCERN_CATEGORY = "other";
 
 const CORS_HEADERS = {
@@ -58,8 +56,13 @@ const sb = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
+const anthropic = new Anthropic({
+  apiKey: AI_GATEWAY_API_KEY,
+  baseURL: "https://ai-gateway.vercel.sh",
+});
+
 // ════════════════════════════════════════════════════════════════════
-// CATALOG TYPES + LOADER (ported from load-diagnostic-catalog.ts)
+// CATALOG TYPES + LOADER (unchanged from previous version)
 // ════════════════════════════════════════════════════════════════════
 
 interface CatalogQuestion {
@@ -148,16 +151,9 @@ async function loadCatalog(): Promise<DiagnosticCatalog> {
       .eq("active", true)
       .order("display_order", { ascending: true }),
   ]);
-
-  if (testingRes.error) {
-    throw new Error(`testing_services: ${testingRes.error.message}`);
-  }
-  if (subRes.error) {
-    throw new Error(`concern_subcategories: ${subRes.error.message}`);
-  }
-  if (questionRes.error) {
-    throw new Error(`concern_questions: ${questionRes.error.message}`);
-  }
+  if (testingRes.error) throw new Error(`testing_services: ${testingRes.error.message}`);
+  if (subRes.error) throw new Error(`concern_subcategories: ${subRes.error.message}`);
+  if (questionRes.error) throw new Error(`concern_questions: ${questionRes.error.message}`);
 
   const testingRows = (testingRes.data ?? []) as Array<{
     service_key: string;
@@ -199,7 +195,6 @@ async function loadCatalog(): Promise<DiagnosticCatalog> {
 
   const subsByCategory = new Map<string, CatalogSubcategory[]>();
   const otherSubcategories: CatalogSubcategory[] = [];
-
   for (const row of subRows) {
     const sub: CatalogSubcategory = {
       slug: row.slug,
@@ -252,11 +247,9 @@ async function loadCatalog(): Promise<DiagnosticCatalog> {
   return { categories: [...testingCategories, ...otherCategories] };
 }
 
-// Module-scope cache (1-min TTL) — warm invocations skip the catalog load.
 let catalogCache: { catalog: DiagnosticCatalog; loadedAt: number } | null =
   null;
 const CACHE_TTL_MS = 60_000;
-
 async function getCatalog(): Promise<DiagnosticCatalog> {
   if (catalogCache && Date.now() - catalogCache.loadedAt < CACHE_TTL_MS) {
     return catalogCache.catalog;
@@ -267,33 +260,73 @@ async function getCatalog(): Promise<DiagnosticCatalog> {
 }
 
 // ════════════════════════════════════════════════════════════════════
-// STAGE 1 + STAGE 2 SCHEMAS + PROMPTS (snapshot of diagnose-concern.ts)
+// JSON SCHEMAS + ZOD SCHEMAS (mirror diagnose-concern.ts)
 // ════════════════════════════════════════════════════════════════════
 
-const Stage1Schema = z.object({
-  matched_category_key: z
-    .string()
-    .nullable()
-    .describe(
-      "Either a testing_services.service_key from the catalog above OR an " +
+const STAGE1_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    matched_category_key: {
+      type: ["string", "null"],
+      description:
+        "Either a testing_services.service_key from the catalog above OR an " +
         "'other' subcategory slug. Return null when the description is too " +
         "vague to categorize OR doesn't fit any catalog entry.",
-    ),
-  reasoning: z.string().max(280),
+    },
+    reasoning: {
+      type: "string",
+      description:
+        "One sentence (keep under 280 characters) citing the chosen category " +
+        "and the customer words that drove the match. Audit-only.",
+    },
+  },
+  required: ["matched_category_key", "reasoning"],
+};
+
+const STAGE2_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    matched_subcategory_slug: {
+      type: ["string", "null"],
+      description:
+        "The subcategory slug whose questions best match the customer's " +
+        "symptoms. MUST appear in the subcategory list above. null only if " +
+        "you genuinely can't pick (rare).",
+    },
+    unanswered_question_ids: {
+      type: "array",
+      items: { type: "integer" },
+      description:
+        "IDs from the matched subcategory's question set that the description " +
+        "did NOT meaningfully answer. Empty when the description covers all " +
+        "questions. All IDs must be positive integers that appear in the " +
+        "catalog above.",
+    },
+    reasoning: {
+      type: "string",
+      description:
+        "One sentence (keep under 280 characters). Audit-only.",
+    },
+  },
+  required: ["matched_subcategory_slug", "unanswered_question_ids", "reasoning"],
+};
+
+const Stage1ResponseSchema = z.object({
+  matched_category_key: z.string().nullable(),
+  reasoning: z.string(),
 });
 
-const Stage2Schema = z.object({
-  matched_subcategory_slug: z
-    .string()
-    .nullable()
-    .describe(
-      "The subcategory slug whose questions best match the customer's " +
-        "symptoms. MUST appear in the subcategory list above. null only if " +
-        "you genuinely can't pick.",
-    ),
+const Stage2ResponseSchema = z.object({
+  matched_subcategory_slug: z.string().nullable(),
   unanswered_question_ids: z.array(z.number().int().positive()),
-  reasoning: z.string().max(280),
+  reasoning: z.string(),
 });
+
+// ════════════════════════════════════════════════════════════════════
+// PROMPT BUILDERS (mirror diagnose-concern.ts)
+// ════════════════════════════════════════════════════════════════════
 
 interface ChipHint {
   chip_service_key: string;
@@ -369,22 +402,17 @@ ${buildChipHintLine(chipHint)}
 
 # Decision rules
 
-1. **Match category to the customer's actual symptoms.** Read the description
-   carefully and pick the category whose name + "What we'd do" + tags best fit
-   the described issue. The chip hint is a prior, not a constraint.
+1. **Match category to the customer's actual symptoms.** The chip hint is a
+   prior, not a constraint.
 
-2. **'Other' subcategory matches are valid AND useful.** If the customer's
-   description is about a situation (recent accident, car has been sitting,
-   pre-trip check, multiple symptoms at once with no primary), match the
-   appropriate 'other' subcategory_slug.
+2. **'Other' subcategory matches are valid AND useful** for situations that
+   don't map to a specific test.
 
-3. **Couldn't categorize is a valid answer.** When the description is too
-   vague ("car feels weird", "something's off", < ~5 useful words), return
-   matched_category_key=null. The system will forward to a service advisor.
+3. **Couldn't categorize is a valid answer** — return null when too vague.
 
 4. **Never invent IDs or slugs.** Only return values that appear above.
 
-5. **Reasoning is for the audit log.** One sentence.`;
+5. **Reasoning is for the audit log.** One sentence under 280 characters.`;
 }
 
 function buildStage2SystemPrompt(
@@ -424,8 +452,7 @@ the customer's description to a category:
 
   ${matchedHeader}
 
-Your job has two parts:
-
+Your job:
   1. **Pick the subcategory** whose questions best match the customer's
      symptoms. The subcategory MUST be one of the slugs listed below.
      ${subcategories.length === 1 ? "(For 'other' matches there is only ONE choice — pick it.)" : ""}
@@ -444,54 +471,28 @@ ${buildChipHintLine(chipHint)}
 
 1. **Subcategory must appear in the list above.** Don't invent slugs.
 
-2. **Gap-detect questions from the matched subcategory only.** Don't return
-   IDs from a different subcategory. A question is "answered" when the
-   customer's description states the FACT the question asks about — even if
-   they used different words. A question is "unanswered" only when the
-   description doesn't speak to it at all OR mentions it ambiguously without
-   committing to a value.
+2. **Gap-detect questions from the matched subcategory only.** A question is
+   "answered" when the customer's description states the FACT it asks about —
+   even using different words. "Unanswered" only when the description doesn't
+   speak to it OR is genuinely ambiguous.
 
-   **Concrete patterns that count as ANSWERED (drop the ID):**
+   ANSWERED (drop the ID):
+   - Location/side: "front right" / "rear left" / "all four wheels" / "front"
+     / "rear" alone → drop location IDs.
+   - Onset: "started suddenly" / "appeared overnight" → ANSWERED suddenly.
+     "gradually" / "over weeks" → ANSWERED gradually.
+   - Trigger: "only when braking" → drop brake-trigger Qs. "over bumps" →
+     drop bump-trigger Qs. "at highway speed" → drop speed-band Qs.
+   - Recent service: "just replaced X" / "no recent work" → ANSWERED.
+     Silence on history → UNANSWERED.
 
-   - Location/side question: "front right" / "rear left" / "all four wheels" /
-     "passenger side" / "driver side" / "front" alone / "rear" alone → ANSWERED.
-     Even a single side word ("on the right") covers the side facet — drop the
-     question.
-
-   - Onset question ("Suddenly or gradually?"):
-     • "started suddenly" / "appeared overnight" → ANSWERED with "suddenly."
-     • "getting worse over weeks" / "gradually" → ANSWERED with "gradually."
-
-   - Trigger question ("When does it happen?"):
-     • "only when braking" → ANSWERED for brake-trigger questions.
-     • "over bumps" / "on rough roads" → ANSWERED for bump-trigger questions.
-     • "at highway speed" / "above 60 mph" → ANSWERED for speed-band questions.
-
-   - Recent-service question:
-     • "just replaced the pads last month" → ANSWERED with "yes — recently."
-     • "no recent work" → ANSWERED with "no."
-     • Silence on history → UNANSWERED.
-
-   **Concrete patterns that count as UNANSWERED (keep the ID):**
-
-   - The description doesn't mention the topic AT ALL.
-   - The description says "I think maybe" or "kind of" about the specific fact
-     the question asks about.
-
-   **Worked example.** Customer: "I hear a grinding noise from the front right
-   when braking." For 'metallic_grinding':
-   - "Every time you brake?" → UNANSWERED
-   - "Scraping with foot off the pedal?" → UNANSWERED
-   - "Front or rear? Left or right?" → **ANSWERED** (DROP)
-   - "Grinding through floor or pedal?" → UNANSWERED
-   - "Suddenly or gradually?" → UNANSWERED
-   - "Feel safe driving?" → UNANSWERED
-   - "Recent brake work?" → UNANSWERED
-   Correct: drop only the location ID; return the other 6.
+   UNANSWERED (keep the ID):
+   - Topic not mentioned at all.
+   - "I think maybe" / "kind of" / "sort of" about that specific fact.
 
 3. **Never invent IDs or slugs.** Only return values that appear above.
 
-4. **Reasoning is for the audit log.** One sentence.`;
+4. **Reasoning is for the audit log.** One sentence under 280 characters.`;
 }
 
 function buildUserPrompt(
@@ -510,6 +511,81 @@ function buildUserPrompt(
 }
 
 // ════════════════════════════════════════════════════════════════════
+// ANTHROPIC SDK STAGE CALLER (with retry + Zod validation)
+// ════════════════════════════════════════════════════════════════════
+
+interface StageCallResult<T> {
+  raw: T | null;
+  rawJsonText: string | null;
+  tokensIn: number;
+  tokensOut: number;
+  errorMessage: string | null;
+  attempts: number;
+}
+
+async function callAnthropicStage<T>(args: {
+  model: string;
+  systemPrompt: string;
+  userPrompt: string;
+  jsonSchema: Record<string, unknown>;
+  zodSchema: z.ZodType<T>;
+}): Promise<StageCallResult<T>> {
+  let lastError: Error | null = null;
+  let attempts = 0;
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    attempts = attempt + 1;
+    try {
+      const msg = await anthropic.messages.create({
+        model: args.model,
+        max_tokens: MAX_OUTPUT_TOKENS,
+        temperature: 0,
+        system: args.systemPrompt,
+        messages: [{ role: "user", content: args.userPrompt }],
+        // @ts-expect-error - gateway extensions not in Anthropic SDK types
+        providerOptions: {
+          gateway: {
+            caching: "auto",
+            models: [args.model, FALLBACK_MODEL],
+          },
+        },
+        output_format: {
+          type: "json_schema",
+          schema: args.jsonSchema,
+        },
+        betas: [STRUCTURED_OUTPUTS_BETA],
+      });
+
+      const textBlock = msg.content.find((b) => b.type === "text");
+      if (!textBlock || textBlock.type !== "text") {
+        throw new Error("no_text_block_in_response");
+      }
+      const rawJsonText = textBlock.text;
+      const parsedJson = JSON.parse(rawJsonText) as unknown;
+      const validated = args.zodSchema.parse(parsedJson);
+      return {
+        raw: validated,
+        rawJsonText,
+        tokensIn: msg.usage?.input_tokens ?? 0,
+        tokensOut: msg.usage?.output_tokens ?? 0,
+        errorMessage: null,
+        attempts,
+      };
+    } catch (e) {
+      lastError = e instanceof Error ? e : new Error(String(e));
+    }
+  }
+  return {
+    raw: null,
+    rawJsonText: null,
+    tokensIn: 0,
+    tokensOut: 0,
+    errorMessage: lastError?.message ?? "unknown_error",
+    attempts,
+  };
+}
+
+// ════════════════════════════════════════════════════════════════════
 // HTTP HANDLER
 // ════════════════════════════════════════════════════════════════════
 
@@ -518,29 +594,6 @@ function corsResp(body: unknown, status = 200): Response {
     status,
     headers: { "Content-Type": "application/json", ...CORS_HEADERS },
   });
-}
-
-interface Stage1Block {
-  model: string;
-  raw: z.infer<typeof Stage1Schema> | null;
-  validated_category_key: string | null;
-  system_prompt_chars: number;
-  latency_ms: number;
-  tokens_in: number;
-  tokens_out: number;
-  error_message: string | null;
-}
-
-interface Stage2Block {
-  model: string;
-  raw: z.infer<typeof Stage2Schema> | null;
-  validated_subcategory_slug: string | null;
-  validated_unanswered_question_ids: number[];
-  system_prompt_chars: number;
-  latency_ms: number;
-  tokens_in: number;
-  tokens_out: number;
-  error_message: string | null;
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -552,10 +605,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return corsResp({
       ok: true,
       function: "llm-testing",
-      version: "0.2.0",
-      arch: "two-stage",
+      version: "0.3.0",
+      arch: "two-stage-anthropic-sdk-native-structured-outputs",
       stage1_model: STAGE1_MODEL,
       stage2_model: STAGE2_MODEL,
+      structured_outputs_beta: STRUCTURED_OUTPUTS_BETA,
       hint: "POST { concern_text, chip_hint? } to run one concern through the two-stage diagnostic LLM.",
     });
   }
@@ -594,12 +648,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const testingCount = catalog.categories.filter(isTestingService).length;
   const otherCount = catalog.categories.filter(isOtherSubcategory).length;
 
-  // Short-circuit on near-empty descriptions.
   const t0 = Date.now();
   if (concernText.length < 3) {
     return corsResp({
       ok: true,
-      arch: "two-stage",
+      arch: "two-stage-anthropic-sdk",
       catalog_size: catalog.categories.length,
       testing_service_count: testingCount,
       other_subcategory_count: otherCount,
@@ -623,144 +676,107 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const stage1SystemPrompt = buildStage1SystemPrompt(catalog, chipHint);
   const userPrompt = buildUserPrompt(concernText, vehicleNotes);
 
-  const stage1: Stage1Block = {
+  const s1Start = Date.now();
+  const stage1Result = await callAnthropicStage({
     model: STAGE1_MODEL,
-    raw: null,
-    validated_category_key: null,
+    systemPrompt: stage1SystemPrompt,
+    userPrompt,
+    jsonSchema: STAGE1_JSON_SCHEMA,
+    zodSchema: Stage1ResponseSchema,
+  });
+  const stage1Block = {
+    model: STAGE1_MODEL,
+    raw: stage1Result.raw,
+    validated_category_key: null as string | null,
     system_prompt_chars: stage1SystemPrompt.length,
-    latency_ms: 0,
-    tokens_in: 0,
-    tokens_out: 0,
-    error_message: null,
+    latency_ms: Date.now() - s1Start,
+    tokens_in: stage1Result.tokensIn,
+    tokens_out: stage1Result.tokensOut,
+    error_message: stage1Result.errorMessage,
+    attempts: stage1Result.attempts,
   };
 
-  const s1Start = Date.now();
-  try {
-    const r = await generateObject({
-      model: gateway(STAGE1_MODEL),
-      system: stage1SystemPrompt,
-      prompt: userPrompt,
-      schema: Stage1Schema,
-      maxOutputTokens: MAX_OUTPUT_TOKENS,
-      providerOptions: { gateway: { caching: "auto" } },
-    });
-    stage1.raw = r.object;
-    stage1.tokens_in = Number(r.usage?.inputTokens ?? 0);
-    stage1.tokens_out = Number(r.usage?.outputTokens ?? 0);
-  } catch (e) {
-    stage1.error_message = e instanceof Error ? e.message : String(e);
-  }
-  stage1.latency_ms = Date.now() - s1Start;
-
-  // Validate Stage 1 against catalog.
+  // Validate Stage 1 against catalog
   let matchedCat: CatalogCategory | null = null;
-  if (stage1.raw && stage1.raw.matched_category_key) {
+  if (stage1Result.raw && stage1Result.raw.matched_category_key) {
     for (const c of catalog.categories) {
       if (
         isTestingService(c) &&
-        c.service_key === stage1.raw.matched_category_key
+        c.service_key === stage1Result.raw.matched_category_key
       ) {
         matchedCat = c;
         break;
       }
       if (
         isOtherSubcategory(c) &&
-        c.subcategory_slug === stage1.raw.matched_category_key
+        c.subcategory_slug === stage1Result.raw.matched_category_key
       ) {
         matchedCat = c;
         break;
       }
     }
   }
-  stage1.validated_category_key = matchedCat
+  stage1Block.validated_category_key = matchedCat
     ? (isTestingService(matchedCat)
         ? matchedCat.service_key
         : matchedCat.subcategory_slug)
     : null;
 
-  // If Stage 1 didn't yield a valid match, short-circuit (no Stage 2).
   if (!matchedCat) {
-    const validated = {
-      matched_category_key: null as string | null,
-      matched_kind: null as "testing_service" | "other_subcategory" | null,
-      matched_subcategory_slug: null as string | null,
-      unanswered_question_ids: [] as number[],
-      recommended_testing_service: null as null | {
-        service_key: string;
-        display_name: string;
-        starting_price_cents: number;
-      },
-    };
     let topErr: string | null = null;
-    if (stage1.error_message) topErr = `stage1_failed: ${stage1.error_message.slice(0, 200)}`;
-    else if (stage1.raw && stage1.raw.matched_category_key) {
-      topErr = `invalid_category_key:${stage1.raw.matched_category_key.slice(0, 50)}`;
+    if (stage1Block.error_message) {
+      topErr = `stage1_failed: ${stage1Block.error_message.slice(0, 200)}`;
+    } else if (stage1Result.raw?.matched_category_key) {
+      topErr = `invalid_category_key:${stage1Result.raw.matched_category_key.slice(0, 50)}`;
     }
     return corsResp({
       ok: true,
-      arch: "two-stage",
+      arch: "two-stage-anthropic-sdk",
       catalog_size: catalog.categories.length,
       testing_service_count: testingCount,
       other_subcategory_count: otherCount,
-      stage1,
+      stage1: stage1Block,
       stage2: null,
-      validated,
+      validated: {
+        matched_category_key: null,
+        matched_kind: null,
+        matched_subcategory_slug: null,
+        unanswered_question_ids: [],
+        recommended_testing_service: null,
+      },
       latency_ms: Date.now() - t0,
-      tokens_in: stage1.tokens_in,
-      tokens_out: stage1.tokens_out,
+      tokens_in: stage1Block.tokens_in,
+      tokens_out: stage1Block.tokens_out,
       error_message: topErr,
     });
   }
 
   // ── Stage 2 ────────────────────────────────────────────────────────
   const stage2SystemPrompt = buildStage2SystemPrompt(matchedCat, chipHint);
-
-  const stage2: Stage2Block = {
-    model: STAGE2_MODEL,
-    raw: null,
-    validated_subcategory_slug: null,
-    validated_unanswered_question_ids: [],
-    system_prompt_chars: stage2SystemPrompt.length,
-    latency_ms: 0,
-    tokens_in: 0,
-    tokens_out: 0,
-    error_message: null,
-  };
-
   const s2Start = Date.now();
-  try {
-    const r = await generateObject({
-      model: gateway(STAGE2_MODEL),
-      system: stage2SystemPrompt,
-      prompt: userPrompt,
-      schema: Stage2Schema,
-      maxOutputTokens: MAX_OUTPUT_TOKENS,
-      providerOptions: { gateway: { caching: "auto" } },
-    });
-    stage2.raw = r.object;
-    stage2.tokens_in = Number(r.usage?.inputTokens ?? 0);
-    stage2.tokens_out = Number(r.usage?.outputTokens ?? 0);
-  } catch (e) {
-    stage2.error_message = e instanceof Error ? e.message : String(e);
-  }
-  stage2.latency_ms = Date.now() - s2Start;
+  const stage2Result = await callAnthropicStage({
+    model: STAGE2_MODEL,
+    systemPrompt: stage2SystemPrompt,
+    userPrompt,
+    jsonSchema: STAGE2_JSON_SCHEMA,
+    zodSchema: Stage2ResponseSchema,
+  });
 
-  // Validate Stage 2 against the matched category's eligible subcategories.
+  // Validate Stage 2 subcategory against eligible set
   const eligibleSubSlugs = new Set<string>();
   if (isOtherSubcategory(matchedCat)) {
     eligibleSubSlugs.add(matchedCat.subcategory_slug);
   } else {
     for (const s of matchedCat.subcategories) eligibleSubSlugs.add(s.slug);
   }
-
   const subSlug =
-    stage2.raw?.matched_subcategory_slug &&
-    eligibleSubSlugs.has(stage2.raw.matched_subcategory_slug)
-      ? stage2.raw.matched_subcategory_slug
+    stage2Result.raw?.matched_subcategory_slug &&
+    eligibleSubSlugs.has(stage2Result.raw.matched_subcategory_slug)
+      ? stage2Result.raw.matched_subcategory_slug
       : null;
-  stage2.validated_subcategory_slug = subSlug;
 
-  if (subSlug && stage2.raw) {
+  let validatedUnansweredIds: number[] = [];
+  if (subSlug && stage2Result.raw) {
     const eligibleQIds = new Set<number>();
     if (isOtherSubcategory(matchedCat)) {
       for (const q of matchedCat.questions) eligibleQIds.add(q.id);
@@ -768,13 +784,23 @@ Deno.serve(async (req: Request): Promise<Response> => {
       const sub = matchedCat.subcategories.find((s) => s.slug === subSlug);
       if (sub) for (const q of sub.questions) eligibleQIds.add(q.id);
     }
-    const dedup = Array.from(new Set(stage2.raw.unanswered_question_ids));
-    stage2.validated_unanswered_question_ids = dedup.filter((id) =>
-      eligibleQIds.has(id),
-    );
+    const dedup = Array.from(new Set(stage2Result.raw.unanswered_question_ids));
+    validatedUnansweredIds = dedup.filter((id) => eligibleQIds.has(id));
   }
 
-  // ── Compose final validated state ──────────────────────────────────
+  const stage2Block = {
+    model: STAGE2_MODEL,
+    raw: stage2Result.raw,
+    validated_subcategory_slug: subSlug,
+    validated_unanswered_question_ids: validatedUnansweredIds,
+    system_prompt_chars: stage2SystemPrompt.length,
+    latency_ms: Date.now() - s2Start,
+    tokens_in: stage2Result.tokensIn,
+    tokens_out: stage2Result.tokensOut,
+    error_message: stage2Result.errorMessage,
+    attempts: stage2Result.attempts,
+  };
+
   const validated = {
     matched_category_key: isTestingService(matchedCat)
       ? matchedCat.service_key
@@ -783,7 +809,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       ? ("testing_service" as const)
       : ("other_subcategory" as const),
     matched_subcategory_slug: subSlug,
-    unanswered_question_ids: stage2.validated_unanswered_question_ids,
+    unanswered_question_ids: stage2Block.validated_unanswered_question_ids,
     recommended_testing_service: isTestingService(matchedCat)
       ? {
           service_key: matchedCat.service_key,
@@ -793,24 +819,23 @@ Deno.serve(async (req: Request): Promise<Response> => {
       : null,
   };
 
-  // Top-level error_message: Stage 2 errors degrade to a partial result.
   let topErr: string | null = null;
-  if (stage2.error_message) {
-    topErr = `stage2_failed: ${stage2.error_message.slice(0, 200)}`;
+  if (stage2Block.error_message) {
+    topErr = `stage2_failed: ${stage2Block.error_message.slice(0, 200)}`;
   }
 
   return corsResp({
     ok: true,
-    arch: "two-stage",
+    arch: "two-stage-anthropic-sdk",
     catalog_size: catalog.categories.length,
     testing_service_count: testingCount,
     other_subcategory_count: otherCount,
-    stage1,
-    stage2,
+    stage1: stage1Block,
+    stage2: stage2Block,
     validated,
     latency_ms: Date.now() - t0,
-    tokens_in: stage1.tokens_in + stage2.tokens_in,
-    tokens_out: stage1.tokens_out + stage2.tokens_out,
+    tokens_in: stage1Block.tokens_in + stage2Block.tokens_in,
+    tokens_out: stage1Block.tokens_out + stage2Block.tokens_out,
     error_message: topErr,
   });
 });
