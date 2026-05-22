@@ -124,17 +124,8 @@ export function IdleTimer({
       }
     }
 
-    // TEMP DEBUG (2026-05-21): log each reset so we can confirm in browser
-    // DevTools that user interactions ARE waking the timer. Remove once
-    // we have a second clean test session.
-    let resetCount = 0;
     function resetTimer() {
       if (abandonedRef.current) return;
-      resetCount += 1;
-      // eslint-disable-next-line no-console
-      console.debug(
-        `[IdleTimer] reset #${resetCount} at ${new Date().toISOString()} step=${currentStep}`,
-      );
       clearAllTimers();
       setShowWarning(false);
       setSecondsLeft(20);
