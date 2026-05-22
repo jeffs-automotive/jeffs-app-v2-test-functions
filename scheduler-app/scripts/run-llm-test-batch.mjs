@@ -23,27 +23,24 @@
  * Usage:
  *   ANON_KEY=<key> node scripts/run-llm-test-batch.mjs
  */
-import { writeFileSync, mkdirSync } from "node:fs";
+import { writeFileSync, mkdirSync, readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // ════════════════════════════════════════════════════════════════════
-// CONFIG (edit per batch)
+// CONFIG (edit per batch OR pass --config <path-to-json> at CLI)
 // ════════════════════════════════════════════════════════════════════
 
-const BATCH_LABEL = "llm-test-17-batch10-post-repair-obd-codes-technical-v1-052126";
+// When invoked with `--config <path>`, BATCH_LABEL + CONCERNS are read
+// from the JSON file (shape: { label: string, concerns: string[] }).
+// Otherwise the in-file defaults below are used.
+
+let BATCH_LABEL = "llm-test-17-batch10-post-repair-obd-codes-technical-v1-052126";
 const OUTPUT_DIR_RELATIVE = "docs/chat-instructions/diagnostic-llm-tests";
 const FUNCTION_URL =
   "https://itzdasxobllfiuolmbxu.supabase.co/functions/v1/llm-testing";
 
-// NEW batch 10 — post-repair + OBD codes + technical descriptions.
-// First run; was deferred from the earlier batch 1-9 sequence (task #40).
-// Tests how the classifier handles:
-//   - Customers describing a problem AFTER recent service work
-//   - Customers quoting OBD-II diagnostic trouble codes verbatim
-//   - Customers using technical part / system names (alternator, MAF,
-//     catalytic converter, etc.) rather than describing symptoms
-const CONCERNS = [
+let CONCERNS = [
   // ── Post-repair (8) ─────────────────────────────────────────────────
   "Just had brakes replaced two days ago and now there's a grinding noise",
   "Got an alignment done last week and now the steering wheel is off-center",
@@ -74,11 +71,33 @@ const CONCERNS = [
   "Could be a vacuum leak somewhere in the intake",
 ];
 
+// Optional CLI override: --config <path-to-json>
+{
+  const argv = process.argv.slice(2);
+  const cfgIdx = argv.indexOf("--config");
+  if (cfgIdx !== -1 && argv[cfgIdx + 1]) {
+    const cfgPath = argv[cfgIdx + 1];
+    const raw = readFileSync(cfgPath, "utf-8");
+    const cfg = JSON.parse(raw);
+    if (typeof cfg.label !== "string" || !Array.isArray(cfg.concerns)) {
+      console.error(`--config ${cfgPath}: expected { label: string, concerns: string[] }`);
+      process.exit(1);
+    }
+    BATCH_LABEL = cfg.label;
+    CONCERNS = cfg.concerns;
+  }
+}
+
 // ════════════════════════════════════════════════════════════════════
 
-const ANON_KEY = process.env.ANON_KEY;
+// Accept either ANON_KEY or SUPABASE_ANON_KEY. The latter matches the name
+// in scheduler-app/.env.local so we can run via:
+//   node --env-file=.env.local scripts/run-llm-test-batch.mjs --config ...
+// without inlining the JWT in the shell command (keeps the key out of
+// transcripts / shell history per Chris's secrets-handling rule).
+const ANON_KEY = process.env.ANON_KEY ?? process.env.SUPABASE_ANON_KEY;
 if (!ANON_KEY) {
-  console.error("Set ANON_KEY env var (Supabase anon/publishable key).");
+  console.error("Set ANON_KEY (or SUPABASE_ANON_KEY) env var — the Supabase anon/publishable key.");
   process.exit(1);
 }
 
