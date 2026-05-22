@@ -31,43 +31,47 @@ import { fileURLToPath } from "node:url";
 // CONFIG (edit per batch)
 // ════════════════════════════════════════════════════════════════════
 
-const BATCH_LABEL = "llm-test-12-batch1-rerun-3stage-with-content-052126";
+const BATCH_LABEL = "llm-test-17-batch10-post-repair-obd-codes-technical-v1-052126";
 const OUTPUT_DIR_RELATIVE = "docs/chat-instructions/diagnostic-llm-tests";
 const FUNCTION_URL =
   "https://itzdasxobllfiuolmbxu.supabase.co/functions/v1/llm-testing";
 
-// Re-run of the original batch 1 (llm-test-1-052026.md) against the new
-// 3-stage classifier with full content (105 subcategory descriptions +
-// 374 question.required_facts tagged) populated 2026-05-21. Compares to:
-//   - llm-test-1-052026.md          → 60% match (single-stage Anthropic, no content)
-//   - llm-test-5-anthropic-sdk-…   → 88% match (2-stage Anthropic SDK, no content)
-// Expected ≥ 92% match with the new content + 3-stage deterministic mapper.
+// NEW batch 10 — post-repair + OBD codes + technical descriptions.
+// First run; was deferred from the earlier batch 1-9 sequence (task #40).
+// Tests how the classifier handles:
+//   - Customers describing a problem AFTER recent service work
+//   - Customers quoting OBD-II diagnostic trouble codes verbatim
+//   - Customers using technical part / system names (alternator, MAF,
+//     catalytic converter, etc.) rather than describing symptoms
 const CONCERNS = [
-  "My car makes a loud knocking noise when I first start it in the morning but it stops after about a minute",
-  "Brakes squeak really bad when I'm coming to a stop especially at slow speeds",
-  "AC blows hot air on the driver side but cold on the passenger side",
-  "When I turn the steering wheel all the way left I hear a clicking noise",
-  "Battery keeps dying overnight even though it's only 2 years old",
-  "There's a sweet syrupy smell coming from under the hood after driving for a while",
-  "White smoke coming out the tailpipe when I accelerate hard",
-  "Brake pedal goes almost to the floor before the brakes engage",
-  "Steering wheel pulls hard to the right whenever I let go on the highway",
-  "Tires wearing unevenly on the front passenger side, looks like cupping",
-  "Check engine light came on yesterday but car drives normal",
-  "ABS light just turned on a few minutes ago and stayed on",
-  "Airbag light is flashing intermittently",
-  "Oil pressure light flickers when I come to a stop at idle",
-  "Car has been sitting in my driveway for 8 months, want to make sure it's road ready before driving it",
-  "Just got rear-ended last week and now the car pulls left, want to make sure suspension is OK",
-  "Going on a 1500 mile road trip next weekend, want a complete check before I go",
-  "Just had new tires installed at Discount Tire yesterday and now I feel a vibration at 65mph",
-  "Engine bay smells like burning oil after I drive for like 20 minutes",
-  "Squealing high-pitched noise from the front right wheel when I brake but only sometimes",
-  "Something just feels off, can't really describe it",
-  "Car shakes when braking at highway speeds AND the check engine light is on AND it pulls left",
-  "It's making a weird noise",
-  "I think my transmission is slipping but I'm not really sure",
-  "The car just isn't right anymore",
+  // ── Post-repair (8) ─────────────────────────────────────────────────
+  "Just had brakes replaced two days ago and now there's a grinding noise",
+  "Got an alignment done last week and now the steering wheel is off-center",
+  "New tires installed yesterday and my TPMS light is on",
+  "Mechanic flushed my coolant a week ago and now it's leaking from somewhere",
+  "I had spark plugs replaced and now my car runs rougher than before",
+  "Replaced battery last month and now my car won't start in cold weather",
+  "Just got the timing belt done and engine sounds different",
+  "Oil change last week and now there's an oil spot on the driveway",
+  // ── OBD codes (7) ───────────────────────────────────────────────────
+  "Got a P0420 code at autozone, what does that mean",
+  "Check engine light on with P0301 P0302 P0303 - they said misfires",
+  "Scanner showed P0171 lean condition",
+  "Multiple codes - P0128 thermostat and P0440 evap",
+  "P0455 large evap leak detected",
+  "Got code P0700 transmission control system",
+  "Reader says U0100 lost communication with ECM",
+  // ── Technical descriptions (10) ─────────────────────────────────────
+  "I think my catalytic converter is shot, the car is sluggish",
+  "Pretty sure it's the alternator going bad",
+  "Might be the throttle position sensor",
+  "I read online it could be the mass air flow sensor",
+  "Mechanic friend said it sounds like the harmonic balancer",
+  "I think the wheel bearings are bad on the front passenger",
+  "Sounds like exhaust manifold gasket leak",
+  "Probably the IAC valve based on idle behavior",
+  "Might need a new fuel pump - cranks but won't start sometimes",
+  "Could be a vacuum leak somewhere in the intake",
 ];
 
 // ════════════════════════════════════════════════════════════════════
