@@ -49,11 +49,24 @@ const TOTAL_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes — per 2026-05-16 spec
 const WARNING_BEFORE_MS = 20 * 1000; // 20s warning window (WCAG 2.2.1)
 const TIME_TO_WARNING_MS = TOTAL_TIMEOUT_MS - WARNING_BEFORE_MS;
 
-const INTERACTIVE_EVENTS: Array<keyof DocumentEventMap> = [
+// Widened 2026-05-21 (idle-reset reliability fix). Original set was missing
+// mousemove + click + visibilitychange — a customer who's READING a card
+// (e.g. a clarification question) without scrolling/typing was timing out
+// after 5 min from page-mount with no resets. Also attaching to `window`
+// with `capture: true` so events caught at the capture phase still reset
+// the timer even if downstream handlers call stopPropagation.
+const INTERACTIVE_EVENTS: Array<keyof WindowEventMap> = [
   "pointerdown",
+  "pointermove",
+  "mousedown",
+  "mousemove",
+  "click",
   "keydown",
   "scroll",
+  "wheel",
   "touchstart",
+  "touchmove",
+  "focus",
 ];
 
 export function IdleTimer({
@@ -111,8 +124,17 @@ export function IdleTimer({
       }
     }
 
+    // TEMP DEBUG (2026-05-21): log each reset so we can confirm in browser
+    // DevTools that user interactions ARE waking the timer. Remove once
+    // we have a second clean test session.
+    let resetCount = 0;
     function resetTimer() {
       if (abandonedRef.current) return;
+      resetCount += 1;
+      // eslint-disable-next-line no-console
+      console.debug(
+        `[IdleTimer] reset #${resetCount} at ${new Date().toISOString()} step=${currentStep}`,
+      );
       clearAllTimers();
       setShowWarning(false);
       setSecondsLeft(20);
@@ -149,9 +171,14 @@ export function IdleTimer({
       fireBeacon("tab_close");
     }
 
+    // Attach to `window` (catches more than `document`) and use the
+    // capture phase so stopPropagation()'d events still wake the timer.
     for (const evt of INTERACTIVE_EVENTS) {
-      document.addEventListener(evt, resetTimer, { passive: true });
+      window.addEventListener(evt, resetTimer, { passive: true, capture: true });
     }
+    // visibilitychange fires when the tab regains focus — treat that as
+    // activity so coming back to a backgrounded tab resets the clock.
+    document.addEventListener("visibilitychange", resetTimer, { passive: true });
     window.addEventListener("pagehide", onUnload);
     window.addEventListener("beforeunload", onUnload);
 
@@ -159,8 +186,9 @@ export function IdleTimer({
 
     return () => {
       for (const evt of INTERACTIVE_EVENTS) {
-        document.removeEventListener(evt, resetTimer);
+        window.removeEventListener(evt, resetTimer, { capture: true });
       }
+      document.removeEventListener("visibilitychange", resetTimer);
       window.removeEventListener("pagehide", onUnload);
       window.removeEventListener("beforeunload", onUnload);
       clearAllTimers();
