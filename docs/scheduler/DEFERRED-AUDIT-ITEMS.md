@@ -522,6 +522,31 @@ files
 
 ## Content / MD docs
 
+### MD-2 · `exhaust_system_testing` not linked to Tekmetric canned_job (NEW 2026-05-21)
+
+- **What** — the new `exhaust_system_testing` testing_services row
+  (added 2026-05-21 via migration
+  `20260521171000_scheduler_exhaust_service_and_boundary_callouts.sql`)
+  is priced $39.99 to match the existing Tekmetric canned_job for
+  "exhaust evaluation" (per Chris). There is no testing_services →
+  Tekmetric canned_jobs linkage table seeded yet, so when this
+  service ships and a customer accepts the recommendation, the
+  appointment-creation path has no automatic way to attach the
+  matching canned_job to the Tekmetric work order.
+- **Why deferred** — the testing_services ↔ Tekmetric canned_jobs
+  mapping table is its own design problem (every active testing
+  service needs the same mapping). Doing it just for
+  exhaust_system_testing would create a partial pattern. Better
+  to design the full mapping table once.
+- **Customer impact** — currently zero (no real customer traffic
+  yet). When live, the workaround is the same as for every other
+  testing_service: advisors manually pick the canned_job in
+  Tekmetric after the customer confirms.
+- **When to revisit** — when the testing_services → canned_job
+  mapping table is designed (likely as part of the Tekmetric
+  appointment-sync hardening pass).
+- **Source** — 2026-05-21 exhaust catalog gap fix.
+
 ### MD-1 · `docs/chat-instructions/scheduler/templates/closed-dates.md` lists 9 holidays NOT in DB (NEW 2026-05-18; format verified 2026-05-19)
 
 - **What** — `docs/chat-instructions/scheduler/templates/closed-dates.md` lists 9 explicit

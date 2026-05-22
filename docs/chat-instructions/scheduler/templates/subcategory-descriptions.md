@@ -637,6 +637,42 @@ Negative examples:
   - ""Tick from the engine valvetrain" → engine_ticking_or_tapping"
 Synonyms: buzz, buzzing, electrical buzz, electrical hum, dash buzz, fuse box buzz, relay buzz, alternator buzz, beehive sound, vibration tone, 60-cycle hum, electrical noise, steady hum, drone (electrical)
 
+## noise/exhaust_louder_or_rumbling
+Description: A deep, throaty rumble, drone, or "louder-than-it-used-to-be" exhaust note — the car sounds like a muscle car, motorcycle, or has a hole in the muffler. Often loudest at idle or under throttle and may be paired with a faint exhaust smell. Common causes are a rusted-through muffler, a cracked downpipe or flex pipe, broken/missing exhaust hangers, or a failed cat-back section. Distinct from noise/rattling_underneath_the_car (which is a metallic loose-parts rattle, not a deeper exhaust note) and from noise/exhaust_manifold_tick_or_puff (which is a sharp rhythmic tick from the engine bay that quiets when warm, not a steady rumble from underneath). Cross-category: an exhaust smell coming through the cabin belongs to smell/exhaust_fumes_inside_the_cabin.
+Positive examples:
+  - "My exhaust got really loud all of a sudden — sounds like a muscle car now"
+  - "The car sounds like a Harley when I start it up"
+  - "Deep rumble underneath, way louder than it used to be"
+  - "I think my muffler is gone — sounds awful"
+  - "Loud drone from the back of the car under throttle"
+  - "Exhaust note is way deeper than normal"
+  - "Sounds like there's a hole in my exhaust somewhere"
+Negative examples:
+  - ""Tinny rattle that comes and goes" → noise/rattling_underneath_the_car"
+  - ""Ticking from the engine bay that goes away once it warms up" → noise/exhaust_manifold_tick_or_puff"
+  - ""Hissing under the hood" → noise/hissing_noise"
+  - ""Whistle when I accelerate hard" → noise/high_pitched_whining_under_the_hood"
+  - ""Exhaust smell in the cabin" → smell/exhaust_fumes_inside_the_cabin"
+Synonyms: loud exhaust, louder exhaust, rumbling exhaust, rumble, drone, muffler is gone, no muffler, hole in muffler, hole in exhaust, muscle car sound, harley sound, motorcycle sound, deeper exhaust, throaty exhaust, broken muffler, rotted exhaust, rusted muffler, cracked exhaust, exhaust leak
+
+## noise/exhaust_manifold_tick_or_puff
+Description: A sharp, rhythmic ticking, tapping, or puffing/chuffing from the engine bay that follows engine RPM — fast at idle, faster under acceleration. Often loudest right after a cold start and quiets (or disappears) once the engine reaches full operating temperature, because the exhaust manifold and gasket expand and seal as they heat up. Classic exhaust-manifold-gasket leak symptom. Distinct from noise/engine_ticking_or_tapping (which is a valvetrain tick from the TOP of the engine that does NOT quiet with warmth — and is often paired with oil-pressure concerns) and from noise/deep_knocking_from_the_engine (which is a deep heavy hammer-blow knock, not a sharp rhythmic tick). Cross-category: a hiss (no rhythm) belongs to noise/hissing_noise; an exhaust smell in the cabin belongs to smell/exhaust_fumes_inside_the_cabin.
+Positive examples:
+  - "Ticking sound from the engine bay when I start the car cold — goes away after about 5 minutes"
+  - "Puffing noise that goes with the engine, louder when it's cold"
+  - "I think I have an exhaust manifold leak — it ticks at startup"
+  - "Sharp chuff-chuff-chuff from under the hood — quiets down as it warms up"
+  - "Sounds like a sewing machine on cold mornings, then disappears"
+  - "Rhythmic tapping from the front of the engine bay, only when cold"
+  - "Exhaust manifold gasket leak — I can hear it ticking"
+Negative examples:
+  - ""Light tap from the top of the engine that's always there" → noise/engine_ticking_or_tapping"
+  - ""Deep knock from the bottom of the engine under load" → noise/deep_knocking_from_the_engine"
+  - ""Hissing from under the hood — no rhythm" → noise/hissing_noise"
+  - ""Loud deep rumble that's always there" → noise/exhaust_louder_or_rumbling"
+  - ""Exhaust smell inside the car" → smell/exhaust_fumes_inside_the_cabin"
+Synonyms: exhaust manifold leak, manifold gasket leak, exhaust manifold gasket, tick at startup, cold tick, cold-start tick, tick that goes away, puff puff puff, chuffing, chuff, exhaust tick, manifold tick, sewing machine sound, rhythmic tick, puffing noise, cold-engine tick, exhaust leak tick, header leak
+
 ## other/multiple_symptoms_not_sure_what_category
 Description: Customer describes TWO OR MORE genuinely UNRELATED problems happening together — e.g., AC stopped working AND a noise from underneath AND a warning light. Pick this ONLY when the description names symptoms across multiple different systems that don't share an obvious common cause. If the customer describes a single symptom (even a strong or scary one), or multiple symptoms within the SAME system (e.g., "brakes squeal and feel mushy"), route to the matching concrete subcategory instead. Distinct from warning_light/multiple_warning_lights_at_once (which is specifically about dashboard lights with no other symptoms named) and from any single-system multi-symptom (which belongs in that system's category).
 Positive examples:

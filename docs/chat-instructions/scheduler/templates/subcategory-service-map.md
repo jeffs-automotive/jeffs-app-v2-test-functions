@@ -39,11 +39,12 @@ column on concern_subcategories. Use:
   - testing-services.md  → for testing_service catalog edits
   - concern category MD  → for subcategory + question edits
 
-Full 90-row mapping authored 2026-05-21 — covers every active
+Full 92-row mapping authored 2026-05-21 — covers every active
 subcategory across the 14 concern categories, post-testing-services-
-catalog refactor (23 active services). The 6 `category=other` rows
-carry (none) because the catalog loader elevates them to top-level
-advisor-handoff entries and never fans them out to a testing service.
+catalog refactor (24 active services after exhaust_system_testing
+added 2026-05-21 evening). The 6 `category=other` rows carry (none)
+because the catalog loader elevates them to top-level advisor-handoff
+entries and never fans them out to a testing service.
 -->
 
 | category | subcategory_slug | testing_service_keys |
@@ -80,7 +81,9 @@ advisor-handoff entries and never fans them out to a testing service.
 | noise | clunking_over_bumps | suspension_steering_check |
 | noise | humming_or_whirring_at_speed | suspension_steering_check |
 | noise | high_pitched_whining_under_the_hood | charging_starting_testing, power_steering_eps_testing |
-| noise | rattling_underneath_the_car | suspension_steering_check |
+| noise | rattling_underneath_the_car | suspension_steering_check, exhaust_system_testing |
+| noise | exhaust_louder_or_rumbling | exhaust_system_testing |
+| noise | exhaust_manifold_tick_or_puff | exhaust_system_testing |
 | noise | hissing_noise | check_engine_light_testing, coolant_leak_testing |
 | noise | popping_or_clicking_when_turning | suspension_steering_check |
 | noise | deep_knocking_from_the_engine | check_engine_light_testing |
@@ -114,7 +117,7 @@ advisor-handoff entries and never fans them out to a testing service.
 | smell | burning_electrical_plastic_smell | electrical_testing_general |
 | smell | burning_rubber_hot_brake_smell | brake_inspection |
 | smell | musty_mildew_smell_from_vents | ac_performance_check |
-| smell | exhaust_fumes_inside_the_cabin | check_engine_light_testing |
+| smell | exhaust_fumes_inside_the_cabin | check_engine_light_testing, exhaust_system_testing |
 | smoke | white_smoke_from_tailpipe | coolant_leak_testing, check_engine_light_testing |
 | smoke | blue_or_gray_smoke_from_tailpipe | check_engine_light_testing |
 | smoke | black_smoke_from_tailpipe | check_engine_light_testing |

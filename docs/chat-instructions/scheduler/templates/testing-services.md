@@ -49,7 +49,7 @@ Display name: A/C performance check
 Abbreviation: AC PERF CHECK
 Starting price: $54.95
 Notes: A/C performance test is $54.95. Fee is waived if an evac and recharge or a/c system leak testing is needed.
-Description: The technician will check A/C performance by measuring vent temperature and verifying blower, mode, and cooling fan operation, checking system pressures if needed. They will also inspect for leaks and check related belts and pulleys.
+Description: The technician will check A/C performance by measuring vent temperature and verifying blower, mode, and cooling fan operation, checking system pressures if needed. They will also inspect for leaks and check related belts and pulleys. Scope: AC cooling, blower/mode operation, and vent-side HVAC complaints (weak airflow, musty smell from vents, one zone vs another). If the customer reports the HEATER blowing cold or weak heat — that's a coolant/HVAC heat issue and routes to coolant_leak_testing, not here.
 Example keywords: (none)
 Concern categories: hvac
 Active: true
@@ -149,7 +149,7 @@ Display name: Coolant leak / overheating testing
 Abbreviation: COOL LEAK TEST
 Starting price: $109.95
 Notes: Testing starts at $109.95. If additional testing is needed you will be contacted before we continue.
-Description: The technician will inspect the cooling system and perform a pressure test to check for external leaks at hoses, clamps, radiator, water pump, and related components. They'll also verify fan operation, thermostat function, and coolant circulation, and may perform a block test to check for internal engine issues.
+Description: The technician will inspect the cooling system and perform a pressure test to check for external leaks at hoses, clamps, radiator, water pump, and related components. They'll also verify fan operation, thermostat function, and coolant circulation, and may perform a block test to check for internal engine issues. Scope: cooling-system concerns — puddles of coolant under the car, sweet/syrup smell, overheating, steam from under the hood, WHITE smoke from the tailpipe, and heater-blowing-cold (low-coolant or thermostat-related). NOT for BLUE or GRAY smoke from the tailpipe (that's an oil burn — route to check_engine_light_testing) and NOT for musty smell from vents (that's HVAC — route to ac_performance_check).
 Example keywords: (none)
 Concern categories: leak, smoke, smell, performance, warning_light
 Active: true
@@ -174,6 +174,16 @@ Example keywords: (none)
 Concern categories: electrical
 Active: true
 
+## exhaust_system_testing
+Display name: Exhaust system evaluation
+Abbreviation: EXH SYS EVAL
+Starting price: $39.99
+Notes: Exhaust evaluation is $39.99. If a repair is needed and approved, the evaluation fee is waived.
+Description: The technician will inspect the exhaust system from manifold to tailpipe — checking the exhaust manifold and gaskets, downpipe, flex pipe, catalytic converter, resonator, muffler, tailpipe, and hangers — for leaks, cracks, rust-through, broken internals (rattle), and loose mounts. A road test or under-hood listening test may be performed to localize a tick, puff, or louder-than-normal exhaust sound. Scope: exhaust components specifically — exhaust manifold gasket leaks (ticking sound from engine bay that quiets when warm), louder-than-normal exhaust, rattle from catalytic converter, exhaust hanger noise, and exhaust fumes entering the cabin from an exhaust breach. NOT for blue/gray tailpipe smoke (oil burn — route to check_engine_light_testing) and NOT for sweet smell with overheating (coolant — route to coolant_leak_testing).
+Example keywords: (none)
+Concern categories: noise, smell, performance
+Active: true
+
 ## no_start_testing
 Display name: No-start testing
 Abbreviation: NO START TEST
@@ -189,7 +199,7 @@ Display name: Oil leak testing
 Abbreviation: OIL LEAK TEST
 Starting price: $179.95
 Notes: Testing starts at $179.95. If additional testing is needed you will be contacted before we continue.
-Description: The technician will inspect the engine and surrounding components for oil leaks, focusing on common areas like valve covers, gaskets, seals, and the oil pan. The vehicle will be brought to operating temperature and the underside/splash shields will be rechecked for fresh oil residue or buildup.
+Description: The technician will inspect the engine and surrounding components for oil leaks, focusing on common areas like valve covers, gaskets, seals, and the oil pan. The vehicle will be brought to operating temperature and the underside/splash shields will be rechecked for fresh oil residue or buildup. Scope: oil leaks specifically — visible oil drips/puddles, burnt-oil smell from the engine bay, oil residue on the underbody. If the customer describes an EXHAUST manifold gasket, exhaust leak, or louder-than-normal exhaust — that's exhaust_system_testing, not oil_leak_testing. Coolant puddles route to coolant_leak_testing.
 Example keywords: (none)
 Concern categories: leak, smell, smoke
 Active: true
@@ -229,7 +239,7 @@ Display name: Suspension + steering check
 Abbreviation: SUSP STEER CHECK
 Starting price: $89.95
 Notes: Testing starts at $89.95. If additional testing is needed you will be contacted before we continue.
-Description: The technician will inspect the steering and suspension components for wear, damage, looseness, and leaks, including joints, tie rods, control arms, bushings, and shocks/struts. Tires will be checked for uneven wear and a road test may be performed to verify ride quality, steering response, and handling.
+Description: The technician will inspect the steering and suspension components for wear, damage, looseness, and leaks, including joints, tie rods, control arms, bushings, and shocks/struts. Tires will be checked for uneven wear and a road test may be performed to verify ride quality, steering response, and handling. Scope: steering/suspension/tire-related shakes, pulls, drifts, clunks, and uneven tire wear. NOT for vibration that happens ONLY when braking (route to brake_inspection — that's a brake-rotor or caliper issue, not suspension) and NOT for vents/dashboard physically shaking from blower airflow (route to ac_performance_check — that's HVAC blower).
 Example keywords: (none)
 Concern categories: noise, steering, pulling, vibration
 Active: true
@@ -269,7 +279,7 @@ Display name: Window inoperative testing
 Abbreviation: WIN INOP TEST
 Starting price: $179.95
 Notes: Testing starts at $179.95. If additional testing is needed you will be contacted before we continue. Includes tear-down for inspection.
-Description: Window diagnosis: switch, motor, regulator, or wiring. Includes tear-down for inspection.
+Description: Window diagnosis: switch, motor, regulator, or wiring. Includes tear-down for inspection. Scope: power-window glass motion ONLY — window won't go up/down, only works sometimes, makes grinding noise during travel. NOT for power seats, sunroofs/moonroofs, side mirrors, door locks, or other power accessories — those route to electrical_testing_general.
 Example keywords: (none)
 Concern categories: electrical, other
 Active: true
