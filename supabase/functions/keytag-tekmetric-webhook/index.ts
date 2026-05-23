@@ -50,7 +50,7 @@
 // Returns 200 unconditionally after logging (so Tekmetric won't retry).
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 import {
   TEKMETRIC_API_BASE,
   TEKMETRIC_RO_STATUS,
@@ -121,14 +121,51 @@ function patchFailOptions(): ManualReviewOption[] {
   ];
 }
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const WEBHOOK_TOKEN = Deno.env.get(ENV_NAMES.WEBHOOK_TOKEN);
 const SHOP_ID = parseInt(Deno.env.get(ENV_NAMES.TEKMETRIC_SHOP_ID) ?? "7476", 10);
 
-const sb = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
-  auth: { persistSession: false, autoRefreshToken: false },
+// test seam — see index.test.ts
+// `sb` is lazily initialized via a Proxy so tests can swap the underlying
+// client via _setSupabaseClientForTesting() WITHOUT triggering createClient()
+// (which requires SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY at module load).
+// In production, the first property access constructs the real client.
+let _sbImpl: SupabaseClient | null = null;
+
+function _getSbImpl(): SupabaseClient {
+  if (_sbImpl === null) {
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+    const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    _sbImpl = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+  }
+  return _sbImpl;
+}
+
+// Proxy that defers to _getSbImpl() on every property access. Lets every
+// existing `sb.from(...)` / `sb.rpc(...)` call site keep working unchanged.
+// Typed as SupabaseClient so the consumer code still type-checks.
+const sb = new Proxy({} as SupabaseClient, {
+  get(_target, prop, _receiver): unknown {
+    const impl = _getSbImpl();
+    const val = (impl as unknown as Record<string | symbol, unknown>)[prop];
+    return typeof val === "function" ? val.bind(impl) : val;
+  },
 });
+
+// test seam — see index.test.ts
+// WEBHOOK_TOKEN is read inside the handler (not module-init) so tests can
+// override the env var per-test via Deno.env.set() / Deno.env.delete().
+function _readWebhookToken(): string | undefined {
+  return Deno.env.get(ENV_NAMES.WEBHOOK_TOKEN);
+}
+
+// test seam — see index.test.ts
+// Test-only: replace the module-level Supabase client with a mock. Setting
+// any non-null value bypasses the lazy-init in _getSbImpl(). Production
+// code never calls this.
+export function _setSupabaseClientForTesting(client: unknown): void {
+  _sbImpl = client as SupabaseClient;
+}
 
 // ─── Webhook event classification ───────────────────────────────────────────
 type EventKind =
@@ -293,8 +330,12 @@ async function markProcessed(
 
 // ─── Main entry ─────────────────────────────────────────────────────────────
 
-Deno.serve(async (req: Request) => {
+// test seam — see index.test.ts
+// Exported as a named function so tests can call it directly without
+// going through Deno.serve. Production: Deno.serve(handler) wraps it below.
+export async function handler(req: Request): Promise<Response> {
   // ── Auth via query param (Tekmetric doesn't support custom headers) ──
+  const WEBHOOK_TOKEN = _readWebhookToken();
   if (!WEBHOOK_TOKEN) {
     console.error("TEKMETRIC_WEBHOOK_TOKEN not set on this function");
     return new Response(JSON.stringify({ error: "Misconfigured" }), { status: 500 });
@@ -1141,4 +1182,6 @@ Deno.serve(async (req: Request) => {
     await markProcessed(eventId, "error", { stage: "unhandled" }, msg);
     return new Response(JSON.stringify({ ok: false, error: msg }), { status: 200 });
   }
-});
+}
+
+Deno.serve(handler);

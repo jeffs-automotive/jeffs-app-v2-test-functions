@@ -403,7 +403,8 @@
   "workspace": {
     "packageJson": {
       "dependencies": [
-        "npm:@supabase/supabase-js@^2.105.4"
+        "npm:@supabase/supabase-js@^2.105.4",
+        "npm:husky@^9.1.7"
       ]
     }
   }

@@ -24,15 +24,40 @@
 //   migration 20260509235046_tekmetric_webhook_events.sql
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const WEBHOOK_TOKEN = Deno.env.get("TEKMETRIC_WEBHOOK_TOKEN");
+// test seam — see index.test.ts
+// `sb` is lazily initialized (and `let`, not `const`) so tests can swap it
+// via _setSupabaseClientForTesting() WITHOUT triggering createClient() —
+// which requires SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY at module load.
+// In production, the first handler call constructs the real client.
+let sb: SupabaseClient | null = null;
 
-const sb = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
-  auth: { persistSession: false, autoRefreshToken: false },
-});
+function getSb(): SupabaseClient {
+  if (sb === null) {
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+    const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    sb = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+  }
+  return sb;
+}
+
+// test seam — see index.test.ts
+// WEBHOOK_TOKEN is read inside the handler (not module-init) so tests can
+// override the env var per-test via Deno.env.set() / Deno.env.delete().
+function _readWebhookToken(): string | undefined {
+  return Deno.env.get("TEKMETRIC_WEBHOOK_TOKEN");
+}
+
+// test seam — see index.test.ts
+// Test-only: replace the module-level Supabase client with a mock. Setting
+// any non-null value also bypasses the lazy-init in getSb(). Production
+// code never calls this.
+export function _setSupabaseClientForTesting(client: unknown): void {
+  sb = client as SupabaseClient;
+}
 
 // ─── Heuristic event classification ─────────────────────────────────────────
 // Tekmetric webhook payloads include an `event` string (e.g. "Repair Order #X
@@ -132,7 +157,10 @@ function safeQueryString(url: URL): string | null {
 }
 
 // ─── Main entrypoint ────────────────────────────────────────────────────────
-Deno.serve(async (req) => {
+// test seam — see index.test.ts
+// Exported as a named function so tests can call it directly without
+// going through Deno.serve. Production: Deno.serve(handler) wraps it below.
+export async function handler(req: Request): Promise<Response> {
   if (req.method !== "POST") {
     return new Response(
       JSON.stringify({ error: "Use POST" }),
@@ -141,6 +169,7 @@ Deno.serve(async (req) => {
   }
 
   // Auth via query token (Tekmetric does not support custom headers)
+  const WEBHOOK_TOKEN = _readWebhookToken();
   if (!WEBHOOK_TOKEN) {
     console.error("tekmetric-webhook: TEKMETRIC_WEBHOOK_TOKEN env var is not set");
     return new Response(
@@ -188,7 +217,7 @@ Deno.serve(async (req) => {
   // (event_kind, entity_id, status_id, raw_body.data.updatedDate) — see
   // migration. .upsert with ignoreDuplicates: true means duplicate retries
   // are silently no-op'd at the DB level and `inserted` is NULL.
-  const { data: inserted, error: insertErr } = await sb
+  const { data: inserted, error: insertErr } = await getSb()
     .from("tekmetric_webhook_events")
     .upsert(insertRow, { onConflict: "event_hash", ignoreDuplicates: true })
     .select("id")
@@ -232,4 +261,6 @@ Deno.serve(async (req) => {
     }),
     { status: 200, headers: { "Content-Type": "application/json" } },
   );
-});
+}
+
+Deno.serve(handler);
