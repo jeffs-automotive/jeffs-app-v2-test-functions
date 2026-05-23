@@ -11,6 +11,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { listWipKeyTags } from "../_shared/tools/repair-orders.ts";
 import { ENV_NAMES } from "../_shared/tekmetric.ts";
+import { withSentryScope } from "../_shared/sentry-edge.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -20,7 +21,8 @@ const sb = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
-Deno.serve(async (req) => {
+// PLAN-02 Phase 1 — per-request Sentry isolation scope + flush before response.
+Deno.serve((req) => withSentryScope(req, "tekmetric-list-wip-keytags", async () => {
   if (req.method !== "GET" && req.method !== "POST") {
     return new Response(
       JSON.stringify({ ok: false, error: "Use GET or POST" }),
@@ -42,4 +44,4 @@ Deno.serve(async (req) => {
       { status: 500, headers: { "Content-Type": "application/json" } },
     );
   }
-});
+}));

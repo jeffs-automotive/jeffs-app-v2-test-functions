@@ -42,6 +42,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import Anthropic from "npm:@anthropic-ai/sdk@^0.97";
 import { z } from "npm:zod@^4";
+import { withSentryScope } from "../_shared/sentry-edge.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY =
@@ -1758,7 +1759,8 @@ function corsResp(body: unknown, status = 200): Response {
 
 const ARCH_LABEL = "three-stage-anthropic-sdk-native-structured-outputs";
 
-Deno.serve(async (req: Request): Promise<Response> => {
+// PLAN-02 Phase 1 — per-request Sentry isolation scope + flush before response.
+Deno.serve((req) => withSentryScope(req, "llm-testing", async () => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: CORS_HEADERS });
   }
@@ -2113,4 +2115,4 @@ Deno.serve(async (req: Request): Promise<Response> => {
       stage1Block.tokens_out + stage2Block.tokens_out + stage3Block.tokens_out,
     error_message: null,
   });
-});
+}));

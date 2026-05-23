@@ -58,6 +58,7 @@ import {
   validateToolInput,
   type McpToolDef,
 } from "../_shared/mcp-tool-registry.ts";
+import { withSentryScope } from "../_shared/sentry-edge.ts";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -354,7 +355,8 @@ async function handleToolsCall(
 
 // ─── Main entrypoint ─────────────────────────────────────────────────────────
 
-Deno.serve(async (req: Request): Promise<Response> => {
+// PLAN-02 Phase 1 — per-request Sentry isolation scope + flush before response.
+Deno.serve((req) => withSentryScope(req, "orchestrator-mcp", async () => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: CORS_HEADERS });
   }
@@ -444,4 +446,4 @@ Deno.serve(async (req: Request): Promise<Response> => {
     console.error("orchestrator-mcp internal error:", msg);
     return jsonRpcError(id, RPC_ERR.INTERNAL, "Internal server error", { message: msg });
   }
-});
+}));

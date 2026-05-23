@@ -10,6 +10,7 @@
     "npm:@supabase/supabase-js@2": "2.106.1",
     "npm:@supabase/supabase-js@^2.105.4": "2.106.1",
     "npm:ai@5": "5.0.190_zod@4.4.3",
+    "npm:husky@^9.1.7": "9.1.7",
     "npm:openai@^4.52.5": "4.104.0_zod@4.4.3",
     "npm:zod@4": "4.4.3"
   },
@@ -308,6 +309,10 @@
       "dependencies": [
         "ms"
       ]
+    },
+    "husky@9.1.7": {
+      "integrity": "sha512-5gs5ytaNjBrh5Ow3zrvdUUY+0VxIuWVL4i9irt6friV+BqdCfmV11CQTWMiBYWHbXhco+J1kHfTOUkePhCDvMA==",
+      "bin": true
     },
     "iceberg-js@0.8.1": {
       "integrity": "sha512-1dhVQZXhcHje7798IVM+xoo/1ZdVfzOMIc8/rgVSijRK38EDqOJoGula9N/8ZI5RD8QTxNQtK/Gozpr+qUqRRA=="

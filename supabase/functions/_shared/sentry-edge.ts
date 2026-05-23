@@ -64,6 +64,13 @@ function initOnce(): void {
     // We scrub PII below; sendDefaultPii adds request headers + IP which
     // help correlate edge-fn events to scheduler-app events.
     sendDefaultPii: true,
+    // PLAN-02 Phase 1 — REQUIRED per Sentry+Supabase official docs
+    // (https://supabase.com/docs/guides/functions/examples/sentry-monitoring).
+    // The Sentry Deno SDK does NOT auto-instrument Deno.serve. Default
+    // integrations install global handlers/state that LEAK across concurrent
+    // requests in the same warm isolate. Disabling them + relying on
+    // withIsolationScope + flush below is the documented safe pattern.
+    defaultIntegrations: false,
     initialScope: {
       tags: {
         surface: "supabase-edge",
@@ -84,6 +91,15 @@ function initOnce(): void {
   initialized = true;
 }
 
+/**
+ * Per-request flush deadline (ms). Sentry.flush returns as soon as the queue
+ * is empty OR this timeout hits — usually <50ms for requests with no events.
+ * Cap kept low (1000ms) so we don't add measurable latency to webhooks even
+ * if the Sentry ingest endpoint stalls. Research per
+ * .tmp/agent-output/research-sentry-observability + Supabase docs.
+ */
+const FLUSH_TIMEOUT_MS = 1000;
+
 export async function withSentryScope<T>(
   req: Request,
   surface: string,
@@ -94,7 +110,13 @@ export async function withSentryScope<T>(
     // Sentry not configured — just run the handler.
     return await handler();
   }
-  return await Sentry.withScope(async (scope) => {
+  // PLAN-02 Phase 1 — withIsolationScope (not just withScope) per Sentry 10.x.
+  // An isolation scope forks the ENTIRE scope chain (breadcrumbs, contexts,
+  // tags, user, spans) for this request — concurrent requests in the same
+  // warm isolate cannot observe or mutate each other's scope. withScope on
+  // its own only forks the current scope, leaving the isolation scope
+  // shared. See https://docs.sentry.io/platforms/javascript/configuration/scopes/
+  return await Sentry.withIsolationScope(async (scope) => {
     scope.setTag("surface", surface);
     scope.setTag("method", req.method);
     try {
@@ -104,9 +126,18 @@ export async function withSentryScope<T>(
       // Ignore — URL parse can throw on malformed requests.
     }
     try {
-      return await handler();
+      const result = await handler();
+      // Flush BEFORE returning. Without this, events queued during the
+      // request can be dropped when the Deno isolate shuts down before
+      // the network send completes. Critical for cron crons + webhook
+      // fire-and-forget paths.
+      await Sentry.flush(FLUSH_TIMEOUT_MS);
+      return result;
     } catch (e) {
       Sentry.captureException(e);
+      // Flush in the error path too — error events are the events we
+      // care MOST about not losing.
+      await Sentry.flush(FLUSH_TIMEOUT_MS);
       throw e; // re-throw so the request still 5xxs as before
     }
   });

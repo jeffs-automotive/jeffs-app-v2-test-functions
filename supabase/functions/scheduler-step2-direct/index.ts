@@ -44,6 +44,7 @@ import {
 } from "../_shared/tools/scheduler-customer.ts";
 import { sendOtp } from "../_shared/tools/scheduler-otp.ts";
 import { logEdgeError } from "../_shared/log-edge-error.ts";
+import { withSentryScope } from "../_shared/sentry-edge.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SHOP_ID = parseInt(
@@ -506,4 +507,5 @@ async function handleRequest(req: Request): Promise<Response> {
   });
 }
 
-Deno.serve(handleRequest);
+// PLAN-02 Phase 1 — per-request Sentry isolation scope + flush before response.
+Deno.serve((req) => withSentryScope(req, "scheduler-step2-direct", () => handleRequest(req)));

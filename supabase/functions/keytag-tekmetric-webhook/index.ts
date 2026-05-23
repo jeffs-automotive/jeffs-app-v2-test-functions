@@ -63,6 +63,7 @@ import {
   issueManualReview,
   type ManualReviewOption,
 } from "../_shared/manual-review.ts";
+import { withSentryScope } from "../_shared/sentry-edge.ts";
 
 // ── Manual-review option presets used by webhook detections ────────────────
 function driftOptions(roNumber: number, priorTag: string): ManualReviewOption[] {

@@ -33,6 +33,7 @@ import {
   stripFunctionPrefix,
   verifyPkce,
 } from "../_shared/oauth.ts";
+import { withSentryScope } from "../_shared/sentry-edge.ts";
 
 const FUNCTION_NAME = "mcp-auth";
 
@@ -561,7 +562,8 @@ function isScopeSubset(requested: string, granted: string): boolean {
 
 // ─── Main entry ─────────────────────────────────────────────────────────────
 
-Deno.serve(async (req: Request): Promise<Response> => {
+// PLAN-02 Phase 1 — per-request Sentry isolation scope + flush before response.
+Deno.serve((req) => withSentryScope(req, "mcp-auth", async () => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: CORS_HEADERS });
   }
@@ -595,4 +597,4 @@ Deno.serve(async (req: Request): Promise<Response> => {
     console.error(`${FUNCTION_NAME} unhandled:`, msg);
     return oauthError("server_error", msg, 500);
   }
-});
+}));

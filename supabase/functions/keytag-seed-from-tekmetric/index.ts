@@ -30,6 +30,7 @@ import {
   tekmetricGetJson,
 } from "../_shared/tekmetric-client.ts";
 import { parseKeytag } from "../_shared/keytag-format.ts";
+import { withSentryScope } from "../_shared/sentry-edge.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -104,7 +105,8 @@ async function fetchAllRosByStatus(statusId: number): Promise<TekmetricRepairOrd
   return all;
 }
 
-Deno.serve(async (req) => {
+// PLAN-02 Phase 1 — per-request Sentry isolation scope + flush before response.
+Deno.serve((req) => withSentryScope(req, "keytag-seed-from-tekmetric", async () => {
   if (req.method !== "POST" && req.method !== "GET") {
     return new Response(
       JSON.stringify({ ok: false, error: "Use POST or GET" }),
@@ -294,4 +296,4 @@ Deno.serve(async (req) => {
     status: 200,
     headers: { "Content-Type": "application/json" },
   });
-});
+}));

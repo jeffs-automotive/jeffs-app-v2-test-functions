@@ -37,6 +37,7 @@ import {
   checkSchedulerBearer,
   unauthorizedResponse,
 } from "../_shared/scheduler-auth.ts";
+import { withSentryScope } from "../_shared/sentry-edge.ts";
 
 interface BootstrapResponse {
   ok: boolean;
@@ -55,7 +56,8 @@ function jsonResponse(status: number, body: BootstrapResponse): Response {
   });
 }
 
-Deno.serve(async (req) => {
+// PLAN-02 Phase 1 — per-request Sentry isolation scope + flush before response.
+Deno.serve((req) => withSentryScope(req, "tekmetric-bootstrap", async () => {
   // Pattern A bearer auth (audit B2 fix, 2026-05-22).
   // Previously verify_jwt=true accepted the publishable anon key — any
   // browser client could trigger Tekmetric OAuth token re-bootstrap. Now
@@ -199,4 +201,4 @@ Deno.serve(async (req) => {
     token_type: tokenJson.token_type,
     scope: tokenJson.scope,
   });
-});
+}));

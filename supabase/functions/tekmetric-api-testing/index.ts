@@ -74,6 +74,7 @@ import {
   checkSchedulerBearer,
   unauthorizedResponse,
 } from "../_shared/scheduler-auth.ts";
+import { withSentryScope } from "../_shared/sentry-edge.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -950,7 +951,8 @@ async function handleRawGet(
 
 // ─── HTTP entry ─────────────────────────────────────────────────────────────
 
-Deno.serve(async (req: Request): Promise<Response> => {
+// PLAN-02 Phase 1 — per-request Sentry isolation scope + flush before response.
+Deno.serve((req) => withSentryScope(req, "tekmetric-api-testing", async () => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: CORS_HEADERS });
   }
@@ -1057,4 +1059,4 @@ Deno.serve(async (req: Request): Promise<Response> => {
       500,
     );
   }
-});
+}));

@@ -25,6 +25,7 @@
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
+import { withSentryScope } from "../_shared/sentry-edge.ts";
 
 // test seam — see index.test.ts
 // `sb` is lazily initialized (and `let`, not `const`) so tests can swap it
@@ -263,4 +264,8 @@ export async function handler(req: Request): Promise<Response> {
   );
 }
 
-Deno.serve(handler);
+// PLAN-02 Phase 1 — per-request Sentry isolation scope + flush before
+// returning. The exported `handler(req)` keeps the test seam intact;
+// production wraps it in withSentryScope so concurrent webhook deliveries
+// don't share breadcrumbs.
+Deno.serve((req) => withSentryScope(req, "tekmetric-webhook", () => handler(req)));
