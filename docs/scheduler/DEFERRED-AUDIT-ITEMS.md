@@ -518,6 +518,34 @@ files
 - **Source** — 2026-05-18 Vercel MCP audit + 2026-05-19 CLN-7 deep-dive
   agent + 2026-05-19 implementation.
 
+### SEC-3 · `tekmetric-api-testing` needs dedicated HMAC secret (NEW 2026-05-23)
+
+- **What** — Plan 03 Phase 3B shipped `tekmetric-api-testing` with a
+  graceful fallback: it reads
+  `TEKMETRIC_API_TEST_HMAC_SECRET` env var when set, falls back to
+  `SUPABASE_SERVICE_ROLE_KEY` (the previous behavior) when unset. The
+  fallback path logs a `console.warn` on cold start so the
+  misconfiguration is visible.
+- **What's blocked** — The security benefit (HMAC secret + service role
+  key uncoupled) only kicks in once the dedicated secret is set. Until
+  then, a service-role-key leak still allows attackers to forge
+  two-step confirmation tokens.
+- **What to do** — Chris runs ONE shell command to set the secret on
+  the test (and later, prod) Supabase project:
+  ```bash
+  npx supabase secrets set \
+    --project-ref itzdasxobllfiuolmbxu \
+    TEKMETRIC_API_TEST_HMAC_SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
+  ```
+  Then redeploy: `npx supabase functions deploy tekmetric-api-testing`.
+  After redeploy, the warning stops + HMAC secret is properly separated.
+- **Rotation note** — Token TTL is 5 min, so rotating the secret
+  invalidates all in-flight tokens within 5 min. Generate a new value +
+  `secrets set` to rotate; no coordinated cut-over needed.
+- **Source** — 2026-05-23 PLAN-03 Phase 3B implementation. Migration
+  comment in `supabase/functions/tekmetric-api-testing/index.ts` (line
+  ~581) also documents this prerequisite.
+
 ### OBS-8 · Sentry Cron Monitoring needs `sentry_dsn` in Vault (NEW 2026-05-23)
 
 - **What** — Plan 02 Phase 3 (migration

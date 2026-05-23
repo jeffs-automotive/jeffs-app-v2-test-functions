@@ -64,6 +64,7 @@ import {
   type ManualReviewOption,
 } from "../_shared/manual-review.ts";
 import { withSentryScope, Sentry } from "../_shared/sentry-edge.ts";
+import { bearersEqual } from "../_shared/scheduler-auth.ts";
 
 // ── Manual-review option presets used by webhook detections ────────────────
 function driftOptions(roNumber: number, priorTag: string): ManualReviewOption[] {
@@ -343,7 +344,9 @@ export async function handler(req: Request): Promise<Response> {
   }
   const url = new URL(req.url);
   const tokenParam = url.searchParams.get("token");
-  if (tokenParam !== WEBHOOK_TOKEN) {
+  // PLAN-03 Phase 2A (I-SEC-1) — constant-time compare. See
+  // tekmetric-webhook/index.ts for the rationale + threat-model note.
+  if (!bearersEqual(tokenParam ?? "", WEBHOOK_TOKEN)) {
     // PLAN-02 Phase 2A (I-OBS-3) — capture token-mismatch as Sentry warning
     // with a stable fingerprint so attack patterns dedupe into a SINGLE
     // issue (count climbs instead of dozens of distinct issues). Alert
@@ -613,7 +616,45 @@ export async function handler(req: Request): Promise<Response> {
       // do NOT auto-assign; instead, issue a manual-review code (DRF or REG)
       // so the service team can tell us what's physically on the keys.
       const roNumberForHistory = (data.repairOrderNumber as number) ?? null;
-      if (roNumberForHistory !== null) {
+      // PLAN-03 Phase 3A (I-SEC-5) — PostgREST .or() takes a raw string
+      // that's interpolated server-side. roId + roNumberForHistory come
+      // from the Tekmetric webhook body — if Tekmetric ever ships a
+      // typo'd payload (string instead of number) OR an attacker gets
+      // the webhook token + crafts a malicious body, the interpolation
+      // could end up shaped like `ro_id.eq.5);DROP--` and confuse the
+      // PostgREST parser. Number.isInteger + Number.isSafeInteger reject
+      // anything that isn't a finite 53-bit integer BEFORE interpolation.
+      // If either fails, skip the lookup (treat as "no prior history")
+      // rather than breaking the webhook. supabase-js validates .eq()/.in()
+      // types but does NOT validate .or() raw strings — this guard is
+      // the seatbelt.
+      const roIdSafe = Number.isInteger(roId) && Number.isSafeInteger(roId);
+      const roNumberSafe =
+        Number.isInteger(roNumberForHistory) && Number.isSafeInteger(roNumberForHistory);
+      if (roNumberForHistory !== null && (!roIdSafe || !roNumberSafe)) {
+        // Surface as warning so we know Tekmetric sent a malformed payload
+        // (or in the worst case, the webhook token leaked + attacker is
+        // probing). The webhook still completes — skip-lookup is the
+        // safe fallback (= "no prior history found", same as the existing
+        // case for roNumberForHistory === null).
+        Sentry.withScope((scope) => {
+          scope.setTag("event", "invalid_ro_id_or_number");
+          scope.setContext("invalid_ids", {
+            ro_id_type: typeof roId,
+            ro_id_safe: roIdSafe,
+            ro_number_type: typeof roNumberForHistory,
+            ro_number_safe: roNumberSafe,
+            ro_id_first_chars: typeof roId === "string"
+              ? (roId as string).slice(0, 20)
+              : String(roId),
+          });
+          Sentry.captureMessage(
+            "Tekmetric webhook body has invalid ro_id or ro_number type",
+            "warning",
+          );
+        });
+      }
+      if (roNumberForHistory !== null && roIdSafe && roNumberSafe) {
         const { data: priorHistoryRows } = await sb
           .from("keytag_audit_log")
           .select("id, action, occurred_at, tag_color, tag_number, reason")

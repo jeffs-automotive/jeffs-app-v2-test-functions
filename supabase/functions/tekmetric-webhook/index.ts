@@ -26,6 +26,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { withSentryScope, Sentry } from "../_shared/sentry-edge.ts";
+import { bearersEqual } from "../_shared/scheduler-auth.ts";
 
 // test seam — see index.test.ts
 // `sb` is lazily initialized (and `let`, not `const`) so tests can swap it
@@ -180,7 +181,12 @@ export async function handler(req: Request): Promise<Response> {
   }
   const url = new URL(req.url);
   const tokenParam = url.searchParams.get("token");
-  if (tokenParam !== WEBHOOK_TOKEN) {
+  // PLAN-03 Phase 2A (I-SEC-1) — constant-time compare via bearersEqual.
+  // String `!==` can leak per-byte timing under JIT short-circuit
+  // optimization; bearersEqual XORs every byte regardless of where the
+  // first mismatch occurs. tokenParam is coerced to "" for the null case
+  // (URLSearchParams.get returns null when the param is missing).
+  if (!bearersEqual(tokenParam ?? "", WEBHOOK_TOKEN)) {
     // PLAN-02 Phase 2A (I-OBS-3) — capture token-mismatch as Sentry warning
     // with a stable fingerprint so attack patterns dedupe into a SINGLE
     // issue (count climbs instead of dozens of distinct issues). Alert

@@ -578,7 +578,44 @@ async function handleWhoami(): Promise<Response> {
 // between step 1 and step 2 voids the token.
 
 const TOKEN_TTL_MS = 5 * 60 * 1000;
-const HMAC_SECRET = SUPABASE_SERVICE_ROLE_KEY;
+
+/**
+ * PLAN-03 Phase 3B (I-SEC-3) — HMAC secret separation.
+ *
+ * The two-step confirmation token format embeds an HMAC signature.
+ * Previously the HMAC secret was reused as `SUPABASE_SERVICE_ROLE_KEY`,
+ * which coupled the rotation cycles + blast radius of two unrelated
+ * secrets:
+ *   - Service role key leaks → DB write access AND ability to forge
+ *     two-step confirmation tokens (bypassing the write-op gate).
+ *   - HMAC secret leaks → no DB access, only token forgery.
+ *
+ * Now we read a dedicated env var. If unset, we FALL BACK to the
+ * service role key + log a Sentry warning — this keeps the migration
+ * safe to deploy BEFORE Chris sets the dedicated secret. The warning
+ * stops once `TEKMETRIC_API_TEST_HMAC_SECRET` is set via
+ * `supabase secrets set TEKMETRIC_API_TEST_HMAC_SECRET=<32-byte hex>`.
+ *
+ * Rotation: token TTL is 5 minutes, so rotating the secret invalidates
+ * all in-flight tokens after 5 min. No coordinated cut-over needed for
+ * this scale.
+ *
+ * Tracked as a manual step in docs/scheduler/DEFERRED-AUDIT-ITEMS.md
+ * (SEC-3).
+ */
+const DEDICATED_HMAC_SECRET = Deno.env.get("TEKMETRIC_API_TEST_HMAC_SECRET");
+const HMAC_SECRET = DEDICATED_HMAC_SECRET && DEDICATED_HMAC_SECRET.length >= 32
+  ? DEDICATED_HMAC_SECRET
+  : SUPABASE_SERVICE_ROLE_KEY;
+if (!DEDICATED_HMAC_SECRET || DEDICATED_HMAC_SECRET.length < 32) {
+  // Fires once per cold isolate — Sentry dedupes via fingerprint. Stops
+  // once the dedicated secret is set on the test/prod Supabase project.
+  console.warn(
+    "tekmetric-api-testing: TEKMETRIC_API_TEST_HMAC_SECRET unset or <32 chars; " +
+    "falling back to SUPABASE_SERVICE_ROLE_KEY for HMAC (Plan 03 Phase 3B migration window). " +
+    "Set via: supabase secrets set TEKMETRIC_API_TEST_HMAC_SECRET=$(node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\")",
+  );
+}
 
 async function sha256Hex(input: string): Promise<string> {
   const data = new TextEncoder().encode(input);

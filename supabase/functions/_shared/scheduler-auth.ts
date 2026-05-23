@@ -123,8 +123,26 @@ export interface AuthCheckResult {
 /**
  * Constant-time bearer comparison. Returns true if `submitted` exactly
  * matches `expected` and both have the same length.
+ *
+ * Threat model + security note (PLAN-03 Phase 2A):
+ * - The XOR loop runs over EVERY byte of `submitted` regardless of where
+ *   the first mismatch occurs — this prevents the per-byte timing leak
+ *   that string `===` allows under JIT optimization. This is the primary
+ *   defense.
+ * - The length-mismatch short-circuit on line 1 leaks the LENGTH of
+ *   `expected`. For our usage (server-injected env-var secrets with
+ *   fixed lengths — bearer tokens are typically 64 chars, webhook
+ *   tokens 32-64 chars) this is acceptable: knowing the length doesn't
+ *   meaningfully help an attacker recover the value.
+ * - For UNTRUSTED length inputs (e.g., if we ever compared against
+ *   a remote/user-supplied secret), upgrade to hash-then-compare:
+ *   sha256(submitted) vs sha256(expected) + XOR. Out of scope for the
+ *   current webhook-token + service-role-key compare paths.
+ *
+ * Exported per PLAN-03 Phase 2A so webhook receivers can call it
+ * directly instead of using string `!==`.
  */
-function bearersEqual(submitted: string, expected: string): boolean {
+export function bearersEqual(submitted: string, expected: string): boolean {
   if (submitted.length !== expected.length) return false;
   let result = 0;
   for (let i = 0; i < submitted.length; i++) {

@@ -80,7 +80,7 @@ import {
   RESOLVED_SERVICE_ROLE_KEY,
 } from "../_shared/scheduler-auth.ts";
 import { logEdgeError } from "../_shared/log-edge-error.ts";
-import { withSentryScope } from "../_shared/sentry-edge.ts";
+import { withSentryScope, Sentry } from "../_shared/sentry-edge.ts";
 import {
   issueManualReview,
   type ManualReviewOption,
@@ -517,6 +517,37 @@ async function reconcileOne(
       // If THIS RO has prior keytag history, we don't silently auto-assign.
       // Issue a DRF or REG manual review so the service team can record what
       // tag is on the physical keys.
+      //
+      // PLAN-03 Phase 3A (I-SEC-5) — PostgREST .or() takes a raw string
+      // interpolation. ro.id + ro.repairOrderNumber come from a Tekmetric
+      // API listing; if Tekmetric ever ships malformed types we'd inject
+      // garbage into the PostgREST parser. Guard with Number.isSafeInteger
+      // before interpolation; skip lookup (= "no prior history found")
+      // when invalid. See keytag-tekmetric-webhook for the canonical pattern.
+      const roIdSafe = Number.isInteger(ro.id) && Number.isSafeInteger(ro.id);
+      const roNumberSafe =
+        Number.isInteger(ro.repairOrderNumber) &&
+        Number.isSafeInteger(ro.repairOrderNumber);
+      if (!roIdSafe || !roNumberSafe) {
+        Sentry.withScope((scope) => {
+          scope.setTag("event", "invalid_ro_id_or_number");
+          scope.setContext("invalid_ids", {
+            ro_id_type: typeof ro.id,
+            ro_id_safe: roIdSafe,
+            ro_number_type: typeof ro.repairOrderNumber,
+            ro_number_safe: roNumberSafe,
+          });
+          Sentry.captureMessage(
+            "Tekmetric WIP listing has invalid ro_id or ro_number type",
+            "warning",
+          );
+        });
+        return {
+          ...base,
+          action: "noop",
+          detail: "skipped: invalid ro_id or ro_number type in Tekmetric response",
+        };
+      }
       const { data: priorHistoryRows } = await sb
         .from("keytag_audit_log")
         .select("id, action, occurred_at, tag_color, tag_number, reason")

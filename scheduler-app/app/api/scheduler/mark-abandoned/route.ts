@@ -29,6 +29,7 @@
  */
 import { NextResponse } from "next/server";
 import * as Sentry from "@sentry/nextjs";
+import { z } from "zod";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { logError } from "@/lib/scheduler/wizard/log-error";
@@ -36,36 +37,71 @@ import { logError } from "@/lib/scheduler/wizard/log-error";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+/**
+ * PLAN-03 Phase 2B (I-SEC-6) — pre-validate the beacon input shape
+ * BEFORE any DB query.
+ *
+ * Threat: an attacker probes the endpoint with garbage chat_id values
+ * (SQL-injection-like strings, path traversals, NULL bytes). The previous
+ * implementation called `.eq("id", chatId)` with whatever string the
+ * attacker submitted, leaving the supabase-js client to handle malformed
+ * UUIDs. While supabase-js DOES properly escape via PostgREST, refusing
+ * malformed input BEFORE the DB round-trip:
+ *   1. Eliminates the DB roundtrip cost of malformed probes (DoS hardening)
+ *   2. Makes the validation explicit + auditable
+ *   3. Removes any future risk of `.eq()` behavior change (Supabase's
+ *      type-validation on string-cast columns is stable but not guaranteed)
+ *
+ * Returns 204 on validation failure (NOT 400) so we don't leak info to
+ * the probe — the legitimate sendBeacon path also returns 204, so a
+ * 400 would let an attacker enumerate valid UUIDs by timing the
+ * response shape.
+ */
+const beaconInputSchema = z.object({
+  chat_id: z.string().uuid(),
+  step: z.string().max(64).nullable().optional(),
+  source: z.enum(["idle_timer", "tab_close"]).nullable().optional(),
+});
+
 export async function POST(req: Request): Promise<NextResponse> {
   try {
     // Accept either querystring (sendBeacon's default — no body when
     // using `new URLSearchParams()`) OR JSON body. The IdleTimer client
     // uses the querystring path because it's simpler under sendBeacon.
     const url = new URL(req.url);
-    let chatId = url.searchParams.get("chat_id");
-    let step = url.searchParams.get("step");
-    let source = url.searchParams.get("source");
+    let rawChatId = url.searchParams.get("chat_id");
+    let rawStep = url.searchParams.get("step");
+    let rawSource = url.searchParams.get("source");
 
-    if (!chatId) {
+    if (!rawChatId) {
       try {
         const body = (await req.json().catch(() => null)) as
           | { chat_id?: string; step?: string; source?: string }
           | null;
         if (body && typeof body.chat_id === "string") {
-          chatId = body.chat_id;
-          step = body.step ?? null;
-          source = body.source ?? null;
+          rawChatId = body.chat_id;
+          rawStep = body.step ?? null;
+          rawSource = body.source ?? null;
         }
       } catch {
         // empty body is fine — beacon is best-effort
       }
     }
 
-    if (!chatId || typeof chatId !== "string" || chatId.length === 0) {
-      // No chat_id → can't do anything; ack quickly so the beacon doesn't
-      // retry.
+    // PLAN-03 Phase 2B — Zod validation. Malformed/missing chat_id → 204
+    // (no DB query, no info leak). The legitimate happy path goes through
+    // here too.
+    const parsed = beaconInputSchema.safeParse({
+      chat_id: rawChatId,
+      step: rawStep,
+      source: rawSource,
+    });
+    if (!parsed.success) {
       return new NextResponse(null, { status: 204 });
     }
+    const chatId = parsed.data.chat_id;
+    const step = parsed.data.step ?? null;
+    const source = parsed.data.source ?? null;
 
     const supabase = createSupabaseAdminClient();
 
