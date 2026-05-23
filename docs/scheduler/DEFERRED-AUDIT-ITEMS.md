@@ -703,6 +703,40 @@ files
   prerequisite is also documented at the top of migration
   `20260523022303_sentry_cron_monitoring.sql`.
 
+### CLN-11 · npm install + npm ci lock-file drift recurrence pattern (NEW 2026-05-23)
+
+- **What** — `npm install <pkg>` (incremental adds) occasionally leaves
+  transitive deps (notably `@emnapi/core` + `@emnapi/runtime` pulled in
+  via Sentry's native bindings on Linux runners) UNRECORDED in
+  `scheduler-app/package-lock.json`. Locally the install works (npm
+  install is forgiving) but CI's `npm ci` is strict and fails with
+  EUSAGE "Missing: @emnapi/X from lock file".
+- **Why it keeps happening** — npm 11 + the way optional/native deps
+  are resolved (Rollup native binaries, @emnapi rebuild flags) means
+  the lock file's `optionalDependencies` tree is sometimes incomplete
+  after `npm install <pkg>`. Affected runs so far:
+  - 2026-05-22 PLAN-01 Phase 3 (eslint-config-next migration)
+  - 2026-05-23 PLAN-03 Phase 1 (botid + @upstash deps)
+- **Workaround (use after every `npm install -D` run)**:
+  ```bash
+  cd scheduler-app
+  rm -rf node_modules package-lock.json
+  npm install
+  npm ci --dry-run  # verify lock is full
+  ```
+  Then commit + push the regenerated lock file. The size of the diff
+  is large (hundreds of insertions/deletions) but legitimate — npm
+  rewrites the lock to include the previously-missing transitive
+  entries.
+- **Permanent fix candidate** — add a pre-push hook check that runs
+  `npm ci --dry-run` and rejects the push if lock is out of sync.
+  Or move scheduler-app to pnpm (stricter lock file management). Both
+  are bigger surgery; the workaround is acceptable for the v1 launch
+  cycle.
+- **Source** — CI run 26323221261 (Plan 03 Phase 1+4 push) reproduced
+  the same EUSAGE error from the earlier CI run 26319790437
+  (Plan 01 Phase 3).
+
 ### CLN-9 · pgTAP suite has 5 stale-schema failures — `continue-on-error` in CI (NEW 2026-05-22)
 
 - **What** — `supabase test db` against the local Supabase fails 5 of
