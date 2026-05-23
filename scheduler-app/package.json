@@ -17,8 +17,8 @@
     "postinstall": "echo '[scheduler-app] Reminder: run `npm install` at the repo root to wire husky pre-commit hooks.'"
   },
   "lint-staged": {
-    "scheduler-app/**/*.{ts,tsx,js,jsx,mjs}": [
-      "bash -c 'cd scheduler-app && npx eslint --fix --no-warn-ignored \"${0#scheduler-app/}\"'"
+    "**/*.{ts,tsx,js,jsx,mjs}": [
+      "eslint --fix --no-warn-ignored"
     ]
   },
   "dependencies": {
