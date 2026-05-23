@@ -60,7 +60,20 @@ export async function applyWizardTransition(
   const supabase = createSupabaseAdminClient();
   const nowIso = new Date().toISOString();
 
+  // 2026-05-23 BUG FIX (date-picker stuck-on-first-click): write
+  // status='active' by default. A wizard transition IS an active
+  // interaction; setting status='active' alongside the new step ensures
+  // that any racing mark-abandoned which already flipped status to
+  // 'timed_out' gets corrected here. Without this, hydrateSession on the
+  // next page render would observe status='timed_out' and wipe the row
+  // in place — stranding the customer at the greeting card right after
+  // they'd successfully picked a date.
+  //
+  // Callers that intentionally want a non-active status (escalation,
+  // ended, etc.) pass it via `updates.status`; the spread below preserves
+  // their override because they come AFTER the default.
   const payload: Record<string, unknown> = {
+    status: "active",
     ...(args.updates ?? {}),
     current_step: args.nextStep,
     last_active_at: nowIso,

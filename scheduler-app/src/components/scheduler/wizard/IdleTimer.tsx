@@ -156,9 +156,41 @@ export function IdleTimer({
 
     resetTimerRef.current = resetTimer;
 
-    function onUnload() {
-      // pagehide / beforeunload covers tab-close, navigation away, and
-      // history pops. Beacon releases the hold + marks abandoned.
+    // 2026-05-23 bug fix: spurious-pagehide guard.
+    //
+    // The earlier version fired `fireBeacon("tab_close")` unconditionally on
+    // any pagehide / beforeunload event, which on iOS Safari triggers
+    // frequently during NORMAL booking flow:
+    //   - Tapping a Server-Action-bound button (the browser fires a
+    //     transient pagehide while the POST is in-flight, then pageshow
+    //     when the response lands)
+    //   - Pulling the notification tray, tapping the URL bar, brief
+    //     home-button / app-switcher touches
+    //   - Any back-forward cache (bfcache) transition (the page WILL be
+    //     restored — event.persisted is true)
+    //
+    // The empirical signal: SQL queries showed appointment_holds being
+    // released 2.5-7 seconds after creation (way too fast for the
+    // 5-minute idle timer). The session was at status='timed_out' but
+    // the audit log had no `session_abandoned` entry for that release —
+    // because mark-abandoned's `void supabase.insert(...)` audit was
+    // dropped by Vercel's response-flush before the insert completed.
+    // The mark-abandoned UPDATE was the silent culprit.
+    //
+    // The fix has three layers (defense in depth):
+    //   1. (HERE) Skip the beacon when event.persisted is true — bfcache
+    //      transitions are NOT real abandons.
+    //   2. (mark-abandoned route) Refuse to release a hold when
+    //      last_active_at is < 5 seconds old — the user is mid-action.
+    //   3. (applyWizardTransition) Write status='active' explicitly so a
+    //      racing mark-abandoned that already flipped status='timed_out'
+    //      gets corrected on the next wizard step.
+
+    function onPagehide(event: PageTransitionEvent) {
+      if (event.persisted) return;
+      fireBeacon("tab_close");
+    }
+    function onBeforeUnload() {
       fireBeacon("tab_close");
     }
 
@@ -170,8 +202,8 @@ export function IdleTimer({
     // visibilitychange fires when the tab regains focus — treat that as
     // activity so coming back to a backgrounded tab resets the clock.
     document.addEventListener("visibilitychange", resetTimer, { passive: true });
-    window.addEventListener("pagehide", onUnload);
-    window.addEventListener("beforeunload", onUnload);
+    window.addEventListener("pagehide", onPagehide);
+    window.addEventListener("beforeunload", onBeforeUnload);
 
     resetTimer();
 
@@ -180,8 +212,8 @@ export function IdleTimer({
         window.removeEventListener(evt, resetTimer, { capture: true });
       }
       document.removeEventListener("visibilitychange", resetTimer);
-      window.removeEventListener("pagehide", onUnload);
-      window.removeEventListener("beforeunload", onUnload);
+      window.removeEventListener("pagehide", onPagehide);
+      window.removeEventListener("beforeunload", onBeforeUnload);
       clearAllTimers();
     };
   }, [chatId, currentStep, disabled]);
