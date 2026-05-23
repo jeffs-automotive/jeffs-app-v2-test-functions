@@ -1,0 +1,8 @@
+# PLAN-01 Phase 3C — pre-commit gate.
+# Runs lint-staged from scheduler-app/, which applies `eslint --fix`
+# to staged TS/TSX/JS/JSX/MJS files. Files outside scheduler-app/
+# (docs/, supabase/, .github/, etc.) bypass — lint-staged glob is
+# `scheduler-app/**/*.{ts,tsx,js,jsx,mjs}`.
+#
+# Pre-push runs typecheck — pre-commit stays fast on purpose.
+cd scheduler-app && npx lint-staged

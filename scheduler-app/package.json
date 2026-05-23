@@ -8,12 +8,18 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "postinstall": "echo '[scheduler-app] Reminder: run `npm install` at the repo root to wire husky pre-commit hooks.'"
+  },
+  "lint-staged": {
+    "scheduler-app/**/*.{ts,tsx,js,jsx,mjs}": [
+      "bash -c 'cd scheduler-app && npx eslint --fix --no-warn-ignored \"${0#scheduler-app/}\"'"
+    ]
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^2.0.0",
@@ -35,6 +41,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.0.0",
+    "@next/eslint-plugin-next": "^15.0.0",
     "@playwright/test": "^1.58.0",
     "@tailwindcss/postcss": "^4.0.0",
     "@testing-library/jest-dom": "^6.0.0",
@@ -43,11 +50,16 @@
     "@types/node": "^25.6.2",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
     "@vitejs/plugin-react": "^6.0.1",
     "@vitest/coverage-v8": "^4.0.0",
     "eslint": "^9.0.0",
-    "eslint-config-next": "^15.0.0",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "husky": "^9.1.7",
     "jsdom": "^29.1.1",
+    "lint-staged": "^15.5.2",
     "msw": "^2.0.0",
     "postcss": "^8.4.0",
     "tailwindcss": "^4.0.0",

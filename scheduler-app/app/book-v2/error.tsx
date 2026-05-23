@@ -53,7 +53,7 @@ export default function WizardError({
         </h1>
         <p style={{ marginBottom: "1.5rem", lineHeight: 1.6 }}>
           Sorry about that — we hit a snag while booking. You can try again,
-          or give the shop a call at <strong>(610) 253-6565</strong> and we'll
+          or give the shop a call at <strong>(610) 253-6565</strong> and we&apos;ll
           get you scheduled directly.
         </p>
         {error.digest ? (

@@ -518,6 +518,32 @@ files
 - **Source** — 2026-05-18 Vercel MCP audit + 2026-05-19 CLN-7 deep-dive
   agent + 2026-05-19 implementation.
 
+### CLN-8 · `react-hooks/refs` + `react-hooks/set-state-in-effect` lint warnings (NEW 2026-05-22)
+
+- **What** — the v6 `eslint-plugin-react-hooks` rules introduced as part
+  of PLAN-01 Phase 3A (ESLint migration off `eslint-config-next`) flag
+  5 pre-existing scheduler-app patterns:
+  - `src/components/scheduler/OtpInput.tsx:100,102` — `priorAttemptsRef.current`
+    read during render to detect attempts-remaining decrement
+  - `src/components/scheduler/heritage/SummaryCard.tsx:125` — synchronous
+    `setRemaining(null)` inside the countdown effect
+  - `src/components/scheduler/wizard/OfflineBanner.tsx:29` — synchronous
+    `setIsOffline(true)` on mount when `navigator.onLine === false`
+- **Why deferred** — these are React Compiler advisories, not silent-failure
+  bugs. The current patterns work in production today (verified via
+  appointments.jeffsautomotive.com). Fixing them requires non-trivial
+  refactor of the OTP comparison flow + the countdown effect — risky for
+  v1 launch. Rules downgraded from `error` to `warn` in
+  `scheduler-app/eslint.config.mjs` so CI is unblocked.
+- **When to revisit** — post-launch refactor pass, before adopting
+  React Compiler. Each site has a documented fix in the rule message
+  (move ref read into `useEffect` for OtpInput; use derived state or
+  move into event handler for SummaryCard; mirror via `useSyncExternalStore`
+  or a render-time read of `navigator.onLine` for OfflineBanner).
+- **Source** — 2026-05-22 PLAN-01 Phase 3A ESLint migration. Companion
+  `Unused eslint-disable directive` warnings (4 sites) auto-clean once
+  the underlying rules are reactivated.
+
 ---
 
 ## Content / MD docs

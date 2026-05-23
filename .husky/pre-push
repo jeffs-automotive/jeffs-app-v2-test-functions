@@ -1,0 +1,6 @@
+# PLAN-01 Phase 3C — pre-push gate.
+# Runs typecheck before pushing — catches type errors locally
+# before they hit CI. ESLint already ran in pre-commit so we
+# don't repeat it. Vitest is intentionally kept in CI only
+# (running full suite on every push slows local iteration).
+cd scheduler-app && npm run typecheck

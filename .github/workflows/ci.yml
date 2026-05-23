@@ -1,0 +1,98 @@
+name: CI
+
+# PLAN-01 Phase 3B — CI gate that blocks merges if lint/typecheck/tests fail.
+# Triggers:
+#   - pull_request to main  → required check on the merge
+#   - push to main          → catches direct pushes / merge commits
+#
+# Layout:
+#   quick-check  — runs lint + typecheck (fastest signal; everything depends on it)
+#   vitest       — runs scheduler-app/ unit + component tests
+#   deno-test    — runs supabase/functions/ Deno tests
+#   pgtap        — runs Postgres pgTAP suite against local Supabase
+#
+# Playwright is added in PLAN-01 Phase 4 once playwright.config.ts + the
+# wizard-happy-path spec exist.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quick-check:
+    name: Quick check (lint + typecheck)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: 'scheduler-app/package-lock.json'
+      - name: Install
+        run: cd scheduler-app && npm ci
+      - name: Typecheck
+        run: cd scheduler-app && npm run typecheck
+      - name: Lint
+        run: cd scheduler-app && npm run lint
+
+  vitest:
+    name: Vitest
+    runs-on: ubuntu-latest
+    needs: [quick-check]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: 'scheduler-app/package-lock.json'
+      - name: Install
+        run: cd scheduler-app && npm ci
+      - name: Vitest
+        run: cd scheduler-app && npm run test
+
+  deno-test:
+    name: Deno tests
+    runs-on: ubuntu-latest
+    needs: [quick-check]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Deno test
+        run: |
+          if find supabase/functions -name '*.test.ts' -print -quit | grep -q .; then
+            deno test --allow-all --no-check 'supabase/functions/**/*.test.ts'
+          else
+            echo 'No supabase/functions/**/*.test.ts found — Phase 4 will populate.'
+          fi
+
+  pgtap:
+    name: pgTAP
+    runs-on: ubuntu-latest
+    needs: [quick-check]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.x
+      - name: Start local Supabase
+        run: supabase start
+      - name: Run pgTAP
+        run: |
+          if [ -d supabase/tests ] && [ -n "$(find supabase/tests -name '*.sql' -print -quit)" ]; then
+            supabase test db
+          else
+            echo 'No supabase/tests/*.sql found — Phase 4 will populate.'
+          fi
+      - name: Stop Supabase
+        run: supabase stop
+        if: always()

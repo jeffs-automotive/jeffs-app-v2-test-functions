@@ -57,7 +57,9 @@ for (const model of models) {
       let parsed = body;
       try {
         parsed = JSON.stringify(JSON.parse(body));
-      } catch {}
+      } catch {
+        // body was not valid JSON — fall back to raw text already in `parsed`
+      }
       console.log(`HTTP ${res.status} ✗  ${parsed.slice(0, 200)}`);
     }
   } catch (e) {
