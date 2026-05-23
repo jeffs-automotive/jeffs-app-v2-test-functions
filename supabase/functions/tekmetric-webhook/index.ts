@@ -183,19 +183,42 @@ Deno.serve(async (req) => {
     ...ids,
   };
 
+  // Idempotency at the DB level (audit B5 — migration 20260522191500).
+  // event_hash is a GENERATED ALWAYS column derived from
+  // (event_kind, entity_id, status_id, raw_body.data.updatedDate) — see
+  // migration. .upsert with ignoreDuplicates: true means duplicate retries
+  // are silently no-op'd at the DB level and `inserted` is NULL.
   const { data: inserted, error: insertErr } = await sb
     .from("tekmetric_webhook_events")
-    .insert(insertRow)
+    .upsert(insertRow, { onConflict: "event_hash", ignoreDuplicates: true })
     .select("id")
-    .single();
+    .maybeSingle();
 
   if (insertErr) {
     // Log to function stdout so the failure shows up in `supabase functions logs`,
     // but still return 200 — Tekmetric retrying won't help if our DB is down,
     // and we don't want a flood of retries to make the situation worse.
-    console.error("tekmetric-webhook: insert failed:", insertErr.message, "row:", JSON.stringify(insertRow).slice(0, 500));
+    console.error("tekmetric-webhook: upsert failed:", insertErr.message, "row:", JSON.stringify(insertRow).slice(0, 500));
     return new Response(
       JSON.stringify({ ok: false, logged: false, error: insertErr.message }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
+  if (inserted === null) {
+    // Duplicate retry — DB-level idempotency caught it. Return 200 so
+    // Tekmetric stops retrying; structured log for observability.
+    console.log(JSON.stringify({
+      msg: "tekmetric-webhook: duplicate event ignored",
+      event_kind_inferred: eventKindInferred,
+    }));
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        logged: true,
+        duplicate: true,
+        event_kind_inferred: eventKindInferred,
+      }),
       { status: 200, headers: { "Content-Type": "application/json" } },
     );
   }
@@ -204,7 +227,7 @@ Deno.serve(async (req) => {
     JSON.stringify({
       ok: true,
       logged: true,
-      id: inserted?.id ?? null,
+      id: inserted.id,
       event_kind_inferred: eventKindInferred,
     }),
     { status: 200, headers: { "Content-Type": "application/json" } },

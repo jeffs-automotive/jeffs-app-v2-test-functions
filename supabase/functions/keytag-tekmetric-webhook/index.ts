@@ -257,14 +257,21 @@ interface LogEventInput {
   raw_headers: Record<string, string>;
 }
 
-async function logEvent(raw: LogEventInput): Promise<string> {
+/**
+ * Persist the inbound webhook event. Returns the new row's id on success
+ * OR `null` when the event_hash matched an existing row (DB-level
+ * idempotency caught a Tekmetric retry, audit B5 — migration
+ * 20260522191500). Callers that get `null` should skip downstream
+ * processing and return 200 (we already handled this logical event).
+ */
+async function logEvent(raw: LogEventInput): Promise<string | null> {
   const { data, error } = await sb
     .from("keytag_webhook_events")
-    .insert(raw)
+    .upsert(raw, { onConflict: "event_hash", ignoreDuplicates: true })
     .select("id")
-    .single();
-  if (error) throw new Error(`Log insert failed: ${error.message}`);
-  return data!.id as string;
+    .maybeSingle();
+  if (error) throw new Error(`Log upsert failed: ${error.message}`);
+  return data ? (data.id as string) : null;
 }
 
 async function markProcessed(
@@ -344,7 +351,10 @@ Deno.serve(async (req: Request) => {
   }
 
   // Always log first so we have a full audit trail, including events we skip below.
-  let eventId: string;
+  // logEvent returns null when the DB-level idempotency catches a Tekmetric
+  // retry (event_hash matched an existing row). In that case, we've already
+  // processed this logical event — skip downstream work and return 200.
+  let eventId: string | null;
   try {
     eventId = await logEvent({
       event_text: eventText,
@@ -358,6 +368,20 @@ Deno.serve(async (req: Request) => {
   } catch (e) {
     console.error("Failed to log webhook", e);
     return new Response(JSON.stringify({ ok: false, logged: false }), { status: 200 });
+  }
+
+  if (eventId === null) {
+    // Idempotency caught a Tekmetric retry — already processed.
+    console.log(JSON.stringify({
+      msg: "keytag-tekmetric-webhook: duplicate event ignored",
+      event_kind: eventKind,
+      ro_id: roId,
+      payment_id: paymentId,
+    }));
+    return new Response(
+      JSON.stringify({ ok: true, logged: true, duplicate: true, event_kind: eventKind }),
+      { status: 200 },
+    );
   }
 
   // ── Self-authored event filter (defensive) ──
