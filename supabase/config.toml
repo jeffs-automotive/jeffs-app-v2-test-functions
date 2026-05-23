@@ -411,7 +411,12 @@ s3_secret_key = "env(S3_SECRET_KEY)"
 
 [functions.tekmetric-bootstrap]
 enabled = true
-verify_jwt = true
+# Operator-only OAuth bootstrap. Default verify_jwt=true accepted the
+# publishable anon key (anon JWT is a "valid" Supabase JWT by signature),
+# meaning ANY browser client could force Tekmetric OAuth token re-bootstrap
+# (audit B2, 2026-05-22). Now gated by Pattern A bearer check inside the
+# handler — service-role / SUPABASE_SECRET_KEY only.
+verify_jwt = false
 import_map = "./functions/tekmetric-bootstrap/deno.json"
 # Uncomment to specify a custom file path to the entrypoint.
 # Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
@@ -594,3 +599,25 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/keytag-bulk-reconcile/deno.json"
 entrypoint = "./functions/keytag-bulk-reconcile/index.ts"
+
+[functions.tekmetric-api-testing]
+enabled = true
+# Operator-only Tekmetric API probe + write surface. Default verify_jwt=true
+# accepted the publishable anon key (anon JWT is "valid" by signature),
+# meaning ANY browser client could POST/PATCH/DELETE Tekmetric appointments
+# (audit B1, 2026-05-22). The UUID two-step confirmation flow only forces
+# step1→step2 sequencing within a SINGLE caller — it does NOT gate access.
+# Now gated by Pattern A bearer check inside the handler — service-role /
+# SUPABASE_SECRET_KEY only.
+verify_jwt = false
+import_map = "./functions/tekmetric-api-testing/deno.json"
+entrypoint = "./functions/tekmetric-api-testing/index.ts"
+
+[functions.llm-testing]
+enabled = true
+# Diagnostic-LLM eval probe. Operator-only; should require Pattern A bearer.
+# Currently verify_jwt=true accepts anon key — gating tightened 2026-05-22
+# as part of audit-driven hardening.
+verify_jwt = false
+import_map = "./functions/llm-testing/deno.json"
+entrypoint = "./functions/llm-testing/index.ts"

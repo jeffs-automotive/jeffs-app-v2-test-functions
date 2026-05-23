@@ -33,6 +33,10 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { TEKMETRIC_OAUTH_TOKEN_URL, VAULT_NAMES } from "../_shared/tekmetric.ts";
+import {
+  checkSchedulerBearer,
+  unauthorizedResponse,
+} from "../_shared/scheduler-auth.ts";
 
 interface BootstrapResponse {
   ok: boolean;
@@ -52,6 +56,15 @@ function jsonResponse(status: number, body: BootstrapResponse): Response {
 }
 
 Deno.serve(async (req) => {
+  // Pattern A bearer auth (audit B2 fix, 2026-05-22).
+  // Previously verify_jwt=true accepted the publishable anon key — any
+  // browser client could trigger Tekmetric OAuth token re-bootstrap. Now
+  // operator-only via service-role bearer.
+  const auth = checkSchedulerBearer(req, "tekmetric-bootstrap");
+  if (!auth.ok) {
+    return unauthorizedResponse(auth);
+  }
+
   if (req.method !== "POST") {
     return jsonResponse(405, {
       ok: false,

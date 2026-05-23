@@ -14,84 +14,6 @@ export type Database = {
   }
   public: {
     Tables: {
-      _bulk_keytag_backfill: {
-        Row: {
-          advisor_id: number | null
-          created_date: string | null
-          custom_label: string | null
-          customer_id: number | null
-          posted_date: string | null
-          ro_id: number | null
-          ro_number: number | null
-          status_id: number | null
-          status_name: string | null
-          technician_id: number | null
-          tekmetric_keytag: string | null
-          updated_date: string | null
-          vehicle_id: number | null
-        }
-        Insert: {
-          advisor_id?: number | null
-          created_date?: string | null
-          custom_label?: string | null
-          customer_id?: number | null
-          posted_date?: string | null
-          ro_id?: number | null
-          ro_number?: number | null
-          status_id?: number | null
-          status_name?: string | null
-          technician_id?: number | null
-          tekmetric_keytag?: string | null
-          updated_date?: string | null
-          vehicle_id?: number | null
-        }
-        Update: {
-          advisor_id?: number | null
-          created_date?: string | null
-          custom_label?: string | null
-          customer_id?: number | null
-          posted_date?: string | null
-          ro_id?: number | null
-          ro_number?: number | null
-          status_id?: number | null
-          status_name?: string | null
-          technician_id?: number | null
-          tekmetric_keytag?: string | null
-          updated_date?: string | null
-          vehicle_id?: number | null
-        }
-        Relationships: []
-      }
-      _smoke_test_run: {
-        Row: {
-          bucket: string
-          description: string
-          inserted_at: string
-          intent: string
-          request_id: number
-          test_id: string
-          tool: string
-        }
-        Insert: {
-          bucket: string
-          description: string
-          inserted_at?: string
-          intent: string
-          request_id: number
-          test_id: string
-          tool: string
-        }
-        Update: {
-          bucket?: string
-          description?: string
-          inserted_at?: string
-          intent?: string
-          request_id?: number
-          test_id?: string
-          tool?: string
-        }
-        Relationships: []
-      }
       agent_calls: {
         Row: {
           agent_name: string
@@ -528,6 +450,7 @@ export type Database = {
           multi_select: boolean
           options: Json
           question_text: string
+          required_facts: string[]
           shop_id: number
           subcategory_id: number
           updated_at: string
@@ -543,6 +466,7 @@ export type Database = {
           multi_select?: boolean
           options: Json
           question_text: string
+          required_facts?: string[]
           shop_id: number
           subcategory_id: number
           updated_at?: string
@@ -558,6 +482,7 @@ export type Database = {
           multi_select?: boolean
           options?: Json
           question_text?: string
+          required_facts?: string[]
           shop_id?: number
           subcategory_id?: number
           updated_at?: string
@@ -579,11 +504,16 @@ export type Database = {
           active: boolean
           category: string
           created_at: string
+          description: string
           display_label: string
           display_order: number
+          eligible_testing_service_keys: string[]
           id: number
+          negative_examples: string[]
+          positive_examples: string[]
           shop_id: number
           slug: string
+          synonyms: string[]
           updated_at: string
           updated_by_name: string | null
           updated_by_oauth_client_id: string | null
@@ -592,11 +522,16 @@ export type Database = {
           active?: boolean
           category: string
           created_at?: string
+          description?: string
           display_label: string
           display_order?: number
+          eligible_testing_service_keys?: string[]
           id?: number
+          negative_examples?: string[]
+          positive_examples?: string[]
           shop_id: number
           slug: string
+          synonyms?: string[]
           updated_at?: string
           updated_by_name?: string | null
           updated_by_oauth_client_id?: string | null
@@ -605,11 +540,16 @@ export type Database = {
           active?: boolean
           category?: string
           created_at?: string
+          description?: string
           display_label?: string
           display_order?: number
+          eligible_testing_service_keys?: string[]
           id?: number
+          negative_examples?: string[]
+          positive_examples?: string[]
           shop_id?: number
           slug?: string
+          synonyms?: string[]
           updated_at?: string
           updated_by_name?: string | null
           updated_by_oauth_client_id?: string | null
@@ -2136,6 +2076,7 @@ export type Database = {
           tag_number: number
         }[]
       }
+      run_admin_snapshot_prune: { Args: never; Returns: undefined }
       scheduler_get_service_role_key: { Args: never; Returns: string }
       scheduler_invoke_edge_function: {
         Args: { p_body?: Json; p_function_name: string }

@@ -70,6 +70,10 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 import { tekmetricFetch } from "../_shared/tekmetric-client.ts";
 import { ENV_NAMES } from "../_shared/tekmetric.ts";
+import {
+  checkSchedulerBearer,
+  unauthorizedResponse,
+} from "../_shared/scheduler-auth.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -950,6 +954,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: CORS_HEADERS });
   }
+
+  // Pattern A bearer auth (audit B1 fix, 2026-05-22).
+  // Previously verify_jwt=true accepted the publishable anon key — any
+  // browser client could POST/PATCH/DELETE Tekmetric appointments. Now
+  // operator-only via service-role bearer.
+  const auth = checkSchedulerBearer(req, "tekmetric-api-testing");
+  if (!auth.ok) {
+    return unauthorizedResponse(auth);
+  }
+
   if (req.method !== "POST") {
     return jsonResponse(
       { ok: false, error: "method_not_allowed", allowed: ["POST"] },
