@@ -103,6 +103,37 @@ interface StaleTagDetail {
   category: "wip" | "ar";
 }
 
+/**
+ * One row in the "Repair Orders Without Key Tags" section.
+ *
+ * Sourced from `keytag_manual_reviews` rows with `category='ar_no_prior_tag'`
+ * AND `resolved_at IS NULL`. For each, we look up the most recent
+ * `released` action in `keytag_audit_log` for the same RO to populate the
+ * "previously had / released_at" columns — that's what differentiates
+ * "manually released yesterday, no action needed" from "never had a tag,
+ * needs investigation".
+ *
+ * Added 2026-05-23 to replace the per-issue Resend email path. The user
+ * manually released ~100 A/R tags in a single day and got 100 individual
+ * emails the next morning; consolidating into this section solves that.
+ */
+interface RoWithoutKeytagDetail {
+  arn_code: string;
+  ro_id: number | null;
+  ro_number: number | null;
+  ro_url: string;
+  status_label: string; // 'A/R' | 'WIP' | etc. — sourced from the review's stored Tekmetric status_name
+  /** Last keytag known to have been on this RO (per audit log), or null. */
+  prior_tag_color: "red" | "yellow" | null;
+  prior_tag_number: number | null;
+  /** ISO timestamp of the most recent `released` action, or null when none found. */
+  released_at: string | null;
+  /** 'claude_desktop' | 'webhook' | 'reconcile' — informs the visual hint. */
+  released_source: string | null;
+  /** Days since the ARN was issued — used to highlight stale entries. */
+  days_open: number;
+}
+
 interface TekmetricCustomerSubset {
   firstName?: string | null;
   lastName?: string | null;
@@ -229,6 +260,167 @@ async function fetchNameViaRo(roId: number): Promise<string | null> {
   }
 }
 
+// ─── "Repair Orders Without Key Tags" data fetch ─────────────────────────────
+
+/**
+ * Pulls every unresolved ARN (`ar_no_prior_tag`) manual review and joins each
+ * to the latest `released` action in `keytag_audit_log` (if any), so the
+ * email can show the prior key tag + when it left the RO.
+ *
+ * Rationale: when an advisor manually releases a tag (action='released',
+ * source='claude_desktop'), the released_at column + tag color/number give
+ * the team an instant "this is the one I released yesterday, no action
+ * needed" signal at triage time. True ARNs (RO went A/R having never
+ * been tagged) have no released row — those are the ones the team should
+ * actually investigate.
+ *
+ * Added 2026-05-23 alongside the per-issue email suppression in
+ * `issueManualReview`.
+ */
+async function fetchRosWithoutKeytags(): Promise<RoWithoutKeytagDetail[]> {
+  const { data: reviews, error } = await sb
+    .from("keytag_manual_reviews")
+    .select("code, context, issued_at")
+    .eq("category", "ar_no_prior_tag")
+    .is("resolved_at", null)
+    .order("issued_at", { ascending: true });
+  if (error) {
+    console.error(
+      JSON.stringify({
+        level: "warning",
+        msg: "ros_without_keytags_query_failed",
+        detail: error.message,
+      }),
+    );
+    return [];
+  }
+
+  const out: RoWithoutKeytagDetail[] = [];
+  const nowMs = Date.now();
+
+  for (const r of reviews ?? []) {
+    const ctx = (r.context ?? {}) as {
+      ro_id?: number | null;
+      ro_number?: number | null;
+      tekmetric_status_name?: string | null;
+    };
+    const roId = typeof ctx.ro_id === "number" ? ctx.ro_id : null;
+    const roNumber = typeof ctx.ro_number === "number" ? ctx.ro_number : null;
+    const statusName = (ctx.tekmetric_status_name ?? "").toString();
+    const statusLabel = labelStatus(statusName);
+
+    // Look up the most recent `released` action for this RO. Tag color/number
+    // + occurred_at populate the "previously had" + "Released" columns.
+    let priorColor: "red" | "yellow" | null = null;
+    let priorNumber: number | null = null;
+    let releasedAt: string | null = null;
+    let releasedSource: string | null = null;
+
+    // Guard against non-integer ro_id / ro_number coming from a malformed
+    // review context (defensive — Tekmetric should always send integers).
+    // Same pattern used by `keytag-bulk-reconcile`'s PostgREST .or() guard.
+    const roIdSafe =
+      roId !== null && Number.isInteger(roId) && Number.isSafeInteger(roId);
+    const roNumberSafe =
+      roNumber !== null &&
+      Number.isInteger(roNumber) &&
+      Number.isSafeInteger(roNumber);
+
+    if (roIdSafe || roNumberSafe) {
+      const orClauses: string[] = [];
+      if (roIdSafe) orClauses.push(`ro_id.eq.${roId}`);
+      if (roNumberSafe) orClauses.push(`ro_number.eq.${roNumber}`);
+
+      const { data: rel, error: relErr } = await sb
+        .from("keytag_audit_log")
+        .select("tag_color, tag_number, occurred_at, source")
+        .or(orClauses.join(","))
+        .eq("action", "released")
+        .order("occurred_at", { ascending: false })
+        .limit(1);
+
+      if (relErr) {
+        console.error(
+          JSON.stringify({
+            level: "warning",
+            msg: "ros_without_keytags_audit_lookup_failed",
+            ro_id: roId,
+            ro_number: roNumber,
+            detail: relErr.message,
+          }),
+        );
+      } else if (rel && rel.length > 0) {
+        const row = rel[0] as {
+          tag_color: "red" | "yellow" | null;
+          tag_number: number | null;
+          occurred_at: string;
+          source: string | null;
+        };
+        priorColor = row.tag_color;
+        priorNumber = row.tag_number;
+        releasedAt = row.occurred_at;
+        releasedSource = row.source;
+      }
+    }
+
+    const issuedAtMs = r.issued_at
+      ? new Date(r.issued_at as string).getTime()
+      : nowMs;
+    const daysOpen = Math.floor((nowMs - issuedAtMs) / (24 * 60 * 60_000));
+
+    out.push({
+      arn_code: r.code as string,
+      ro_id: roId,
+      ro_number: roNumber,
+      ro_url:
+        roId !== null
+          ? buildTekmetricRoUrl({ roId, shopId: SHOP_ID })
+          : "",
+      status_label: statusLabel,
+      prior_tag_color: priorColor,
+      prior_tag_number: priorNumber,
+      released_at: releasedAt,
+      released_source: releasedSource,
+      days_open: daysOpen,
+    });
+  }
+
+  return out;
+}
+
+/**
+ * Map Tekmetric status_name (as stored in the review context at issuance
+ * time) to a compact label for the table. Falls back to the raw name when
+ * we don't have a known shorthand. The 4 statuses ARN reviews are normally
+ * issued for: POSTED (A/R) is most common; the others are defensive in
+ * case the bulk-reconcile path ever broadens.
+ */
+function labelStatus(statusName: string): string {
+  const s = (statusName || "").toUpperCase();
+  if (s === "POSTED" || s.includes("A/R") || s.includes("RECEIVABLE")) {
+    return "A/R";
+  }
+  if (s.includes("WORKING") || s.includes("WIP") || s.includes("APPROVED")) {
+    return "WIP";
+  }
+  if (s.includes("ESTIMATE")) return "Estimate";
+  if (s.includes("POSTED_PAID") || s.includes("PAID")) return "Paid";
+  if (!statusName) return "—";
+  return statusName;
+}
+
+function fmtReleasedAt(iso: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "America/New_York",
+  });
+}
+
 // ─── Email HTML builder ──────────────────────────────────────────────────────
 
 function buildReportHtml(args: {
@@ -237,8 +429,16 @@ function buildReportHtml(args: {
   availableCount: number;
   staleCount: number;
   staleDetails: StaleTagDetail[];
+  rosWithoutKeytags: RoWithoutKeytagDetail[];
 }): string {
-  const { tags, inUseCount, availableCount, staleCount, staleDetails } = args;
+  const {
+    tags,
+    inUseCount,
+    availableCount,
+    staleCount,
+    staleDetails,
+    rosWithoutKeytags,
+  } = args;
   const today = todayLongEastern();
 
   const reds = tags
@@ -302,6 +502,65 @@ function buildReportHtml(args: {
           </tbody>
         </table>`;
 
+  // "Repair Orders Without Key Tags" section. Added 2026-05-23 as the
+  // consolidation surface for ARN (`ar_no_prior_tag`) reviews. When the
+  // list is empty the whole section is omitted from the email so we don't
+  // ship a "No rows" widget every morning. The "Released" column is the
+  // key signal — if it's populated, an advisor previously released a tag
+  // from this RO (typically a Claude Desktop "release" call); blank means
+  // the RO went A/R having never been tagged in our system.
+  const roNoTagSection =
+    rosWithoutKeytags.length === 0
+      ? ""
+      : `
+    <h2 style="margin:32px 0 8px 0;color:${BRAND_PRIMARY};font-size:18px;border-bottom:1px solid ${BRAND_ACCENT};padding-bottom:4px;">Repair Orders Without Key Tags</h2>
+    <p style="margin:0 0 12px 0;color:#999;font-size:13px;">Repair orders flagged by the nightly reconcile as having no key tag tracked in our system. Rows with a date in the <strong>Released</strong> column had a tag previously — typically a manual "release" via Claude Desktop after the keys left the shop, so no action is usually needed. Rows with a blank <strong>Released</strong> column never had a tag in our records and should be reviewed. Resolve any row in Claude Desktop with <code style="background:#1f1f1f;padding:1px 6px;border-radius:3px;font-family:'SF Mono',Menlo,monospace;color:${BRAND_ACCENT};">code ARN-XXXXXX option ...</code>.</p>
+    <table role="presentation" style="width:100%;border-collapse:collapse;font-size:13px;">
+      <thead>
+        <tr>
+          <th style="text-align:left;padding:8px;border-bottom:1px solid ${BRAND_ACCENT};color:#ddd;">RO #</th>
+          <th style="text-align:left;padding:8px;border-bottom:1px solid ${BRAND_ACCENT};color:#ddd;">Status</th>
+          <th style="text-align:left;padding:8px;border-bottom:1px solid ${BRAND_ACCENT};color:#ddd;">Key Tag</th>
+          <th style="text-align:left;padding:8px;border-bottom:1px solid ${BRAND_ACCENT};color:#ddd;">Released</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rosWithoutKeytags
+          .map((r) => {
+            const roCell =
+              r.ro_url && r.ro_number !== null
+                ? `<a href="${r.ro_url}" style="color:${BRAND_ACCENT};text-decoration:none;">RO ${r.ro_number}</a>`
+                : r.ro_number !== null
+                  ? `RO ${r.ro_number}`
+                  : "—";
+            const statusBadge =
+              r.status_label === "A/R"
+                ? `<span style="background:#52443a;color:#e3c8a8;padding:2px 8px;border-radius:3px;font-weight:600;">A/R</span>`
+                : r.status_label === "WIP"
+                  ? `<span style="background:#3a3a52;color:#a8b0e3;padding:2px 8px;border-radius:3px;font-weight:600;">WIP</span>`
+                  : `<span style="color:#bbb;">${escapeHtml(r.status_label)}</span>`;
+            const tagCellText =
+              r.prior_tag_color && r.prior_tag_number !== null
+                ? tagLabel(r.prior_tag_color, r.prior_tag_number)
+                : "—";
+            const tagCellHtml =
+              tagCellText === "—"
+                ? `<span style="color:#666;">—</span>`
+                : `<span style="font-family:'SF Mono',Menlo,monospace;font-weight:600;color:${INUSE_TEXT};">${tagCellText}</span>`;
+            const releasedCellHtml = r.released_at
+              ? `<span style="color:#bbb;">${fmtReleasedAt(r.released_at)}</span>`
+              : `<span style="color:#666;">—</span>`;
+            return `<tr>
+              <td style="padding:8px;border-bottom:1px solid #333;">${roCell}</td>
+              <td style="padding:8px;border-bottom:1px solid #333;font-size:11px;">${statusBadge}</td>
+              <td style="padding:8px;border-bottom:1px solid #333;">${tagCellHtml}</td>
+              <td style="padding:8px;border-bottom:1px solid #333;">${releasedCellHtml}</td>
+            </tr>`;
+          })
+          .join("")}
+      </tbody>
+    </table>`;
+
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -335,6 +594,7 @@ function buildReportHtml(args: {
     <h2 style="margin:24px 0 8px 0;color:${BRAND_PRIMARY};font-size:18px;border-bottom:1px solid ${BRAND_ACCENT};padding-bottom:4px;">Stale tags</h2>
     <p style="margin:0 0 12px 0;color:#999;font-size:13px;">In-use tags (WIP or A/R) whose Tekmetric repair order hasn't had any activity in more than ${STALE_DAYS} days. WIP rows mean a car has been sitting in the shop without progress; A/R rows mean a car has been waiting on payment for too long. Investigate whether the customer picked up, or whether the RO needs to be advanced.</p>
     ${staleSection}
+    ${roNoTagSection}
 
     <h2 style="margin:32px 0 8px 0;color:${BRAND_PRIMARY};font-size:18px;border-bottom:1px solid ${BRAND_ACCENT};padding-bottom:4px;">Red tags (R1–R90)</h2>
     <table role="presentation" style="border-collapse:separate;border-spacing:3px;width:100%;table-layout:fixed;">${redGrid}</table>
@@ -538,14 +798,24 @@ Deno.serve((req) => withSentryScope(req, "keytag-daily-report", async () => {
     });
   }
 
+  // 2026-05-23: pull unresolved ARN reviews + their last-release audit
+  // rows to populate the "Repair Orders Without Key Tags" section.
+  // Failures are non-fatal — the rest of the report still ships.
+  const rosWithoutKeytags = await fetchRosWithoutKeytags();
+
   const html = buildReportHtml({
     tags,
     inUseCount,
     availableCount,
     staleCount: staleRaw.length,
     staleDetails,
+    rosWithoutKeytags,
   });
-  const subject = `Key Tags: ${inUseCount} in use, ${availableCount} available, ${staleRaw.length} stale`;
+  const noTagCount = rosWithoutKeytags.length;
+  const subject =
+    noTagCount > 0
+      ? `Key Tags: ${inUseCount} in use, ${availableCount} available, ${staleRaw.length} stale, ${noTagCount} A/R without tag`
+      : `Key Tags: ${inUseCount} in use, ${availableCount} available, ${staleRaw.length} stale`;
   const idempotencyKey = force ? null : `keytag-daily-report:${ymdEastern()}`;
 
   const send = await sendViaResend({ subject, html, idempotencyKey });
@@ -573,6 +843,7 @@ Deno.serve((req) => withSentryScope(req, "keytag-daily-report", async () => {
     in_use: inUseCount,
     available: availableCount,
     stale: staleRaw.length,
+    ar_without_tag: noTagCount,
     resend_id: send.resend_id ?? null,
     idempotency_key: idempotencyKey,
     forced: force,

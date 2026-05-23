@@ -480,6 +480,16 @@ async function reconcileOne(
         // The prior local ARN-only dedup was a subset of that and removed
         // with this commit.
         if (!dryRun) {
+          // 2026-05-23: sendEmail:false — ARN reviews are consolidated
+          // into the 7 AM keytag-daily-report's "Repair Orders Without
+          // Key Tags" section. The review row + audit log entry are still
+          // written; only the per-issue Resend email is suppressed.
+          //
+          // Why: after the user manually released ~100 A/R keytags in a
+          // single day, the per-issue email path produced 100 individual
+          // emails the next morning. The daily-digest surface gives one
+          // table with RO# / status / prior tag / released-when context,
+          // which is what the service team actually needs at triage time.
           const issued = await issueManualReview({
             sb,
             category: "ar_no_prior_tag",
@@ -491,6 +501,7 @@ async function reconcileOne(
             options: arnOptions(ro.repairOrderNumber),
             issueSummary: `A/R RO #${ro.repairOrderNumber} has no key tag tracked in our system. The keys may or may not have a physical tag.`,
             auditSource: "cron",
+            sendEmail: false,
           });
           if (!issued.created) {
             return {
@@ -502,7 +513,7 @@ async function reconcileOne(
           return {
             ...base,
             action: "manual_review_issued",
-            detail: `ARN ${issued.code} (A/R no prior tag — email ${issued.email_sent ? "sent" : "failed"})`,
+            detail: `ARN ${issued.code} (A/R no prior tag — email suppressed, included in daily-report)`,
             manual_review_code: issued.code,
           };
         }

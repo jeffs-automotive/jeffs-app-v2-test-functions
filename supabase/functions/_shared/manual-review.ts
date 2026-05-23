@@ -58,6 +58,23 @@ export interface IssueManualReviewArgs {
   issueSummary: string;
   /** 'webhook' | 'cron' — for the paired audit-log entry */
   auditSource: "webhook" | "cron";
+  /**
+   * When `false`, the per-issuance Resend email is skipped. The review row
+   * + audit log entry are still written so `code XXX-YYYYYY` lookup keeps
+   * working in Claude Desktop.
+   *
+   * Default: `true` — preserves existing behavior for ORP/DRF/REG/PAF.
+   *
+   * 2026-05-23: `keytag-bulk-reconcile` passes `false` for the ARN
+   * (`ar_no_prior_tag`) category because those reviews are consolidated
+   * into the 7 AM `keytag-daily-report` email instead. After the user
+   * manually released ~100 A/R keytags in a single day, the per-issue
+   * email path produced 100 individual emails the next morning — moving
+   * them to the daily digest is both quieter and gives operational context
+   * (which RO had which tag, when it was released) the per-issue email
+   * lacked.
+   */
+  sendEmail?: boolean;
 }
 
 export interface IssuedManualReview {
@@ -138,6 +155,7 @@ export interface IssuedManualReview {
  */
 export async function issueManualReview(args: IssueManualReviewArgs): Promise<IssuedManualReview> {
   const { sb, category, context, options, issueSummary, auditSource } = args;
+  const sendEmail = args.sendEmail ?? true;
   const prefix = CATEGORY_PREFIX[category];
 
   // ── Dedup gate by (category, ro_id) ────────────────────────────────────
@@ -191,28 +209,55 @@ export async function issueManualReview(args: IssueManualReviewArgs): Promise<Is
     throw new Error("create_manual_review returned no row");
   }
 
-  // Send the email. Don't throw on email failure — the review is
-  // already persisted, and the service team's existing daily-digest
-  // surface can catch missed emails. Capture the error on the row.
-  const emailResult = await sendManualReviewEmail({
-    code: row.code as string,
-    category,
-    issueSummary,
-    options,
-    context,
-  });
+  // Send the email (unless suppressed by caller). Don't throw on email
+  // failure — the review is already persisted, and the service team's
+  // existing daily-digest surface can catch missed emails. Capture the
+  // error on the row.
+  //
+  // 2026-05-23: ARN reviews from keytag-bulk-reconcile pass sendEmail:false
+  // because they're rolled up into keytag-daily-report's "Repair Orders
+  // Without Key Tags" section. mark_manual_review_email_sent is still
+  // called with null error so the row's email_sent_at is set (semantically:
+  // "no email was attempted, no error to record"). The lookup-via-code
+  // workflow in Claude Desktop is unaffected — codes still resolve.
+  if (sendEmail) {
+    const emailResult = await sendManualReviewEmail({
+      code: row.code as string,
+      category,
+      issueSummary,
+      options,
+      context,
+    });
 
+    await sb.rpc("mark_manual_review_email_sent", {
+      p_review_id: row.review_id as number,
+      p_error: emailResult.error ?? null,
+    });
+
+    return {
+      code: row.code as string,
+      review_id: row.review_id as number,
+      audit_log_id: (row.audit_log_id as number | null) ?? null,
+      email_sent: !emailResult.error,
+      email_error: emailResult.error,
+      created: true,
+    };
+  }
+
+  // Email suppressed — mark email_sent_at with null error to record the
+  // intentional no-op (downstream queries can still distinguish "email
+  // failed" from "email skipped" via the row's category + sender path).
   await sb.rpc("mark_manual_review_email_sent", {
     p_review_id: row.review_id as number,
-    p_error: emailResult.error ?? null,
+    p_error: null,
   });
 
   return {
     code: row.code as string,
     review_id: row.review_id as number,
     audit_log_id: (row.audit_log_id as number | null) ?? null,
-    email_sent: !emailResult.error,
-    email_error: emailResult.error,
+    email_sent: false,
+    email_error: undefined,
     created: true,
   };
 }
