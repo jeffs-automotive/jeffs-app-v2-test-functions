@@ -14,6 +14,78 @@ import { withSentryConfig } from "@sentry/nextjs";
  * .claude/rules/observability.md rule 4 + 13. DSN + auth token + org/project
  * slug come from env vars so this file stays committable.
  */
+/**
+ * PLAN-03 Phase 5 (bonus) — Customer-facing route hardening.
+ *
+ * Security headers applied to every response. CSP starts in Report-Only
+ * mode for ~1 week to log violations without blocking, then upgrades to
+ * enforced (Content-Security-Policy) after we've verified no production
+ * traffic triggers it. Switch by:
+ *   1. After 1 week of clean CSP-Report-Only logs in Sentry,
+ *   2. Change `Content-Security-Policy-Report-Only` key →
+ *      `Content-Security-Policy` (same value).
+ *
+ * HSTS preload submission (https://hstspreload.org/) requires 1 year of
+ * `max-age=31536000` ingestion + `includeSubDomains` + `preload` directive.
+ * We set max-age=63072000 (2 years) immediately so DNS-launch day starts
+ * the preload countdown.
+ *
+ * X-Frame-Options DENY + CSP `frame-ancestors 'none'` are belt-and-
+ * suspenders for clickjacking — older browsers honor X-Frame-Options,
+ * modern browsers honor frame-ancestors.
+ *
+ * connect-src includes:
+ *   - 'self' (covers same-origin fetches + Sentry's /monitoring tunnel)
+ *   - the test Supabase URL (NEXT_PUBLIC_SUPABASE_URL — interpolated
+ *     from env so prod uses the prod URL)
+ * Wildcard https: NOT used — Vercel AI Gateway proxy happens server-
+ * side, not client-side; OTP send + diagnose go through Server Actions
+ * (same-origin POST), which are covered by 'self'.
+ *
+ * script-src includes 'unsafe-inline' for Next.js's hydration data
+ * scripts. Tightening to nonce-based CSP is a future hardening pass
+ * (requires App Router nonce plumbing via middleware). Documented as a
+ * follow-up in DEFERRED-AUDIT-ITEMS SEC-NEXT.
+ */
+function buildCSP(): string {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://*.supabase.co";
+  return [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' https://va.vercel-scripts.com",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: https:",
+    `connect-src 'self' ${supabaseUrl}`,
+    "font-src 'self' data:",
+    "frame-ancestors 'none'",
+    "form-action 'self'",
+    "base-uri 'self'",
+    "upgrade-insecure-requests",
+  ].join("; ");
+}
+
+const securityHeaders = [
+  // 2 years; submit to https://hstspreload.org/ once DNS is live for 1 year.
+  { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
+  // Defense vs clickjacking. CSP frame-ancestors below is the modern equivalent.
+  { key: "X-Frame-Options", value: "DENY" },
+  // Defense vs MIME confusion attacks.
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  // Don't leak full URL to cross-origin destinations.
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  // Disable browser features we don't use. interest-cohort=() opts out of FLoC.
+  {
+    key: "Permissions-Policy",
+    value: "camera=(), microphone=(), geolocation=(), interest-cohort=()",
+  },
+  // CSP in Report-Only mode for the first week post-deploy. Switch the
+  // key name to `Content-Security-Policy` (drop -Report-Only) after
+  // verifying no production traffic triggers violations.
+  {
+    key: "Content-Security-Policy-Report-Only",
+    value: buildCSP(),
+  },
+];
+
 const nextConfig: NextConfig = {
   reactStrictMode: true,
 
@@ -21,6 +93,16 @@ const nextConfig: NextConfig = {
   // The eslint-config-next 15.x dependency was removed in favor of
   // @next/eslint-plugin-next direct usage to avoid @rushstack/eslint-patch
   // failures on Node 20+. See PLAN-01 Phase 3A.
+
+  // PLAN-03 Phase 5 — security headers on every route.
+  async headers() {
+    return [
+      {
+        source: "/(.*)",
+        headers: securityHeaders,
+      },
+    ];
+  },
 
   // Required for the experimental Server Actions cookie-write flow if we
   // expand cookie usage; safe default.
@@ -51,7 +133,7 @@ export default withSentryConfig(nextConfig, {
   // local build). Errors will still be captured at runtime via
   // instrumentation.ts; only source-map upload is affected.
   errorHandler: (err) => {
-    // eslint-disable-next-line no-console
+     
     console.warn("[sentry] source-map upload failed:", err.message);
   },
 
