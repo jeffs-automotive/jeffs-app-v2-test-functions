@@ -518,6 +518,43 @@ files
 - **Source** — 2026-05-18 Vercel MCP audit + 2026-05-19 CLN-7 deep-dive
   agent + 2026-05-19 implementation.
 
+### OBS-8 · Sentry Cron Monitoring needs `sentry_dsn` in Vault (NEW 2026-05-23)
+
+- **What** — Plan 02 Phase 3 (migration
+  `20260523022303_sentry_cron_monitoring.sql`) shipped the
+  `sentry_cron_checkin` helper + 4 per-cron wrappers + re-scheduled the
+  4 cron jobs (`scheduler-appointments-sync`,
+  `scheduler-transcript-dispatcher`, `keytag-bulk-reconcile`,
+  `keytag-daily-report`) to call the wrappers. The helper is in
+  graceful no-op mode until the Vault secret `sentry_dsn` is populated —
+  it parses the DSN from Vault, falls back to RETURN NULL if missing,
+  cron continues normally regardless.
+- **What's blocked** — Sentry Cron Monitoring dashboard doesn't see the
+  crons until the secret lands. Misses + errors at the cron-body layer
+  are invisible to Sentry until then.
+- **What's NOT blocked** — the crons themselves run on schedule + still
+  log errors to `scheduler_error_log`. The edge functions they invoke
+  are still wrapped in `withSentryScope` (Plan 02 Phase 1) so edge-fn
+  failures still surface to Sentry on their own channel.
+- **What to do** — Chris runs ONE SQL statement (decision: use the same
+  DSN as `EDGE_FN_SENTRY_DSN`, which points at the
+  `jeffs-app-v2-supabase` Sentry project — cron telemetry belongs
+  alongside edge-fn execution telemetry per Plan 02 Phase 3 §1):
+  ```sql
+  SELECT public.tekmetric_set_secret(
+    'sentry_dsn',
+    '<paste the EDGE_FN_SENTRY_DSN value here>',
+    'Sentry DSN for cron check-ins. Same as EDGE_FN_SENTRY_DSN — points at jeffs-app-v2-supabase project. Plan 02 Phase 3 (2026-05-23).'
+  );
+  ```
+  After applying, wait 10 min for `scheduler-appointments-sync` to fire
+  (or invoke manually:
+  `SELECT public.run_scheduler_appointments_sync_with_checkin();`)
+  then check Sentry → Crons dashboard for the new monitor.
+- **Source** — 2026-05-23 PLAN-02 Phase 3 implementation. The
+  prerequisite is also documented at the top of migration
+  `20260523022303_sentry_cron_monitoring.sql`.
+
 ### CLN-9 · pgTAP suite has 5 stale-schema failures — `continue-on-error` in CI (NEW 2026-05-22)
 
 - **What** — `supabase test db` against the local Supabase fails 5 of
