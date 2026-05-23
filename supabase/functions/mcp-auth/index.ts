@@ -27,13 +27,15 @@ import {
   AUTH_CODE_TTL_SEC,
   REFRESH_TOKEN_TTL_SEC,
   type AuthServerMetadata,
+  canonicalizeResource,
   functionUrl,
+  getExpectedMcpResource,
   randomToken,
   sha256Base64Url,
   stripFunctionPrefix,
   verifyPkce,
 } from "../_shared/oauth.ts";
-import { withSentryScope } from "../_shared/sentry-edge.ts";
+import { Sentry, withSentryScope } from "../_shared/sentry-edge.ts";
 
 const FUNCTION_NAME = "mcp-auth";
 
@@ -211,7 +213,7 @@ async function handleAuthorizeGet(req: Request): Promise<Response> {
   const codeChallengeMethod = (params.get("code_challenge_method") ?? "S256") as "S256" | "plain";
   const scope = params.get("scope") ?? "mcp";
   const state = params.get("state") ?? "";
-  const resource = params.get("resource") ?? "";
+  const rawResource = params.get("resource");
 
   if (!clientId || !redirectUri || !responseType || !codeChallenge) {
     return oauthError("invalid_request", "Missing required parameter (client_id, redirect_uri, response_type, code_challenge)");
@@ -221,6 +223,55 @@ async function handleAuthorizeGet(req: Request): Promise<Response> {
   }
   if (codeChallengeMethod !== "S256") {
     return oauthError("invalid_request", "Only code_challenge_method=S256 is supported");
+  }
+
+  // RFC 8707 + MCP spec 2025-11-25: clients MUST send `resource` on /authorize.
+  // Strict rejection if missing — older Claude Desktop builds that don't send
+  // it must be upgraded; the 30-day backward-compat window in orchestrator-mcp
+  // (NULL token.resource = allow + log) absorbs legacy tokens already in
+  // circulation, NOT new /authorize calls from out-of-date clients.
+  if (!rawResource) {
+    Sentry.captureMessage("OAuth /authorize missing RFC 8707 resource indicator", {
+      level: "warning",
+      tags: { oauth_event: "authorize_missing_resource", client_id: clientId },
+    });
+    return oauthError(
+      "invalid_request",
+      "missing resource indicator (RFC 8707) — MCP spec 2025-11-25 requires `resource` on /authorize",
+    );
+  }
+
+  const canonicalResource = canonicalizeResource(rawResource);
+  if (!canonicalResource) {
+    Sentry.captureMessage("OAuth /authorize malformed resource indicator", {
+      level: "warning",
+      tags: { oauth_event: "authorize_malformed_resource", client_id: clientId },
+      extra: { raw_resource: rawResource },
+    });
+    return oauthError(
+      "invalid_target",
+      "resource indicator is not a valid http(s) absolute URI (RFC 8707 §2 — no fragment, http or https scheme)",
+    );
+  }
+
+  // Audience binding: the resource MUST identify this MCP server. Tokens issued
+  // for some OTHER resource (even one that uses the same auth provider) must
+  // NOT be acceptable here. This is the core defence against the "confused
+  // deputy" vulnerability that motivated RFC 8707.
+  const expectedResource = getExpectedMcpResource();
+  if (canonicalResource !== expectedResource) {
+    Sentry.captureMessage("OAuth /authorize resource mismatch", {
+      level: "warning",
+      tags: { oauth_event: "authorize_resource_mismatch", client_id: clientId },
+      extra: {
+        requested_resource: canonicalResource,
+        expected_resource: expectedResource,
+      },
+    });
+    return oauthError(
+      "invalid_target",
+      `resource does not match this MCP server (expected ${expectedResource})`,
+    );
   }
 
   const { data: client, error: clientErr } = await sb
@@ -253,7 +304,7 @@ async function handleAuthorizeGet(req: Request): Promise<Response> {
     code_challenge_method: codeChallengeMethod,
     scope,
     user_label: userLabel,
-    resource: resource || null,
+    resource: canonicalResource,
     expires_at: expiresAt,
   });
 
@@ -467,6 +518,47 @@ async function handleToken(req: Request): Promise<Response> {
   );
   if (!pkceOk) return oauthError("invalid_grant", "PKCE code_verifier does not match challenge");
 
+  // RFC 8707 §2.2 + MCP spec 2025-11-25: clients SHOULD send `resource` on
+  // /token. If they do, it MUST match the resource that was sent on /authorize.
+  // We don't require it on /token — RFC 8707 allows it to be omitted to inherit
+  // the code's resource — but if the client supplies one, we hard-validate.
+  //
+  // Note: we DO require resource on /authorize (strict per MCP spec). Once that
+  // gate is enforced, codeRow.resource is always non-null for any code issued
+  // after this change ships. Legacy in-flight codes from before the deploy
+  // could have a null resource (the 10-min TTL bounds that window to ~10 min
+  // post-deploy); we treat null-on-code as "client never said anything about
+  // resource" and require token-side resource (if any) to also be unset.
+  const rawTokenResource = params.get("resource");
+  if (rawTokenResource !== null) {
+    const canonTokenResource = canonicalizeResource(rawTokenResource);
+    if (!canonTokenResource) {
+      Sentry.captureMessage("OAuth /token malformed resource indicator", {
+        level: "warning",
+        tags: { oauth_event: "token_malformed_resource", client_id: clientIdAuth },
+        extra: { raw_resource: rawTokenResource },
+      });
+      return oauthError(
+        "invalid_target",
+        "resource indicator is not a valid http(s) absolute URI (RFC 8707 §2)",
+      );
+    }
+    if (canonTokenResource !== codeRow.resource) {
+      Sentry.captureMessage("OAuth /token resource mismatch with /authorize", {
+        level: "warning",
+        tags: { oauth_event: "token_resource_mismatch", client_id: clientIdAuth },
+        extra: {
+          token_request_resource: canonTokenResource,
+          auth_code_resource: codeRow.resource,
+        },
+      });
+      return oauthError(
+        "invalid_target",
+        "resource indicator on /token does not match the value sent on /authorize (RFC 8707)",
+      );
+    }
+  }
+
   // Mark code used (single-use). Race-safe via the `used_at IS NULL` filter.
   const { data: marked, error: markErr } = await sb
     .from("oauth_authorization_codes")
@@ -539,11 +631,48 @@ async function handleRefreshTokenGrant(
       ? requestedScope
       : (consumed.scope as string);
 
+  // RFC 8707: if the client sends `resource` on a refresh-token grant, it MUST
+  // be one of the originally granted resources. We bind tokens to a single
+  // resource at issue time, so the match is strict equality with the refresh
+  // token's stored resource. The new access+refresh pair inherits the original
+  // resource — narrowing is impossible (the chain only has one audience) and
+  // broadening is forbidden by the spec.
+  const refreshResource = (consumed.resource as string | null) ?? null;
+  const rawRefreshTokenResource = params.get("resource");
+  if (rawRefreshTokenResource !== null) {
+    const canonRefreshTokenResource = canonicalizeResource(rawRefreshTokenResource);
+    if (!canonRefreshTokenResource) {
+      Sentry.captureMessage("OAuth /token (refresh) malformed resource indicator", {
+        level: "warning",
+        tags: { oauth_event: "refresh_malformed_resource", client_id: clientIdAuth },
+        extra: { raw_resource: rawRefreshTokenResource },
+      });
+      return oauthError(
+        "invalid_target",
+        "resource indicator is not a valid http(s) absolute URI (RFC 8707 §2)",
+      );
+    }
+    if (canonRefreshTokenResource !== refreshResource) {
+      Sentry.captureMessage("OAuth /token (refresh) resource mismatch", {
+        level: "warning",
+        tags: { oauth_event: "refresh_resource_mismatch", client_id: clientIdAuth },
+        extra: {
+          refresh_request_resource: canonRefreshTokenResource,
+          refresh_token_resource: refreshResource,
+        },
+      });
+      return oauthError(
+        "invalid_target",
+        "resource indicator on refresh does not match the originally-granted resource (RFC 8707)",
+      );
+    }
+  }
+
   const issued = await issueTokenPair({
     clientId: clientIdAuth,
     userLabel: consumed.user_label as string,
     scope: newScope,
-    resource: (consumed.resource as string | null) ?? null,
+    resource: refreshResource,
     parentRefreshTokenHash: refreshTokenHash,
   });
   if (!issued.ok) return issued.response;

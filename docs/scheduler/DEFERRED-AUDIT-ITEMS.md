@@ -317,6 +317,72 @@ the work lands.
 
 ## Security / hardening
 
+### SEC-7 · BotID + Upstash setup prerequisites (NEW 2026-05-23)
+
+- **What** — PLAN-03 Phase 1A + 1B shipped Vercel BotID (`botid@1.5.11`)
+  + Upstash rate-limit (`@upstash/ratelimit@2.0.8` + `@upstash/redis@1.38.0`)
+  on all three SMS-triggering Server Actions:
+  `submit-phone-name.ts`, `resend-otp.ts`, `submit-multi-account-choice.ts`.
+  Code is in place and gates fail OPEN with Sentry warnings when the
+  external services are unconfigured, so legitimate OTP traffic is NOT
+  broken in the meantime. To activate the protection:
+
+- **BotID activation (one-time, no code change, no env var)** —
+  Vercel dashboard → Projects → `scheduler-app` (or whichever project
+  hosts `appointments.jeffsautomotive.com`) → **Firewall** tab →
+  **Rules** → enable **Vercel BotID** (Basic level, free on all plans).
+  No redeploy needed; BotID picks up the next request. **Deep Analysis**
+  ($1/1k checks, Pro/Enterprise only) deferred until we see real attack
+  traffic justifying the cost. The matching client-side `initBotId()`
+  call is already in place at `scheduler-app/instrumentation-client.ts`
+  (verify next time we touch that file — Phase 1A scope was server-only;
+  client init may need an addendum follow-up to wire the protected paths).
+
+- **Upstash activation** — Chris creates a free Redis project at
+  https://console.upstash.com/. Recommended settings: Global region,
+  Eviction enabled (LRU). Free tier (10k commands/day) is sufficient for
+  v1: each OTP send triggers 2 commands (IP limit + phone limit), so
+  10k/day = 5k OTPs/day, well above expected traffic. Once created,
+  copy the REST URL + token from the project dashboard, then on Vercel:
+  Settings → Environment Variables → add for BOTH Production and Preview
+  environments:
+  - `UPSTASH_REDIS_REST_URL` = the `https://...upstash.io` URL from
+    the Upstash dashboard
+  - `UPSTASH_REDIS_REST_TOKEN` = the bearer token from the Upstash
+    dashboard ("Read & Write" token, not read-only)
+  Redeploy (or push to main — Vercel auto-deploys). The rate-limit code
+  picks up the env vars on cold start and stops emitting the "Upstash
+  env vars missing — failing open" Sentry warning.
+
+- **What's blocked until activation** — strictly speaking, NOTHING.
+  Both layers fail OPEN with structured Sentry warnings, so OTP works
+  for legitimate customers regardless. The DB-level otp_codes
+  per-phone-per-hour limit remains the active backstop. But the FULL
+  defense-in-depth posture (bot detection + per-IP + per-phone-hash
+  rate limits) requires both activations to be effective against SMS
+  pumping at the scale we're worried about.
+
+- **Sentry alerts to expect** — until both services are activated, you
+  may see periodic "warning" level Sentry events:
+  - `check_bot_for_sensitive_action` surface — BotID infra not reachable
+    (will resolve when BotID is enabled in the Vercel dashboard)
+  - `rate_limit_init` surface with `misconfiguration=upstash_missing`
+    tag — Upstash env vars not set (one per cold start, resolves when
+    env vars are configured)
+  Once both are activated, both warnings stop. Investigate any that
+  appear AFTER activation — they signal a real outage.
+
+- **Source** — 2026-05-23 PLAN-03 Phase 1A + 1B implementation. Plan
+  reference: `docs/scheduler/plans/PLAN-03-security-hardening.md` Phase 1
+  (lines 41-150). New files:
+  `scheduler-app/src/lib/security/check-bot.ts`,
+  `scheduler-app/src/lib/security/rate-limit.ts`,
+  `scheduler-app/src/lib/security/get-request-ip.ts`.
+  Companion tests:
+  `scheduler-app/tests/unit/check-bot.test.ts`,
+  `scheduler-app/tests/unit/rate-limit.test.ts`,
+  `scheduler-app/tests/unit/get-request-ip.test.ts`.
+
 ### SEC-1 · `tekmetric_webhook_events` missing canonical
 `(provider, event_id)` idempotency UNIQUE
 
@@ -545,6 +611,60 @@ files
 - **Source** — 2026-05-23 PLAN-03 Phase 3B implementation. Migration
   comment in `supabase/functions/tekmetric-api-testing/index.ts` (line
   ~581) also documents this prerequisite.
+
+### SEC-6 · OAuth resource backward-compat cutoff (NEW 2026-05-23)
+
+- **What** — Plan 03 Phase 4 shipped RFC 8707 + MCP spec 2025-11-25 audience
+  validation across the OAuth stack:
+  - `mcp-auth /authorize` REJECTS requests without `resource` (400
+    `invalid_request`), with malformed `resource` (400 `invalid_target`),
+    or with `resource` that doesn't match the canonical orchestrator-mcp
+    URL (400 `invalid_target`).
+  - `mcp-auth /token` (authorization_code + refresh_token grants) REJECTS
+    requests whose `resource` doesn't match the auth code / refresh token's
+    stored resource (400 `invalid_target`). Token requests MAY omit
+    `resource` to inherit (per RFC 8707 §2.2).
+  - `orchestrator-mcp authenticateRequest` REJECTS bearer tokens whose
+    stored `resource` doesn't match the canonical orchestrator-mcp URL
+    (401 + WWW-Authenticate with `error_description` calling out RFC 8707
+    audience mismatch).
+  - Migration `20260523040239_oauth_resource_indicator_validation.sql`
+    extends `oauth_validate_access_token` RPC to surface `resource`, adds
+    column COMMENTs documenting the canonical form contract.
+- **Backward-compat window** — tokens issued BEFORE the migration applied
+  have NULL resource. `authenticateRequest` allows NULL with a Sentry
+  warning + breadcrumb tag `oauth_legacy_no_resource: true` instead of
+  rejecting. Refresh tokens have a 90-day TTL, so the longest a legitimate
+  legacy token can survive is 90 days from the deploy date.
+- **When to revisit** — 30 days from the migration apply date
+  (2026-05-23 → cutoff date 2026-06-22). After that date:
+  1. Confirm Sentry breadcrumb volume for `oauth_legacy_no_resource:true`
+     is approaching zero (active Claude Desktop installs should have
+     re-authed at least once in that window — refresh-token rotation alone
+     replaces the NULL-resource token with a resource-bound one).
+  2. Change `authenticateRequest` in
+     `supabase/functions/orchestrator-mcp/index.ts` — the existing
+     `if (tokenResource === null)` branch currently allows + logs; change
+     to `return { ok: false, reason: "invalid_audience" };`
+  3. Optionally tighten the DB by setting
+     `oauth_access_tokens.resource NOT NULL` once production confirms zero
+     NULL-resource active tokens.
+- **How to identify legacy traffic** — Sentry events with tag
+  `oauth_event=legacy_no_resource` OR breadcrumb data
+  `oauth_legacy_no_resource: true`. Each event carries the `client_id`
+  and `user_label` so we can trace which Claude install is still on a
+  legacy token.
+- **Prerequisite for cutoff** — Claude Desktop must be sending `resource`
+  on /authorize (verified post-Phase-4-deploy 2026-05-23 by re-adding the
+  connector and observing the resulting auth code row). If a future
+  Claude Desktop build regresses on this, surface in this entry before
+  cutoff.
+- **Source** — 2026-05-23 PLAN-03 Phase 4 implementation. Migration
+  filename: `20260523040239_oauth_resource_indicator_validation.sql`.
+  Spec sources:
+  https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization
+  ("Token Audience Binding and Validation" + "Access Token Privilege
+  Restriction") and https://datatracker.ietf.org/doc/html/rfc8707.
 
 ### OBS-8 · Sentry Cron Monitoring needs `sentry_dsn` in Vault (NEW 2026-05-23)
 

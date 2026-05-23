@@ -33,6 +33,15 @@ import {
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
 import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
+// PLAN-03 Phase 1 — the 'select' branch sends an OTP (callOtpResend).
+// The 'none_of_these' branch does not — it just clears candidates and
+// advances. Bot + rate gates only apply to the SMS-sending branch.
+import { checkBotForSensitiveAction } from "@/lib/security/check-bot";
+import {
+  checkIpRateLimit,
+  checkPhoneRateLimit,
+} from "@/lib/security/rate-limit";
+import { getRequestIp } from "@/lib/security/get-request-ip";
 
 const submitMultiAccountChoiceSchema = z.discriminatedUnion("action", [
   z.object({
@@ -77,6 +86,70 @@ async function submitMultiAccountChoiceV2Impl(
     // 'select' — bind the chosen customer_id to the row, clear the
     // candidates list, then send OTP for the resolved single account.
     const supabase = createSupabaseAdminClient();
+
+    // ─── PLAN-03 Phase 1 — SMS-pump defense on the 'select' branch ────
+    // BotID first (cheapest), then IP rate-limit. Phone rate-limit needs
+    // the phone off the row — read it here so we can key the limit even
+    // though the action's arg only carries selected_customer_id. We
+    // reject BEFORE the picker write so a pumping bot can't churn the
+    // row's customer_id field while attacking.
+    const bot = await checkBotForSensitiveAction();
+    if (!bot.ok) {
+      Sentry.captureMessage("submit_multi_account_choice_v2 bot detected", {
+        level: "warning",
+        tags: {
+          surface: "submit_multi_account_choice_v2_bot_gate",
+          chat_id: chatId,
+        },
+      });
+      return { ok: false, error: "bot_detected" };
+    }
+
+    const ip = await getRequestIp();
+    const ipCheck = await checkIpRateLimit(ip);
+    if (!ipCheck.allowed) {
+      Sentry.captureMessage(
+        "submit_multi_account_choice_v2 IP rate-limited",
+        {
+          level: "warning",
+          tags: {
+            surface: "submit_multi_account_choice_v2_ip_limit",
+            chat_id: chatId,
+          },
+        },
+      );
+      return { ok: false, error: ipCheck.reason };
+    }
+
+    // Phone limit — best-effort read; on read failure we proceed without
+    // it (IP + bot + DB-level limit are still active). Skipping the
+    // phone limit on a transient read error is strictly better than
+    // failing-closed and breaking legitimate disambiguation.
+    const { data: phoneRow } = await supabase
+      .from("customer_chat_sessions")
+      .select("phone_e164")
+      .eq("id", chatId)
+      .maybeSingle();
+    if (
+      typeof phoneRow?.phone_e164 === "string" &&
+      phoneRow.phone_e164.length > 0
+    ) {
+      const phoneCheck = await checkPhoneRateLimit(phoneRow.phone_e164);
+      if (!phoneCheck.allowed) {
+        Sentry.captureMessage(
+          "submit_multi_account_choice_v2 phone rate-limited",
+          {
+            level: "warning",
+            tags: {
+              surface: "submit_multi_account_choice_v2_phone_limit",
+              chat_id: chatId,
+            },
+          },
+        );
+        return { ok: false, error: phoneCheck.reason };
+      }
+    }
+
     const { error: pickErr } = await supabase
       .from("customer_chat_sessions")
       .update({

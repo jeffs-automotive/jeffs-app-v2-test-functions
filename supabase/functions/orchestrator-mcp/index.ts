@@ -48,6 +48,7 @@ import { z } from "npm:zod@^4";
 import { ENV_NAMES } from "../_shared/tekmetric.ts";
 import {
   functionUrl,
+  getExpectedMcpResource,
   type ProtectedResourceMetadata,
   sha256Base64Url,
   stripFunctionPrefix,
@@ -58,7 +59,7 @@ import {
   validateToolInput,
   type McpToolDef,
 } from "../_shared/mcp-tool-registry.ts";
-import { withSentryScope } from "../_shared/sentry-edge.ts";
+import { Sentry, withSentryScope } from "../_shared/sentry-edge.ts";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -144,7 +145,7 @@ interface AuthOk {
 }
 interface AuthErr {
   ok: false;
-  reason: "missing_token" | "invalid_token" | "server_error";
+  reason: "missing_token" | "invalid_token" | "invalid_audience" | "server_error";
 }
 
 async function authenticateRequest(req: Request): Promise<AuthOk | AuthErr> {
@@ -168,6 +169,57 @@ async function authenticateRequest(req: Request): Promise<AuthOk | AuthErr> {
   const row = Array.isArray(data) ? data[0] : data;
   if (!row || !row.user_label) return { ok: false, reason: "invalid_token" };
 
+  // RFC 8707 + MCP spec 2025-11-25 "Token Handling": the resource server MUST
+  // validate the token was issued for it. mcp-auth stores the audience as
+  // `resource` (the canonical URL of the MCP server this token is bound to)
+  // on the access_token row at issue time. Compare to this server's canonical
+  // URL on every call.
+  //
+  // Backward compat window (30 days from 2026-05-23): tokens issued BEFORE
+  // PLAN-03 Phase 4 shipped have NULL resource. Allow them with a Sentry
+  // warning + breadcrumb so we can watch the volume taper off as customers
+  // re-auth and naturally pick up resource-bound tokens. Cutoff guidance +
+  // remediation lives in docs/scheduler/DEFERRED-AUDIT-ITEMS.md item SEC-6.
+  const tokenResource = (row.resource as string | null | undefined) ?? null;
+  const expectedResource = getExpectedMcpResource();
+
+  if (tokenResource === null) {
+    Sentry.addBreadcrumb({
+      category: "oauth",
+      level: "warning",
+      message: "Legacy access token with NULL resource accepted under 30-day backward-compat window",
+      data: {
+        oauth_legacy_no_resource: true,
+        client_id: row.client_id,
+        user_label: row.user_label,
+        expected_resource: expectedResource,
+      },
+    });
+    Sentry.captureMessage("OAuth legacy token (NULL resource) used at orchestrator-mcp", {
+      level: "warning",
+      tags: {
+        oauth_event: "legacy_no_resource",
+        oauth_legacy_no_resource: "true",
+        client_id: row.client_id as string,
+      },
+    });
+    // Allow during cutover window. After cutoff (see SEC-6), change this to:
+    //   return { ok: false, reason: "invalid_audience" };
+  } else if (tokenResource !== expectedResource) {
+    Sentry.captureMessage("OAuth token audience mismatch at orchestrator-mcp", {
+      level: "warning",
+      tags: {
+        oauth_event: "token_audience_mismatch",
+        client_id: row.client_id as string,
+      },
+      extra: {
+        token_resource: tokenResource,
+        expected_resource: expectedResource,
+      },
+    });
+    return { ok: false, reason: "invalid_audience" };
+  }
+
   return {
     ok: true,
     userLabel: row.user_label as string,
@@ -177,12 +229,19 @@ async function authenticateRequest(req: Request): Promise<AuthOk | AuthErr> {
 }
 
 /** Build the WWW-Authenticate header that points clients at our PRM endpoint. */
-function wwwAuthenticate(error: "missing_token" | "invalid_token" | "server_error"): string {
+function wwwAuthenticate(error: AuthErr["reason"]): string {
   const prmUrl = `${functionUrl(FUNCTION_NAME)}/.well-known/oauth-protected-resource`;
-  const errorMap: Record<string, { code: string; description: string }> = {
-    missing_token: { code: "invalid_token", description: "Bearer token required" },
-    invalid_token: { code: "invalid_token", description: "Bearer token is invalid or expired" },
-    server_error: { code: "invalid_token", description: "Token validation failed (server error)" },
+  // Map our internal reasons to OAuth 2.0 Bearer Token Usage (RFC 6750 §3.1)
+  // error codes. `invalid_token` covers missing/expired/wrong-shape tokens
+  // AND audience mismatches per OAuth 2.1 §5.2 + MCP spec "Token Handling"
+  // (audience-failure tokens MUST receive 401, and the standardised error
+  // code for them is `invalid_token` — `invalid_audience` is not a registered
+  // RFC 6750 value, so we surface the semantic in error_description instead).
+  const errorMap: Record<AuthErr["reason"], { code: string; description: string }> = {
+    missing_token:    { code: "invalid_token", description: "Bearer token required" },
+    invalid_token:    { code: "invalid_token", description: "Bearer token is invalid or expired" },
+    invalid_audience: { code: "invalid_token", description: "Bearer token was not issued for this MCP server (RFC 8707 audience mismatch)" },
+    server_error:     { code: "invalid_token", description: "Token validation failed (server error)" },
   };
   const e = errorMap[error];
   return `Bearer realm="MCP", error="${e.code}", error_description="${e.description}", resource_metadata="${prmUrl}"`;
