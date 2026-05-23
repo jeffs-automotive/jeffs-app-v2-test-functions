@@ -368,6 +368,27 @@ async function fetchRosWithoutKeytags(): Promise<RoWithoutKeytagDetail[]> {
       : nowMs;
     const daysOpen = Math.floor((nowMs - issuedAtMs) / (24 * 60 * 60_000));
 
+    // 2026-05-23 (refinement): SKIP rows whose most-recent release was
+    // manual (source='claude_desktop'). The service advisor explicitly
+    // released the tag — typically because the keys left the shop — and
+    // doesn't need a daily reminder.
+    //
+    // Keep the row IF:
+    //   - No release in audit log at all (true ARN: RO went A/R without
+    //     ever being tagged in our system).
+    //   - Most-recent release was by webhook or reconcile (auto-release
+    //     paths — those CAN leave a stale tag-less A/R record worth
+    //     investigating).
+    //
+    // The 90-day audit-log retention bounds the "forgotten manual
+    // release" edge case: if the manual release happened > 90 days ago
+    // and got pruned, this filter doesn't catch it and the row appears
+    // in the email. Acceptable — the advisor has had > 90 days to
+    // resolve it; surfacing it again is a useful reminder.
+    if (releasedSource === "claude_desktop") {
+      continue;
+    }
+
     out.push({
       arn_code: r.code as string,
       ro_id: roId,
@@ -503,18 +524,26 @@ function buildReportHtml(args: {
         </table>`;
 
   // "Repair Orders Without Key Tags" section. Added 2026-05-23 as the
-  // consolidation surface for ARN (`ar_no_prior_tag`) reviews. When the
-  // list is empty the whole section is omitted from the email so we don't
-  // ship a "No rows" widget every morning. The "Released" column is the
-  // key signal — if it's populated, an advisor previously released a tag
-  // from this RO (typically a Claude Desktop "release" call); blank means
-  // the RO went A/R having never been tagged in our system.
+  // consolidation surface for ARN (`ar_no_prior_tag`) reviews. Mirrors
+  // the stale-tags pattern: always show the section header so the team
+  // sees a positive "no issues" signal on quiet days; render a 👍 message
+  // when the filtered list is empty.
+  //
+  // Rows are pre-filtered in fetchRosWithoutKeytags() to drop entries
+  // whose most-recent release was a manual claude_desktop release (the
+  // advisor explicitly handled those — no daily reminder needed). What
+  // remains: ROs whose most-recent release was via webhook/reconcile
+  // OR ROs that never had a release in the audit log (true ARN cases —
+  // RO went A/R without ever being tagged in our system).
   const roNoTagSection =
     rosWithoutKeytags.length === 0
-      ? ""
+      ? `
+    <h2 style="margin:32px 0 8px 0;color:${BRAND_PRIMARY};font-size:18px;border-bottom:1px solid ${BRAND_ACCENT};padding-bottom:4px;">Repair Orders Without Key Tags</h2>
+    <p style="margin:0 0 12px 0;color:#999;font-size:13px;">A/R repair orders with no key tag tracked in our system. Manually-released tags are filtered out automatically (you already know the keys are gone). The remaining list is repair orders that ended up in A/R via auto-release (webhook/reconcile) or that never had a tag.</p>
+    <p style="margin:0;color:#888;font-style:italic;">No repair orders without key tags. 👍</p>`
       : `
     <h2 style="margin:32px 0 8px 0;color:${BRAND_PRIMARY};font-size:18px;border-bottom:1px solid ${BRAND_ACCENT};padding-bottom:4px;">Repair Orders Without Key Tags</h2>
-    <p style="margin:0 0 12px 0;color:#999;font-size:13px;">Repair orders flagged by the nightly reconcile as having no key tag tracked in our system. Rows with a date in the <strong>Released</strong> column had a tag previously — typically a manual "release" via Claude Desktop after the keys left the shop, so no action is usually needed. Rows with a blank <strong>Released</strong> column never had a tag in our records and should be reviewed. Resolve any row in Claude Desktop with <code style="background:#1f1f1f;padding:1px 6px;border-radius:3px;font-family:'SF Mono',Menlo,monospace;color:${BRAND_ACCENT};">code ARN-XXXXXX option ...</code>.</p>
+    <p style="margin:0 0 12px 0;color:#999;font-size:13px;">A/R repair orders with no key tag tracked in our system. Manually-released tags are filtered out automatically (you already know the keys are gone). Rows here are auto-released (webhook/reconcile) tags whose RO is still in A/R OR repair orders that never had a tag — those are worth investigating. Resolve any row in Claude Desktop with <code style="background:#1f1f1f;padding:1px 6px;border-radius:3px;font-family:'SF Mono',Menlo,monospace;color:${BRAND_ACCENT};">code ARN-XXXXXX option ...</code>.</p>
     <table role="presentation" style="width:100%;border-collapse:collapse;font-size:13px;">
       <thead>
         <tr>

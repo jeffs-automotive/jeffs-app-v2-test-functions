@@ -480,6 +480,63 @@ async function reconcileOne(
         // The prior local ARN-only dedup was a subset of that and removed
         // with this commit.
         if (!dryRun) {
+          // 2026-05-23 (refinement): skip ARN issuance entirely when the
+          // most-recent `released` action in keytag_audit_log was a
+          // manual release by a service advisor (source='claude_desktop').
+          // The advisor explicitly released the tag — typically because
+          // the keys left the shop while the RO sat in A/R — and doesn't
+          // need a daily reminder.
+          //
+          // Defensive guard: same Number.isSafeInteger pattern as the
+          // PostgREST .or() injection fix in Plan 03 Phase 3A. Skip the
+          // lookup on malformed ro_id / ro_number and let the ARN issue
+          // (fail-open on the manual-release check is safer than
+          // accidentally skipping a real warning).
+          const roIdSafeForRelLookup =
+            Number.isInteger(ro.id) && Number.isSafeInteger(ro.id);
+          const roNumberSafeForRelLookup =
+            Number.isInteger(ro.repairOrderNumber) &&
+            Number.isSafeInteger(ro.repairOrderNumber);
+
+          if (roIdSafeForRelLookup || roNumberSafeForRelLookup) {
+            const orClauses: string[] = [];
+            if (roIdSafeForRelLookup) orClauses.push(`ro_id.eq.${ro.id}`);
+            if (roNumberSafeForRelLookup) {
+              orClauses.push(`ro_number.eq.${ro.repairOrderNumber}`);
+            }
+            const { data: relRows, error: relErr } = await sb
+              .from("keytag_audit_log")
+              .select("source, occurred_at")
+              .or(orClauses.join(","))
+              .eq("action", "released")
+              .order("occurred_at", { ascending: false })
+              .limit(1);
+
+            if (relErr) {
+              // Log + continue (fail open — better to issue a possibly-
+              // unnecessary ARN than silently swallow a real anomaly).
+              await logEdgeError(sb, {
+                surface: "keytag-bulk-reconcile/manual_release_lookup",
+                origin_id: "keytag-bulk-reconcile",
+                level: "warning",
+                error_code: "audit_lookup_failed",
+                message: relErr.message,
+                context: { ro_id: ro.id, ro_number: ro.repairOrderNumber },
+              });
+            } else if (
+              relRows &&
+              relRows.length > 0 &&
+              (relRows[0] as { source: string | null }).source ===
+                "claude_desktop"
+            ) {
+              return {
+                ...base,
+                action: "noop",
+                detail: "skipped: prior manual release in audit log",
+              };
+            }
+          }
+
           // 2026-05-23: sendEmail:false — ARN reviews are consolidated
           // into the 7 AM keytag-daily-report's "Repair Orders Without
           // Key Tags" section. The review row + audit log entry are still
