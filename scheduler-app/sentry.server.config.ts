@@ -48,7 +48,25 @@ Sentry.init({
   // experimental_telemetry: { isEnabled: true, functionId, recordInputs:
   // false, recordOutputs: false } at the call site — both pieces are
   // required for spans to materialize. See src/lib/scheduler/wizard/llm/.
-  integrations: [Sentry.vercelAIIntegration({ force: true })],
+  //
+  // PLAN-02 Phase 4A (I-OBS-5 + I-INT-6) — anthropicAIIntegration auto-
+  // instruments @anthropic-ai/sdk calls (used in diagnose-concern.ts).
+  // It's enabled by default in @sentry/node ≥ 10.28; we register it
+  // EXPLICITLY here to override the default (recordInputs/recordOutputs
+  // = true) — customer concern text + LLM-extracted PII would land in
+  // Sentry's gen_ai.input_messages / response_text attributes otherwise.
+  // Token-level usage (input_tokens, output_tokens, cache_creation_input_
+  // tokens, cache_read_input_tokens) is still captured — those are
+  // numeric counts and safe to send. Verified against
+  // @sentry/core/build/esm/tracing/anthropic-ai/index.js which reads
+  // response.usage.cache_{creation,read}_input_tokens correctly.
+  integrations: [
+    Sentry.vercelAIIntegration({ force: true }),
+    Sentry.anthropicAIIntegration({
+      recordInputs: false,
+      recordOutputs: false,
+    }),
+  ],
 
   // Project-default tags per .claude/rules/observability.md rule 13.
   // shop_id stays static (single shop in Phase 1); employee_id N/A

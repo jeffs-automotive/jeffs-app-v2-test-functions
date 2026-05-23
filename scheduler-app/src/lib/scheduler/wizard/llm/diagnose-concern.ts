@@ -396,8 +396,29 @@ function buildChipHintLine(
 }
 
 // ─── Stage 1 system prompt (brief catalog, no subcategory tree) ─────────────
+//
+// Returned as an Anthropic content-block array with cache_control on the
+// STATIC portion so Anthropic's prompt caching can fire (5-min ephemeral
+// TTL). String-form system prompts silently disable caching per
+// https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching.
+//
+// Cacheable static portion: the entire catalog (testing services +
+// 'other' subcategories) plus the JSON-shape / decision-rule preamble.
+// Identical across calls for a given catalog snapshot; varies only when
+// the underlying DB rows change.
+//
+// Dynamic portion (NOT cached): the customer-chip-hint context block.
+// chipHintLine interpolates the customer's pre-selection, which varies
+// per call. Keeping this outside the cache_control marker ensures cache
+// hits aren't lost when only the chip changes.
+//
+// Cache-write threshold (5-min ephemeral): Sonnet/Opus 1024 tokens,
+// Haiku 2048 tokens. The Stage 1 static portion is well above the Haiku
+// minimum (~5-8 KB ≈ 1500-2400 tokens depending on catalog size).
 
-export function buildStage1SystemPrompt(args: DiagnoseConcernArgs): string {
+export function buildStage1SystemPrompt(
+  args: DiagnoseConcernArgs,
+): Anthropic.TextBlockParam[] {
   const testingServices = args.catalog.categories.filter(isTestingService);
   const otherSubcategories = args.catalog.categories.filter(isOtherSubcategory);
 
@@ -420,7 +441,7 @@ export function buildStage1SystemPrompt(args: DiagnoseConcernArgs): string {
 
   const chipHintLine = buildChipHintLine(args.customer_chip_hint);
 
-  return `You are the diagnostic categorisation helper for Jeff's Automotive
+  const staticText = `You are the diagnostic categorisation helper for Jeff's Automotive
 (Stage 1: category match). A customer typed a description of what's wrong
 with their car. Your job: pick ONE category from the catalog below.
 
@@ -444,10 +465,6 @@ multiple symptoms at once, recent accidents, work just done elsewhere, safety
 worries, general inspections, cars that have been sitting.
 
 ${otherSubcategoriesBlock}
-
-# Customer's pre-selection (context)
-
-${chipHintLine}
 
 # Decision rules
 
@@ -481,14 +498,37 @@ ${chipHintLine}
      sure (e.g., "the car feels weird", "something's off"). If you're
      this unsure, prefer matched_category_key=null. When you DO return
      null, confidence MUST be 'low'.`;
+
+  const dynamicText = `# Customer's pre-selection (context)
+
+${chipHintLine}`;
+
+  return [
+    { type: "text", text: staticText, cache_control: { type: "ephemeral" } },
+    { type: "text", text: dynamicText },
+  ];
 }
 
 // ─── Stage 2 system prompt (ONE category's subcategories — NO question text) ─
+//
+// Returned as an Anthropic content-block array with cache_control on the
+// STATIC portion. Anthropic caches per exact-content match; a repeat of
+// "category=brakes" within the 5-min ephemeral window hits the cache.
+// Different categories get their own cache entries (still beneficial when
+// catalog calls cluster).
+//
+// Cacheable static portion: the header + matched-category banner + the
+// matched-category's subcategory subtree (description + positive/negative
+// examples + synonyms) + decision rules. The subtree IS per-category but
+// STABLE across calls for the same category — that's still cacheable.
+//
+// Dynamic portion (NOT cached): the customer-chip-hint context block,
+// which varies per call.
 
 export function buildStage2SystemPrompt(
   matchedCategory: CatalogCategory,
   customerChipHint: DiagnoseConcernChipHint | null | undefined,
-): string {
+): Anthropic.TextBlockParam[] {
   // For 'other' matches the category IS a single subcategory; synthesize a
   // singleton list so the LLM still picks-from-N (where N=1 here). The
   // synthesized subcategory carries no enrichment metadata because the
@@ -541,7 +581,7 @@ export function buildStage2SystemPrompt(
 
   const chipHintLine = buildChipHintLine(customerChipHint);
 
-  return `You are the diagnostic categorisation helper for Jeff's Automotive
+  const staticText = `You are the diagnostic categorisation helper for Jeff's Automotive
 (Stage 2: subcategory pick). Stage 1 already matched the customer's
 description to a category:
 
@@ -559,10 +599,6 @@ RIGHT subcategory for downstream Stage-3 fact extraction + mapping to use.
 # Subcategory catalog (this category only)
 
 ${subcategoryBlock}
-
-# Customer's pre-selection (context from Stage 1)
-
-${chipHintLine}
 
 # Decision rules
 
@@ -597,6 +633,15 @@ ${chipHintLine}
      a category but the symptom doesn't quite fit any subcategory's
      description. Low is a signal to a downstream advisor to verify the
      routing.`;
+
+  const dynamicText = `# Customer's pre-selection (context from Stage 1)
+
+${chipHintLine}`;
+
+  return [
+    { type: "text", text: staticText, cache_control: { type: "ephemeral" } },
+    { type: "text", text: dynamicText },
+  ];
 }
 
 // ─── Stage 3 system prompt (fact extraction — no question text) ────────────
@@ -641,10 +686,24 @@ function renderExtractedFactsSlotList(): string {
   return lines.join("\n");
 }
 
+// ─── Stage 3 cache_control note ────────────────────────────────────────────
+//
+// Returned as an Anthropic content-block array with cache_control on the
+// STATIC portion. The fact-extraction prompt is THE most cache-effective
+// of the three stages because its bulk is the 29-slot ExtractedFacts slot
+// reference + 5 worked examples — fully static across every call.
+//
+// Cacheable static portion: header + CRITICAL RULE + slot reference (29
+// slots) + worked examples + output instructions. This is ~8-12 KB and
+// well above the Haiku 2048-token threshold.
+//
+// Dynamic portion (NOT cached): the Stage 1/2 result context line that
+// names the matched category + subcategory for this specific call.
+
 export function buildStage3SystemPrompt(
   matchedSubcategory: CatalogSubcategory | null,
   matchedCategoryHeader: string,
-): string {
+): Anthropic.TextBlockParam[] {
   const subcategoryContextLine = matchedSubcategory
     ? `The customer's description has been matched to category:
   ${matchedCategoryHeader}
@@ -657,12 +716,10 @@ stated regardless.`
     : `Subcategory context: not available (Stage 2 produced no slug). Extract
 facts from the description anyway; downstream may still use them.`;
 
-  return `You are the diagnostic FACT EXTRACTION helper for Jeff's Automotive
+  const staticText = `You are the diagnostic FACT EXTRACTION helper for Jeff's Automotive
 (Stage 3: fact extraction). A customer typed a free-text description of what's
 wrong with their car. Your job: extract atomic facts from that description
 into a typed object with ~29 nullable slots.
-
-${subcategoryContextLine}
 
 # CRITICAL RULE — only extract what the customer LITERALLY stated
 
@@ -742,6 +799,15 @@ Also return:
         because the customer didn't literally state much.
   - reasoning: one sentence (keep under 280 characters) summarizing what
     you extracted and any judgment calls. Audit-only.`;
+
+  const dynamicText = `# Stage 1/2 result context
+
+${subcategoryContextLine}`;
+
+  return [
+    { type: "text", text: staticText, cache_control: { type: "ephemeral" } },
+    { type: "text", text: dynamicText },
+  ];
 }
 
 // ─── Shared user prompt ─────────────────────────────────────────────────────
@@ -758,9 +824,22 @@ export function buildUserPrompt(args: DiagnoseConcernArgs): string {
   return parts.join("\n\n");
 }
 
-// Legacy alias for eval harness back-compat.
+/**
+ * Concatenate a content-block array into the equivalent string form. Used
+ * by the legacy `buildSystemPrompt` eval alias (which dumps prompts into
+ * the eval Markdown report) and by edge-side instrumentation that records
+ * `system_prompt_chars`. NOT used in the LLM call path — the array shape
+ * is required there for prompt caching to fire.
+ */
+function flattenSystemPrompt(blocks: Anthropic.TextBlockParam[]): string {
+  return blocks.map((b) => b.text).join("\n\n");
+}
+
+// Legacy alias for eval harness back-compat. Returns the concatenated
+// string form (static + dynamic joined) because the eval Markdown report
+// pastes prompts verbatim and assumes a single string.
 export function buildSystemPrompt(args: DiagnoseConcernArgs): string {
-  return buildStage1SystemPrompt(args);
+  return flattenSystemPrompt(buildStage1SystemPrompt(args));
 }
 
 // ─── Catalog validation helpers ─────────────────────────────────────────────
@@ -839,7 +918,7 @@ interface CallResult<T> {
 
 async function callAnthropicStage<T>(args: {
   model: string;
-  systemPrompt: string;
+  systemPrompt: Anthropic.TextBlockParam[];
   userPrompt: string;
   jsonSchema: Record<string, unknown>;
   zodSchema: z.ZodType<T>;
@@ -857,14 +936,21 @@ async function callAnthropicStage<T>(args: {
         model: args.model,
         max_tokens: MAX_OUTPUT_TOKENS,
         temperature: 0,
+        // Array-form system prompt with cache_control on the static
+        // portion — see buildStage{1,2,3}SystemPrompt for the split.
+        // Anthropic prompt caching docs:
+        // https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching
+        // String-form system prompts silently disable caching. We do NOT
+        // also pass providerOptions.gateway.caching='auto' — picking one
+        // marker (explicit cache_control) avoids double-marking.
         system: args.systemPrompt,
         messages: [{ role: "user", content: args.userPrompt }],
-        // Vercel AI Gateway extensions — gateway interprets these via the
-        // proxy layer; the Anthropic SDK passes them through untouched.
+        // Vercel AI Gateway model-fallback extension — gateway interprets
+        // this via the proxy layer; the Anthropic SDK passes through
+        // untouched. caching:'auto' deliberately omitted (see above).
         // @ts-expect-error - gateway extensions not in Anthropic SDK types
         providerOptions: {
           gateway: {
-            caching: "auto",
             models: [args.model, FALLBACK_MODEL],
           },
         },

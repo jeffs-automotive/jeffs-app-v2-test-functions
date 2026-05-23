@@ -582,6 +582,16 @@ describe("diagnoseConcern — short-circuit + edge cases", () => {
   });
 });
 
+// buildStage1SystemPrompt now returns an Anthropic content-block array
+// (the cache_control wrapper shape — see diagnose-concern.ts comment block).
+// These tests still assert on the prompt's textual content, so flatten the
+// array's `text` fields into a single string for `.toContain` matches.
+function flattenPromptBlocks(
+  blocks: ReturnType<typeof buildStage1SystemPrompt>,
+): string {
+  return blocks.map((b) => b.text).join("\n\n");
+}
+
 describe("buildStage1SystemPrompt — chip hint propagation", () => {
   it("includes a non-other chip's display name + concern categories", () => {
     const chip: DiagnoseConcernChipHint = {
@@ -590,8 +600,8 @@ describe("buildStage1SystemPrompt — chip hint propagation", () => {
       chip_concern_categories: ["brakes", "noise"],
     };
 
-    const prompt = buildStage1SystemPrompt(
-      makeArgs({ customer_chip_hint: chip }),
+    const prompt = flattenPromptBlocks(
+      buildStage1SystemPrompt(makeArgs({ customer_chip_hint: chip })),
     );
 
     expect(prompt).toContain('"Brakes feel off" chip');
@@ -605,8 +615,8 @@ describe("buildStage1SystemPrompt — chip hint propagation", () => {
       chip_concern_categories: [],
     };
 
-    const prompt = buildStage1SystemPrompt(
-      makeArgs({ customer_chip_hint: chip }),
+    const prompt = flattenPromptBlocks(
+      buildStage1SystemPrompt(makeArgs({ customer_chip_hint: chip })),
     );
 
     expect(prompt).toContain("Other Issue");
@@ -614,9 +624,29 @@ describe("buildStage1SystemPrompt — chip hint propagation", () => {
   });
 
   it("renders the no-chip case explicitly", () => {
-    const prompt = buildStage1SystemPrompt(
-      makeArgs({ customer_chip_hint: null }),
+    const prompt = flattenPromptBlocks(
+      buildStage1SystemPrompt(makeArgs({ customer_chip_hint: null })),
     );
     expect(prompt).toContain("No chip hint");
+  });
+
+  it("returns a 2-element content-block array with cache_control on the static portion", () => {
+    const blocks = buildStage1SystemPrompt(makeArgs());
+
+    expect(blocks).toHaveLength(2);
+    const staticBlock = blocks[0]!;
+    const dynamicBlock = blocks[1]!;
+    expect(staticBlock).toEqual(
+      expect.objectContaining({
+        type: "text",
+        cache_control: { type: "ephemeral" },
+      }),
+    );
+    expect(dynamicBlock).toEqual(
+      expect.objectContaining({ type: "text" }),
+    );
+    // The dynamic portion MUST NOT carry cache_control; that's the entire
+    // point of the split.
+    expect(dynamicBlock.cache_control).toBeUndefined();
   });
 });

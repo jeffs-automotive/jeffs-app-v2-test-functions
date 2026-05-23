@@ -1270,10 +1270,15 @@ function buildChipHintLine(chipHint: ChipHint | null): string {
   return `The customer picked the "${chipHint.chip_display_name}" chip (related concern_categories: ${chipHint.chip_concern_categories.join(", ") || "none"}). Use this as a soft prior — prefer categories tagged with one of those concern_categories unless the description clearly says otherwise.`;
 }
 
+// Stage 1 system prompt returned as an Anthropic content-block array with
+// cache_control on the STATIC portion. Mirrors scheduler-app's
+// buildStage1SystemPrompt — see diagnose-concern.ts for the full
+// cache_control rationale (5-min ephemeral TTL, Haiku 2048-token write
+// threshold, fact that string-form silently disables caching).
 function buildStage1SystemPrompt(
   catalog: DiagnosticCatalog,
   chipHint: ChipHint | null,
-): string {
+): Anthropic.TextBlockParam[] {
   const testingServices = catalog.categories.filter(isTestingService);
   const otherSubcategories = catalog.categories.filter(isOtherSubcategory);
 
@@ -1294,7 +1299,7 @@ function buildStage1SystemPrompt(
     )
     .join("\n");
 
-  return `You are the diagnostic categorisation helper for Jeff's Automotive
+  const staticText = `You are the diagnostic categorisation helper for Jeff's Automotive
 (Stage 1: category match). A customer typed a description of what's wrong
 with their car. Your job: pick ONE category from the catalog below.
 
@@ -1318,10 +1323,6 @@ multiple symptoms at once, recent accidents, work just done elsewhere, safety
 worries, general inspections, cars that have been sitting.
 
 ${otherSubcategoriesBlock}
-
-# Customer's pre-selection (context)
-
-${buildChipHintLine(chipHint)}
 
 # Decision rules
 
@@ -1355,12 +1356,25 @@ ${buildChipHintLine(chipHint)}
      sure (e.g., "the car feels weird", "something's off"). If you're
      this unsure, prefer matched_category_key=null. When you DO return
      null, confidence MUST be 'low'.`;
+
+  const dynamicText = `# Customer's pre-selection (context)
+
+${buildChipHintLine(chipHint)}`;
+
+  return [
+    { type: "text", text: staticText, cache_control: { type: "ephemeral" } },
+    { type: "text", text: dynamicText },
+  ];
 }
 
+// Stage 2 system prompt returned as a content-block array with cache_control
+// on the static portion. Anthropic caches per exact-content match, so a
+// repeat of the same matched-category subtree within the 5-min ephemeral
+// window hits the cache.
 function buildStage2SystemPrompt(
   matchedCategory: CatalogCategory,
   chipHint: ChipHint | null,
-): string {
+): Anthropic.TextBlockParam[] {
   // For 'other' matches, synthesize a singleton list so the LLM still
   // picks-from-N (N=1 here). No enrichment metadata on 'other' since the
   // path doesn't go through concern_subcategories.
@@ -1409,7 +1423,7 @@ function buildStage2SystemPrompt(
     })
     .join("\n\n");
 
-  return `You are the diagnostic categorisation helper for Jeff's Automotive
+  const staticText = `You are the diagnostic categorisation helper for Jeff's Automotive
 (Stage 2: subcategory pick). Stage 1 already matched the customer's
 description to a category:
 
@@ -1427,10 +1441,6 @@ RIGHT subcategory for downstream Stage-3 fact extraction + mapping to use.
 # Subcategory catalog (this category only)
 
 ${subcategoryBlock}
-
-# Customer's pre-selection (context from Stage 1)
-
-${buildChipHintLine(chipHint)}
 
 # Decision rules
 
@@ -1465,6 +1475,15 @@ ${buildChipHintLine(chipHint)}
      a category but the symptom doesn't quite fit any subcategory's
      description. Low is a signal to a downstream advisor to verify the
      routing.`;
+
+  const dynamicText = `# Customer's pre-selection (context from Stage 1)
+
+${buildChipHintLine(chipHint)}`;
+
+  return [
+    { type: "text", text: staticText, cache_control: { type: "ephemeral" } },
+    { type: "text", text: dynamicText },
+  ];
 }
 
 /**
@@ -1504,10 +1523,15 @@ function categoryHeaderForStage3(cat: CatalogCategory): string {
     : `subcategory_slug="${cat.subcategory_slug}" — ${cat.display_label}`;
 }
 
+// Stage 3 system prompt returned as a content-block array with cache_control
+// on the static portion. The fact-extraction prompt is the most cache-
+// effective of the three stages: header + CRITICAL RULE + 29-slot reference
+// + worked examples are fully static across every call. Only the Stage 1/2
+// result context block varies per call.
 function buildStage3SystemPrompt(
   matchedSubcategory: CatalogSubcategory | null,
   matchedCategoryHeader: string,
-): string {
+): Anthropic.TextBlockParam[] {
   const subcategoryContextLine = matchedSubcategory
     ? `The customer's description has been matched to category:
   ${matchedCategoryHeader}
@@ -1520,12 +1544,10 @@ stated regardless.`
     : `Subcategory context: not available (Stage 2 produced no slug). Extract
 facts from the description anyway; downstream may still use them.`;
 
-  return `You are the diagnostic FACT EXTRACTION helper for Jeff's Automotive
+  const staticText = `You are the diagnostic FACT EXTRACTION helper for Jeff's Automotive
 (Stage 3: fact extraction). A customer typed a free-text description of what's
 wrong with their car. Your job: extract atomic facts from that description
 into a typed object with ~29 nullable slots.
-
-${subcategoryContextLine}
 
 # CRITICAL RULE — only extract what the customer LITERALLY stated
 
@@ -1605,6 +1627,15 @@ Also return:
         because the customer didn't literally state much.
   - reasoning: one sentence (keep under 280 characters) summarizing what
     you extracted and any judgment calls. Audit-only.`;
+
+  const dynamicText = `# Stage 1/2 result context
+
+${subcategoryContextLine}`;
+
+  return [
+    { type: "text", text: staticText, cache_control: { type: "ephemeral" } },
+    { type: "text", text: dynamicText },
+  ];
 }
 
 function buildUserPrompt(
@@ -1622,6 +1653,16 @@ function buildUserPrompt(
   return parts.join("\n\n");
 }
 
+/**
+ * Total character count across all `text` fields of a content-block array.
+ * Used to populate `system_prompt_chars` on stage observability blocks
+ * (which previously read `.length` off a string prompt; the array shape
+ * makes `.length` the block count instead of chars).
+ */
+function totalPromptChars(blocks: Anthropic.TextBlockParam[]): number {
+  return blocks.reduce((sum, b) => sum + b.text.length, 0);
+}
+
 // ════════════════════════════════════════════════════════════════════
 // ANTHROPIC SDK STAGE CALLER (with retry + Zod validation)
 // ════════════════════════════════════════════════════════════════════
@@ -1637,7 +1678,7 @@ interface StageCallResult<T> {
 
 async function callAnthropicStage<T>(args: {
   model: string;
-  systemPrompt: string;
+  systemPrompt: Anthropic.TextBlockParam[];
   userPrompt: string;
   jsonSchema: Record<string, unknown>;
   zodSchema: z.ZodType<T>;
@@ -1652,12 +1693,21 @@ async function callAnthropicStage<T>(args: {
         model: args.model,
         max_tokens: MAX_OUTPUT_TOKENS,
         temperature: 0,
+        // Array-form system prompt with cache_control on the static
+        // portion — see buildStage{1,2,3}SystemPrompt for the split.
+        // Anthropic prompt caching docs:
+        // https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching
+        // String-form system prompts silently disable caching. We do NOT
+        // also pass providerOptions.gateway.caching='auto' — picking one
+        // marker (explicit cache_control) avoids double-marking.
         system: args.systemPrompt,
         messages: [{ role: "user", content: args.userPrompt }],
+        // Vercel AI Gateway model-fallback extension — gateway interprets
+        // this via the proxy layer; the Anthropic SDK passes through
+        // untouched. caching:'auto' deliberately omitted (see above).
         // @ts-expect-error - gateway extensions not in Anthropic SDK types
         providerOptions: {
           gateway: {
-            caching: "auto",
             models: [args.model, FALLBACK_MODEL],
           },
         },
@@ -1855,7 +1905,7 @@ Deno.serve((req) => withSentryScope(req, "llm-testing", async () => {
     model: STAGE1_MODEL,
     raw: stage1Result.raw,
     validated_category_key: null as string | null,
-    system_prompt_chars: stage1SystemPrompt.length,
+    system_prompt_chars: totalPromptChars(stage1SystemPrompt),
     latency_ms: Date.now() - s1Start,
     tokens_in: stage1Result.tokensIn,
     tokens_out: stage1Result.tokensOut,
@@ -1927,7 +1977,7 @@ Deno.serve((req) => withSentryScope(req, "llm-testing", async () => {
     model: STAGE2_MODEL,
     raw: stage2Result.raw,
     validated_subcategory_slug: subSlug,
-    system_prompt_chars: stage2SystemPrompt.length,
+    system_prompt_chars: totalPromptChars(stage2SystemPrompt),
     latency_ms: Date.now() - s2Start,
     tokens_in: stage2Result.tokensIn,
     tokens_out: stage2Result.tokensOut,
@@ -1994,7 +2044,7 @@ Deno.serve((req) => withSentryScope(req, "llm-testing", async () => {
     model: STAGE3_MODEL,
     raw: stage3Result.raw,
     extracted_facts: stage3Result.raw?.extracted_facts ?? null,
-    system_prompt_chars: stage3SystemPrompt.length,
+    system_prompt_chars: totalPromptChars(stage3SystemPrompt),
     latency_ms: Date.now() - s3Start,
     tokens_in: stage3Result.tokensIn,
     tokens_out: stage3Result.tokensOut,
