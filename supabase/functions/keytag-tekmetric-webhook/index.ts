@@ -63,7 +63,7 @@ import {
   issueManualReview,
   type ManualReviewOption,
 } from "../_shared/manual-review.ts";
-import { withSentryScope } from "../_shared/sentry-edge.ts";
+import { withSentryScope, Sentry } from "../_shared/sentry-edge.ts";
 
 // ── Manual-review option presets used by webhook detections ────────────────
 function driftOptions(roNumber: number, priorTag: string): ManualReviewOption[] {
@@ -344,6 +344,27 @@ export async function handler(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const tokenParam = url.searchParams.get("token");
   if (tokenParam !== WEBHOOK_TOKEN) {
+    // PLAN-02 Phase 2A (I-OBS-3) — capture token-mismatch as Sentry warning
+    // with a stable fingerprint so attack patterns dedupe into a SINGLE
+    // issue (count climbs instead of dozens of distinct issues). Alert
+    // rule (configured manually in Sentry dashboard): `tags.event:
+    // signature_fail AND count > 10 in 5 minutes` → security channel.
+    Sentry.withScope((scope) => {
+      scope.setLevel("warning");
+      scope.setTag("event", "signature_fail");
+      scope.setFingerprint([
+        "webhook-sig-fail",
+        "tekmetric",
+        "/functions/v1/keytag-tekmetric-webhook",
+      ]);
+      scope.setContext("request", {
+        ip: req.headers.get("x-real-ip") ?? req.headers.get("cf-connecting-ip") ?? "unknown",
+        user_agent: req.headers.get("user-agent") ?? "unknown",
+        url: req.url,
+        method: req.method,
+      });
+      Sentry.captureMessage("Keytag-Tekmetric webhook signature failed", "warning");
+    });
     return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
   }
 

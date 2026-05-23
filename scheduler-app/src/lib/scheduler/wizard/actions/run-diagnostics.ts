@@ -523,30 +523,29 @@ async function runDiagnosticsBody(
     recommendation_count: recommended_testing_services.length,
   });
 
-  // Aggregate outcome telemetry — info-level so Sentry samples it but
-  // it's queryable when we need to know how often the forward-to-advisor
-  // path is firing vs the recommendation path.
-  Sentry.captureMessage(
+  // Aggregate outcome telemetry — PLAN-02 Phase 2B (I-OBS-8): migrated FROM
+  // Sentry.captureMessage('info') (creates a Sentry issue per call, which
+  // produced "false alarm" J/G/K/A issues) TO Sentry.logger.info (separate
+  // log envelope, queryable in the Sentry Logs UI, NEVER creates an issue).
+  // The attribute set is preserved verbatim so existing log-volume queries
+  // continue to work. Requires `enableLogs: true` in sentry.server.config.ts
+  // (added in the same PR).
+  Sentry.logger.info(
     `runDiagnostics: ${items.length} concern(s) → ${nextStep}`,
     {
-      level: "info",
-      tags: {
-        surface: "run_diagnostics_v2_outcome",
-        next_step: nextStep,
-      },
-      extra: {
-        chatId,
-        concern_count: items.length,
-        recommendation_count: recommended_testing_services.length,
-        pending_question_count: pending.length,
-        per_concern: perConcernResults.map((r) => ({
-          chip: r.item.service_key,
-          matched_kind: r.result.matched_kind,
-          matched_category_key: r.result.matched_category_key,
-          parsed_ok: r.result.parsed_ok,
-          error_message: r.result.error_message,
-        })),
-      },
+      surface: "run_diagnostics_v2_outcome",
+      next_step: nextStep,
+      chatId,
+      concern_count: items.length,
+      recommendation_count: recommended_testing_services.length,
+      pending_question_count: pending.length,
+      per_concern: perConcernResults.map((r) => ({
+        chip: r.item.service_key,
+        matched_kind: r.result.matched_kind,
+        matched_category_key: r.result.matched_category_key,
+        parsed_ok: r.result.parsed_ok,
+        error_message: r.result.error_message,
+      })),
     },
   );
   // Generate concern summaries NOW if there are no clarification

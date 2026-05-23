@@ -21,6 +21,11 @@ Sentry.init({
 
   tracesSampleRate: process.env.NODE_ENV === "development" ? 1.0 : 0.1,
 
+  // PLAN-02 Phase 2B (I-OBS-8) — enable structured logs. See
+  // sentry.server.config.ts for full rationale. Must be set on every runtime
+  // (server, edge, client) per Sentry docs; defaults to false.
+  enableLogs: true,
+
   sendDefaultPii: true,
 
   integrations: [

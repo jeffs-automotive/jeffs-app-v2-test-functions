@@ -23,6 +23,16 @@ Sentry.init({
   // 100% in dev to debug everything; 10% in prod to keep tier 1 quota OK.
   tracesSampleRate: process.env.NODE_ENV === "development" ? 1.0 : 0.1,
 
+  // PLAN-02 Phase 2B (I-OBS-8) — enable structured logs so Sentry.logger.*
+  // calls land in the Sentry Logs UI without creating issues. Without
+  // enableLogs:true, Sentry.logger.info/.warn/.error silently no-op.
+  // Per https://docs.sentry.io/platforms/javascript/guides/nextjs/logs/
+  // — defaults to false; must be enabled in every runtime (server, edge,
+  // client). Routing-decision telemetry (e.g., runDiagnostics outcome
+  // breadcrumbs) migrated FROM captureMessage('info') (creates an issue
+  // per call) TO logger.info (separate log envelope, no issues).
+  enableLogs: true,
+
   // Adds request headers + IP. We're already PII-aware (beforeSend below);
   // this gives Sentry's auto-instrumentation enough context to link Server
   // Action invocations to client traces.

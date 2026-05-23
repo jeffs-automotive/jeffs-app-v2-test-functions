@@ -71,6 +71,11 @@ function initOnce(): void {
     // requests in the same warm isolate. Disabling them + relying on
     // withIsolationScope + flush below is the documented safe pattern.
     defaultIntegrations: false,
+    // PLAN-02 Phase 2B (I-OBS-8) — enable Sentry.logger.* (defaults to
+    // false per Sentry docs). Edge functions don't currently call
+    // logger.* but enabling here keeps parity with scheduler-app and
+    // gives future telemetry calls a working substrate.
+    enableLogs: true,
     initialScope: {
       tags: {
         surface: "supabase-edge",

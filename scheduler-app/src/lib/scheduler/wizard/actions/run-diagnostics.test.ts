@@ -42,17 +42,28 @@ import type {
 // ─── Module mocks ──────────────────────────────────────────────────────────
 
 // Sentry — record breadcrumb + message + tag calls so the breadcrumb test
-// can assert on call counts + payloads.
+// can assert on call counts + payloads. `logger.info` is mocked separately
+// for the aggregate-outcome telemetry call (migrated from captureMessage
+// per PLAN-02 Phase 2B I-OBS-8 — info-level captureMessage created false-
+// alarm issues; logger.info routes to the Sentry Logs UI instead).
 const sentryAddBreadcrumb: Mock = vi.fn();
 const sentryCaptureMessage: Mock = vi.fn();
 const sentryCaptureException: Mock = vi.fn();
 const sentrySetTag: Mock = vi.fn();
+const sentryLoggerInfo: Mock = vi.fn();
+const sentryLoggerWarn: Mock = vi.fn();
+const sentryLoggerError: Mock = vi.fn();
 
 vi.mock("@sentry/nextjs", () => ({
   addBreadcrumb: (...args: unknown[]) => sentryAddBreadcrumb(...args),
   captureMessage: (...args: unknown[]) => sentryCaptureMessage(...args),
   captureException: (...args: unknown[]) => sentryCaptureException(...args),
   setTag: (...args: unknown[]) => sentrySetTag(...args),
+  logger: {
+    info: (...args: unknown[]) => sentryLoggerInfo(...args),
+    warn: (...args: unknown[]) => sentryLoggerWarn(...args),
+    error: (...args: unknown[]) => sentryLoggerError(...args),
+  },
   // wrapAction calls withServerActionInstrumentation; pass through.
   withServerActionInstrumentation: (
     _name: string,
@@ -385,6 +396,9 @@ beforeEach(() => {
   sentryCaptureMessage.mockClear();
   sentryCaptureException.mockClear();
   sentrySetTag.mockClear();
+  sentryLoggerInfo.mockClear();
+  sentryLoggerWarn.mockClear();
+  sentryLoggerError.mockClear();
   diagnoseConcernMock.mockReset();
   loadDiagnosticCatalogMock.mockReset();
   ensureConcernSummariesMock.mockClear();
@@ -831,17 +845,28 @@ describe("runDiagnosticsV2 — observability + persistence shape", () => {
       expect(arg.data).toHaveProperty("matched_kind");
       expect(arg.data).toHaveProperty("parsed_ok");
     }
-    // Aggregate outcome captureMessage — the "runDiagnostics: N concern(s) → step" one.
-    const outcomeMessages = sentryCaptureMessage.mock.calls.filter((call) => {
+    // Aggregate outcome telemetry — migrated FROM captureMessage('info') TO
+    // logger.info per PLAN-02 Phase 2B (I-OBS-8). Assert NO info-level
+    // captureMessage was fired (would create a Sentry issue) AND logger.info
+    // got the runDiagnostics: prefix message with the expected attributes.
+    const outcomeCaptureMessages = sentryCaptureMessage.mock.calls.filter((call) => {
       const msg = call[0] as string;
       return msg.startsWith("runDiagnostics: ");
     });
-    expect(outcomeMessages).toHaveLength(1);
-    const outcomeArg = outcomeMessages[0]![1] as {
-      level: string;
-      tags: { surface: string; next_step: string };
+    expect(outcomeCaptureMessages).toHaveLength(0);
+
+    const outcomeLogs = sentryLoggerInfo.mock.calls.filter((call) => {
+      const msg = call[0] as string;
+      return msg.startsWith("runDiagnostics: ");
+    });
+    expect(outcomeLogs).toHaveLength(1);
+    const outcomeAttrs = outcomeLogs[0]![1] as {
+      surface: string;
+      next_step: string;
+      concern_count: number;
+      recommendation_count: number;
     };
-    expect(outcomeArg.tags.surface).toBe("run_diagnostics_v2_outcome");
-    expect(outcomeArg.tags.next_step).toBe("testing_service_approval");
+    expect(outcomeAttrs.surface).toBe("run_diagnostics_v2_outcome");
+    expect(outcomeAttrs.next_step).toBe("testing_service_approval");
   });
 });

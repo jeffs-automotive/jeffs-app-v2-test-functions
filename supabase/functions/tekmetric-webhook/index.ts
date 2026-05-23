@@ -25,7 +25,7 @@
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
-import { withSentryScope } from "../_shared/sentry-edge.ts";
+import { withSentryScope, Sentry } from "../_shared/sentry-edge.ts";
 
 // test seam — see index.test.ts
 // `sb` is lazily initialized (and `let`, not `const`) so tests can swap it
@@ -181,6 +181,27 @@ export async function handler(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const tokenParam = url.searchParams.get("token");
   if (tokenParam !== WEBHOOK_TOKEN) {
+    // PLAN-02 Phase 2A (I-OBS-3) — capture token-mismatch as Sentry warning
+    // with a stable fingerprint so attack patterns dedupe into a SINGLE
+    // issue (count climbs instead of dozens of distinct issues). Alert
+    // rule (configured manually in Sentry dashboard): `tags.event:
+    // signature_fail AND count > 10 in 5 minutes` → security channel.
+    Sentry.withScope((scope) => {
+      scope.setLevel("warning");
+      scope.setTag("event", "signature_fail");
+      scope.setFingerprint([
+        "webhook-sig-fail",
+        "tekmetric",
+        "/functions/v1/tekmetric-webhook",
+      ]);
+      scope.setContext("request", {
+        ip: req.headers.get("x-real-ip") ?? req.headers.get("cf-connecting-ip") ?? "unknown",
+        user_agent: req.headers.get("user-agent") ?? "unknown",
+        url: req.url,
+        method: req.method,
+      });
+      Sentry.captureMessage("Tekmetric webhook signature failed", "warning");
+    });
     return new Response(
       JSON.stringify({ error: "Unauthorized" }),
       { status: 401, headers: { "Content-Type": "application/json" } },
