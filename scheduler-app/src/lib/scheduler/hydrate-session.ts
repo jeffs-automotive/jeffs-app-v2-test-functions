@@ -46,69 +46,12 @@ import { cookies } from "next/headers";
 import * as Sentry from "@sentry/nextjs";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { logError } from "@/lib/scheduler/wizard/log-error";
 
 export const COOKIE_NAME = "sched-chat-id";
 
 /** Active-session threshold per the 2026-05-16 spec. */
 const STALE_AFTER_MS = 5 * 60 * 1000;
-
-/**
- * Wizard-state columns wiped during a stale-row reset. Mirror of
- * submitStartOverV2's column list so the manual "Start Over" path and
- * the automatic "session timed out" path produce the same fresh state.
- *
- * Keys NOT in this list (preserved on reset):
- *   - id, shop_id, channel, started_at — identity / immutable per session
- *   - last_active_at, current_step, status — reset explicitly below
- */
-const RESET_COLUMNS = {
-  is_returning_customer: null,
-  greeting_answered_at: null,
-  entered_first_name: null,
-  entered_last_name: null,
-  phone_e164: null,
-  otp_sent_at: null,
-  otp_attempts: 0,
-  otp_verified_at: null,
-  identity_verification_level: null,
-  verified_first_name: null,
-  verified_last_name: null,
-  edited_phones: null,
-  edited_emails: null,
-  edited_address: null,
-  primary_email_for_description: null,
-  new_vehicle_info: null,
-  customer_id: null,
-  vehicle_id: null,
-  appointment_id: null,
-  pending_candidates: null,
-  customer_self_identified: null,
-  selected_simple_services: null,
-  explanation_required_items: null,
-  diagnostic_processing_complete: false,
-  clarification_questions_pending: null,
-  clarification_questions_answered: null,
-  recommended_testing_services: null,
-  approved_testing_services: null,
-  declined_testing_services: null,
-  additional_routine_services_round2: null,
-  appointment_type: null,
-  appointment_date: null,
-  appointment_time: null,
-  hold_token: null,
-  appointment_confirmed_at: null,
-  customer_notes_text: null,
-  customer_notes_approved: null,
-  customer_notes_edit_attempts: 0,
-  customer_question: null,
-  customer_question_forwarded: false,
-  summary_edit_attempts: 0,
-  escalated_at: null,
-  escalation_reason: null,
-  ended_at: null,
-  completed_at: null,
-  outcome: null,
-} as const;
 
 export interface HydratedSession {
   /** UUID from the HttpOnly cookie. Always set — middleware guarantees it. */
@@ -119,11 +62,12 @@ export interface HydratedSession {
  * Read the cookie + check freshness. Stale rows are wiped in place.
  * Returns the chatId the page should hydrate against.
  *
- * Safe to call from any Server Component. Performs at most 3 DB
+ * Safe to call from any Server Component. Performs at most 2 DB
  * operations:
  *   - 1 read (the row freshness check)
- *   - 1 write to release the prior hold (only if a hold existed)
- *   - 1 write to reset the wizard columns (only if stale)
+ *   - 1 RPC call to hydrate_session_reset (only if stale) — atomically
+ *     releases the prior hold(s), wipes wizard columns, and clears the
+ *     bubble transcript (Plan 04 Phase 1B — closes I-COR-2)
  *
  * On a fresh tab with no cookie, performs 0 DB operations.
  */
@@ -185,44 +129,43 @@ export async function hydrateSession(): Promise<HydratedSession> {
       return { chatId };
     }
 
-    // Stale. Release any active hold, then wipe wizard columns in place.
-    // Both writes are best-effort — failure shouldn't block the page
-    // render. The customer will see the greeting card either way (the
-    // wipe is what produces the greeting; if the wipe fails, the page
-    // will still render whatever step is set).
-    const nowIso = new Date().toISOString();
-    if (row.hold_token) {
-      await supabase
-        .from("appointment_holds")
-        .update({ released_at: nowIso })
-        .eq("id", row.hold_token as string)
-        .is("released_at", null);
+    // Stale. Atomically release any active hold, wipe wizard columns,
+    // and clear the bubble transcript via hydrate_session_reset RPC
+    // (Plan 04 Phase 1B — closes I-COR-2). Previously these 4 writes
+    // ran in sequence; partial-success left an inconsistent row that
+    // looked reset but had un-released holds or ghost bubbles.
+    //
+    // Source of truth for the wipe column set is the RPC body — see
+    // supabase/migrations/20260524230000_rpc_hydrate_session_reset.sql.
+    const { error: resetError } = await supabase.rpc(
+      "hydrate_session_reset",
+      { p_chat_id: chatId },
+    );
+
+    if (resetError) {
+      // Failed reset is a real customer-visible issue — the next render
+      // reads a stale row and shows ghost bubbles. Bumped from warning
+      // to error per Plan 04 spec; under the inline-writes design,
+      // partial success was harder to detect so warning was the right
+      // ceiling. Under the atomic RPC, a non-null error means the
+      // entire reset rolled back.
+      await logError({
+        chatId,
+        surface: "hydrate_session_reset",
+        level: "error",
+        error_code: resetError.code ?? null,
+        message: resetError.message,
+        context: {
+          hint: resetError.hint,
+          details: resetError.details,
+        },
+      });
+      Sentry.captureException(new Error(resetError.message), {
+        tags: { surface: "hydrate_session_reset" },
+        level: "error",
+        extra: { chatId, code: resetError.code },
+      });
     }
-    // Also release any holds keyed by session_id (defense — the
-    // hold_token column above is the per-row pointer, but
-    // appointment_holds may have additional rows for this session).
-    await supabase
-      .from("appointment_holds")
-      .update({ released_at: nowIso })
-      .eq("session_id", chatId)
-      .is("released_at", null);
-
-    await supabase
-      .from("customer_chat_sessions")
-      .update({
-        ...RESET_COLUMNS,
-        current_step: null, // getCurrentCard falls back to 'greeting'
-        status: "active",
-        last_active_at: nowIso,
-      })
-      .eq("id", chatId);
-
-    // Also wipe the chat-bubble transcript so the rendered conversation
-    // starts clean. Mirror of submitStartOverV2.
-    await supabase
-      .from("customer_chat_messages")
-      .delete()
-      .eq("session_id", chatId);
   } catch (e) {
     Sentry.captureException(e, {
       tags: { surface: "hydrate_session_stale_check" },

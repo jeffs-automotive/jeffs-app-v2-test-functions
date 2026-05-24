@@ -1,6 +1,6 @@
 # Scheduler-app — next session kickoff
 
-> **Last refreshed:** 2026-05-24 end-of-session.
+> **Last refreshed:** 2026-05-24 end-of-session (post Plan 04 Phase 1B `hydrate_session_reset` RPC).
 > **Refresh this file** at the end of EVERY session that did scheduler-app work — same commit that bumps `scheduler_system_architecture.md`. Keep the "Today's headline" + "Next-step todos" sections current.
 
 ---
@@ -19,22 +19,33 @@ These five files give you the full picture. If you find yourself guessing about 
 
 ---
 
-## 2. Today's headline (2026-05-24)
+## 2. Today's headline (2026-05-24, second half of day)
 
-**Shipped (10 commits across 2 repos):**
+**Plan 04 Phase 1B shipped — `hydrate_session_reset` RPC** (migration `20260524230000`, commit `(SHA after push)`):
 
-1. Sentry cron pair-by-id fix (migration `20260524210000`, commit `3d9de2d`) — resolved `monitor_check_in_failure` issues on all 4 monitored crons by re-adding `check_in_id` to both POST + GET legs so pg_net's async delivery order doesn't break Sentry's pairing
-2. OBS-8 flipped to RESOLVED in `DEFERRED-AUDIT-ITEMS.md` (commit `c87ea5c`) — Vault `sentry_dsn` populated + 9/9 cron checkins succeeding
-3. PLANS-MASTER refresh + new `REMEDIATION-PROGRESS.md` (commit `894cfae`) — Plans 01/02/03 marked COMPLETE
-4. Plan 04 Phase 1A — `apply_wizard_transition` RPC (commit `5d8a122`) — atomic 3-write wizard step advance. Closes I-COR-1. 13 new tests + 12 refactored. 167/167 unit suite passes.
-5. Cleanup: root-level `botid` stray removed (no commit — pure revert); root `package.json` + `deno.lock` back to clean state
-6. Architecture memo bumped 4× in dotfiles repo
+- New SECURITY INVOKER RPC atomizes the 4-write stale-session reset (release prior hold + defensive session_id hold release + customer_chat_sessions full RESET_COLUMNS wipe + customer_chat_messages DELETE) into a single Postgres transaction
+- `scheduler-app/src/lib/scheduler/hydrate-session.ts` rewritten to call the RPC; `RESET_COLUMNS` JS constant deleted (SQL migration is now source of truth — eliminates JS↔SQL drift)
+- Sentry capture on reset failure bumped warning → error (atomic RPC means full rollback on failure → customer-visible)
+- Audit caught + fixed a column-name bug in the Plan spec: `appointment_holds` has no `hold_token` column; corrected to `WHERE id = v_hold_token` per live schema
+- 16 new tests in `hydrate-session.test.ts`; full unit suite 183/183 passing (was 167)
+- Closes I-COR-2
+
+**RESET_COLUMNS divergence** between auto-stale reset (`hydrate-session.ts`, 43 cols) and manual Start Over (`submit-start-over.ts`, 41 cols — missing `pending_candidates` + `customer_self_identified`) preserved intentionally to keep Phase 1B narrow. New `CLN-12` deferred-audit item filed.
 
 **Plans state:**
 
 - ✅ **Plans 01, 02, 03** — COMPLETE
-- 🟡 **Plan 04** — IN PROGRESS (1 of 8 phases done)
+- 🟡 **Plan 04** — IN PROGRESS (2 of 8 phases done — Phase 1A + 1B)
 - 🔜 **Plans 05, 06, 07** — NOT STARTED
+
+**Earlier today (2026-05-24 morning, prior session):**
+
+1. Sentry cron pair-by-id fix (migration `20260524210000`, commit `3d9de2d`)
+2. OBS-8 flipped to RESOLVED in `DEFERRED-AUDIT-ITEMS.md` (commit `c87ea5c`)
+3. PLANS-MASTER refresh + new `REMEDIATION-PROGRESS.md` (commit `894cfae`)
+4. Plan 04 Phase 1A — `apply_wizard_transition` RPC (commit `5d8a122`)
+5. Root-level `botid` stray cleanup
+6. Architecture memo bumped 4× in dotfiles repo
 
 ---
 
@@ -42,27 +53,27 @@ These five files give you the full picture. If you find yourself guessing about 
 
 ### Tier A — confirm yesterday's work (do FIRST, in this order)
 
-1. **[~5 min]** Check tomorrow's (now today's) daily cron fires — `keytag-bulk-reconcile` at 10:00 UTC and `keytag-daily-report` at 11:00 UTC. Query Sentry for any new `monitor_check_in_failure` issues on JEFFS-APP-V2-SUPABASE-B or -D. If clean: leave them resolved. If new failure event: the pair-by-id fix is wrong and we need to investigate further.
-2. **[~5 min]** Spot-check the live wizard surface. The `apply_wizard_transition` RPC just shipped — exercise one complete booking flow at `appointments.jeffsautomotive.com` (greeting → phone → name → vehicle pick → service pick → date pick → confirm). If anything regresses, revert commit `5d8a122` immediately.
+1. **[~5 min]** Check today's daily cron fires — `keytag-bulk-reconcile` at 10:00 UTC and `keytag-daily-report` at 11:00 UTC. Query Sentry for any new `monitor_check_in_failure` issues on JEFFS-APP-V2-SUPABASE-B or -D. If clean: leave them resolved. If new failure event: the pair-by-id fix is wrong and we need to investigate further.
+2. **[~5 min]** Spot-check the live wizard surface. Two RPCs shipped 2026-05-24 — `apply_wizard_transition` (Phase 1A, commit `5d8a122`) drives every wizard step; `hydrate_session_reset` (Phase 1B, commit `(SHA after push)`) drives the stale-session reset. Exercise one complete booking flow at `appointments.jeffsautomotive.com` (greeting → phone → name → vehicle pick → service pick → date pick → confirm). Also exercise the stale-reset path: open the wizard, wait > 5 min idle, reload — should land back on greeting card with no ghost bubbles. If anything regresses, revert the offending commit.
 3. **[~2 min]** Confirm `vault.secrets.sentry_dsn` is still populated. Query: `SELECT name, created_at FROM vault.secrets WHERE name = 'sentry_dsn';` via Supabase MCP. Should return the row created at `2026-05-24 17:24:22Z`.
+4. **[~2 min]** Confirm `hydrate_session_reset` RPC exists in the DB. Query: `SELECT proname, prosecdef FROM pg_proc WHERE proname = 'hydrate_session_reset';` via Supabase MCP. Should return 1 row with `prosecdef = false` (SECURITY INVOKER, not DEFINER).
 
-### Tier B — Plan 04 Phase 1B (the natural next step)
+### Tier B — Plan 04 Phase 2 (the natural next step)
 
-**Phase 1B: `hydrate_session_reset` RPC** — atomic 4-write reset for stale-session detection in `scheduler-app/src/lib/scheduler/hydrate-session.ts`. Same shape as Phase 1A (RPC-wrap the existing inline writes) but for the stale-session-detected-at-hydrate path instead of the per-step-advance path.
+**Phase 2: `submit-summary` hold CAS lock** — atomic claim of the appointment hold BEFORE the Tekmetric POST. Prevents the race where `mark-abandoned` (cron or IdleTimer-driven) releases the hold between our read and the Tekmetric POST, leading to a confirmed Tekmetric appointment with no corresponding hold row.
 
 **Before writing any code:**
-- Read `docs/scheduler/plans/PLAN-04-atomicity-correctness.md` Phase 1B (lines ~154-260) — full spec is there
-- Grep ALL callers that depend on the existing inline `hydrate-session.ts` writes for explicit-null clear semantic patterns BEFORE writing the migration. This is the lesson from Phase 1A — DO NOT skip the audit
-- Use the CASE pattern (`CASE WHEN p_payload ? 'col' THEN ... ELSE col END`), NOT `COALESCE(..., col)` — the latter silently no-ops explicit-null clears (cost us ~30 min mid-execution on Phase 1A)
-- The hydrate-session caller has a different shape than transition.ts — it doesn't take bubbles, just performs the reset. Simpler RPC signature
+- Read `docs/scheduler/plans/PLAN-04-atomicity-correctness.md` Phase 2 (lines ~261-315) — full spec including the CAS-claim shape via `released_at = now()` is there
+- Grep all paths that touch `appointment_holds.released_at` — specifically the mark-abandoned route + the hold-reaper cron + submit-summary itself — to understand the full release lifecycle BEFORE writing the CAS shape. This is the Phase 1A/1B audit-first lesson.
+- The spec proposes reusing `released_at` as the CAS signal ("only claim if not yet released"). Alternative is adding a dedicated `claimed_by_session_id` column — bigger surface, probably unnecessary. Spec recommends the released_at approach.
+- Decide: should the CAS-claim failure path return ok:false + nextStep='date_pick' to surface a "your slot expired — please pick again" UX, or return a hard error? Spec defaults to the former.
 
-**Estimated:** 0.5 day. The pattern from Phase 1A applies directly.
+**Estimated:** 4 hr. Smaller scope than Phase 1B (one Server Action, no RPC, no migration — just a tightened CAS query inside the existing handler).
 
-### Tier C — Plan 04 remaining phases (any order; 5 phases × ~3-4 hr each)
+### Tier C — Plan 04 remaining phases (any order; 4 phases × ~3-4 hr each)
 
 | Phase | Scope | Reference |
 |---|---|---|
-| 2 | `submit-summary` hold CAS lock — prevent mark-abandoned race | PLAN-04 §Phase 2 |
 | 3A | `submit-vehicle-pick` IDOR validation — verify vehicle_id is in customer's vehicles | PLAN-04 §Phase 3A |
 | 3B | `submit-multi-account-choice` IDOR validation — verify customer_id is in `pending_candidates` | PLAN-04 §Phase 3B |
 | 4 | `submit-summary` verification-mismatch 3-state envelope (pending → confirmed \| needs_review) | PLAN-04 §Phase 4 |

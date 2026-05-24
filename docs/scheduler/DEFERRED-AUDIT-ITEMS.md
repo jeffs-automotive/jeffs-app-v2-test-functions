@@ -902,6 +902,52 @@ files
   `Unused eslint-disable directive` warnings (4 sites) auto-clean once
   the underlying rules are reactivated.
 
+### CLN-12 · RESET_COLUMNS divergence between auto-stale reset + manual Start Over (NEW 2026-05-24)
+
+- **What** — Plan 04 Phase 1B audit surfaced that the two reset paths
+  in scheduler-app cover DIFFERENT column sets:
+  - **Auto-stale reset** (`hydrate_session_reset` RPC, called from
+    `hydrate-session.ts` when status='timed_out'/'abandoned' or
+    active+age>5min) wipes 43 wizard-state columns including
+    `pending_candidates` + `customer_self_identified`.
+  - **Manual "🔄 Start over" reset** (`submitStartOverV2` →
+    `applyWizardTransition` payload at
+    `scheduler-app/src/lib/scheduler/wizard/actions/submit-start-over.ts:96-141`)
+    wipes 41 columns — OMITS `pending_candidates` +
+    `customer_self_identified`.
+- **Customer impact** — if a customer hits the footer "Start over"
+  button mid-session, stale state from the prior session could leak
+  into the new one:
+  - `pending_candidates`: the multi-account-choice list (which
+    customers in the DB matched the phone number lookup); leftover
+    state could confuse the multi-account-choice card if re-reached.
+  - `customer_self_identified`: the greeting answer
+    (returning/new); leftover state could pre-fill the new session's
+    greeting before the customer answers it.
+- **Why deferred** — Phase 1B intentionally narrowed scope to "atomize
+  the existing auto-stale reset without changing its column set" —
+  fixing the divergence in the same commit would have widened blast
+  radius. The auto-stale path (the RPC) is the canonical reset; the
+  manual Start Over path is the one missing columns.
+- **Why two paths in the first place** — the divergence is a
+  pre-existing bug, not a deliberate design. The two paths were
+  written separately (auto-stale in `hydrate-session.ts` 2026-05-16,
+  manual Start Over in `submit-start-over.ts` later same week) and
+  diverged through copy-paste drift.
+- **When to revisit** — Plan 06 Phase X already foreshadows the fix:
+  "extract RESET_COLUMNS to a shared `reset-columns.ts` module that
+  both call sites import." Either approach works:
+  - **(a)** Extract a shared `scheduler-app/src/lib/scheduler/reset-columns.ts`
+    constant; import in both `submit-start-over.ts` AND in a future
+    refactor that has `hydrate_session_reset` consume the same shape
+    via a generic reset RPC.
+  - **(b)** Add the 2 missing keys to `submit-start-over.ts`'s
+    `applyWizardTransition` payload (1-line fix), preserving the
+    current 2-path architecture.
+  Option (b) is the cheap fix; option (a) is the right long-term shape.
+- **Source** — 2026-05-24 Plan 04 Phase 1B audit pass. Captured in the
+  Phase 1B migration header comment + REMEDIATION-PROGRESS.md row.
+
 ---
 
 ## Content / MD docs

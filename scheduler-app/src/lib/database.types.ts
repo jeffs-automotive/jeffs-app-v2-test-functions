@@ -974,9 +974,11 @@ export type Database = {
       keytag_webhook_events: {
         Row: {
           error_message: string | null
+          event_hash: string | null
           event_kind: string
           event_text: string | null
           id: string
+          idempotency_active: boolean
           payment_id: number | null
           processed_at: string | null
           processing_detail: Json | null
@@ -989,9 +991,11 @@ export type Database = {
         }
         Insert: {
           error_message?: string | null
+          event_hash?: string | null
           event_kind: string
           event_text?: string | null
           id?: string
+          idempotency_active?: boolean
           payment_id?: number | null
           processed_at?: string | null
           processing_detail?: Json | null
@@ -1004,9 +1008,11 @@ export type Database = {
         }
         Update: {
           error_message?: string | null
+          event_hash?: string | null
           event_kind?: string
           event_text?: string | null
           id?: string
+          idempotency_active?: boolean
           payment_id?: number | null
           processed_at?: string | null
           processing_detail?: Json | null
@@ -1596,6 +1602,63 @@ export type Database = {
           },
         ]
       }
+      sentry_webhook_events: {
+        Row: {
+          action: string | null
+          actor_id: string | null
+          actor_name: string | null
+          actor_type: string | null
+          hook_timestamp: string | null
+          id: number
+          ingest_error: string | null
+          installation_uuid: string | null
+          payload: Json
+          processed_at: string | null
+          raw_headers: Json | null
+          received_at: string
+          request_id: string | null
+          resource: string
+          signature_header: string | null
+          signature_verified: boolean
+        }
+        Insert: {
+          action?: string | null
+          actor_id?: string | null
+          actor_name?: string | null
+          actor_type?: string | null
+          hook_timestamp?: string | null
+          id?: number
+          ingest_error?: string | null
+          installation_uuid?: string | null
+          payload: Json
+          processed_at?: string | null
+          raw_headers?: Json | null
+          received_at?: string
+          request_id?: string | null
+          resource: string
+          signature_header?: string | null
+          signature_verified: boolean
+        }
+        Update: {
+          action?: string | null
+          actor_id?: string | null
+          actor_name?: string | null
+          actor_type?: string | null
+          hook_timestamp?: string | null
+          id?: number
+          ingest_error?: string | null
+          installation_uuid?: string | null
+          payload?: Json
+          processed_at?: string | null
+          raw_headers?: Json | null
+          received_at?: string
+          request_id?: string | null
+          resource?: string
+          signature_header?: string | null
+          signature_verified?: boolean
+        }
+        Relationships: []
+      }
       service_dept_users: {
         Row: {
           active: boolean
@@ -1635,10 +1698,12 @@ export type Database = {
       tekmetric_webhook_events: {
         Row: {
           error_message: string | null
+          event_hash: string | null
           event_kind_inferred: string | null
           event_text: string | null
           event_type: string | null
           id: string
+          idempotency_active: boolean
           processed_at: string | null
           processing_results: Json | null
           raw_body: Json | null
@@ -1655,10 +1720,12 @@ export type Database = {
         }
         Insert: {
           error_message?: string | null
+          event_hash?: string | null
           event_kind_inferred?: string | null
           event_text?: string | null
           event_type?: string | null
           id?: string
+          idempotency_active?: boolean
           processed_at?: string | null
           processing_results?: Json | null
           raw_body?: Json | null
@@ -1675,10 +1742,12 @@ export type Database = {
         }
         Update: {
           error_message?: string | null
+          event_hash?: string | null
           event_kind_inferred?: string | null
           event_text?: string | null
           event_type?: string | null
           id?: string
+          idempotency_active?: boolean
           processed_at?: string | null
           processing_results?: Json | null
           raw_body?: Json | null
@@ -1845,15 +1914,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      _smoke_fire2: {
+      apply_wizard_transition: {
         Args: {
-          p_bucket: string
-          p_desc: string
-          p_intent: string
-          p_test_id: string
-          p_tool: string
+          p_assistant_bubble_text?: string
+          p_chat_id: string
+          p_payload: Json
+          p_user_bubble_text?: string
         }
-        Returns: number
+        Returns: Json
       }
       assign_next_keytag: {
         Args: {
@@ -1965,6 +2033,7 @@ export type Database = {
           reason: string
         }[]
       }
+      hydrate_session_reset: { Args: { p_chat_id: string }; Returns: Json }
       log_keytag_audit: {
         Args: {
           p_action: string
@@ -2024,6 +2093,7 @@ export type Database = {
         Args: { p_token_hash: string }
         Returns: {
           client_id: string
+          resource: string
           scope: string
           user_label: string
         }[]
@@ -2077,10 +2147,32 @@ export type Database = {
         }[]
       }
       run_admin_snapshot_prune: { Args: never; Returns: undefined }
+      run_keytag_bulk_reconcile_with_checkin: {
+        Args: never
+        Returns: undefined
+      }
+      run_keytag_daily_report_with_checkin: { Args: never; Returns: undefined }
+      run_scheduler_appointments_sync_with_checkin: {
+        Args: never
+        Returns: undefined
+      }
+      run_scheduler_transcript_dispatcher_with_checkin: {
+        Args: never
+        Returns: undefined
+      }
       scheduler_get_service_role_key: { Args: never; Returns: string }
       scheduler_invoke_edge_function: {
         Args: { p_body?: Json; p_function_name: string }
         Returns: number
+      }
+      sentry_cron_checkin: {
+        Args: {
+          p_check_in_id?: string
+          p_monitor_config?: Json
+          p_monitor_slug: string
+          p_status: string
+        }
+        Returns: string
       }
       tekmetric_get_secret: { Args: { p_name: string }; Returns: string }
       tekmetric_set_secret: {

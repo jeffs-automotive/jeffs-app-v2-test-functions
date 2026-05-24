@@ -2,7 +2,7 @@
 
 > Per-phase status tracker for the 7 plans in [`plans/`](./plans/). Companion to the index at [`plans/PLANS-MASTER.md`](./plans/PLANS-MASTER.md) — the master defines WHAT each plan does; this file tracks WHAT'S LANDED.
 >
-> **Last refresh:** 2026-05-24. Update this file in the same commit that closes a phase. Always cite the commit SHA so future readers can `git show <sha>` for the actual change.
+> **Last refresh:** 2026-05-24 (Plan 04 Phase 1B `hydrate_session_reset` RPC landed). Update this file in the same commit that closes a phase. Always cite the commit SHA so future readers can `git show <sha>` for the actual change.
 
 ---
 
@@ -13,7 +13,7 @@
 | [01](./plans/PLAN-01-pre-launch-blockers.md) | Pre-launch BLOCKERs | ✅ **COMPLETE 2026-05-22** | 4 phases | B1–B10 (10/10 BLOCKERs) |
 | [02](./plans/PLAN-02-observability-hardening.md) | Observability hardening | ✅ **COMPLETE 2026-05-24** | 5 phases | I-OBS-1, 4, 5, 7 + OBS-8 |
 | [03](./plans/PLAN-03-security-hardening.md) | Security hardening | ✅ **COMPLETE 2026-05-23** (SEC-7 BotID deferred to pre-launch) | 5 phases | I-SEC-1, 3, 4, 5, 6 + RFC 8707 |
-| [04](./plans/PLAN-04-atomicity-correctness.md) | Atomicity + correctness | 🟡 **IN PROGRESS** (Phase 1A landed 2026-05-24) | 1 of 8 phases | I-COR-1 (Phase 1A done) |
+| [04](./plans/PLAN-04-atomicity-correctness.md) | Atomicity + correctness | 🟡 **IN PROGRESS** (Phase 1B landed 2026-05-24) | 2 of 8 phases | I-COR-1, I-COR-2 (Phase 1A + 1B done) |
 | [05](./plans/PLAN-05-integration-robustness.md) | Integration robustness | 🔜 **NOT STARTED** | — | I-INT-1, 2, 3, 4 |
 | [06](./plans/PLAN-06-test-coverage-expansion.md) | Test coverage + DAL refactor | 🔜 **NOT STARTED** | — | I-TEST-1–8 |
 | [07](./plans/PLAN-07-operational-pre-launch.md) | Operational + pre-launch | 🔜 **NOT STARTED** | — | I-OTH-1, 2, 4, P1, P2 |
@@ -90,13 +90,13 @@ Per the master plan's dependency graph, Plan 04 can run in parallel with Plans 0
 
 | Phase | What it did | Commit | Closes |
 |---|---|---|---|
-| 1A | `public.apply_wizard_transition` SECURITY INVOKER RPC — atomic 3-write (UPDATE customer_chat_sessions + optional user-bubble INSERT + optional assistant-bubble INSERT) in a single Postgres transaction (PostgREST-wrapped). `scheduler-app/src/lib/scheduler/wizard/transition.ts` rewritten to call the RPC. Server-canonical `last_active_at = pg_catalog.now()` removes client clock-drift risk. Column-merge uses `CASE WHEN p_payload ? 'col' THEN ... ELSE col END` (NOT COALESCE — matches supabase-js .update semantic so explicit-null payload entries clear columns to SQL NULL; 6 callers depend on this). New `transition.test.ts` (13 tests) + refactored `submit-start-over.test.ts` + `run-diagnostics.test.ts` for new persistence shape. | _(commit SHA after push)_ | I-COR-1 |
+| 1A | `public.apply_wizard_transition` SECURITY INVOKER RPC — atomic 3-write (UPDATE customer_chat_sessions + optional user-bubble INSERT + optional assistant-bubble INSERT) in a single Postgres transaction (PostgREST-wrapped). `scheduler-app/src/lib/scheduler/wizard/transition.ts` rewritten to call the RPC. Server-canonical `last_active_at = pg_catalog.now()` removes client clock-drift risk. Column-merge uses `CASE WHEN p_payload ? 'col' THEN ... ELSE col END` (NOT COALESCE — matches supabase-js .update semantic so explicit-null payload entries clear columns to SQL NULL; 6 callers depend on this). New `transition.test.ts` (13 tests) + refactored `submit-start-over.test.ts` + `run-diagnostics.test.ts` for new persistence shape. | `5d8a122` | I-COR-1 |
+| 1B | `public.hydrate_session_reset(p_chat_id UUID) RETURNS JSONB` SECURITY INVOKER RPC — atomic 4-write (UPDATE appointment_holds by pointer + UPDATE appointment_holds by session_id defensive + UPDATE customer_chat_sessions full RESET_COLUMNS wipe + DELETE customer_chat_messages) in a single Postgres transaction. `scheduler-app/src/lib/scheduler/hydrate-session.ts` rewritten to call the RPC. `RESET_COLUMNS` JS constant removed; SQL migration is now source of truth. Sentry capture level bumped warning→error on reset failure (atomic RPC failure means everything rolled back — customer-visible). Audit caught a column-name bug in the spec: `appointment_holds` has no `hold_token` column; corrected to `WHERE id = v_hold_token` per live schema. RESET_COLUMNS divergence between hydrate-session (43 cols) + submit-start-over (41 cols, missing `pending_candidates` + `customer_self_identified`) preserved intentionally; flagged as new deferred CLN item. New `hydrate-session.test.ts` (16 tests); 183/183 unit suite passes (was 167). | _(commit SHA after push)_ | I-COR-2 |
 
 ### Remaining phases (estimated)
 
 | Phase | Scope | Effort | Notes |
 |---|---|---|---|
-| 1B | `hydrate_session_reset` RPC for stale-session reset | ~0.5 day | Atomic 4-write reset |
 | 2 | `submit-summary` hold CAS lock | ~4 hr | Prevent mark-abandoned race window |
 | 3A | `submit-vehicle-pick` validates vehicle ownership | ~3 hr | IDOR defense |
 | 3B | `submit-multi-account-choice` validates customer_id in pending_candidates | ~3 hr | IDOR defense |
