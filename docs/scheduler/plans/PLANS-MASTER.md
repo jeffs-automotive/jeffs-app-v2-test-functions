@@ -1,6 +1,8 @@
 # Scheduler-app remediation plans — master index
 
-> Implementation plans for every audit finding in `docs/scheduler/AUDIT-2026-05-22.md`. Each plan is independently shippable but ordered by dependency. Research backing each plan is in `.tmp/agent-output/research-*/` (committed to repo on next push).
+> Implementation plans for every audit finding in `docs/scheduler/AUDIT-2026-05-22.md`. Each plan is independently shippable but ordered by dependency. Research backing each plan is in `docs/scheduler/research-2026-05-22/`.
+>
+> **For phase-level status + commit SHAs:** see [`docs/scheduler/REMEDIATION-PROGRESS.md`](../REMEDIATION-PROGRESS.md). That file is the source of truth for what's landed; this file is the source of truth for what each plan DOES.
 >
 > **Estimated total effort:** 4-5 weeks for one engineer, sequencing per the dependency graph below.
 >
@@ -13,17 +15,27 @@
 
 ---
 
+## Current state (2026-05-24)
+
+✅ **Plans 01, 02, 03 — COMPLETE.** All 10 BLOCKERs + 16+ IMPORTANTs closed across 14 phase-level commits. See `REMEDIATION-PROGRESS.md` for per-phase commit SHAs.
+
+🔜 **Plans 04, 05, 06, 07 — NOT STARTED.** Plans 04, 05, 07 are unblocked + parallel-runnable; Plan 06 sits on top of Plan 04.
+
+**Recommended next pick:** Plan 04 (Atomicity + correctness) — it unblocks Plan 06 and the I-COR findings are the highest latent-risk surface remaining (data loss / race conditions / double-write risk).
+
+---
+
 ## The 7 plans at a glance
 
-| Plan | Title | Effort | Risk | Findings closed | Prerequisites |
-|---|---|---|---|---|---|
-| [01](./PLAN-01-pre-launch-blockers.md) | Pre-launch BLOCKERs | 6-8 days | medium | B1-B10, I-OBS-2, I-INT-5 | — |
-| [02](./PLAN-02-observability-hardening.md) | Observability hardening | 3 days | low | I-OBS-1,3,4,5,7,8, I-INT-6 | Plan 01 Phase 3 (CI) |
-| [03](./PLAN-03-security-hardening.md) | Security hardening | 5-6 days | medium | I-SEC-1,3,4,5,6,7 + headers | Plan 01 Phase 1A + 3 |
-| [04](./PLAN-04-atomicity-correctness.md) | Atomicity + correctness | 4 days | medium-high | I-COR-1,2,3,4,5,6,7,8, I-OTH-3 | Plan 01 Phase 4 (tests) |
-| [05](./PLAN-05-integration-robustness.md) | Integration robustness | 5-6 days | medium | I-INT-1,2,3,4 | Plan 01 Phase 1A |
-| [06](./PLAN-06-test-coverage-expansion.md) | Test coverage expansion + DAL refactor | 1-2 weeks | low | I-TEST-1 through I-TEST-8 | Plan 01 Phase 3 + 4, Plan 04 |
-| [07](./PLAN-07-operational-pre-launch.md) | Operational + pre-launch | 2 days | low | I-OTH-1,2,4, P1, P2 | — |
+| Plan | Title | Status | Effort | Risk | Findings closed | Prerequisites |
+|---|---|---|---|---|---|---|
+| [01](./PLAN-01-pre-launch-blockers.md) | Pre-launch BLOCKERs | ✅ COMPLETE 2026-05-22 | 6-8 days | medium | B1-B10, I-OBS-2, I-INT-5 | — |
+| [02](./PLAN-02-observability-hardening.md) | Observability hardening | ✅ COMPLETE 2026-05-24 | 3 days | low | I-OBS-1,3,4,5,7,8, I-INT-6 | Plan 01 Phase 3 (CI) |
+| [03](./PLAN-03-security-hardening.md) | Security hardening | ✅ COMPLETE 2026-05-23 (SEC-7 BotID deferred to pre-launch) | 5-6 days | medium | I-SEC-1,3,4,5,6,7 + headers | Plan 01 Phase 1A + 3 |
+| [04](./PLAN-04-atomicity-correctness.md) | Atomicity + correctness | 🔜 NOT STARTED | 4 days | medium-high | I-COR-1,2,3,4,5,6,7,8, I-OTH-3 | Plan 01 Phase 4 (tests) ✅ |
+| [05](./PLAN-05-integration-robustness.md) | Integration robustness | 🔜 NOT STARTED | 5-6 days | medium | I-INT-1,2,3,4 | Plan 01 Phase 1A ✅ |
+| [06](./PLAN-06-test-coverage-expansion.md) | Test coverage expansion + DAL refactor | 🔜 NOT STARTED | 1-2 weeks | low | I-TEST-1 through I-TEST-8 | Plan 01 Phase 3 ✅ + 4 ✅, Plan 04 |
+| [07](./PLAN-07-operational-pre-launch.md) | Operational + pre-launch | 🔜 NOT STARTED | 2 days | low | I-OTH-1,2,4, P1, P2 | — |
 
 ---
 
@@ -169,22 +181,6 @@ Suggested commit body summarizes:
 
 ## Status tracking
 
-Once execution starts, track progress at `docs/scheduler/REMEDIATION-PROGRESS.md`:
-
-```markdown
-# Remediation progress — started 2026-05-XX
-
-## Plan 01 — Pre-launch BLOCKERs
-
-- [x] Phase 1A — Edge function auth lockdown (commit abc1234)
-- [x] Phase 1B — Scratch tables cleanup (commit def5678)
-- [ ] Phase 1C — Snapshot-prune cron fix
-- ...
-
-## Plan 02 — Observability hardening
-
-- [ ] Phase 1 — Wrap 13 unwrapped edge functions
-- ...
-```
+Progress is tracked at [`docs/scheduler/REMEDIATION-PROGRESS.md`](../REMEDIATION-PROGRESS.md) — per-phase commit SHAs, close criteria, and deferral cross-links to `DEFERRED-AUDIT-ITEMS.md`. Update that file in the same commit that closes a phase.
 
 This file lives alongside the plans + gets updated as PRs land.
