@@ -743,42 +743,39 @@ files
   ("Token Audience Binding and Validation" + "Access Token Privilege
   Restriction") and https://datatracker.ietf.org/doc/html/rfc8707.
 
-### OBS-8 · Sentry Cron Monitoring needs `sentry_dsn` in Vault (NEW 2026-05-23)
+### OBS-8 · Sentry Cron Monitoring needs `sentry_dsn` in Vault — **RESOLVED 2026-05-24**
 
-- **What** — Plan 02 Phase 3 (migration
+- **What was deferred** — Plan 02 Phase 3 (migration
   `20260523022303_sentry_cron_monitoring.sql`) shipped the
   `sentry_cron_checkin` helper + 4 per-cron wrappers + re-scheduled the
   4 cron jobs (`scheduler-appointments-sync`,
   `scheduler-transcript-dispatcher`, `keytag-bulk-reconcile`,
-  `keytag-daily-report`) to call the wrappers. The helper is in
-  graceful no-op mode until the Vault secret `sentry_dsn` is populated —
+  `keytag-daily-report`) to call the wrappers. The helper was in
+  graceful no-op mode until the Vault secret `sentry_dsn` was populated —
   it parses the DSN from Vault, falls back to RETURN NULL if missing,
   cron continues normally regardless.
-- **What's blocked** — Sentry Cron Monitoring dashboard doesn't see the
-  crons until the secret lands. Misses + errors at the cron-body layer
-  are invisible to Sentry until then.
-- **What's NOT blocked** — the crons themselves run on schedule + still
-  log errors to `scheduler_error_log`. The edge functions they invoke
-  are still wrapped in `withSentryScope` (Plan 02 Phase 1) so edge-fn
-  failures still surface to Sentry on their own channel.
-- **What to do** — Chris runs ONE SQL statement (decision: use the same
-  DSN as `EDGE_FN_SENTRY_DSN`, which points at the
-  `jeffs-app-v2-supabase` Sentry project — cron telemetry belongs
-  alongside edge-fn execution telemetry per Plan 02 Phase 3 §1):
-  ```sql
-  SELECT public.tekmetric_set_secret(
-    'sentry_dsn',
-    '<paste the EDGE_FN_SENTRY_DSN value here>',
-    'Sentry DSN for cron check-ins. Same as EDGE_FN_SENTRY_DSN — points at jeffs-app-v2-supabase project. Plan 02 Phase 3 (2026-05-23).'
-  );
-  ```
-  After applying, wait 10 min for `scheduler-appointments-sync` to fire
-  (or invoke manually:
-  `SELECT public.run_scheduler_appointments_sync_with_checkin();`)
-  then check Sentry → Crons dashboard for the new monitor.
-- **Source** — 2026-05-23 PLAN-02 Phase 3 implementation. The
-  prerequisite is also documented at the top of migration
-  `20260523022303_sentry_cron_monitoring.sql`.
+- **What was blocked** — Sentry Cron Monitoring dashboard couldn't see
+  the crons until the secret landed. Misses + errors at the cron-body
+  layer were invisible to Sentry on that channel until then. (The
+  edge functions they invoke remained surfaced via `withSentryScope`.)
+- **Resolution** — `vault.secrets.sentry_dsn` populated 2026-05-24
+  17:24:22Z (same DSN as `EDGE_FN_SENTRY_DSN`, points at the
+  `jeffs-app-v2-supabase` Sentry project per Plan 02 Phase 3 §1).
+  Verified via two natural cron cycles 2026-05-24 18:30 + 18:35 UTC:
+  9/9 calls to Sentry's `/cron/<slug>/<key>/` endpoint returned 2xx
+  (POST `202` upsert + GET `202` close-out per cycle × 2 fires + the
+  edge fn `200`s), and Sentry auto-resolved the active cron-failure
+  issues (JEFFS-APP-V2-SUPABASE-A transcript-dispatcher + -C
+  appointments-sync) once the post-migration check-ins paired
+  correctly. Daily-cron issues (-B keytag-daily-report + -D
+  keytag-bulk-reconcile) manually resolved — they can't naturally
+  re-fire same day.
+- **Companion fix (same day)** — initial pairing failures surfaced
+  immediately after the DSN went in, traced to pg_net async delivery
+  ordering. See migration `20260524210000_sentry_cron_checkin_pair_by_id.sql`
+  (commit `3d9de2d`) — re-adds explicit `check_in_id` to both POST
+  body + GET querystring so Sentry pairs by ID instead of recency,
+  making pg_net's batch ordering irrelevant.
 
 ### CLN-11 · npm install + npm ci lock-file drift recurrence pattern (NEW 2026-05-23)
 
