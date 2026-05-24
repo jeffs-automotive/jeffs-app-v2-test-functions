@@ -317,68 +317,115 @@ the work lands.
 
 ## Security / hardening
 
-### SEC-7 · BotID + Upstash setup prerequisites (NEW 2026-05-23)
+### SEC-7 · BotID + rate-limit activation (NEW 2026-05-23 · DESIGN PIVOT 2026-05-23 PM · DEFERRED TO PRE-LAUNCH)
 
-- **What** — PLAN-03 Phase 1A + 1B shipped Vercel BotID (`botid@1.5.11`)
-  + Upstash rate-limit (`@upstash/ratelimit@2.0.8` + `@upstash/redis@1.38.0`)
-  on all three SMS-triggering Server Actions:
-  `submit-phone-name.ts`, `resend-otp.ts`, `submit-multi-account-choice.ts`.
-  Code is in place and gates fail OPEN with Sentry warnings when the
-  external services are unconfigured, so legitimate OTP traffic is NOT
-  broken in the meantime. To activate the protection:
+- **Status** — DEFERRED until immediately before Phase 1 DNS launch at
+  Chris's explicit direction (2026-05-23 PM). Rationale: rate-limit gates
+  would constrain manual + automated testing during the remaining
+  remediation phases. The wizard isn't public yet, so the SMS-pumping
+  attack surface isn't reachable; activating now buys no protection and
+  adds friction to test cycles.
 
-- **BotID activation (one-time, no code change, no env var)** —
-  Vercel dashboard → Projects → `scheduler-app` (or whichever project
-  hosts `appointments.jeffsautomotive.com`) → **Firewall** tab →
-  **Rules** → enable **Vercel BotID** (Basic level, free on all plans).
-  No redeploy needed; BotID picks up the next request. **Deep Analysis**
-  ($1/1k checks, Pro/Enterprise only) deferred until we see real attack
-  traffic justifying the cost. The matching client-side `initBotId()`
-  call is already in place at `scheduler-app/instrumentation-client.ts`
-  (verify next time we touch that file — Phase 1A scope was server-only;
-  client init may need an addendum follow-up to wire the protected paths).
+- **What was originally shipped** — PLAN-03 Phase 1A + 1B shipped:
+  - Vercel BotID (`botid@1.5.11`) — server-side `checkBotId()` on the 3
+    SMS-triggering Server Actions: `submit-phone-name.ts`,
+    `resend-otp.ts`, `submit-multi-account-choice.ts`.
+  - Upstash rate-limit (`@upstash/ratelimit@2.0.8` +
+    `@upstash/redis@1.38.0`) — two sliding-window limits per request:
+    5/IP/min + 3/phone-hash/hour.
+  Code is in place; gates fail OPEN with Sentry warnings when the
+  external services are unconfigured. OTP traffic works regardless.
 
-- **Upstash activation** — Chris creates a free Redis project at
-  https://console.upstash.com/. Recommended settings: Global region,
-  Eviction enabled (LRU). Free tier (10k commands/day) is sufficient for
-  v1: each OTP send triggers 2 commands (IP limit + phone limit), so
-  10k/day = 5k OTPs/day, well above expected traffic. Once created,
-  copy the REST URL + token from the project dashboard, then on Vercel:
-  Settings → Environment Variables → add for BOTH Production and Preview
-  environments:
-  - `UPSTASH_REDIS_REST_URL` = the `https://...upstash.io` URL from
-    the Upstash dashboard
-  - `UPSTASH_REDIS_REST_TOKEN` = the bearer token from the Upstash
-    dashboard ("Read & Write" token, not read-only)
-  Redeploy (or push to main — Vercel auto-deploys). The rate-limit code
-  picks up the env vars on cold start and stops emitting the "Upstash
-  env vars missing — failing open" Sentry warning.
+- **DESIGN PIVOT (2026-05-23 PM)** — the rate-limit half is being
+  re-architected before activation:
+  - **PER-IP limit** moves OUT of app code INTO a **Vercel Firewall
+    custom rule** (Pro plan, no extra cost). Match `POST /` to rate-limit
+    at the edge BEFORE the Server Action runs. ~30 req/60s per IP is
+    the starting tuning — generous enough that a fast wizard click-through
+    (~10 steps in 60s) doesn't trip it, tight enough to block scrapers.
+  - **PER-PHONE limit** moves OUT of Upstash INTO a **Supabase Postgres
+    RPC** (`check_and_increment_rate_limit(p_key, p_window_seconds,
+    p_max)`) backed by a `rate_limit_buckets` table + nightly pruner
+    cron. Reason: Vercel Firewall can't see request bodies (the phone
+    number is encrypted in the POST payload), so per-phone shaping has
+    to stay app-layer, but it doesn't need a new vendor (Upstash) when
+    Supabase already covers it.
+  - **Dependencies to drop on swap**: `@upstash/ratelimit@2.0.8`,
+    `@upstash/redis@1.38.0`. Saves ~50KB on the bundle.
+  - **Architecture win**: IP-spray attacks rejected at the Vercel edge
+    before they reach our infrastructure (faster, free, harder to bypass);
+    per-victim harassment still caught in the app layer; one fewer
+    external vendor.
 
-- **What's blocked until activation** — strictly speaking, NOTHING.
-  Both layers fail OPEN with structured Sentry warnings, so OTP works
-  for legitimate customers regardless. The DB-level otp_codes
-  per-phone-per-hour limit remains the active backstop. But the FULL
-  defense-in-depth posture (bot detection + per-IP + per-phone-hash
-  rate limits) requires both activations to be effective against SMS
-  pumping at the scale we're worried about.
+- **Pre-launch activation checklist** (do all 4 right before the
+  Phase 1 DNS cutover to `appointments.jeffsautomotive.com`):
 
-- **Sentry alerts to expect** — until both services are activated, you
-  may see periodic "warning" level Sentry events:
-  - `check_bot_for_sensitive_action` surface — BotID infra not reachable
-    (will resolve when BotID is enabled in the Vercel dashboard)
-  - `rate_limit_init` surface with `misconfiguration=upstash_missing`
-    tag — Upstash env vars not set (one per cold start, resolves when
-    env vars are configured)
-  Once both are activated, both warnings stop. Investigate any that
-  appear AFTER activation — they signal a real outage.
+  1. **Vercel Firewall rule** (no code change):
+     - Vercel dashboard → `scheduler-app` → Firewall → Custom Rules
+     - Add rule: `Request Path` equals `/` AND `Request Method` equals
+       `POST` → Action: **Rate Limit** 30/60s per IP, Deny 60s on breach.
+     - Add a sibling rule for `/book` if that route is still live at
+       launch.
+     - Tune the threshold from real traffic after the first week.
 
-- **Source** — 2026-05-23 PLAN-03 Phase 1A + 1B implementation. Plan
-  reference: `docs/scheduler/plans/PLAN-03-security-hardening.md` Phase 1
-  (lines 41-150). New files:
+  2. **BotID dashboard toggle** (no code change):
+     - Vercel dashboard → `scheduler-app` → Firewall → Rules → enable
+       **Vercel BotID** at Basic level (free on Pro plan).
+     - The matching client-side `initBotId()` call already lives in
+       `scheduler-app/instrumentation-client.ts`. No redeploy needed.
+     - **Deep Analysis** ($1/1k checks) deferred until real attack
+       traffic justifies cost.
+
+  3. **Swap in-app rate-limit from Upstash to Postgres** (~1-2 hours of
+     code):
+     - New migration: `rate_limit_buckets(key TEXT, occurred_at
+       TIMESTAMPTZ, window_id TEXT)` + composite index on `(key,
+       occurred_at DESC)` + `check_and_increment_rate_limit` RPC
+       (sliding-window, returns `(allowed bool, retry_after_seconds int)`)
+       + nightly pruner cron (`pg_cron`) deleting rows older than 24h.
+     - Refactor `scheduler-app/src/lib/security/rate-limit.ts`:
+       - Drop `@upstash/ratelimit` + `@upstash/redis` imports + usage.
+       - Drop the per-IP limit (Vercel Firewall handles it now).
+       - Keep only the per-phone-hash check, calling the new RPC via
+         the admin supabase-js client.
+       - External API stays the same (`checkRateLimit({ phoneHash })`),
+         so the 3 calling Server Actions don't change.
+     - Update `scheduler-app/tests/unit/rate-limit.test.ts` to mock
+       the supabase-js admin client instead of Upstash.
+     - Remove the npm deps from `package.json` + regenerate
+       `package-lock.json` (use `rm -rf node_modules package-lock.json
+       && npm install && npm ci --dry-run` per CLN-11).
+
+  4. **Sentry alert hygiene** — once the swap ships:
+     - The `rate_limit_init` Sentry warning with tag
+       `misconfiguration=upstash_missing` will stop firing.
+     - The `check_bot_for_sensitive_action` warning will stop once the
+       Vercel dashboard toggle is on.
+     - Investigate any of these warnings that fire AFTER activation —
+       they signal a real outage.
+
+- **What's NOT blocked by the deferral** — testing freedom. The current
+  fail-OPEN behavior means:
+  - OTP traffic works for both human and scripted tests
+  - DB-level `otp_codes` per-phone-per-hour cap remains the active
+    backstop against accidental misuse
+  - No risk of accidentally rate-limiting ourselves during Plan 04-07
+    development cycles
+
+- **What IS blocked by the deferral** — abuse protection at production
+  scale. The wizard is private (no DNS pointed yet) so this is fine.
+  Once the cutover happens, attackers can hit
+  `appointments.jeffsautomotive.com` directly; the activation MUST be
+  complete before then or the OTP endpoint becomes a money pump.
+
+- **Source** — 2026-05-23 PLAN-03 Phase 1A + 1B implementation;
+  2026-05-23 PM design pivot per Chris's call (Vercel Firewall +
+  Supabase Postgres instead of Upstash, deferral to pre-launch).
+  Plan reference: `docs/scheduler/plans/PLAN-03-security-hardening.md`
+  Phase 1 (lines 41-150). Existing files (to be refactored):
   `scheduler-app/src/lib/security/check-bot.ts`,
   `scheduler-app/src/lib/security/rate-limit.ts`,
-  `scheduler-app/src/lib/security/get-request-ip.ts`.
-  Companion tests:
+  `scheduler-app/src/lib/security/get-request-ip.ts`. Companion tests:
   `scheduler-app/tests/unit/check-bot.test.ts`,
   `scheduler-app/tests/unit/rate-limit.test.ts`,
   `scheduler-app/tests/unit/get-request-ip.test.ts`.
