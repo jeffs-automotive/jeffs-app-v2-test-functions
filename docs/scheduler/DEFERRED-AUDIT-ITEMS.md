@@ -659,7 +659,37 @@ files
   comment in `supabase/functions/tekmetric-api-testing/index.ts` (line
   ~581) also documents this prerequisite.
 
-### SEC-6 · OAuth resource backward-compat cutoff (NEW 2026-05-23)
+### SEC-6 · OAuth resource backward-compat cutoff — RESOLVED 2026-05-23 (same day, immediate cutoff per Chris)
+
+- **Resolution (2026-05-23 PM)** — Chris directed immediate close of the
+  30-day backward-compat window. `orchestrator-mcp/index.ts`
+  `authenticateRequest` now REJECTS tokens with NULL resource (returns
+  `{ ok: false, reason: "invalid_audience" }` → 401 + WWW-Authenticate
+  with `error="invalid_token"` per MCP spec 2025-11-25 §"Token Audience
+  Binding and Validation" + RFC 6750 §3.1 error codes). The prior
+  warn-and-allow branch + 30-day window documented below is HISTORICAL.
+
+  - **Code change**: orchestrator-mcp/index.ts (deployed 2026-05-23 to
+    ref itzdasxobllfiuolmbxu). The NULL-resource branch flipped from
+    breadcrumb + `Sentry.captureMessage` + allow → `Sentry.captureMessage`
+    + return invalid_audience. Mismatch branch unchanged.
+  - **Impact on existing Claude Desktop sessions**: any session with a
+    pre-Plan-03-Phase-4 token gets a 401 on its next request. Re-auth
+    in Claude Desktop ONCE produces a resource-bound token; subsequent
+    requests succeed. No client-code change needed — the existing
+    refresh flow already sends the `resource` parameter (shipped in
+    `mcp-auth` Phase 4).
+  - **MCP spec citation** — `/websites/modelcontextprotocol_io_specification_2025-11-25`
+    §Token Audience Binding and Validation: "MCP servers MUST validate
+    that presented tokens were issued specifically for their use."
+    NULL resource doesn't satisfy this contract.
+  - **Sentry event to monitor** — `oauth_legacy_no_resource_rejected`
+    (warning level, tag `oauth_event=legacy_no_resource_rejected`).
+    Expected pattern: one or two events when Chris re-auths Claude
+    Desktop, then zero. Anything else signals a stale session worth
+    investigating.
+
+#### Historical context (below preserved for audit trail)
 
 - **What** — Plan 03 Phase 4 shipped RFC 8707 + MCP spec 2025-11-25 audience
   validation across the OAuth stack:

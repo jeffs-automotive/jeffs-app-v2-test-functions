@@ -175,37 +175,37 @@ async function authenticateRequest(req: Request): Promise<AuthOk | AuthErr> {
   // on the access_token row at issue time. Compare to this server's canonical
   // URL on every call.
   //
-  // Backward compat window (30 days from 2026-05-23): tokens issued BEFORE
-  // PLAN-03 Phase 4 shipped have NULL resource. Allow them with a Sentry
-  // warning + breadcrumb so we can watch the volume taper off as customers
-  // re-auth and naturally pick up resource-bound tokens. Cutoff guidance +
-  // remediation lives in docs/scheduler/DEFERRED-AUDIT-ITEMS.md item SEC-6.
+  // SEC-6 cutoff applied 2026-05-23 (immediate, vs the original 30-day plan).
+  // Tokens issued BEFORE the PLAN-03 Phase 4 migration ran have NULL resource;
+  // those are now REJECTED outright per MCP spec 2025-11-25 §"Token Audience
+  // Binding and Validation": "MCP servers MUST validate that presented tokens
+  // were issued specifically for their use." NULL resource = not bound to any
+  // audience = doesn't satisfy that contract.
+  //
+  // Impact for legitimate users: existing Claude Desktop sessions get a 401
+  // on their next request and must re-auth ONCE. The OAuth refresh-token grant
+  // already requires a `resource` parameter (Plan 03 Phase 4 `mcp-auth`
+  // changes), so the re-auth flow naturally produces a resource-bound token
+  // and subsequent requests succeed. No client-code change needed.
   const tokenResource = (row.resource as string | null | undefined) ?? null;
   const expectedResource = getExpectedMcpResource();
 
   if (tokenResource === null) {
-    Sentry.addBreadcrumb({
-      category: "oauth",
-      level: "warning",
-      message: "Legacy access token with NULL resource accepted under 30-day backward-compat window",
-      data: {
-        oauth_legacy_no_resource: true,
-        client_id: row.client_id,
-        user_label: row.user_label,
-        expected_resource: expectedResource,
-      },
-    });
-    Sentry.captureMessage("OAuth legacy token (NULL resource) used at orchestrator-mcp", {
+    Sentry.captureMessage("OAuth legacy token (NULL resource) rejected at orchestrator-mcp", {
       level: "warning",
       tags: {
-        oauth_event: "legacy_no_resource",
-        oauth_legacy_no_resource: "true",
+        oauth_event: "legacy_no_resource_rejected",
         client_id: row.client_id as string,
       },
+      extra: {
+        user_label: row.user_label,
+        expected_resource: expectedResource,
+        sec6_cutoff_applied: "2026-05-23",
+      },
     });
-    // Allow during cutover window. After cutoff (see SEC-6), change this to:
-    //   return { ok: false, reason: "invalid_audience" };
-  } else if (tokenResource !== expectedResource) {
+    return { ok: false, reason: "invalid_audience" };
+  }
+  if (tokenResource !== expectedResource) {
     Sentry.captureMessage("OAuth token audience mismatch at orchestrator-mcp", {
       level: "warning",
       tags: {
