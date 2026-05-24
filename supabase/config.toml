@@ -621,3 +621,15 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/llm-testing/deno.json"
 entrypoint = "./functions/llm-testing/index.ts"
+
+[functions.sentry-webhook]
+enabled = true
+# Receives Sentry Internal Integration webhooks (issue created/resolved
+# etc.) and logs them to public.sentry_webhook_events. Auth is via the
+# Sentry-Hook-Signature header (HMAC-SHA256 keyed on the integration's
+# Client Secret) validated inside the handler — Sentry can't send a
+# Supabase JWT, so verify_jwt=false is required. The handler itself
+# fails closed when SENTRY_INTEGRATION_CLIENT_SECRET is unset.
+verify_jwt = false
+import_map = "./functions/sentry-webhook/deno.json"
+entrypoint = "./functions/sentry-webhook/index.ts"
