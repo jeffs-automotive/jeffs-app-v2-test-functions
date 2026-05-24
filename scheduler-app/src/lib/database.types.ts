@@ -600,6 +600,8 @@ export type Database = {
           appointment_id: number | null
           appointment_time: string | null
           appointment_type: string | null
+          appointment_verification_diff: Json | null
+          appointment_verification_status: string | null
           approved_testing_services: string[] | null
           channel: string
           clarification_questions_answered: Json | null
@@ -659,6 +661,8 @@ export type Database = {
           appointment_id?: number | null
           appointment_time?: string | null
           appointment_type?: string | null
+          appointment_verification_diff?: Json | null
+          appointment_verification_status?: string | null
           approved_testing_services?: string[] | null
           channel: string
           clarification_questions_answered?: Json | null
@@ -718,6 +722,8 @@ export type Database = {
           appointment_id?: number | null
           appointment_time?: string | null
           appointment_type?: string | null
+          appointment_verification_diff?: Json | null
+          appointment_verification_status?: string | null
           approved_testing_services?: string[] | null
           channel?: string
           clarification_questions_answered?: Json | null

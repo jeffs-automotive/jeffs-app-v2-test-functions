@@ -488,20 +488,108 @@ async function handleConfirmPath(chatId: string): Promise<WizardTransitionResult
     });
   }
 
-  // Surface verify-mismatch to Sentry (don't block the customer — the
-  // booking is in Tekmetric per the 200 response).
-  if (confirmResult.verification && !confirmResult.verification.ok) {
-    Sentry.captureMessage("submit_summary_v2 confirm verify mismatch", {
-      level: "warning",
+  // Plan 04 Phase 4 (closes I-COR-6) — verification-mismatch 3-state
+  // envelope. When Tekmetric's GET-after-POST verification reports that
+  // fields differ between what we sent and what it persisted, do NOT
+  // silently treat the booking as confirmed:
+  //   - Persist appointment_verification_status='needs_review' +
+  //     appointment_verification_diff (so advisors can query the DB and
+  //     reconcile)
+  //   - Queue a Pattern B manual review (AVM-XXXXXX code) so the team
+  //     gets a code to reference in Claude Desktop ("code AVM-XXXX
+  //     option a" style resolution)
+  //   - Sentry capture at ERROR level (was warning under the prior
+  //     "log + proceed as confirmed" behavior — error is correct now
+  //     since the customer-facing bubble apologizes)
+  //   - Still advance to customer_notes (per Chris's UX call —
+  //     customer continues the flow; the advisor handles the backend
+  //     verification fix separately)
+  //   - Different jeffBubble: apology copy instead of celebratory
+  //
+  // Email send for the manual review is DEFERRED (existing keytag
+  // email path is Deno-only; Vercel Server Action can't import it
+  // directly). Tracked as a new CLN deferred item; advisors can query
+  // keytag_manual_reviews WHERE category='appointment_verification_mismatch'
+  // for now.
+  const isVerifyMismatch =
+    confirmResult.verification && !confirmResult.verification.ok;
+  const verifyDiff = confirmResult.verification?.diff ?? null;
+
+  if (isVerifyMismatch) {
+    Sentry.captureMessage("appointment_verification_mismatch", {
+      level: "error",
+      tags: {
+        surface: "submit_summary_v2_verify_mismatch",
+        chat_id: chatId,
+      },
       extra: {
-        chatId,
         appointment_id: appointmentId,
-        diff: confirmResult.verification.diff,
+        diff: verifyDiff,
       },
     });
+
+    // Pattern B — create_manual_review RPC. The keytag-specific
+    // p_tag_color / p_tag_number / p_ro_id / p_ro_number params stay
+    // unset (use their NULL defaults). Failure of this insert is
+    // best-effort: the appointment_verification_status column on the
+    // session row + the Sentry error capture above are sufficient
+    // for advisor triage without the code.
+    try {
+      const { error: reviewErr } = await supabase.rpc(
+        "create_manual_review",
+        {
+          p_category: "appointment_verification_mismatch",
+          p_prefix: "AVM",
+          p_context: {
+            chat_id: chatId,
+            appointment_id: appointmentId,
+            customer_id: customerId,
+            vehicle_id: vehicleId,
+            diff: verifyDiff,
+          },
+          p_options: [
+            {
+              key: "update_tekmetric",
+              label: "Update Tekmetric to match what we sent",
+              description:
+                "Edit the appointment in Tekmetric so it reflects what the customer confirmed in the wizard.",
+            },
+            {
+              key: "update_our_records",
+              label: "Update our records to match Tekmetric",
+              description:
+                "Accept Tekmetric's version as correct; update the customer_chat_sessions row accordingly.",
+            },
+            {
+              key: "contact_customer",
+              label: "Contact customer to resolve",
+              description:
+                "Call/text the customer to confirm which version is correct, then fix the other side.",
+            },
+          ],
+          p_issue_summary:
+            "Appointment confirmation succeeded but Tekmetric's verification shows the persisted fields differ from what we sent.",
+        },
+      );
+      if (reviewErr) {
+        Sentry.captureException(reviewErr, {
+          tags: { surface: "submit_summary_v2_create_manual_review" },
+          level: "warning",
+          extra: { chatId, appointment_id: appointmentId },
+        });
+      }
+    } catch (e) {
+      Sentry.captureException(e, {
+        tags: { surface: "submit_summary_v2_create_manual_review" },
+        level: "warning",
+        extra: { chatId, appointment_id: appointmentId },
+      });
+    }
   }
 
-  // Fire-and-forget staff email notification.
+  // Fire-and-forget staff email notification. Fires for BOTH
+  // confirmed and needs_review paths — staff still needs to prep
+  // for the appointment regardless of verification state.
   void notifyStaffOfNewAppointment({
     chatId,
     appointmentId,
@@ -517,20 +605,37 @@ async function handleConfirmPath(chatId: string): Promise<WizardTransitionResult
     });
   });
 
-  // Advance to customer_notes with celebratory bubble.
+  // Advance to customer_notes. Both confirmed + needs_review paths
+  // go through customer_notes per Chris's UX call — the apology
+  // bubble + the needs_review backend handling are orthogonal to
+  // the customer's notes-taking step.
   return applyWizardTransition({
     chatId,
     updates: {
       appointment_id: appointmentId,
       appointment_confirmed_at: new Date().toISOString(),
+      appointment_verification_status: isVerifyMismatch
+        ? "needs_review"
+        : "confirmed",
+      // Explicit null on confirmed path clears any prior value (defensive;
+      // first-write to this column on this row would otherwise leave it null).
+      appointment_verification_diff: isVerifyMismatch ? verifyDiff : null,
     },
     nextStep: "customer_notes",
-    jeffBubble: buildConfirmedBubble(
-      r.entered_first_name as string | null,
-      apptType,
-      confirmResult.start_time ?? "",
-    ),
+    jeffBubble: isVerifyMismatch
+      ? buildVerificationMismatchBubble(r.entered_first_name as string | null)
+      : buildConfirmedBubble(
+          r.entered_first_name as string | null,
+          apptType,
+          confirmResult.start_time ?? "",
+        ),
   });
+}
+
+function buildVerificationMismatchBubble(firstName: string | null): string {
+  const name = (firstName ?? "").trim();
+  const greeting = name ? `Thanks, ${name} —` : "Thanks —";
+  return `${greeting} we've got your appointment booked, but a couple of details came through differently than expected on our end. Our team will text or call you shortly to verify everything's right before your visit. 📞\n\nBefore you go — is there anything special I should let our techs know about your car or the visit?`;
 }
 
 function buildConfirmedBubble(

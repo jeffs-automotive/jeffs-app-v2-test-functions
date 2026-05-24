@@ -1,6 +1,6 @@
 # Scheduler-app — next session kickoff
 
-> **Last refreshed:** 2026-05-24 end-of-session (post Plan 04 Phase 3A + 3B IDOR defenses).
+> **Last refreshed:** 2026-05-24/25 end-of-session (post Plan 04 Phase 4 verification-mismatch envelope).
 > **Refresh this file** at the end of EVERY session that did scheduler-app work — same commit that bumps `scheduler_system_architecture.md`. Keep the "Today's headline" + "Next-step todos" sections current.
 
 ---
@@ -19,24 +19,31 @@ These five files give you the full picture. If you find yourself guessing about 
 
 ---
 
-## 2. Today's headline (2026-05-24, end of day pt 3)
+## 2. Today's headline (2026-05-24/25, end of day pt 4)
 
-**Plan 04 Phase 3A + 3B shipped — IDOR defenses on `submit-vehicle-pick` + `submit-multi-account-choice`** (commit `(SHA after push)`, no migration — pure code refactor):
+**Plan 04 Phase 4 shipped — verification-mismatch 3-state envelope** (migration `20260525000000`, commit `(SHA after push)`):
 
-- **Phase 3A (I-COR-4):** `submit-vehicle-pick.ts` now server-side enforces that the picked `vehicle_id` belongs to the customer's Tekmetric-owned vehicle list. The pre-existing `fetchVehiclesForCustomer` call (which fetched metadata for the SummaryCard) now ALSO serves as the IDOR gate. Fail-soft preserved on Tekmetric transient failures (the casual-tampering threat this defends is smaller than the operational risk of failing-closed). Hard-fail added when `customer_id` is missing on the row (data-integrity).
-- **Phase 3B (I-COR-5):** `submit-multi-account-choice.ts` now validates that `'select'` branch's `selected_customer_id` is in the session's `pending_candidates` list. Combined the existing `phone_e164` read with `pending_candidates` into a single SELECT (saves a round-trip). Hard-fail on null/empty/read-failure (security gate, not best-effort).
-- **Spec catches by audit (both phases):** PLAN-04 used `Array<{ id: number }>` for `pending_candidates` membership — but the actual stored shape is `Array<{ customer_id: number; recent_vehicle: string }>` per the writer at `scheduler-step2-direct/index.ts:262-269`. **The spec code would have rejected EVERY legitimate selection** — caught pre-execution. Corrected to `customer_id` field.
-- **15 new tests** across 2 new test files (`submit-vehicle-pick.test.ts` 7 + `submit-multi-account-choice.test.ts` 9 — one extra over my initial count; covered the test extras during typecheck-fix iteration).
-- Full unit suite **207/207 passing** (was 191 after Phase 2).
-- Closes I-COR-4 + I-COR-5.
+- Migration adds 2 columns on `customer_chat_sessions`: `appointment_verification_status TEXT` (CHECK constraint on `confirmed | needs_review | NULL`) + `appointment_verification_diff JSONB`
+- Migration also extends `apply_wizard_transition` RPC with CASE-WHEN-? branches for both new keys (same JSONB null-clear semantic as `edited_phones`/`edited_emails`/etc.)
+- `submit-summary.ts` verify-mismatch block (previously log-only warning) now:
+  - Bumps Sentry capture to ERROR level
+  - Calls `create_manual_review` RPC with category=`appointment_verification_mismatch` + prefix='AVM' + 3 advisor options (update_tekmetric / update_our_records / contact_customer)
+  - Persists `appointment_verification_status='needs_review'` + `appointment_verification_diff=<jsonb>` via `applyWizardTransition` payload
+  - Returns apology bubble (`buildVerificationMismatchBubble`) instead of celebratory `buildConfirmedBubble`
+  - Customer still advances to `customer_notes` per Chris's UX decision
+- Reuses `keytag_manual_reviews` table per Chris's pattern-B decision (existing RPCs accept arbitrary `p_category` + `p_prefix`; keytag-specific p_tag_color / p_tag_number / p_ro_id / p_ro_number stay NULL for AVM entries)
+- 4 new tests in `submit-summary.test.ts`; unit suite **211/211 passing** (was 207 after Phase 3)
+- Closes I-COR-6
+
+**Deferred for follow-up (CLN-13):** the per-issuance email send. Today's Phase 4 inserts the review row + fires Sentry error; the Resend-driven email (like keytag reviews get) is NOT wired because the Deno-side email helper isn't importable from the Vercel Server Action. Two paths forward documented in CLN-13 (new edge fn recommended).
 
 **Plans state:**
 
 - ✅ **Plans 01, 02, 03** — COMPLETE
-- 🟡 **Plan 04** — IN PROGRESS (5 of 8 phases done — Phase 1A + 1B + 2 + 3A + 3B)
+- 🟡 **Plan 04** — IN PROGRESS (6 of 8 phases done — Phase 1A + 1B + 2 + 3A + 3B + 4)
 - 🔜 **Plans 05, 06, 07** — NOT STARTED
 
-**Earlier today (2026-05-24, in chronological order):**
+**Earlier today/yesterday (2026-05-24/25, in chronological order):**
 
 1. Sentry cron pair-by-id fix (migration `20260524210000`, commit `3d9de2d`)
 2. OBS-8 flipped to RESOLVED in `DEFERRED-AUDIT-ITEMS.md` (commit `c87ea5c`)
@@ -44,7 +51,8 @@ These five files give you the full picture. If you find yourself guessing about 
 4. Plan 04 Phase 1A — `apply_wizard_transition` RPC (commit `5d8a122`)
 5. Plan 04 Phase 1B — `hydrate_session_reset` RPC (commit `221b855`, dotfiles `ebabe3e`)
 6. Plan 04 Phase 2 — `submit-summary` hold CAS lock (commit `59452f0`, dotfiles `f872288`)
-7. Architecture memo bumped 6× total in dotfiles repo
+7. Plan 04 Phase 3A + 3B — IDOR defenses (commit `80038cd`, dotfiles `cd2bc7b`)
+8. Architecture memo bumped 7× total in dotfiles repo
 
 ---
 
@@ -68,24 +76,22 @@ These five files give you the full picture. If you find yourself guessing about 
 3. **[~2 min]** Confirm `vault.secrets.sentry_dsn` is still populated. Query: `SELECT name, created_at FROM vault.secrets WHERE name = 'sentry_dsn';` via Supabase MCP.
 4. **[~2 min]** Confirm both Phase 1 RPCs exist in the DB. Query: `SELECT proname, prosecdef FROM pg_proc WHERE proname IN ('apply_wizard_transition', 'hydrate_session_reset') ORDER BY proname;` via Supabase MCP. Should return 2 rows both with `prosecdef = false`.
 
-### Tier B — Plan 04 Phase 4 (the natural next step)
+### Tier B — Plan 04 Phase 5 OR Phase 6 (pick by appetite)
 
-**Phase 4: `submit-summary` verification-mismatch 3-state envelope** — when Tekmetric `confirmBooking` returns success BUT `confirmResult.verification.ok === false` (data sent ≠ data Tekmetric recorded), the current code still marks the appointment confirmed. The 3-state envelope spec (PLAN-04 §Phase 4, lines ~384-470) routes mismatch cases to a `needs_review` state + queues a manual-review email (uses keytag-style Pattern B).
+Plan 04's last 2 phases are roughly equal-scope (~3 hr each) but very different shapes:
 
-**Before writing any code:**
-- Read `docs/scheduler/plans/PLAN-04-atomicity-correctness.md` Phase 4 in full — adds a new `appointment_verification_status` column + ties into the existing `scheduler_manual_reviews` table pattern (or creates a new one)
-- Check the actual `confirmBooking` return shape — does the scheduler-booking-direct edge fn currently expose verification.ok / verification.diff? If not, the diff has both Vercel-side + edge-fn-side changes (bigger scope than Phase 2/3)
-- Decide: schema change (`appointment_verification_status` column) — migration needed; ~0.5 day overhead vs. just a JSONB blob on existing column
-- Decide: re-use existing `keytag_manual_reviews` table or create scheduler-specific equivalent — research found in `pattern-compliance.md` "Pattern B"
+**Phase 5: `WIZARD_REVALIDATE_PATHS` scope reduction (I-OTH-3)** — replace `revalidatePath("/", "layout")` with `revalidateTag(\`session-${chatId}\`)` so advancing session A doesn't invalidate every other session's RSC payload. Spec at PLAN-04 §Phase 5. Risk: MEDIUM-HIGH per spec — `revalidatePath` is the "safe hammer"; tags require instrumenting every session read. Mitigation per spec: do incrementally, start with wizard cards only, keep a fallback `revalidatePath("/book-v2", "page")`.
 
-**Estimated:** 1 day. Larger surface than Phases 1B-3; includes new column + manual-review integration.
+**Phase 6: CASCADE FK audit + early-migration idempotency docs (I-COR-7 + I-COR-8)** — 4 FKs CASCADE off `customer_chat_sessions`; spec recommends changing `scheduler_audit_log.session_id` to `ON DELETE SET NULL` (audit logs should outlive sessions for compliance) and documenting the other 3 as intentional cascades. Plus a documentation pass on the early migrations (R6 IMPORTANT-D-2) that aren't idempotent. Risk: LOW — mostly DDL + docs.
 
-### Tier C — Plan 04 remaining phases (2 phases left)
+**Recommendation:** Phase 6 first (lower risk, mostly docs/DDL — gets to "Plan 04 7/8 done"). Then Phase 5 as the final atomicity-plan close-out with the medium-high risk surface and proper attention.
 
-| Phase | Scope | Reference |
+### Tier C — Plan 04 deferred follow-ups (post-Plan-04)
+
+| Item | Scope | Reference |
 |---|---|---|
-| 5 | `WIZARD_REVALIDATE_PATHS` scope reduction — replace path-revalidate with `revalidateTag(\`session-${id}\`)` (closes I-OTH-3) | PLAN-04 §Phase 5 |
-| 6 | FK `ON DELETE CASCADE` rationale audit + early-migration idempotency docs (I-COR-7 + I-COR-8) | PLAN-04 §Phase 6 |
+| CLN-13 | Wire email send for AVM manual reviews (new edge fn recommended) | DEFERRED-AUDIT-ITEMS.md CLN-13 |
+| CLN-12 | RESET_COLUMNS divergence — extract to shared `reset-columns.ts` per Plan 06 | DEFERRED-AUDIT-ITEMS.md CLN-12 |
 
 ### Tier D — passive / waiting
 

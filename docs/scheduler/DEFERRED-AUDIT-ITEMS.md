@@ -902,6 +902,57 @@ files
   `Unused eslint-disable directive` warnings (4 sites) auto-clean once
   the underlying rules are reactivated.
 
+### CLN-13 · Email send for `appointment_verification_mismatch` manual reviews (NEW 2026-05-24/25)
+
+- **What** — Plan 04 Phase 4 ships the `appointment_verification_mismatch`
+  manual review (Pattern B AVM-XXXXXX code) via the existing
+  `create_manual_review` RPC. The review row is created in
+  `keytag_manual_reviews` so advisors can query it by category. **The
+  per-issuance email send is NOT wired.** Keytag-category reviews fire
+  an email automatically via the Deno-side `issueManualReview` helper +
+  `sendManualReviewEmail` — but that path is in
+  `supabase/functions/_shared/` and not importable from the Vercel/Node
+  Server Action that submit-summary runs in.
+- **Customer impact** — advisors can FIND scheduler verify-mismatch
+  reviews by querying `keytag_manual_reviews WHERE
+  category='appointment_verification_mismatch'`. They just won't get
+  pushed an email when one fires. The Sentry ERROR alert
+  (`appointment_verification_mismatch`) is the live notification today.
+- **Why deferred** — Phase 4's structural fix (atomically persist the
+  needs_review state + create a queryable review row + apology bubble)
+  is the load-bearing change. Email is the convenience-notification
+  layer. Doing it in the same commit would have either (a) required a
+  new edge fn surface + deployment, or (b) required pulling Resend SDK
+  into scheduler-app's Node runtime (a different vendor-touch question)
+  — both bigger scope than the structural fix.
+- **Two paths forward** when ready:
+  1. **New edge function `scheduler-manual-review-email`** that takes
+     `{review_id}`, looks up the row in `keytag_manual_reviews`, and
+     dispatches the email via the existing Deno `sendManualReviewEmail`
+     helper. The Vercel Server Action POSTs to this fn after the
+     `create_manual_review` RPC succeeds (fire-and-forget; failure
+     surfaces to Sentry, doesn't block customer).
+  2. **Direct Resend integration on Vercel** — install `resend` npm
+     package in scheduler-app, replicate the email template logic from
+     Deno `manual-review-email.ts` into a Node-importable module, send
+     directly from the Server Action.
+- **Recommendation** — Path 1 (new edge function) is the cleaner shape
+  because it reuses the existing Deno email template (single source of
+  truth for AVM + ORP + DRF + REG + ARN + PAF copy) and matches the
+  current architecture where scheduler-app dispatches all integration-
+  vendor calls through edge functions (booking-direct, otp-direct,
+  step2-direct). Estimated effort: ~2 hr for the new fn + Server Action
+  wire-up + 1-2 tests.
+- **When to revisit** — when scheduler appointments hit real customer
+  volume + advisor team confirms the Sentry-only notification surface
+  isn't sufficient. Until then, the DB-queryable review is the canonical
+  record + Sentry is the alarm.
+- **Companion item** — eventual `keytag_manual_reviews` → `manual_reviews`
+  table rename (pure DDL refactor); the table holds both keytag + scheduler
+  + future manual-review categories.
+- **Source** — Plan 04 Phase 4 (2026-05-24/25) — scope decision to keep
+  phase narrow + ship the structural fix first.
+
 ### CLN-12 · RESET_COLUMNS divergence between auto-stale reset + manual Start Over (NEW 2026-05-24)
 
 - **What** — Plan 04 Phase 1B audit surfaced that the two reset paths

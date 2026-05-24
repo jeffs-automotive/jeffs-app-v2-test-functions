@@ -86,7 +86,13 @@ interface ConfirmCall {
   color: string;
 }
 const confirmCalls: ConfirmCall[] = [];
-let confirmResult: { ok: boolean; appointment_id?: number; error?: string } = {
+let confirmResult: {
+  ok: boolean;
+  appointment_id?: number;
+  error?: string;
+  verification?: { ok: boolean; diff?: string };
+  start_time?: string;
+} = {
   ok: true,
   appointment_id: 12345,
 };
@@ -145,6 +151,19 @@ let diagResult: {
   error: unknown;
 } = { data: null, error: null };
 
+// PLAN-04 Phase 4 — supabase.rpc("create_manual_review", ...) tracker
+// for verify-mismatch tests. Per-test result slot lets us simulate
+// success / DB error.
+interface RpcCall {
+  fn: string;
+  args: Record<string, unknown>;
+}
+const rpcCalls: RpcCall[] = [];
+let createManualReviewResult: { data: unknown; error: unknown } = {
+  data: { id: 1, code: "AVM-ABCDEF" },
+  error: null,
+};
+
 function makeMockClient() {
   return {
     from(table: string) {
@@ -187,6 +206,11 @@ function makeMockClient() {
         },
       };
       return builder;
+    },
+    async rpc(fn: string, args: Record<string, unknown>) {
+      rpcCalls.push({ fn, args });
+      if (fn === "create_manual_review") return createManualReviewResult;
+      return { data: null, error: null };
     },
   };
 }
@@ -241,10 +265,15 @@ beforeEach(() => {
   awtCalls.length = 0;
   confirmCalls.length = 0;
   chainCalls.length = 0;
+  rpcCalls.length = 0;
   sessionRowResult = { data: makeValidSessionRow(), error: null };
   casClaimResult = { data: { id: HOLD_TOKEN }, error: null };
   diagResult = { data: null, error: null };
   confirmResult = { ok: true, appointment_id: 12345 };
+  createManualReviewResult = {
+    data: { id: 1, code: "AVM-ABCDEF" },
+    error: null,
+  };
   sentryCaptureExceptionMock.mockClear();
   sentryCaptureMessageMock.mockClear();
   logErrorMock.mockClear();
@@ -423,5 +452,161 @@ describe("submitSummaryV2 confirm path — Tekmetric failure does NOT roll back 
     expect(cosFailureEscalation).toBeUndefined();
     // No CAS-miss diagnostic read happened either (CAS data was truthy).
     expect(findDiagCall()).toBeUndefined();
+  });
+});
+
+describe("submitSummaryV2 confirm path — Plan 04 Phase 4 verification-mismatch envelope", () => {
+  it("verification.ok=true → status='confirmed', diff=null, celebratory bubble, no manual review row", async () => {
+    confirmResult = {
+      ok: true,
+      appointment_id: 12345,
+      verification: { ok: true },
+      start_time: "2026-06-10T14:00:00.000Z",
+    };
+
+    await submitSummaryV2({ chatId: CHAT_ID, confirmed: true });
+
+    expect(awtCalls).toHaveLength(1);
+    expect(awtCalls[0]!.nextStep).toBe("customer_notes");
+    expect(awtCalls[0]!.updates).toMatchObject({
+      appointment_id: 12345,
+      appointment_verification_status: "confirmed",
+      appointment_verification_diff: null,
+    });
+    // Celebratory bubble, not apology.
+    expect(awtCalls[0]!.jeffBubble).toContain("All set");
+    expect(awtCalls[0]!.jeffBubble).not.toContain("differently than expected");
+    // No manual review RPC fired.
+    expect(
+      rpcCalls.find((c) => c.fn === "create_manual_review"),
+    ).toBeUndefined();
+    // No appointment_verification_mismatch Sentry capture.
+    expect(sentryCaptureMessageMock).not.toHaveBeenCalledWith(
+      "appointment_verification_mismatch",
+      expect.anything(),
+    );
+  });
+
+  it("verification.ok=false → status='needs_review', diff persisted, apology bubble, manual review created", async () => {
+    confirmResult = {
+      ok: true,
+      appointment_id: 12345,
+      verification: {
+        ok: false,
+        diff: "appointment.color: sent='navy' vs got='red'",
+      },
+      start_time: "2026-06-10T14:00:00.000Z",
+    };
+
+    await submitSummaryV2({ chatId: CHAT_ID, confirmed: true });
+
+    // Customer still advances to customer_notes per Chris's UX call.
+    expect(awtCalls).toHaveLength(1);
+    expect(awtCalls[0]!.nextStep).toBe("customer_notes");
+    expect(awtCalls[0]!.updates).toMatchObject({
+      appointment_id: 12345,
+      appointment_verification_status: "needs_review",
+      appointment_verification_diff:
+        "appointment.color: sent='navy' vs got='red'",
+    });
+
+    // Apology bubble — NOT the celebratory "All set" copy.
+    expect(awtCalls[0]!.jeffBubble).toContain("differently than expected");
+    expect(awtCalls[0]!.jeffBubble).not.toContain("All set");
+
+    // Sentry error-level capture fired with the right tags + extras.
+    expect(sentryCaptureMessageMock).toHaveBeenCalledWith(
+      "appointment_verification_mismatch",
+      expect.objectContaining({
+        level: "error",
+        tags: expect.objectContaining({
+          surface: "submit_summary_v2_verify_mismatch",
+          chat_id: CHAT_ID,
+        }),
+        extra: expect.objectContaining({
+          appointment_id: 12345,
+          diff: "appointment.color: sent='navy' vs got='red'",
+        }),
+      }),
+    );
+
+    // create_manual_review RPC called with the right category + prefix.
+    const reviewCall = rpcCalls.find((c) => c.fn === "create_manual_review");
+    expect(reviewCall).toBeDefined();
+    expect(reviewCall!.args).toMatchObject({
+      p_category: "appointment_verification_mismatch",
+      p_prefix: "AVM",
+      p_context: expect.objectContaining({
+        chat_id: CHAT_ID,
+        appointment_id: 12345,
+        diff: "appointment.color: sent='navy' vs got='red'",
+      }),
+    });
+    // 3 advisor options surface in the review.
+    const options = reviewCall!.args.p_options as Array<{ key: string }>;
+    expect(options).toHaveLength(3);
+    expect(options.map((o) => o.key)).toEqual([
+      "update_tekmetric",
+      "update_our_records",
+      "contact_customer",
+    ]);
+  });
+
+  it("create_manual_review RPC error does NOT block the customer flow", async () => {
+    confirmResult = {
+      ok: true,
+      appointment_id: 12345,
+      verification: { ok: false, diff: "test diff" },
+    };
+    createManualReviewResult = {
+      data: null,
+      error: { code: "23503", message: "FK violation on shop_id" },
+    };
+
+    await submitSummaryV2({ chatId: CHAT_ID, confirmed: true });
+
+    // Customer still advances + row still marked needs_review.
+    expect(awtCalls).toHaveLength(1);
+    expect(awtCalls[0]!.nextStep).toBe("customer_notes");
+    expect(awtCalls[0]!.updates).toMatchObject({
+      appointment_verification_status: "needs_review",
+    });
+
+    // The RPC error surfaces to Sentry as a warning (best-effort path).
+    expect(sentryCaptureExceptionMock).toHaveBeenCalledWith(
+      expect.objectContaining({ code: "23503" }),
+      expect.objectContaining({
+        tags: expect.objectContaining({
+          surface: "submit_summary_v2_create_manual_review",
+        }),
+        level: "warning",
+      }),
+    );
+    // The earlier error-level Sentry capture for the mismatch itself
+    // also fired (independent of the review-creation failure).
+    expect(sentryCaptureMessageMock).toHaveBeenCalledWith(
+      "appointment_verification_mismatch",
+      expect.objectContaining({ level: "error" }),
+    );
+  });
+
+  it("verification field is absent (legacy edge-fn response) → treated as confirmed, no mismatch handling", async () => {
+    confirmResult = {
+      ok: true,
+      appointment_id: 12345,
+      // verification field intentionally omitted (pre-Phase-12 edge fn)
+    };
+
+    await submitSummaryV2({ chatId: CHAT_ID, confirmed: true });
+
+    // Defaults to confirmed path (verification undefined is NOT a mismatch).
+    expect(awtCalls[0]!.updates).toMatchObject({
+      appointment_verification_status: "confirmed",
+      appointment_verification_diff: null,
+    });
+    expect(awtCalls[0]!.jeffBubble).toContain("All set");
+    expect(
+      rpcCalls.find((c) => c.fn === "create_manual_review"),
+    ).toBeUndefined();
   });
 });
