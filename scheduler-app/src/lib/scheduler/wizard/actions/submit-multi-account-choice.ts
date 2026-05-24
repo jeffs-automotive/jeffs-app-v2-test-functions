@@ -85,6 +85,10 @@ async function submitMultiAccountChoiceV2Impl(
 
     // 'select' — bind the chosen customer_id to the row, clear the
     // candidates list, then send OTP for the resolved single account.
+    // Extract selected_customer_id into a local so TS narrowing
+    // survives the later `await` + closure boundaries (control-flow
+    // narrowing on parsed.data isn't preserved across awaits).
+    const { selected_customer_id } = parsed.data;
     const supabase = createSupabaseAdminClient();
 
     // ─── PLAN-03 Phase 1 — SMS-pump defense on the 'select' branch ────
@@ -121,20 +125,66 @@ async function submitMultiAccountChoiceV2Impl(
       return { ok: false, error: ipCheck.reason };
     }
 
+    // Combined row read: phone_e164 (for the phone rate-limit below)
+    // AND pending_candidates (for the PLAN-04 Phase 3B IDOR check).
+    // Single query saves a round-trip vs. the prior 2-read flow.
+    //
+    // pending_candidates shape per the writer at supabase/functions/
+    // scheduler-step2-direct/index.ts:262-269:
+    //   Array<{ customer_id: number; recent_vehicle: string }>
+    // (Plan 04 spec proposed `Array<{ id: number }>` — corrected here
+    // per the live schema; the spec shape would reject every legitimate
+    // selection.)
+    const { data: rowReadResult } = await supabase
+      .from("customer_chat_sessions")
+      .select("phone_e164, pending_candidates")
+      .eq("id", chatId)
+      .maybeSingle();
+
+    // ─── PLAN-04 Phase 3B (closes I-COR-5) — IDOR defense ─────────────
+    // The disambiguation card only renders customer_ids that came from
+    // scheduler-step2-direct's phone match. A tampered Server Action
+    // call could bind any customer_id to the row, hijacking another
+    // shop customer's identity. Require selected_customer_id to be in
+    // the session's pending_candidates list.
+    //
+    // Hard-fail on null/empty/read-failure: this is a security gate,
+    // not the rate-limit's best-effort posture. If we can't verify
+    // membership, refuse the write.
+    const candidates =
+      (rowReadResult?.pending_candidates as
+        | Array<{ customer_id: number; recent_vehicle: string }>
+        | null) ?? null;
+    const isMember = candidates?.some(
+      (c) => c.customer_id === selected_customer_id,
+    );
+    if (!isMember) {
+      Sentry.captureMessage("customer_id_not_in_pending_candidates", {
+        level: "warning",
+        tags: {
+          surface: "submit_multi_account_choice_v2_idor",
+          chat_id: chatId,
+        },
+        extra: {
+          attempted_customer_id: selected_customer_id,
+          candidate_count: candidates?.length ?? 0,
+        },
+      });
+      return {
+        ok: false,
+        error: "customer_id_invalid",
+      };
+    }
+
     // Phone limit — best-effort read; on read failure we proceed without
     // it (IP + bot + DB-level limit are still active). Skipping the
     // phone limit on a transient read error is strictly better than
     // failing-closed and breaking legitimate disambiguation.
-    const { data: phoneRow } = await supabase
-      .from("customer_chat_sessions")
-      .select("phone_e164")
-      .eq("id", chatId)
-      .maybeSingle();
     if (
-      typeof phoneRow?.phone_e164 === "string" &&
-      phoneRow.phone_e164.length > 0
+      typeof rowReadResult?.phone_e164 === "string" &&
+      rowReadResult.phone_e164.length > 0
     ) {
-      const phoneCheck = await checkPhoneRateLimit(phoneRow.phone_e164);
+      const phoneCheck = await checkPhoneRateLimit(rowReadResult.phone_e164);
       if (!phoneCheck.allowed) {
         Sentry.captureMessage(
           "submit_multi_account_choice_v2 phone rate-limited",
@@ -153,7 +203,7 @@ async function submitMultiAccountChoiceV2Impl(
     const { error: pickErr } = await supabase
       .from("customer_chat_sessions")
       .update({
-        customer_id: parsed.data.selected_customer_id,
+        customer_id: selected_customer_id,
         pending_candidates: null,
         last_active_at: new Date().toISOString(),
       })

@@ -1,6 +1,6 @@
 # Scheduler-app — next session kickoff
 
-> **Last refreshed:** 2026-05-24 end-of-session (post Plan 04 Phase 2 `submit-summary` hold CAS lock).
+> **Last refreshed:** 2026-05-24 end-of-session (post Plan 04 Phase 3A + 3B IDOR defenses).
 > **Refresh this file** at the end of EVERY session that did scheduler-app work — same commit that bumps `scheduler_system_architecture.md`. Keep the "Today's headline" + "Next-step todos" sections current.
 
 ---
@@ -19,35 +19,32 @@ These five files give you the full picture. If you find yourself guessing about 
 
 ---
 
-## 2. Today's headline (2026-05-24, end of day)
+## 2. Today's headline (2026-05-24, end of day pt 3)
 
-**Plan 04 Phase 2 shipped — `submit-summary` hold CAS lock** (commit `(SHA after push)`, no migration — pure code refactor):
+**Plan 04 Phase 3A + 3B shipped — IDOR defenses on `submit-vehicle-pick` + `submit-multi-account-choice`** (commit `(SHA after push)`, no migration — pure code refactor):
 
-- Replaces the prior READ-then-3-check pattern at `submit-summary.ts:282-313` with a single atomic CAS UPDATE on `appointment_holds` (WHERE `id = holdToken` + `session_id = chatId` + `released_at IS NULL` + `expires_at > now()`)
-- Closes the race window where `mark-abandoned` (idle timer / pagehide / tab-close) could release the hold between the SELECT and the Tekmetric POST, leaving a confirmed Tekmetric appointment backed by a released hold
-- Preserves the prior 3-state user-facing copy (not-found / released / expired) via a diagnostic SELECT on CAS-miss path
-- Non-CAS DB error escalates with `cas_claim_db_error` reason
-- Hold stays released whether Tekmetric POST succeeds or fails (spec-acceptable — hold-reaper sweeps within 30 min)
-- Same column-name correction as Phase 1B (`.eq("id", holdToken)` not `.eq("hold_token", holdToken)` — spec bug)
-- Added `.gt("expires_at", now)` to CAS WHERE clause (spec only checked `released_at IS NULL`; without expiry gate a TTL-expired hold could still be CAS-claimed)
-- 8 new tests in `submit-summary.test.ts` covering happy + DB error + 3 CAS-miss diag branches + Tekmetric-failure-no-rollback + column-name correctness
-- Full unit suite **191/191 passing** (was 183 after Phase 1B)
-- Closes I-COR-3
+- **Phase 3A (I-COR-4):** `submit-vehicle-pick.ts` now server-side enforces that the picked `vehicle_id` belongs to the customer's Tekmetric-owned vehicle list. The pre-existing `fetchVehiclesForCustomer` call (which fetched metadata for the SummaryCard) now ALSO serves as the IDOR gate. Fail-soft preserved on Tekmetric transient failures (the casual-tampering threat this defends is smaller than the operational risk of failing-closed). Hard-fail added when `customer_id` is missing on the row (data-integrity).
+- **Phase 3B (I-COR-5):** `submit-multi-account-choice.ts` now validates that `'select'` branch's `selected_customer_id` is in the session's `pending_candidates` list. Combined the existing `phone_e164` read with `pending_candidates` into a single SELECT (saves a round-trip). Hard-fail on null/empty/read-failure (security gate, not best-effort).
+- **Spec catches by audit (both phases):** PLAN-04 used `Array<{ id: number }>` for `pending_candidates` membership — but the actual stored shape is `Array<{ customer_id: number; recent_vehicle: string }>` per the writer at `scheduler-step2-direct/index.ts:262-269`. **The spec code would have rejected EVERY legitimate selection** — caught pre-execution. Corrected to `customer_id` field.
+- **15 new tests** across 2 new test files (`submit-vehicle-pick.test.ts` 7 + `submit-multi-account-choice.test.ts` 9 — one extra over my initial count; covered the test extras during typecheck-fix iteration).
+- Full unit suite **207/207 passing** (was 191 after Phase 2).
+- Closes I-COR-4 + I-COR-5.
 
 **Plans state:**
 
 - ✅ **Plans 01, 02, 03** — COMPLETE
-- 🟡 **Plan 04** — IN PROGRESS (3 of 8 phases done — Phase 1A + 1B + 2)
+- 🟡 **Plan 04** — IN PROGRESS (5 of 8 phases done — Phase 1A + 1B + 2 + 3A + 3B)
 - 🔜 **Plans 05, 06, 07** — NOT STARTED
 
-**Earlier today (2026-05-24, in order):**
+**Earlier today (2026-05-24, in chronological order):**
 
 1. Sentry cron pair-by-id fix (migration `20260524210000`, commit `3d9de2d`)
 2. OBS-8 flipped to RESOLVED in `DEFERRED-AUDIT-ITEMS.md` (commit `c87ea5c`)
 3. PLANS-MASTER refresh + new `REMEDIATION-PROGRESS.md` (commit `894cfae`)
 4. Plan 04 Phase 1A — `apply_wizard_transition` RPC (commit `5d8a122`)
-5. Plan 04 Phase 1B — `hydrate_session_reset` RPC (commit `221b855`)
-6. Architecture memo bumped 5× in dotfiles repo (Phase 1B `ebabe3e` + Phase 2 forthcoming)
+5. Plan 04 Phase 1B — `hydrate_session_reset` RPC (commit `221b855`, dotfiles `ebabe3e`)
+6. Plan 04 Phase 2 — `submit-summary` hold CAS lock (commit `59452f0`, dotfiles `f872288`)
+7. Architecture memo bumped 6× total in dotfiles repo
 
 ---
 
@@ -55,33 +52,38 @@ These five files give you the full picture. If you find yourself guessing about 
 
 ### Tier A — confirm yesterday's work (do FIRST, in this order)
 
-1. **[~5 min]** Check today's daily cron fires — `keytag-bulk-reconcile` at 10:00 UTC and `keytag-daily-report` at 11:00 UTC. Query Sentry for any new `monitor_check_in_failure` issues on JEFFS-APP-V2-SUPABASE-B or -D. If clean: leave them resolved. If new failure event: the pair-by-id fix is wrong and we need to investigate further.
-2. **[~5-10 min]** Spot-check the live wizard surface. Three changes shipped 2026-05-24: `apply_wizard_transition` RPC (Phase 1A `5d8a122`) drives every step, `hydrate_session_reset` RPC (Phase 1B `221b855`) drives stale reset, `submit-summary` CAS lock (Phase 2 `(SHA after push)`) atomizes the hold-claim before Tekmetric POST. Exercise:
-   - **Full booking flow** at `appointments.jeffsautomotive.com` (greeting → … → date pick → confirm). Confirm should land cleanly.
-   - **Stale-reset path:** open the wizard, wait > 5 min idle, reload — should land back on greeting card with no ghost bubbles.
-   - **CAS race surface (optional):** open the wizard on two tabs to the same chatId; tap "confirm" on tab A, immediately on tab B. ONLY one should succeed; the other should land back on date_pick with one of 3 copies (released / expired / timed out).
+1. **[~5 min]** Check today's daily cron fires — `keytag-bulk-reconcile` at 10:00 UTC and `keytag-daily-report` at 11:00 UTC. Query Sentry for any new `monitor_check_in_failure` issues on JEFFS-APP-V2-SUPABASE-B or -D. If clean: leave them resolved.
+2. **[~10 min]** Spot-check the live wizard surface. Five changes shipped 2026-05-24 across Plan 04:
+   - Phase 1A `apply_wizard_transition` RPC (`5d8a122`) — every wizard step
+   - Phase 1B `hydrate_session_reset` RPC (`221b855`) — stale reset
+   - Phase 2 `submit-summary` CAS lock (`59452f0`) — atomic hold-claim before Tekmetric
+   - Phase 3A `submit-vehicle-pick` IDOR defense (`(SHA after push)`) — vehicle_id ownership check
+   - Phase 3B `submit-multi-account-choice` IDOR defense (`(SHA after push)`) — pending_candidates membership check
+
+   Exercise:
+   - **Full booking flow** at `appointments.jeffsautomotive.com` (greeting → … → date pick → confirm). Should land cleanly.
+   - **Stale-reset path:** open wizard, wait > 5 min idle, reload — should land at greeting with no ghost bubbles.
+   - **IDOR sanity (optional):** in DevTools, intercept the vehicle-pick Server Action POST and substitute a random vehicle_id. Action should return `vehicle_id_not_owned`. Same for multi-account-choice with a fake customer_id → `customer_id_invalid`.
    - If anything regresses, revert the offending commit immediately.
-3. **[~2 min]** Confirm `vault.secrets.sentry_dsn` is still populated. Query: `SELECT name, created_at FROM vault.secrets WHERE name = 'sentry_dsn';` via Supabase MCP. Should return the row created at `2026-05-24 17:24:22Z`.
-4. **[~2 min]** Confirm both Phase 1 RPCs exist in the DB. Query: `SELECT proname, prosecdef FROM pg_proc WHERE proname IN ('apply_wizard_transition', 'hydrate_session_reset') ORDER BY proname;` via Supabase MCP. Should return 2 rows both with `prosecdef = false` (SECURITY INVOKER).
+3. **[~2 min]** Confirm `vault.secrets.sentry_dsn` is still populated. Query: `SELECT name, created_at FROM vault.secrets WHERE name = 'sentry_dsn';` via Supabase MCP.
+4. **[~2 min]** Confirm both Phase 1 RPCs exist in the DB. Query: `SELECT proname, prosecdef FROM pg_proc WHERE proname IN ('apply_wizard_transition', 'hydrate_session_reset') ORDER BY proname;` via Supabase MCP. Should return 2 rows both with `prosecdef = false`.
 
-### Tier B — Plan 04 Phase 3A + 3B (the natural next step)
+### Tier B — Plan 04 Phase 4 (the natural next step)
 
-**Phase 3A + 3B: IDOR defense on `submit-vehicle-pick` + `submit-multi-account-choice`** — server-side validation that the client-supplied IDs (`vehicle_id` and `customer_id`) belong to the customer's authorized set. Today these actions trust the client payload; an attacker could substitute another customer's vehicle_id or customer_id and the wizard would happily write it onto the session.
+**Phase 4: `submit-summary` verification-mismatch 3-state envelope** — when Tekmetric `confirmBooking` returns success BUT `confirmResult.verification.ok === false` (data sent ≠ data Tekmetric recorded), the current code still marks the appointment confirmed. The 3-state envelope spec (PLAN-04 §Phase 4, lines ~384-470) routes mismatch cases to a `needs_review` state + queues a manual-review email (uses keytag-style Pattern B).
 
 **Before writing any code:**
-- Read `docs/scheduler/plans/PLAN-04-atomicity-correctness.md` Phase 3 (lines ~318-380) — both spec blocks are there
-- Phase 3A defends `submit-vehicle-pick.ts:71-129` — verify `vehicleIdNum` is in `fetchVehiclesForCustomer({ customer_id: row.customer_id })` result before writing
-- Phase 3B defends `submit-multi-account-choice.ts:80-94` — verify `selected_customer_id` is in `row.pending_candidates`'s id list before writing
-- Same audit-first pattern from Phase 1B/2: grep both action files + understand the existing pre-write checks BEFORE adding the validation. There may already be partial defenses to fold into; don't double-check or skip-check.
-- Decide: Sentry message level for IDOR attempts (`captureMessage` warning per spec? or info? — these are suspicious-but-not-confirmed-malicious). Probably warning per spec.
+- Read `docs/scheduler/plans/PLAN-04-atomicity-correctness.md` Phase 4 in full — adds a new `appointment_verification_status` column + ties into the existing `scheduler_manual_reviews` table pattern (or creates a new one)
+- Check the actual `confirmBooking` return shape — does the scheduler-booking-direct edge fn currently expose verification.ok / verification.diff? If not, the diff has both Vercel-side + edge-fn-side changes (bigger scope than Phase 2/3)
+- Decide: schema change (`appointment_verification_status` column) — migration needed; ~0.5 day overhead vs. just a JSONB blob on existing column
+- Decide: re-use existing `keytag_manual_reviews` table or create scheduler-specific equivalent — research found in `pattern-compliance.md` "Pattern B"
 
-**Estimated:** 3 hr each = 6 hr total. Two small surface-area changes, well-scoped, no migrations. Can be 2 separate commits or 1 combined.
+**Estimated:** 1 day. Larger surface than Phases 1B-3; includes new column + manual-review integration.
 
-### Tier C — Plan 04 remaining phases (any order; 3 phases × ~3-4 hr each)
+### Tier C — Plan 04 remaining phases (2 phases left)
 
 | Phase | Scope | Reference |
 |---|---|---|
-| 4 | `submit-summary` verification-mismatch 3-state envelope (pending → confirmed \| needs_review) | PLAN-04 §Phase 4 |
 | 5 | `WIZARD_REVALIDATE_PATHS` scope reduction — replace path-revalidate with `revalidateTag(\`session-${id}\`)` (closes I-OTH-3) | PLAN-04 §Phase 5 |
 | 6 | FK `ON DELETE CASCADE` rationale audit + early-migration idempotency docs (I-COR-7 + I-COR-8) | PLAN-04 §Phase 6 |
 
