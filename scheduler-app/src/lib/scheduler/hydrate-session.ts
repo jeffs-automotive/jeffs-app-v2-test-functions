@@ -43,10 +43,11 @@
  */
 
 import { cookies } from "next/headers";
+import { revalidateTag } from "next/cache";
 import * as Sentry from "@sentry/nextjs";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { getCachedSessionRow } from "@/lib/scheduler/cache";
+import { sessionTag } from "@/lib/scheduler/cache";
 import { logError } from "@/lib/scheduler/wizard/log-error";
 
 export const COOKIE_NAME = "sched-chat-id";
@@ -65,10 +66,19 @@ export interface HydratedSession {
  *
  * Safe to call from any Server Component. Performs at most 2 DB
  * operations:
- *   - 1 read (the row freshness check)
+ *   - 1 read (the row freshness check) — DIRECT supabase read, NOT
+ *     via the per-session cache. Reason: Next.js's revalidateTag is
+ *     deferred-to-post-render, so if hydrate-session populated the
+ *     cache with the pre-wipe row, the downstream getCurrentCard call
+ *     in the same request would still serve stale state. By reading
+ *     direct, the cache is never primed with the pre-wipe row, and
+ *     getCurrentCard's cache miss reads the post-wipe state.
  *   - 1 RPC call to hydrate_session_reset (only if stale) — atomically
  *     releases the prior hold(s), wipes wizard columns, and clears the
- *     bubble transcript (Plan 04 Phase 1B — closes I-COR-2)
+ *     bubble transcript (Plan 04 Phase 1B — closes I-COR-2). After
+ *     RPC success, fires revalidateTag(sessionTag(chatId)) for
+ *     cross-request invalidation of the per-session cache used by
+ *     getCurrentCard.
  *
  * On a fresh tab with no cookie, performs 0 DB operations.
  */
@@ -89,13 +99,31 @@ export async function hydrateSession(): Promise<HydratedSession> {
 
   // Cookie was valid. Check whether the row exists + is still fresh.
   try {
-    // Plan 04 Phase 5B: read via the per-session Next.js data cache so
-    // concurrent RSC renders share a single fetch + revalidateTag(
-    // sessionTag(chatId)) from applyWizardTransition invalidates ONLY
-    // this session's entry (not every concurrent session's render).
-    // The cached helper returns the full row (or null); we pluck only
-    // the 4 fields this freshness check needs.
-    const row = await getCachedSessionRow(chatId);
+    // Plan 04 Phase 5B post-validation (Validator 1 C1 fix 2026-05-25):
+    // hydrate-session uses a DIRECT (uncached) supabase read here —
+    // NOT getCachedSessionRow. Rationale: Next.js's revalidateTag is
+    // deferred-to-post-render (see node_modules/next/dist/server/web/
+    // spec-extension/revalidate.js:147-157 — it only adds to
+    // store.pendingRevalidatedTags). So if hydrate-session populates
+    // the per-session cache here with the PRE-wipe row, then RPC-wipes,
+    // then revalidateTag's, the in-render cache STILL serves the
+    // pre-wipe row to BookPageShell's downstream getCurrentCard call —
+    // defeating Phase 1B's wipe-in-place purpose.
+    //
+    // By reading direct, the cache is never primed with the pre-wipe
+    // row from hydrate-session. getCurrentCard's later call to
+    // getCachedSessionRow is a fresh cache miss → reads post-wipe state.
+    //
+    // Includes appointment_confirmed_at for the P0.1 post-confirm
+    // terminal-state check below.
+    const supabase = createSupabaseAdminClient();
+    const { data: row } = await supabase
+      .from("customer_chat_sessions")
+      .select(
+        "id, status, last_active_at, hold_token, appointment_confirmed_at",
+      )
+      .eq("id", chatId)
+      .maybeSingle();
 
     if (!row) {
       // No row yet for this cookie — fresh path. ensureSessionExists
@@ -115,8 +143,24 @@ export async function hydrateSession(): Promise<HydratedSession> {
     // keep seeing CompletedCard / EscalationCard until they explicitly
     // tap "Start over" or "Schedule another", not be silently reset to
     // GreetingCard by the next router.refresh().
+    //
+    // POST-VALIDATION FIX (Validator 2 P0.1, 2026-05-25): also exempt
+    // rows where appointment_confirmed_at IS NOT NULL. After Tekmetric
+    // confirms, the wizard advances to customer_notes (status='active',
+    // NOT terminal). The mark-abandoned route has a bookingLanded
+    // guard to skip status-flip, BUT hydrate-session previously had
+    // no analogous check — a confirmed customer who walked away 5 min
+    // and returned would hit the stale-age check, fire
+    // hydrate_session_reset, and wipe appointment_id + customer_notes.
+    // Tekmetric still has the appointment but our scheduler-app row
+    // doesn't know about it. Customer sees a fresh greeting card
+    // despite having a confirmed Tekmetric booking. Now: a confirmed
+    // row keeps showing the customer_notes/customer_question/completed
+    // step the customer was on.
     const isTerminalState =
-      row.status === "ended" || row.status === "escalated";
+      row.status === "ended" ||
+      row.status === "escalated" ||
+      row.appointment_confirmed_at != null;
 
     const isStale =
       !isTerminalState &&
@@ -139,13 +183,7 @@ export async function hydrateSession(): Promise<HydratedSession> {
     //
     // Source of truth for the wipe column set is the RPC body — see
     // supabase/migrations/20260524230000_rpc_hydrate_session_reset.sql.
-    //
-    // The RPC is a write; we need a fresh admin client here. The
-    // earlier row read came from the cache helper (per Plan 04 Phase 5B
-    // — sessionTag-driven invalidation). Two clients per request is
-    // cheap and keeps the cache boundary clean (unstable_cache forbids
-    // cookies/headers inside, so it manages its own client internally).
-    const supabase = createSupabaseAdminClient();
+    // Reuses the supabase admin client created above for the row read.
     const { error: resetError } = await supabase.rpc(
       "hydrate_session_reset",
       { p_chat_id: chatId },
@@ -174,6 +212,17 @@ export async function hydrateSession(): Promise<HydratedSession> {
         level: "error",
         extra: { chatId, code: resetError.code },
       });
+    } else {
+      // PLAN 04 PHASE 5B POST-VALIDATION FIX (Validator 1 C1, 2026-05-25):
+      // The RPC just wiped the DB row, but `getCachedSessionRow(chatId)`
+      // at line 98 above already populated the per-session Next.js data
+      // cache with the PRE-WIPE state. Without this revalidateTag,
+      // BookPageShell.tsx's downstream getCurrentCard(chatId) call would
+      // serve the cached pre-wipe row and render whatever stale step the
+      // customer had been stuck on — defeating Phase 1B's whole wipe-in-
+      // place purpose for up to 60s (the TTL backstop). Same pattern
+      // mark-abandoned/route.ts uses after IT writes to the session row.
+      revalidateTag(sessionTag(chatId));
     }
   } catch (e) {
     Sentry.captureException(e, {
