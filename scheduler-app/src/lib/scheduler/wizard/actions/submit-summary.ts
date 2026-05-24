@@ -279,31 +279,113 @@ async function handleConfirmPath(chatId: string): Promise<WizardTransitionResult
     });
   }
 
-  // Verify the hold is still alive. Client-side countdown might race
-  // past expiry between display and confirm tap; server-side gate is the
-  // authoritative check.
-  const { data: hold } = await supabase
+  // Plan 04 Phase 2 (closes I-COR-3) — CAS-claim the hold atomically.
+  //
+  // Replaces a prior READ-then-3-check pattern that had a race window:
+  // between the SELECT and the Tekmetric POST below, mark-abandoned
+  // (idle-timer beacon, pagehide, tab-close) OR a concurrent
+  // hydrate_session_reset could flip released_at to now() and free
+  // the slot to other customers — while THIS request still proceeded
+  // to confirm with Tekmetric. Result: a confirmed Tekmetric appointment
+  // backed by a hold that's been released to someone else.
+  //
+  // CAS gate (single UPDATE):
+  //   WHERE id = holdToken           (the canonical hold pointer)
+  //     AND session_id = chatId      (defense: don't claim another session's hold)
+  //     AND released_at IS NULL      (not already released by abandon/reset)
+  //     AND expires_at > now()       (still within TTL)
+  //
+  // On any condition failing, supabase returns data:null (no error).
+  // We then do a diagnostic SELECT to choose ONE of 3 user-facing
+  // copies (not-found / released / expired) — preserves the prior
+  // UX that distinguished these three failure modes.
+  //
+  // Hold stays released_at-stamped whether Tekmetric POST succeeds or
+  // fails. Spec-acceptable per PLAN-04 §Phase 2: even if Tekmetric
+  // fails we leave released_at set (the slot becomes available to
+  // others; hold-reaper would otherwise sweep it within 30 min).
+  const nowIso = new Date().toISOString();
+  const { data: claimedHold, error: claimErr } = await supabase
     .from("appointment_holds")
-    .select("expires_at, released_at")
+    .update({ released_at: nowIso })
     .eq("id", holdToken)
+    .eq("session_id", chatId)
+    .is("released_at", null)
+    .gt("expires_at", nowIso)
+    .select("id")
     .maybeSingle();
-  if (!hold) {
+
+  if (claimErr) {
+    // Non-CAS DB error (connection failure, schema mismatch, etc.) —
+    // distinct from CAS-miss (data:null with no error). Escalate.
+    Sentry.captureException(claimErr, {
+      tags: {
+        surface: "submit_summary_v2_cas_claim",
+        code: claimErr.code,
+      },
+      level: "error",
+    });
+    await logError({
+      chatId,
+      surface: "submit_summary_v2",
+      error_code: "cas_claim_db_error",
+      message: claimErr.message,
+      level: "error",
+    });
     return applyWizardTransition({
       chatId,
-      nextStep: "date_pick",
+      nextStep: "escalated",
+      updates: {
+        status: "escalated",
+        escalated_at: nowIso,
+        escalation_reason: "cas_claim_db_error",
+      },
       jeffBubble:
-        "Hmm, that slot reservation timed out. Let me show you the latest openings. 📅",
+        "Something hiccuped on my end — please call us at (610) 253-6565 and we'll take care of you. 📞",
     });
   }
-  if (hold.released_at) {
-    return applyWizardTransition({
-      chatId,
-      nextStep: "date_pick",
-      jeffBubble:
-        "Looks like that slot reservation was released. Let me show you the latest openings. 📅",
+
+  if (!claimedHold) {
+    // CAS missed — one of (not-found / released / expired). Diagnostic
+    // read picks the precise user-facing copy. Session-bound so a
+    // session-mismatch (would never happen in normal flow) maps to
+    // "not found" rather than mis-classifying as expired.
+    const { data: diag } = await supabase
+      .from("appointment_holds")
+      .select("released_at, expires_at")
+      .eq("id", holdToken)
+      .eq("session_id", chatId)
+      .maybeSingle();
+
+    Sentry.captureMessage("submit_summary_v2_cas_missed", {
+      level: "warning",
+      extra: {
+        chatId,
+        holdToken,
+        diag_found: diag !== null,
+        diag_released_at: diag?.released_at ?? null,
+        diag_expires_at: diag?.expires_at ?? null,
+      },
     });
-  }
-  if (new Date(hold.expires_at as string) <= new Date()) {
+
+    if (!diag) {
+      return applyWizardTransition({
+        chatId,
+        nextStep: "date_pick",
+        jeffBubble:
+          "Hmm, that slot reservation timed out. Let me show you the latest openings. 📅",
+      });
+    }
+    if (diag.released_at) {
+      return applyWizardTransition({
+        chatId,
+        nextStep: "date_pick",
+        jeffBubble:
+          "Looks like that slot reservation was released. Let me show you the latest openings. 📅",
+      });
+    }
+    // Remaining branch: expires_at <= now() (released_at was null, row
+    // existed, session matched — only the TTL check could have missed).
     return applyWizardTransition({
       chatId,
       nextStep: "date_pick",
