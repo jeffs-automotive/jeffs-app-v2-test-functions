@@ -48,6 +48,7 @@ vi.mock("@sentry/nextjs", () => ({
 
 vi.mock("next/cache", () => ({
   revalidatePath: vi.fn(),
+  revalidateTag: vi.fn(),
 }));
 
 const logErrorMock: Mock = vi.fn(async () => {});

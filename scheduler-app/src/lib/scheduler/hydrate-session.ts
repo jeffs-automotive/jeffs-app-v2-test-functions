@@ -46,6 +46,7 @@ import { cookies } from "next/headers";
 import * as Sentry from "@sentry/nextjs";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getCachedSessionRow } from "@/lib/scheduler/cache";
 import { logError } from "@/lib/scheduler/wizard/log-error";
 
 export const COOKIE_NAME = "sched-chat-id";
@@ -88,12 +89,13 @@ export async function hydrateSession(): Promise<HydratedSession> {
 
   // Cookie was valid. Check whether the row exists + is still fresh.
   try {
-    const supabase = createSupabaseAdminClient();
-    const { data: row } = await supabase
-      .from("customer_chat_sessions")
-      .select("id, status, last_active_at, hold_token")
-      .eq("id", chatId)
-      .maybeSingle();
+    // Plan 04 Phase 5B: read via the per-session Next.js data cache so
+    // concurrent RSC renders share a single fetch + revalidateTag(
+    // sessionTag(chatId)) from applyWizardTransition invalidates ONLY
+    // this session's entry (not every concurrent session's render).
+    // The cached helper returns the full row (or null); we pluck only
+    // the 4 fields this freshness check needs.
+    const row = await getCachedSessionRow(chatId);
 
     if (!row) {
       // No row yet for this cookie — fresh path. ensureSessionExists
@@ -137,6 +139,13 @@ export async function hydrateSession(): Promise<HydratedSession> {
     //
     // Source of truth for the wipe column set is the RPC body — see
     // supabase/migrations/20260524230000_rpc_hydrate_session_reset.sql.
+    //
+    // The RPC is a write; we need a fresh admin client here. The
+    // earlier row read came from the cache helper (per Plan 04 Phase 5B
+    // — sessionTag-driven invalidation). Two clients per request is
+    // cheap and keeps the cache boundary clean (unstable_cache forbids
+    // cookies/headers inside, so it manages its own client internally).
+    const supabase = createSupabaseAdminClient();
     const { error: resetError } = await supabase.rpc(
       "hydrate_session_reset",
       { p_chat_id: chatId },

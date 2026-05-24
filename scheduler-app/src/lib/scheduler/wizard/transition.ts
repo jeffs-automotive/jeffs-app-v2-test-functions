@@ -36,26 +36,38 @@
  * follows the same lifecycle — no per-step drift, no forgetting to call
  * revalidatePath, no inconsistent last_active_at bumps.
  */
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import * as Sentry from "@sentry/nextjs";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { sessionTag } from "@/lib/scheduler/cache";
 import type { WizardStep } from "../session-state";
 import type { WizardTransitionResult } from "./transition-types";
 
 /**
- * Paths to revalidate after a wizard transition. Bug fix 2026-05-16:
- * previously only '/book-v2' was revalidated, but after the Phase 15
- * cutover the wizard ships on '/', '/book', AND '/book-v2' (redirect).
- * Cross-tab navigation + BFCache restore could land on a route whose
- * RSC cache wasn't invalidated.
+ * Plan 04 Phase 5B (closes I-OTH-3 — partial):
  *
- * WizardSurface's router.refresh() papers over this for the active tab,
- * but a SECOND tab opened against / or /book would render stale RSC
- * bytes until that tab's next navigation. Revalidating all three paths
- * keeps every tab consistent.
+ * The pre-Phase-5B code fired `revalidatePath` on 3 routes ("/",
+ * "/book", "/book-v2") after every wizard step. That invalidated
+ * the server-rendered HTML for every concurrent session on those
+ * routes — advancing session A forced sessions B-J to re-render
+ * on their next interaction, even though their state hadn't changed.
+ *
+ * Phase 5B replaces the 3-path loop with:
+ *   - revalidateTag(sessionTag(chatId)) — per-session granular
+ *     invalidation. Only the advancing session's cached
+ *     customer_chat_sessions row (read via getCachedSessionRow in
+ *     hydrate-session.ts + get-current-card.ts) is invalidated.
+ *   - revalidatePath("/", "page") — single-path fallback. Down from
+ *     3 paths to 1 (the canonical customer surface). Catches any
+ *     future RSC reader that lands WITHOUT being tag-instrumented.
+ *     Defense in depth per PLAN-04 §Phase 5 mitigation: "Keep
+ *     revalidatePath as a fallback (single-path, not 'layout' scope)."
+ *
+ * CLN-15 (NEW deferred item) tracks the eventual drop of the
+ * revalidatePath fallback once all RSC readers are confirmed
+ * tag-instrumented + a verification agent independently signs off.
  */
-const WIZARD_REVALIDATE_PATHS = ["/", "/book", "/book-v2"] as const;
 
 export interface ApplyWizardTransitionArgs {
   chatId: string;
@@ -127,10 +139,12 @@ export async function applyWizardTransition(
     return { ok: false, error: error.message };
   }
 
-  // All three writes committed atomically. Revalidate every wizard surface.
-  for (const path of WIZARD_REVALIDATE_PATHS) {
-    revalidatePath(path);
-  }
+  // All three writes committed atomically. Invalidate this session's
+  // cached RSC reads (per-session granular) + a single-path fallback
+  // for any uninstrumented reader (defense in depth). See header
+  // comment for the Phase 5B rationale + the CLN-15 follow-up.
+  revalidateTag(sessionTag(args.chatId));
+  revalidatePath("/", "page");
 
   return { ok: true, next_step: args.nextStep };
 }

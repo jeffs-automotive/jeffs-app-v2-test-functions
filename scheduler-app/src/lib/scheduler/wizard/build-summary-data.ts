@@ -18,6 +18,7 @@
  * Action so the admin client is appropriate (bypasses RLS, app-trusted).
  */
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getCachedSessionRow } from "@/lib/scheduler/cache";
 import {
   isSameDayLocal,
   shopLocalToIsoString,
@@ -223,13 +224,24 @@ export async function buildSummaryCardPayload(args: {
   hold_id?: string;
   hold_expires_at?: string;
 }): Promise<SummaryCardPayload> {
+  // Plan 04 Phase 5B (closes a gap caught by Verifier A 2026-05-25):
+  // buildSummaryCardPayload is RSC-only (called exclusively from
+  // get-current-card.ts:643 inside `case "summary"`). Previously this
+  // bypassed the per-session cache via direct supabase.from(...).select,
+  // so revalidateTag(sessionTag(chatId)) would NOT invalidate it on
+  // wizard advance — customers could see stale summary card data on
+  // refresh until the page-level cache rolled over.
+  //
+  // Now routes through getCachedSessionRow — same tag invalidation
+  // chain as hydrateSession + getCurrentCard's primary read. Falls
+  // through to an empty record on null (matches prior `{} as
+  // Record<...>` default).
+  const rowTyped = await getCachedSessionRow(args.chatId);
+  const row = (rowTyped ?? {}) as unknown as Record<string, unknown>;
+  // Subsequent reads (routine_services, testing_services) are NOT
+  // session-scoped — they read catalog tables that change rarely +
+  // independently. Use the direct admin client for those.
   const supabase = createSupabaseAdminClient();
-  const { data: rowRaw } = await supabase
-    .from("customer_chat_sessions")
-    .select("*")
-    .eq("id", args.chatId)
-    .maybeSingle();
-  const row = (rowRaw ?? {}) as Record<string, unknown>;
 
   // Customer name
   const first =

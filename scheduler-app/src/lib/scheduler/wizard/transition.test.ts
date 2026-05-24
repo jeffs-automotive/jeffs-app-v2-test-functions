@@ -32,8 +32,11 @@ vi.mock("@sentry/nextjs", () => ({
 }));
 
 const revalidatePathMock: Mock = vi.fn();
+const revalidateTagMock: Mock = vi.fn();
 vi.mock("next/cache", () => ({
-  revalidatePath: (path: string) => revalidatePathMock(path),
+  revalidatePath: (path: string, type?: string) =>
+    revalidatePathMock(path, type),
+  revalidateTag: (tag: string) => revalidateTagMock(tag),
 }));
 
 // Supabase admin client — a single rpc() stub configured per test. We
@@ -114,6 +117,7 @@ beforeEach(() => {
   rpcResult = { data: null, error: null };
   sentryCaptureExceptionMock.mockClear();
   revalidatePathMock.mockClear();
+  revalidateTagMock.mockClear();
   createSupabaseAdminClientMock.mockClear();
 });
 
@@ -139,7 +143,7 @@ describe("applyWizardTransition — happy path", () => {
     expect(sentryCaptureExceptionMock).not.toHaveBeenCalled();
   });
 
-  it("revalidates ALL three wizard paths on success", async () => {
+  it("invalidates per-session tag + single-path fallback on success (Plan 04 Phase 5B)", async () => {
     rpcResult = makeRpcSuccess();
 
     await applyWizardTransition({
@@ -147,13 +151,16 @@ describe("applyWizardTransition — happy path", () => {
       nextStep: "vehicle_pick",
     });
 
-    const revalidatedPaths = revalidatePathMock.mock.calls.map(
-      (c) => c[0] as string,
-    );
-    expect(revalidatedPaths).toEqual(
-      expect.arrayContaining(["/", "/book", "/book-v2"]),
-    );
-    expect(revalidatedPaths).toHaveLength(3);
+    // revalidateTag fires with the per-session tag (covers cached
+    // hydrateSession + getCurrentCard reads via getCachedSessionRow).
+    expect(revalidateTagMock).toHaveBeenCalledTimes(1);
+    expect(revalidateTagMock).toHaveBeenCalledWith("session-sess-1");
+
+    // revalidatePath fires ONCE with the single canonical surface +
+    // explicit 'page' scope (down from the pre-Phase-5B 3-path loop).
+    // Defense in depth for any RSC reader not yet tag-instrumented.
+    expect(revalidatePathMock).toHaveBeenCalledTimes(1);
+    expect(revalidatePathMock).toHaveBeenCalledWith("/", "page");
   });
 });
 

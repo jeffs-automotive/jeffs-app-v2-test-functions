@@ -32,6 +32,7 @@
 import * as Sentry from "@sentry/nextjs";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getCachedSessionRow } from "@/lib/scheduler/cache";
 import {
   fetchVehiclesForCustomer,
   listWaiterTimes,
@@ -60,16 +61,27 @@ const SHOP_PHONE = "6102536565";
 export async function getCurrentCard(
   chatId: string,
 ): Promise<WizardCard | null> {
-  const supabase = createSupabaseAdminClient();
-  const { data: row, error } = await supabase
-    .from("customer_chat_sessions")
-    .select("*")
-    .eq("id", chatId)
-    .maybeSingle();
-
-  if (error || !row) {
+  // Plan 04 Phase 5B: read via the per-session Next.js data cache so
+  // concurrent RSC renders of the wizard share a single fetch +
+  // revalidateTag(sessionTag(chatId)) from applyWizardTransition
+  // invalidates ONLY this session's entry. The cached helper throws
+  // on DB error; we mirror the prior null-on-error behavior here so
+  // callers (BookPageShell) continue to fall back to the greeting card.
+  let row: Awaited<ReturnType<typeof getCachedSessionRow>>;
+  try {
+    row = await getCachedSessionRow(chatId);
+  } catch (err) {
+    Sentry.captureException(err, {
+      tags: { surface: "get_current_card_session_read" },
+      level: "warning",
+      extra: { chatId },
+    });
     return null;
   }
+  if (!row) {
+    return null;
+  }
+  const supabase = createSupabaseAdminClient();
 
   // Default to greeting when current_step is NULL (fresh row not yet advanced).
   const step = (row.current_step as WizardStep | null) ?? "greeting";

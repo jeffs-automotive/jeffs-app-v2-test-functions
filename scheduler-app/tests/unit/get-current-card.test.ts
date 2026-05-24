@@ -27,6 +27,21 @@ import type { Mock } from "vitest";
 
 let storedRow: Record<string, unknown> | null = null;
 
+// Plan 04 Phase 5B: getCurrentCard reads the session row via
+// `getCachedSessionRow` (Next.js data cache, tag `session-${chatId}`).
+// Mock the cache helper directly so tests don't need to wire through
+// the supabase chain for the session-row read. Other reads in
+// get-current-card (appointment_holds, routine_services,
+// testing_services) still go through the supabase admin client mock.
+let cachedRowThrows: Error | null = null;
+vi.mock("@/lib/scheduler/cache", () => ({
+  sessionTag: (chatId: string) => `session-${chatId}`,
+  getCachedSessionRow: vi.fn(async (_chatId: string) => {
+    if (cachedRowThrows) throw cachedRowThrows;
+    return storedRow;
+  }),
+}));
+
 const createSupabaseAdminClientMock: Mock = vi.fn(() => ({
   from(_table: string) {
     return {
@@ -85,6 +100,7 @@ import { getCurrentCard } from "@/lib/scheduler/wizard/get-current-card";
 
 beforeEach(() => {
   storedRow = null;
+  cachedRowThrows = null;
   parseCustomerNoteMock.mockReset();
 });
 

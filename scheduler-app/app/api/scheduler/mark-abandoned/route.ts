@@ -28,10 +28,12 @@
  * Returns 204 always so the browser doesn't queue retries.
  */
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import * as Sentry from "@sentry/nextjs";
 import { z } from "zod";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { sessionTag } from "@/lib/scheduler/cache";
 import { logError } from "@/lib/scheduler/wizard/log-error";
 
 export const dynamic = "force-dynamic";
@@ -266,6 +268,17 @@ export async function POST(req: Request): Promise<NextResponse> {
       });
       return new NextResponse(null, { status: 204 });
     }
+
+    // Plan 04 Phase 5B (closes I-OTH-3 gap caught by verifier B
+    // 2026-05-25): the session row was just flipped to status=timed_out.
+    // Without this revalidateTag, hydrateSession on the customer's
+    // next visit reads the CACHED pre-abandon row (status='active'),
+    // skips wipe-in-place, and resumes a "ghost" session for up to
+    // 60s (the TTL backstop). Fires unconditionally — supabase-js
+    // doesn't return row-count on .update().eq() without .select(),
+    // and over-invalidating an already-timed-out cache entry is
+    // strictly safer than under-invalidating a freshly-flipped one.
+    revalidateTag(sessionTag(chatId));
 
     // Release any active appointment_holds for this session so other
     // customers can pick the same slot. The 2026-05-16 ephemeral-session

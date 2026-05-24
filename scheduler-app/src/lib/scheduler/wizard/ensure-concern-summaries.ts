@@ -26,10 +26,12 @@
  * THIS concern queue up." Skipped/missing answers are dropped from the
  * LLM input so the model doesn't synthesize from non-information.
  */
+import { revalidateTag } from "next/cache";
 import * as Sentry from "@sentry/nextjs";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { sessionTag } from "@/lib/scheduler/cache";
 import { summarizeConcern } from "@/lib/scheduler/wizard/llm/summarize-concern";
 
 const SHOP_ID = 7476;
@@ -295,6 +297,16 @@ export async function ensureConcernSummaries(
       persisted: false,
     };
   }
+
+  // Plan 04 Phase 5B (closes gap caught by Verifier B 2026-05-25):
+  // ensure-concern-summaries runs AFTER run-diagnostics.ts has already
+  // called applyWizardTransition (which fired revalidateTag). The tag
+  // invalidation fired BEFORE this write, so the next getCurrentCard
+  // render (which reads via getCachedSessionRow) would still serve the
+  // pre-summary explanation_required_items for up to 60s (the TTL
+  // backstop). Fire the tag again after THIS write so the customer's
+  // next clarification card sees fresh summaries immediately.
+  revalidateTag(sessionTag(chatId));
 
   return {
     generated: summaries.length,

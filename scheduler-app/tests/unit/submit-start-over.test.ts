@@ -155,7 +155,10 @@ vi.mock("@/lib/supabase/admin", () => ({
 }));
 
 vi.mock("next/cache", () => ({
-  revalidatePath: (path: string) => revalidatePathMock(path),
+  revalidatePath: (path: string, type?: string) =>
+    revalidatePathMock(path, type),
+  // Plan 04 Phase 5B: applyWizardTransition now also fires revalidateTag.
+  revalidateTag: vi.fn(),
 }));
 
 vi.mock("@sentry/nextjs", () => ({
@@ -241,22 +244,14 @@ describe("submitStartOverV2", () => {
     expect(del?.match).toContainEqual({ col: "session_id", val: "sess-abc" });
   });
 
-  it("revalidates /book-v2 (which is the canonical wizard path during the migration window)", async () => {
+  it("revalidates the canonical wizard surface (Plan 04 Phase 5B: single-path fallback)", async () => {
     await submitStartOverV2({ chatId: "sess-abc" });
 
-    // applyWizardTransition fans out to all three legacy wizard surfaces
-    // (/, /book, /book-v2 — see transition.ts WIZARD_REVALIDATE_PATHS).
-    // /book-v2 is the post-Phase-15 canonical entry, so we assert on it
-    // specifically; the broader fan-out is covered by transition.test.ts.
-    expect(revalidatePathMock).toHaveBeenCalledWith("/book-v2");
-  });
-
-  it("revalidates ALL wizard surfaces (/, /book, /book-v2) via applyWizardTransition", async () => {
-    await submitStartOverV2({ chatId: "sess-abc" });
-
-    expect(revalidatePathMock).toHaveBeenCalledWith("/");
-    expect(revalidatePathMock).toHaveBeenCalledWith("/book");
-    expect(revalidatePathMock).toHaveBeenCalledWith("/book-v2");
+    // Plan 04 Phase 5B: applyWizardTransition replaced the 3-path
+    // ["/", "/book", "/book-v2"] loop with a single revalidatePath("/", "page")
+    // fallback + a per-session revalidateTag. Asserting on the path
+    // here keeps the regression-detection signal for the fallback path.
+    expect(revalidatePathMock).toHaveBeenCalledWith("/", "page");
   });
 
   it("inserts a session_restarted audit row with prior context", async () => {

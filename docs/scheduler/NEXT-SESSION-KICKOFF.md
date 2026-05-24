@@ -1,6 +1,6 @@
 # Scheduler-app — next session kickoff
 
-> **Last refreshed:** 2026-05-24/25 end-of-session (post Plan 04 Phase 4 verification-mismatch envelope).
+> **Last refreshed:** 2026-05-24/25 end-of-session (post Plan 04 Phase 5B revalidate-scope reduction).
 > **Refresh this file** at the end of EVERY session that did scheduler-app work — same commit that bumps `scheduler_system_architecture.md`. Keep the "Today's headline" + "Next-step todos" sections current.
 
 ---
@@ -19,9 +19,48 @@ These five files give you the full picture. If you find yourself guessing about 
 
 ---
 
-## 2. Today's headline (2026-05-24/25, end of day pt 4)
+## 2. Today's headline (2026-05-24/25, end of day pt 5)
 
-**Plan 04 Phase 4 shipped — verification-mismatch 3-state envelope** (migration `20260525000000`, commit `(SHA after push)`):
+**Plan 04 Phase 5B shipped — per-session Next.js data cache + revalidate-scope reduction** (commit `(SHA after push)`, no migration):
+
+- New helper `scheduler-app/src/lib/scheduler/cache.ts` exports `sessionTag(chatId)` + `getCachedSessionRow(chatId)` — wraps `customer_chat_sessions` row reads via `unstable_cache` with tag `session-${chatId}` + 60s TTL backstop
+- Three RSC readers refactored: `hydrate-session.ts`, `get-current-card.ts`, `build-summary-data.ts:buildSummaryCardPayload`
+- `transition.ts:applyWizardTransition` rewritten — `revalidateTag(sessionTag(chatId)) + revalidatePath("/", "page")` instead of the pre-Phase-5B 3-path loop. Per-session granularity achieved; single-path fallback preserved for defense-in-depth (CLN-15 tracks future removal)
+- **2 parallel Opus verifier agents** (Explore subagent, fresh context, independent) caught 2 real gaps the orchestrator-alone audit would have missed:
+  - Verifier A: `buildSummaryCardPayload` did an uncached supabase read — fixed (now uses cache helper)
+  - Verifier B: `mark-abandoned/route.ts` wrote status='timed_out' without firing `revalidateTag` — customer returning within 60s would have skipped the wipe-in-place. Fixed.
+- Bonus: `ensure-concern-summaries.ts` (called from run-diagnostics AFTER applyWizardTransition's revalidateTag) now fires its own `revalidateTag`
+- 6 test files updated (revalidateTag added to mocks, redundant 3-path assertions consolidated)
+- Full unit suite **212/212 passing** (was 211; net +1 after consolidation)
+- Closes I-OTH-3
+
+**Process changes this session:**
+- **Context7 MCP permanently deny-listed** — Chris's call ("always outdated"). Policy at `feedback_no_context7.md`. Use vendor docs via WebFetch instead.
+- **Opus sub-agents now the default for verification work** — Phase 5B was the first scheduler phase to use this pattern. Verifier agents independently found gaps. Policy at `feedback_opus_for_subagents.md`. Always pass `model: "opus"` on Agent dispatches in this project.
+
+**Plans state:**
+
+- ✅ **Plans 01, 02, 03** — COMPLETE
+- 🟡 **Plan 04** — IN PROGRESS (7 of 8 phases done — Phase 1A + 1B + 2 + 3A + 3B + 4 + 5B)
+- 🔜 **Plans 05, 06, 07** — NOT STARTED
+
+**Earlier today/yesterday (2026-05-24/25):**
+
+1. Sentry cron pair-by-id fix (`3d9de2d`)
+2. OBS-8 RESOLVED (`c87ea5c`)
+3. PLANS-MASTER refresh + REMEDIATION-PROGRESS (`894cfae`)
+4. Plan 04 Phase 1A `apply_wizard_transition` RPC (`5d8a122`)
+5. Plan 04 Phase 1B `hydrate_session_reset` RPC (`221b855`, dotfiles `ebabe3e`)
+6. Plan 04 Phase 2 `submit-summary` CAS lock (`59452f0`, dotfiles `f872288`)
+7. Plan 04 Phase 3A + 3B IDOR defenses (`80038cd`, dotfiles `cd2bc7b`)
+8. Plan 04 Phase 4 verification-mismatch envelope (`a12cf0e`, dotfiles `371c36f`)
+9. Architecture memo bumped 8× total in dotfiles repo
+
+---
+
+## (historical — Phase 4 detail preserved for context — was the prior "Today's headline" before Phase 5B)
+
+**Plan 04 Phase 4 — verification-mismatch 3-state envelope** (migration `20260525000000`, commit `a12cf0e`):
 
 - Migration adds 2 columns on `customer_chat_sessions`: `appointment_verification_status TEXT` (CHECK constraint on `confirmed | needs_review | NULL`) + `appointment_verification_diff JSONB`
 - Migration also extends `apply_wizard_transition` RPC with CASE-WHEN-? branches for both new keys (same JSONB null-clear semantic as `edited_phones`/`edited_emails`/etc.)
@@ -76,20 +115,23 @@ These five files give you the full picture. If you find yourself guessing about 
 3. **[~2 min]** Confirm `vault.secrets.sentry_dsn` is still populated. Query: `SELECT name, created_at FROM vault.secrets WHERE name = 'sentry_dsn';` via Supabase MCP.
 4. **[~2 min]** Confirm both Phase 1 RPCs exist in the DB. Query: `SELECT proname, prosecdef FROM pg_proc WHERE proname IN ('apply_wizard_transition', 'hydrate_session_reset') ORDER BY proname;` via Supabase MCP. Should return 2 rows both with `prosecdef = false`.
 
-### Tier B — Plan 04 Phase 5 OR Phase 6 (pick by appetite)
+### Tier B — Plan 04 Phase 6 (the last remaining Plan 04 phase)
 
-Plan 04's last 2 phases are roughly equal-scope (~3 hr each) but very different shapes:
+**Phase 6: CASCADE FK audit + early-migration idempotency docs (I-COR-7 + I-COR-8)** — 4 FKs CASCADE off `customer_chat_sessions`; spec recommends changing `scheduler_audit_log.session_id` to `ON DELETE SET NULL` (audit logs should outlive sessions for compliance) and documenting the other 3 as intentional cascades. Plus a documentation pass on the early migrations that aren't idempotent. Risk: LOW — mostly DDL + docs.
 
-**Phase 5: `WIZARD_REVALIDATE_PATHS` scope reduction (I-OTH-3)** — replace `revalidatePath("/", "layout")` with `revalidateTag(\`session-${chatId}\`)` so advancing session A doesn't invalidate every other session's RSC payload. Spec at PLAN-04 §Phase 5. Risk: MEDIUM-HIGH per spec — `revalidatePath` is the "safe hammer"; tags require instrumenting every session read. Mitigation per spec: do incrementally, start with wizard cards only, keep a fallback `revalidatePath("/book-v2", "page")`.
+**Before writing any code:**
+- Read `docs/scheduler/plans/PLAN-04-atomicity-correctness.md` Phase 6 (lines ~500-end)
+- Phase 6A: review the 4 CASCADE FKs in `pg_constraint` — confirm the schemas match the spec's claims about `scheduler_audit_log`, `appointment_holds`, `customer_chat_messages`, `appointment_concerns`
+- Phase 6B: pick the early migrations that lack idempotency guards + document per Chris's preference (rewrite vs README note)
+- Use the Opus sub-agent pattern from Phase 5B for the DB-schema audit (cleaner context, independent verification)
 
-**Phase 6: CASCADE FK audit + early-migration idempotency docs (I-COR-7 + I-COR-8)** — 4 FKs CASCADE off `customer_chat_sessions`; spec recommends changing `scheduler_audit_log.session_id` to `ON DELETE SET NULL` (audit logs should outlive sessions for compliance) and documenting the other 3 as intentional cascades. Plus a documentation pass on the early migrations (R6 IMPORTANT-D-2) that aren't idempotent. Risk: LOW — mostly DDL + docs.
-
-**Recommendation:** Phase 6 first (lower risk, mostly docs/DDL — gets to "Plan 04 7/8 done"). Then Phase 5 as the final atomicity-plan close-out with the medium-high risk surface and proper attention.
+**Estimated:** 2-3 hr. Closes Plan 04 entirely (8/8 phases done) → unblocks Plans 05/06/07.
 
 ### Tier C — Plan 04 deferred follow-ups (post-Plan-04)
 
 | Item | Scope | Reference |
 |---|---|---|
+| CLN-15 | Drop the `revalidatePath("/", "page")` fallback from `applyWizardTransition` once all RSC readers are independently re-verified as tag-instrumented | DEFERRED-AUDIT-ITEMS.md CLN-15 |
 | CLN-13 | Wire email send for AVM manual reviews (new edge fn recommended) | DEFERRED-AUDIT-ITEMS.md CLN-13 |
 | CLN-12 | RESET_COLUMNS divergence — extract to shared `reset-columns.ts` per Plan 06 | DEFERRED-AUDIT-ITEMS.md CLN-12 |
 

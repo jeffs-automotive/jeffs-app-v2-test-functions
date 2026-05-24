@@ -902,6 +902,51 @@ files
   `Unused eslint-disable directive` warnings (4 sites) auto-clean once
   the underlying rules are reactivated.
 
+### CLN-15 · Drop `revalidatePath` fallback from `applyWizardTransition` (NEW 2026-05-24/25)
+
+- **What** — Plan 04 Phase 5B added `revalidateTag(sessionTag(chatId))` for
+  per-session cache invalidation AND kept `revalidatePath("/", "page")` as
+  a defense-in-depth fallback (down from the pre-Phase-5B 3-path loop
+  `/`, `/book`, `/book-v2`). The fallback catches any RSC reader that
+  isn't yet wrapped in `getCachedSessionRow` — if a future reader gets
+  added without tag instrumentation, the path-revalidate keeps it from
+  going stale.
+- **Why deferred** — current Phase 5B verification confirms only 3 RSC
+  readers exist (`hydrate-session.ts`, `get-current-card.ts`,
+  `build-summary-data.ts:buildSummaryCardPayload`) and all are wrapped.
+  But there's no automated check that prevents a future PR from adding
+  a 4th uninstrumented RSC reader. Until we have that check (or a
+  re-verification pass after substantial scheduler-app work), the
+  fallback is cheap insurance.
+- **What to do when revisited:**
+  1. Re-run the Phase 5B verifier agents (Explore, Opus): "find every
+     supabase-js read of `customer_chat_sessions` in
+     `scheduler-app/src/` and confirm each RSC-level read goes through
+     `getCachedSessionRow`." If both verifiers come back clean → safe
+     to drop.
+  2. Edit `scheduler-app/src/lib/scheduler/wizard/transition.ts`: remove
+     the `revalidatePath("/", "page")` line. Keep the
+     `revalidateTag(sessionTag(args.chatId))` line.
+  3. Edit the related tests (`transition.test.ts`,
+     `run-diagnostics.test.ts`, `submit-start-over.test.ts`) to remove
+     the `revalidatePath` assertions.
+  4. Add a hook or lint rule that BLOCKS new `supabase.from(
+     "customer_chat_sessions").select` calls in any file UNDER
+     `src/components/` (the RSC surface) — they must go through
+     `getCachedSessionRow` instead.
+- **Risk if NOT addressed** — none for current customers; the fallback
+  is doing zero harm beyond invalidating slightly more cache than
+  strictly needed when a transition fires. The Phase 5B per-session
+  granularity already wins back the 3-paths-becomes-1 reduction.
+- **When to revisit** — after any large scheduler-app feature work
+  (e.g., a new wizard step OR a new RSC surface), OR ~3 months from
+  Phase 5B landing if no significant scheduler-app refactor has shipped
+  (gives time for the cache pattern to bed in + the verifier-agent
+  pattern to mature).
+- **Source** — Plan 04 Phase 5B 2026-05-24/25, per spec's mitigation
+  "Keep `revalidatePath` as a fallback (single-path, not 'layout'
+  scope)." The fallback was always intended as a temporary safety net.
+
 ### CLN-13 · Email send for `appointment_verification_mismatch` manual reviews (NEW 2026-05-24/25)
 
 - **What** — Plan 04 Phase 4 ships the `appointment_verification_mismatch`

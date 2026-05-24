@@ -80,10 +80,14 @@ vi.mock("@sentry/nextjs", () => ({
   ) => callback(),
 }));
 
-// next/cache — applyWizardTransition calls revalidatePath at the end.
+// next/cache — applyWizardTransition calls revalidateTag + revalidatePath
+// at the end (post-Plan-04-Phase-5B).
 const revalidatePathMock: Mock = vi.fn();
+const revalidateTagMock: Mock = vi.fn();
 vi.mock("next/cache", () => ({
-  revalidatePath: (path: string) => revalidatePathMock(path),
+  revalidatePath: (path: string, type?: string) =>
+    revalidatePathMock(path, type),
+  revalidateTag: (tag: string) => revalidateTagMock(tag),
 }));
 
 // Supabase admin client — chain-recording mock. Each query gets logged
@@ -436,6 +440,7 @@ beforeEach(() => {
   storedRow = null;
   createSupabaseAdminClientMock.mockClear();
   revalidatePathMock.mockClear();
+  revalidateTagMock.mockClear();
   sentryAddBreadcrumb.mockClear();
   sentryCaptureMessage.mockClear();
   sentryCaptureException.mockClear();
@@ -839,10 +844,11 @@ describe("runDiagnosticsV2 — observability + persistence shape", () => {
     expect(items[0]!.unanswered_question_ids).toEqual([101]);
     // The RPC is invoked against the correct session.
     expect(rpcCallsList[0]!.args.p_chat_id).toBe("sess-1");
-    // revalidatePath fired (applyWizardTransition's contract — for /, /book,
-    // and /book-v2 per WIZARD_REVALIDATE_PATHS).
-    expect(revalidatePathMock).toHaveBeenCalled();
-    expect(revalidatePathMock).toHaveBeenCalledWith("/book-v2");
+    // Plan 04 Phase 5B: applyWizardTransition now fires revalidateTag
+    // (per-session granular) + a single-path revalidatePath fallback
+    // (down from the pre-Phase-5B 3-path loop ["/", "/book", "/book-v2"]).
+    expect(revalidateTagMock).toHaveBeenCalledWith("session-sess-1");
+    expect(revalidatePathMock).toHaveBeenCalledWith("/", "page");
   });
 
   it("fires per-concern Sentry breadcrumbs + an aggregate captureMessage at the expected checkpoints", async () => {

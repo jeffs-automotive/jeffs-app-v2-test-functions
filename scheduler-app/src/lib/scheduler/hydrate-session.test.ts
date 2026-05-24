@@ -47,24 +47,40 @@ vi.mock("next/headers", () => ({
   cookies: async () => ({ get: (name: string) => cookieGetMock(name) }),
 }));
 
-// Supabase admin client. The hydrate-session code uses TWO surfaces:
-//   - .from('customer_chat_sessions').select(...).eq(...).maybeSingle()
-//   - .rpc('hydrate_session_reset', { p_chat_id })
-// Both are stubbed; tests configure rowReadResult + rpcResult per case.
+// Plan 04 Phase 5B: hydrate-session now reads the session row through
+// `getCachedSessionRow` (Next.js data cache, tag `session-${chatId}`).
+// Mock the cache helper directly — bypasses the supabase row-read chain
+// the prior test version stubbed. The supabase client mock below is
+// still used for the RPC call on the stale-reset path.
+//
+// Test compatibility: the existing tests configure `rowReadResult.data`
+// to a session row OR null. The cache mock pulls `rowReadResult.data`
+// through unchanged — preserves the test ergonomics. To simulate a
+// THROW from the cache helper (replaces the prior "supabase chain
+// throws" path), set `cachedRowThrows` to an Error.
+const cachedRowCalls: Array<{ chatId: string }> = [];
+let cachedRowThrows: Error | null = null;
+vi.mock("@/lib/scheduler/cache", () => ({
+  sessionTag: (chatId: string) => `session-${chatId}`,
+  getCachedSessionRow: vi.fn(async (chatId: string) => {
+    cachedRowCalls.push({ chatId });
+    if (cachedRowThrows) throw cachedRowThrows;
+    return rowReadResult.data;
+  }),
+}));
+
+// Supabase admin client — now used ONLY for the RPC call on stale path.
+// (The session-row read goes through the cache helper above.)
 interface RpcCall {
   fn: string;
   args: Record<string, unknown>;
 }
-interface FromCall {
-  table: string;
-  select: string;
-  eqId: string;
-}
 
 const rpcCalls: RpcCall[] = [];
-const fromCalls: FromCall[] = [];
 
-let rowReadResult: { data: unknown; error: unknown } = {
+// Test-configurable: per-test row data (preserves prior test ergonomics —
+// the `.data` field is what the cache mock returns).
+let rowReadResult: { data: Record<string, unknown> | null; error: unknown } = {
   data: null,
   error: null,
 };
@@ -81,29 +97,10 @@ let createSupabaseAdminClientThrows: Error | null = null;
 
 function makeMockClient() {
   return {
-    from(table: string) {
-      let capturedSelect = "";
-      let capturedEqId = "";
-      const builder = {
-        select(cols: string) {
-          capturedSelect = cols;
-          return builder;
-        },
-        eq(_col: string, val: string) {
-          capturedEqId = val;
-          return builder;
-        },
-        async maybeSingle() {
-          fromCalls.push({
-            table,
-            select: capturedSelect,
-            eqId: capturedEqId,
-          });
-          return rowReadResult;
-        },
-      };
-      return builder;
-    },
+    // No .from() — Phase 5B routes the row read through the cache
+    // helper (mocked above). If a future code path adds a direct
+    // supabase.from(...) read in hydrate-session, this stub returning
+    // undefined will throw, surfacing the regression in tests.
     rpc(fn: string, args: Record<string, unknown>) {
       rpcCalls.push({ fn, args });
       // Mirror PostgrestBuilder thenable shape (matches transition.test.ts).
@@ -149,7 +146,8 @@ function isoMinutesAgo(min: number): string {
 beforeEach(() => {
   cookieValue = undefined;
   rpcCalls.length = 0;
-  fromCalls.length = 0;
+  cachedRowCalls.length = 0;
+  cachedRowThrows = null;
   rowReadResult = { data: null, error: null };
   rpcResult = { data: null, error: null };
   createSupabaseAdminClientThrows = null;
@@ -168,7 +166,7 @@ describe("hydrateSession — no-DB paths (cookie missing / malformed)", () => {
     expect(result.chatId).toMatch(/^[0-9a-f-]{36}$/i);
     expect(cookieGetMock).toHaveBeenCalledWith(COOKIE_NAME);
     expect(createSupabaseAdminClientMock).not.toHaveBeenCalled();
-    expect(fromCalls).toHaveLength(0);
+    expect(cachedRowCalls).toHaveLength(0);
     expect(rpcCalls).toHaveLength(0);
   });
 
@@ -194,16 +192,18 @@ describe("hydrateSession — no-DB paths (cookie missing / malformed)", () => {
 });
 
 describe("hydrateSession — no-row / fresh / terminal paths (no RPC fire)", () => {
-  it("no row for cookie → returns cookie's chatId, no RPC call", async () => {
+  it("no row for cookie → returns cookie's chatId, cache hit/miss but no RPC", async () => {
     cookieValue = VALID_UUID;
     rowReadResult = { data: null, error: null };
 
     const result = await hydrateSession();
 
     expect(result.chatId).toBe(VALID_UUID);
-    expect(fromCalls).toHaveLength(1);
-    expect(fromCalls[0]!.table).toBe("customer_chat_sessions");
-    expect(fromCalls[0]!.eqId).toBe(VALID_UUID);
+    // Plan 04 Phase 5B: row read goes through the per-session cache;
+    // assert on the cache invocation (chatId) rather than the supabase
+    // chain (which now lives inside the cache helper).
+    expect(cachedRowCalls).toHaveLength(1);
+    expect(cachedRowCalls[0]!.chatId).toBe(VALID_UUID);
     expect(rpcCalls).toHaveLength(0);
   });
 
@@ -465,16 +465,19 @@ describe("hydrateSession — RPC error handling", () => {
 });
 
 describe("hydrateSession — exception handling (outer try/catch)", () => {
-  it("createSupabaseAdminClient throws → Sentry warning + returns chatId without crashing", async () => {
+  it("getCachedSessionRow throws → Sentry warning + returns chatId without crashing", async () => {
+    // Plan 04 Phase 5B: read path failure is now surfaced by the cache
+    // helper throwing (previously the supabase admin client throw was the
+    // simulated failure point; that lives inside the cache helper now).
     cookieValue = VALID_UUID;
-    createSupabaseAdminClientThrows = new Error("admin client init failed");
+    cachedRowThrows = new Error("cache read failed");
 
     const result = await hydrateSession();
 
     expect(result.chatId).toBe(VALID_UUID);
     expect(sentryCaptureExceptionMock).toHaveBeenCalledTimes(1);
     const [err, ctx] = sentryCaptureExceptionMock.mock.calls[0]!;
-    expect((err as Error).message).toBe("admin client init failed");
+    expect((err as Error).message).toBe("cache read failed");
     const tags = (ctx as { tags?: Record<string, unknown>; level?: string })
       .tags;
     expect(tags?.surface).toBe("hydrate_session_stale_check");
@@ -484,18 +487,55 @@ describe("hydrateSession — exception handling (outer try/catch)", () => {
     // The RPC-error logError path should NOT have fired (we never got there).
     expect(logErrorMock).not.toHaveBeenCalled();
   });
+
+  it("createSupabaseAdminClient throws on stale-reset RPC path → outer Sentry warning fires", async () => {
+    // Phase 5B preserves the outer try/catch around the stale-reset RPC.
+    // To exercise the admin-client throw path, configure: row IS returned
+    // by cache AS stale, then admin client throws when transition.ts
+    // builds the RPC supabase instance.
+    cookieValue = VALID_UUID;
+    rowReadResult = {
+      data: {
+        id: VALID_UUID,
+        status: "timed_out",
+        last_active_at: isoMinutesAgo(1),
+        hold_token: null,
+      },
+      error: null,
+    };
+    createSupabaseAdminClientThrows = new Error("admin client init failed");
+
+    const result = await hydrateSession();
+
+    expect(result.chatId).toBe(VALID_UUID);
+    expect(sentryCaptureExceptionMock).toHaveBeenCalledTimes(1);
+    const [err] = sentryCaptureExceptionMock.mock.calls[0]!;
+    expect((err as Error).message).toBe("admin client init failed");
+    // RPC was never reached (admin client threw before .rpc).
+    expect(rpcCalls).toHaveLength(0);
+  });
 });
 
-describe("hydrateSession — DB read shape", () => {
-  it("selects the canonical 4 columns from customer_chat_sessions", async () => {
+describe("hydrateSession — cache invocation shape (Plan 04 Phase 5B)", () => {
+  it("getCachedSessionRow is invoked with the chatId as the cache key", async () => {
     cookieValue = VALID_UUID;
     rowReadResult = { data: null, error: null };
 
     await hydrateSession();
 
-    expect(fromCalls).toHaveLength(1);
-    expect(fromCalls[0]!.select).toBe(
-      "id, status, last_active_at, hold_token",
-    );
+    expect(cachedRowCalls).toHaveLength(1);
+    expect(cachedRowCalls[0]!.chatId).toBe(VALID_UUID);
+    // The projection (id, status, last_active_at, hold_token) is now
+    // hidden inside the cache helper (which selects '*' once + lets
+    // callers pluck fields). Projection assertion lives in cache.test.ts
+    // (helper unit tests) if added.
+  });
+
+  it("cache is NOT called when cookie is missing (early-return path)", async () => {
+    cookieValue = undefined;
+
+    await hydrateSession();
+
+    expect(cachedRowCalls).toHaveLength(0);
   });
 });
