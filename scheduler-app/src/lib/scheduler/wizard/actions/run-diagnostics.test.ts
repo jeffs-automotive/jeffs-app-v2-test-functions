@@ -12,20 +12,28 @@
  *      source_concerns[]) + flat pending-questions queue.
  *   5. Routes via routeAfterDiagnostics: pending > 0 → clarification_question,
  *      recs > 0 → testing_service_approval, neither → second_routine_pass.
- *   6. Persists via applyWizardTransition (single update on
+ *   6. Persists via applyWizardTransition (single RPC on
  *      customer_chat_sessions) + fires ensureConcernSummaries when pending
  *      is empty.
  *   7. Sentry breadcrumbs per concern + an aggregate captureMessage.
  *
+ * Plan 04 Phase 1A (2026-05-24): applyWizardTransition now routes through
+ * `supabase.rpc('apply_wizard_transition', { p_chat_id, p_payload, ... })`
+ * instead of `.from('customer_chat_sessions').update(...)`. The supabase
+ * mock now tracks RPC calls alongside the existing chain-recording, and
+ * the `findSessionUpdate()` helper inspects rpcCalls for the RPC's
+ * p_payload (which carries what used to be the `.update` payload, plus
+ * the `current_step: <nextStep>` and `status: 'active'` keys that
+ * transition.ts adds before the RPC call).
+ *
  * Scope note: the source does NOT write to scheduler_admin_audit_log. Test
  * #9 below therefore verifies the canonical "write surface" — the row
- * update payload that lands on customer_chat_sessions via
- * applyWizardTransition (NOT the table the task brief mentioned, which
- * doesn't apply to this action).
+ * payload sent to apply_wizard_transition (NOT the table the task brief
+ * mentioned, which doesn't apply to this action).
  *
  * Mocking pattern matches tests/unit/submit-start-over.test.ts (chain-
- * recording supabase mock) + tests/unit/get-current-card.test.ts (Sentry
- * + module mocks). No test seam added to the source.
+ * recording supabase mock + RPC-tracking) + tests/unit/get-current-card.test.ts
+ * (Sentry + module mocks). No test seam added to the source.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Mock } from "vitest";
@@ -79,14 +87,21 @@ vi.mock("next/cache", () => ({
 }));
 
 // Supabase admin client — chain-recording mock. Each query gets logged
-// in `chainCalls` so tests can assert on table/op/payload/match.
+// in `chainCalls` (for .from(...) builders) and `rpcCalls` (for
+// .rpc(...)) so tests can assert on table/op/payload/match for chains
+// and on fn/args for RPCs.
 interface ChainCall {
   table: string;
   op: "select" | "update" | "insert" | "delete";
   payload?: Record<string, unknown>;
   match?: Array<{ col: string; val: unknown }>;
 }
+interface RpcCall {
+  fn: string;
+  args: Record<string, unknown>;
+}
 const chainCalls: ChainCall[] = [];
+const rpcCalls: RpcCall[] = [];
 
 // Per-test row snapshot returned by the FIRST select() on customer_chat_sessions.
 let storedRow: Record<string, unknown> | null = null;
@@ -100,8 +115,9 @@ function makeMockClient() {
       // (b) routine_services as a plain awaited builder, and
       // (c) testing_services / concern_subcategories / concern_questions
       // via loadDiagnosticCatalog — but the catalog loader is MOCKED at
-      // the module level (see below), so this client only sees (a) + (b)
-      // + the trailing applyWizardTransition update.
+      // the module level (see below), so this client only sees (a) + (b).
+      // The trailing applyWizardTransition write goes through .rpc(...),
+      // tracked in rpcCalls.
       const builder = {
         eq(col: string, val: unknown) {
           eqs.push({ col, val });
@@ -146,6 +162,21 @@ function makeMockClient() {
             },
           };
         },
+      };
+    },
+    // Plan 04 Phase 1A: applyWizardTransition routes the column-update +
+    // optional bubble inserts through the apply_wizard_transition RPC.
+    // Track every RPC call so tests can inspect p_payload (which carries
+    // what used to land in `.from('customer_chat_sessions').update`).
+    async rpc(fnName: string, args: Record<string, unknown>) {
+      rpcCalls.push({ fn: fnName, args });
+      return {
+        data: {
+          row: {},
+          user_bubble_inserted: false,
+          assistant_bubble_inserted: false,
+        },
+        error: null,
       };
     },
   };
@@ -378,17 +409,30 @@ function makeNullMatch(
   };
 }
 
-/** Find the customer_chat_sessions update payload in chainCalls. */
+/**
+ * Find the customer_chat_sessions update payload in rpcCalls.
+ *
+ * Plan 04 Phase 1A: applyWizardTransition no longer calls
+ * `.from('customer_chat_sessions').update(...)`. It calls
+ * `supabase.rpc('apply_wizard_transition', { p_chat_id, p_payload, ... })`
+ * where `p_payload` carries everything that used to land in the .update
+ * call (plus the `status: 'active'` default and `current_step: <nextStep>`
+ * that transition.ts spreads in).
+ *
+ * Returns the p_payload of the first apply_wizard_transition call, or
+ * undefined if the action never reached the persistence step (e.g., a
+ * top-level catch fired before applyWizardTransition was invoked).
+ */
 function findSessionUpdate(): Record<string, unknown> | undefined {
-  return chainCalls.find(
-    (c) => c.table === "customer_chat_sessions" && c.op === "update",
-  )?.payload;
+  const rpc = rpcCalls.find((c) => c.fn === "apply_wizard_transition");
+  return rpc?.args.p_payload as Record<string, unknown> | undefined;
 }
 
 // ─── Test suite ────────────────────────────────────────────────────────────
 
 beforeEach(() => {
   chainCalls.length = 0;
+  rpcCalls.length = 0;
   storedRow = null;
   createSupabaseAdminClientMock.mockClear();
   revalidatePathMock.mockClear();
@@ -751,44 +795,54 @@ describe("runDiagnosticsV2 — idempotency + error paths", () => {
       expect(result.error).toContain("LLM unreachable");
     }
     expect(sentryCaptureException).toHaveBeenCalled();
-    // No applyWizardTransition update should have run — pipeline never
+    // No applyWizardTransition RPC should have run — pipeline never
     // got past the per-concern aggregation.
     expect(findSessionUpdate()).toBeUndefined();
   });
 });
 
 describe("runDiagnosticsV2 — observability + persistence shape", () => {
-  it("writes ONE customer_chat_sessions update with the canonical column set + revalidates", async () => {
+  it("writes ONE customer_chat_sessions RPC update with the canonical column set + revalidates", async () => {
     diagnoseConcernMock.mockResolvedValueOnce(
       makeServiceMatch({ unanswered_question_ids: [101] }),
     );
 
     await runDiagnosticsV2({ chatId: "sess-1" });
 
-    // Exactly one update on customer_chat_sessions (applyWizardTransition).
-    const updates = chainCalls.filter(
-      (c) => c.table === "customer_chat_sessions" && c.op === "update",
+    // Exactly one apply_wizard_transition RPC call (applyWizardTransition
+    // now routes through the RPC instead of `.from(...).update(...)` per
+    // Plan 04 Phase 1A — see migration 20260524220000).
+    const rpcCallsList = rpcCalls.filter(
+      (c) => c.fn === "apply_wizard_transition",
     );
-    expect(updates).toHaveLength(1);
-    const payload = updates[0]!.payload!;
-    // Update payload carries the canonical column set:
+    expect(rpcCallsList).toHaveLength(1);
+    const payload = rpcCallsList[0]!.args.p_payload as Record<string, unknown>;
+    // Payload carries the canonical column set from run-diagnostics.ts:
     expect(payload).toHaveProperty("diagnostic_processing_complete", true);
     expect(payload).toHaveProperty("explanation_required_items");
     expect(payload).toHaveProperty("clarification_questions_pending");
     expect(payload).toHaveProperty("clarification_questions_answered");
     expect(payload).toHaveProperty("recommended_testing_services");
+    // transition.ts spreads { status: 'active', ...updates, current_step:
+    // nextStep } before invoking the RPC, so both keys land in p_payload.
     expect(payload).toHaveProperty("current_step", "clarification_question");
-    expect(payload).toHaveProperty("last_active_at");
+    expect(payload).toHaveProperty("status", "active");
+    // last_active_at is NOT in p_payload — transition.ts strips it
+    // (and the RPC ignores any incoming value, server-canonicalizing via
+    // pg_catalog.now()).
+    expect(payload).not.toHaveProperty("last_active_at");
     // updated explanation_required_items[0] should carry unanswered_question_ids
     const items = payload.explanation_required_items as Array<{
       service_key: string;
       unanswered_question_ids: number[];
     }>;
     expect(items[0]!.unanswered_question_ids).toEqual([101]);
-    // Update matched on the session id.
-    expect(updates[0]!.match).toEqual([{ col: "id", val: "sess-1" }]);
-    // revalidatePath fired (applyWizardTransition's contract).
+    // The RPC is invoked against the correct session.
+    expect(rpcCallsList[0]!.args.p_chat_id).toBe("sess-1");
+    // revalidatePath fired (applyWizardTransition's contract — for /, /book,
+    // and /book-v2 per WIZARD_REVALIDATE_PATHS).
     expect(revalidatePathMock).toHaveBeenCalled();
+    expect(revalidatePathMock).toHaveBeenCalledWith("/book-v2");
   });
 
   it("fires per-concern Sentry breadcrumbs + an aggregate captureMessage at the expected checkpoints", async () => {

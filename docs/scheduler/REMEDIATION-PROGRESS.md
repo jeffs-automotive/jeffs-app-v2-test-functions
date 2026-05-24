@@ -13,7 +13,7 @@
 | [01](./plans/PLAN-01-pre-launch-blockers.md) | Pre-launch BLOCKERs | ✅ **COMPLETE 2026-05-22** | 4 phases | B1–B10 (10/10 BLOCKERs) |
 | [02](./plans/PLAN-02-observability-hardening.md) | Observability hardening | ✅ **COMPLETE 2026-05-24** | 5 phases | I-OBS-1, 4, 5, 7 + OBS-8 |
 | [03](./plans/PLAN-03-security-hardening.md) | Security hardening | ✅ **COMPLETE 2026-05-23** (SEC-7 BotID deferred to pre-launch) | 5 phases | I-SEC-1, 3, 4, 5, 6 + RFC 8707 |
-| [04](./plans/PLAN-04-atomicity-correctness.md) | Atomicity + correctness | 🔜 **NOT STARTED** | — | I-COR-1–8, I-OTH-3 |
+| [04](./plans/PLAN-04-atomicity-correctness.md) | Atomicity + correctness | 🟡 **IN PROGRESS** (Phase 1A landed 2026-05-24) | 1 of 8 phases | I-COR-1 (Phase 1A done) |
 | [05](./plans/PLAN-05-integration-robustness.md) | Integration robustness | 🔜 **NOT STARTED** | — | I-INT-1, 2, 3, 4 |
 | [06](./plans/PLAN-06-test-coverage-expansion.md) | Test coverage + DAL refactor | 🔜 **NOT STARTED** | — | I-TEST-1–8 |
 | [07](./plans/PLAN-07-operational-pre-launch.md) | Operational + pre-launch | 🔜 **NOT STARTED** | — | I-OTH-1, 2, 4, P1, P2 |
@@ -80,13 +80,31 @@ All 5 plan phases landed. SEC-7 (BotID Deep Analysis + Upstash rate-limit activa
 
 ---
 
-## Plan 04 — Atomicity + correctness · 🔜 NOT STARTED
+## Plan 04 — Atomicity + correctness · 🟡 IN PROGRESS (1 of 8 phases done)
 
 Findings: I-COR-1 through I-COR-8 + I-OTH-3.
 
 Per the master plan's dependency graph, Plan 04 can run in parallel with Plans 05 + 07 after Plan 01 Phase 4 (tests) is in place — which it is. **No blocker.**
 
-Estimated effort: 4 days. Open decisions:
+### Completed phases
+
+| Phase | What it did | Commit | Closes |
+|---|---|---|---|
+| 1A | `public.apply_wizard_transition` SECURITY INVOKER RPC — atomic 3-write (UPDATE customer_chat_sessions + optional user-bubble INSERT + optional assistant-bubble INSERT) in a single Postgres transaction (PostgREST-wrapped). `scheduler-app/src/lib/scheduler/wizard/transition.ts` rewritten to call the RPC. Server-canonical `last_active_at = pg_catalog.now()` removes client clock-drift risk. Column-merge uses `CASE WHEN p_payload ? 'col' THEN ... ELSE col END` (NOT COALESCE — matches supabase-js .update semantic so explicit-null payload entries clear columns to SQL NULL; 6 callers depend on this). New `transition.test.ts` (13 tests) + refactored `submit-start-over.test.ts` + `run-diagnostics.test.ts` for new persistence shape. | _(commit SHA after push)_ | I-COR-1 |
+
+### Remaining phases (estimated)
+
+| Phase | Scope | Effort | Notes |
+|---|---|---|---|
+| 1B | `hydrate_session_reset` RPC for stale-session reset | ~0.5 day | Atomic 4-write reset |
+| 2 | `submit-summary` hold CAS lock | ~4 hr | Prevent mark-abandoned race window |
+| 3A | `submit-vehicle-pick` validates vehicle ownership | ~3 hr | IDOR defense |
+| 3B | `submit-multi-account-choice` validates customer_id in pending_candidates | ~3 hr | IDOR defense |
+| 4 | `submit-summary` verification-mismatch handling | ~3 hr | 3-state envelope: pending → confirmed \| needs_review |
+| 5 | `WIZARD_REVALIDATE_PATHS` scope reduction (I-OTH-3) | ~3 hr | `revalidateTag(`session-${id}`)` per session |
+| 6 | FK `ON DELETE CASCADE` rationale audit (I-COR-7) + early-migration idempotency guard docs (I-COR-8) | ~3 hr | Documentation + 1-2 FK changes |
+
+Open decisions:
 - CAS lock value — reuse `released_at` or add a dedicated column?
 - Verification-mismatch UX copy wordsmithing
 - `revalidatePath` scope reduction — wizard-cards-only or full session-tag refactor?

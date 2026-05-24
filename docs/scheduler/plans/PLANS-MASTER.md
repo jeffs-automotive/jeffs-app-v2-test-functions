@@ -19,9 +19,9 @@
 
 ✅ **Plans 01, 02, 03 — COMPLETE.** All 10 BLOCKERs + 16+ IMPORTANTs closed across 14 phase-level commits. See `REMEDIATION-PROGRESS.md` for per-phase commit SHAs.
 
-🔜 **Plans 04, 05, 06, 07 — NOT STARTED.** Plans 04, 05, 07 are unblocked + parallel-runnable; Plan 06 sits on top of Plan 04.
+🟡 **Plan 04 — IN PROGRESS.** Phase 1A (`apply_wizard_transition` RPC) landed 2026-05-24, closing I-COR-1. 7 remaining phases.
 
-**Recommended next pick:** Plan 04 (Atomicity + correctness) — it unblocks Plan 06 and the I-COR findings are the highest latent-risk surface remaining (data loss / race conditions / double-write risk).
+🔜 **Plans 05, 06, 07 — NOT STARTED.** Plans 05, 07 are unblocked + parallel-runnable with Plan 04's remaining phases; Plan 06 sits on top of Plan 04.
 
 ---
 
@@ -32,7 +32,7 @@
 | [01](./PLAN-01-pre-launch-blockers.md) | Pre-launch BLOCKERs | ✅ COMPLETE 2026-05-22 | 6-8 days | medium | B1-B10, I-OBS-2, I-INT-5 | — |
 | [02](./PLAN-02-observability-hardening.md) | Observability hardening | ✅ COMPLETE 2026-05-24 | 3 days | low | I-OBS-1,3,4,5,7,8, I-INT-6 | Plan 01 Phase 3 (CI) |
 | [03](./PLAN-03-security-hardening.md) | Security hardening | ✅ COMPLETE 2026-05-23 (SEC-7 BotID deferred to pre-launch) | 5-6 days | medium | I-SEC-1,3,4,5,6,7 + headers | Plan 01 Phase 1A + 3 |
-| [04](./PLAN-04-atomicity-correctness.md) | Atomicity + correctness | 🔜 NOT STARTED | 4 days | medium-high | I-COR-1,2,3,4,5,6,7,8, I-OTH-3 | Plan 01 Phase 4 (tests) ✅ |
+| [04](./PLAN-04-atomicity-correctness.md) | Atomicity + correctness | 🟡 IN PROGRESS (Phase 1A landed 2026-05-24) | 4 days | medium-high | I-COR-1,2,3,4,5,6,7,8, I-OTH-3 | Plan 01 Phase 4 (tests) ✅ |
 | [05](./PLAN-05-integration-robustness.md) | Integration robustness | 🔜 NOT STARTED | 5-6 days | medium | I-INT-1,2,3,4 | Plan 01 Phase 1A ✅ |
 | [06](./PLAN-06-test-coverage-expansion.md) | Test coverage expansion + DAL refactor | 🔜 NOT STARTED | 1-2 weeks | low | I-TEST-1 through I-TEST-8 | Plan 01 Phase 3 ✅ + 4 ✅, Plan 04 |
 | [07](./PLAN-07-operational-pre-launch.md) | Operational + pre-launch | 🔜 NOT STARTED | 2 days | low | I-OTH-1,2,4, P1, P2 | — |

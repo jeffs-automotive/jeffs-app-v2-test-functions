@@ -17,6 +17,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
  *      via `.then`).
  *   5. Returns a WizardTransitionResult of { ok: true, next_step: 'greeting' }.
  *
+ * Plan 04 Phase 1A (2026-05-24): the wizard column-wipe now flows through
+ * `supabase.rpc('apply_wizard_transition', { p_chat_id, p_payload, ... })`
+ * instead of `.from('customer_chat_sessions').update(...)`. The mock
+ * client below tracks both `.from(...)` chains AND `.rpc(...)` calls; the
+ * "wipes the wizard-state columns" assertion now inspects p_payload.
+ *
  * The test mocks createSupabaseAdminClient + next/cache.revalidatePath
  * and asserts on the recorded query chain.
  */
@@ -32,7 +38,13 @@ interface ChainCall {
   match?: Array<{ col: string; val: unknown }>;
 }
 
+interface RpcCall {
+  fn: string;
+  args: Record<string, unknown>;
+}
+
 const chainCalls: ChainCall[] = [];
+const rpcCalls: RpcCall[] = [];
 
 // Per-test row snapshot returned by the FIRST select() chain.
 let snapshotRow: Record<string, unknown> | null = {
@@ -118,6 +130,20 @@ function makeMockClient() {
         },
       };
     },
+    // Plan 04 Phase 1A: applyWizardTransition routes through the
+    // apply_wizard_transition RPC. Track the call so tests can inspect
+    // p_payload (which is what used to land in `.update(payload)`).
+    async rpc(fnName: string, args: Record<string, unknown>) {
+      rpcCalls.push({ fn: fnName, args });
+      return {
+        data: {
+          row: {},
+          user_bubble_inserted: true,
+          assistant_bubble_inserted: true,
+        },
+        error: null,
+      };
+    },
   };
 }
 
@@ -154,6 +180,7 @@ import { submitStartOverV2 } from "@/lib/scheduler/wizard/actions/submit-start-o
 
 beforeEach(() => {
   chainCalls.length = 0;
+  rpcCalls.length = 0;
   createSupabaseAdminClientMock.mockClear();
   revalidatePathMock.mockClear();
   snapshotRow = {
@@ -175,20 +202,22 @@ describe("submitStartOverV2", () => {
     }
   });
 
-  it("wipes the wizard-state columns AND advances current_step to 'greeting'", async () => {
+  it("wipes the wizard-state columns AND advances current_step to 'greeting' (via apply_wizard_transition RPC)", async () => {
     await submitStartOverV2({ chatId: "sess-abc" });
 
-    const update = chainCalls.find(
-      (c) => c.table === "customer_chat_sessions" && c.op === "update",
-    );
-    expect(update).toBeDefined();
-    const payload = update?.payload as Record<string, unknown>;
+    const rpcCall = rpcCalls.find((c) => c.fn === "apply_wizard_transition");
+    expect(rpcCall).toBeDefined();
+    // applyWizardTransition forwards the caller's updates onto p_payload
+    // (plus a default status: 'active' at the front and current_step at
+    // the end — see scheduler-app/src/lib/scheduler/wizard/transition.ts).
+    const payload = rpcCall?.args.p_payload as Record<string, unknown>;
 
     // Identity bindings wiped
     expect(payload.customer_id).toBeNull();
     expect(payload.vehicle_id).toBeNull();
     expect(payload.appointment_id).toBeNull();
-    // Wizard-step + status reset
+    // Wizard-step + status reset (transition.ts prepends status='active'
+    // and always sets current_step to the nextStep arg).
     expect(payload.current_step).toBe("greeting");
     expect(payload.status).toBe("active");
     // Service picks wiped
@@ -198,6 +227,8 @@ describe("submitStartOverV2", () => {
     expect(payload.customer_notes_text).toBeNull();
     expect(payload.customer_question).toBeNull();
     expect(payload.customer_notes_edit_attempts).toBe(0);
+    // The RPC is invoked against the correct session.
+    expect(rpcCall?.args.p_chat_id).toBe("sess-abc");
   });
 
   it("deletes the customer_chat_messages rows for the session", async () => {
@@ -213,6 +244,18 @@ describe("submitStartOverV2", () => {
   it("revalidates /book-v2 (which is the canonical wizard path during the migration window)", async () => {
     await submitStartOverV2({ chatId: "sess-abc" });
 
+    // applyWizardTransition fans out to all three legacy wizard surfaces
+    // (/, /book, /book-v2 — see transition.ts WIZARD_REVALIDATE_PATHS).
+    // /book-v2 is the post-Phase-15 canonical entry, so we assert on it
+    // specifically; the broader fan-out is covered by transition.test.ts.
+    expect(revalidatePathMock).toHaveBeenCalledWith("/book-v2");
+  });
+
+  it("revalidates ALL wizard surfaces (/, /book, /book-v2) via applyWizardTransition", async () => {
+    await submitStartOverV2({ chatId: "sess-abc" });
+
+    expect(revalidatePathMock).toHaveBeenCalledWith("/");
+    expect(revalidatePathMock).toHaveBeenCalledWith("/book");
     expect(revalidatePathMock).toHaveBeenCalledWith("/book-v2");
   });
 
