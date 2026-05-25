@@ -216,7 +216,7 @@ describe("submitMultiAccountChoiceV2 — 'none_of_these' branch (no IDOR surface
 });
 
 describe("submitMultiAccountChoiceV2 — 'select' happy path (IDOR check passes)", () => {
-  it("selected_customer_id in pending_candidates → write + OTP + otp_pending", async () => {
+  it("selected_customer_id in pending_candidates → OTP send FIRST, THEN customer_id write via applyWizardTransition, otp_pending advance (H2 post-validator order)", async () => {
     await submitMultiAccountChoiceV2({
       action: "select",
       chatId: CHAT_ID,
@@ -230,23 +230,137 @@ describe("submitMultiAccountChoiceV2 — 'select' happy path (IDOR check passes)
     expect(readCall).toBeDefined();
     expect(readCall!.cols).toBe("phone_e164, pending_candidates");
 
-    // Update fired with the selected customer_id.
-    const writeCall = chainCalls.find(
+    // H2: NO direct supabase .update before OTP. The write moved into
+    // applyWizardTransition AFTER OTP success.
+    const directWriteCall = chainCalls.find(
       (c) => c.table === "customer_chat_sessions" && c.op === "update",
     );
-    expect(writeCall).toBeDefined();
-    expect(writeCall!.payload).toMatchObject({
-      customer_id: CANDIDATE_A_ID,
-      pending_candidates: null,
-    });
+    expect(directWriteCall).toBeUndefined();
 
     // OTP fired.
     expect(otpResendCalls).toHaveLength(1);
     expect(otpResendCalls[0]!.session_id).toBe(CHAT_ID);
 
-    // Final advance to otp_pending.
+    // Single applyWizardTransition call: advance to otp_pending AND
+    // commit the customer_id binding + clear pending_candidates.
     expect(awtCalls).toHaveLength(1);
     expect(awtCalls[0]!.nextStep).toBe("otp_pending");
+    expect(awtCalls[0]!.updates).toMatchObject({
+      customer_id: CANDIDATE_A_ID,
+      pending_candidates: null,
+    });
+  });
+});
+
+describe("submitMultiAccountChoiceV2 — H2 post-validator (customer_id NOT written on OTP failure)", () => {
+  it("callOtpResend throws → escalates WITHOUT customer_id in updates", async () => {
+    otpResendResult = async () => {
+      throw new Error("Telnyx 500 transient");
+    };
+
+    await submitMultiAccountChoiceV2({
+      action: "select",
+      chatId: CHAT_ID,
+      selected_customer_id: CANDIDATE_A_ID,
+    });
+
+    // No direct supabase write (H2: deferred until after OTP success).
+    expect(
+      chainCalls.find(
+        (c) => c.table === "customer_chat_sessions" && c.op === "update",
+      ),
+    ).toBeUndefined();
+
+    // Escalation fired, but customer_id is NOT in the updates payload —
+    // the row is left without bound customer identity, preserving the
+    // IDOR defense from Phase 3B.
+    expect(awtCalls).toHaveLength(1);
+    expect(awtCalls[0]!.nextStep).toBe("escalated");
+    expect(awtCalls[0]!.updates?.customer_id).toBeUndefined();
+  });
+
+  it("callOtpResend returns !ok → escalates WITHOUT customer_id in updates", async () => {
+    otpResendResult = { ok: false, error: "rate_limited" };
+
+    await submitMultiAccountChoiceV2({
+      action: "select",
+      chatId: CHAT_ID,
+      selected_customer_id: CANDIDATE_A_ID,
+    });
+
+    expect(
+      chainCalls.find(
+        (c) => c.table === "customer_chat_sessions" && c.op === "update",
+      ),
+    ).toBeUndefined();
+
+    expect(awtCalls).toHaveLength(1);
+    expect(awtCalls[0]!.nextStep).toBe("escalated");
+    expect(awtCalls[0]!.updates?.customer_id).toBeUndefined();
+  });
+});
+
+describe("submitMultiAccountChoiceV2 — H3 post-validator (pending_candidates shape validation)", () => {
+  it("malformed pending_candidates (missing customer_id) → shape-mismatch error + fail-closed", async () => {
+    combinedReadResult = {
+      data: {
+        phone_e164: "+15551234567",
+        // Simulates writer drift: candidates lack customer_id.
+        pending_candidates: [
+          { wrong_field: 42, recent_vehicle: "2020 Toyota" },
+        ],
+      },
+      error: null,
+    };
+
+    const result = await submitMultiAccountChoiceV2({
+      action: "select",
+      chatId: CHAT_ID,
+      selected_customer_id: CANDIDATE_A_ID,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toBe("customer_id_invalid");
+    }
+
+    // Sentry ERROR level (not warning) on shape mismatch — alerts
+    // ops that writer drift has occurred.
+    expect(sentryCaptureMessageMock).toHaveBeenCalledWith(
+      "submit_multi_account_choice_v2 pending_candidates shape mismatch",
+      expect.objectContaining({
+        level: "error",
+        tags: expect.objectContaining({
+          surface: "submit_multi_account_choice_v2_shape_check",
+          chat_id: CHAT_ID,
+        }),
+      }),
+    );
+
+    // Fail-closed: no OTP, no write.
+    expect(otpResendCalls).toHaveLength(0);
+    expect(awtCalls).toHaveLength(0);
+  });
+
+  it("recent_vehicle nullable in zod schema (matches live DB stale rows)", async () => {
+    combinedReadResult = {
+      data: {
+        phone_e164: "+15551234567",
+        pending_candidates: [
+          { customer_id: CANDIDATE_A_ID, recent_vehicle: null },
+        ],
+      },
+      error: null,
+    };
+
+    const result = await submitMultiAccountChoiceV2({
+      action: "select",
+      chatId: CHAT_ID,
+      selected_customer_id: CANDIDATE_A_ID,
+    });
+
+    // Nullable recent_vehicle passes schema → IDOR check accepts CANDIDATE_A_ID.
+    expect(result.ok).toBe(true);
   });
 });
 

@@ -55,6 +55,32 @@ const submitMultiAccountChoiceSchema = z.discriminatedUnion("action", [
   }),
 ]);
 
+/**
+ * Runtime validation schema for the pending_candidates JSONB column.
+ *
+ * Plan 04 post-validator H3 fix (2026-05-25):
+ *
+ * The IDOR check below filters `c.customer_id === selected_customer_id`
+ * against an untyped JSON array. A raw TS cast (the prior implementation)
+ * would silently produce objects without `customer_id` if the writer
+ * shape ever drifts — every legitimate selection would then fail the
+ * .some() check → all customers rejected as "not member."
+ *
+ * The migration history (PLAN-04 spec/reality mismatch on this exact
+ * field) shows this is a real risk surface. zod validation surfaces
+ * drift immediately as a Sentry error.
+ *
+ * recent_vehicle is .nullable() because some live rows from before
+ * scheduler-step2-direct's recent_vehicle filter (lines 267-269 of
+ * that file) was added still have null values. Don't fail-closed on
+ * null — only fail when customer_id is missing or wrong type.
+ */
+const pendingCandidateSchema = z.object({
+  customer_id: z.number().int().positive(),
+  recent_vehicle: z.string().nullable(),
+});
+const pendingCandidatesSchema = z.array(pendingCandidateSchema).nullable();
+
 export type SubmitMultiAccountChoiceV2Args = z.infer<
   typeof submitMultiAccountChoiceSchema
 >;
@@ -151,10 +177,40 @@ async function submitMultiAccountChoiceV2Impl(
     // Hard-fail on null/empty/read-failure: this is a security gate,
     // not the rate-limit's best-effort posture. If we can't verify
     // membership, refuse the write.
-    const candidates =
-      (rowReadResult?.pending_candidates as
-        | Array<{ customer_id: number; recent_vehicle: string }>
-        | null) ?? null;
+    //
+    // H3 post-validator (2026-05-25): runtime-validate the JSONB shape
+    // via zod (not a raw cast) so writer drift in scheduler-step2-direct
+    // surfaces immediately as a Sentry error instead of silently
+    // rejecting every legitimate selection.
+    const candidatesParsed = pendingCandidatesSchema.safeParse(
+      rowReadResult?.pending_candidates ?? null,
+    );
+    if (!candidatesParsed.success) {
+      Sentry.captureMessage(
+        "submit_multi_account_choice_v2 pending_candidates shape mismatch",
+        {
+          level: "error",
+          tags: {
+            surface: "submit_multi_account_choice_v2_shape_check",
+            chat_id: chatId,
+          },
+          extra: {
+            issues: candidatesParsed.error.issues.slice(0, 5),
+            sample_received: JSON.stringify(
+              rowReadResult?.pending_candidates ?? null,
+            ).slice(0, 500),
+          },
+        },
+      );
+      // Fail-closed on shape drift — better to block + alert than to
+      // silently pass-through-malformed-data. Operator gets a Sentry
+      // error pointing at the writer drift; can fix + retry.
+      return {
+        ok: false,
+        error: "customer_id_invalid",
+      };
+    }
+    const candidates = candidatesParsed.data;
     const isMember = candidates?.some(
       (c) => c.customer_id === selected_customer_id,
     );
@@ -200,26 +256,25 @@ async function submitMultiAccountChoiceV2Impl(
       }
     }
 
-    const { error: pickErr } = await supabase
-      .from("customer_chat_sessions")
-      .update({
-        customer_id: selected_customer_id,
-        pending_candidates: null,
-        last_active_at: new Date().toISOString(),
-      })
-      .eq("id", chatId);
-    if (pickErr) {
-      Sentry.captureException(pickErr, {
-        tags: { surface: "submit_multi_account_choice_v2_select_write" },
-        level: "error",
-      });
-      return { ok: false, error: pickErr.message };
-    }
-
-    // Send OTP via the scheduler-otp-direct 'resend' op — internally
-    // calls sendOtp + stamps otp_sent_at + resets otp_attempts to 0.
-    // Same path the OtpInput card's Resend button uses, reused here
-    // as the first-send for this newly-resolved customer_id.
+    // ─── H2 post-validator fix (2026-05-25): customer_id write order ───
+    //
+    // The prior implementation wrote customer_id + cleared
+    // pending_candidates BEFORE calling callOtpResend. If the OTP send
+    // failed (throw or !ok), the escalation path didn't clear
+    // customer_id — the row was left claiming customer identity without
+    // any OTP verification. Any later code path treating customer_id
+    // as identity-trusted would have re-opened the IDOR surface that
+    // Phase 3B was meant to close.
+    //
+    // Verified safe to defer (scheduler-otp-direct's handleResend reads
+    // ONLY phone_e164 — line 276): customer_id is not needed for OTP
+    // SEND, only for OTP VERIFY. Sending the OTP first + binding the
+    // customer_id only after OTP send succeeds eliminates the
+    // bound-but-unverified state on failure paths.
+    //
+    // Bonus: post-OTP-success commit goes through applyWizardTransition
+    // (Phase 1A atomic RPC) instead of a direct .update — picks up
+    // server-canonical last_active_at + atomicity for free.
     let otpResult;
     try {
       otpResult = await callOtpResend({ session_id: chatId });
@@ -235,6 +290,8 @@ async function submitMultiAccountChoiceV2Impl(
         },
         level: "error",
       });
+      // No customer_id was written; escalation safe to issue without
+      // a cleanup write.
       return applyWizardTransition({
         chatId,
         updates: {
@@ -249,6 +306,7 @@ async function submitMultiAccountChoiceV2Impl(
     }
 
     if (!otpResult.ok) {
+      // Same: no customer_id was written; escalation is clean.
       return applyWizardTransition({
         chatId,
         updates: {
@@ -264,9 +322,15 @@ async function submitMultiAccountChoiceV2Impl(
       });
     }
 
+    // OTP send succeeded — NOW commit the customer_id binding +
+    // clear pending_candidates + advance to otp_pending. All atomic
+    // via applyWizardTransition's RPC.
     return applyWizardTransition({
       chatId,
-      updates: {},
+      updates: {
+        customer_id: selected_customer_id,
+        pending_candidates: null,
+      },
       nextStep: "otp_pending",
       jeffBubble: "Got it — texting your code now! 📱",
     });
