@@ -25,6 +25,14 @@ import { OfflineBanner } from "./OfflineBanner";
 export interface WizardCrossCuttingProps {
   chatId: string;
   currentStep: string;
+  /**
+   * HMAC-SHA256(SCHEDULER_BEACON_HMAC_SECRET, chatId) as base64url —
+   * computed server-side in BookPageShell and threaded through to
+   * IdleTimer so the mark-abandoned beacon can authenticate itself.
+   * Empty string when the secret is unset (dev / pre-launch); the
+   * route's verifyBeaconSig falls back to "skipped" in that posture.
+   */
+  beaconSig: string;
 }
 
 const TERMINAL_STEPS = new Set<string>(["escalated", "completed", "abandoned"]);
@@ -32,6 +40,7 @@ const TERMINAL_STEPS = new Set<string>(["escalated", "completed", "abandoned"]);
 export function WizardCrossCutting({
   chatId,
   currentStep,
+  beaconSig,
 }: WizardCrossCuttingProps) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
@@ -66,6 +75,7 @@ export function WizardCrossCutting({
       <IdleTimer
         chatId={chatId}
         currentStep={currentStep}
+        beaconSig={beaconSig}
         disabled={isTerminal}
       />
       <WizardFooter

@@ -1,6 +1,7 @@
 import { ensureSessionExists } from "@/lib/scheduler/chat-store";
 import { hydrateSession } from "@/lib/scheduler/hydrate-session";
 import { getCurrentCard } from "@/lib/scheduler/wizard/get-current-card";
+import { signBeaconChatId } from "@/lib/security/beacon-hmac";
 import { WizardCrossCutting } from "@/components/scheduler/wizard/WizardCrossCutting";
 import { WizardSurface } from "@/components/scheduler/wizard/WizardSurface";
 
@@ -41,6 +42,14 @@ export async function BookPageShell() {
     payload: {},
   };
 
+  // P1.5 (2026-05-25): server-side HMAC sig over chatId for the
+  // mark-abandoned beacon. Empty string when SCHEDULER_BEACON_HMAC_SECRET
+  // is unset (dev / pre-launch) — the helper emits a one-time Sentry
+  // warning so operators can find the gap. The route's verifyBeaconSig
+  // falls back to "skipped" in that posture, preserving the prior
+  // unauthenticated behavior.
+  const beaconSig = signBeaconChatId(chatId);
+
   return (
     <main className="flex min-h-dvh flex-col bg-paper">
       <header className="border-b border-rule bg-paper-100">
@@ -64,7 +73,11 @@ export async function BookPageShell() {
         </section>
       </div>
 
-      <WizardCrossCutting chatId={chatId} currentStep={card.step} />
+      <WizardCrossCutting
+        chatId={chatId}
+        currentStep={card.step}
+        beaconSig={beaconSig}
+      />
 
       <footer className="border-t border-rule bg-paper-100">
         <div className="mx-auto flex max-w-3xl flex-col gap-3 px-4 py-4 text-center text-[12px] text-ink-tertiary sm:flex-row sm:items-center sm:justify-between sm:text-left">

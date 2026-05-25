@@ -20,10 +20,23 @@
  * for the same session (e.g., one from idle timer + one from pagehide)
  * are safe — second one is a no-op.
  *
- * Auth: NONE. The browser can't attach bearers on sendBeacon during
- * tear-down. Abuse surface is small — marking a row the attacker
- * already knows the chat_id for as timed_out is exactly what the
- * legitimate customer would do.
+ * Auth: HMAC-SHA256 signature over chat_id (P1.5 post-validator fix
+ * 2026-05-25). The customer's wizard page (Server Component) signs
+ * chat_id with SCHEDULER_BEACON_HMAC_SECRET at render time and the
+ * IdleTimer attaches the sig as a query param on every beacon. The
+ * route validates the sig before any DB work. Attacker-forged
+ * beacons (no sig OR wrong sig) return 204 without touching state.
+ *
+ * Why HMAC and not session cookies / bearer tokens: sendBeacon fires
+ * during browser tear-down with no time to set headers and limited
+ * support for credentialed requests. HMAC is stateless, embeddable
+ * in a query param, and verifies in O(1) without a DB round-trip.
+ *
+ * Graceful degradation: when SCHEDULER_BEACON_HMAC_SECRET is unset
+ * (local dev / pre-launch), the route's verifyBeaconSig returns
+ * "skipped" and falls back to the prior auth=NONE posture. A
+ * one-time Sentry warning is emitted; strict mode
+ * (SCHEDULER_REQUIRE_RATE_LIMIT=true) bumps it to error.
  *
  * Returns 204 always so the browser doesn't queue retries.
  */
@@ -34,6 +47,7 @@ import { z } from "zod";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { sessionTag } from "@/lib/scheduler/cache";
+import { verifyBeaconSig } from "@/lib/security/beacon-hmac";
 import { logError } from "@/lib/scheduler/wizard/log-error";
 
 export const dynamic = "force-dynamic";
@@ -63,6 +77,13 @@ const beaconInputSchema = z.object({
   chat_id: z.string().uuid(),
   step: z.string().max(64).nullable().optional(),
   source: z.enum(["idle_timer", "tab_close"]).nullable().optional(),
+  // P1.5 (2026-05-25): HMAC sig over chat_id. Base64url-encoded
+  // SHA-256 digest = exactly 43 chars. When SCHEDULER_BEACON_HMAC_SECRET
+  // is unset (dev / pre-launch), the field is absent and the
+  // verifyBeaconSig helper returns "skipped" (fail-OPEN preserves
+  // the prior auth=NONE posture). Bounded to 43 chars to defeat any
+  // attempt to smuggle a long string through the validator.
+  sig: z.string().max(43).nullable().optional(),
 });
 
 export async function POST(req: Request): Promise<NextResponse> {
@@ -74,16 +95,18 @@ export async function POST(req: Request): Promise<NextResponse> {
     let rawChatId = url.searchParams.get("chat_id");
     let rawStep = url.searchParams.get("step");
     let rawSource = url.searchParams.get("source");
+    let rawSig = url.searchParams.get("sig");
 
     if (!rawChatId) {
       try {
         const body = (await req.json().catch(() => null)) as
-          | { chat_id?: string; step?: string; source?: string }
+          | { chat_id?: string; step?: string; source?: string; sig?: string }
           | null;
         if (body && typeof body.chat_id === "string") {
           rawChatId = body.chat_id;
           rawStep = body.step ?? null;
           rawSource = body.source ?? null;
+          rawSig = body.sig ?? null;
         }
       } catch {
         // empty body is fine — beacon is best-effort
@@ -97,6 +120,7 @@ export async function POST(req: Request): Promise<NextResponse> {
       chat_id: rawChatId,
       step: rawStep,
       source: rawSource,
+      sig: rawSig,
     });
     if (!parsed.success) {
       return new NextResponse(null, { status: 204 });
@@ -104,6 +128,40 @@ export async function POST(req: Request): Promise<NextResponse> {
     const chatId = parsed.data.chat_id;
     const step = parsed.data.step ?? null;
     const source = parsed.data.source ?? null;
+    const sig = parsed.data.sig ?? null;
+
+    // P1.5 (2026-05-25): HMAC validation BEFORE any DB read. An
+    // attacker probing the endpoint with leaked chat_ids never
+    // reaches the DB if their sig is missing or wrong — eliminates
+    // both the abuse vector AND the DB round-trip cost of probes.
+    //
+    // verifyBeaconSig returns:
+    //   - "verified"    → proceed (sig matched)
+    //   - "skipped"     → proceed (no secret configured; dev / pre-launch)
+    //   - "missing_sig" → reject (secret configured; request had no sig)
+    //   - "mismatch"    → reject (secret configured; sig was wrong)
+    //
+    // Both reject branches return 204 (not 401) so we don't leak the
+    // chat_id's validity to an attacker — legitimate beacons also
+    // return 204, so the response shape is indistinguishable.
+    const hmacResult = verifyBeaconSig(chatId, sig);
+    if (hmacResult === "missing_sig" || hmacResult === "mismatch") {
+      Sentry.captureMessage("mark_abandoned_hmac_rejected", {
+        level: "warning",
+        tags: {
+          surface: "mark_abandoned_route",
+          hmac_result: hmacResult,
+          source: source ?? "unknown",
+        },
+        extra: {
+          // chatId IS sensitive (links to a session row) — limit to
+          // first 8 chars so triage can correlate with logs without
+          // leaking the full token in the Sentry event payload.
+          chatId_prefix: chatId.slice(0, 8),
+        },
+      });
+      return new NextResponse(null, { status: 204 });
+    }
 
     const supabase = createSupabaseAdminClient();
 

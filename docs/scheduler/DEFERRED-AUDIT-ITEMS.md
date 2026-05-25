@@ -430,6 +430,74 @@ the work lands.
   `scheduler-app/tests/unit/rate-limit.test.ts`,
   `scheduler-app/tests/unit/get-request-ip.test.ts`.
 
+### SEC-8 · `SCHEDULER_BEACON_HMAC_SECRET` env var — pre-launch activation (NEW 2026-05-25)
+
+- **Status** — code shipped; env var NOT yet set on Vercel. Activates the
+  `/api/scheduler/mark-abandoned` beacon HMAC validation. With the env
+  var unset, the route falls back to its prior auth=NONE posture and a
+  one-time Sentry warning is emitted (`beacon_hmac_init` /
+  `misconfiguration=secret_missing`).
+
+- **What was shipped** (P1.5 post-validator fix 2026-05-25):
+  - `scheduler-app/src/lib/security/beacon-hmac.ts` — `signBeaconChatId`
+    + `verifyBeaconSig` + `isBeaconHmacConfigured` helpers.
+  - `BookPageShell.tsx` calls `signBeaconChatId(chatId)` server-side
+    and threads the sig through `WizardCrossCutting` → `IdleTimer`.
+  - `IdleTimer.tsx` attaches `sig=<base64url>` to every
+    `mark-abandoned` beacon query string.
+  - `mark-abandoned/route.ts` verifies the sig BEFORE any DB read.
+    Returns 204 with a Sentry warning (`mark_abandoned_hmac_rejected`)
+    on missing or mismatched sig.
+  - `tests/unit/beacon-hmac.test.ts` — 19 tests covering
+    configured/unconfigured/strict-mode paths.
+
+- **Pre-launch activation steps** (do BEFORE the Phase 1 DNS cutover):
+
+  1. **Generate the secret** (one-time, on operator machine):
+     ```bash
+     node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+     ```
+     Outputs a 64-char hex string (32 bytes). ≥ 32 chars is the floor
+     enforced by `isBeaconHmacConfigured`.
+
+  2. **Set on Vercel** (Production + Preview envs both):
+     - Vercel dashboard → `scheduler-app` → Settings → Environment
+       Variables → Add `SCHEDULER_BEACON_HMAC_SECRET` with the value
+       from step 1.
+     - DO NOT prefix with `NEXT_PUBLIC_` — this must stay server-only.
+
+  3. **Redeploy** so the new env var is in scope. After redeploy:
+     - The `beacon_hmac_init` Sentry warning stops firing.
+     - The `mark_abandoned_hmac_rejected` warning fires whenever the
+       beacon is forged (attacker probes, browser bug, etc.) — treat
+       as signal worth triage.
+
+  4. **Rotation** (operational): rotating the secret mid-session breaks
+     the live page's cached sig and drops in-flight beacons. Rotate
+     during low-traffic windows. The 70-min cron reaper covers
+     orphaned holds; Tekmetric's hold TTL bounds slot loss.
+
+- **What's NOT blocked by the deferral** — local dev. The helper
+  fail-OPENs when the env var is missing so `npm run dev` and CI
+  builds keep working without operator intervention.
+
+- **What IS blocked** — production abuse protection on the abandon
+  beacon. An attacker who learns a victim's `chat_id` (from URL
+  history, screen-share, leaky analytics tag) can fire forged beacons
+  to release the victim's hold and flip their session to `timed_out`.
+  Low-severity but easy to exploit; pre-launch activation closes it.
+
+- **Strict-mode interaction** — `SCHEDULER_REQUIRE_RATE_LIMIT=true`
+  bumps the missing-secret warning to ERROR level for operator
+  visibility but does NOT change runtime behavior (still fail-OPEN on
+  missing secret to avoid breaking dev environments). The strict flag
+  only adds the ERROR-level signal to find misconfigurations sooner.
+
+- **Source** — P1.5 validator-2 finding (mark-abandoned route had no
+  auth). Implementation across `beacon-hmac.ts` + `BookPageShell.tsx`
+  + `WizardCrossCutting.tsx` + `IdleTimer.tsx` + `mark-abandoned/
+  route.ts` + `tests/unit/beacon-hmac.test.ts`.
+
 ### SEC-1 · `tekmetric_webhook_events` missing canonical
 `(provider, event_id)` idempotency UNIQUE
 
