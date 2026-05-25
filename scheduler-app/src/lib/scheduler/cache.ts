@@ -1,67 +1,65 @@
 /**
- * Per-session Next.js data cache helpers for the scheduler wizard.
+ * Per-request session-row reader for the scheduler wizard.
  *
- * Plan 04 Phase 5B (closes I-OTH-3 — partial; see CLN-15 for the
- * eventual drop of the revalidatePath fallback).
+ * Plan 04 Phase 5B (initial) + 2026-05-25 architectural correction.
  *
- * Why this exists
+ * History
  * ───────────────────────────────────────────────────────────────────
- * Before Phase 5B, every wizard step advance fired `revalidatePath` on
- * 3 routes ("/", "/book", "/book-v2"). That invalidates the server-
- * rendered HTML for every concurrent session on those routes — so
- * advancing session A forced sessions B-J to re-render on their next
- * interaction, even though their wizard state hadn't changed.
+ * Phase 5B originally wrapped this read in `unstable_cache` with a
+ * `session-${chatId}` tag, invalidated by `revalidateTag(...)` from
+ * `applyWizardTransition` after every wizard step write. The idea was
+ * to skip the DB read across renders for sessions whose state hadn't
+ * changed.
  *
- * Phase 5B introduces `revalidateTag(\`session-${chatId}\`)` so only
- * the advancing session's RSC payload is invalidated. For that to do
- * anything, the RSC-level reads of `customer_chat_sessions` need to
- * be wrapped in Next.js's `unstable_cache` with the matching tag.
+ * That design used the wrong cache primitive for this data class.
+ * `unstable_cache` is backed by Vercel's Data Cache, which is
+ * **eventually consistent** — `revalidateTag` propagates "within a
+ * small number of seconds" across the global edge network per Vercel's
+ * Data Cache docs. For read-mostly data (product catalog, marketing
+ * page) that lag is invisible to users. For the wizard's session row,
+ * which mutates on EVERY click and needs to be read fresh on the
+ * router.refresh() that fires ~50ms after the Server Action returns,
+ * the propagation lag was visible as "first click does nothing,
+ * second click works" — the GET request lands on a Vercel lambda that
+ * still has the pre-write cache entry because the revalidation hasn't
+ * propagated there yet.
+ *
+ * Correction: use React `cache()` instead. React `cache()` is a
+ * different primitive entirely — it memoizes within a SINGLE render
+ * (RSC + Server Action invocation share the dedup), and resets between
+ * renders. No cross-request cache → no propagation lag → no stale
+ * reads after writes. The only benefit Phase 5B was actually delivering
+ * (don't hit the DB twice when both hydrateSession + getCurrentCard
+ * fetch the same row in one render) is preserved by React `cache()`;
+ * the broken cross-request "optimization" is gone.
+ *
+ * The `revalidateTag(sessionTag(chatId))` calls in
+ * `applyWizardTransition`, `mark-abandoned/route.ts`, and
+ * `hydrate-session.ts` are now no-ops at runtime (nothing to
+ * invalidate) but kept as future-ready signals: when a true
+ * cross-instance cache lands (e.g., Upstash-backed cache handler),
+ * those calls will start mattering again without a code refactor.
  *
  * What's wrapped (verified by Opus inventory agent 2026-05-25):
- *   - hydrateSession's freshness SELECT in hydrate-session.ts
  *   - getCurrentCard's full-row SELECT in get-current-card.ts
  *
- * Both are RSC-only; both call this helper. Server Action reads of
- * customer_chat_sessions deliberately bypass the cache — caching them
- * would silently stale-on-write inside the same request.
- *
- * Cache lifecycle
- * ───────────────────────────────────────────────────────────────────
- * - Key:  `["scheduler-session-row", chatId]`
- *   → each chatId gets a distinct cache entry
- * - Tag:  `session-${chatId}`
- *   → applyWizardTransition fires revalidateTag(sessionTag(chatId))
- *     after every write to invalidate exactly that session's entry
- * - TTL:  60 seconds backstop
- *   → if the revalidateTag chain ever silently breaks (the spec's
- *     "missing a tag = stale data" failure mode), the cache expires
- *     after 60s instead of forever. Provides a safety net without
- *     defeating the per-session granularity win.
- *
- * Constraints (from Next.js 15.5 docs)
- * ───────────────────────────────────────────────────────────────────
- * - Accessing `cookies()` / `headers()` inside an unstable_cache scope
- *   is unsupported. Callers must read those OUTSIDE the cache and
- *   pass derived values (like chatId) in as arguments. hydrateSession
- *   does this correctly.
- * - keyParts is the cache key; tags is only for invalidation. The
- *   chatId MUST be in keyParts to get per-session entries.
+ * hydrate-session.ts deliberately bypasses this helper and reads
+ * supabase directly. That bypass was added by C1 to defeat the
+ * unstable_cache propagation lag. With this correction the
+ * lag is gone, but hydrate-session's direct path is harmless — it
+ * just does its own DB read instead of sharing one with
+ * getCurrentCard. Future cleanup can route hydrate-session through
+ * this helper to share the per-render dedup.
  *
  * Versions / API source-of-truth
  * ───────────────────────────────────────────────────────────────────
- * Verified against installed types at
- * scheduler-app/node_modules/next/dist/server/web/spec-extension/
- * unstable-cache.d.ts (Next.js 15.5.18). Signature:
- *   unstable_cache<T>(cb: T, keyParts?: string[],
- *     options?: { revalidate?: number | false; tags?: string[] }): T
- *
- * Note: Next.js 16 deprecates `unstable_cache` in favor of the
- * `'use cache'` directive + `cacheTag` + `cacheLife`. When this
- * project upgrades to Next.js 16, this module can be rewritten with
- * the new directive. The functional contract (per-session caching +
- * tag invalidation) is preserved across both APIs.
+ * React `cache()` is stable in React 19, which Next.js 15.5 ships
+ * with. Per-render memoization scope = the React render in progress;
+ * Server Components and Server Actions called during that render
+ * share the cache. Reference:
+ * https://react.dev/reference/react/cache
  */
-import { unstable_cache } from "next/cache";
+import { cache } from "react";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import type { Database } from "@/lib/database.types";
@@ -69,60 +67,43 @@ import type { Database } from "@/lib/database.types";
 type SessionRow = Database["public"]["Tables"]["customer_chat_sessions"]["Row"];
 
 /**
- * Per-session cache tag. Stable + readable + bounded to 256 chars
+ * Per-session tag string. Stable + readable + bounded to 256 chars
  * (Next.js limit on tag strings; UUID + prefix is ~44 chars).
  *
- * Used as both:
- *   - the tag passed to `unstable_cache({ tags: [...] })` on reads
- *   - the tag passed to `revalidateTag(...)` after writes
+ * Today it's used as a no-op signal — kept so a future cross-instance
+ * cache handler (e.g., Upstash-backed) can wire into the same tag
+ * vocabulary without a refactor of every `revalidateTag` callsite.
  */
 export function sessionTag(chatId: string): string {
   return `session-${chatId}`;
 }
 
 /**
- * Cached read of the `customer_chat_sessions` row for the given chatId.
+ * Per-render-memoized read of the `customer_chat_sessions` row for the
+ * given chatId. Multiple callers in the same render share one DB
+ * fetch; a fresh request gets a fresh fetch.
  *
  * Returns the full row (or null if no row exists for the chatId).
- * Callers pluck the fields they need; sharing one cache entry across
- * all RSC-level readers is simpler than maintaining per-projection
- * cache entries with their own keys.
  *
- * Errors are thrown (not returned) so the cache layer doesn't pin a
- * failed read — next request retries fresh. The caller's try/catch
- * (e.g., hydrateSession's outer wrap) handles the throw.
- *
- * Cache-key correctness
- * ───────────────────────────────────────────────────────────────────
- * The chatId is the second arg's keyParts entry — this ensures each
- * chatId has its own cache entry. Without it, Next.js would key only
- * on the function's stringified body, leading to a single shared
- * entry across all sessions (catastrophic correctness bug).
+ * Errors are thrown (not returned) so the React `cache()` memo doesn't
+ * pin a failed read — next render retries fresh. The caller's
+ * try/catch (e.g., hydrateSession's outer wrap) handles the throw.
  */
-export function getCachedSessionRow(
-  chatId: string,
-): Promise<SessionRow | null> {
-  return unstable_cache(
-    async (): Promise<SessionRow | null> => {
-      const supabase = createSupabaseAdminClient();
-      const { data, error } = await supabase
-        .from("customer_chat_sessions")
-        .select("*")
-        .eq("id", chatId)
-        .maybeSingle();
-      if (error) {
-        // Throw so the cache layer doesn't pin the failure. Caller's
-        // try/catch handles the surface (hydrateSession logs to Sentry;
-        // getCurrentCard returns null which BookPageShell defaults to
-        // a greeting card).
-        throw error;
-      }
-      return (data ?? null) as SessionRow | null;
-    },
-    ["scheduler-session-row", chatId],
-    {
-      tags: [sessionTag(chatId)],
-      revalidate: 60,
-    },
-  )();
-}
+export const getCachedSessionRow = cache(
+  async (chatId: string): Promise<SessionRow | null> => {
+    const supabase = createSupabaseAdminClient();
+    const { data, error } = await supabase
+      .from("customer_chat_sessions")
+      .select("*")
+      .eq("id", chatId)
+      .maybeSingle();
+    if (error) {
+      // Throw so React's per-render memo doesn't cache the failure.
+      // Caller's try/catch handles the surface (hydrateSession logs to
+      // Sentry; getCurrentCard returns null which BookPageShell defaults
+      // to a greeting card).
+      throw error;
+    }
+    return (data ?? null) as SessionRow | null;
+  },
+);
