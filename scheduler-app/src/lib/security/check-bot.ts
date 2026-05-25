@@ -37,10 +37,25 @@
  * enable Basic (free). Deep Analysis ($1/1k checks) deferred until we see
  * real attack traffic justifying the cost. See DEFERRED-AUDIT-ITEMS SEC-7.
  *
- * The matching client-side `initBotId()` call lives in
- * `scheduler-app/instrumentation-client.ts` — without it, checkBotId()
- * will classify every request as a bot in production. Both halves are
- * required; this helper covers the server half only.
+ * Three wiring pieces are required for BotID to function (verified
+ * 2026-05-25 against the local botid@1.5.11 README — the canonical
+ * source for this version):
+ *
+ *   1. SERVER — `checkBotId()` on protected handlers (this file).
+ *   2. CONFIG — `withBotId()` wrap on `next.config.ts` (sets up the
+ *      proxy rewrites that hide the BotID challenge endpoint behind
+ *      a randomized path).
+ *   3. CLIENT — `initBotId({ protect: [...] })` in
+ *      `instrumentation-client.ts` (Next.js 15.3+ pattern; the
+ *      scheduler-app is on Next.js 15.5.18 so this is the canonical
+ *      path). The `protect` array names the routes whose POSTs the
+ *      client should attach bot tokens to.
+ *
+ * Without ALL THREE, `checkBotId()` returns `isBot: true` for every
+ * legitimate request because the client never attaches the detection
+ * tokens — fail-CLOSED by design. Vercel logs surface this as
+ * "Possible misconfiguration of Vercel BotId or malicious request to
+ * 'POST /...'".
  */
 import * as Sentry from "@sentry/nextjs";
 import { checkBotId } from "botid/server";
@@ -73,36 +88,6 @@ export function isRateLimitStrictMode(): boolean {
 }
 
 /**
- * 2026-05-25 unblock — `SCHEDULER_DISABLE_BOT_CHECK=true` skips
- * BotID entirely + returns `{ ok: true, bypassed: true }`.
- *
- * Why this env var exists: Vercel BotID requires THREE wiring
- * pieces to function — (1) `initBotId()` called on the client
- * via instrumentation-client.ts, (2) `botid({...})` config wrapper
- * applied to next.config.ts, (3) the BotID feature enabled in the
- * Vercel project dashboard. Without ALL THREE, `checkBotId()`
- * fails-CLOSED: it classifies legitimate requests as bots because
- * the client never sends the detection signals BotID expects to
- * see in the request. Result: every OTP submit returns
- * `bot_detected` and the wizard appears frozen with no customer-
- * facing error.
- *
- * The other security layers (Upstash rate-limit, HMAC beacon)
- * gracefully degrade when unconfigured (`disabled: true` /
- * `"skipped"`). BotID does not — hence this explicit opt-out.
- *
- * Operator posture:
- *   - TEST sandbox before BotID activation: set
- *     SCHEDULER_DISABLE_BOT_CHECK=true to unblock testing
- *   - PROD pre-launch: complete the BotID wiring per SEC-7 +
- *     unset this env var; the check resumes as the first line
- *     of SMS-pump defense.
- */
-export function isBotCheckDisabled(): boolean {
-  return process.env.SCHEDULER_DISABLE_BOT_CHECK === "true";
-}
-
-/**
  * Validates the current request against Vercel BotID for sensitive
  * Server Actions (OTP send, etc.).
  *
@@ -115,13 +100,6 @@ export function isBotCheckDisabled(): boolean {
  *   logs Sentry warning + returns `{ ok: true, bypassed: false }`.
  */
 export async function checkBotForSensitiveAction(): Promise<CheckBotResult> {
-  // 2026-05-25 unblock — short-circuit when the operator explicitly
-  // disabled the bot check (see isBotCheckDisabled comment for the
-  // full BotID wiring story). Bypass shape matches a verified-human
-  // result so callers don't need a new branch.
-  if (isBotCheckDisabled()) {
-    return { ok: true, bypassed: true };
-  }
   try {
     const verification = await checkBotId();
 

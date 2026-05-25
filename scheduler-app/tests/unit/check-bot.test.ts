@@ -31,7 +31,6 @@ import { checkBotForSensitiveAction } from "@/lib/security/check-bot";
 beforeEach(() => {
   checkBotIdMock.mockReset();
   sentryCaptureExceptionMock.mockReset();
-  delete process.env.SCHEDULER_DISABLE_BOT_CHECK;
 });
 
 describe("checkBotForSensitiveAction", () => {
@@ -98,41 +97,6 @@ describe("checkBotForSensitiveAction", () => {
     expect(
       (captureOpts as { tags: { surface: string } }).tags.surface,
     ).toBe("check_bot_for_sensitive_action");
-  });
-
-  describe("SCHEDULER_DISABLE_BOT_CHECK opt-out (2026-05-25 unblock)", () => {
-    it("short-circuits to ok:true bypassed:true when env=true; checkBotId never called", async () => {
-      process.env.SCHEDULER_DISABLE_BOT_CHECK = "true";
-      checkBotIdMock.mockResolvedValue({
-        isHuman: false,
-        isBot: true,
-        isVerifiedBot: false,
-        bypassed: false,
-      });
-
-      const result = await checkBotForSensitiveAction();
-
-      expect(result).toEqual({ ok: true, bypassed: true });
-      // Critically: checkBotId was NOT called — the bypass short-
-      // circuits before any BotID work.
-      expect(checkBotIdMock).not.toHaveBeenCalled();
-      expect(sentryCaptureExceptionMock).not.toHaveBeenCalled();
-    });
-
-    it("any value other than literal 'true' leaves the check enabled", async () => {
-      process.env.SCHEDULER_DISABLE_BOT_CHECK = "1";
-      checkBotIdMock.mockResolvedValue({
-        isHuman: false,
-        isBot: true,
-        isVerifiedBot: false,
-        bypassed: false,
-      });
-
-      const result = await checkBotForSensitiveAction();
-
-      expect(result).toEqual({ ok: false, reason: "bot_detected" });
-      expect(checkBotIdMock).toHaveBeenCalled();
-    });
   });
 
   describe("P1.4 post-validator — strict mode (SCHEDULER_REQUIRE_RATE_LIMIT=true)", () => {

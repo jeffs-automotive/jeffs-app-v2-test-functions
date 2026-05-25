@@ -317,7 +317,27 @@ the work lands.
 
 ## Security / hardening
 
-### SEC-7 · BotID + rate-limit activation (NEW 2026-05-23 · DESIGN PIVOT 2026-05-23 PM · DEFERRED TO PRE-LAUNCH)
+### SEC-7 · BotID + rate-limit activation — **BotID HALF RESOLVED 2026-05-25; rate-limit half still deferred**
+
+- **BotID half — RESOLVED 2026-05-25.** The original entry below
+  claimed `initBotId()` was wired in `instrumentation-client.ts`
+  ("No redeploy needed"). It WASN'T — only Sentry init was. Symptom:
+  Vercel logs flooded with "Possible misconfiguration of Vercel BotId
+  or malicious request to 'POST /'" and Chris's OTP submits returned
+  `bot_detected` (wizard appeared frozen with no customer-facing
+  error). Per botid@1.5.11 README the wiring requires THREE pieces:
+  1. server `checkBotId()` — was already shipped in PLAN-03 Phase 1A
+  2. client `initBotId({ protect: [...] })` — now added to
+     `scheduler-app/instrumentation-client.ts`
+  3. `withBotId(nextConfig)` in `next.config.ts` — now wrapped
+     INSIDE `withSentryConfig` (Sentry stays outermost per its docs)
+  Protected routes: `POST /`, `POST /book`, `POST /book-v2`
+  (all three wizard surfaces per `BookPageShell.tsx`).
+  Verified: typecheck clean, 273/273 tests pass, `npm run build`
+  emits the routes with BotID rewrites injected.
+- **Rate-limit half — still deferred** (per the pivot below).
+
+### SEC-7 (historical context) · BotID + rate-limit activation (NEW 2026-05-23 · DESIGN PIVOT 2026-05-23 PM · DEFERRED TO PRE-LAUNCH)
 
 - **Status** — DEFERRED until immediately before Phase 1 DNS launch at
   Chris's explicit direction (2026-05-23 PM). Rationale: rate-limit gates

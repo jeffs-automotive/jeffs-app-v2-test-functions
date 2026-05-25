@@ -1,5 +1,13 @@
 import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
+// 2026-05-25 BotID proper wiring — per botid@1.5.11 README. The
+// `withBotId` wrap adds the proxy rewrites that hide BotID's
+// challenge endpoint behind a randomized path. Without this wrap,
+// the matching `initBotId({...})` call in `instrumentation-client.ts`
+// has nowhere to fetch detection tokens from, and `checkBotId()`
+// on the server side classifies every request as a bot. Replaces
+// the prior `SCHEDULER_DISABLE_BOT_CHECK` env-var bandaid.
+import { withBotId } from "botid/next/config";
 
 /**
  * Next.js config for scheduler-app.
@@ -171,7 +179,11 @@ const nextConfig: NextConfig = {
 //   SENTRY_DSN          — server DSN (usually same value, sometimes scoped)
 //   SENTRY_ORG          — Sentry org slug (e.g. "jeffs-automotive")
 //   SENTRY_PROJECT      — Sentry project slug (e.g. "scheduler-app")
-export default withSentryConfig(nextConfig, {
+// BotID wrap goes INSIDE withSentryConfig (Sentry as the outermost
+// wrap is the documented Sentry pattern). BotID modifies the
+// nextConfig's `rewrites` to add its challenge endpoint; Sentry then
+// wraps that for source-map + instrumentation injection.
+export default withSentryConfig(withBotId(nextConfig), {
   org: process.env.SENTRY_ORG,
   project: process.env.SENTRY_PROJECT,
 

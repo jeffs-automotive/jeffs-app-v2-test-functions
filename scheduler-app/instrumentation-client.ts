@@ -1,9 +1,35 @@
 /**
- * Sentry client-side init (browser).
+ * Client-side instrumentation (browser).
  *
  * Auto-loaded by Next.js on first client hydration. The newer
  * `instrumentation-client.ts` filename (vs the legacy
  * `sentry.client.config.ts`) is preferred by @sentry/nextjs v10 per docs.
+ *
+ * Wires:
+ *   - Sentry browser SDK (DSN + replay sampling)
+ *   - Vercel BotID client (token attachment for protected POST routes)
+ *
+ * Vercel BotID (2026-05-25 — proper wiring per botid@1.5.11 README):
+ *   `initBotId({ protect: [...] })` registers the route patterns whose
+ *   POST requests get a bot-detection token attached at fetch time.
+ *   The matching `checkBotId()` calls in `src/lib/security/check-bot.ts`
+ *   verify those tokens server-side. The `withBotId()` wrap in
+ *   `next.config.ts` is the third leg of the tripod — it sets up the
+ *   proxy rewrites BotID's challenge endpoint hides behind.
+ *
+ *   What's protected: every wizard route's POSTs (where Server Actions
+ *   submit). The wizard renders at `/`, `/book`, and `/book-v2` per
+ *   `BookPageShell.tsx`'s route comment. Every Server Action POSTs to
+ *   the page that called it, so protecting all three routes covers the
+ *   3 SMS-triggering actions (submit-phone-name, resend-otp,
+ *   submit-multi-account-choice) AND attaches harmless tokens to the
+ *   other ~24 Server Actions (which don't call checkBotId server-side
+ *   so the tokens are simply ignored).
+ *
+ *   What's NOT protected: `/api/scheduler/mark-abandoned` — that beacon
+ *   has its own HMAC auth (P1.5 / SEC-8) and is fired via sendBeacon
+ *   during browser tear-down, when the BotID client SDK can't reliably
+ *   attach tokens anyway.
  *
  * DSN comes from NEXT_PUBLIC_SENTRY_DSN (must be NEXT_PUBLIC_-prefixed for
  * Vercel to expose to the browser bundle).
@@ -15,6 +41,15 @@
  */
 
 import * as Sentry from "@sentry/nextjs";
+import { initBotId } from "botid/client/core";
+
+initBotId({
+  protect: [
+    { path: "/", method: "POST" },
+    { path: "/book", method: "POST" },
+    { path: "/book-v2", method: "POST" },
+  ],
+});
 
 Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
