@@ -21,7 +21,24 @@ These five files give you the full picture. If you find yourself guessing about 
 
 ---
 
-## 2. Today's headline (2026-05-25 EOD pt 2)
+## 2. Today's headline (2026-05-25 EOD pt 3 — admin-app Phase C COMPLETE)
+
+**admin-app Keytags page is fully wired to all 10 orchestrator MCP tools.** admin.jeffsautomotive.com/keytags now replaces every keytag operation Chris currently does through Claude Desktop:
+
+| Tab | Tools | Surface |
+|---|---|---|
+| Live state | listWipKeyTags + whoIsOnTag | Table + lookup form |
+| Assign / Release | assignKeytagToRo + releaseKeytagFromRo | Forms with Pattern A confirmation modal |
+| Posted / Revert | markKeytagPosted + revertKeytagToAssigned | Forms with Pattern A confirmation modal |
+| Reconcile | runBulkReconcile | Single button + dry-run toggle + result tile grid |
+| Manual reviews | lookupManualReview + resolveManualReview | Code lookup + clickable choices + resolve form |
+| Audit history | getKeytagAuditHistory | URL-param-driven filters + color-coded table |
+
+Phase C sub-commits: `9c41878` (C.1 orchestrator-mcp auth refactor + version bump to 0.4.0) + `989f009` (C.2 shadcn + types) + `abf0309` (C.3 client + Sentry wrap) + `0cf9e67` (C.4 read tabs + app shell) + `006cacc` (C.5 write tabs + ConfirmationDialog) + `59fa6d8` (C.6 Reconcile + Resolve). All deploys via Vercel auto-build on push.
+
+UI design system: shadcn/ui (Base UI primitives) + Tailwind v4 + brand burgundy/gold mapped to OKLCH semantic tokens. lucide icons. Sonner toasts.
+
+**Earlier today (2026-05-25):**
 
 **admin-app Phase A shipped + verified live at admin.jeffsautomotive.com.** New sibling Next.js app at `admin-app/` in the same repo, deployed as separate Vercel project `jeffs-app-v2-test-functions-admin-app`. Microsoft Entra OAuth via Supabase Azure provider (tenant `c5e93cad-3cac-4e60-ba7d-4b632d1224a3`) gates access to @jeffsautomotive.com users only. Routes live: `/` (redirect), `/dashboard` (landing), `/login` (sign-in), `/auth/callback` (OAuth exchange), `/schedulerconfig` (stub for Phase D-F), `/keytags` (stub for Phase C). End-to-end smoke test passed.
 

@@ -1,12 +1,12 @@
 # Admin dashboard — implementation plan
 
-> **Status:** Phase A ✅ COMPLETE 2026-05-25. Ready to start Phase C (Keytags page).
+> **Status:** Phases A + C ✅ COMPLETE 2026-05-25. Keytags surface fully wired to all 10 orchestrator MCP tools. Ready to start Phase D (Scheduler config — closed-dates + appointment-limits + routine-services first).
 > **Owner:** Chris (decisions) + Claude (build).
 > **Scope:** new internal Next.js dashboard at `admin.jeffsautomotive.com` with Microsoft SSO (Entra ID), two pages (scheduler config + keytag ops). Replaces what Claude Desktop currently does for these two domains.
 >
 > **Refresh this file** at the end of every session that does admin-dashboard work. Move phase rows from "Remaining" to "Completed" with commit SHA. Bump "Last updated."
 >
-> **Last updated:** 2026-05-25 (Phase A landed + verified working).
+> **Last updated:** 2026-05-25 (Phase C complete — Keytags page fully functional).
 
 ---
 
@@ -150,7 +150,49 @@ Each phase ends with a working deploy + commit. Stop points for Chris to check i
 
 **Verified end-to-end:** incognito → admin.jeffsautomotive.com → Sign in with Microsoft → @jeffsautomotive.com Microsoft account → land on `/dashboard` with email shown in header. Sign out works. Closed.
 
-### Phase B — shared UI primitives copied + base layout polish (0.5 day)
+### Phase C — Keytags page ✅ COMPLETE 2026-05-25
+
+**Commits (7 sub-phases):**
+- `9c41878` — C.1 orchestrator-mcp SERVICE_ROLE + X-Actor-Email auth branch (SERVER_VERSION 0.4.0)
+- `989f009` — C.2 shadcn init + 10 UI primitives (tabs/dialog/card/table/badge/input/label/separator/skeleton/sonner) + orchestrator types redeclaration
+- `abf0309` — C.3 orchestrator client (callKeytagTool) + wrapAdminAction Sentry helper
+- `0cf9e67` — C.4 app shell (TopNav + AppShell + PageHeader) + read-side tabs (Live / Manual Reviews / Audit History)
+- `006cacc` — C.5 write tabs (Assign / Release / Posted / Revert) with shared ConfirmationDialog (Pattern A two-step)
+- `59fa6d8` — C.6 Reconcile tab + Resolve Manual Review form (all 10 keytag tools now wired)
+- (C.7 = this docs commit + live smoke test handoff)
+
+**All 10 keytag tools live in the UI:**
+
+| Tab | Tool(s) | Confirmation | File |
+|---|---|---|---|
+| Live state | listWipKeyTags, whoIsOnTag | none | LiveStateTab.tsx + WhoIsOnTagForm.tsx |
+| Assign / Release | assignKeytagToRo (force), releaseKeytagFromRo | Pattern A | AssignReleaseTab.tsx |
+| Posted / Revert | markKeytagPosted, revertKeytagToAssigned | Pattern A | PostedRevertTab.tsx |
+| Reconcile | runBulkReconcile | UI dialog + dry-run toggle | ReconcileTab.tsx |
+| Manual reviews | lookupManualReview, resolveManualReview | 6-char code IS pre-approval | ManualReviewsTab.tsx |
+| Audit history | getKeytagAuditHistory | none | AuditHistoryTab.tsx |
+
+**Pattern A confirmation flow:**
+1. Form submits without confirmation_token
+2. Server Action calls orchestrator → returns kind:"needs_confirmation" with args + scope_summary + 5-min token
+3. Client opens ConfirmationDialog showing scope_summary + countdown
+4. User clicks Confirm → form re-submits with hidden confirmation_token
+5. Server Action calls orchestrator with token → orchestrator validates + applies → success state → Sonner toast + revalidatePath
+
+**Auth flow (verified):**
+- admin-app Server Action → callKeytagTool(name, args, email) → fetch orchestrator-mcp/functions/v1 with `Authorization: Bearer SERVICE_ROLE` + `apikey: SERVICE_ROLE` + `X-Actor-Email: <email>` + JSON-RPC body
+- orchestrator-mcp's NEW authenticateRequest branch: bearer matches any of the project's SERVICE_ROLE/SECRET_KEY env values → require X-Actor-Email → synthesize AuthOk(userLabel=email)
+- Existing OAuth path (Claude Desktop) unchanged
+
+**UI design:**
+- shadcn/ui via Base UI primitive lib (Tailwind v4 + React 19 compatible)
+- Brand: --primary = burgundy oklch(0.42 0.18 13), --accent = gold oklch(0.78 0.07 70)
+- TopNav: sticky brand+nav+user, lucide icons, mobile-responsive
+- Sonner toasts for all action success/failure
+- TagBadge: color-coded R/Y monospace tags
+- Empty + error states everywhere; no silent failures
+
+### Phase B — shared UI primitives copied + base layout polish (0.5 day) — folded into C.2
 
 1. Copy `Button`, `Card`, `Field` from scheduler-app into `admin-app/src/lib/ui/`
 2. Add `Table` (for read views) + `Modal` (for confirmation dialogs) + `Tabs` (for keytag page)
