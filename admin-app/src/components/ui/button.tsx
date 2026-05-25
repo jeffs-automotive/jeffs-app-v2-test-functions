@@ -138,16 +138,23 @@ function Button({
   children,
   ...props
 }: ButtonPrimitive.Props & VariantProps<typeof buttonVariants> & ButtonExtraProps) {
+  // Preserve caller-provided aria-busy when we're not loading — but force
+  // it to true when we ARE loading. Avoids both leak directions:
+  //   1. caller `aria-busy={false}` masking loading state (mask risk)
+  //   2. our `loading=false` erasing caller's intentional `aria-busy={true}`
+  //      for non-loading busy reasons (override risk)
+  // Both ends of GPT cross-verify findings 2026-05-25.
+  const { "aria-busy": callerAriaBusy, ...restProps } = props as typeof props & {
+    "aria-busy"?: boolean | "true" | "false"
+  }
+  const effectiveAriaBusy = loading ? true : callerAriaBusy
   return (
     <ButtonPrimitive
       data-slot="button"
-      // Spread caller props FIRST, then enforce derived props from loading
-      // state. Otherwise a caller passing `aria-busy={false}` could mask
-      // the loading announcement (GPT cross-verify finding 2026-05-25).
-      {...props}
+      {...restProps}
       className={cn(buttonVariants({ variant, size, className }))}
       disabled={disabled || loading}
-      aria-busy={loading || undefined}
+      aria-busy={effectiveAriaBusy}
     >
       {renderChildrenWithLoadingState(children, loading, loadingText)}
     </ButtonPrimitive>

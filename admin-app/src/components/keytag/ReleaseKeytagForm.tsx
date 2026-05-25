@@ -37,9 +37,12 @@ export function ReleaseKeytagForm() {
     }
     if (state.kind === "tool_error") {
       toast.error(`Couldn't release: ${state.data.message}`);
+      // Terminal failure — close dialog (Gemini cross-verify 2026-05-25).
+      setDialogOpen(false);
     }
     if (state.kind === "transport_error") {
       toast.error("Transport error", { description: state.message });
+      setDialogOpen(false);
     }
   }, [state]);
 

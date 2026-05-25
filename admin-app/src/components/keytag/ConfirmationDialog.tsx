@@ -39,10 +39,15 @@ function useCountdown(expiresAt: string): number {
   const expiresMs = new Date(expiresAt).getTime();
   const [now, setNow] = useState(() => Date.now());
 
+  // Reset on expiresAt change — fragile if hook is reused with a
+  // dynamic expiry. Today the dialog remounts per new confirmation so
+  // this matters less, but a brittle empty-deps array is easy to fix.
+  // (Gemini cross-verify 2026-05-25.)
   useEffect(() => {
+    setNow(Date.now());
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
-  }, []);
+  }, [expiresAt]);
 
   return Math.max(0, Math.ceil((expiresMs - now) / 1000));
 }

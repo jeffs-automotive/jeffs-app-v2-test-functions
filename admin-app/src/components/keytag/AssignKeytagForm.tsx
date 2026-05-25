@@ -43,9 +43,14 @@ export function AssignKeytagForm() {
     }
     if (state.kind === "tool_error") {
       toast.error(`Couldn't assign: ${state.data.message}`);
+      // Terminal failure — close the dialog so the user isn't stuck on
+      // a stale confirmation prompt. They can retry by re-submitting
+      // the form. (Gemini cross-verify 2026-05-25.)
+      setDialogOpen(false);
     }
     if (state.kind === "transport_error") {
       toast.error("Transport error", { description: state.message });
+      setDialogOpen(false);
     }
   }, [state]);
 

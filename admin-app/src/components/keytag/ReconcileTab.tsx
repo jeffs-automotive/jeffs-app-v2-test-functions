@@ -61,8 +61,15 @@ export function ReconcileTab() {
       toast.error("Reconcile failed", { description: state.message });
       setRunningMode(null);
       // Close the dialog on terminal error too — symmetric with success
-      // path. Otherwise user has to manually cancel after a failed run.
-      // (Gemini cross-verify 2026-05-25.)
+      // path. (Gemini cross-verify 2026-05-25.)
+      setConfirmOpen(false);
+    }
+    if (state.kind === "validation_error") {
+      // Defensive: form validators should catch this, but if it slips
+      // through (e.g., manual tampering), still surface + reset.
+      // (Both models flagged the missing case 2026-05-25.)
+      toast.error("Reconcile validation error", { description: state.message });
+      setRunningMode(null);
       setConfirmOpen(false);
     }
   }, [state]);
