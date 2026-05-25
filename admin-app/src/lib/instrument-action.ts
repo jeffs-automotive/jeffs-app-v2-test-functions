@@ -26,12 +26,21 @@ export interface AdminActionTags {
   orchestratorTool?: string;
 }
 
-export function wrapAdminAction<TArgs, TResult>(
+/**
+ * Variadic so it works with BOTH:
+ *   - simple actions: `(args) => Promise<result>`
+ *   - useActionState actions: `(prevState, formData) => Promise<newState>`
+ *
+ * The `inner` function's parameter list is preserved exactly. staticTags
+ * are applied once at wrap time; actions can also call Sentry.setTag /
+ * setUser inside their bodies for per-call dynamic context.
+ */
+export function wrapAdminAction<TArgs extends readonly unknown[], TResult>(
   actionName: string,
-  inner: (args: TArgs) => Promise<TResult>,
+  inner: (...args: TArgs) => Promise<TResult>,
   staticTags?: AdminActionTags,
-): (args: TArgs) => Promise<TResult> {
-  return async (args: TArgs): Promise<TResult> => {
+): (...args: TArgs) => Promise<TResult> {
+  return async (...args: TArgs): Promise<TResult> => {
     return await Sentry.withServerActionInstrumentation(
       actionName,
       { recordResponse: false },
@@ -43,7 +52,7 @@ export function wrapAdminAction<TArgs, TResult>(
         if (staticTags?.orchestratorTool) {
           Sentry.setTag("orchestrator_tool", staticTags.orchestratorTool);
         }
-        return await inner(args);
+        return await inner(...args);
       },
     );
   };

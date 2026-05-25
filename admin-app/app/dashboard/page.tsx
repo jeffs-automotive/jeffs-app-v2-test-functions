@@ -1,93 +1,107 @@
 /**
- * Dashboard landing page — authenticated. Two cards: Scheduler config + Keytags.
- *
- * Moved from / to /dashboard 2026-05-25 per Chris's preference for a
- * SaaS-style URL. Root `/` now redirects here (or to /login if unauthed).
- *
- * Both linked sections are unimplemented in Phase A (the pages don't
- * exist yet). Phase C adds /keytags; Phase D adds /scheduler/*. The
- * "Coming soon" message prevents accidental 404 confusion when a Phase A
- * deploy is hit by someone before the later phases land.
+ * /dashboard — landing page. Two-card directory of the available admin
+ * surfaces. Uses the polished shadcn + AppShell visual language.
  */
 import Link from "next/link";
+import { KeyRound, Settings, ArrowRight } from "lucide-react";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { requireAdmin } from "@/lib/auth";
-import { signOutAction } from "@/actions/sign-out";
+import { AppShell, PageHeader } from "@/components/shell/AppShell";
 
 export default async function DashboardPage() {
   const { email } = await requireAdmin();
 
   return (
-    <main className="mx-auto max-w-5xl px-6 py-10">
-      <header className="mb-10 flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-[#96003c]">
-            Jeff&apos;s Automotive
-          </h1>
-          <p className="text-sm text-stone-600">Admin dashboard</p>
-        </div>
-        <div className="text-right text-sm">
-          <p className="text-stone-700">{email}</p>
-          <form action={signOutAction}>
-            <button
-              type="submit"
-              className="text-xs text-stone-500 underline hover:text-stone-700"
-            >
-              Sign out
-            </button>
-          </form>
-        </div>
-      </header>
+    <AppShell email={email}>
+      <PageHeader
+        title="Admin dashboard"
+        description="Internal tooling for Jeff's Automotive. Replaces what you do through Claude Desktop today."
+      />
 
       <section className="grid gap-6 sm:grid-cols-2">
-        <DashboardCard
-          href="/schedulerconfig"
-          title="Scheduler config"
-          description="Edit testing services, routine services, concerns, closed dates, appointment limits, and more. Replaces what you do through Claude Desktop today."
-        />
-        <DashboardCard
+        <DashboardLinkCard
           href="/keytags"
+          icon={KeyRound}
           title="Key tags"
-          description="Assign, release, revert, and audit the 180-tag pool. Look up and resolve manual reviews. Replaces what Claude Desktop does for keytag ops."
+          description="Live state, assign / release / revert, posted, bulk reconcile, manual reviews, audit history."
+          badge="6 tools"
+        />
+        <DashboardLinkCard
+          href="/schedulerconfig"
+          icon={Settings}
+          title="Scheduler config"
+          description="Testing services, routine services, concerns, subcategories, required facts, appointment limits, closed dates."
+          badge="8 surfaces"
+          comingSoon
         />
       </section>
 
-      <footer className="mt-12 text-center text-xs text-stone-400">
-        Phase A scaffold — Phase C adds Keytags, Phase D adds Scheduler. See{" "}
-        <code>docs/admin-dashboard/PLAN.md</code>.
-      </footer>
-    </main>
+      <p className="mt-12 text-center text-xs text-muted-foreground">
+        Signed in as <span className="font-medium">{email}</span> · Tenant-restricted to
+        @jeffsautomotive.com
+      </p>
+    </AppShell>
   );
 }
 
-interface DashboardCardProps {
+interface DashboardLinkCardProps {
   href: string;
+  icon: typeof KeyRound;
   title: string;
   description: string;
+  badge?: string;
   comingSoon?: boolean;
 }
 
-function DashboardCard({
+function DashboardLinkCard({
   href,
+  icon: Icon,
   title,
   description,
+  badge,
   comingSoon,
-}: DashboardCardProps) {
-  const content = (
-    <div className="group h-full rounded-lg border border-stone-200 bg-white p-6 shadow-sm transition hover:border-[#96003c] hover:shadow">
-      <h2 className="text-xl font-semibold text-stone-900 group-hover:text-[#96003c]">
-        {title}
-        {comingSoon && (
-          <span className="ml-2 rounded bg-stone-100 px-2 py-0.5 text-xs font-normal text-stone-500">
-            Coming soon
-          </span>
+}: DashboardLinkCardProps) {
+  const inner = (
+    <Card className="group relative h-full overflow-hidden transition-all hover:border-primary hover:shadow-md">
+      <CardHeader className="space-y-4">
+        <div className="flex items-start justify-between">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+            <Icon className="h-5 w-5" aria-hidden="true" />
+          </div>
+          {badge && (
+            <Badge variant="secondary" className="font-normal">
+              {badge}
+            </Badge>
+          )}
+        </div>
+        <div className="space-y-1.5">
+          <CardTitle className="flex items-center gap-2 text-lg">
+            {title}
+            {comingSoon && (
+              <span className="rounded bg-muted px-2 py-0.5 text-[10px] font-normal uppercase tracking-wider text-muted-foreground">
+                Coming soon
+              </span>
+            )}
+          </CardTitle>
+          <CardDescription className="line-clamp-3">{description}</CardDescription>
+        </div>
+        {!comingSoon && (
+          <div className="flex items-center gap-1 text-sm font-medium text-primary opacity-0 transition-opacity group-hover:opacity-100">
+            <span>Open</span>
+            <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+          </div>
         )}
-      </h2>
-      <p className="mt-2 text-sm text-stone-600">{description}</p>
-    </div>
+      </CardHeader>
+    </Card>
   );
 
   if (comingSoon) {
-    return <div className="cursor-not-allowed opacity-70">{content}</div>;
+    return <div className="cursor-not-allowed opacity-60">{inner}</div>;
   }
-  return <Link href={href}>{content}</Link>;
+  return (
+    <Link href={href} className="block">
+      {inner}
+    </Link>
+  );
 }

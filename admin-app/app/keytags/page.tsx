@@ -1,59 +1,76 @@
 /**
- * /keytags — placeholder shell for Phase C build-out.
+ * /keytags — main keytag operations dashboard.
  *
- * Will be a single page with tabs for the 10 keytag operations per
- * docs/admin-dashboard/PLAN.md §4: live state, assign/release,
- * posted/revert, reconcile, manual reviews, audit history.
+ * Server Component: gates auth via requireAdmin, then composes the
+ * KeytagsTabs (client) with each tab content as a child prop.
  *
- * Phase A: protected route that renders a stub. Establishes the URL
- * + auth gate so the dashboard card can link here cleanly.
+ * Phase C.4 — Live + Manual Reviews + Audit History tabs are real
+ * (wired to orchestrator MCP tools); Assign/Release + Posted/Revert +
+ * Reconcile tabs are stubs (Phase C.5 + C.6).
+ *
+ * force-dynamic so search-param-driven audit filters re-fetch on every
+ * navigation. The other tabs don't have heavy reads, so the additional
+ * RSC work is fine.
  */
-import Link from "next/link";
 import { requireAdmin } from "@/lib/auth";
-import { signOutAction } from "@/actions/sign-out";
+import { AppShell, PageHeader } from "@/components/shell/AppShell";
+import { KeytagsTabs } from "@/components/keytag/KeytagsTabs";
+import { LiveStateTab } from "@/components/keytag/LiveStateTab";
+import { AuditHistoryTab } from "@/components/keytag/AuditHistoryTab";
+import { ManualReviewsTab } from "@/components/keytag/ManualReviewsTab";
+import { StubTab } from "@/components/keytag/StubTab";
 
-export default async function KeytagsPage() {
+export const dynamic = "force-dynamic";
+
+export interface KeytagsPageProps {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}
+
+export default async function KeytagsPage({ searchParams }: KeytagsPageProps) {
   const { email } = await requireAdmin();
+  const params = await searchParams;
+  const defaultTab =
+    typeof params.tab === "string" &&
+    ["live", "assign-release", "posted-revert", "reconcile", "manual-reviews", "audit"].includes(
+      params.tab,
+    )
+      ? params.tab
+      : "live";
 
   return (
-    <main className="mx-auto max-w-5xl px-6 py-10">
-      <header className="mb-10 flex items-center justify-between">
-        <div>
-          <Link
-            href="/dashboard"
-            className="text-xs text-stone-500 underline hover:text-stone-700"
-          >
-            ← Dashboard
-          </Link>
-          <h1 className="mt-2 text-3xl font-bold text-[#96003c]">Key tags</h1>
-          <p className="text-sm text-stone-600">
-            Assign, release, revert, post, reconcile, and audit the 180-tag pool.
-            Look up + resolve manual reviews.
-          </p>
-        </div>
-        <div className="text-right text-sm">
-          <p className="text-stone-700">{email}</p>
-          <form action={signOutAction}>
-            <button
-              type="submit"
-              className="text-xs text-stone-500 underline hover:text-stone-700"
-            >
-              Sign out
-            </button>
-          </form>
-        </div>
-      </header>
+    <AppShell email={email}>
+      <PageHeader
+        title="Key tags"
+        description="Live state, lookup, assign / release / revert / posted, bulk reconcile, manual reviews, and audit history — all wired to the orchestrator MCP that powers Claude Desktop today."
+      />
 
-      <section className="rounded-lg border border-stone-200 bg-white p-8 text-center shadow-sm">
-        <p className="text-lg font-medium text-stone-900">Coming in Phase C</p>
-        <p className="mt-2 text-sm text-stone-600">
-          6 tabs wired to the existing orchestrator MCP keytag tools
-          (listWipKeyTags, whoIsOnTag, assignKeytagToRo, releaseKeytagFromRo,
-          revertKeytagToAssigned, markKeytagPosted, runBulkReconcile,
-          lookupManualReview, resolveManualReview, getKeytagAuditHistory).
-          See <code>docs/admin-dashboard/PLAN.md</code> §5 Phase C.
-        </p>
-      </section>
-    </main>
+      <KeytagsTabs
+        defaultValue={defaultTab}
+        live={<LiveStateTab actorEmail={email} />}
+        assignRelease={
+          <StubTab
+            phase="C.5"
+            title="Assign / Release"
+            description="Force-assign a tag to an RO, or release a tag. Includes the two-step Pattern A confirmation modal for safety."
+          />
+        }
+        postedRevert={
+          <StubTab
+            phase="C.5"
+            title="Posted / Revert"
+            description="Mark a tag as posted-to-A/R, or revert a posted tag back to WIP. Same confirmation modal pattern."
+          />
+        }
+        reconcile={
+          <StubTab
+            phase="C.6"
+            title="Bulk reconcile"
+            description="Re-sync the keytag pool from Tekmetric — finds orphans, repatches, applies actions. Big-button confirmation."
+          />
+        }
+        manualReviews={<ManualReviewsTab />}
+        auditHistory={<AuditHistoryTab actorEmail={email} searchParams={params} />}
+      />
+    </AppShell>
   );
 }
