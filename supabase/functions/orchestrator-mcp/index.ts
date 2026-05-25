@@ -72,7 +72,41 @@ const SHOP_ID = parseInt(Deno.env.get(ENV_NAMES.TEKMETRIC_SHOP_ID) ?? "7476", 10
 
 const PROTOCOL_VERSION = "2025-11-25"; // current MCP spec version
 const SERVER_NAME = "jeffs-app-orchestrator";
-const SERVER_VERSION = "0.3.0"; // bumped on 2026-05-20 tools/list rewrite
+const SERVER_VERSION = "0.4.0"; // bumped on 2026-05-25 SERVICE_ROLE+actor-email branch
+
+// ─── Internal-caller auth branch (admin-app) ────────────────────────────────
+//
+// Added 2026-05-25 for Phase C of the admin-app build. The admin-app is a
+// trusted server-side Next.js context (Microsoft Entra OAuth gates @
+// jeffsautomotive.com employees in front; Server Actions then call us with
+// SERVICE_ROLE bearer + X-Actor-Email header carrying the authenticated
+// employee's email).
+//
+// This is an ADDITION, not a replacement of the OAuth path. The OAuth path
+// (used by Claude Desktop's Custom Connector) is completely untouched —
+// SERVICE_ROLE bearers fall through the OAuth check naturally (they have
+// no oauth_access_tokens row), so the new branch must be tried FIRST.
+//
+// Security rules — all three must hold for the new path to accept:
+//   1. Authorization: Bearer <token> where <token> exactly matches the
+//      Supabase project's SERVICE_ROLE secret (constant-time compare to
+//      mitigate timing-attack leakage; though SERVICE_ROLE is long enough
+//      that practical exploitation is hard)
+//   2. X-Actor-Email header is present
+//   3. Email ends with "@jeffsautomotive.com" (case-insensitive)
+//
+// If 1 holds but 2 or 3 fail, we REJECT (don't fall through to OAuth —
+// otherwise a leaked SERVICE_ROLE would be silently accepted-without-
+// audit-identity). The reject is a separate AuthErr reason so the caller
+// can fix their request.
+//
+// Audit identity: the synthesized AuthOk uses actorEmail (lowercased) as
+// userLabel, matching the OAuth path's contract — every keytag/scheduler
+// tool's audit log entry will show "chris@jeffsautomotive.com" (etc.) as
+// who-did-what, indistinguishable from a Claude Desktop call by Chris.
+const ALLOWED_ADMIN_EMAIL_DOMAIN = "@jeffsautomotive.com";
+const ADMIN_APP_CLIENT_ID = "admin-app";
+const ADMIN_APP_SCOPE = "mcp";
 
 const sb = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
@@ -105,7 +139,11 @@ const RPC_ERR = {
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
-  "Access-Control-Allow-Headers": "Authorization, Content-Type, mcp-session-id, mcp-protocol-version",
+  // X-Actor-Email added 2026-05-25 for the SERVICE_ROLE+actor-email branch
+  // used by admin-app Server Actions. Server-to-server fetches don't trigger
+  // CORS preflight in the first place, but listing it here documents the
+  // accepted header set for any future browser-side caller.
+  "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Actor-Email, mcp-session-id, mcp-protocol-version",
 };
 
 function jsonRpcResponse(body: JsonRpcResponse, status = 200): Response {
@@ -135,7 +173,7 @@ function json(body: unknown, status = 200, extra: Record<string, string> = {}): 
   });
 }
 
-// ─── Auth: OAuth bearer validation ──────────────────────────────────────────
+// ─── Auth: OAuth bearer validation + internal SERVICE_ROLE branch ──────────
 
 interface AuthOk {
   ok: true;
@@ -145,7 +183,92 @@ interface AuthOk {
 }
 interface AuthErr {
   ok: false;
-  reason: "missing_token" | "invalid_token" | "invalid_audience" | "server_error";
+  reason:
+    | "missing_token"
+    | "invalid_token"
+    | "invalid_audience"
+    | "missing_actor_email"
+    | "invalid_actor_email_domain"
+    | "server_error";
+}
+
+/**
+ * Constant-time string equality. Mitigates timing-attack leakage on the
+ * bearer-vs-SERVICE_ROLE comparison. Returns false if lengths differ.
+ */
+function timingSafeStringEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
+/**
+ * Return all the valid SERVICE_ROLE / SECRET KEY values the edge runtime
+ * knows about. Supabase rolled out new `sb_secret_*` key forms in 2026
+ * alongside the legacy JWT-style keys, and which one is populated depends
+ * on the project + the caller (Vercel may hold the legacy form while
+ * Supabase edge has the new form, or vice versa). Accept both so the
+ * admin-app's resolveServiceRoleKey() result will match no matter which
+ * shape happens to be in scope.
+ *
+ * Order: try SUPABASE_SECRET_KEYS (JSON dict — canonical 2026), then
+ * SUPABASE_SECRET_KEY (singular transition form), then
+ * SUPABASE_SERVICE_ROLE_KEY (legacy). All non-empty values returned.
+ */
+function getAllowedServiceRoleBearers(): string[] {
+  const out = new Set<string>();
+  const dictRaw = Deno.env.get("SUPABASE_SECRET_KEYS");
+  if (dictRaw) {
+    try {
+      const parsed = JSON.parse(dictRaw);
+      if (Array.isArray(parsed)) {
+        for (const v of parsed) {
+          if (typeof v === "string" && v.length > 0) out.add(v);
+          else if (v && typeof v === "object" && typeof (v as { value?: unknown }).value === "string") {
+            out.add((v as { value: string }).value);
+          }
+        }
+      } else if (parsed && typeof parsed === "object") {
+        for (const v of Object.values(parsed as Record<string, unknown>)) {
+          if (typeof v === "string" && v.length > 0) out.add(v);
+          else if (v && typeof v === "object" && typeof (v as { value?: unknown }).value === "string") {
+            out.add((v as { value: string }).value);
+          }
+        }
+      }
+    } catch {
+      // Tolerate malformed JSON — just fall through to the singular forms.
+    }
+  }
+  const singular = Deno.env.get("SUPABASE_SECRET_KEY");
+  if (singular && singular.length > 0) out.add(singular);
+  const legacy = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (legacy && legacy.length > 0) out.add(legacy);
+  return Array.from(out);
+}
+
+/**
+ * True if the supplied X-Actor-Email value is a syntactically-valid email
+ * AND its domain matches the allowed admin tenant.
+ *
+ * Defense in depth: the admin-app's own requireAdmin() already enforces
+ * this same domain check, but we re-verify here so a leaked SERVICE_ROLE
+ * can't be used to spoof an arbitrary actor identity (e.g., from a curl
+ * script with an attacker-controlled email).
+ */
+function isAllowedAdminEmail(email: string): boolean {
+  // Reject obvious bad shapes
+  if (!email || typeof email !== "string") return false;
+  const trimmed = email.trim();
+  if (trimmed.length === 0 || trimmed.length > 320) return false;
+  if (!trimmed.includes("@")) return false;
+  // Reject embedded newlines / control chars (header injection guard)
+  if (/[\r\n\t\0]/.test(trimmed)) return false;
+  // Domain match (case-insensitive)
+  return trimmed.toLowerCase().endsWith(ALLOWED_ADMIN_EMAIL_DOMAIN);
 }
 
 async function authenticateRequest(req: Request): Promise<AuthOk | AuthErr> {
@@ -156,6 +279,58 @@ async function authenticateRequest(req: Request): Promise<AuthOk | AuthErr> {
 
   const token = m[1].trim();
   if (!token) return { ok: false, reason: "invalid_token" };
+
+  // ── BRANCH A — SERVICE_ROLE bearer (admin-app Server Action path) ──────
+  //
+  // Try the cryptographic bearer-match first. If it matches ANY of the
+  // allowed SERVICE_ROLE / SECRET_KEY env values (handles 2026 multi-form
+  // key surface — legacy JWT, new sb_secret_*, JSON-dict variants), this
+  // is a trusted internal call and we ONLY need the X-Actor-Email contract.
+  // If bearer doesn't match any of those, fall through to OAuth validation
+  // (existing Claude Desktop path).
+  //
+  // Order matters: SERVICE_ROLE check is purely string-compare against
+  // env vars (sync, no DB). OAuth check is async DB lookup. Putting
+  // SERVICE_ROLE first means Claude Desktop OAuth calls pay one extra
+  // length-compare per allowed bearer (always false → fast path).
+  const allowedBearers = getAllowedServiceRoleBearers();
+  const isServiceRoleBearer = allowedBearers.some(
+    (k) => token.length === k.length && timingSafeStringEqual(token, k),
+  );
+  if (isServiceRoleBearer) {
+    const actorEmail = req.headers.get("X-Actor-Email") ?? req.headers.get("x-actor-email");
+    if (!actorEmail) {
+      // Reject — don't fall through to OAuth. A SERVICE_ROLE bearer must
+      // be paired with an actor identity for audit purposes.
+      Sentry.captureMessage("SERVICE_ROLE bearer received without X-Actor-Email", {
+        level: "warning",
+        tags: { auth_path: "service_role_missing_actor" },
+      });
+      return { ok: false, reason: "missing_actor_email" };
+    }
+    if (!isAllowedAdminEmail(actorEmail)) {
+      Sentry.captureMessage("SERVICE_ROLE bearer with disallowed X-Actor-Email domain", {
+        level: "warning",
+        tags: { auth_path: "service_role_bad_actor_domain" },
+        // Don't put the actor email in extra — it could be an attacker's
+        // spoofed value; treat as untrusted input. Just record the length
+        // for triage.
+        extra: { actor_email_length: actorEmail.length },
+      });
+      return { ok: false, reason: "invalid_actor_email_domain" };
+    }
+    // Authoritative: this is an admin-app Server Action call. Synthesize
+    // an AuthOk that looks identical to a Claude-Desktop-OAuth-derived
+    // one for downstream tools (same userLabel shape → identical audit log).
+    return {
+      ok: true,
+      userLabel: actorEmail.toLowerCase(),
+      scope: ADMIN_APP_SCOPE,
+      clientId: ADMIN_APP_CLIENT_ID,
+    };
+  }
+
+  // ── BRANCH B — OAuth bearer validation (Claude Desktop path, unchanged) ──
 
   const tokenHash = await sha256Base64Url(token);
   const { data, error } = await sb.rpc("oauth_validate_access_token", {
@@ -241,6 +416,11 @@ function wwwAuthenticate(error: AuthErr["reason"]): string {
     missing_token:    { code: "invalid_token", description: "Bearer token required" },
     invalid_token:    { code: "invalid_token", description: "Bearer token is invalid or expired" },
     invalid_audience: { code: "invalid_token", description: "Bearer token was not issued for this MCP server (RFC 8707 audience mismatch)" },
+    // 2026-05-25 SERVICE_ROLE+actor-email branch additions. Both surface as
+    // invalid_request per RFC 6750 §3.1 (the bearer itself is valid, but
+    // the required X-Actor-Email companion is missing or malformed).
+    missing_actor_email:        { code: "invalid_request", description: "SERVICE_ROLE bearer requires X-Actor-Email header" },
+    invalid_actor_email_domain: { code: "invalid_request", description: "X-Actor-Email must be a @jeffsautomotive.com email" },
     server_error:     { code: "invalid_token", description: "Token validation failed (server error)" },
   };
   const e = errorMap[error];
