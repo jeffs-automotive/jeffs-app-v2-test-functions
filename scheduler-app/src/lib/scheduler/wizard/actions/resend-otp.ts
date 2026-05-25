@@ -32,7 +32,10 @@ import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 // the phone as an arg (it reads off the session row inside the edge
 // function), so we look the phone up here to key the rate limit. See
 // submit-phone-name.ts for the full pattern + rationale.
-import { checkBotForSensitiveAction } from "@/lib/security/check-bot";
+import {
+  checkBotForSensitiveAction,
+  isE2ETestPhone,
+} from "@/lib/security/check-bot";
 import {
   checkIpRateLimit,
   checkPhoneRateLimit,
@@ -87,23 +90,40 @@ async function resendOtpV2Impl(
   // can only land on otp_pending after entering one — but defensively
   // handle it), we skip the phone limit and let the IP + bot gates +
   // DB-level limit cover us.
-  const bot = await checkBotForSensitiveAction();
-  if (!bot.ok) {
-    Sentry.captureMessage("resend_otp_v2 bot detected", {
-      level: "warning",
-      tags: { surface: "resend_otp_v2_bot_gate", chat_id: chatId },
-    });
-    return { ok: false, error: "bot_detected" };
-  }
+  // E2E test bypass — peek at the row's phone_e164 BEFORE running the
+  // security gates so the test phone short-circuits them. Symmetric
+  // with the submit-phone-name + submit-multi-account-choice bypasses
+  // + the OTP-send + Tekmetric-POST bypasses elsewhere. All keyed on
+  // SCHEDULER_TEST_PHONE_E164; production deploys leave it unset.
+  const supabaseForPhoneCheck = createSupabaseAdminClient();
+  const { data: phoneTestRow } = await supabaseForPhoneCheck
+    .from("customer_chat_sessions")
+    .select("phone_e164")
+    .eq("id", chatId)
+    .maybeSingle();
+  const isTestPhone = isE2ETestPhone(
+    phoneTestRow?.phone_e164 as string | null | undefined,
+  );
 
-  const ip = await getRequestIp();
-  const ipCheck = await checkIpRateLimit(ip);
-  if (!ipCheck.allowed) {
-    Sentry.captureMessage("resend_otp_v2 IP rate-limited", {
-      level: "warning",
-      tags: { surface: "resend_otp_v2_ip_limit", chat_id: chatId },
-    });
-    return { ok: false, error: ipCheck.reason };
+  if (!isTestPhone) {
+    const bot = await checkBotForSensitiveAction();
+    if (!bot.ok) {
+      Sentry.captureMessage("resend_otp_v2 bot detected", {
+        level: "warning",
+        tags: { surface: "resend_otp_v2_bot_gate", chat_id: chatId },
+      });
+      return { ok: false, error: "bot_detected" };
+    }
+
+    const ip = await getRequestIp();
+    const ipCheck = await checkIpRateLimit(ip);
+    if (!ipCheck.allowed) {
+      Sentry.captureMessage("resend_otp_v2 IP rate-limited", {
+        level: "warning",
+        tags: { surface: "resend_otp_v2_ip_limit", chat_id: chatId },
+      });
+      return { ok: false, error: ipCheck.reason };
+    }
   }
 
   try {
@@ -160,6 +180,7 @@ async function resendOtpV2Impl(
       }
 
       if (
+        !isTestPhone &&
         typeof phoneRow?.phone_e164 === "string" &&
         phoneRow.phone_e164.length > 0
       ) {
