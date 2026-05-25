@@ -45,6 +45,29 @@ const resendOtpSchema = z.object({
 
 export type ResendOtpV2Args = z.infer<typeof resendOtpSchema>;
 
+/**
+ * P2.12 post-validator fix (2026-05-25): server-side OTP resend cooldown.
+ *
+ * The 30-second cooldown was previously CLIENT-ONLY — `OtpInput.tsx`
+ * grays the Resend button for 30s after a send. A scripted client
+ * (browser console, Playwright, malicious automation) could bypass the
+ * cooldown entirely; only the Upstash phone-rate-limit (3/hr) + DB-level
+ * otp_codes-per-phone-per-hour cap actually rejected pumped resends.
+ * 30s gates the FAR more common "user spams the Resend button" pattern
+ * while the rate-limits cover sustained pumping.
+ *
+ * Implementation: the existing `otp_sent_at` TIMESTAMPTZ column on
+ * `customer_chat_sessions` is stamped by the edge fn's `sendOtp` on
+ * every send (initial + resend). We read it as part of the same
+ * phone_e164 lookup we already do for the phone rate-limit and reject
+ * if it was updated within the last 30 seconds.
+ *
+ * Same UX-error code as the client surface (`resend_cooldown_active`)
+ * so the wizard can surface a coherent message when the customer
+ * tampered with browser timing OR experienced a clock-skew issue.
+ */
+const RESEND_COOLDOWN_MS = 30_000;
+
 async function resendOtpV2Impl(
   args: ResendOtpV2Args,
 ): Promise<WizardTransitionResult> {
@@ -84,33 +107,70 @@ async function resendOtpV2Impl(
   }
 
   try {
-    // Phone-rate-limit needs the phone off the row. We do this BEFORE
-    // calling the edge function so we reject pumped requests before
-    // they cost us a Telnyx send.
+    // P2.12 (2026-05-25): single DB read pulls BOTH phone_e164 (for
+    // the phone rate-limit) AND otp_sent_at (for the 30s server-side
+    // cooldown). The cooldown check rejects rapid-fire resends BEFORE
+    // we hit Upstash + the edge fn + Telnyx — cheapest reject for the
+    // most common attacker pattern (scripted button-spam).
     const supabase = createSupabaseAdminClient();
     const { data: phoneRow, error: phoneReadErr } = await supabase
       .from("customer_chat_sessions")
-      .select("phone_e164")
+      .select("phone_e164, otp_sent_at")
       .eq("id", chatId)
       .maybeSingle();
     if (phoneReadErr) {
       // Don't fail-closed — log and continue. The edge fn will also
       // resolve this row and either succeed or return its own
-      // structured error. We just skip the phone-rate-limit on this
-      // path.
+      // structured error. We just skip the phone-rate-limit + cooldown
+      // on this path.
       Sentry.captureMessage("resend_otp_v2 phone read for rate-limit failed", {
         level: "warning",
         tags: { surface: "resend_otp_v2_phone_read", chat_id: chatId },
         extra: { error: phoneReadErr.message },
       });
-    } else if (typeof phoneRow?.phone_e164 === "string" && phoneRow.phone_e164.length > 0) {
-      const phoneCheck = await checkPhoneRateLimit(phoneRow.phone_e164);
-      if (!phoneCheck.allowed) {
-        Sentry.captureMessage("resend_otp_v2 phone rate-limited", {
-          level: "warning",
-          tags: { surface: "resend_otp_v2_phone_limit", chat_id: chatId },
-        });
-        return { ok: false, error: phoneCheck.reason };
+    } else {
+      // P2.12 server-side cooldown check. Skipped on first send (the
+      // row has otp_sent_at=null until the initial sendOtp lands).
+      const otpSentAtRaw = phoneRow?.otp_sent_at as string | null | undefined;
+      if (otpSentAtRaw) {
+        const lastSentMs = Date.parse(otpSentAtRaw);
+        if (!Number.isNaN(lastSentMs)) {
+          const sinceLastMs = Date.now() - lastSentMs;
+          if (sinceLastMs < RESEND_COOLDOWN_MS) {
+            const retryAfterSec = Math.ceil(
+              (RESEND_COOLDOWN_MS - sinceLastMs) / 1000,
+            );
+            Sentry.captureMessage("resend_otp_v2 cooldown active", {
+              level: "warning",
+              tags: {
+                surface: "resend_otp_v2_cooldown",
+                chat_id: chatId,
+              },
+              extra: {
+                since_last_ms: sinceLastMs,
+                retry_after_seconds: retryAfterSec,
+              },
+            });
+            return {
+              ok: false,
+              error: "resend_cooldown_active",
+            };
+          }
+        }
+      }
+
+      if (
+        typeof phoneRow?.phone_e164 === "string" &&
+        phoneRow.phone_e164.length > 0
+      ) {
+        const phoneCheck = await checkPhoneRateLimit(phoneRow.phone_e164);
+        if (!phoneCheck.allowed) {
+          Sentry.captureMessage("resend_otp_v2 phone rate-limited", {
+            level: "warning",
+            tags: { surface: "resend_otp_v2_phone_limit", chat_id: chatId },
+          });
+          return { ok: false, error: phoneCheck.reason };
+        }
       }
     }
 

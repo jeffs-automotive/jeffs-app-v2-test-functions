@@ -17,13 +17,27 @@ import { withSentryConfig } from "@sentry/nextjs";
 /**
  * PLAN-03 Phase 5 (bonus) — Customer-facing route hardening.
  *
- * Security headers applied to every response. CSP starts in Report-Only
- * mode for ~1 week to log violations without blocking, then upgrades to
- * enforced (Content-Security-Policy) after we've verified no production
- * traffic triggers it. Switch by:
- *   1. After 1 week of clean CSP-Report-Only logs in Sentry,
- *   2. Change `Content-Security-Policy-Report-Only` key →
- *      `Content-Security-Policy` (same value).
+ * Security headers applied to every response.
+ *
+ * P2.9 post-validator fix (2026-05-25): CSP mode now defaults to
+ * ENFORCED (Content-Security-Policy header). Was Report-Only.
+ *
+ * Why the flip: this is the test-sandbox project (no real customer
+ * traffic). Enforced mode in test catches CSP violations BEFORE prod
+ * cutover. Report-Only here would have buried violations in Sentry
+ * forever without ever surfacing as "this would have broken the
+ * wizard" pressure.
+ *
+ * Rollback path: set env var `SCHEDULER_CSP_REPORT_ONLY=true` on
+ * Vercel to revert this deployment to Report-Only mode. Useful if a
+ * legitimate-but-uncatalogued resource starts loading post-flip
+ * (e.g., a new analytics tag) — flip the env var to Report-Only,
+ * triage the violations, add the source to buildCSP, then unset the
+ * env var. No code redeploy needed for the rollback.
+ *
+ * Documented in DEFERRED-AUDIT-ITEMS SEC-NEXT (nonce-based CSP) for
+ * the next hardening pass — that's a separate concern (tighten
+ * script-src away from 'unsafe-inline' via App Router nonce plumbing).
  *
  * HSTS preload submission (https://hstspreload.org/) requires 1 year of
  * `max-age=31536000` ingestion + `includeSubDomains` + `preload` directive.
@@ -63,6 +77,15 @@ function buildCSP(): string {
   ].join("; ");
 }
 
+// P2.9 (2026-05-25): CSP header key is now selected by env var. Default
+// is ENFORCED ("Content-Security-Policy"); set SCHEDULER_CSP_REPORT_ONLY=true
+// on Vercel to revert this deployment to Report-Only (the original
+// posture). Operator can flip without a code redeploy.
+const CSP_HEADER_KEY =
+  process.env.SCHEDULER_CSP_REPORT_ONLY === "true"
+    ? "Content-Security-Policy-Report-Only"
+    : "Content-Security-Policy";
+
 const securityHeaders = [
   // 2 years; submit to https://hstspreload.org/ once DNS is live for 1 year.
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
@@ -77,11 +100,10 @@ const securityHeaders = [
     key: "Permissions-Policy",
     value: "camera=(), microphone=(), geolocation=(), interest-cohort=()",
   },
-  // CSP in Report-Only mode for the first week post-deploy. Switch the
-  // key name to `Content-Security-Policy` (drop -Report-Only) after
-  // verifying no production traffic triggers violations.
+  // P2.9: enforced by default. Set SCHEDULER_CSP_REPORT_ONLY=true to
+  // revert (see CSP_HEADER_KEY above).
   {
-    key: "Content-Security-Policy-Report-Only",
+    key: CSP_HEADER_KEY,
     value: buildCSP(),
   },
 ];
