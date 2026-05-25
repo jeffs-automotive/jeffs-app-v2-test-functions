@@ -43,6 +43,8 @@ import * as Sentry from "@sentry/nextjs";
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 
+import { isRateLimitStrictMode } from "@/lib/security/check-bot";
+
 /**
  * Lazy-initialized singletons. We can't construct Ratelimit at module
  * scope because:
@@ -102,21 +104,43 @@ function getRateLimiters():
 
 export type RateLimitOutcome =
   | { allowed: true; disabled: boolean }
-  | { allowed: false; reason: "rate_limited_ip" | "rate_limited_phone" };
+  | {
+      allowed: false;
+      reason:
+        | "rate_limited_ip"
+        | "rate_limited_phone"
+        | "rate_limit_unavailable";
+    };
+
+/**
+ * P1.4 post-validator fix (2026-05-25): same strict-mode flag as
+ * check-bot.ts. When SCHEDULER_REQUIRE_RATE_LIMIT=true:
+ *
+ *   - Upstash env vars missing → fail CLOSED (returns
+ *     `{ allowed: false, reason: "rate_limit_unavailable" }`)
+ *     instead of allowing every request as "disabled."
+ *   - Upstash limit() throws → fail CLOSED (same).
+ *
+ * Default (no env var or anything other than "true"): fail OPEN per
+ * the original Phase 1B behavior — keeps local dev usable without
+ * Upstash account configured.
+ */
 
 /**
  * Check the per-IP rate limit (5/min). Returns `{ allowed: true }` when
- * the request is allowed (or when Upstash is unconfigured), or
- * `{ allowed: false, reason: "rate_limited_ip" }` when over limit.
+ * the request is allowed (or when Upstash is unconfigured + strict mode
+ * off), or `{ allowed: false }` with a reason tag on failure.
  *
- * On Upstash transient failure → fail OPEN (log + allow). Same rationale
- * as check-bot.ts: degrading limits during an outage is strictly worse
- * than breaking OTP for legitimate users; BotID + the DB-level phone
- * limit remain as backstops.
+ * In strict mode (SCHEDULER_REQUIRE_RATE_LIMIT=true), Upstash missing
+ * or transient failure both fail CLOSED.
  */
 export async function checkIpRateLimit(ip: string): Promise<RateLimitOutcome> {
   const state = getRateLimiters();
+  const strict = isRateLimitStrictMode();
   if (state.kind === "disabled") {
+    if (strict) {
+      return { allowed: false, reason: "rate_limit_unavailable" };
+    }
     return { allowed: true, disabled: true };
   }
   try {
@@ -127,12 +151,20 @@ export async function checkIpRateLimit(ip: string): Promise<RateLimitOutcome> {
     return { allowed: true, disabled: false };
   } catch (e) {
     Sentry.captureException(e, {
-      level: "warning",
-      tags: { surface: "check_ip_rate_limit" },
+      level: strict ? "error" : "warning",
+      tags: {
+        surface: "check_ip_rate_limit",
+        strict_mode: String(strict),
+      },
       extra: {
-        note: "Upstash limit() threw; failing OPEN. BotID + DB-level phone limit remain as backstops.",
+        note: strict
+          ? "Upstash limit() threw with SCHEDULER_REQUIRE_RATE_LIMIT=true → failing CLOSED."
+          : "Upstash limit() threw; failing OPEN. BotID + DB-level phone limit remain as backstops.",
       },
     });
+    if (strict) {
+      return { allowed: false, reason: "rate_limit_unavailable" };
+    }
     return { allowed: true, disabled: false };
   }
 }
@@ -142,13 +174,17 @@ export async function checkIpRateLimit(ip: string): Promise<RateLimitOutcome> {
  * to 16 hex chars before use as the Redis key — keeps raw E.164 phones
  * out of Upstash storage (PII minimization).
  *
- * Same fail-open behavior as checkIpRateLimit on transient failure.
+ * Same strict-mode behavior as checkIpRateLimit.
  */
 export async function checkPhoneRateLimit(
   phoneE164: string,
 ): Promise<RateLimitOutcome> {
   const state = getRateLimiters();
+  const strict = isRateLimitStrictMode();
   if (state.kind === "disabled") {
+    if (strict) {
+      return { allowed: false, reason: "rate_limit_unavailable" };
+    }
     return { allowed: true, disabled: true };
   }
   try {
@@ -159,12 +195,20 @@ export async function checkPhoneRateLimit(
     return { allowed: true, disabled: false };
   } catch (e) {
     Sentry.captureException(e, {
-      level: "warning",
-      tags: { surface: "check_phone_rate_limit" },
+      level: strict ? "error" : "warning",
+      tags: {
+        surface: "check_phone_rate_limit",
+        strict_mode: String(strict),
+      },
       extra: {
-        note: "Upstash limit() threw; failing OPEN. BotID + DB-level phone limit remain as backstops.",
+        note: strict
+          ? "Upstash limit() threw with SCHEDULER_REQUIRE_RATE_LIMIT=true → failing CLOSED."
+          : "Upstash limit() threw; failing OPEN. BotID + DB-level phone limit remain as backstops.",
       },
     });
+    if (strict) {
+      return { allowed: false, reason: "rate_limit_unavailable" };
+    }
     return { allowed: true, disabled: false };
   }
 }

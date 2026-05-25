@@ -50,14 +50,39 @@ export type CheckBotResult =
   | { ok: false; reason: string };
 
 /**
+ * P1.4 post-validator fix (2026-05-25): when SCHEDULER_REQUIRE_RATE_LIMIT
+ * is set to "true", checkBotForSensitiveAction fails CLOSED on BotID
+ * throw — returns `{ ok: false, reason: "bot_check_unavailable" }`
+ * instead of allowing the request through.
+ *
+ * Recommended deployment posture:
+ *   - LOCAL dev: leave unset (fail-OPEN keeps the wizard usable
+ *     without Vercel BotID configured).
+ *   - PROD pre-launch (DNS pointed, real customers expected): set
+ *     SCHEDULER_REQUIRE_RATE_LIMIT=true on Vercel. If BotID infra
+ *     hiccups, OTP-sending Server Actions return bot_check_unavailable
+ *     instead of letting SMS pumping through. Acceptable trade-off
+ *     once activation completes per DEFERRED-AUDIT-ITEMS SEC-7.
+ *
+ * The shared env-var helper below is also used by rate-limit.ts so
+ * both layers flip together — operators don't have to enable
+ * fail-closed for each separately.
+ */
+export function isRateLimitStrictMode(): boolean {
+  return process.env.SCHEDULER_REQUIRE_RATE_LIMIT === "true";
+}
+
+/**
  * Validates the current request against Vercel BotID for sensitive
  * Server Actions (OTP send, etc.).
  *
  * On bot detection → returns `{ ok: false, reason: "bot_detected" }`.
  * On bypass (E2E test) → returns `{ ok: true, bypassed: true }`.
  * On human → returns `{ ok: true, bypassed: false }`.
- * On BotID failure → logs Sentry warning + returns `{ ok: true, bypassed: false }`
- *   (graceful degradation — see file header for rationale).
+ * On BotID failure with SCHEDULER_REQUIRE_RATE_LIMIT=true → fail CLOSED:
+ *   returns `{ ok: false, reason: "bot_check_unavailable" }`.
+ * On BotID failure without the strict flag → fail OPEN:
+ *   logs Sentry warning + returns `{ ok: true, bypassed: false }`.
  */
 export async function checkBotForSensitiveAction(): Promise<CheckBotResult> {
   try {
@@ -70,23 +95,32 @@ export async function checkBotForSensitiveAction(): Promise<CheckBotResult> {
   } catch (e) {
     // checkBotId() can throw when Vercel's bot-protection infra is
     // unreachable (transient outage, local dev without the Vercel
-    // integration wired, or a misconfigured proxy). Fail-OPEN rather
-    // than fail-closed: a missing bot check is strictly worse than a
-    // false-positive bot check (the former lets a few extra bots through
-    // for the outage window; the latter blocks legitimate customers
-    // from ever receiving an OTP).
+    // integration wired, or a misconfigured proxy).
     //
-    // The Sentry warning surfaces the misconfiguration so the operator
-    // sees it. Rate-limit defense-in-depth (rate-limit.ts) is the
-    // backstop here — even if BotID is down, IP + phone-hash limits
-    // still cap abuse to a survivable level.
+    // Default (fail-OPEN): a missing bot check is strictly worse than
+    // a false-positive bot check during local dev / pre-launch.
+    //
+    // Strict mode (SCHEDULER_REQUIRE_RATE_LIMIT=true): a missing bot
+    // check on production traffic with real SMS-pump exposure is
+    // EXACTLY the moment we should NOT be letting requests through.
+    // Fail closed; operator gets the Sentry error + customer gets a
+    // bot_check_unavailable error they can retry from.
+    const strict = isRateLimitStrictMode();
     Sentry.captureException(e, {
-      level: "warning",
-      tags: { surface: "check_bot_for_sensitive_action" },
+      level: strict ? "error" : "warning",
+      tags: {
+        surface: "check_bot_for_sensitive_action",
+        strict_mode: String(strict),
+      },
       extra: {
-        note: "checkBotId() threw; failing OPEN to avoid breaking legitimate OTPs. Rate-limits remain as backstop.",
+        note: strict
+          ? "checkBotId() threw with SCHEDULER_REQUIRE_RATE_LIMIT=true → failing CLOSED."
+          : "checkBotId() threw; failing OPEN to avoid breaking legitimate OTPs. Rate-limits remain as backstop.",
       },
     });
+    if (strict) {
+      return { ok: false, reason: "bot_check_unavailable" };
+    }
     return { ok: true, bypassed: false };
   }
 }

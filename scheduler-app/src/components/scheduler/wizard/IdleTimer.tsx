@@ -26,10 +26,16 @@
  * Disabled at terminal steps (escalated / completed) — those have no
  * abandon flow since the session is already terminal.
  *
- * The role="alertdialog" wrapper makes the warning announce on
- * appearance to screen readers without interrupting current speech
- * (aria-live="off" on the countdown number avoids re-announcing every
- * second).
+ * The role="alert" wrapper (P2.10 post-validator fix 2026-05-25 —
+ * changed from "alertdialog") announces the warning on appearance to
+ * screen readers without interrupting current speech. The prior
+ * "alertdialog" role implies the dialog requires user response +
+ * traps focus + has aria-modal="true" semantics — none of which match
+ * this widget's actual behavior (user can dismiss by ANY interaction
+ * with the wizard underneath; no focus trap). role="alert" matches
+ * the "notification banner that announces" intent without the modal
+ * contract. aria-live="off" on the countdown number avoids
+ * re-announcing every second.
  */
 import { useEffect, useRef, useState } from "react";
 
@@ -226,8 +232,7 @@ export function IdleTimer({
 
   return (
     <div
-      role="alertdialog"
-      aria-modal="false"
+      role="alert"
       aria-labelledby="idle-warn-title"
       aria-describedby="idle-warn-body"
       className={

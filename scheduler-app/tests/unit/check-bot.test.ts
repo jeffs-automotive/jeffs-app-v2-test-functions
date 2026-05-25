@@ -78,11 +78,12 @@ describe("checkBotForSensitiveAction", () => {
     expect(result).toEqual({ ok: true, bypassed: false });
   });
 
-  it("fails OPEN with a Sentry warning when checkBotId() throws", async () => {
+  it("fails OPEN with a Sentry warning when checkBotId() throws (default mode)", async () => {
     // Simulates BotID infra unavailable — local dev, Vercel outage, or
     // misconfigured proxy. Failing closed would break OTPs for legitimate
     // customers; we let through with telemetry instead. Rate-limit
     // defense-in-depth (Phase 1B) is the backstop.
+    delete process.env.SCHEDULER_REQUIRE_RATE_LIMIT;
     const boom = new Error("vercel bot-protection unavailable");
     checkBotIdMock.mockRejectedValue(boom);
 
@@ -96,5 +97,42 @@ describe("checkBotForSensitiveAction", () => {
     expect(
       (captureOpts as { tags: { surface: string } }).tags.surface,
     ).toBe("check_bot_for_sensitive_action");
+  });
+
+  describe("P1.4 post-validator — strict mode (SCHEDULER_REQUIRE_RATE_LIMIT=true)", () => {
+    it("fails CLOSED with reason=bot_check_unavailable when checkBotId throws", async () => {
+      process.env.SCHEDULER_REQUIRE_RATE_LIMIT = "true";
+      const boom = new Error("vercel bot-protection unavailable");
+      checkBotIdMock.mockRejectedValue(boom);
+
+      const result = await checkBotForSensitiveAction();
+
+      expect(result).toEqual({
+        ok: false,
+        reason: "bot_check_unavailable",
+      });
+      // Strict-mode bumps Sentry to error level (not warning) — operator
+      // sees the issue more prominently.
+      expect(sentryCaptureExceptionMock).toHaveBeenCalledTimes(1);
+      const [, captureOpts] = sentryCaptureExceptionMock.mock.calls[0]!;
+      expect((captureOpts as { level: string }).level).toBe("error");
+      expect(
+        (captureOpts as { tags: { strict_mode: string } }).tags.strict_mode,
+      ).toBe("true");
+
+      delete process.env.SCHEDULER_REQUIRE_RATE_LIMIT;
+    });
+
+    it("any value other than literal 'true' keeps default fail-OPEN behavior", async () => {
+      process.env.SCHEDULER_REQUIRE_RATE_LIMIT = "1"; // not "true"
+      const boom = new Error("transient");
+      checkBotIdMock.mockRejectedValue(boom);
+
+      const result = await checkBotForSensitiveAction();
+
+      expect(result).toEqual({ ok: true, bypassed: false });
+
+      delete process.env.SCHEDULER_REQUIRE_RATE_LIMIT;
+    });
   });
 });

@@ -129,12 +129,28 @@ export default withSentryConfig(nextConfig, {
   // Quiet local builds; print upload logs in CI / Vercel only.
   silent: !process.env.CI && !process.env.VERCEL,
 
-  // Don't fail the build if Sentry upload fails (e.g., no auth token in a
-  // local build). Errors will still be captured at runtime via
-  // instrumentation.ts; only source-map upload is affected.
+  // P2.11 post-validator fix (2026-05-25): production source-map upload
+  // failures used to console.warn silently — meaning Sentry stack
+  // traces in prod were unmapped (file:line referred to compiled
+  // bundle names like /chunks/4912-abc.js instead of src/lib/scheduler/...).
+  // Now: local dev (no CI, no Vercel) continues to warn-and-proceed
+  // (no SENTRY_AUTH_TOKEN expected; upload no-ops anyway). CI + Vercel
+  // builds THROW so the build fails loudly + ops sees the regression
+  // before it lands on appointments.jeffsautomotive.com.
   errorHandler: (err) => {
+    if (process.env.CI || process.env.VERCEL) {
+       
+      console.error(
+        "[sentry] source-map upload failed in CI/Vercel build — failing build to prevent unmapped prod stack traces:",
+        err.message,
+      );
+      throw err;
+    }
      
-    console.warn("[sentry] source-map upload failed:", err.message);
+    console.warn(
+      "[sentry] source-map upload failed (local build):",
+      err.message,
+    );
   },
 
   // Forward `/monitoring` requests to Sentry servers. Helps with ad-blockers
