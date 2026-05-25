@@ -33,10 +33,15 @@
  * stored with HH:MM in scheduled_time already.
  */
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import {
-  isAfterSameDayCutoff,
-  shopLocalToday,
-} from "@/lib/scheduler/wizard/shop-tz";
+// P1.6 (2026-05-25): same-day cutoff now reads from the Postgres
+// clock via `getShopClock()` instead of Vercel's `new Date()`. Single
+// source of truth across availability + submit-date defensive re-check
+// so a customer can't see today in the picker but get rejected on
+// submit because of clock skew at the cutoff minute. The old
+// `isAfterSameDayCutoff` / `shopLocalToday` from `wizard/shop-tz.ts`
+// stay around for DISPLAY-ONLY callers.
+import { getShopClock } from "@/lib/scheduler/shop-clock";
+import { SAME_DAY_CUTOFF_HOUR } from "@/lib/scheduler/wizard/shop-tz";
 
 const SHOP_TIMEZONE = "America/New_York"; // Phase 1 single-shop
 
@@ -247,11 +252,17 @@ export async function computeAvailableDates(
   // Applied at the end so capacity math above is unaffected; this is a
   // pure output filter. The defensive check in submit-date.ts catches
   // the rare race where a customer crosses noon mid-flight.
+  //
+  // P1.6 (2026-05-25): clock source is the Postgres RPC via getShopClock
+  // (per-request memoized via React `cache()`). availability.ts +
+  // submit-date.ts share the same snapshot within a render, eliminating
+  // the cross-clock drift class.
+  const shopNow = await getShopClock();
   const blockSameDay =
-    args.appointment_type === "waiter" || isAfterSameDayCutoff();
+    args.appointment_type === "waiter" ||
+    shopNow.hour >= SAME_DAY_CUTOFF_HOUR;
   if (blockSameDay) {
-    const today = shopLocalToday();
-    return result.filter((d) => d !== today);
+    return result.filter((d) => d !== shopNow.date);
   }
   return result;
 }

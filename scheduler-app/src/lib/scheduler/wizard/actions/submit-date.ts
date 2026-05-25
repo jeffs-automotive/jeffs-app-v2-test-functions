@@ -33,10 +33,11 @@ import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
 import { buildServiceSummary } from "@/lib/scheduler/wizard/build-service-summary";
 import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
-import {
-  isAfterSameDayCutoff,
-  shopLocalToday,
-} from "@/lib/scheduler/wizard/shop-tz";
+// P1.6 (2026-05-25): same-day cutoff defensive re-check now reads from
+// the Postgres clock via getShopClock so it agrees with availability.ts's
+// render-time decision.
+import { getShopClock } from "@/lib/scheduler/shop-clock";
+import { SAME_DAY_CUTOFF_HOUR } from "@/lib/scheduler/wizard/shop-tz";
 
 const submitDateSchema = z.object({
   chatId: z.string().min(1),
@@ -88,7 +89,13 @@ async function submitDateV2Impl(
     // catches the rare race where a customer loaded the picker at 11:55 AM,
     // tapped today, and submits at 12:01 PM — the calendar still showed
     // today as valid client-side, but it's no longer offerable.
-    if (selected_date === shopLocalToday()) {
+    //
+    // P1.6 (2026-05-25): clock source is the Postgres RPC (getShopClock).
+    // Same snapshot as availability.ts's render-time decision — no
+    // cross-clock drift at the cutoff minute. React `cache()` on the
+    // helper keeps this to one RPC call per request.
+    const shopNow = await getShopClock();
+    if (selected_date === shopNow.date) {
       if (apptType === "waiter") {
         return applyWizardTransition({
           chatId,
@@ -97,7 +104,7 @@ async function submitDateV2Impl(
             "Same-day waiter appointments aren't possible — our waiter slots are 8 AM and 9 AM. Pick another day below and I'll line you up. ⏰",
         });
       }
-      if (apptType === "dropoff" && isAfterSameDayCutoff()) {
+      if (apptType === "dropoff" && shopNow.hour >= SAME_DAY_CUTOFF_HOUR) {
         return applyWizardTransition({
           chatId,
           nextStep: "date_pick",

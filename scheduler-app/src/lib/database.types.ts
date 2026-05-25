@@ -2174,6 +2174,7 @@ export type Database = {
         Args: { p_body?: Json; p_function_name: string }
         Returns: number
       }
+      scheduler_shop_now: { Args: never; Returns: Json }
       sentry_cron_checkin: {
         Args: {
           p_check_in_id?: string
