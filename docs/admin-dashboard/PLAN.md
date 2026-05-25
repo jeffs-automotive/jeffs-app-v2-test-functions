@@ -80,7 +80,8 @@ jeffs-app-v2-test-functions/    (existing repo)
 │   │   │   ├── page.tsx         ← landing (cards for Scheduler / Keytags)
 │   │   │   ├── login/page.tsx   ← "Sign in with Microsoft" button
 │   │   │   ├── auth/callback/   ← Supabase Auth callback handler
-│   │   │   ├── scheduler/
+│   │   │   ├── schedulerconfig/
+│   │   │   │   ├── page.tsx     ← index (links to the 8 surfaces)
 │   │   │   │   ├── testing-services/page.tsx
 │   │   │   │   ├── routine-services/page.tsx
 │   │   │   │   ├── concerns/page.tsx
@@ -160,19 +161,19 @@ Each phase ends with a working deploy + commit. Stop points for Chris to check i
 ### Phase D — top-3 scheduler pages (2-3 days)
 
 The three you edit most:
-1. `/scheduler/closed-dates` — calendar picker + reason field + add/remove
-2. `/scheduler/appointment-default-limits` — limit per appointment-type form
-3. `/scheduler/routine-services` — list + reorder + add/edit/deactivate forms
+1. `/schedulerconfig/closed-dates` — calendar picker + reason field + add/remove
+2. `/schedulerconfig/appointment-default-limits` — limit per appointment-type form
+3. `/schedulerconfig/routine-services` — list + reorder + add/edit/deactivate forms
 
 Each page: read view (table) + edit form + "Save" calls existing tool. PR + merge.
 
 ### Phase E — remaining 5 scheduler pages (3-4 days)
 
-1. `/scheduler/testing-services`
-2. `/scheduler/concerns`
-3. `/scheduler/subcategory-descriptions`
-4. `/scheduler/subcategory-service-map`
-5. `/scheduler/question-required-facts`
+1. `/schedulerconfig/testing-services`
+2. `/schedulerconfig/concerns`
+3. `/schedulerconfig/subcategory-descriptions`
+4. `/schedulerconfig/subcategory-service-map`
+5. `/schedulerconfig/question-required-facts`
 
 Same shape as Phase D. PR + merge.
 

@@ -40,16 +40,14 @@ export default async function DashboardPage() {
 
       <section className="grid gap-6 sm:grid-cols-2">
         <DashboardCard
-          href="/scheduler"
+          href="/schedulerconfig"
           title="Scheduler config"
           description="Edit testing services, routine services, concerns, closed dates, appointment limits, and more. Replaces what you do through Claude Desktop today."
-          comingSoon
         />
         <DashboardCard
           href="/keytags"
           title="Key tags"
           description="Assign, release, revert, and audit the 180-tag pool. Look up and resolve manual reviews. Replaces what Claude Desktop does for keytag ops."
-          comingSoon
         />
       </section>
 
