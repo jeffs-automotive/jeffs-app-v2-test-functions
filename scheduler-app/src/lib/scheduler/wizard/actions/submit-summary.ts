@@ -43,6 +43,9 @@ import {
   confirmBooking,
   BookingDirectError,
 } from "@/lib/scheduler/booking-direct-client";
+import {
+  sendSchedulerManualReviewEmail,
+} from "@/lib/scheduler/manual-review-email-client";
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
 import { logError } from "@/lib/scheduler/wizard/log-error";
@@ -622,11 +625,9 @@ async function handleConfirmPath(chatId: string): Promise<WizardTransitionResult
   //     verification fix separately)
   //   - Different jeffBubble: apology copy instead of celebratory
   //
-  // Email send for the manual review is DEFERRED (existing keytag
-  // email path is Deno-only; Vercel Server Action can't import it
-  // directly). Tracked as a new CLN deferred item; advisors can query
-  // keytag_manual_reviews WHERE category='appointment_verification_mismatch'
-  // for now.
+  // Email send for the manual review is wired via the new
+  // scheduler-manual-review-email edge fn (P1.7 2026-05-25; closes
+  // CLN-13). Fire-and-forget after the RPC returns the code.
   const isVerifyMismatch =
     confirmResult.verification && !confirmResult.verification.ok;
   // M3 post-validator fix (2026-05-25): scheduler-booking-direct's
@@ -661,8 +662,36 @@ async function handleConfirmPath(chatId: string): Promise<WizardTransitionResult
     // best-effort: the appointment_verification_status column on the
     // session row + the Sentry error capture above are sufficient
     // for advisor triage without the code.
+    //
+    // P1.7 (2026-05-25): on RPC success the returned `code` feeds the
+    // fire-and-forget email send below (closes CLN-13). Capture the
+    // first row of the TABLE-returning RPC so we have it in scope.
+    const REVIEW_OPTIONS = [
+      {
+        key: "update_tekmetric",
+        label: "Update Tekmetric to match what we sent",
+        description:
+          "Edit the appointment in Tekmetric so it reflects what the customer confirmed in the wizard.",
+      },
+      {
+        key: "update_our_records",
+        label: "Update our records to match Tekmetric",
+        description:
+          "Accept Tekmetric's version as correct; update the customer_chat_sessions row accordingly.",
+      },
+      {
+        key: "contact_customer",
+        label: "Contact customer to resolve",
+        description:
+          "Call/text the customer to confirm which version is correct, then fix the other side.",
+      },
+    ];
+    const ISSUE_SUMMARY =
+      "Appointment confirmation succeeded but Tekmetric's verification shows the persisted fields differ from what we sent.";
+
+    let reviewCode: string | null = null;
     try {
-      const { error: reviewErr } = await supabase.rpc(
+      const { data: reviewRows, error: reviewErr } = await supabase.rpc(
         "create_manual_review",
         {
           p_category: "appointment_verification_mismatch",
@@ -674,28 +703,8 @@ async function handleConfirmPath(chatId: string): Promise<WizardTransitionResult
             vehicle_id: vehicleId,
             diff: verifyDiff,
           },
-          p_options: [
-            {
-              key: "update_tekmetric",
-              label: "Update Tekmetric to match what we sent",
-              description:
-                "Edit the appointment in Tekmetric so it reflects what the customer confirmed in the wizard.",
-            },
-            {
-              key: "update_our_records",
-              label: "Update our records to match Tekmetric",
-              description:
-                "Accept Tekmetric's version as correct; update the customer_chat_sessions row accordingly.",
-            },
-            {
-              key: "contact_customer",
-              label: "Contact customer to resolve",
-              description:
-                "Call/text the customer to confirm which version is correct, then fix the other side.",
-            },
-          ],
-          p_issue_summary:
-            "Appointment confirmation succeeded but Tekmetric's verification shows the persisted fields differ from what we sent.",
+          p_options: REVIEW_OPTIONS,
+          p_issue_summary: ISSUE_SUMMARY,
         },
       );
       if (reviewErr) {
@@ -704,6 +713,18 @@ async function handleConfirmPath(chatId: string): Promise<WizardTransitionResult
           level: "warning",
           extra: { chatId, appointment_id: appointmentId },
         });
+      } else if (
+        Array.isArray(reviewRows) &&
+        reviewRows.length > 0 &&
+        typeof (reviewRows[0] as { code?: unknown }).code === "string"
+      ) {
+        reviewCode = (reviewRows[0] as { code: string }).code;
+      } else {
+        Sentry.captureMessage("create_manual_review_missing_code", {
+          level: "warning",
+          tags: { surface: "submit_summary_v2_create_manual_review" },
+          extra: { chatId, appointment_id: appointmentId, reviewRows },
+        });
       }
     } catch (e) {
       Sentry.captureException(e, {
@@ -711,6 +732,54 @@ async function handleConfirmPath(chatId: string): Promise<WizardTransitionResult
         level: "warning",
         extra: { chatId, appointment_id: appointmentId },
       });
+    }
+
+    // P1.7 — fire-and-forget the AVM email send (closes CLN-13). The
+    // customer's wizard flow does NOT block on email success: the
+    // appointment is already confirmed in Tekmetric + the session row
+    // already carries appointment_verification_status='needs_review'
+    // for advisor DB-query triage. The email is back-office notice
+    // ("hey there's a thing to look at — code AVM-XXXXXX").
+    if (reviewCode) {
+      const codeForEmail = reviewCode;
+      void sendSchedulerManualReviewEmail({
+        code: codeForEmail,
+        category: "appointment_verification_mismatch",
+        issue_summary: ISSUE_SUMMARY,
+        options: REVIEW_OPTIONS,
+        context: {
+          chat_id: chatId,
+          appointment_id: appointmentId,
+          customer_id: customerId,
+          vehicle_id: vehicleId,
+          diff: verifyDiff ?? undefined,
+        },
+      })
+        .then((emailResult) => {
+          if (!emailResult.ok) {
+            Sentry.captureMessage(
+              "scheduler_manual_review_email_send_returned_not_ok",
+              {
+                level: "warning",
+                tags: {
+                  surface: "submit_summary_v2_manual_review_email",
+                },
+                extra: {
+                  chatId,
+                  code: codeForEmail,
+                  result: emailResult,
+                },
+              },
+            );
+          }
+        })
+        .catch((e) => {
+          Sentry.captureException(e, {
+            tags: { surface: "submit_summary_v2_manual_review_email" },
+            level: "warning",
+            extra: { chatId, code: codeForEmail },
+          });
+        });
     }
   }
 

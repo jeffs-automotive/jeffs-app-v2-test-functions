@@ -118,6 +118,33 @@ vi.mock("@/lib/scheduler/wizard/build-service-summary", () => ({
 vi.mock("@/lib/scheduler/wizard/staff-notification", () => ({
   notifyStaffOfNewAppointment: vi.fn(async () => undefined),
 }));
+
+// P1.7 (2026-05-25): manual-review-email-client fire-and-forget call.
+// Mocked to record invocations; per-test slot lets us simulate failure.
+interface ManualReviewEmailCall {
+  args: {
+    code: string;
+    category: string;
+    issue_summary: string;
+    options: unknown[];
+    context: Record<string, unknown>;
+  };
+}
+const manualReviewEmailCalls: ManualReviewEmailCall[] = [];
+let manualReviewEmailResult: {
+  ok: boolean;
+  error?: string;
+  dedup?: boolean;
+} = { ok: true };
+let manualReviewEmailThrows: Error | null = null;
+vi.mock("@/lib/scheduler/manual-review-email-client", () => ({
+  sendSchedulerManualReviewEmail: vi.fn(async (args: ManualReviewEmailCall["args"]) => {
+    manualReviewEmailCalls.push({ args });
+    if (manualReviewEmailThrows) throw manualReviewEmailThrows;
+    return manualReviewEmailResult;
+  }),
+  ManualReviewEmailError: class ManualReviewEmailError extends Error {},
+}));
 vi.mock("@/lib/scheduler/wizard/shop-tz", () => ({
   isSameDayLocal: vi.fn(() => false),
   shopLocalDate: vi.fn(() => "2026-06-01"),
@@ -167,8 +194,11 @@ interface RpcCall {
   args: Record<string, unknown>;
 }
 const rpcCalls: RpcCall[] = [];
+// create_manual_review returns TABLE (code TEXT, review_id BIGINT,
+// audit_log_id BIGINT) — supabase.rpc() resolves to `data` as ARRAY of
+// rows for TABLE-returning RPCs. Default fixture is a single-row success.
 let createManualReviewResult: { data: unknown; error: unknown } = {
-  data: { id: 1, code: "AVM-ABCDEF" },
+  data: [{ code: "AVM-ABCDEF", review_id: 1, audit_log_id: 1 }],
   error: null,
 };
 
@@ -297,9 +327,12 @@ beforeEach(() => {
   diagResult = { data: null, error: null };
   confirmResult = { ok: true, appointment_id: 12345 };
   createManualReviewResult = {
-    data: { id: 1, code: "AVM-ABCDEF" },
+    data: [{ code: "AVM-ABCDEF", review_id: 1, audit_log_id: 1 }],
     error: null,
   };
+  manualReviewEmailCalls.length = 0;
+  manualReviewEmailResult = { ok: true };
+  manualReviewEmailThrows = null;
   sentryCaptureExceptionMock.mockClear();
   sentryCaptureMessageMock.mockClear();
   logErrorMock.mockClear();
@@ -758,9 +791,35 @@ describe("submitSummaryV2 confirm path — Plan 04 Phase 4 verification-mismatch
       "update_our_records",
       "contact_customer",
     ]);
+
+    // P1.7 (2026-05-25): fire-and-forget email send via the new
+    // scheduler-manual-review-email edge fn. The fire-and-forget
+    // pattern uses `.then` + `.catch` on a Promise, so we yield
+    // microtasks before asserting.
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(manualReviewEmailCalls).toHaveLength(1);
+    expect(manualReviewEmailCalls[0]!.args).toMatchObject({
+      code: "AVM-ABCDEF",
+      category: "appointment_verification_mismatch",
+      context: expect.objectContaining({
+        chat_id: CHAT_ID,
+        appointment_id: 12345,
+        diff: "appointment.color: sent='navy' vs got='red'",
+      }),
+    });
+    expect(
+      (manualReviewEmailCalls[0]!.args.options as Array<{ key: string }>).map(
+        (o) => o.key,
+      ),
+    ).toEqual([
+      "update_tekmetric",
+      "update_our_records",
+      "contact_customer",
+    ]);
   });
 
-  it("create_manual_review RPC error does NOT block the customer flow", async () => {
+  it("create_manual_review RPC error does NOT block the customer flow + suppresses email send", async () => {
     confirmResult = {
       ok: true,
       appointment_id: 12345,
@@ -795,6 +854,68 @@ describe("submitSummaryV2 confirm path — Plan 04 Phase 4 verification-mismatch
     expect(sentryCaptureMessageMock).toHaveBeenCalledWith(
       "appointment_verification_mismatch",
       expect.objectContaining({ level: "error" }),
+    );
+
+    // P1.7: no email send fired (no code to attach to the email).
+    await Promise.resolve();
+    expect(manualReviewEmailCalls).toHaveLength(0);
+  });
+
+  it("P1.7: email send returns ok=false → Sentry warning (does NOT block flow)", async () => {
+    confirmResult = {
+      ok: true,
+      appointment_id: 12345,
+      verification: { ok: false, diff: "test diff" },
+    };
+    manualReviewEmailResult = {
+      ok: false,
+      error: "resend_send_failed",
+    };
+
+    await submitSummaryV2({ chatId: CHAT_ID, confirmed: true });
+
+    expect(awtCalls).toHaveLength(1);
+    expect(awtCalls[0]!.nextStep).toBe("customer_notes");
+
+    // Yield microtasks so the fire-and-forget .then callback runs.
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(manualReviewEmailCalls).toHaveLength(1);
+    expect(sentryCaptureMessageMock).toHaveBeenCalledWith(
+      "scheduler_manual_review_email_send_returned_not_ok",
+      expect.objectContaining({
+        level: "warning",
+        tags: expect.objectContaining({
+          surface: "submit_summary_v2_manual_review_email",
+        }),
+      }),
+    );
+  });
+
+  it("P1.7: email send throws → Sentry capture (does NOT block flow)", async () => {
+    confirmResult = {
+      ok: true,
+      appointment_id: 12345,
+      verification: { ok: false, diff: "test diff" },
+    };
+    manualReviewEmailThrows = new Error("network ECONNRESET");
+
+    await submitSummaryV2({ chatId: CHAT_ID, confirmed: true });
+
+    expect(awtCalls).toHaveLength(1);
+    expect(awtCalls[0]!.nextStep).toBe("customer_notes");
+
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(manualReviewEmailCalls).toHaveLength(1);
+    expect(sentryCaptureExceptionMock).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "network ECONNRESET" }),
+      expect.objectContaining({
+        tags: expect.objectContaining({
+          surface: "submit_summary_v2_manual_review_email",
+        }),
+        level: "warning",
+      }),
     );
   });
 

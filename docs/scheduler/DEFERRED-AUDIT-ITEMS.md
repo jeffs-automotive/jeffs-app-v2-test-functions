@@ -1015,7 +1015,29 @@ files
   "Keep `revalidatePath` as a fallback (single-path, not 'layout'
   scope)." The fallback was always intended as a temporary safety net.
 
-### CLN-13 · Email send for `appointment_verification_mismatch` manual reviews (NEW 2026-05-24/25)
+### CLN-13 · Email send for `appointment_verification_mismatch` manual reviews — **RESOLVED 2026-05-25 (P1.7)**
+
+**Resolution** — shipped new edge fn `scheduler-manual-review-email`
++ Vercel client `scheduler-app/src/lib/scheduler/manual-review-email-client.ts`
++ wired fire-and-forget into `submit-summary.ts` after `create_manual_review`
+returns the AVM code. Email template renders the same laymen-terms layout
+as the keytag manual-review emails with category-specific body for
+`appointment_verification_mismatch` (per-issue diff block + 3 advisor
+options + "code AVM-XXXXXX option a" footer). Same Pattern A bearer auth
++ Resend `Idempotency-Key` keyed on the 6-char code as the keytag path.
+Tests cover happy path + RPC error suppresses email + email-ok=false +
+email throws — all paths verified non-blocking for the customer flow.
+
+Path taken: Path 1 (new edge fn) per the original recommendation. Vercel
+client mirrors `booking-direct-client`'s 2-layer host validation (P0.3).
+
+Operator pre-launch: ensure `RESEND_API_KEY` is set on the edge fn's
+Supabase secrets (Project Settings → Edge Functions → Secrets); the fn
+returns 503 with `resend_not_configured` if missing.
+
+**Historical context below preserved for posterity.**
+
+### CLN-13 (historical) · Email send for `appointment_verification_mismatch` manual reviews (NEW 2026-05-24/25)
 
 - **What** — Plan 04 Phase 4 ships the `appointment_verification_mismatch`
   manual review (Pattern B AVM-XXXXXX code) via the existing
