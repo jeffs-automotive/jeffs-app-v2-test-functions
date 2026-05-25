@@ -8,7 +8,8 @@
 -- 3.  RLS — every table is RLS-enabled with deny-all default
 -- 4.  Indexes — partial + GIN indexes are created and used
 -- 5.  Function — hold_waiter_slot exists, signature correct, lock works
--- 6.  Seed data — testing_services 14 rows, routine_services 10 rows,
+-- 6.  Seed data — testing_services 16 rows (Phase 1 seeded 14 +
+--      check_ac +1 + exhaust_service +1), routine_services 10 rows,
 --      closed_dates Sundays, appointment_sync_state shop 7476 row
 -- 7.  Architectural-claim tests (per cross-module-anchors.md):
 --      a) Advisory lock prevents over-capacity on waiter slots
@@ -207,12 +208,15 @@ SELECT has_index('public', 'appointments', 'appointments_customer_idx',
 -- 6. hold_waiter_slot function — exists, correct signature, callable
 -- ---------------------------------------------------------------------
 
+-- 8th arg (idempotency_key) widened from integer → text in migration
+-- 20260516230000 (DST-aware rewrite). Test signature kept in lockstep
+-- here so a future re-narrowing would have to update both sides.
 SELECT has_function('public', 'hold_waiter_slot',
-                    ARRAY['integer','uuid','integer','integer','date','time','text','integer'],
+                    ARRAY['integer','uuid','integer','integer','date','time','text','text'],
                     'hold_waiter_slot function exists with correct signature');
 
 SELECT function_returns('public', 'hold_waiter_slot',
-                        ARRAY['integer','uuid','integer','integer','date','time','text','integer'],
+                        ARRAY['integer','uuid','integer','integer','date','time','text','text'],
                         'uuid',
                         'hold_waiter_slot returns uuid');
 
@@ -221,10 +225,13 @@ SELECT function_returns('public', 'hold_waiter_slot',
 -- 7. Seed data
 -- ---------------------------------------------------------------------
 
+-- Originally seeded at 14 in Phase 1. Migrations 20260518141655
+-- (check_ac) + 20260521171000 (exhaust_service) each added 1 row.
+-- Update this assertion when adding/removing testing_services seed rows.
 SELECT is(
   (SELECT COUNT(*)::INT FROM testing_services WHERE shop_id = 7476),
-  14,
-  'testing_services seeded with 14 rows for shop 7476'
+  16,
+  'testing_services seeded with 16 rows for shop 7476'
 );
 
 SELECT is(

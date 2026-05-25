@@ -955,7 +955,38 @@ files
   the same EUSAGE error from the earlier CI run 26319790437
   (Plan 01 Phase 3).
 
-### CLN-9 · pgTAP suite has 5 stale-schema failures — `continue-on-error` in CI (NEW 2026-05-22)
+### CLN-9 · pgTAP suite has 5 stale-schema failures — **RESOLVED 2026-05-25**
+
+All 5 stale assertions corrected so the pgTAP suite goes green
+without `continue-on-error`:
+
+1. **Test 50/51** (`hold_waiter_slot` signature) — migration
+   20260516230000 widened the 8th arg `idempotency_key` from
+   `integer` → `text`. Test signature array updated to match;
+   inline comment added so a future re-narrowing has to update
+   both sides.
+
+2. **Test 52** (`testing_services` count) — Phase 1 seeded 14
+   rows, then migrations 20260518141655 (check_ac) +
+   20260521171000 (exhaust_service) each added 1. Test updated
+   to assert 16 + inline comment names the migrations to keep
+   in sync.
+
+3. **Test 11/12** (`scheduler_admin_audit_log.event_type` +
+   `.event_detail`) — these columns NEVER existed on
+   `scheduler_admin_audit_log`; the assertions were copy-paste
+   from the `scheduler_audit_log` block above where the table
+   name didn't get updated. Replaced with assertions for columns
+   that DO exist on the admin table (`operation`,
+   `diff_summary`, `table_name`) so we still get type-drift
+   coverage on the admin surface.
+
+Source: investigation triggered by CI staying red after the
+@emnapi lockfile fix (aae74c4). Chris's correct push-back: "anything
+pre-existing you wrote — we need to fix it" — these tests were
+mine to repair, not document around.
+
+### CLN-9 (historical) · pgTAP suite has 5 stale-schema failures — `continue-on-error` in CI (NEW 2026-05-22)
 
 - **What** — `supabase test db` against the local Supabase fails 5 of
   ~109 tests across 3 files because the test SQL is stale relative to

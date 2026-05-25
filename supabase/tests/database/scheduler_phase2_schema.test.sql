@@ -55,14 +55,25 @@ SELECT col_type_is(
   'scheduler_audit_log.event_detail is jsonb'
 );
 
--- scheduler_admin_audit_log — admin actions (different surface)
+-- scheduler_admin_audit_log — admin actions (different surface from
+-- scheduler_audit_log). Migration 20260513000100 defines this table
+-- with table_name / operation / diff_summary / rows_added /
+-- rows_modified / rows_deactivated — NOT event_type / event_detail.
+-- The prior assertions here were copy-pasted from the
+-- scheduler_audit_log block above and the table name wasn't updated;
+-- replaced with assertions for columns that ACTUALLY exist on this
+-- table so we still get type-drift coverage.
 SELECT col_type_is(
-  'public', 'scheduler_admin_audit_log', 'event_type', 'text',
-  'scheduler_admin_audit_log.event_type is text'
+  'public', 'scheduler_admin_audit_log', 'operation', 'text',
+  'scheduler_admin_audit_log.operation is text'
 );
 SELECT col_type_is(
-  'public', 'scheduler_admin_audit_log', 'event_detail', 'jsonb',
-  'scheduler_admin_audit_log.event_detail is jsonb'
+  'public', 'scheduler_admin_audit_log', 'diff_summary', 'jsonb',
+  'scheduler_admin_audit_log.diff_summary is jsonb'
+);
+SELECT col_type_is(
+  'public', 'scheduler_admin_audit_log', 'table_name', 'text',
+  'scheduler_admin_audit_log.table_name is text'
 );
 
 -- concern_questions — the diagnostic Q catalog
