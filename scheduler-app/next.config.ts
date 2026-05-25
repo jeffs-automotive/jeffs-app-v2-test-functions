@@ -105,6 +105,18 @@ function buildCSP(): string {
     "img-src 'self' data: https:",
     `connect-src 'self' ${connectSrcSupabase}`,
     "font-src 'self' data:",
+    // 2026-05-25 — explicit worker-src for Vercel BotID. The BotID
+    // challenge script (c.js, loaded same-origin via the withBotId
+    // proxy rewrite) creates a Web Worker from a blob URL at runtime.
+    // Without `worker-src`, CSP falls back to `script-src` which
+    // doesn't include `blob:` → worker is blocked → BotID can't
+    // initialize → client tokens never attach to POSTs → the FIRST
+    // submit to /, /book, /book-v2 silently fails (Vercel's edge
+    // BotID layer flags the missing token), the SECOND submit fires
+    // because the SDK has already given up. Symptom: "first date
+    // click does nothing, second click works." Including 'self' for
+    // any future Next.js-spawned workers (none today; future-proofing).
+    "worker-src 'self' blob:",
     "frame-ancestors 'none'",
     "form-action 'self'",
     "base-uri 'self'",
