@@ -75,13 +75,18 @@ describe("getShopClock — happy path", () => {
 
     const snap = await getShopClock();
 
-    expect(snap).toEqual({
+    expect(snap).toMatchObject({
       date: "2026-06-10",
       hour: 14,
       minute: 30,
       iso_local: "2026-06-10T14:30:00",
       source: "postgres",
     });
+    // P1.6-followup (2026-05-25): now_utc_iso captured at snapshot
+    // time. Assert shape + parsability rather than exact value (the
+    // current real instant).
+    expect(typeof snap.now_utc_iso).toBe("string");
+    expect(Date.parse(snap.now_utc_iso)).not.toBeNaN();
     expect(sentryCaptureExceptionMock).not.toHaveBeenCalled();
     expect(sentryCaptureMessageMock).not.toHaveBeenCalled();
   });

@@ -430,6 +430,62 @@ the work lands.
   `scheduler-app/tests/unit/rate-limit.test.ts`,
   `scheduler-app/tests/unit/get-request-ip.test.ts`.
 
+### SEC-9 · Fire-and-forget Server Action calls should use `after()` for guaranteed post-response execution (NEW 2026-05-25)
+
+- **What** — `submit-summary.ts:745` (`notifyStaffOfNewAppointment`) and
+  `:789` (`sendSchedulerManualReviewEmail`) both use the
+  `void ...().then().catch()` pattern AFTER the Server Action's return
+  path. On Vercel serverless functions, orphan promises after the
+  response is sent are NOT guaranteed to complete — the function
+  instance may tear down before the I/O lands.
+- **Customer impact** — staff doesn't get the new-appointment email +
+  advisor doesn't get the AVM manual-review email. The DB row + audit
+  log + Sentry capture are intact (graceful), so the customer never
+  sees an issue, but the back-office triage paths get partial signal.
+- **Why deferred** — the `notifyStaffOfNewAppointment` pattern
+  pre-dates this batch + has presumably been working in production
+  (no Sentry alarms about missing staff emails). Switching the pattern
+  is a focused refactor that needs verification (the existing emails
+  may already be missing some fraction; need a measurement first).
+- **Path forward** — wrap the fire-and-forget with `after()` from
+  `next/server` (Next.js 15.5 stable) OR `waitUntil()` from
+  `@vercel/functions`. Both guarantee execution past response flush.
+  Reference: https://nextjs.org/docs/app/api-reference/functions/after
+- **Severity** — M. Customer-facing flow is unaffected; back-office
+  notification reliability is the only concern.
+- **Source** — validator-2 post-fix audit (2026-05-25).
+
+### SEC-10 · IdleTimer `beforeunload` handler lacks bfcache guard (NEW 2026-05-25)
+
+- **What** — `IdleTimer.tsx:213-219`. `onPagehide` checks
+  `event.persisted` to skip bfcache transitions; `onBeforeUnload` has
+  no equivalent guard (the spec has no `persisted` field on
+  beforeunload). On iOS Safari, both fire on bfcache-eligible
+  navigations.
+- **Customer impact** — a customer who idles ≥ 10s (the
+  `last_active_at` guard threshold in mark-abandoned) and then
+  bfcache-navigates would fire the beacon → release the hold → flip
+  to timed_out. The 10s guard catches most cases; the 5-min idle
+  timer catches the rest.
+- **Why deferred** — existing behavior; not introduced by this batch.
+  The Page Lifecycle API spec advice is to drop `beforeunload`
+  entirely on modern browsers since `pagehide` supersedes it. But
+  removing beforeunload affects browser support (older browsers
+  fall back to the server-side reaper cron).
+- **Path forward** — drop `onBeforeUnload` listener; rely on
+  `pagehide` (with `event.persisted` guard) for tab-close detection
+  on modern browsers + server-side 70-min reaper as the catch-all.
+- **Severity** — P2. Mitigated by `last_active_at` guard.
+- **Source** — validator-2 post-fix audit (2026-05-25).
+
+### SEC-11 · OTP resend cooldown + CAS expires_at compare Date.now() to Postgres now() (NEW 2026-05-25)
+
+- **What** — `resend-otp.ts:135-160` (P2.12 fix) compares `Date.parse(otp_sent_at)` (DB time) to `Date.now()` (Node wall clock). `submit-summary.ts:344` (P0.2 fix) compares `new Date().toISOString()` to `appointment_holds.expires_at`. Both are cross-clock comparisons that P1.6 explicitly rejected for the same-day cutoff. Practical drift is sub-second (NTP-synced) so not a bug today.
+- **Why deferred** — operational consistency only; no functional impact at NTP-drift scales.
+- **Path forward** — for the OTP cooldown: either route through a Postgres RPC (`scheduler_check_resend_cooldown(chatId, threshold_ms)`) OR add a code comment explicitly accepting the cross-clock drift since the security-critical limits live elsewhere (Upstash + DB-level per-phone caps). For the CAS expires_at: source `nowIso` from the already-memoized `getShopClock().now_utc_iso` snapshot.
+- **Severity** — P2. Pattern-drift, not bug.
+- **Source** — validator-2 post-fix audit (2026-05-25).
+
 ### SEC-8 · `SCHEDULER_BEACON_HMAC_SECRET` env var — pre-launch activation (NEW 2026-05-25)
 
 - **Status** — code shipped; env var NOT yet set on Vercel. Activates the

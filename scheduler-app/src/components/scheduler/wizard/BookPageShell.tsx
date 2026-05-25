@@ -1,7 +1,7 @@
 import { ensureSessionExists } from "@/lib/scheduler/chat-store";
 import { hydrateSession } from "@/lib/scheduler/hydrate-session";
 import { getCurrentCard } from "@/lib/scheduler/wizard/get-current-card";
-import { signBeaconChatId } from "@/lib/security/beacon-hmac";
+import { signBeaconPayload } from "@/lib/security/beacon-hmac";
 import { WizardCrossCutting } from "@/components/scheduler/wizard/WizardCrossCutting";
 import { WizardSurface } from "@/components/scheduler/wizard/WizardSurface";
 
@@ -42,13 +42,24 @@ export async function BookPageShell() {
     payload: {},
   };
 
-  // P1.5 (2026-05-25): server-side HMAC sig over chatId for the
-  // mark-abandoned beacon. Empty string when SCHEDULER_BEACON_HMAC_SECRET
-  // is unset (dev / pre-launch) — the helper emits a one-time Sentry
-  // warning so operators can find the gap. The route's verifyBeaconSig
+  // P1.5 + validator-2-followup (2026-05-25): server-side HMAC sig
+  // over the FULL beacon payload (chatId + currentStep + source).
+  // Was chatId-only — extending to step+source closes the analytics-
+  // pollution replay vector flagged in the post-fix audit.
+  //
+  // We compute TWO sigs (one per source value: "idle_timer" and
+  // "tab_close") and pass both to IdleTimer so it can attach the
+  // correct one based on which event fired. Slightly heavier than the
+  // single sig but the alternative (have IdleTimer recompute via a
+  // fetch call to a sig endpoint) costs a round-trip on every render.
+  //
+  // Empty string when SCHEDULER_BEACON_HMAC_SECRET is unset (dev /
+  // pre-launch) — the helper emits a one-time Sentry warning so
+  // operators can find the gap. The route's verifyBeaconPayloadSig
   // falls back to "skipped" in that posture, preserving the prior
   // unauthenticated behavior.
-  const beaconSig = signBeaconChatId(chatId);
+  const beaconSigIdle = signBeaconPayload(chatId, card.step, "idle_timer");
+  const beaconSigTab = signBeaconPayload(chatId, card.step, "tab_close");
 
   return (
     <main className="flex min-h-dvh flex-col bg-paper">
@@ -76,7 +87,8 @@ export async function BookPageShell() {
       <WizardCrossCutting
         chatId={chatId}
         currentStep={card.step}
-        beaconSig={beaconSig}
+        beaconSigIdle={beaconSigIdle}
+        beaconSigTab={beaconSigTab}
       />
 
       <footer className="border-t border-rule bg-paper-100">

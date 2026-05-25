@@ -25,7 +25,9 @@ vi.mock("@sentry/nextjs", () => ({
 
 import {
   signBeaconChatId,
+  signBeaconPayload,
   verifyBeaconSig,
+  verifyBeaconPayloadSig,
   isBeaconHmacConfigured,
   __resetBeaconHmacWarningForTests,
 } from "@/lib/security/beacon-hmac";
@@ -225,7 +227,73 @@ describe("verifyBeaconSig", () => {
     );
 
     const result = verifyBeaconSig(CHAT_ID, oldSig);
-
     expect(result).toBe("mismatch");
   });
+});
+
+describe("signBeaconPayload + verifyBeaconPayloadSig (validator-2-followup)", () => {
+  it("payload-bound sig (chatId+step+source) round-trips correctly", () => {
+    process.env.SCHEDULER_BEACON_HMAC_SECRET = VALID_SECRET;
+    const sig = signBeaconPayload(CHAT_ID, "summary", "idle_timer");
+    expect(verifyBeaconPayloadSig(CHAT_ID, "summary", "idle_timer", sig)).toBe(
+      "verified",
+    );
+  });
+
+  it("replay defense: captured sig with WRONG step → mismatch", () => {
+    process.env.SCHEDULER_BEACON_HMAC_SECRET = VALID_SECRET;
+    const capturedSig = signBeaconPayload(CHAT_ID, "summary", "idle_timer");
+    expect(
+      verifyBeaconPayloadSig(CHAT_ID, "date_pick", "idle_timer", capturedSig),
+    ).toBe("mismatch");
+  });
+
+  it("replay defense: captured sig with WRONG source → mismatch", () => {
+    process.env.SCHEDULER_BEACON_HMAC_SECRET = VALID_SECRET;
+    const capturedSig = signBeaconPayload(CHAT_ID, "summary", "idle_timer");
+    expect(
+      verifyBeaconPayloadSig(CHAT_ID, "summary", "tab_close", capturedSig),
+    ).toBe("mismatch");
+  });
+
+  it("legacy chatId-only sig still verifies under verifyBeaconPayloadSig (backwards compat)", () => {
+    process.env.SCHEDULER_BEACON_HMAC_SECRET = VALID_SECRET;
+    const legacySig = signBeaconChatId(CHAT_ID);
+    expect(
+      verifyBeaconPayloadSig(CHAT_ID, "anything", "tab_close", legacySig),
+    ).toBe("verified");
+  });
+
+  it("different sources produce different sigs", () => {
+    process.env.SCHEDULER_BEACON_HMAC_SECRET = VALID_SECRET;
+    const a = signBeaconPayload(CHAT_ID, "summary", "idle_timer");
+    const b = signBeaconPayload(CHAT_ID, "summary", "tab_close");
+    expect(a).not.toBe(b);
+  });
+
+  it("different steps produce different sigs", () => {
+    process.env.SCHEDULER_BEACON_HMAC_SECRET = VALID_SECRET;
+    const a = signBeaconPayload(CHAT_ID, "summary", "idle_timer");
+    const b = signBeaconPayload(CHAT_ID, "date_pick", "idle_timer");
+    expect(a).not.toBe(b);
+  });
+
+  it("signBeaconPayload returns empty string when secret missing", () => {
+    const sig = signBeaconPayload(CHAT_ID, "summary", "idle_timer");
+    expect(sig).toBe("");
+  });
+
+  it("missing sig → missing_sig under verifyBeaconPayloadSig", () => {
+    process.env.SCHEDULER_BEACON_HMAC_SECRET = VALID_SECRET;
+    expect(
+      verifyBeaconPayloadSig(CHAT_ID, "summary", "idle_timer", null),
+    ).toBe("missing_sig");
+  });
+
+  it("no secret → skipped under verifyBeaconPayloadSig", () => {
+    expect(
+      verifyBeaconPayloadSig(CHAT_ID, "summary", "idle_timer", "anything"),
+    ).toBe("skipped");
+  });
+
 });

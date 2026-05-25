@@ -66,6 +66,21 @@ export interface ShopClockSnapshot {
    * the wall-clock value the system was using at decision time.
    */
   iso_local: string;
+  /**
+   * Current UTC instant captured at snapshot time as
+   * "YYYY-MM-DDTHH:MM:SS.sssZ". Lets callers use the SAME instant for
+   * every TIMESTAMPTZ comparison within a render — eliminates the
+   * cross-`new Date()`-call drift that would otherwise pile up across
+   * multiple supabase filters in availability.ts and similar surfaces.
+   *
+   * Sourced from Vercel `Date.now()` at the moment the snapshot was
+   * captured (NOT from the Postgres RPC — the RPC returns shop-local
+   * components only). NTP drift between Vercel + Postgres is ~10ms
+   * bound; close enough that `expires_at > now_utc_iso` agrees with
+   * `expires_at > Postgres.now()` for any non-microsecond-precision
+   * application.
+   */
+  now_utc_iso: string;
   /** TRUE when the snapshot was sourced from the Postgres RPC. FALSE
    * when the RPC failed and the snapshot came from the Vercel-clock
    * fallback. Callers can branch on this for stricter behavior
@@ -117,7 +132,11 @@ export const getShopClock = cache(async (): Promise<ShopClockSnapshot> => {
       });
       return computeVercelFallback();
     }
-    return { ...parsed.data, source: "postgres" };
+    return {
+      ...parsed.data,
+      now_utc_iso: new Date().toISOString(),
+      source: "postgres",
+    };
   } catch (e) {
     Sentry.captureException(e, {
       tags: { surface: "shop_clock_rpc_throw" },
@@ -148,6 +167,7 @@ function computeVercelFallback(): ShopClockSnapshot {
     hour,
     minute,
     iso_local: `${date}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00`,
+    now_utc_iso: now.toISOString(),
     source: "vercel_fallback",
   };
 }

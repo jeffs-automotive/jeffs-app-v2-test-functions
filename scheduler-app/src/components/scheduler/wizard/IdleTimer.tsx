@@ -44,15 +44,15 @@ export interface IdleTimerProps {
   /** Current step at mount — included in the abandon beacon's audit. */
   currentStep: string;
   /**
-   * P1.5 (2026-05-25): HMAC sig over chatId, computed server-side in
-   * BookPageShell. Attached as the `sig` query parameter on every
-   * mark-abandoned beacon so the route can authenticate the request.
-   * Empty string when SCHEDULER_BEACON_HMAC_SECRET is unset (dev /
-   * pre-launch) — in that posture the client sends no sig and the
-   * route falls back to its prior unauthenticated behavior with a
-   * one-time Sentry warning surfaced server-side.
+   * P1.5 + validator-2-followup (2026-05-25): HMAC sig over the full
+   * beacon payload (chatId + currentStep + source). Two sigs because
+   * we don't know in advance which source the runtime will fire —
+   * server pre-computes both so the client just picks. Both empty
+   * when SCHEDULER_BEACON_HMAC_SECRET is unset (dev posture; route
+   * falls back to "skipped").
    */
-  beaconSig: string;
+  beaconSigIdle: string;
+  beaconSigTab: string;
   /**
    * Skip when the session is in a terminal state (completed / escalated).
    * Defaults to false; parent passes true when the wizard's step is one
@@ -88,7 +88,8 @@ const INTERACTIVE_EVENTS: Array<keyof WindowEventMap> = [
 export function IdleTimer({
   chatId,
   currentStep,
-  beaconSig,
+  beaconSigIdle,
+  beaconSigTab,
   disabled = false,
 }: IdleTimerProps) {
   // Track abandonment so the idle-timer + pagehide handlers don't
@@ -117,12 +118,12 @@ export function IdleTimer({
           step: currentStep,
           source,
         });
-        // P1.5 (2026-05-25): include HMAC sig over chatId so the route
-        // can authenticate the beacon. Omitted when beaconSig is the
-        // empty string (server-side secret unset; route falls back to
-        // "skipped" verification per its current behavior).
-        if (beaconSig) {
-          params.set("sig", beaconSig);
+        // P1.5 + validator-2-followup (2026-05-25): pick the right
+        // payload-bound sig for the source value. Empty when the
+        // server-side secret is unset (route falls back to "skipped").
+        const sig = source === "idle_timer" ? beaconSigIdle : beaconSigTab;
+        if (sig) {
+          params.set("sig", sig);
         }
         navigator.sendBeacon?.(
           `/api/scheduler/mark-abandoned?${params.toString()}`,
@@ -240,7 +241,7 @@ export function IdleTimer({
       window.removeEventListener("beforeunload", onBeforeUnload);
       clearAllTimers();
     };
-  }, [chatId, currentStep, beaconSig, disabled]);
+  }, [chatId, currentStep, beaconSigIdle, beaconSigTab, disabled]);
 
   function handleExtend() {
     resetTimerRef.current();

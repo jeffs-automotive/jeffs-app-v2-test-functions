@@ -284,7 +284,7 @@ export async function getCurrentCard(
           .select(
             "service_key, display_name, display_order, starting_price_cents, price_waived_note, description",
           )
-          .eq("shop_id", 7476)
+          .eq("shop_id", SHOP_ID)
           .eq("active", true)
           .order("display_order", { ascending: true });
         if (rowsErr) {
@@ -450,7 +450,7 @@ export async function getCurrentCard(
         const { data: explanationFlags, error: flagsErr } = await supabase
           .from("routine_services")
           .select("service_key, requires_explanation")
-          .eq("shop_id", 7476)
+          .eq("shop_id", SHOP_ID)
           .eq("active", true);
         if (flagsErr) {
           throw new Error(

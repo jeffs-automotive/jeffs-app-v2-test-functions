@@ -47,7 +47,7 @@ import { z } from "zod";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { sessionTag } from "@/lib/scheduler/cache";
-import { verifyBeaconSig } from "@/lib/security/beacon-hmac";
+import { verifyBeaconPayloadSig } from "@/lib/security/beacon-hmac";
 import { logError } from "@/lib/scheduler/wizard/log-error";
 
 export const dynamic = "force-dynamic";
@@ -135,8 +135,8 @@ export async function POST(req: Request): Promise<NextResponse> {
     // reaches the DB if their sig is missing or wrong — eliminates
     // both the abuse vector AND the DB round-trip cost of probes.
     //
-    // verifyBeaconSig returns:
-    //   - "verified"    → proceed (sig matched)
+    // verifyBeaconPayloadSig returns:
+    //   - "verified"    → proceed (sig matched payload-bound OR legacy chatId-only)
     //   - "skipped"     → proceed (no secret configured; dev / pre-launch)
     //   - "missing_sig" → reject (secret configured; request had no sig)
     //   - "mismatch"    → reject (secret configured; sig was wrong)
@@ -144,7 +144,15 @@ export async function POST(req: Request): Promise<NextResponse> {
     // Both reject branches return 204 (not 401) so we don't leak the
     // chat_id's validity to an attacker — legitimate beacons also
     // return 204, so the response shape is indistinguishable.
-    const hmacResult = verifyBeaconSig(chatId, sig);
+    //
+    // Validator-2-followup (2026-05-25): the verifier now binds
+    // chatId + step + source so an attacker who captures a legitimate
+    // beacon URL can't replay it with arbitrary step/source values
+    // to pollute scheduler_audit_log.event_detail.step_at_abandon.
+    // Backwards-compat: pages that loaded before this rollout still
+    // send chatId-only sigs — accepted to avoid breaking in-flight
+    // wizard sessions.
+    const hmacResult = verifyBeaconPayloadSig(chatId, step, source, sig);
     if (hmacResult === "missing_sig" || hmacResult === "mismatch") {
       Sentry.captureMessage("mark_abandoned_hmac_rejected", {
         level: "warning",

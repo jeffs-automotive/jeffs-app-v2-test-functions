@@ -98,6 +98,16 @@ export function isBeaconHmacConfigured(): boolean {
  * a sig). Emits a one-time Sentry warning for operator visibility.
  *
  * Pure function — no async, no IO beyond reading process.env.
+ *
+ * Validator-2 follow-up (2026-05-25): the original P1.5 covered only
+ * chatId. An attacker who captured one beacon could replay it with
+ * arbitrary `step` / `source` to pollute `scheduler_audit_log`
+ * (event_detail.step_at_abandon). Doesn't affect the DB-write gate
+ * (the row update only fires on `status='active'`; hold release
+ * filters `released_at IS NULL`) — but analytics integrity matters
+ * for triage. The chatId-only signature is preserved via a separate
+ * `signBeaconPayload` helper below; callers should prefer the
+ * payload-binding form.
  */
 export function signBeaconChatId(chatId: string): string {
   if (!isBeaconHmacConfigured()) {
@@ -106,6 +116,45 @@ export function signBeaconChatId(chatId: string): string {
   }
   const secret = process.env.SCHEDULER_BEACON_HMAC_SECRET as string;
   return createHmac("sha256", secret).update(chatId).digest("base64url");
+}
+
+/**
+ * Canonicalize the beacon payload for HMAC. Order: chatId, step,
+ * source — separated by `|` (a char that never appears in a chatId
+ * UUID or in the enum-bounded step/source values). Empty fields render
+ * as the empty string; the separators alone distinguish missing-field
+ * from a different-field-value collision.
+ */
+function canonicalizeBeaconPayload(
+  chatId: string,
+  step: string | null | undefined,
+  source: string | null | undefined,
+): string {
+  return `${chatId}|${step ?? ""}|${source ?? ""}`;
+}
+
+/**
+ * Compute the HMAC over the FULL beacon payload (chatId + step + source).
+ * Use this when callers need replay-resistance for non-chatId fields.
+ *
+ * The mark-abandoned route validates payload-bound sigs first via
+ * `verifyBeaconPayloadSig`; falls back to the chatId-only sig for
+ * compatibility with any in-flight client pages that loaded before
+ * this rollout.
+ */
+export function signBeaconPayload(
+  chatId: string,
+  step: string | null | undefined,
+  source: string | null | undefined,
+): string {
+  if (!isBeaconHmacConfigured()) {
+    emitMissingSecretWarningOnce();
+    return "";
+  }
+  const secret = process.env.SCHEDULER_BEACON_HMAC_SECRET as string;
+  return createHmac("sha256", secret)
+    .update(canonicalizeBeaconPayload(chatId, step, source))
+    .digest("base64url");
 }
 
 export type BeaconHmacResult =
@@ -134,6 +183,26 @@ export function verifyBeaconSig(
   chatId: string,
   sig: string | null | undefined,
 ): BeaconHmacResult {
+  return verifyBeaconPayloadSig(chatId, null, null, sig);
+}
+
+/**
+ * Verify a beacon sig against the FULL payload (chatId + step + source).
+ * Same return values as `verifyBeaconSig`.
+ *
+ * Acceptance: a sig matching the payload-bound signature is `verified`.
+ * A sig matching the chatId-only signature is ALSO `verified` —
+ * compatibility window for clients whose pages loaded before this
+ * rollout. The chatId-only fallback is acceptable because the worst
+ * case it permits is the original P1.5 surface (replay step/source
+ * fields for analytics pollution — no DB write impact).
+ */
+export function verifyBeaconPayloadSig(
+  chatId: string,
+  step: string | null | undefined,
+  source: string | null | undefined,
+  sig: string | null | undefined,
+): BeaconHmacResult {
   if (!isBeaconHmacConfigured()) {
     emitMissingSecretWarningOnce();
     return "skipped";
@@ -141,17 +210,28 @@ export function verifyBeaconSig(
   if (!sig) {
     return "missing_sig";
   }
-  const expected = signBeaconChatId(chatId);
-  // Length-check before timingSafeEqual — node's timingSafeEqual
-  // throws on length mismatch (and the throw IS itself a timing
-  // signal). Both buffers should always be 43 bytes for valid
-  // base64url(SHA-256) input.
-  if (sig.length !== expected.length) {
-    return "mismatch";
+  // Try payload-bound sig first.
+  const expectedPayload = signBeaconPayload(chatId, step, source);
+  if (
+    sig.length === expectedPayload.length &&
+    timingSafeEqual(Buffer.from(sig), Buffer.from(expectedPayload))
+  ) {
+    return "verified";
   }
-  const a = Buffer.from(sig);
-  const b = Buffer.from(expected);
-  return timingSafeEqual(a, b) ? "verified" : "mismatch";
+  // Fallback: chatId-only sig (legacy compat for in-flight pages).
+  const expectedChatId = createHmac(
+    "sha256",
+    process.env.SCHEDULER_BEACON_HMAC_SECRET as string,
+  )
+    .update(chatId)
+    .digest("base64url");
+  if (
+    sig.length === expectedChatId.length &&
+    timingSafeEqual(Buffer.from(sig), Buffer.from(expectedChatId))
+  ) {
+    return "verified";
+  }
+  return "mismatch";
 }
 
 /**

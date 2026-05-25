@@ -33,15 +33,18 @@
  * stored with HH:MM in scheduled_time already.
  */
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-// P1.6 (2026-05-25): same-day cutoff now reads from the Postgres
-// clock via `getShopClock()` instead of Vercel's `new Date()`. Single
-// source of truth across availability + submit-date defensive re-check
-// so a customer can't see today in the picker but get rejected on
-// submit because of clock skew at the cutoff minute. The old
-// `isAfterSameDayCutoff` / `shopLocalToday` from `wizard/shop-tz.ts`
-// stay around for DISPLAY-ONLY callers.
+// P1.6 + P1.6-followup (2026-05-25): every clock read in this function
+// flows from a SINGLE per-request snapshot via `getShopClock()`. Both
+// the same-day cutoff (P1.6) AND the window start/end dates AND the
+// active-holds expiry filter AND the appointment range filter all
+// derive from the same snapshot. Eliminates the cross-clock-call
+// drift that the original `new Date()`-everywhere pattern accumulated
+// across 4 supabase filters within one render.
 import { getShopClock } from "@/lib/scheduler/shop-clock";
-import { SAME_DAY_CUTOFF_HOUR } from "@/lib/scheduler/wizard/shop-tz";
+import {
+  SAME_DAY_CUTOFF_HOUR,
+  shopLocalToIsoString,
+} from "@/lib/scheduler/wizard/shop-tz";
 
 const SHOP_TIMEZONE = "America/New_York"; // Phase 1 single-shop
 
@@ -50,23 +53,54 @@ export interface ComputeAvailableDatesArgs {
   days_ahead: number;
 }
 
+/**
+ * Add N days to a "YYYY-MM-DD" string, returning the resulting
+ * "YYYY-MM-DD" string. Pure calendar arithmetic via UTC noon (DST-safe
+ * anchor — adding 1 day at noon UTC always lands on the next UTC date
+ * regardless of which timezone observes DST overnight).
+ */
+function addDaysToYmd(ymd: string, days: number): string {
+  const d = new Date(`${ymd}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Day-of-week (0-6, Sunday=0) for a "YYYY-MM-DD" string. Calendar
+ * dates have one day-of-week regardless of timezone; noon UTC is a
+ * safe DST-anchor for the underlying Date.
+ */
+function dayOfWeekForYmd(ymd: string): number {
+  return new Date(`${ymd}T12:00:00Z`).getUTCDay();
+}
+
 export async function computeAvailableDates(
   args: ComputeAvailableDatesArgs,
 ): Promise<string[]> {
   const supabase = createSupabaseAdminClient();
 
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
-  const endDate = new Date(today);
-  endDate.setUTCDate(endDate.getUTCDate() + args.days_ahead);
-  const ymd = (d: Date): string => d.toISOString().slice(0, 10);
+  // P1.6-followup (2026-05-25): the single per-request snapshot drives
+  // ALL clock-derived values: window dates (today + N), TIMESTAMPTZ
+  // comparison instants (now_utc_iso for hold expiry, shop-local
+  // midnight ISOs for appointment range), AND the same-day cutoff
+  // (already P1.6). Inside one render, these all agree.
+  const shopNow = await getShopClock();
+  const todayYmd = shopNow.date;
+  const endYmd = addDaysToYmd(todayYmd, args.days_ahead);
 
-  // Layer 1: closed_dates in the window.
+  // For TIMESTAMPTZ range filters on appointments.start_time, convert
+  // shop-local-midnight to its UTC instant. shopLocalToIsoString
+  // handles DST automatically — "2026-06-10T00:00:00-04:00" in EDT
+  // vs "-05:00" in EST.
+  const startIsoTz = shopLocalToIsoString(todayYmd, "00:00");
+  const endIsoTz = shopLocalToIsoString(endYmd, "00:00");
+
+  // Layer 1: closed_dates in the window. DATE column → string compare.
   const { data: closed, error: closedErr } = await supabase
     .from("closed_dates")
     .select("closed_date")
-    .gte("closed_date", ymd(today))
-    .lt("closed_date", ymd(endDate));
+    .gte("closed_date", todayYmd)
+    .lt("closed_date", endYmd);
   if (closedErr) {
     throw new Error(`closed_dates query failed: ${closedErr.message}`);
   }
@@ -107,8 +141,8 @@ export async function computeAvailableDates(
   const { data: blocks, error: blocksErr } = await supabase
     .from("appointment_blocks")
     .select("blocked_date, blocked_type, blocked_time")
-    .gte("blocked_date", ymd(today))
-    .lt("blocked_date", ymd(endDate));
+    .gte("blocked_date", todayYmd)
+    .lt("blocked_date", endYmd);
   if (blocksErr) {
     throw new Error(`appointment_blocks query failed: ${blocksErr.message}`);
   }
@@ -131,28 +165,38 @@ export async function computeAvailableDates(
   }
 
   // Layer 4: active holds (not released, not expired) for this type.
-  const nowIso = new Date().toISOString();
+  // P1.6-followup: expires_at compared against the snapshot's UTC
+  // instant so this filter agrees with the rest of the render's
+  // time-based decisions.
   const { data: holds, error: holdsErr } = await supabase
     .from("appointment_holds")
     .select("scheduled_date, scheduled_time")
     .eq("appointment_type", args.appointment_type)
-    .gte("scheduled_date", ymd(today))
-    .lt("scheduled_date", ymd(endDate))
+    .gte("scheduled_date", todayYmd)
+    .lt("scheduled_date", endYmd)
     .is("released_at", null)
-    .gt("expires_at", nowIso);
+    .gt("expires_at", shopNow.now_utc_iso);
   if (holdsErr) {
     throw new Error(`appointment_holds query failed: ${holdsErr.message}`);
   }
 
   // Layer 4: non-cancelled appointments for this type in the window.
   // appointments.start_time is TIMESTAMPTZ; filter by start_time within
-  // [today, endDate) UTC. We'll bucket by shop-local date afterward.
+  // [shop-local-midnight-today, shop-local-midnight-endDate). Bucketing
+  // by shop-local date happens below via Intl.
+  //
+  // P1.6-followup (2026-05-25): startIsoTz / endIsoTz come from
+  // shopLocalToIsoString() — DST-aware UTC instants matching the shop
+  // calendar boundary. Was UTC midnight which slipped a day at the
+  // edges (e.g., 9 PM ET on May 25 = 1 AM UTC on May 26 — filter
+  // would include appointments scheduled on May 26 that fall before
+  // their shop-local May 26 midnight).
   const { data: appts, error: apptsErr } = await supabase
     .from("appointments")
     .select("start_time, appointment_type, appointment_status")
     .eq("appointment_type", args.appointment_type)
-    .gte("start_time", today.toISOString())
-    .lt("start_time", endDate.toISOString())
+    .gte("start_time", startIsoTz)
+    .lt("start_time", endIsoTz)
     .is("deleted_at", null);
   if (apptsErr) {
     throw new Error(`appointments query failed: ${apptsErr.message}`);
@@ -206,17 +250,15 @@ export async function computeAvailableDates(
     bump(date, slot);
   }
 
-  // Layer 5: walk the window and decide each date.
+  // Layer 5: walk the window and decide each date. String-date walk
+  // via addDaysToYmd — same date sequence as a UTC Date walk but
+  // without the second cursor=new Date() that could drift from
+  // shopNow.date if rendering crossed midnight UTC.
   const result: string[] = [];
-  for (
-    let cursor = new Date(today);
-    cursor < endDate;
-    cursor.setUTCDate(cursor.getUTCDate() + 1)
-  ) {
-    const date = ymd(cursor);
+  for (let date = todayYmd; date < endYmd; date = addDaysToYmd(date, 1)) {
     if (closedSet.has(date)) continue;
 
-    const dow = cursor.getUTCDay();
+    const dow = dayOfWeekForYmd(date);
     const lim = limitsByDow.get(dow);
     if (!lim || lim.is_closed) continue;
 
@@ -256,8 +298,9 @@ export async function computeAvailableDates(
   // P1.6 (2026-05-25): clock source is the Postgres RPC via getShopClock
   // (per-request memoized via React `cache()`). availability.ts +
   // submit-date.ts share the same snapshot within a render, eliminating
-  // the cross-clock drift class.
-  const shopNow = await getShopClock();
+  // the cross-clock drift class. Reuses the `shopNow` snapshot from
+  // the top of this function — same instant for the window AND the
+  // cutoff filter.
   const blockSameDay =
     args.appointment_type === "waiter" ||
     shopNow.hour >= SAME_DAY_CUTOFF_HOUR;

@@ -62,13 +62,40 @@ import { withSentryConfig } from "@sentry/nextjs";
  * follow-up in DEFERRED-AUDIT-ITEMS SEC-NEXT.
  */
 function buildCSP(): string {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://*.supabase.co";
+  // P2.9-followup (2026-05-25): with CSP now in enforce mode by default
+  // (was Report-Only), the prior wildcard fallback `https://*.supabase.co`
+  // becomes an actual security boundary, not just a comment. In CI/
+  // Vercel builds with a missing env var, the wildcard would silently
+  // allow connections to ANY Supabase project — defeating multi-
+  // tenant boundary intent. Fail the build loudly instead so operators
+  // notice the misconfiguration before the deploy lands.
+  //
+  // Local dev (no CI, no Vercel) keeps the wildcard fallback so
+  // `npm run dev` works without env-var plumbing. The Sentry
+  // CSP-Report-Only fallback (set via SCHEDULER_CSP_REPORT_ONLY=true)
+  // can also be used to revert enforce mode if a misconfigured deploy
+  // does land.
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!supabaseUrl) {
+    if (process.env.CI || process.env.VERCEL) {
+      throw new Error(
+        "NEXT_PUBLIC_SUPABASE_URL is required at build time for CSP connect-src. " +
+          "Set it on Vercel (Production + Preview envs both) before building.",
+      );
+    }
+
+    console.warn(
+      "[next.config] NEXT_PUBLIC_SUPABASE_URL not set — CSP connect-src falling back to `https://*.supabase.co`. " +
+        "Set the env var before deploying to prod (CI/Vercel will fail the build if missing).",
+    );
+  }
+  const connectSrcSupabase = supabaseUrl ?? "https://*.supabase.co";
   return [
     "default-src 'self'",
     "script-src 'self' 'unsafe-inline' https://va.vercel-scripts.com",
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: https:",
-    `connect-src 'self' ${supabaseUrl}`,
+    `connect-src 'self' ${connectSrcSupabase}`,
     "font-src 'self' data:",
     "frame-ancestors 'none'",
     "form-action 'self'",
