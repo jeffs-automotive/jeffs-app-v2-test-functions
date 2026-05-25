@@ -164,14 +164,20 @@ export async function computeAvailableDates(
     }
   }
 
-  // Layer 4: active holds (not released, not expired) for this type.
-  // P1.6-followup: expires_at compared against the snapshot's UTC
-  // instant so this filter agrees with the rest of the render's
-  // time-based decisions.
+  // Layer 4: active holds (not released, not expired) — ALL TYPES.
+  // 2026-05-25 audit: same fix as the appointments query below — the
+  // edge fn's holdAppointmentSlot counts ALL hold types toward the
+  // dropoff_total cap (per the "daily cap across all types" design).
+  // Removed the `.eq("appointment_type", ...)` filter so this picker
+  // agrees. SELECT now includes appointment_type so per-type bucketing
+  // (waiter slot caps) stays correct below.
+  //
+  // P1.6-followup (2026-05-25): expires_at compared against the
+  // snapshot's UTC instant so this filter agrees with the rest of
+  // the render's time-based decisions.
   const { data: holds, error: holdsErr } = await supabase
     .from("appointment_holds")
-    .select("scheduled_date, scheduled_time")
-    .eq("appointment_type", args.appointment_type)
+    .select("scheduled_date, scheduled_time, appointment_type")
     .gte("scheduled_date", todayYmd)
     .lt("scheduled_date", endYmd)
     .is("released_at", null)
@@ -180,21 +186,34 @@ export async function computeAvailableDates(
     throw new Error(`appointment_holds query failed: ${holdsErr.message}`);
   }
 
-  // Layer 4: non-cancelled appointments for this type in the window.
-  // appointments.start_time is TIMESTAMPTZ; filter by start_time within
-  // [shop-local-midnight-today, shop-local-midnight-endDate). Bucketing
-  // by shop-local date happens below via Intl.
+  // Layer 4: non-cancelled appointments in the window — ALL TYPES,
+  // not just args.appointment_type.
+  //
+  // 2026-05-25 audit (live-traced): the prior `.eq("appointment_type",
+  // args.appointment_type)` filter created a count-mismatch between
+  // this picker and the edge fn's `holdAppointmentSlot` capacity check.
+  // The edge fn correctly counts ALL types toward `dropoff_total` per
+  // the original design ("Daily cap = 35 across all types" — see the
+  // scheduler-slots.ts file header). This picker was counting only
+  // dropoffs → on a day with e.g. 27 dropoff + 5 waiter = 32 total,
+  // 27 < 31 cap → picker offered the day; customer clicks → edge fn
+  // sees 32 ≥ 31 → "slot_just_taken" → wizard appears broken with
+  // bubble "That day just got booked up". Confirmed via DB forensics
+  // on session b1223666 + appointments table count (May 26 ET: 27
+  // dropoff_only vs 32 all_types vs cap 31).
+  //
+  // Fix: drop the type filter on the SELECT; the dropoff branch below
+  // sums total across all types (matching edge fn). The waiter branch
+  // still buckets only waiter appointments by hour for the per-slot
+  // sub-caps (waiter_8am_slots / waiter_9am_slots) — that part of the
+  // logic is correct since waiter slot caps are per-type-per-slot.
   //
   // P1.6-followup (2026-05-25): startIsoTz / endIsoTz come from
   // shopLocalToIsoString() — DST-aware UTC instants matching the shop
-  // calendar boundary. Was UTC midnight which slipped a day at the
-  // edges (e.g., 9 PM ET on May 25 = 1 AM UTC on May 26 — filter
-  // would include appointments scheduled on May 26 that fall before
-  // their shop-local May 26 midnight).
+  // calendar boundary.
   const { data: appts, error: apptsErr } = await supabase
     .from("appointments")
     .select("start_time, appointment_type, appointment_status")
-    .eq("appointment_type", args.appointment_type)
     .gte("start_time", startIsoTz)
     .lt("start_time", endIsoTz)
     .is("deleted_at", null);
@@ -225,20 +244,32 @@ export async function computeAvailableDates(
 
   type DateCounts = { time_08: number; time_09: number; total: number };
   const counts = new Map<string, DateCounts>();
-  function bump(date: string, slot: "08:00" | "09:00" | null) {
+  // `total` increments for EVERY row (matches edge fn behavior — all
+  // types count toward dropoff_total daily cap). `time_08` / `time_09`
+  // increment only for WAITER rows in the matching slot, so the
+  // per-slot waiter sub-caps (waiter_8am_slots / waiter_9am_slots)
+  // remain type-bounded.
+  function bump(
+    date: string,
+    slot: "08:00" | "09:00" | null,
+    type: "waiter" | "dropoff" | null,
+  ) {
     if (!counts.has(date)) {
       counts.set(date, { time_08: 0, time_09: 0, total: 0 });
     }
     const c = counts.get(date)!;
     c.total += 1;
-    if (slot === "08:00") c.time_08 += 1;
-    if (slot === "09:00") c.time_09 += 1;
+    if (type === "waiter") {
+      if (slot === "08:00") c.time_08 += 1;
+      if (slot === "09:00") c.time_09 += 1;
+    }
   }
 
   for (const h of holds ?? []) {
     const t = String(h.scheduled_time ?? "").slice(0, 5);
     const slot = t === "08:00" ? "08:00" : t === "09:00" ? "09:00" : null;
-    bump(h.scheduled_date as string, slot);
+    const type = (h.appointment_type as "waiter" | "dropoff" | null) ?? null;
+    bump(h.scheduled_date as string, slot, type);
   }
   for (const a of appts ?? []) {
     const status = a.appointment_status as string;
@@ -247,7 +278,8 @@ export async function computeAvailableDates(
     if (!st) continue;
     const { date, hour } = shopLocalDateAndHour(st);
     const slot = hour === 8 ? "08:00" : hour === 9 ? "09:00" : null;
-    bump(date, slot);
+    const type = (a.appointment_type as "waiter" | "dropoff" | null) ?? null;
+    bump(date, slot, type);
   }
 
   // Layer 5: walk the window and decide each date. String-date walk
