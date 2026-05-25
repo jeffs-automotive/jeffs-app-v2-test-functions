@@ -14,6 +14,7 @@ import {
   lookupManualReviewAction,
   type LookupManualReviewState,
 } from "@/actions/keytag/lookup-manual-review";
+import { ResolveManualReviewForm } from "./ResolveManualReviewForm";
 
 const initialState: LookupManualReviewState = { kind: "idle" };
 
@@ -145,9 +146,9 @@ function ReviewResultDisplay({
           ))}
         </ul>
         {!isResolved && (
-          <p className="mt-3 rounded border border-dashed border-border bg-muted/30 p-3 text-xs italic text-muted-foreground">
-            Resolution UI coming in Phase C.6. For now, resolve via Claude Desktop.
-          </p>
+          <div className="mt-4 border-t border-border pt-4">
+            <ResolveManualReviewForm code={r.code} options={r.options} />
+          </div>
         )}
         {isResolved && (
           <p className="mt-3 rounded border border-dashed border-border bg-muted/30 p-3 text-xs text-muted-foreground">

@@ -20,7 +20,7 @@ import { AuditHistoryTab } from "@/components/keytag/AuditHistoryTab";
 import { ManualReviewsTab } from "@/components/keytag/ManualReviewsTab";
 import { AssignReleaseTab } from "@/components/keytag/AssignReleaseTab";
 import { PostedRevertTab } from "@/components/keytag/PostedRevertTab";
-import { StubTab } from "@/components/keytag/StubTab";
+import { ReconcileTab } from "@/components/keytag/ReconcileTab";
 
 export const dynamic = "force-dynamic";
 
@@ -51,13 +51,7 @@ export default async function KeytagsPage({ searchParams }: KeytagsPageProps) {
         live={<LiveStateTab actorEmail={email} />}
         assignRelease={<AssignReleaseTab />}
         postedRevert={<PostedRevertTab />}
-        reconcile={
-          <StubTab
-            phase="C.6"
-            title="Bulk reconcile"
-            description="Re-sync the keytag pool from Tekmetric — finds orphans, repatches, applies actions. Big-button confirmation."
-          />
-        }
+        reconcile={<ReconcileTab />}
         manualReviews={<ManualReviewsTab />}
         auditHistory={<AuditHistoryTab actorEmail={email} searchParams={params} />}
       />
