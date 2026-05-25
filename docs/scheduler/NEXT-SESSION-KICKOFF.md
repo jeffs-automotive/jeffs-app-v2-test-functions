@@ -1,7 +1,9 @@
 # Scheduler-app — next session kickoff
 
-> **Last refreshed:** 2026-05-25 EOD (post E2E test enablement attempt + revert).
+> **Last refreshed:** 2026-05-25 EOD pt 2 (admin-app Phase A landed + verified working).
 > **Refresh this file** at the end of EVERY session that did scheduler-app work — same commit that bumps `scheduler_system_architecture.md`. Keep the "Today's headline" + "Next-step todos" sections current.
+>
+> **NOTE:** an admin-dashboard track is now live alongside the scheduler. See `docs/admin-dashboard/PLAN.md` for that workstream. The scheduler-app remains the primary scheduler project; admin-app is a sibling internal tool.
 
 ---
 
@@ -19,7 +21,26 @@ These five files give you the full picture. If you find yourself guessing about 
 
 ---
 
-## 2. Today's headline (2026-05-25 EOD)
+## 2. Today's headline (2026-05-25 EOD pt 2)
+
+**admin-app Phase A shipped + verified live at admin.jeffsautomotive.com.** New sibling Next.js app at `admin-app/` in the same repo, deployed as separate Vercel project `jeffs-app-v2-test-functions-admin-app`. Microsoft Entra OAuth via Supabase Azure provider (tenant `c5e93cad-3cac-4e60-ba7d-4b632d1224a3`) gates access to @jeffsautomotive.com users only. Routes live: `/` (redirect), `/dashboard` (landing), `/login` (sign-in), `/auth/callback` (OAuth exchange), `/schedulerconfig` (stub for Phase D-F), `/keytags` (stub for Phase C). End-to-end smoke test passed.
+
+Phase A commits: `be8561a`, `7d14116`, `d2febb8`, `98ad678`, `3060ce6`. See `docs/admin-dashboard/PLAN.md` for the full phase breakdown.
+
+**Side-quest lessons captured this session:**
+- `feedback_vercel_cli_env_bug.md` — Vercel CLI 51.x silently stores empty env values; use Dashboard UI
+- `feedback_prod_vercel_project_off_limits.md` — `jeffs-app-v2` Vercel project is PROD, never touch from test sandbox
+- Vercel MCP renamed `vercel` → `vercel-team` in `.mcp.json` (dotfiles `8ce299a`) so re-auth was forced to pick up new admin-app project scope
+- Supabase URL Configuration: Site URL + Redirect URLs allowlist MUST include admin.jeffsautomotive.com/** for any new Supabase-Auth-using app sharing the same Supabase project
+- Microsoft Entra needs only the default `User.Read` Graph permission; OIDC scopes (`email openid profile`) are passed at runtime, not added in API permissions
+
+**Next session pickup (whichever app you work on):**
+- Scheduler-app: Plan 04 Phase 6 still pending (CASCADE FK audit — see Tier B below)
+- Admin-app: Phase C (Keytags page — 6 tabs wired to existing orchestrator MCP tools); see `docs/admin-dashboard/PLAN.md` §5 Phase C
+
+---
+
+## (historical — prior "Today's headline" preserved below — Plan 04 + E2E test enablement attempt/revert)
 
 **E2E test enablement attempted + fully reverted.** Built infrastructure for E2E-safe Playwright runs against the live deploy (test-phone bypass for BotID/IP/phone rate-limits in `submit-phone-name` + `resend-otp`, Tekmetric POST skip in `submit-summary`, 6 new Playwright spec files + shared `e2e/helpers/wizard.ts`). Commits `5fdf602` + `0df210e` were pushed and deployed.
 

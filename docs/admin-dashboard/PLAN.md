@@ -1,12 +1,12 @@
 # Admin dashboard — implementation plan
 
-> **Status:** APPROVED 2026-05-25. Ready to start Phase A.
+> **Status:** Phase A ✅ COMPLETE 2026-05-25. Ready to start Phase C (Keytags page).
 > **Owner:** Chris (decisions) + Claude (build).
 > **Scope:** new internal Next.js dashboard at `admin.jeffsautomotive.com` with Microsoft SSO (Entra ID), two pages (scheduler config + keytag ops). Replaces what Claude Desktop currently does for these two domains.
 >
 > **Refresh this file** at the end of every session that does admin-dashboard work. Move phase rows from "Remaining" to "Completed" with commit SHA. Bump "Last updated."
 >
-> **Last updated:** 2026-05-25 (plan approved, no code written yet).
+> **Last updated:** 2026-05-25 (Phase A landed + verified working).
 
 ---
 
@@ -121,21 +121,34 @@ jeffs-app-v2-test-functions/    (existing repo)
 
 Each phase ends with a working deploy + commit. Stop points for Chris to check in between phases.
 
-### Phase A — scaffold + auth (1-2 days)
+### Phase A — scaffold + auth ✅ COMPLETE 2026-05-25
 
-1. Create `admin-app/` folder + `package.json` + Next.js config + tsconfig + tailwind
-2. Set up `@supabase/ssr` server + client factories (copy pattern from scheduler-app)
-3. Create login page with "Sign in with Microsoft" button → `signInWithOAuth({ provider: 'azure' })`
-4. Create `/auth/callback/` route handler that completes the OAuth flow
-5. Create `lib/auth.ts` → `requireAdmin()` helper checking session + email suffix
-6. Create root layout with nav + requireAdmin guard
-7. Create landing page (`/`) with cards: Scheduler config + Keytags
-8. **Manual steps (Chris):**
-   - Microsoft Entra: register app, capture tenant ID + client ID + client secret
-   - Supabase Dashboard: enable Azure provider, paste credentials + tenant URL
-   - Vercel: create new project rooted at `admin-app/`, set env vars
-   - DNS: add `admin.jeffsautomotive.com` CNAME pointing at the new Vercel project
-9. Smoke test: deploy → sign in → land on dashboard. PR + merge.
+**Commits:**
+- `be8561a` — initial scaffold (package.json, Next 15 config, Supabase clients, auth flow, login page, callback handler, middleware, UI primitives, landing page, SETUP.md)
+- `7d14116` — SETUP.md env-var list fix (no bare `SENTRY_DSN`)
+- `d2febb8` — revert of an unnecessary callback cookie-attach refactor (root cause was Supabase URL config, not the code)
+- `98ad678` — move dashboard from `/` to `/dashboard`; root becomes redirect
+- `3060ce6` — add `/schedulerconfig` + `/keytags` placeholder routes (links wired from dashboard cards)
+
+**Pieces that landed:**
+1. `admin-app/` folder with package.json + Next 15 config + tsconfig + tailwind v4 + eslint + vercel.json
+2. `@supabase/ssr` server + browser + admin clients (`src/lib/supabase/*`) using the same `resolve-keys` env-shape compat as scheduler-app
+3. `/login` page with "Sign in with Microsoft" button → `signInWithOAuth({ provider: 'azure' })`
+4. `/auth/callback/` route handler that exchanges code for session
+5. `src/lib/auth.ts` → `requireAdmin()` + `getAdminSession()` (Microsoft tenant restriction + email-suffix gate)
+6. Root layout + landing → root `/` redirects to `/dashboard` (or `/login` if unauthed)
+7. `/dashboard` (cards) + `/schedulerconfig` (Phase D+E+F stub) + `/keytags` (Phase C stub) — all protected by requireAdmin
+8. Sentry instrumentation (server + edge + client + global-error + PII scrubber)
+9. SETUP.md walking through Microsoft Entra + Supabase Auth + Vercel + DNS
+
+**Manual steps Chris completed:**
+- Microsoft Entra app registration (tenant `c5e93cad-3cac-4e60-ba7d-4b632d1224a3`)
+- Supabase Auth Azure provider enabled with Client ID + Secret + Tenant URL
+- Supabase URL Configuration → Site URL + Redirect URLs allowlist set to admin.jeffsautomotive.com
+- Vercel project `jeffs-app-v2-test-functions-admin-app` (ID `prj_md8whI4JYijXqyS71p7CUcFGn5C6`) created with Supabase + Sentry integrations
+- Custom domain `admin.jeffsautomotive.com` provisioned (bare, no www)
+
+**Verified end-to-end:** incognito → admin.jeffsautomotive.com → Sign in with Microsoft → @jeffsautomotive.com Microsoft account → land on `/dashboard` with email shown in header. Sign out works. Closed.
 
 ### Phase B — shared UI primitives copied + base layout polish (0.5 day)
 
