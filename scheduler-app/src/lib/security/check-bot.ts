@@ -73,6 +73,36 @@ export function isRateLimitStrictMode(): boolean {
 }
 
 /**
+ * 2026-05-25 unblock — `SCHEDULER_DISABLE_BOT_CHECK=true` skips
+ * BotID entirely + returns `{ ok: true, bypassed: true }`.
+ *
+ * Why this env var exists: Vercel BotID requires THREE wiring
+ * pieces to function — (1) `initBotId()` called on the client
+ * via instrumentation-client.ts, (2) `botid({...})` config wrapper
+ * applied to next.config.ts, (3) the BotID feature enabled in the
+ * Vercel project dashboard. Without ALL THREE, `checkBotId()`
+ * fails-CLOSED: it classifies legitimate requests as bots because
+ * the client never sends the detection signals BotID expects to
+ * see in the request. Result: every OTP submit returns
+ * `bot_detected` and the wizard appears frozen with no customer-
+ * facing error.
+ *
+ * The other security layers (Upstash rate-limit, HMAC beacon)
+ * gracefully degrade when unconfigured (`disabled: true` /
+ * `"skipped"`). BotID does not — hence this explicit opt-out.
+ *
+ * Operator posture:
+ *   - TEST sandbox before BotID activation: set
+ *     SCHEDULER_DISABLE_BOT_CHECK=true to unblock testing
+ *   - PROD pre-launch: complete the BotID wiring per SEC-7 +
+ *     unset this env var; the check resumes as the first line
+ *     of SMS-pump defense.
+ */
+export function isBotCheckDisabled(): boolean {
+  return process.env.SCHEDULER_DISABLE_BOT_CHECK === "true";
+}
+
+/**
  * Validates the current request against Vercel BotID for sensitive
  * Server Actions (OTP send, etc.).
  *
@@ -85,6 +115,13 @@ export function isRateLimitStrictMode(): boolean {
  *   logs Sentry warning + returns `{ ok: true, bypassed: false }`.
  */
 export async function checkBotForSensitiveAction(): Promise<CheckBotResult> {
+  // 2026-05-25 unblock — short-circuit when the operator explicitly
+  // disabled the bot check (see isBotCheckDisabled comment for the
+  // full BotID wiring story). Bypass shape matches a verified-human
+  // result so callers don't need a new branch.
+  if (isBotCheckDisabled()) {
+    return { ok: true, bypassed: true };
+  }
   try {
     const verification = await checkBotId();
 
