@@ -1,0 +1,32 @@
+@import "tailwindcss";
+
+/**
+ * Brand colors per appointments_design.md — match scheduler-app for
+ * visual cohesion.
+ *   --brand-burgundy = primary action color (#96003C)
+ *   --brand-gold     = secondary / accent (#D2B487)
+ */
+@theme {
+  --color-brand-burgundy: #96003c;
+  --color-brand-burgundy-dark: #7e0033;
+  --color-brand-gold: #d2b487;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    Oxygen,
+    Ubuntu,
+    Cantarell,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
