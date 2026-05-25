@@ -18,6 +18,8 @@ import { KeytagsTabs } from "@/components/keytag/KeytagsTabs";
 import { LiveStateTab } from "@/components/keytag/LiveStateTab";
 import { AuditHistoryTab } from "@/components/keytag/AuditHistoryTab";
 import { ManualReviewsTab } from "@/components/keytag/ManualReviewsTab";
+import { AssignReleaseTab } from "@/components/keytag/AssignReleaseTab";
+import { PostedRevertTab } from "@/components/keytag/PostedRevertTab";
 import { StubTab } from "@/components/keytag/StubTab";
 
 export const dynamic = "force-dynamic";
@@ -47,20 +49,8 @@ export default async function KeytagsPage({ searchParams }: KeytagsPageProps) {
       <KeytagsTabs
         defaultValue={defaultTab}
         live={<LiveStateTab actorEmail={email} />}
-        assignRelease={
-          <StubTab
-            phase="C.5"
-            title="Assign / Release"
-            description="Force-assign a tag to an RO, or release a tag. Includes the two-step Pattern A confirmation modal for safety."
-          />
-        }
-        postedRevert={
-          <StubTab
-            phase="C.5"
-            title="Posted / Revert"
-            description="Mark a tag as posted-to-A/R, or revert a posted tag back to WIP. Same confirmation modal pattern."
-          />
-        }
+        assignRelease={<AssignReleaseTab />}
+        postedRevert={<PostedRevertTab />}
         reconcile={
           <StubTab
             phase="C.6"
