@@ -1,3 +1,17 @@
+"use client"
+
+// Shadcn sonner template ships without a "use client" directive even
+// though it calls useTheme() from next-themes — a Client-Component-only
+// hook. Without "use client", AppShell (Server Component) rendering
+// <Toaster /> fires "Attempted to call useTheme from the server..."
+// at runtime. Found via Vercel runtime logs 2026-05-25.
+//
+// useTheme is required by shadcn's wrapper to match Sonner's theme to
+// the app's light/dark mode. admin-app doesn't ship a theme switcher
+// today (next-themes not configured), so useTheme returns its default
+// "system". Leaving the dependency in place + "use client" wrapped is
+// the minimal-surgery fix; removing next-themes entirely is a possible
+// future cleanup.
 import { useTheme } from "next-themes"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon, Loader2Icon } from "lucide-react"
