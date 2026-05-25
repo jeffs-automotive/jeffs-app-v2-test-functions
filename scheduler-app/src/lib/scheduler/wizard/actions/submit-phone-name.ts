@@ -36,10 +36,7 @@ import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 // Upstash imposes per-IP + per-phone-hash rate limits. Both fail OPEN on
 // outage / misconfiguration so legitimate OTPs aren't broken; the DB-level
 // otp_codes rate limit (3/phone/hour) is the final backstop.
-import {
-  checkBotForSensitiveAction,
-  isE2ETestPhone,
-} from "@/lib/security/check-bot";
+import { checkBotForSensitiveAction } from "@/lib/security/check-bot";
 import {
   checkIpRateLimit,
   checkPhoneRateLimit,
@@ -124,41 +121,32 @@ async function submitPhoneNameV2Impl(
   // Order matters: cheapest check first (BotID is a single header read;
   // Upstash adds a Redis round-trip). All three gates must pass before
   // we touch the DB or call the edge function that talks to Telnyx.
-  //
-  // E2E test bypass — when the submitted phone matches
-  // SCHEDULER_TEST_PHONE_E164, skip ALL THREE gates. Symmetric with the
-  // OTP-send bypass (Supabase edge fn) and the Tekmetric POST bypass
-  // (submit-summary.ts) — all three keyed on the same env var, all
-  // skipped together for the Playwright happy-path tests. Production
-  // deploys leave the env var unset, so this branch never fires.
-  if (!isE2ETestPhone(phone_e164)) {
-    const bot = await checkBotForSensitiveAction();
-    if (!bot.ok) {
-      Sentry.captureMessage("submit_phone_name_v2 bot detected", {
-        level: "warning",
-        tags: { surface: "submit_phone_name_v2_bot_gate", chat_id: chatId },
-      });
-      return { ok: false, error: "bot_detected" };
-    }
+  const bot = await checkBotForSensitiveAction();
+  if (!bot.ok) {
+    Sentry.captureMessage("submit_phone_name_v2 bot detected", {
+      level: "warning",
+      tags: { surface: "submit_phone_name_v2_bot_gate", chat_id: chatId },
+    });
+    return { ok: false, error: "bot_detected" };
+  }
 
-    const ip = await getRequestIp();
-    const ipCheck = await checkIpRateLimit(ip);
-    if (!ipCheck.allowed) {
-      Sentry.captureMessage("submit_phone_name_v2 IP rate-limited", {
-        level: "warning",
-        tags: { surface: "submit_phone_name_v2_ip_limit", chat_id: chatId },
-      });
-      return { ok: false, error: ipCheck.reason };
-    }
+  const ip = await getRequestIp();
+  const ipCheck = await checkIpRateLimit(ip);
+  if (!ipCheck.allowed) {
+    Sentry.captureMessage("submit_phone_name_v2 IP rate-limited", {
+      level: "warning",
+      tags: { surface: "submit_phone_name_v2_ip_limit", chat_id: chatId },
+    });
+    return { ok: false, error: ipCheck.reason };
+  }
 
-    const phoneCheck = await checkPhoneRateLimit(phone_e164);
-    if (!phoneCheck.allowed) {
-      Sentry.captureMessage("submit_phone_name_v2 phone rate-limited", {
-        level: "warning",
-        tags: { surface: "submit_phone_name_v2_phone_limit", chat_id: chatId },
-      });
-      return { ok: false, error: phoneCheck.reason };
-    }
+  const phoneCheck = await checkPhoneRateLimit(phone_e164);
+  if (!phoneCheck.allowed) {
+    Sentry.captureMessage("submit_phone_name_v2 phone rate-limited", {
+      level: "warning",
+      tags: { surface: "submit_phone_name_v2_phone_limit", chat_id: chatId },
+    });
+    return { ok: false, error: phoneCheck.reason };
   }
 
   try {

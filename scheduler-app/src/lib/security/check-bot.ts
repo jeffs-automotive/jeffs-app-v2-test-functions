@@ -88,27 +88,6 @@ export function isRateLimitStrictMode(): boolean {
 }
 
 /**
- * E2E test phone bypass — returns true when `phone` matches the
- * SCHEDULER_TEST_PHONE_E164 env var. Used by SMS-triggering Server
- * Actions to skip BotID + Upstash + DB-level rate-limit gates when
- * the well-known test phone is in scope.
- *
- * Defaults to false when the env var is unset (production posture) OR
- * when phone is null/undefined/empty. Production deploys MUST leave
- * SCHEDULER_TEST_PHONE_E164 unset — the env var IS the gate.
- *
- * Mirrors the Tekmetric POST bypass in submit-summary.ts and the OTP
- * send bypass in `supabase/functions/_shared/tools/scheduler-otp.ts`.
- * The three together let Playwright happy-path tests exercise the
- * full wizard without (1) tripping BotID's missing-signal default,
- * (2) hitting Telnyx SMS, or (3) creating real Tekmetric appointments.
- */
-export function isE2ETestPhone(phone: string | null | undefined): boolean {
-  const testPhone = process.env.SCHEDULER_TEST_PHONE_E164 ?? "";
-  return testPhone !== "" && phone !== null && phone !== undefined && phone === testPhone;
-}
-
-/**
  * Validates the current request against Vercel BotID for sensitive
  * Server Actions (OTP send, etc.).
  *
