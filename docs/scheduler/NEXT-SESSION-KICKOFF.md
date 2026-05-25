@@ -1,6 +1,6 @@
 # Scheduler-app — next session kickoff
 
-> **Last refreshed:** 2026-05-24/25 end-of-session (post Plan 04 Phase 5B revalidate-scope reduction).
+> **Last refreshed:** 2026-05-25 EOD (post E2E test enablement attempt + revert).
 > **Refresh this file** at the end of EVERY session that did scheduler-app work — same commit that bumps `scheduler_system_architecture.md`. Keep the "Today's headline" + "Next-step todos" sections current.
 
 ---
@@ -19,7 +19,26 @@ These five files give you the full picture. If you find yourself guessing about 
 
 ---
 
-## 2. Today's headline (2026-05-24/25, end of day pt 5)
+## 2. Today's headline (2026-05-25 EOD)
+
+**E2E test enablement attempted + fully reverted.** Built infrastructure for E2E-safe Playwright runs against the live deploy (test-phone bypass for BotID/IP/phone rate-limits in `submit-phone-name` + `resend-otp`, Tekmetric POST skip in `submit-summary`, 6 new Playwright spec files + shared `e2e/helpers/wizard.ts`). Commits `5fdf602` + `0df210e` were pushed and deployed.
+
+**Then blocked by a Vercel CLI bug** ([vercel/vercel#16160](https://github.com/vercel/vercel/issues/16160)): `vercel env add` with `--value` (or stdin) on CLI 51.x silently stores empty string. Spent ~6 permutations trying to set `SCHEDULER_TEST_PHONE_E164=+15555550100`; CLI reported success each time but server-side value was always `""`. Without the env var, the bypass code couldn't fire → wizard hung at PhoneName/OTP for the test phone.
+
+**Resolution per Chris's call:** roll back both feature commits cleanly rather than ship dead code. Both reverts pushed to main:
+- `c62cecf` Revert "E2E test-phone bypass for BotID/Upstash gates" (restores `submit-phone-name.ts` + `resend-otp.ts` + `check-bot.ts` to pre-bypass shape)
+- `489bdad` Revert "Tekmetric POST E2E bypass + expanded Playwright suite" (removes Tekmetric POST skip + all 6 new Playwright specs + `helpers/wizard.ts`)
+- Vercel env var `SCHEDULER_TEST_PHONE_E164` removed entirely
+
+Codebase + Vercel are back to `5aee725` state (the availability picker fix). Working tree clean. **NO behavior change for real customers** — the reverted bypass code was env-gated to only fire when the inbound phone matched `SCHEDULER_TEST_PHONE_E164`, and on production that var was always unset.
+
+**Next time E2E test enablement is picked up** — set the env var via the **Vercel Dashboard UI** (NOT CLI), THEN re-create the bypass + tests by cherry-picking the reverted commits OR rebuilding from those diffs (`git show 5fdf602` + `git show 0df210e`). See DEFERRED-AUDIT-ITEMS.md TEST-3 for the full attempt history + design pattern.
+
+**Process lesson added:** `feedback_vercel_cli_env_bug.md` — when a Vercel CLI write silently "succeeds" but the value doesn't land, STOP retrying and use the Dashboard UI. Saves 20+ minutes of CLI thrash.
+
+---
+
+## (historical — prior "Today's headline" preserved below — Plan 04 Phase 5B + validator-2 fixes)
 
 **Plan 04 Phase 5B shipped — per-session Next.js data cache + revalidate-scope reduction** (commit `(SHA after push)`, no migration):
 
@@ -96,6 +115,11 @@ These five files give you the full picture. If you find yourself guessing about 
 ---
 
 ## 3. Next-step TODOs (priority order)
+
+### Tier 0 — pickup-cleanup (do FIRST after fresh session)
+
+1. **[~2 min]** Confirm git working tree is clean and main is at `489bdad` (the second of the two revert commits): `git log --oneline -3 && git status`. If anything is dirty, find out why before proceeding.
+2. **[~2 min]** Confirm `SCHEDULER_TEST_PHONE_E164` is unset on Vercel: `vercel env ls | grep SCHEDULER_TEST` — expect no output. (If present and empty, it's the leftover from the broken CLI add — fine to remove or leave; production behavior unaffected because the bypass code is reverted.)
 
 ### Tier A — confirm yesterday's work (do FIRST, in this order)
 
@@ -209,6 +233,8 @@ The architecture doc has a "When you make a change" trigger table at the bottom 
 6. **Auto-mode classifier blocks specific operations.** Anything that reads `.env*` is blocked at the tool layer. Setting Supabase secrets autonomously is blocked unless the user explicitly authorizes for the session. Pushing to main on the dotfiles repo MAY be blocked depending on classifier mood — defer to user-explicit when blocked.
 
 7. **Never-guess rule applies retroactively too.** If something looks like an inconsistency between docs and live state, the live state wins — flag the doc as needing an update, don't silently align in either direction.
+
+8. **Vercel CLI 51.x silently stores empty env values.** `vercel env add NAME ENV --value X` (and stdin variants) report `Added Environment Variable` but actually store empty string per [vercel/vercel#16160](https://github.com/vercel/vercel/issues/16160). I burned 20+ minutes on 2026-05-25 retrying 6 permutations before finding the bug report. **Rule:** if you set a Vercel env var via CLI and the downstream behavior says it's not landing, do NOT keep retrying — pull the env var (`vercel env pull /tmp/x.txt --environment=production --yes && grep NAME /tmp/x.txt`), and if it's empty, ASK the user to set it via Dashboard UI. Full notes in `feedback_vercel_cli_env_bug.md`.
 
 ---
 

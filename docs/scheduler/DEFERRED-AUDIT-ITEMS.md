@@ -1463,16 +1463,41 @@ buttons missing `role="radiogroup"` semantics
   want to fragment test writing across rounds.
 - **When to revisit** — Phase 17.
 
-### TEST-3 · Playwright E2E suite for the 5 main flows
+### TEST-3 · Playwright E2E suite for the 5 main flows — ATTEMPTED + REVERTED 2026-05-25
 
 - **What** — credential wiring + actual E2E coverage (existing
   customer flow, new customer flow, returning customer with
-  multi-account, partial-verification, no-match) was deferred
-  per the audit-state JSON.
-- **Why deferred** — needs sandbox Tekmetric credentials + a
+  multi-account, partial-verification, no-match).
+- **Why deferred (original)** — needs sandbox Tekmetric credentials + a
   permission grant for the test runner.
-- **When to revisit** — when Chris is ready to wire Playwright
-  credentials.
+- **2026-05-25 attempt (reverted):** built the infrastructure for an
+  E2E-safe wizard pass — `isE2ETestPhone()` helper in
+  `src/lib/security/check-bot.ts` that bypasses BotID + Upstash IP +
+  phone rate-limit gates when the inbound phone matches
+  `SCHEDULER_TEST_PHONE_E164`; symmetric Tekmetric POST skip in
+  `submit-summary.ts`; 5 new Playwright spec files
+  (`wizard-happy-path`, `wizard-diagnostic-llm`, `wizard-routine-services`,
+  `wizard-edits-from-summary`, `wizard-start-over`, `wizard-availability`)
+  + a shared `e2e/helpers/wizard.ts` composer. Commits `5fdf602` +
+  `0df210e`. **Reverted same day** (`489bdad` + `c62cecf`) because:
+  - The `SCHEDULER_TEST_PHONE_E164` env var could not be set on Vercel
+    via CLI — Vercel CLI 51.x silently stores empty string
+    (see `feedback_vercel_cli_env_bug.md` + [vercel/vercel#16160](https://github.com/vercel/vercel/issues/16160))
+  - Without the env var, the bypass code couldn't fire; without the
+    bypass, the wizard hung at BotID/OTP for any test phone
+  - Rolling back kept the codebase clean while the env-var path is
+    sorted out
+- **When to revisit** — when Chris is ready to (a) set
+  `SCHEDULER_TEST_PHONE_E164=+15555550100` via Vercel Dashboard UI
+  (NOT CLI) for Production + Preview, AND (b) create a matching mock
+  customer in Tekmetric with that phone number. Then re-cherry-pick
+  the reverted commits OR re-build the bypass from the diffs in
+  `5fdf602` + `0df210e`.
+- **What's still good from the attempt:** the design pattern
+  (env-var-gated phone match → skip the 3 SMS-pump defense gates AND
+  the Tekmetric POST) is sound and matches the same shape already used
+  by `_shared/tools/scheduler-otp.ts` for the OTP-send bypass.
+  Reference the reverted commit diffs when rebuilding.
 
 ---
 
