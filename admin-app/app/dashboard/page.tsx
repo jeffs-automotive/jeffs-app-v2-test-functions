@@ -3,7 +3,7 @@
  * surfaces. Uses the polished shadcn + AppShell visual language.
  */
 import Link from "next/link";
-import { KeyRound, Settings, ArrowRight } from "lucide-react";
+import { KeyRound, Settings } from "lucide-react";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { requireAdmin } from "@/lib/auth";
@@ -86,12 +86,6 @@ function DashboardLinkCard({
           </CardTitle>
           <CardDescription className="line-clamp-3">{description}</CardDescription>
         </div>
-        {!comingSoon && (
-          <div className="flex items-center gap-1 text-sm font-medium text-primary opacity-0 transition-opacity group-hover:opacity-100">
-            <span>Open</span>
-            <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-          </div>
-        )}
       </CardHeader>
     </Card>
   );
