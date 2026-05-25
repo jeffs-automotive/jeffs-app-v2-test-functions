@@ -189,6 +189,7 @@ export type Database = {
       appointment_holds: {
         Row: {
           appointment_type: string
+          claimed_by_session_id: string | null
           created_at: string
           customer_id: number | null
           expires_at: string
@@ -203,6 +204,7 @@ export type Database = {
         }
         Insert: {
           appointment_type: string
+          claimed_by_session_id?: string | null
           created_at?: string
           customer_id?: number | null
           expires_at: string
@@ -217,6 +219,7 @@ export type Database = {
         }
         Update: {
           appointment_type?: string
+          claimed_by_session_id?: string | null
           created_at?: string
           customer_id?: number | null
           expires_at?: string

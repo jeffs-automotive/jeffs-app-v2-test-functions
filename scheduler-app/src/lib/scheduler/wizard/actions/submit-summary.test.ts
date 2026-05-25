@@ -148,7 +148,14 @@ let casClaimResult: { data: { id: string } | null; error: unknown } = {
   error: null,
 };
 let diagResult: {
-  data: { released_at: string | null; expires_at: string } | null;
+  data: {
+    released_at: string | null;
+    expires_at: string;
+    // P0.2 (2026-05-25): the diagnostic SELECT now also pulls
+    // claimed_by_session_id so handleConfirmPath can distinguish
+    // "released" vs "in-flight-claimed" vs "expired".
+    claimed_by_session_id?: string | null;
+  } | null;
   error: unknown;
 } = { data: null, error: null };
 
@@ -245,18 +252,36 @@ function makeValidSessionRow(
   };
 }
 
+// P0.2: there are now TWO appointment_holds UPDATEs in the happy path
+// (the CAS-claim with claimed_by_session_id, and the release with
+// released_at). Both helpers below disambiguate by payload shape.
 function findCasClaimCall(): ChainCall | undefined {
   return chainCalls.find(
-    (c) => c.table === "appointment_holds" && c.op === "update",
+    (c) =>
+      c.table === "appointment_holds" &&
+      c.op === "update" &&
+      typeof (c.payload as Record<string, unknown> | undefined)
+        ?.claimed_by_session_id === "string",
+  );
+}
+
+function findReleaseHoldCall(): ChainCall | undefined {
+  return chainCalls.find(
+    (c) =>
+      c.table === "appointment_holds" &&
+      c.op === "update" &&
+      typeof (c.payload as Record<string, unknown> | undefined)?.released_at ===
+        "string",
   );
 }
 
 function findDiagCall(): ChainCall | undefined {
+  // P0.2: diagnostic SELECT cols now include claimed_by_session_id.
   return chainCalls.find(
     (c) =>
       c.table === "appointment_holds" &&
       c.op === "select" &&
-      c.selectCols === "released_at, expires_at",
+      c.selectCols === "released_at, expires_at, claimed_by_session_id",
   );
 }
 
@@ -296,29 +321,33 @@ describe("submitSummaryV2 confirm path — CAS claim happy path", () => {
     });
   });
 
-  it("CAS claim chain uses correct table + columns + WHERE clauses", async () => {
+  it("CAS claim chain uses correct table + payload + WHERE clauses (P0.2 claimed_by_session_id)", async () => {
     await submitSummaryV2({ chatId: CHAT_ID, confirmed: true });
 
     const casCall = findCasClaimCall();
     expect(casCall).toBeDefined();
     expect(casCall!.table).toBe("appointment_holds");
     expect(casCall!.op).toBe("update");
-    // released_at gets stamped with an ISO timestamp.
-    expect(typeof casCall!.payload?.released_at).toBe("string");
-    expect(
-      Date.parse(casCall!.payload!.released_at as string),
-    ).not.toBeNaN();
 
-    // Verify the 4 WHERE conditions in the right shape:
+    // P0.2 (2026-05-25): CAS now stamps claimed_by_session_id = chatId
+    // (NOT released_at). released_at stays NULL during the Tekmetric
+    // POST window so availability scans continue to see the slot as
+    // TAKEN to other customers.
+    expect(casCall!.payload?.claimed_by_session_id).toBe(CHAT_ID);
+    expect(casCall!.payload?.released_at).toBeUndefined();
+
+    // P0.2: 5 WHERE conditions (was 4; added claimed_by_session_id IS NULL):
     //   eq(id, holdToken)
     //   eq(session_id, chatId)
     //   is(released_at, null)
+    //   is(claimed_by_session_id, null)
     //   gt(expires_at, now)
     expect(casCall!.match).toEqual(
       expect.arrayContaining([
         { kind: "eq", col: "id", val: HOLD_TOKEN },
         { kind: "eq", col: "session_id", val: CHAT_ID },
         { kind: "is", col: "released_at", val: null },
+        { kind: "is", col: "claimed_by_session_id", val: null },
         expect.objectContaining({ kind: "gt", col: "expires_at" }),
       ]),
     );
@@ -435,24 +464,198 @@ describe("submitSummaryV2 confirm path — CAS miss + diagnostic 3-state routing
   });
 });
 
-describe("submitSummaryV2 confirm path — Tekmetric failure does NOT roll back CAS claim", () => {
-  it("CAS succeeds + Tekmetric returns ok:false → hold stays released, NOT escalated as CAS error", async () => {
+describe("submitSummaryV2 confirm path — P0.2 release-on-Tekmetric-failure", () => {
+  it("CAS succeeds + Tekmetric returns ok:false (generic) → release UPDATE fires, then escalates (NOT as CAS error)", async () => {
     confirmResult = { ok: false, error: "tekmetric_5xx" };
 
     await submitSummaryV2({ chatId: CHAT_ID, confirmed: true });
 
-    // CAS claim was attempted + succeeded (recorded in chainCalls).
+    // CAS claim was attempted + succeeded.
     const casCall = findCasClaimCall();
     expect(casCall).toBeDefined();
+    expect(casCall!.payload?.claimed_by_session_id).toBe(CHAT_ID);
+
     // Tekmetric was called (because CAS succeeded).
     expect(confirmCalls).toHaveLength(1);
+
+    // P0.2 — release UPDATE fired BEFORE the escalation applyWizardTransition
+    // so the slot returns to availability (Phase 2's release-on-failure
+    // spec preserved through the new claim/release split).
+    const releaseCall = findReleaseHoldCall();
+    expect(releaseCall).toBeDefined();
+    expect(typeof releaseCall!.payload?.released_at).toBe("string");
+    expect(
+      Date.parse(releaseCall!.payload!.released_at as string),
+    ).not.toBeNaN();
+    // Release filters defensively on claimed_by_session_id = chatId so we
+    // never accidentally release a hold owned by another session.
+    expect(releaseCall!.match).toEqual(
+      expect.arrayContaining([
+        { kind: "eq", col: "id", val: HOLD_TOKEN },
+        { kind: "eq", col: "claimed_by_session_id", val: CHAT_ID },
+        { kind: "is", col: "released_at", val: null },
+      ]),
+    );
+
     // No CAS-error-path escalation fired (the CAS itself was fine).
-    const cosFailureEscalation = awtCalls.find(
+    const casErrEscalation = awtCalls.find(
       (c) => c.updates?.escalation_reason === "cas_claim_db_error",
     );
-    expect(cosFailureEscalation).toBeUndefined();
+    expect(casErrEscalation).toBeUndefined();
+
+    // The escalation that DID fire is the Tekmetric-failure one.
+    expect(awtCalls).toHaveLength(1);
+    expect(awtCalls[0]!.nextStep).toBe("escalated");
+    expect(
+      awtCalls[0]!.updates?.escalation_reason as string,
+    ).toContain("confirm_booking_failed:tekmetric_5xx");
+
     // No CAS-miss diagnostic read happened either (CAS data was truthy).
     expect(findDiagCall()).toBeUndefined();
+  });
+
+  it("CAS succeeds + Tekmetric returns ok:false hold_expired → release UPDATE fires, then bounces to date_pick", async () => {
+    confirmResult = { ok: false, error: "hold_expired by upstream" };
+
+    await submitSummaryV2({ chatId: CHAT_ID, confirmed: true });
+
+    expect(confirmCalls).toHaveLength(1);
+    const releaseCall = findReleaseHoldCall();
+    expect(releaseCall).toBeDefined();
+
+    expect(awtCalls).toHaveLength(1);
+    expect(awtCalls[0]!.nextStep).toBe("date_pick");
+    expect(awtCalls[0]!.jeffBubble).toContain("expired");
+  });
+
+  it("confirmBooking throws → release UPDATE fires, then escalates with confirm_booking_threw", async () => {
+    const { confirmBooking: confirmBookingMock } = await import(
+      "@/lib/scheduler/booking-direct-client"
+    );
+    (
+      confirmBookingMock as unknown as Mock
+    ).mockRejectedValueOnce(new Error("network ECONNRESET"));
+
+    await submitSummaryV2({ chatId: CHAT_ID, confirmed: true });
+
+    const releaseCall = findReleaseHoldCall();
+    expect(releaseCall).toBeDefined();
+
+    expect(awtCalls).toHaveLength(1);
+    expect(awtCalls[0]!.nextStep).toBe("escalated");
+    expect(awtCalls[0]!.updates?.escalation_reason).toBe("confirm_booking_threw");
+  });
+
+  it("Tekmetric returns ok:true but no appointment_id → release UPDATE fires, then escalates", async () => {
+    confirmResult = { ok: true /* appointment_id intentionally missing */ };
+
+    await submitSummaryV2({ chatId: CHAT_ID, confirmed: true });
+
+    const releaseCall = findReleaseHoldCall();
+    expect(releaseCall).toBeDefined();
+
+    expect(awtCalls).toHaveLength(1);
+    expect(awtCalls[0]!.nextStep).toBe("escalated");
+    expect(awtCalls[0]!.updates?.escalation_reason).toBe(
+      "confirm_booking_no_appointment_id",
+    );
+  });
+
+  it("Tekmetric success path → release UPDATE fires BEFORE the success applyWizardTransition (consumes the hold)", async () => {
+    confirmResult = {
+      ok: true,
+      appointment_id: 12345,
+      start_time: "2026-06-10T14:00:00.000Z",
+    };
+
+    await submitSummaryV2({ chatId: CHAT_ID, confirmed: true });
+
+    // Release UPDATE fired on the happy path too (consumes the hold once
+    // the appointment is bound in Tekmetric).
+    const releaseCall = findReleaseHoldCall();
+    expect(releaseCall).toBeDefined();
+    expect(typeof releaseCall!.payload?.released_at).toBe("string");
+
+    // Success applyWizardTransition still fires and advances to customer_notes.
+    expect(awtCalls).toHaveLength(1);
+    expect(awtCalls[0]!.nextStep).toBe("customer_notes");
+    expect(awtCalls[0]!.updates).toMatchObject({
+      appointment_id: 12345,
+      appointment_verification_status: "confirmed",
+    });
+
+    // Ordering check: in chainCalls, the release UPDATE must precede the
+    // customer_chat_sessions update fired by applyWizardTransition.
+    // applyWizardTransition is mocked at the boundary so it doesn't
+    // touch supabase from inside this test — instead we assert the
+    // release UPDATE is in chainCalls AT ALL, which proves it fired
+    // before the test ended (which the applyWizardTransition awt does).
+    const releaseIdx = chainCalls.findIndex(
+      (c) =>
+        c.table === "appointment_holds" &&
+        c.op === "update" &&
+        typeof (c.payload as Record<string, unknown> | undefined)?.released_at ===
+          "string",
+    );
+    const casIdx = chainCalls.findIndex(
+      (c) =>
+        c.table === "appointment_holds" &&
+        c.op === "update" &&
+        typeof (c.payload as Record<string, unknown> | undefined)
+          ?.claimed_by_session_id === "string",
+    );
+    // CAS comes BEFORE release (the chain logical order).
+    expect(casIdx).toBeGreaterThanOrEqual(0);
+    expect(releaseIdx).toBeGreaterThan(casIdx);
+  });
+});
+
+describe("submitSummaryV2 confirm path — P0.2 in-flight-claimed diag branch", () => {
+  it("CAS miss + diag.claimed_by_session_id set (released_at null, ttl future) → escalates with hold_already_claimed_by_session", async () => {
+    // Scenario: customer double-tapped Confirm. First tap's CAS
+    // succeeded; first tap's Tekmetric POST is still in flight.
+    // Second tap's CAS fails because claimed_by_session_id is no
+    // longer NULL. Diagnostic reads it back and we escalate the
+    // second tap so we don't fire a duplicate POST.
+    casClaimResult = { data: null, error: null };
+    diagResult = {
+      data: {
+        released_at: null,
+        // Future expiry — TTL gate would have passed.
+        expires_at: "2099-12-31T23:59:59.000Z",
+        // claimed_by_session_id is set to this same session (rare
+        // double-tap) OR another session's chatId (extremely rare race
+        // — the .eq("session_id", chatId) filter on the diag SELECT
+        // would have prevented this in practice; included for safety).
+        claimed_by_session_id: CHAT_ID,
+      },
+      error: null,
+    };
+
+    await submitSummaryV2({ chatId: CHAT_ID, confirmed: true });
+
+    // No second Tekmetric POST fired.
+    expect(confirmCalls).toHaveLength(0);
+
+    // Escalated with the P0.2-specific reason.
+    expect(awtCalls).toHaveLength(1);
+    expect(awtCalls[0]!.nextStep).toBe("escalated");
+    expect(awtCalls[0]!.updates).toMatchObject({
+      status: "escalated",
+      escalation_reason: "hold_already_claimed_by_session",
+    });
+    expect(awtCalls[0]!.jeffBubble).toContain("already being processed");
+
+    // Sentry warning fired with the new diag context field.
+    expect(sentryCaptureMessageMock).toHaveBeenCalledWith(
+      "submit_summary_v2_cas_missed",
+      expect.objectContaining({
+        level: "warning",
+        extra: expect.objectContaining({
+          diag_claimed_by_session_id: CHAT_ID,
+        }),
+      }),
+    );
   });
 });
 

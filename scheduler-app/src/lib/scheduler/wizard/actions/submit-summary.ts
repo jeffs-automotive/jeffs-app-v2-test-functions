@@ -293,38 +293,59 @@ async function handleConfirmPath(chatId: string): Promise<WizardTransitionResult
     });
   }
 
-  // Plan 04 Phase 2 (closes I-COR-3) — CAS-claim the hold atomically.
+  // Plan 04 Phase 2 (closes I-COR-3) + P0.2 post-validator fix (2026-05-25)
+  // — CAS-claim the hold atomically using claimed_by_session_id.
   //
-  // Replaces a prior READ-then-3-check pattern that had a race window:
-  // between the SELECT and the Tekmetric POST below, mark-abandoned
-  // (idle-timer beacon, pagehide, tab-close) OR a concurrent
-  // hydrate_session_reset could flip released_at to now() and free
-  // the slot to other customers — while THIS request still proceeded
-  // to confirm with Tekmetric. Result: a confirmed Tekmetric appointment
-  // backed by a hold that's been released to someone else.
+  // Replaces the original Phase 2 single-step pattern that used
+  // `released_at = now()` as the claim signal. Validator 2 caught the
+  // downside: between CAS-claim and Tekmetric POST success (1-5 sec POST
+  // window), the slot APPEARS released to availability scans
+  // (`scheduler-app/src/lib/scheduler/wizard/availability.ts:128-137`
+  // filters `.is("released_at", null)` — released slots look FREE).
+  // A second customer could see the slot, create their own hold,
+  // confirm, and double-book with the in-flight session.
+  //
+  // Two-step pattern (per migration 20260525030000):
+  //
+  //   1. CAS step (THIS UPDATE): set claimed_by_session_id = chatId
+  //      atomically iff (released_at IS NULL AND
+  //      claimed_by_session_id IS NULL AND expires_at > now()).
+  //      released_at STAYS NULL — availability queries continue to
+  //      treat the slot as TAKEN to other customers during the POST
+  //      window.
+  //
+  //   2. Consume/release step (releaseClaimedHold helper below, after
+  //      POST resolves): set released_at = now() regardless of POST
+  //      success or failure. On success the slot is bound to the
+  //      confirmed appointment in Tekmetric; on failure the slot
+  //      returns to availability (Phase 2's release-on-failure spec
+  //      preserved).
   //
   // CAS gate (single UPDATE):
-  //   WHERE id = holdToken           (the canonical hold pointer)
-  //     AND session_id = chatId      (defense: don't claim another session's hold)
-  //     AND released_at IS NULL      (not already released by abandon/reset)
-  //     AND expires_at > now()       (still within TTL)
+  //   WHERE id = holdToken                         (canonical hold pointer)
+  //     AND session_id = chatId                    (defense: not another session's hold)
+  //     AND released_at IS NULL                    (not released by abandon/reset)
+  //     AND claimed_by_session_id IS NULL          (not in-flight by another tap)
+  //     AND expires_at > now()                     (still within TTL)
   //
   // On any condition failing, supabase returns data:null (no error).
-  // We then do a diagnostic SELECT to choose ONE of 3 user-facing
-  // copies (not-found / released / expired) — preserves the prior
-  // UX that distinguished these three failure modes.
+  // The diagnostic SELECT below distinguishes 4 failure modes
+  // (not-found / released / in-flight-claimed / expired) to choose
+  // the right user-facing copy.
   //
-  // Hold stays released_at-stamped whether Tekmetric POST succeeds or
-  // fails. Spec-acceptable per PLAN-04 §Phase 2: even if Tekmetric
-  // fails we leave released_at set (the slot becomes available to
-  // others; hold-reaper would otherwise sweep it within 30 min).
+  // Crashed-mid-POST recovery: if Tekmetric hangs past our 45s timeout
+  // OR the session crashes between CAS and the release step, the
+  // hold-reaper cron's NEW branch (migration 20260525030000) clears
+  // claims older than 5 minutes — slot returns to availability and
+  // the customer can re-pick.
   const nowIso = new Date().toISOString();
   const { data: claimedHold, error: claimErr } = await supabase
     .from("appointment_holds")
-    .update({ released_at: nowIso })
+    .update({ claimed_by_session_id: chatId })
     .eq("id", holdToken)
     .eq("session_id", chatId)
     .is("released_at", null)
+    .is("claimed_by_session_id", null)
     .gt("expires_at", nowIso)
     .select("id")
     .maybeSingle();
@@ -360,13 +381,19 @@ async function handleConfirmPath(chatId: string): Promise<WizardTransitionResult
   }
 
   if (!claimedHold) {
-    // CAS missed — one of (not-found / released / expired). Diagnostic
-    // read picks the precise user-facing copy. Session-bound so a
-    // session-mismatch (would never happen in normal flow) maps to
-    // "not found" rather than mis-classifying as expired.
+    // CAS missed — one of (not-found / released / in-flight-claimed /
+    // expired). Diagnostic read picks the precise user-facing copy.
+    // Session-bound so a session-mismatch (would never happen in normal
+    // flow) maps to "not found" rather than mis-classifying as expired.
+    //
+    // P0.2 (2026-05-25): added claimed_by_session_id to the SELECT.
+    // The new 3rd branch (in-flight-claimed) covers double-tap during
+    // the Tekmetric POST window — escalate so we don't fire a duplicate
+    // POST. The cron's stuck-claim sweep recovers the slot if the
+    // original POST also wedged.
     const { data: diag } = await supabase
       .from("appointment_holds")
-      .select("released_at, expires_at")
+      .select("released_at, expires_at, claimed_by_session_id")
       .eq("id", holdToken)
       .eq("session_id", chatId)
       .maybeSingle();
@@ -379,6 +406,7 @@ async function handleConfirmPath(chatId: string): Promise<WizardTransitionResult
         diag_found: diag !== null,
         diag_released_at: diag?.released_at ?? null,
         diag_expires_at: diag?.expires_at ?? null,
+        diag_claimed_by_session_id: diag?.claimed_by_session_id ?? null,
       },
     });
 
@@ -398,8 +426,28 @@ async function handleConfirmPath(chatId: string): Promise<WizardTransitionResult
           "Looks like that slot reservation was released. Let me show you the latest openings. 📅",
       });
     }
-    // Remaining branch: expires_at <= now() (released_at was null, row
-    // existed, session matched — only the TTL check could have missed).
+    if (diag.claimed_by_session_id) {
+      // P0.2 NEW branch — hold is in-flight claimed. This happens when
+      // the customer double-taps Confirm during the Tekmetric POST
+      // window (~1-5 sec). The first tap's POST is still in flight;
+      // firing a second POST would risk a duplicate appointment.
+      // Escalate this tap; the first tap's outcome is what the customer
+      // will receive (either success bubble or escalation if POST failed).
+      return applyWizardTransition({
+        chatId,
+        nextStep: "escalated",
+        updates: {
+          status: "escalated",
+          escalated_at: nowIso,
+          escalation_reason: "hold_already_claimed_by_session",
+        },
+        jeffBubble:
+          "Hmm, your booking is already being processed. Please call us at (610) 253-6565 if you don't get a confirmation in the next minute. 📞",
+      });
+    }
+    // Remaining branch: expires_at <= now() (released_at was null,
+    // claimed_by_session_id was null, row existed, session matched —
+    // only the TTL check could have missed).
     return applyWizardTransition({
       chatId,
       nextStep: "date_pick",
@@ -407,6 +455,40 @@ async function handleConfirmPath(chatId: string): Promise<WizardTransitionResult
         "Your slot just expired — but don't worry, let me re-check the schedule for you! 📅",
     });
   }
+
+  // P0.2 release helper — sets released_at = now() on the hold that
+  // THIS session just claimed. Called from EVERY post-POST branch
+  // (success, hold_expired, generic failure, no-appointment_id,
+  // confirmBooking throw, verification mismatch). Idempotent: filters
+  // on `released_at IS NULL` so a double-call is a silent no-op.
+  //
+  // Defense-in-depth: filters on claimed_by_session_id = chatId so we
+  // can never accidentally release a hold owned by a different session
+  // (would only happen if the holdToken pointer got corrupted somewhere
+  // upstream — never observed in practice).
+  //
+  // Failure of this UPDATE is a transient DB error: log to Sentry as
+  // warning, do not block the customer's flow. The hold-reaper cron's
+  // stuck-claim sweep (5 min threshold) will clear the orphan if this
+  // UPDATE silently missed.
+  const releaseClaimedHold = async (): Promise<void> => {
+    const { error: releaseErr } = await supabase
+      .from("appointment_holds")
+      .update({ released_at: new Date().toISOString() })
+      .eq("id", holdToken)
+      .eq("claimed_by_session_id", chatId)
+      .is("released_at", null);
+    if (releaseErr) {
+      Sentry.captureException(releaseErr, {
+        tags: {
+          surface: "submit_summary_v2_release_hold",
+          chat_id: chatId,
+        },
+        level: "warning",
+        extra: { chatId, holdToken },
+      });
+    }
+  };
 
   // Build title + description from row state.
   const [title, description] = await Promise.all([
@@ -441,6 +523,9 @@ async function handleConfirmPath(chatId: string): Promise<WizardTransitionResult
       tags: { surface: "submit_summary_v2_confirm_call", reason },
       level: "error",
     });
+    // P0.2: release the hold so the slot returns to availability —
+    // Phase 2's release-on-failure semantics preserved.
+    await releaseClaimedHold();
     return applyWizardTransition({
       chatId,
       nextStep: "escalated",
@@ -459,6 +544,12 @@ async function handleConfirmPath(chatId: string): Promise<WizardTransitionResult
     // since we verified above), Tekmetric outage, or validation rejection.
     const errMsg = confirmResult.error ?? "unknown";
     if (errMsg.includes("hold_expired") || errMsg.includes("hold_not_found")) {
+      // P0.2: release the hold so other customers can re-pick the slot.
+      // For the hold_expired sub-branch the release UPDATE is a near
+      // no-op (Tekmetric saw the hold as expired/gone — likely our
+      // appointment_holds row is also expired by TTL) but the helper
+      // filters `released_at IS NULL` so a stale row is safely skipped.
+      await releaseClaimedHold();
       return applyWizardTransition({
         chatId,
         nextStep: "date_pick",
@@ -470,6 +561,9 @@ async function handleConfirmPath(chatId: string): Promise<WizardTransitionResult
       level: "error",
       extra: { chatId, error: errMsg.slice(0, 500) },
     });
+    // P0.2: release the hold so the slot returns to availability —
+    // Phase 2's release-on-failure semantics preserved.
+    await releaseClaimedHold();
     return applyWizardTransition({
       chatId,
       nextStep: "escalated",
@@ -489,6 +583,14 @@ async function handleConfirmPath(chatId: string): Promise<WizardTransitionResult
       "submit_summary_v2 confirm_booking returned ok but no appointment_id",
       { level: "error", extra: { chatId, result: confirmResult } },
     );
+    // P0.2: confirmBooking returned ok=true but no appointment_id —
+    // an inconsistent backend response. We can't be sure whether the
+    // Tekmetric appointment actually got created (and if so, what its
+    // ID is), but we MUST release the hold so the slot doesn't sit
+    // claimed forever waiting for the cron's 5-min stuck-claim sweep.
+    // If the appointment did get created, ops sees the Sentry error
+    // above + the customer escalation and can reconcile manually.
+    await releaseClaimedHold();
     return applyWizardTransition({
       chatId,
       nextStep: "escalated",
@@ -629,6 +731,28 @@ async function handleConfirmPath(chatId: string): Promise<WizardTransitionResult
       extra: { chatId, appointment_id: appointmentId },
     });
   });
+
+  // P0.2: consume the hold — set released_at = now() now that the
+  // appointment is confirmed in Tekmetric. The slot is bound to the
+  // confirmed appointment going forward; availability scans see the
+  // confirmed appointment via the Tekmetric appointments endpoint
+  // (not via this hold row). Releasing the hold is correct.
+  //
+  // Order matters: release BEFORE the success applyWizardTransition.
+  // If the applyWizardTransition fails (DB transient), we want the
+  // hold released so the slot doesn't sit claimed pending the cron
+  // sweep — the customer will retry the wizard, and the existing
+  // idempotency-replay branch at the top of handleConfirmPath catches
+  // the re-entry (appointment_id is set in Tekmetric; the next attempt
+  // sees it via the appointment_id field if the failed write left it
+  // partial — though typically appointment_id wouldn't be set if the
+  // applyWizardTransition failed).
+  //
+  // Even if the worst-case happens (release fires, applyWizardTransition
+  // fails, customer doesn't retry), the appointment is BOOKED in
+  // Tekmetric — the staff email below also fires and ops sees it. Not
+  // a slot-loss scenario.
+  await releaseClaimedHold();
 
   // Advance to customer_notes. Both confirmed + needs_review paths
   // go through customer_notes per Chris's UX call — the apology
