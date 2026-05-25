@@ -70,22 +70,37 @@ You should now have:
    - **Root Directory:** click **Edit → admin-app** ← critical, otherwise it'll try to build from repo root
    - **Build & Output Settings:** leave defaults (next build → .next)
 
-4. **Environment Variables** — paste these IN THE DASHBOARD UI (NOT via CLI per `feedback_vercel_cli_env_bug.md`):
+4. **DON'T click Deploy yet.** Click through to **Environment Variables** (or finish creating the project, then go to Settings → Environment Variables before the first deploy completes).
 
-   | Name | Value | Environments |
-   |---|---|---|
-   | `NEXT_PUBLIC_SUPABASE_URL` | `https://itzdasxobllfiuolmbxu.supabase.co` | All |
-   | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | *(copy from scheduler-app Vercel project)* | All |
-   | `SUPABASE_SECRET_KEY` | *(copy from scheduler-app Vercel project)* | Production |
-   | `SENTRY_DSN` | *(copy from scheduler-app Vercel project)* | All |
-   | `NEXT_PUBLIC_SENTRY_DSN` | *(copy from scheduler-app Vercel project)* | All |
-   | `SENTRY_ORG` | *(copy from scheduler-app)* | All |
-   | `SENTRY_PROJECT` | `jeffs-app-v2-vercel` or new admin-specific project | All |
-   | `SENTRY_AUTH_TOKEN` | *(copy from scheduler-app)* | All |
+5. **Add Supabase env vars via the Supabase Vercel Marketplace integration** (preferred — auto-managed):
+   - In the new project: **Storage** tab → **Connect Store** → pick **Supabase**
+   - When prompted for which Supabase project: choose the existing **`itzdasxobllfiuolmbxu`** (do NOT create a new one)
+   - The integration auto-injects: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, plus the JSON-dict forms (`SUPABASE_PUBLISHABLE_KEYS`, `SUPABASE_SECRET_KEYS`). Per-project copies pointing at the same Supabase backend — auto-rotates on key rotation.
+   - The admin-app code's `resolve-keys.ts` handles all the env-var name variants the integration produces.
 
-   To copy from scheduler-app: open `jeffs-app-v2-test-functions` project → Settings → Environment Variables, click each one's "•••" → "Edit" to see the value, then paste into the new admin project.
+6. **Add Sentry env vars** — pick ONE of two approaches:
 
-5. Click **Deploy**. First build takes ~2-3 minutes.
+   **Approach A (preferred): Install the Sentry Vercel integration on admin-app**
+   - **Integrations** tab → search **Sentry** → Install (or "Add to project" if already installed at team level)
+   - Pick whether to create a new Sentry project (cleaner error filtering — recommended) or reuse the existing `jeffs-app-v2-vercel` Sentry project (one combined error stream)
+   - The integration auto-provisions: `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT`, plus `SENTRY_PUBLIC_KEY`, `SENTRY_OTLP_TRACES_URL`, `SENTRY_VERCEL_LOG_DRAIN_URL` (the last three are for Log Drain — currently moot since the org is on Pro plan, but harmless to have set)
+
+   **Approach B (manual copy if you'd rather skip the integration for now):** Settings → Environment Variables, add:
+
+   | Name | Value | Environments | Required? |
+   |---|---|---|---|
+   | `NEXT_PUBLIC_SENTRY_DSN` | *(copy from scheduler-app Vercel project)* | All | YES |
+   | `SENTRY_AUTH_TOKEN` | *(copy from scheduler-app)* | All | Only if you want source-map upload during build |
+   | `SENTRY_ORG` | *(copy from scheduler-app)* | All | Only if you set `SENTRY_AUTH_TOKEN` |
+   | `SENTRY_PROJECT` | `jeffs-app-v2-vercel` (combined) OR new admin-specific project | All | Only if you set `SENTRY_AUTH_TOKEN` |
+
+   **There is NO bare `SENTRY_DSN` env var on scheduler-app — only `NEXT_PUBLIC_SENTRY_DSN`.** The admin-app code falls back to `NEXT_PUBLIC_SENTRY_DSN` when `SENTRY_DSN` is unset (same pattern as scheduler-app), so the public-prefixed one alone is sufficient. If you skip `SENTRY_AUTH_TOKEN`, source-map upload silently no-ops at build time (stack traces in Sentry will show minified line numbers — fine for v1).
+
+   To copy values from scheduler-app: open `jeffs-app-v2-test-functions` project → Settings → Environment Variables, click each var's "•••" → "Edit" to reveal the value.
+
+7. Click **Deploy**. First build takes ~2-3 minutes.
+
+> **💡 Shared env vars for future:** Once admin-app deploys cleanly, you can promote the Sentry vars to **Team Settings → Environment Variables** as Shared Environment Variables and link them to both projects. That way rotating the auth token is a one-edit propagation instead of two. Don't do this on first setup though — get both projects working first, then promote.
 
 ---
 
