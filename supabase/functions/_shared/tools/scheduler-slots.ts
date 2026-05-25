@@ -208,11 +208,50 @@ function addDays(d: Date, days: number): Date {
   return next;
 }
 
-function dayBoundsUtc(date: string): { start: string; end: string } {
-  // start = YYYY-MM-DDT00:00:00Z, end = next-day 00:00:00Z
-  const start = `${date}T00:00:00Z`;
-  const next = addDays(new Date(`${date}T00:00:00Z`), 1);
-  return { start, end: next.toISOString() };
+/**
+ * Returns the UTC instants that bound a shop-local calendar day.
+ *
+ * 2026-05-25 bug fix — was `dayBoundsUtc` which used UTC midnight. For
+ * a shop in America/New_York that produces a range from
+ * `${date}T00:00:00Z` (= 8 PM ET the *previous* day in EDT, 7 PM in EST)
+ * to next-day UTC midnight — crossing TWO shop-local calendar days.
+ * The Tekmetric `/appointments` query that fed off these bounds counted
+ * BOTH shop-local days' appointments against ONE day's capacity cap,
+ * tripping a spurious `slot_just_taken` on every dropoff click. (Confirmed
+ * via the `customer_chat_messages` bubble trail on session a7168b3b…
+ * where every date click produced "That day just got booked up".)
+ *
+ * Correct shape: midnight-ET on `date` through midnight-ET on `date + 1`,
+ * each expressed as a UTC ISO instant via shopLocalToIsoString (which
+ * is DST-aware — produces "-04:00" in EDT, "-05:00" in EST). The
+ * resulting Tekmetric query window covers exactly ONE shop-local day,
+ * which matches what `dayLimits.dropoff_total` is configured against.
+ *
+ * DST safety: shop-local "next day" is computed by string arithmetic on
+ * the YYYY-MM-DD calendar date, NOT by adding 24 hours to a UTC
+ * instant. On DST-transition days (twice a year) the shop-local day is
+ * 23 or 25 hours long; the string-date approach correctly handles both
+ * because shopLocalToIsoString re-derives the offset per date.
+ */
+function shopLocalDayBoundsUtc(
+  date: string,
+): { start: string; end: string } {
+  const startLocal = shopLocalToIsoString(date, "00:00");
+  // Add 1 day via UTC-noon anchor to avoid DST-shift double-counting
+  // (noon is far from any DST transition window). The result is just
+  // the next calendar date string; conversion back to shop-local
+  // midnight is what handles the actual DST math.
+  const nextDateStr = addDays(new Date(`${date}T12:00:00Z`), 1)
+    .toISOString()
+    .slice(0, 10);
+  const endLocal = shopLocalToIsoString(nextDateStr, "00:00");
+  // Normalize both to UTC ISO so the Tekmetric API sees a uniform
+  // representation. Tekmetric accepts either form, but normalizing
+  // makes logs + debugging easier.
+  return {
+    start: new Date(startLocal).toISOString(),
+    end: new Date(endLocal).toISOString(),
+  };
 }
 
 /**
@@ -421,7 +460,7 @@ export async function listAvailableSlots(
       }
     } else {
       // Beyond shadow horizon — fall through to Tekmetric direct
-      const { start: dStart, end: dEnd } = dayBoundsUtc(date);
+      const { start: dStart, end: dEnd } = shopLocalDayBoundsUtc(date);
       try {
         const page = await tekmetricGetJson<
           TekmetricPage<TekmetricAppointment>
@@ -693,7 +732,7 @@ export async function holdAppointmentSlot(
   const { date, type, time } = args;
 
   // Pre-check: count Tekmetric appointments for that slot
-  const { start: dStart, end: dEnd } = dayBoundsUtc(date);
+  const { start: dStart, end: dEnd } = shopLocalDayBoundsUtc(date);
   let tekmetricSlotCount = 0;
   try {
     const page = await tekmetricGetJson<TekmetricPage<TekmetricAppointment>>(
