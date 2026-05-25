@@ -117,9 +117,14 @@ export function AuditHistoryFilters() {
         />
       </div>
       <div className="flex gap-2 sm:col-span-2 lg:col-span-5">
-        <Button type="submit" disabled={isPending} className="gap-1.5">
+        <Button
+          type="submit"
+          loading={isPending}
+          loadingText="Filtering…"
+          className="gap-1.5"
+        >
           <Filter className="h-4 w-4" aria-hidden="true" />
-          {isPending ? "Filtering…" : "Apply filters"}
+          Apply filters
         </Button>
         <Button
           type="button"

@@ -67,9 +67,15 @@ export function ReleaseKeytagForm() {
             placeholder="e.g. 152222"
           />
         </div>
-        <Button type="submit" variant="destructive" disabled={isPending} className="gap-1.5">
+        <Button
+          type="submit"
+          variant="destructive"
+          loading={isPending}
+          loadingText="Releasing…"
+          className="gap-1.5"
+        >
           <Eraser className="h-4 w-4" aria-hidden="true" />
-          {isPending ? "Releasing…" : "Release tag"}
+          Release tag
         </Button>
       </form>
 

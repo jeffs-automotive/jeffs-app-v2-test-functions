@@ -67,9 +67,14 @@ export function MarkKeytagPostedForm() {
             placeholder="e.g. 152222"
           />
         </div>
-        <Button type="submit" disabled={isPending} className="gap-1.5">
+        <Button
+          type="submit"
+          loading={isPending}
+          loadingText="Posting…"
+          className="gap-1.5"
+        >
           <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-          {isPending ? "Posting…" : "Mark posted"}
+          Mark posted
         </Button>
       </form>
 

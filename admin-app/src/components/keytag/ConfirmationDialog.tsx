@@ -112,11 +112,13 @@ export function ConfirmationDialog({
             type="button"
             variant={variant === "destructive" ? "destructive" : "default"}
             onClick={onConfirm}
-            disabled={isPending || expired}
+            loading={isPending}
+            loadingText="Applying…"
+            disabled={expired}
             className="gap-1.5"
           >
             <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-            {isPending ? "Applying…" : `Confirm ${actionLabel.toLowerCase()}`}
+            Confirm {actionLabel.toLowerCase()}
           </Button>
         </DialogFooter>
       </DialogContent>

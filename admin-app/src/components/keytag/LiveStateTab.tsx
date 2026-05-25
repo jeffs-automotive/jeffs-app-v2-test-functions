@@ -133,7 +133,7 @@ export async function LiveStateTab({ actorEmail }: LiveStateTabProps) {
                     <TableHead>RO #</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Last activity</TableHead>
-                    <TableHead className="w-28">Stale?</TableHead>
+                    <TableHead className="w-28">Stale</TableHead>
                     <TableHead className="text-right">Link</TableHead>
                   </TableRow>
                 </TableHeader>

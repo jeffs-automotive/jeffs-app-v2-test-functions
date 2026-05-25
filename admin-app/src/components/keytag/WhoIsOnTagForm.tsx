@@ -55,9 +55,14 @@ export function WhoIsOnTagForm() {
             placeholder="1–90"
           />
         </div>
-        <Button type="submit" disabled={isPending} className="gap-1.5">
+        <Button
+          type="submit"
+          loading={isPending}
+          loadingText="Looking up…"
+          className="gap-1.5"
+        >
           <Search className="h-4 w-4" aria-hidden="true" />
-          {isPending ? "Looking up…" : "Look up"}
+          Look up
         </Button>
       </form>
 

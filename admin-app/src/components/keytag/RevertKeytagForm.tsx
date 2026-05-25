@@ -66,9 +66,15 @@ export function RevertKeytagForm() {
             placeholder="e.g. 152222"
           />
         </div>
-        <Button type="submit" variant="outline" disabled={isPending} className="gap-1.5">
+        <Button
+          type="submit"
+          variant="outline"
+          loading={isPending}
+          loadingText="Reverting…"
+          className="gap-1.5"
+        >
           <Undo2 className="h-4 w-4" aria-hidden="true" />
-          {isPending ? "Reverting…" : "Revert to WIP"}
+          Revert to WIP
         </Button>
       </form>
 

@@ -108,9 +108,14 @@ export function AssignKeytagForm() {
           />
         </div>
         <div className="flex items-end">
-          <Button type="submit" disabled={isPending} className="gap-1.5">
+          <Button
+            type="submit"
+            loading={isPending}
+            loadingText="Assigning…"
+            className="gap-1.5"
+          >
             <KeyRound className="h-4 w-4" aria-hidden="true" />
-            {isPending ? "Assigning…" : "Assign"}
+            Assign
           </Button>
         </div>
       </form>

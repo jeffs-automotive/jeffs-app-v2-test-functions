@@ -1,5 +1,7 @@
+import type { ReactNode } from "react"
 import { Button as ButtonPrimitive } from "@base-ui/react/button"
 import { cva, type VariantProps } from "class-variance-authority"
+import { Loader2 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
@@ -40,18 +42,105 @@ const buttonVariants = cva(
   }
 )
 
+/**
+ * Button extends shadcn's base with two pending-state props for our
+ * keytag forms (loading-spinners plan §3a, 2026-05-25):
+ *
+ *   loading?: boolean      — when true, the button is disabled +
+ *                            aria-busy + the leading icon is replaced
+ *                            by an animated Loader2 spinner.
+ *   loadingText?: ReactNode — optional swap label shown while loading.
+ *                            Falls back to `children` if not provided.
+ *
+ * The spinner uses `motion-safe:animate-spin` so it respects the user's
+ * `prefers-reduced-motion: reduce` setting (still visible as a static
+ * icon for users who don't want animation).
+ *
+ * Pattern works with the existing icon convention:
+ *   <Button loading={isPending} loadingText="Saving…">
+ *     <SaveIcon />     ← gets swapped out for the spinner when loading
+ *     Save
+ *   </Button>
+ *
+ * The implementation walks `children` once to find the first ReactElement
+ * (treated as the "leading icon") and replaces it with the spinner. Text
+ * children fall through unchanged unless `loadingText` is supplied.
+ */
+import { Children, isValidElement } from "react"
+
+export interface ButtonExtraProps {
+  loading?: boolean
+  loadingText?: ReactNode
+}
+
+function renderChildrenWithLoadingState(
+  children: ReactNode,
+  loading: boolean,
+  loadingText: ReactNode,
+): ReactNode {
+  if (!loading) return children
+  // When loading: replace the first ReactElement child (the icon) with
+  // the spinner, and swap remaining text content with loadingText (if
+  // provided). If there's no element child, just prepend the spinner.
+  const childArray = Children.toArray(children)
+  const firstElementIdx = childArray.findIndex((c) => isValidElement(c))
+  const spinner = (
+    <Loader2
+      key="__loading-spinner"
+      className="motion-safe:animate-spin"
+      aria-hidden="true"
+    />
+  )
+  if (firstElementIdx === -1) {
+    return (
+      <>
+        {spinner}
+        {loadingText ?? children}
+      </>
+    )
+  }
+  const replaced = [...childArray]
+  replaced[firstElementIdx] = spinner
+  if (loadingText !== undefined) {
+    // Replace text-shaped (string/number) children with loadingText.
+    // Preserve element children we didn't already swap.
+    const out: ReactNode[] = []
+    for (let i = 0; i < replaced.length; i++) {
+      const c = replaced[i]
+      if (i === firstElementIdx) {
+        out.push(c)
+      } else if (typeof c === "string" || typeof c === "number") {
+        // Only emit loadingText once (the first time we hit a text child).
+        if (!out.some((x) => x === loadingText)) out.push(loadingText)
+      } else {
+        out.push(c)
+      }
+    }
+    return out
+  }
+  return replaced
+}
+
 function Button({
   className,
   variant = "default",
   size = "default",
+  loading = false,
+  loadingText,
+  disabled,
+  children,
   ...props
-}: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
+}: ButtonPrimitive.Props & VariantProps<typeof buttonVariants> & ButtonExtraProps) {
   return (
     <ButtonPrimitive
       data-slot="button"
       className={cn(buttonVariants({ variant, size, className }))}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
       {...props}
-    />
+    >
+      {renderChildrenWithLoadingState(children, loading, loadingText)}
+    </ButtonPrimitive>
   )
 }
 

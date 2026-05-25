@@ -154,9 +154,15 @@ export function ResolveManualReviewForm({
             >
               Cancel
             </Button>
-            <Button type="submit" size="sm" disabled={isPending} className="gap-1.5">
+            <Button
+              type="submit"
+              size="sm"
+              loading={isPending}
+              loadingText="Resolving…"
+              className="gap-1.5"
+            >
               <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
-              {isPending ? "Resolving…" : "Confirm resolve"}
+              Confirm resolve
             </Button>
           </div>
 

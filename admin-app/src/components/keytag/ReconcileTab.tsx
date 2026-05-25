@@ -13,6 +13,7 @@ import {
   ShieldAlert,
   CheckCircle2,
   AlertTriangle,
+  Loader2,
 } from "lucide-react";
 import {
   Card,
@@ -43,6 +44,10 @@ export function ReconcileTab() {
   const [state, dispatch, isPending] = useActionState(runBulkReconcileAction, initial);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [dryRun, setDryRun] = useState(true);
+  // Snapshot the mode chosen at dispatch time so the running copy doesn't
+  // change if the user toggles the checkbox mid-run. Per loading-spinners
+  // plan §4c (GPT cross-verify finding 2026-05-25).
+  const [runningMode, setRunningMode] = useState<"dry-run" | "real" | null>(null);
 
   useEffect(() => {
     if (state.kind === "success") {
@@ -50,16 +55,27 @@ export function ReconcileTab() {
         description: `${state.data.tekmetric_wip_count} WIP + ${state.data.tekmetric_ar_count} A/R checked in ${state.data.duration_ms}ms`,
       });
       setConfirmOpen(false);
+      setRunningMode(null);
     }
     if (state.kind === "transport_error") {
       toast.error("Reconcile failed", { description: state.message });
+      setRunningMode(null);
     }
   }, [state]);
 
   function handleRun() {
+    setRunningMode(dryRun ? "dry-run" : "real");
     const fd = new FormData();
     if (dryRun) fd.set("dry_run", "true");
     dispatch(fd);
+  }
+
+  // Guard dialog close while pending — refuse Escape / outside-click
+  // while the orchestrator is still working. Per loading-spinners plan
+  // §4c (GPT cross-verify finding).
+  function handleDialogOpenChange(next: boolean) {
+    if (isPending && !next) return;
+    setConfirmOpen(next);
   }
 
   return (
@@ -104,43 +120,85 @@ export function ReconcileTab() {
           <Button
             type="button"
             onClick={() => setConfirmOpen(true)}
-            disabled={isPending}
+            loading={isPending}
+            loadingText="Running…"
             className="gap-1.5"
           >
             <RefreshCcw className="h-4 w-4" aria-hidden="true" />
-            {isPending ? "Running…" : dryRun ? "Run dry-run" : "Run reconcile"}
+            {dryRun ? "Run dry-run" : "Run reconcile"}
           </Button>
         </CardContent>
       </Card>
 
-      {state.kind === "success" && <ReconcileResultCard data={state.data} />}
+      {/* Hide stale success card while the next run is in flight. Per
+          loading-spinners plan §4b (both models flagged the stale-state bug). */}
+      {!isPending && state.kind === "success" && <ReconcileResultCard data={state.data} />}
 
-      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+      <Dialog open={confirmOpen} onOpenChange={handleDialogOpenChange}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 sm:mx-0">
-              <AlertTriangle className="h-5 w-5 text-amber-700" aria-hidden="true" />
+              {isPending ? (
+                <Loader2
+                  className="h-5 w-5 text-amber-700 motion-safe:animate-spin"
+                  aria-hidden="true"
+                />
+              ) : (
+                <AlertTriangle className="h-5 w-5 text-amber-700" aria-hidden="true" />
+              )}
             </div>
             <DialogTitle>
-              Run {dryRun ? "dry-run " : ""}reconcile?
+              {isPending
+                ? `Running ${runningMode === "dry-run" ? "dry-run" : "reconcile"}…`
+                : `Run ${dryRun ? "dry-run " : ""}reconcile?`}
             </DialogTitle>
             <DialogDescription>
-              {dryRun
-                ? "Dry-run: previews actions without making changes."
-                : "This will assign, post, revert, or release tags to match Tekmetric. Cannot be undone in bulk."}
+              {isPending
+                ? "Typically takes 5–30 seconds. Pulling RO data from Tekmetric + computing diffs against the keytag pool."
+                : dryRun
+                  ? "Dry-run: previews actions without making changes."
+                  : "This will assign, post, revert, or release tags to match Tekmetric. Cannot be undone in bulk."}
             </DialogDescription>
           </DialogHeader>
+
+          {/* Running indicator must live INSIDE the dialog — a card below
+              the action buttons would be hidden behind this modal during
+              the 5–30s wait. Per loading-spinners plan §4a (GPT
+              cross-verify finding 2026-05-25). */}
+          {isPending && (
+            <div
+              role="status"
+              aria-live="polite"
+              aria-busy="true"
+              className="flex items-center gap-3 rounded-md border border-primary/30 bg-primary/5 p-3"
+            >
+              <Loader2
+                className="h-5 w-5 shrink-0 text-primary motion-safe:animate-spin"
+                aria-hidden="true"
+              />
+              <span className="text-sm">
+                Working through Tekmetric…
+              </span>
+            </div>
+          )}
+
           <DialogFooter className="gap-2 sm:gap-2">
-            <Button type="button" variant="outline" onClick={() => setConfirmOpen(false)} disabled={isPending}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setConfirmOpen(false)}
+              disabled={isPending}
+            >
               Cancel
             </Button>
             <Button
               type="button"
               variant={dryRun ? "default" : "destructive"}
               onClick={handleRun}
-              disabled={isPending}
+              loading={isPending}
+              loadingText="Running…"
             >
-              {isPending ? "Running…" : dryRun ? "Run dry-run" : "Run for real"}
+              {dryRun ? "Run dry-run" : "Run for real"}
             </Button>
           </DialogFooter>
         </DialogContent>
