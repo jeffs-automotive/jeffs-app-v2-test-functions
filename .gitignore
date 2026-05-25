@@ -40,6 +40,13 @@ desktop.ini
 # Never commit raw staging output — committed copies live under .claude/work/...
 .tmp/
 
+# feature-workflow-hook + ai-cross-verify per-session artifacts.
+# Don't commit — these are local-session state.
+.claude/work/current-feature.json
+.claude/work/feature-skip.json
+.claude/work/ai-review-*.md
+.claude/work/feature-archive/
+
 # Playwright MCP per-conversation debug captures (console + page snapshots)
 .playwright-mcp/
 
