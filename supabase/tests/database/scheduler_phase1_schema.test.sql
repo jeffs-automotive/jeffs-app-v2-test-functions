@@ -209,16 +209,19 @@ SELECT has_index('public', 'appointments', 'appointments_customer_idx',
 -- ---------------------------------------------------------------------
 
 -- 8th arg (idempotency_key) widened from integer → text in migration
--- 20260516230000 (DST-aware rewrite). Test signature kept in lockstep
--- here so a future re-narrowing would have to update both sides.
+-- 20260516230000 (DST-aware rewrite). The return shape also changed
+-- from scalar `uuid` to `TABLE(hold_id uuid, expires_at timestamptz,
+-- ok boolean, reason text)` — postgres represents TABLE returns as
+-- `record` internally. Test signature kept in lockstep so a future
+-- re-narrowing of either side has to update both.
 SELECT has_function('public', 'hold_waiter_slot',
                     ARRAY['integer','uuid','integer','integer','date','time','text','text'],
                     'hold_waiter_slot function exists with correct signature');
 
 SELECT function_returns('public', 'hold_waiter_slot',
                         ARRAY['integer','uuid','integer','integer','date','time','text','text'],
-                        'uuid',
-                        'hold_waiter_slot returns uuid');
+                        'record',
+                        'hold_waiter_slot returns record (TABLE(hold_id, expires_at, ok, reason))');
 
 
 -- ---------------------------------------------------------------------
