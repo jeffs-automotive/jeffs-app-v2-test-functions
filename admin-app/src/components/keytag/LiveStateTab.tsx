@@ -9,7 +9,7 @@
  * client-side polling for v1 — the user can reload to refresh, or use
  * the bulk reconcile tool in Phase C.6.
  */
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, Clock } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -32,6 +32,36 @@ import {
 } from "@/lib/orchestrator/client";
 import { TagBadge } from "./TagBadge";
 import { WhoIsOnTagForm } from "./WhoIsOnTagForm";
+
+/**
+ * Days-since-last-activity threshold beyond which a held tag is "stale".
+ *
+ * SOURCE OF TRUTH: `supabase/functions/keytag-daily-report/index.ts:54`
+ * (`const STALE_DAYS = 3`). The morning email + this UI both compute
+ * stale-ness from `keytags.last_activity_at` against this exact cutoff.
+ *
+ * Don't change this independently — bump it in lockstep with the daily
+ * report constant so the email + UI tell the same story.
+ *
+ * `last_activity_at` itself is maintained by:
+ *   - touch_keytag_activity RPC (live via keytag-tekmetric-webhook on
+ *     every Tekmetric updatedDate/postedDate change)
+ *   - keytag-bulk-reconcile cron nightly (re-syncs from Tekmetric)
+ */
+const STALE_DAYS = 3;
+
+interface StalenessInfo {
+  isStale: boolean;
+  daysOld: number | null;
+}
+
+function computeStaleness(lastActivityAt: string | null): StalenessInfo {
+  if (!lastActivityAt) return { isStale: false, daysOld: null };
+  const ms = Date.now() - new Date(lastActivityAt).getTime();
+  if (Number.isNaN(ms)) return { isStale: false, daysOld: null };
+  const days = Math.floor(ms / 86_400_000);
+  return { isStale: days >= STALE_DAYS, daysOld: days };
+}
 
 export interface LiveStateTabProps {
   actorEmail: string;
@@ -103,48 +133,65 @@ export async function LiveStateTab({ actorEmail }: LiveStateTabProps) {
                     <TableHead>RO #</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Last activity</TableHead>
+                    <TableHead className="w-28">Stale?</TableHead>
                     <TableHead className="text-right">Link</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {listResult.results.map((entry) => (
-                    <TableRow key={`${entry.tag_color}-${entry.tag_number}`}>
-                      <TableCell>
-                        <TagBadge
-                          color={entry.tag_color}
-                          number={entry.tag_number}
-                          size="sm"
-                        />
-                      </TableCell>
-                      <TableCell className="font-mono text-sm">
-                        #{entry.ro_number}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={entry.status === "assigned" ? "secondary" : "outline"}
-                          className="text-[10px] font-normal uppercase tracking-wider"
-                        >
-                          {entry.status === "assigned" ? "WIP" : "Posted A/R"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {entry.last_activity_at
-                          ? new Date(entry.last_activity_at).toLocaleString()
-                          : "—"}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <a
-                          href={entry.ro_url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-                        >
-                          Open
-                          <ExternalLink className="h-3 w-3" aria-hidden="true" />
-                        </a>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {listResult.results.map((entry) => {
+                    const staleness = computeStaleness(entry.last_activity_at);
+                    return (
+                      <TableRow key={`${entry.tag_color}-${entry.tag_number}`}>
+                        <TableCell>
+                          <TagBadge
+                            color={entry.tag_color}
+                            number={entry.tag_number}
+                            size="sm"
+                          />
+                        </TableCell>
+                        <TableCell className="font-mono text-sm">
+                          #{entry.ro_number}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={entry.status === "assigned" ? "secondary" : "outline"}
+                            className="text-[10px] font-normal uppercase tracking-wider"
+                          >
+                            {entry.status === "assigned" ? "WIP" : "Posted A/R"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {entry.last_activity_at
+                            ? new Date(entry.last_activity_at).toLocaleString()
+                            : "—"}
+                        </TableCell>
+                        <TableCell>
+                          {staleness.isStale ? (
+                            <Badge
+                              variant="outline"
+                              className="gap-1 border-red-300 bg-red-50 text-[10px] font-medium uppercase tracking-wider text-red-700"
+                            >
+                              <Clock className="h-3 w-3" aria-hidden="true" />
+                              {staleness.daysOld}d
+                            </Badge>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <a
+                            href={entry.ro_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                          >
+                            Open
+                            <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                          </a>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
