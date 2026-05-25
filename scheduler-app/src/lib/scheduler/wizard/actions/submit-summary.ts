@@ -504,65 +504,6 @@ async function handleConfirmPath(chatId: string): Promise<WizardTransitionResult
     r.appointment_type === "waiter" ? "waiter" : "dropoff";
   const color = apptType === "waiter" ? "red" : "navy";
 
-  // ─── E2E TEST BYPASS — skip the Tekmetric POST ─────────────────────────
-  // When SCHEDULER_TEST_PHONE_E164 env var is set AND matches the
-  // session's phone_e164, skip the confirmBooking edge fn call entirely
-  // and synthesize a successful confirmation. Playwright happy-path tests
-  // need to exercise the FULL wizard flow through confirmation without
-  // creating real Tekmetric appointments (and without burning Tekmetric
-  // API quota / polluting the shop's calendar with test data).
-  //
-  // Mirrors the OTP test bypass in
-  // `supabase/functions/_shared/tools/scheduler-otp.ts` line 285+ which
-  // checks the same env var. The pair forms a complete E2E test surface:
-  //   - SCHEDULER_TEST_PHONE_E164 set → OTP send skipped (Telnyx not hit)
-  //                                  → Tekmetric POST skipped (no booking)
-  //
-  // Safety:
-  //   - Env var DEFAULT is empty → bypass NEVER fires in normal
-  //     operation. Operator must explicitly set the env var on the
-  //     target deployment.
-  //   - Bypass is keyed on phone_e164 match — even with the env var
-  //     set, customers using any other phone get the normal flow.
-  //   - Production deploys leave SCHEDULER_TEST_PHONE_E164 unset
-  //     (test sandbox sets it).
-  //   - We still release the hold (slot is freed in our DB; Tekmetric
-  //     was never touched so nothing to clean up there).
-  //
-  // Synthesized response:
-  //   - appointment_id = null (sentinel: no real Tekmetric appointment)
-  //   - appointment_confirmed_at = now()
-  //   - appointment_verification_status = "confirmed" (clean state)
-  //   - jeffBubble includes a 🧪 test-mode marker so manual runs notice
-  const testPhoneEnv = process.env.SCHEDULER_TEST_PHONE_E164 ?? "";
-  const rowPhone = (r.phone_e164 as string | null) ?? "";
-  if (testPhoneEnv && rowPhone && testPhoneEnv === rowPhone) {
-    Sentry.captureMessage("submit_summary_v2_test_bypass_no_tekmetric_post", {
-      level: "info",
-      tags: {
-        surface: "submit_summary_v2_test_bypass",
-        chat_id: chatId,
-      },
-      extra: { chatId, phone_last_four: rowPhone.slice(-4) },
-    });
-    // Release the hold (consume) — slot becomes available again in
-    // our DB. Tekmetric was never called so no cleanup needed there.
-    await releaseClaimedHold();
-    return applyWizardTransition({
-      chatId,
-      updates: {
-        appointment_id: null,
-        appointment_confirmed_at: new Date().toISOString(),
-        appointment_verification_status: "confirmed",
-        appointment_verification_diff: null,
-      },
-      nextStep: "customer_notes",
-      jeffBubble:
-        "🧪 [TEST MODE] Wizard complete — Tekmetric POST skipped, no real appointment created.\n\n" +
-        "Before you go — is there anything special I should let our techs know about your car or the visit?",
-    });
-  }
-
   // Call scheduler-booking-direct confirm_booking op.
   let confirmResult: Awaited<ReturnType<typeof confirmBooking>>;
   try {
