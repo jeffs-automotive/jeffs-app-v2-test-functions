@@ -33,6 +33,14 @@ import {
   type TekmetricPage,
 } from "../_shared/tekmetric-client.ts";
 import { ENV_NAMES } from "../_shared/tekmetric.ts";
+// 2026-05-25 audit Validator-3: rolling 7-day window was UTC-derived;
+// switched to shop-local to fix the "missing today's early appointments
+// + false soft-deletes at the day boundary" bug.
+import {
+  shopLocalToday,
+  shopLocalDayBoundsUtc,
+  addDaysToYmd,
+} from "../_shared/scheduler-tz.ts";
 import {
   checkSchedulerBearer,
   unauthorizedResponse,
@@ -214,12 +222,23 @@ async function fetchAllPages(
 }
 
 async function runSync(): Promise<SyncResult> {
-  const now = new Date();
-  const windowStart = new Date(`${ymd(now)}T00:00:00Z`);
-  const windowEnd = new Date(windowStart);
-  windowEnd.setUTCDate(windowEnd.getUTCDate() + 7);
-  const startIso = windowStart.toISOString();
-  const endIso = windowEnd.toISOString();
+  // P0 TZ fix (audit Validator-3 2026-05-25): rolling 7-day window
+  // is logically "shop-local today through shop-local today+7d",
+  // expressed as UTC instants for the Tekmetric query window AND
+  // the local appointments-shadow soft-delete reconciliation below.
+  //
+  // The prior `ymd(new Date())` derived "today" from UTC, which
+  // returns *tomorrow* between 8 PM ET and midnight ET (UTC has
+  // already rolled). The window then started at shop-local 8 PM
+  // PREVIOUS day, missing today's early appointments AND extending
+  // into the wrong tail. Worse — the shadowInWindow reconciliation
+  // below uses this same window to identify "missing" rows that
+  // get SOFT-DELETED — so the bug risked false soft-deletes of
+  // legitimate appointments at the day boundary.
+  const todayYmd = shopLocalToday();
+  const endYmd = addDaysToYmd(todayYmd, 7);
+  const startIso = shopLocalDayBoundsUtc(todayYmd).start;
+  const endIso = shopLocalDayBoundsUtc(endYmd).start;
 
   let items: TekmetricAppointment[];
   let pages: number;

@@ -36,6 +36,18 @@ import {
   type TekmetricPage,
 } from "../tekmetric-client.ts";
 import { logEdgeError } from "../log-edge-error.ts";
+// 2026-05-25 post-audit extraction: shop-local TZ helpers promoted to
+// `_shared/scheduler-tz.ts` so appointments-sync + this file + future
+// edge fns all share one source of truth. shopLocalToIsoString was
+// inline here; now re-imported. shopLocalDayBoundsUtc /
+// shopLocalDateAndHour / shopLocalToday added to the shared module
+// and used at the new callsites below (each fixes a specific
+// UTC-vs-shop-local bug surfaced by Validator-3).
+import {
+  shopLocalToIsoString,
+  shopLocalDayBoundsUtc,
+  shopLocalDateAndHour,
+} from "../scheduler-tz.ts";
 
 // ─── Capacity constants ──────────────────────────────────────────────────────
 //
@@ -50,37 +62,9 @@ const FALLBACK_WAITER_CAPACITY_PER_TIME = 2;
 const FALLBACK_DAILY_TOTAL_CAP = 35;
 const SHADOW_HORIZON_DAYS = 7;
 
-const SHOP_TIMEZONE = "America/New_York";
-
-/**
- * Convert a shop-local date+time to a Tekmetric-bound ISO string with the
- * correct UTC offset for THAT specific date. DST-aware: returns -04:00
- * during EDT (mid-Mar → early-Nov) and -05:00 during EST (early-Nov →
- * mid-Mar). Bug fix 2026-05-16 (R4-BLOCKER-B-1): the previous code
- * hardcoded "-04:00" everywhere, which produced appointments 1 hour off
- * shop-local every November-March.
- *
- * Probes the offset at 12:00 UTC of the given date (7-8 AM shop-local —
- * far outside the 2 AM DST-transition window). Returns the wall-clock
- * `${date}T${timeHHMM}:00` tagged with that offset, so `new Date()` of
- * the result resolves to the correct UTC instant.
- *
- * timeHHMM must be "HH:MM" (24-hour, zero-padded). `date` must be
- * "YYYY-MM-DD".
- */
-function shopLocalToIsoString(date: string, timeHHMM: string): string {
-  const probe = new Date(`${date}T12:00:00Z`);
-  const tzName =
-    new Intl.DateTimeFormat("en-US", {
-      timeZone: SHOP_TIMEZONE,
-      timeZoneName: "longOffset",
-    })
-      .formatToParts(probe)
-      .find((p) => p.type === "timeZoneName")?.value ?? "GMT-05:00";
-  // tzName is "GMT-04:00" (EDT) or "GMT-05:00" (EST). Strip "GMT" prefix.
-  const offset = tzName.replace(/^GMT/, "") || "-05:00";
-  return `${date}T${timeHHMM}:00${offset}`;
-}
+// SHOP_TIMEZONE + shopLocalToIsoString relocated to `_shared/scheduler-tz.ts`
+// (2026-05-25). Imported at the top of this file. See that module for the
+// full DST-aware probe logic.
 
 /**
  * Per-day capacity limits, sourced from appointment_default_limits
@@ -208,51 +192,11 @@ function addDays(d: Date, days: number): Date {
   return next;
 }
 
-/**
- * Returns the UTC instants that bound a shop-local calendar day.
- *
- * 2026-05-25 bug fix — was `dayBoundsUtc` which used UTC midnight. For
- * a shop in America/New_York that produces a range from
- * `${date}T00:00:00Z` (= 8 PM ET the *previous* day in EDT, 7 PM in EST)
- * to next-day UTC midnight — crossing TWO shop-local calendar days.
- * The Tekmetric `/appointments` query that fed off these bounds counted
- * BOTH shop-local days' appointments against ONE day's capacity cap,
- * tripping a spurious `slot_just_taken` on every dropoff click. (Confirmed
- * via the `customer_chat_messages` bubble trail on session a7168b3b…
- * where every date click produced "That day just got booked up".)
- *
- * Correct shape: midnight-ET on `date` through midnight-ET on `date + 1`,
- * each expressed as a UTC ISO instant via shopLocalToIsoString (which
- * is DST-aware — produces "-04:00" in EDT, "-05:00" in EST). The
- * resulting Tekmetric query window covers exactly ONE shop-local day,
- * which matches what `dayLimits.dropoff_total` is configured against.
- *
- * DST safety: shop-local "next day" is computed by string arithmetic on
- * the YYYY-MM-DD calendar date, NOT by adding 24 hours to a UTC
- * instant. On DST-transition days (twice a year) the shop-local day is
- * 23 or 25 hours long; the string-date approach correctly handles both
- * because shopLocalToIsoString re-derives the offset per date.
- */
-function shopLocalDayBoundsUtc(
-  date: string,
-): { start: string; end: string } {
-  const startLocal = shopLocalToIsoString(date, "00:00");
-  // Add 1 day via UTC-noon anchor to avoid DST-shift double-counting
-  // (noon is far from any DST transition window). The result is just
-  // the next calendar date string; conversion back to shop-local
-  // midnight is what handles the actual DST math.
-  const nextDateStr = addDays(new Date(`${date}T12:00:00Z`), 1)
-    .toISOString()
-    .slice(0, 10);
-  const endLocal = shopLocalToIsoString(nextDateStr, "00:00");
-  // Normalize both to UTC ISO so the Tekmetric API sees a uniform
-  // representation. Tekmetric accepts either form, but normalizing
-  // makes logs + debugging easier.
-  return {
-    start: new Date(startLocal).toISOString(),
-    end: new Date(endLocal).toISOString(),
-  };
-}
+// shopLocalDayBoundsUtc relocated to `_shared/scheduler-tz.ts` (2026-05-25
+// post-audit). The local copy was duplicated because the first version
+// landed inline here as part of commit 5d8b8f0; the audit found 3 more
+// callsites that needed it (appointments-sync window + listAvailableSlots +
+// getSlotCapacity), so it was promoted to the shared module.
 
 /**
  * Phase 9d 2026-05-16 — color-derived classifier (sister of the one in
@@ -288,10 +232,13 @@ function classifyAppointmentType(
     case "#128743":
       return "dropoff";
   }
-  // No color set — fall back to UTC-hour heuristic.
+  // No color set — fall back to shop-local-hour heuristic. Was
+  // UTC-hour (12 or 13 = waiter) which works in EDT but is off by
+  // one in EST (where shop 8/9 AM = UTC 13/14). P0 TZ fix
+  // (2026-05-25 Validator-3 audit).
   if (startTime) {
-    const hour = new Date(startTime).getUTCHours();
-    if (hour === 12 || hour === 13) return "waiter";
+    const { hour } = shopLocalDateAndHour(startTime);
+    if (hour === 8 || hour === 9) return "waiter";
   }
   return "dropoff";
 }
@@ -422,12 +369,18 @@ export async function listAvailableSlots(
     if (cursor < shadowHorizon) {
       waiterCounts = {};
       totalDayCount = 0;
+      // P0 TZ fix (audit Validator-3 2026-05-25): query window must be
+      // shop-local day, not UTC day. The naive `${date}T00:00:00Z`
+      // pattern spans TWO shop-local days for America/New_York
+      // (8 PM ET prior day → 8 PM ET this day in EDT) and miscounts
+      // capacity. Same shape as the holdSlot fix (5d8b8f0).
+      const { start: dStart, end: dEnd } = shopLocalDayBoundsUtc(date);
       const { data: appts } = await sb
         .from("appointments")
         .select("start_time, appointment_type, appointment_status")
         .eq("shop_id", shopId)
-        .gte("start_time", `${date}T00:00:00Z`)
-        .lt("start_time", `${ymd(addDays(cursor, 1))}T00:00:00Z`)
+        .gte("start_time", dStart)
+        .lt("start_time", dEnd)
         .is("deleted_at", null)
         .not("appointment_status", "in", "(CANCELED,NO_SHOW)");
       for (const a of appts ?? []) {
@@ -435,10 +388,13 @@ export async function listAvailableSlots(
         const type = a.appointment_type as "waiter" | "dropoff";
         totalDayCount += 1;
         if (type === "waiter") {
-          const hour = new Date(startStr).getUTCHours();
-          // EDT 8 AM = UTC 12; EDT 9 AM = UTC 13.
-          // Approximate; the appointments-sync cron is authoritative on type.
-          const slot = hour === 12 ? "08:00" : hour === 13 ? "09:00" : "08:00";
+          // P0 TZ fix: was `new Date(startStr).getUTCHours()` which
+          // works in EDT (8 AM ET = 12 UTC) but is off-by-one in EST
+          // (8 AM ET = 13 UTC) — every waiter appt was bucketed wrong
+          // for half the year. shopLocalDateAndHour uses Intl + the
+          // shop's IANA TZ name so it handles both DST states.
+          const { hour } = shopLocalDateAndHour(startStr);
+          const slot = hour === 8 ? "08:00" : hour === 9 ? "09:00" : "08:00";
           waiterCounts[slot] = (waiterCounts[slot] ?? 0) + 1;
         }
       }
@@ -488,8 +444,11 @@ export async function listAvailableSlots(
           totalDayCount += 1;
           const t = classifyAppointmentType(a.color, a.startTime);
           if (t === "waiter") {
-            const hour = new Date(a.startTime).getUTCHours();
-            const slot = hour === 12 ? "08:00" : "09:00";
+            // P0 TZ fix: same UTC-hour bucketing bug as the shadow
+            // path above — see shopLocalDateAndHour comment for the
+            // EDT-vs-EST off-by-one.
+            const { hour } = shopLocalDateAndHour(a.startTime);
+            const slot = hour === 8 ? "08:00" : hour === 9 ? "09:00" : "08:00";
             waiterCounts[slot] = (waiterCounts[slot] ?? 0) + 1;
           }
         }
@@ -752,8 +711,11 @@ export async function holdAppointmentSlot(
       const aType = classifyAppointmentType(a.color, a.startTime);
       if (type === "waiter") {
         if (aType !== "waiter") continue;
-        const hour = new Date(a.startTime).getUTCHours();
-        const slot = hour === 12 ? "08:00" : "09:00";
+        // P0 TZ fix: was UTC-hour bucketing (works in EDT, off by one
+        // in EST — see shopLocalDateAndHour comment for the full
+        // DST-aware approach).
+        const { hour } = shopLocalDateAndHour(a.startTime);
+        const slot = hour === 8 ? "08:00" : hour === 9 ? "09:00" : "08:00";
         if (slot === time) tekmetricSlotCount += 1;
       } else {
         // For drop-offs we count ALL appointments toward the daily cap of 35

@@ -26,6 +26,7 @@ import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
 import { buildServiceSummary } from "@/lib/scheduler/wizard/build-service-summary";
 import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
+import { logError } from "@/lib/scheduler/wizard/log-error";
 
 const submitWaiterTimeSchema = z.object({
   chatId: z.string().min(1),
@@ -122,6 +123,33 @@ async function submitWaiterTimeV2Impl(
       // back to date_pick. The next render's getCurrentCard re-computes
       // available_dates so the customer sees the updated set (which may
       // not include the just-filled day at all).
+      //
+      // 2026-05-25 audit (Validator-3 SF-2) — was silent. Same shape as
+      // submit-date.ts SF-1. Add Sentry warning + logError so ops can
+      // see waiter-slot races without DB forensics.
+      Sentry.captureMessage("submit_waiter_time_v2 hold race-lost", {
+        level: "warning",
+        tags: {
+          surface: "submit_waiter_time_v2_hold_race_lost",
+          chat_id: chatId,
+          reason: hold.error ?? "unknown",
+        },
+        extra: {
+          chatId,
+          selected_time,
+          hold_error: hold.error,
+        },
+      });
+      await logError({
+        chatId,
+        surface: "submit_waiter_time_v2",
+        error_code: `hold_race_lost:${hold.error ?? "unknown"}`,
+        message:
+          `holdSlot returned ok=false for time=${selected_time} ` +
+          `error=${hold.error ?? "unknown"}; bouncing customer to date_pick`,
+        level: "warning",
+        context: { selected_time, hold_error: hold.error },
+      });
       return applyWizardTransition({
         chatId,
         nextStep: "date_pick",

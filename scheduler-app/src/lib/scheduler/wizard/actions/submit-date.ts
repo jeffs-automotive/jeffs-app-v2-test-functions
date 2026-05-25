@@ -33,6 +33,7 @@ import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
 import { buildServiceSummary } from "@/lib/scheduler/wizard/build-service-summary";
 import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
+import { logError } from "@/lib/scheduler/wizard/log-error";
 // P1.6 (2026-05-25): same-day cutoff defensive re-check now reads from
 // the Postgres clock via getShopClock so it agrees with availability.ts's
 // render-time decision.
@@ -188,6 +189,32 @@ async function submitDateV2Impl(
     if (!hold.ok) {
       // 'slot_just_taken' or other race-lost cases: bounce back to
       // date_pick so the customer sees the refreshed availability set.
+      //
+      // 2026-05-25 audit (Validator-3 SF-1) — was silent here. The
+      // first instance of this bouncing (session a7168b3b) took DB
+      // forensics on `customer_chat_messages` to diagnose because the
+      // only signal was the chat bubble. Now Sentry warning + logError
+      // so ops sees the bounce on the first occurrence, not the
+      // hundredth.
+      Sentry.captureMessage("submit_date_v2 hold race-lost", {
+        level: "warning",
+        tags: {
+          surface: "submit_date_v2_hold_race_lost",
+          chat_id: chatId,
+          reason: hold.error ?? "unknown",
+        },
+        extra: { chatId, selected_date, hold_error: hold.error },
+      });
+      await logError({
+        chatId,
+        surface: "submit_date_v2",
+        error_code: `hold_race_lost:${hold.error ?? "unknown"}`,
+        message:
+          `holdSlot returned ok=false for date=${selected_date} ` +
+          `error=${hold.error ?? "unknown"}; bouncing customer to date_pick`,
+        level: "warning",
+        context: { selected_date, hold_error: hold.error },
+      });
       return applyWizardTransition({
         chatId,
         nextStep: "date_pick",
