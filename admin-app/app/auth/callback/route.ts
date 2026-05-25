@@ -7,13 +7,30 @@
  * `exchangeCodeForSession`, set the session cookies, and redirect to
  * the landing page (or wherever `next` says).
  *
- * This is the canonical Supabase PKCE-flow callback shape per
- * https://supabase.com/docs/guides/auth/server-side/nextjs (the
- * "Create a route handler for Auth callback" section).
+ * Canonical Route Handler pattern per @supabase/ssr + Next.js 15 docs
+ * (https://supabase.com/docs/guides/auth/server-side/nextjs):
+ *
+ *   1. Build the redirect Response FIRST
+ *   2. Bind the Supabase client's cookie setAll directly to response.cookies
+ *   3. exchangeCodeForSession() writes the session cookies onto OUR response
+ *   4. Return that response — browser receives it with Set-Cookie headers
+ *
+ * DO NOT use the cookies()-from-next/headers helper here — in a Route
+ * Handler that returns NextResponse.redirect(), those cookies don't
+ * reliably attach to the redirect response (the response object is
+ * constructed before Next can flush the cookies() handle). Symptom:
+ * first sign-in lands at /login after callback because the session
+ * cookies were lost; second sign-in works because the leftover state
+ * lines up. Bug fixed by binding setAll directly to response.cookies
+ * here. The cookies()-helper pattern is fine for Server Components +
+ * Server Actions; just not for Route Handlers returning a redirect.
  */
-import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { NextResponse, type NextRequest } from "next/server";
+import { createServerClient } from "@supabase/ssr";
+import {
+  resolvePublishableKey,
+  resolveSupabaseUrl,
+} from "@/lib/supabase/resolve-keys";
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
@@ -25,14 +42,38 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${origin}/login?error=auth_callback_failed`);
   }
 
-  const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.auth.exchangeCodeForSession(code);
-
-  if (error) {
+  const url = resolveSupabaseUrl();
+  const publishableKey = resolvePublishableKey();
+  if (!url || !publishableKey) {
     return NextResponse.redirect(`${origin}/login?error=auth_callback_failed`);
   }
 
-  // Use a relative redirect so we land on the same host (admin.jeffsautomotive.com)
-  // even when the callback was hit via Vercel's preview URL.
-  return NextResponse.redirect(`${origin}${next}`);
+  // CRITICAL: build the success redirect FIRST so exchangeCodeForSession
+  // can attach Set-Cookie headers TO THIS response via the setAll
+  // callback below. If we built the response after the exchange, the
+  // cookies would be lost.
+  const response = NextResponse.redirect(`${origin}${next}`);
+
+  const supabase = createServerClient(url, publishableKey, {
+    cookies: {
+      getAll: () => request.cookies.getAll(),
+      setAll: (cookiesToSet) => {
+        cookiesToSet.forEach(({ name, value, options }) => {
+          response.cookies.set(name, value, options);
+        });
+      },
+    },
+  });
+
+  const { error } = await supabase.auth.exchangeCodeForSession(code);
+
+  if (error) {
+    // Fresh response — don't reuse the success response (which may
+    // already carry partial cookies from a failed exchange).
+    return NextResponse.redirect(
+      `${origin}/login?error=auth_callback_failed`,
+    );
+  }
+
+  return response;
 }
