@@ -23,6 +23,8 @@ import {
   isSameDayLocal,
   shopLocalToIsoString,
 } from "@/lib/scheduler/wizard/shop-tz";
+// P2.8 (2026-05-25): single source of truth for SHOP_ID.
+import { SHOP_ID } from "@/lib/scheduler/shop-config";
 
 export interface SummaryServiceItem {
   display_name: string;
@@ -51,8 +53,6 @@ export interface SummaryCardPayload {
    *  back-compat — consumers default to false. Added 2026-05-18. */
   is_same_day?: boolean;
 }
-
-const SHOP_ID = 7476;
 
 /**
  * Build the title string for Tekmetric POST /appointments per the

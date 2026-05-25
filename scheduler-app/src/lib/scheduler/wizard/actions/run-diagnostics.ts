@@ -54,6 +54,8 @@ import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 import { logError } from "@/lib/scheduler/wizard/log-error";
 import { routeAfterDiagnostics } from "@/lib/scheduler/wizard/route-after-diagnostics";
 import { ensureConcernSummaries } from "@/lib/scheduler/wizard/ensure-concern-summaries";
+// P2.8 (2026-05-25): single source of truth for SHOP_ID.
+import { SHOP_ID } from "@/lib/scheduler/shop-config";
 
 const inputSchema = z.object({
   chatId: z.string().min(1),
@@ -61,7 +63,6 @@ const inputSchema = z.object({
 
 export type RunDiagnosticsV2Args = z.infer<typeof inputSchema>;
 
-const SHOP_ID = 7476;
 const OTHER_ISSUE_SERVICE_KEY = "other_issue";
 
 interface ExplanationItem {

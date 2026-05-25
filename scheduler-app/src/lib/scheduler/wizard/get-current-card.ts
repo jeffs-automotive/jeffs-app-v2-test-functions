@@ -39,6 +39,8 @@ import {
   BookingDirectError,
 } from "@/lib/scheduler/booking-direct-client";
 import { getRoutineServicesForChips } from "@/lib/scheduler/routine-services-cache";
+// P2.8 (2026-05-25): single source of truth for SHOP_ID.
+import { SHOP_ID } from "@/lib/scheduler/shop-config";
 import {
   computeAvailableDates,
   getEarliestAvailableDate,
@@ -48,8 +50,6 @@ import { parseCustomerNote } from "./llm/parse-customer-note";
 import { shopLocalToIsoString } from "./shop-tz";
 import type { WizardCard } from "./card-payloads";
 import type { WizardStep } from "../session-state";
-
-const SHOP_ID = 7476; // Phase 1 single-shop
 
 const SHOP_PHONE = "6102536565";
 

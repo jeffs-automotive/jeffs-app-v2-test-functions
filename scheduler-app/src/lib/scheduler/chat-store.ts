@@ -17,9 +17,10 @@
  * shop_id = 7476 Phase 1 per design §6).
  */
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-
-// Phase 1 shop scope (per design §6)
-const SHOP_ID = 7476;
+// P2.8 (2026-05-25): single source of truth for SHOP_ID. Was a
+// duplicate `const SHOP_ID = 7476` declared 13× across the codebase;
+// now centralized so multi-shop migration touches one file.
+import { SHOP_ID } from "@/lib/scheduler/shop-config";
 
 // -------- Domain enums (CHECK constraints in DB; widened in generated types) --------
 

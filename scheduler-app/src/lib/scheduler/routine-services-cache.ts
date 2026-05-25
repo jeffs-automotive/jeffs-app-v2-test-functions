@@ -10,6 +10,8 @@
  *   - explicit __resetForTests() (Vitest only)
  */
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+// P2.8 (2026-05-25): single source of truth for SHOP_ID.
+import { SHOP_ID } from "@/lib/scheduler/shop-config";
 
 export interface RoutineServiceChip {
   service_key: string;
@@ -24,7 +26,6 @@ interface CacheEntry {
 }
 
 const TTL_MS = 5 * 60_000;
-const SHOP_ID = 7476;
 
 let cache: CacheEntry | null = null;
 

@@ -33,8 +33,8 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
 import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
-
-const SHOP_ID = 7476;
+// P2.8 (2026-05-25): single source of truth for SHOP_ID.
+import { SHOP_ID } from "@/lib/scheduler/shop-config";
 
 /**
  * Synthetic service_key for the "💬 Other Issue" fixed pseudo-chip in

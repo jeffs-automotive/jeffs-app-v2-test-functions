@@ -39,8 +39,8 @@
  * service_summary NOT-NULL check still passes.
  */
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-
-const SHOP_ID = 7476;
+// P2.8 (2026-05-25): single source of truth for SHOP_ID.
+import { SHOP_ID } from "@/lib/scheduler/shop-config";
 
 interface ExplanationItem {
   service_key: string;

@@ -20,6 +20,9 @@ import * as Sentry from "@sentry/nextjs";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import type { Json } from "@/lib/database.types";
+// P2.8 (2026-05-25): single source of truth for the Phase-1 SHOP_ID
+// fallback (was a duplicate literal 7476 inline).
+import { SHOP_ID } from "@/lib/scheduler/shop-config";
 
 export type BubbleRole = "user" | "assistant" | "system";
 
@@ -39,10 +42,12 @@ export async function appendBubble(args: AppendBubbleArgs): Promise<void> {
 
   const supabase = createSupabaseAdminClient();
 
-  // Look up shop_id for the session. Default to 7476 (Phase 1) if the row
-  // is somehow missing — better to write the bubble against the default
-  // than drop it.
-  let shopId = 7476;
+  // Look up shop_id for the session. Default to the Phase 1 SHOP_ID
+  // helper if the row is somehow missing — better to write the bubble
+  // against the default than drop it. P2.8 (2026-05-25): the literal
+  // 7476 here used to be a duplicate of 12 other declarations;
+  // centralized via shop-config.
+  let shopId: number = SHOP_ID;
   try {
     const { data: sessionRow } = await supabase
       .from("customer_chat_sessions")
@@ -74,7 +79,7 @@ export async function appendBubble(args: AppendBubbleArgs): Promise<void> {
       tags: { surface: "append_bubble_insert", role: args.role },
       level: "warning",
     });
-    // eslint-disable-next-line no-console
+     
     console.warn(
       JSON.stringify({
         level: "warn",

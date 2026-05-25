@@ -35,8 +35,8 @@
  * an app restart.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-
-const SHOP_ID = 7476;
+// P2.8 (2026-05-25): single source of truth for SHOP_ID.
+import { SHOP_ID } from "@/lib/scheduler/shop-config";
 
 /** Concern category that "elevates" its subcategories to the LLM's
  *  top-level pick set (no testing-service recommendation when one of

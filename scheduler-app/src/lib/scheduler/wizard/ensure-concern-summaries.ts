@@ -33,8 +33,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { sessionTag } from "@/lib/scheduler/cache";
 import { summarizeConcern } from "@/lib/scheduler/wizard/llm/summarize-concern";
-
-const SHOP_ID = 7476;
+// P2.8 (2026-05-25): single source of truth for SHOP_ID.
+import { SHOP_ID } from "@/lib/scheduler/shop-config";
 
 interface ExplanationItem {
   service_key: string;
