@@ -168,21 +168,51 @@ async function submitVehiclePickV2Impl(
           license_plate: picked.license_plate,
           color: picked.color,
         };
+      } else {
+        // M2 post-validator fix (2026-05-25): fetch succeeded but
+        // result.ok=false OR result.vehicles missing → IDOR
+        // enforcement is silently DISABLED for this request. Ops
+        // need visibility so they can distinguish "transient
+        // Tekmetric outage that's acceptable" from "persistent
+        // IDOR coverage gap that needs investigation." Surface tag
+        // explicitly says idor_skipped (vs the catch block which
+        // documents the throw shape).
+        Sentry.captureMessage(
+          "submit_vehicle_pick_v2 IDOR enforcement skipped (fetch returned !ok or no .vehicles)",
+          {
+            level: "warning",
+            tags: {
+              surface: "submit_vehicle_pick_v2_idor_skipped_fail_soft",
+              chat_id: chatId,
+              reason: "fetch_ok_false_or_no_vehicles",
+            },
+            extra: {
+              customer_id: customerId,
+              attempted_vehicle_id: vehicleIdNum,
+              fetch_ok:
+                "ok" in result && typeof result.ok === "boolean"
+                  ? result.ok
+                  : null,
+              has_vehicles: "vehicles" in result,
+            },
+          },
+        );
       }
-      // result.ok=false or no .vehicles → fail-soft: lookup didn't
-      // yield a verified list, advance without IDOR enforcement +
-      // without metadata. Same as the catch block.
     } catch (e) {
-      // Don't block — log + advance with no vehicle metadata + no
-      // IDOR enforcement. Casual-tamper risk accepted; sophisticated-
-      // attacker DDoS-of-Tekmetric is out of scope.
+      // M2 post-validator fix (2026-05-25): rename surface tag to
+      // make ops-visibility intent explicit. The throw path is also
+      // an IDOR-skipped event (we couldn't verify ownership), but
+      // distinguished from the result.ok=false case above by the
+      // reason sub-tag. Casual-tamper risk accepted on this path;
+      // sophisticated-attacker DDoS-of-Tekmetric is out of scope.
       Sentry.captureException(e, {
         tags: {
-          surface: "submit_vehicle_pick_v2_fetch_vehicle_metadata",
+          surface: "submit_vehicle_pick_v2_idor_skipped_fail_soft",
+          chat_id: chatId,
           reason:
             e instanceof BookingDirectError
-              ? `booking_direct_${e.status ?? "network"}`
-              : "booking_direct_unknown",
+              ? `fetch_throw_booking_direct_${e.status ?? "network"}`
+              : "fetch_throw_unknown",
         },
         level: "warning",
       });

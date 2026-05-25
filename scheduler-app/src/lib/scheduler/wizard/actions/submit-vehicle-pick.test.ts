@@ -227,7 +227,7 @@ describe("submitVehiclePickV2 — IDOR defense", () => {
 });
 
 describe("submitVehiclePickV2 — fail-soft on fetch failures", () => {
-  it("fetch throws → advances without metadata or IDOR enforcement, logs warning", async () => {
+  it("fetch throws → advances + Sentry warning at the idor_skipped_fail_soft surface (M2 post-validator)", async () => {
     fetchVehiclesResult = async () => {
       throw new Error("Tekmetric 503 transient");
     };
@@ -243,16 +243,23 @@ describe("submitVehiclePickV2 — fail-soft on fetch failures", () => {
     expect(awtCalls[0]!.updates).toMatchObject({
       vehicle_id: ATTACKER_VEHICLE_ID,
     });
-    // No new_vehicle_info since fetch failed.
     expect(awtCalls[0]!.updates).not.toHaveProperty("new_vehicle_info");
 
-    // Sentry captureException fired at warning level.
+    // M2: Sentry captureException at warning level with the new
+    // idor_skipped_fail_soft surface tag + reason indicating throw shape.
     expect(sentryCaptureExceptionMock).toHaveBeenCalledTimes(1);
     const [, ctx] = sentryCaptureExceptionMock.mock.calls[0]!;
+    const tags = (ctx as { tags?: Record<string, unknown>; level?: string })
+      .tags;
+    expect(tags?.surface).toBe(
+      "submit_vehicle_pick_v2_idor_skipped_fail_soft",
+    );
+    expect(tags?.chat_id).toBe(CHAT_ID);
+    expect(String(tags?.reason)).toMatch(/^fetch_throw_/);
     expect((ctx as { level?: string }).level).toBe("warning");
   });
 
-  it("fetch returns ok:false → advances without metadata or IDOR enforcement", async () => {
+  it("fetch returns ok:false → advances + Sentry warning at the idor_skipped_fail_soft surface (M2 post-validator)", async () => {
     fetchVehiclesResult = { ok: false, error: "tekmetric_500" };
 
     await submitVehiclePickV2({
@@ -264,7 +271,23 @@ describe("submitVehiclePickV2 — fail-soft on fetch failures", () => {
     expect(awtCalls).toHaveLength(1);
     expect(awtCalls[0]!.nextStep).toBe("service_concern_picker");
     expect(awtCalls[0]!.updates).not.toHaveProperty("new_vehicle_info");
-    // No IDOR warning since we couldn't verify ownership either way.
+
+    // M2: NEW Sentry warning capture (was silent before). Distinct
+    // reason sub-tag (fetch_ok_false_or_no_vehicles) vs the throw case.
+    expect(sentryCaptureMessageMock).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "submit_vehicle_pick_v2 IDOR enforcement skipped",
+      ),
+      expect.objectContaining({
+        level: "warning",
+        tags: expect.objectContaining({
+          surface: "submit_vehicle_pick_v2_idor_skipped_fail_soft",
+          reason: "fetch_ok_false_or_no_vehicles",
+        }),
+      }),
+    );
+
+    // No IDOR-reject warning (we couldn't verify ownership either way).
     expect(sentryCaptureMessageMock).not.toHaveBeenCalledWith(
       "vehicle_id_not_owned_by_customer",
       expect.anything(),

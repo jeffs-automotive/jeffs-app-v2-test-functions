@@ -507,8 +507,12 @@ describe("submitSummaryV2 confirm path — Plan 04 Phase 4 verification-mismatch
     expect(awtCalls[0]!.updates).toMatchObject({
       appointment_id: 12345,
       appointment_verification_status: "needs_review",
-      appointment_verification_diff:
-        "appointment.color: sent='navy' vs got='red'",
+      // M3 post-validator fix: diff is wrapped as `{ raw: string }` so
+      // the JSONB column is always object-shaped (advisors query
+      // diff->>'raw' instead of dealing with bare JSON string literal).
+      appointment_verification_diff: {
+        raw: "appointment.color: sent='navy' vs got='red'",
+      },
     });
 
     // Apology bubble — NOT the celebratory "All set" copy.
@@ -609,5 +613,54 @@ describe("submitSummaryV2 confirm path — Plan 04 Phase 4 verification-mismatch
     expect(
       rpcCalls.find((c) => c.fn === "create_manual_review"),
     ).toBeUndefined();
+  });
+});
+
+describe("submitSummaryV2 confirm path — M1 post-validator (idempotency replay bubble matches prior state)", () => {
+  it("idempotency replay with appointment_verification_status='needs_review' → apology bubble (NOT celebratory)", async () => {
+    // Row was previously confirmed in needs_review state. Customer
+    // double-tapped or had a network retry. We should re-emit the
+    // apology bubble (matching the original confirm UX), NOT the
+    // celebratory 'All set!' bubble that would contradict it.
+    sessionRowResult = {
+      data: makeValidSessionRow({
+        appointment_id: 12345,
+        appointment_verification_status: "needs_review",
+      }),
+      error: null,
+    };
+
+    await submitSummaryV2({ chatId: CHAT_ID, confirmed: true });
+
+    // Single applyWizardTransition call: idempotency replay short-
+    // circuit, no CAS-claim, no Tekmetric POST.
+    expect(awtCalls).toHaveLength(1);
+    expect(awtCalls[0]!.nextStep).toBe("customer_notes");
+    expect(awtCalls[0]!.jeffBubble).toContain("differently than expected");
+    expect(awtCalls[0]!.jeffBubble).not.toContain("All set");
+
+    // No CAS claim (we short-circuited before that).
+    expect(confirmCalls).toHaveLength(0);
+    // No new manual review (the original confirm already created one).
+    expect(
+      rpcCalls.find((c) => c.fn === "create_manual_review"),
+    ).toBeUndefined();
+  });
+
+  it("idempotency replay with appointment_verification_status='confirmed' → celebratory bubble (unchanged)", async () => {
+    sessionRowResult = {
+      data: makeValidSessionRow({
+        appointment_id: 12345,
+        appointment_verification_status: "confirmed",
+      }),
+      error: null,
+    };
+
+    await submitSummaryV2({ chatId: CHAT_ID, confirmed: true });
+
+    expect(awtCalls).toHaveLength(1);
+    expect(awtCalls[0]!.nextStep).toBe("customer_notes");
+    expect(awtCalls[0]!.jeffBubble).toContain("All set");
+    expect(awtCalls[0]!.jeffBubble).not.toContain("differently than expected");
   });
 });

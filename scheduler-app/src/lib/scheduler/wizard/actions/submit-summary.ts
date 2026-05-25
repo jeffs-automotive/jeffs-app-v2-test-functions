@@ -227,18 +227,32 @@ async function handleConfirmPath(chatId: string): Promise<WizardTransitionResult
   // already on the row. Skip the second POST and re-emit the confirm
   // success bubble + advance to customer_notes (where the prior pass
   // was already heading).
+  //
+  // M1 post-validator fix (2026-05-25): branch the bubble between
+  // celebratory + apology based on appointment_verification_status.
+  // Previously this idempotency-replay branch always emitted the
+  // celebratory "All set!" bubble — UX contradiction when the row
+  // says appointment_verification_status='needs_review' (the original
+  // confirm wrote a needs_review state + showed the apology bubble,
+  // but a double-tap-retry would then surface a celebratory bubble,
+  // contradicting the customer's prior experience).
   if (typeof r.appointment_id === "number" && r.appointment_id > 0) {
+    const isMismatch = r.appointment_verification_status === "needs_review";
     return applyWizardTransition({
       chatId,
       updates: {},
       nextStep: "customer_notes",
-      jeffBubble: buildConfirmedBubble(
-        (r.entered_first_name as string | null) ?? null,
-        r.appointment_type === "waiter" ? "waiter" : "dropoff",
-        // start_time isn't kept on the row post-confirm; fall back to
-        // empty string which buildConfirmedBubble handles gracefully.
-        "",
-      ),
+      jeffBubble: isMismatch
+        ? buildVerificationMismatchBubble(
+            (r.entered_first_name as string | null) ?? null,
+          )
+        : buildConfirmedBubble(
+            (r.entered_first_name as string | null) ?? null,
+            r.appointment_type === "waiter" ? "waiter" : "dropoff",
+            // start_time isn't kept on the row post-confirm; fall back to
+            // empty string which buildConfirmedBubble handles gracefully.
+            "",
+          ),
     });
   }
 
@@ -513,7 +527,18 @@ async function handleConfirmPath(chatId: string): Promise<WizardTransitionResult
   // for now.
   const isVerifyMismatch =
     confirmResult.verification && !confirmResult.verification.ok;
+  // M3 post-validator fix (2026-05-25): scheduler-booking-direct's
+  // verification.diff is always a string (issues.join("; ") OR a
+  // 'verify_get_status_<N>' shape OR an exception-message slice — see
+  // supabase/functions/_shared/tools/scheduler-slots.ts:968-1018).
+  // Storing a bare string into a JSONB column makes it a JSON string
+  // literal — valid but awkward for advisors who would query
+  // `appointment_verification_diff->>'field'` expecting object shape.
+  // Wrap as `{ raw: string }` so the JSONB column is always an
+  // object — advisors query `diff->>'raw'` for the message.
   const verifyDiff = confirmResult.verification?.diff ?? null;
+  const verifyDiffJsonb: { raw: string } | null =
+    typeof verifyDiff === "string" ? { raw: verifyDiff } : null;
 
   if (isVerifyMismatch) {
     Sentry.captureMessage("appointment_verification_mismatch", {
@@ -617,9 +642,12 @@ async function handleConfirmPath(chatId: string): Promise<WizardTransitionResult
       appointment_verification_status: isVerifyMismatch
         ? "needs_review"
         : "confirmed",
-      // Explicit null on confirmed path clears any prior value (defensive;
-      // first-write to this column on this row would otherwise leave it null).
-      appointment_verification_diff: isVerifyMismatch ? verifyDiff : null,
+      // M3 post-validator fix: wrap the string diff as `{ raw: string }`
+      // JSONB object so advisor queries can use `diff->>'raw'` instead of
+      // dealing with a bare JSON string literal. Explicit null on
+      // confirmed path clears any prior value (defensive; first-write
+      // to this column on this row would otherwise leave it null).
+      appointment_verification_diff: isVerifyMismatch ? verifyDiffJsonb : null,
     },
     nextStep: "customer_notes",
     jeffBubble: isVerifyMismatch
