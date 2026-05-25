@@ -4,7 +4,7 @@
  * AssignKeytagForm — auto-assign OR force-assign a tag to an RO.
  * Force-assign triggers Pattern A confirmation dialog.
  */
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useState, startTransition } from "react";
 import { toast } from "sonner";
 import { ExternalLink, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -56,7 +56,11 @@ export function AssignKeytagForm() {
     if (state.args.color) fd.set("color", state.args.color);
     if (state.args.tag_number != null) fd.set("tag_number", String(state.args.tag_number));
     fd.set("confirmation_token", state.confirmation.token_id);
-    dispatch(fd);
+    // Programmatic dispatch needs startTransition wrap or isPending may
+    // not flip reliably + React warns. (GPT cross-verify 2026-05-25.)
+    startTransition(() => {
+      dispatch(fd);
+    });
   }
 
   const errorMsg =
@@ -126,7 +130,10 @@ export function AssignKeytagForm() {
 
       {errorMsg && <p className="text-sm text-destructive">{errorMsg}</p>}
 
-      {state.kind === "success" && (
+      {/* Hide stale success card while a follow-up submit is pending,
+          otherwise the old "Assigned to RO …" lingers next to an
+          "Assigning…" button. (Cross-verify 2026-05-25.) */}
+      {!isPending && state.kind === "success" && (
         <div className="flex items-center gap-3 rounded-lg border border-green-200 bg-green-50 p-3 text-sm">
           <TagBadge color={state.data.tag.color} number={state.data.tag.number} size="sm" />
           <span className="flex-1">

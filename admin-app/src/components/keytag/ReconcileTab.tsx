@@ -6,7 +6,7 @@
  * Confirmation: a soft UI gate (Dialog with summary) rather than Pattern A
  * tokens. dry_run mode is a safe-by-default toggle; flip it off to apply.
  */
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useState, startTransition } from "react";
 import { toast } from "sonner";
 import {
   RefreshCcw,
@@ -60,6 +60,10 @@ export function ReconcileTab() {
     if (state.kind === "transport_error") {
       toast.error("Reconcile failed", { description: state.message });
       setRunningMode(null);
+      // Close the dialog on terminal error too — symmetric with success
+      // path. Otherwise user has to manually cancel after a failed run.
+      // (Gemini cross-verify 2026-05-25.)
+      setConfirmOpen(false);
     }
   }, [state]);
 
@@ -67,7 +71,12 @@ export function ReconcileTab() {
     setRunningMode(dryRun ? "dry-run" : "real");
     const fd = new FormData();
     if (dryRun) fd.set("dry_run", "true");
-    dispatch(fd);
+    // startTransition wrap required for programmatic useActionState
+    // dispatch — otherwise isPending may not flip reliably + React
+    // warns. (GPT cross-verify 2026-05-25.)
+    startTransition(() => {
+      dispatch(fd);
+    });
   }
 
   // Guard dialog close while pending — refuse Escape / outside-click

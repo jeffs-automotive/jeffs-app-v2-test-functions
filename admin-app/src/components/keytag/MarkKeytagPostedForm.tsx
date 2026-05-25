@@ -4,7 +4,7 @@
  * MarkKeytagPostedForm — flip a WIP tag to posted-A/R.
  * Pattern A confirmation always.
  */
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useState, startTransition } from "react";
 import { toast } from "sonner";
 import { CheckCircle2, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -48,7 +48,11 @@ export function MarkKeytagPostedForm() {
     fd.set("ro_number", String(state.args.ro_number));
     if (state.args.posted_at) fd.set("posted_at", state.args.posted_at);
     fd.set("confirmation_token", state.confirmation.token_id);
-    dispatch(fd);
+    // startTransition wrap required for programmatic useActionState
+    // dispatch (GPT cross-verify 2026-05-25).
+    startTransition(() => {
+      dispatch(fd);
+    });
   }
 
   return (
@@ -86,7 +90,9 @@ export function MarkKeytagPostedForm() {
         <p className="text-sm text-destructive">{state.message}</p>
       )}
 
-      {state.kind === "success" && (
+      {/* Gate on !isPending so stale success doesn't show during a
+          follow-up submit. (Cross-verify 2026-05-25.) */}
+      {!isPending && state.kind === "success" && (
         <div className="flex items-center gap-3 rounded-lg border border-green-200 bg-green-50 p-3 text-sm">
           <TagBadge color={state.data.tag_color} number={state.data.tag_number} size="sm" />
           <span className="flex-1">

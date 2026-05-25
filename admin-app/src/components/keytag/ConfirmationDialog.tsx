@@ -60,8 +60,17 @@ export function ConfirmationDialog({
   const secondsLeft = useCountdown(expiresAt);
   const expired = secondsLeft <= 0;
 
+  // Guard against Escape / outside-click closing the dialog while the
+  // orchestrator is mid-Pattern-A round-trip. Buttons are disabled but
+  // Dialog default close affordances aren't blocked otherwise.
+  // (GPT cross-verify finding 2026-05-25.)
+  function handleOpenChange(next: boolean) {
+    if (isPending && !next) return;
+    onOpenChange(next);
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 sm:mx-0">

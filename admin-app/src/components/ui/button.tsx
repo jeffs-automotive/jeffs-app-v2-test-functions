@@ -65,6 +65,13 @@ const buttonVariants = cva(
  * The implementation walks `children` once to find the first ReactElement
  * (treated as the "leading icon") and replaces it with the spinner. Text
  * children fall through unchanged unless `loadingText` is supplied.
+ *
+ * KNOWN CONTRACT (both models flagged 2026-05-25): the child-replacement
+ * heuristic assumes button structure of `<Icon /> + "text"`. If your
+ * label is wrapped in an element (e.g., `<span>Save</span>`), it will
+ * be treated as the "icon" and replaced by the spinner — text disappears.
+ * For non-standard layouts, render the spinner manually instead of using
+ * the `loading` prop, or restructure to put a leading icon first.
  */
 import { Children, isValidElement } from "react"
 
@@ -134,10 +141,13 @@ function Button({
   return (
     <ButtonPrimitive
       data-slot="button"
+      // Spread caller props FIRST, then enforce derived props from loading
+      // state. Otherwise a caller passing `aria-busy={false}` could mask
+      // the loading announcement (GPT cross-verify finding 2026-05-25).
+      {...props}
       className={cn(buttonVariants({ variant, size, className }))}
       disabled={disabled || loading}
       aria-busy={loading || undefined}
-      {...props}
     >
       {renderChildrenWithLoadingState(children, loading, loadingText)}
     </ButtonPrimitive>

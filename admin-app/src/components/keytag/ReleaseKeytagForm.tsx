@@ -4,7 +4,7 @@
  * ReleaseKeytagForm — release the tag from a given RO. Always Pattern A
  * confirmation for safety.
  */
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useState, startTransition } from "react";
 import { toast } from "sonner";
 import { Eraser } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -48,7 +48,11 @@ export function ReleaseKeytagForm() {
     const fd = new FormData();
     fd.set("ro_number", String(state.args.ro_number));
     fd.set("confirmation_token", state.confirmation.token_id);
-    dispatch(fd);
+    // startTransition wrap required for programmatic useActionState
+    // dispatch (GPT cross-verify 2026-05-25).
+    startTransition(() => {
+      dispatch(fd);
+    });
   }
 
   return (

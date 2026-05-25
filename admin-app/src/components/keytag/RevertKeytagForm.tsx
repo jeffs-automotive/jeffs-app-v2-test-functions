@@ -4,7 +4,7 @@
  * RevertKeytagForm — flip a posted-A/R tag back to WIP-assigned.
  * Pattern A confirmation when current status is posted_ar.
  */
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useState, startTransition } from "react";
 import { toast } from "sonner";
 import { Undo2, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -47,7 +47,11 @@ export function RevertKeytagForm() {
     const fd = new FormData();
     fd.set("ro_number", String(state.args.ro_number));
     fd.set("confirmation_token", state.confirmation.token_id);
-    dispatch(fd);
+    // startTransition wrap required for programmatic useActionState
+    // dispatch (GPT cross-verify 2026-05-25).
+    startTransition(() => {
+      dispatch(fd);
+    });
   }
 
   return (
@@ -86,7 +90,9 @@ export function RevertKeytagForm() {
         <p className="text-sm text-destructive">{state.message}</p>
       )}
 
-      {state.kind === "success" && (
+      {/* Gate on !isPending so stale success doesn't show during a
+          follow-up submit. (Cross-verify 2026-05-25.) */}
+      {!isPending && state.kind === "success" && (
         <div className="flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm">
           <TagBadge color={state.data.tag_color} number={state.data.tag_number} size="sm" />
           <span className="flex-1">
