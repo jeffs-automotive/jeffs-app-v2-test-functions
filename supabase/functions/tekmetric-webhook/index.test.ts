@@ -101,16 +101,14 @@ Deno.test({
     const tableCalls = sb.callsForTable("tekmetric_webhook_events");
     assertEquals(tableCalls.length, 1);
     const chain = tableCalls[0].chain;
-    // Upsert with onConflict + ignoreDuplicates per the idempotency contract
-    const upsertCall = chain.find((c) => c.method === "upsert");
-    assertExists(upsertCall);
-    const upsertOpts = upsertCall.args[1] as { onConflict?: string; ignoreDuplicates?: boolean };
-    assertEquals(upsertOpts.onConflict, "event_hash");
-    assertEquals(upsertOpts.ignoreDuplicates, true);
+    // Plain INSERT (idempotency is enforced by the partial unique index +
+    // 23505 catch — see the duplicate test below for that path).
+    const insertCall = chain.find((c) => c.method === "insert");
+    assertExists(insertCall);
 
     // The inserted row carries the correctly inferred event kind +
     // entity IDs derived from the payload's `data` block.
-    const insertedRow = upsertCall.args[0] as Record<string, unknown>;
+    const insertedRow = insertCall.args[0] as Record<string, unknown>;
     assertEquals(insertedRow.event_kind_inferred, "ro_status_updated");
     assertEquals(insertedRow.event_type, "ro.status_updated");
     assertEquals(insertedRow.tekmetric_ro_id, 152448);
@@ -120,12 +118,17 @@ Deno.test({
 });
 
 Deno.test({
-  name: "tekmetric-webhook — duplicate payload (same event_hash) returns 200 + duplicate:true",
+  name: "tekmetric-webhook — duplicate payload (23505 unique_violation) returns 200 + duplicate:true",
   fn: async () => {
     setEnv("TEKMETRIC_WEBHOOK_TOKEN", FAKE_TOKEN);
     const sb = createMockSupabaseClient();
-    // ignoreDuplicates path: upsert returns data: null on hash collision
-    sb.onTable("tekmetric_webhook_events", { data: null, error: null });
+    // Plain INSERT path: partial unique index on event_hash fires error
+    // code 23505 when Tekmetric retries the same event. Handler catches
+    // 23505 → 200 ok=true duplicate=true (no further processing).
+    sb.onTable("tekmetric_webhook_events", {
+      data: null,
+      error: { code: "23505", message: "duplicate key value violates unique constraint" } as never,
+    });
     _setSupabaseClientForTesting(sb);
 
     const res = await handler(
@@ -200,11 +203,11 @@ Deno.test({
     assertEquals(body.logged, true);
 
     // raw_body should carry _parse_error + raw text excerpt
-    const upsertCall = sb.callsForTable("tekmetric_webhook_events")[0].chain.find(
-      (c) => c.method === "upsert",
+    const insertCall = sb.callsForTable("tekmetric_webhook_events")[0].chain.find(
+      (c) => c.method === "insert",
     );
-    assertExists(upsertCall);
-    const row = upsertCall.args[0] as { raw_body: Record<string, unknown> };
+    assertExists(insertCall);
+    const row = insertCall.args[0] as { raw_body: Record<string, unknown> };
     assertExists(row.raw_body._parse_error);
     assertEquals(row.raw_body._raw_text, "this is not json");
   },
@@ -236,11 +239,11 @@ Deno.test({
     );
     assertEquals(res.status, 200);
 
-    const upsertCall = sb.callsForTable("tekmetric_webhook_events")[0].chain.find(
-      (c) => c.method === "upsert",
+    const insertCall = sb.callsForTable("tekmetric_webhook_events")[0].chain.find(
+      (c) => c.method === "insert",
     );
-    assertExists(upsertCall);
-    const row = upsertCall.args[0] as {
+    assertExists(insertCall);
+    const row = insertCall.args[0] as {
       raw_headers: Record<string, string>;
       raw_query_string: string | null;
     };

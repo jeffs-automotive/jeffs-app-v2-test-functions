@@ -245,13 +245,18 @@ Deno.test({
 });
 
 Deno.test({
-  name: "keytag-tekmetric-webhook — duplicate event (event_hash collision) returns 200 + duplicate:true BEFORE downstream",
+  name: "keytag-tekmetric-webhook — duplicate event (23505 unique_violation) returns 200 + duplicate:true BEFORE downstream",
   fn: async () => {
     resetEnv();
     clearTekmetricTokenCache();
     const sb = freshDb();
-    // Critical: events upsert returns null (duplicate) — DB-level dedup caught it
-    sb.onTable("keytag_webhook_events", { data: null, error: null });
+    // Critical: plain INSERT fires 23505 on the partial unique event_hash
+    // index. logEvent() catches 23505 and returns null → caller short-circuits
+    // with duplicate=true (no Tekmetric GET/PATCH, no assign RPC).
+    sb.onTable("keytag_webhook_events", {
+      data: null,
+      error: { code: "23505", message: "duplicate key value violates unique constraint" } as never,
+    });
     _setSupabaseClientForTesting(sb);
 
     await withMockedFetch(
