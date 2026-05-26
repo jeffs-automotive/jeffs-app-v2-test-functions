@@ -19,6 +19,22 @@
 // Audit: every successful upload writes ONE row to scheduler_admin_audit_log
 // with the md_content_hash + structured diff_summary JSONB. Re-uploading
 // the same MD content fast-paths to a no-op (caught via the hash).
+//
+// ─── scheduler-edge-parity E5 (2026-05-26) ──────────────────────────────
+// The 5 LEGACY uploaders below have been refactored to Pattern S per
+// PLAN §4.1-4.5. Each two-step:
+//   1. dry_run mode (default TRUE) — parse + validate + diff + compute
+//      confirm_token; NO writes; returns preview.
+//   2. apply mode (dry_run=false + expected_confirm_token) — delegates the
+//      apply phase to the per-kind apply_<table>_upload plpgsql RPC
+//      (migration 20260526000500). The apply RPC takes the surface lock,
+//      re-verifies canonical state + token, performs mutations, and writes
+//      the audit row atomically.
+//
+// Audit-log inserts in this file ALL go through the consolidated
+// `logAuditEntry` helper in scheduler-admin-md.ts (requires shopId per E2).
+// The historical local `logAdminAudit` helper has been DELETED (see comment
+// at end of file).
 
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 
@@ -28,7 +44,10 @@ import {
   coerceDate,
   coerceInt,
   coerceOptions,
+  computeCanonicalAfterState,
+  computeConfirmToken,
   formatPriceCents,
+  logAuditEntry,
   mdTableFromRows,
   parseBool as parseBoolField,
   parseConcernCategoryGuidelineMd,
@@ -45,6 +64,7 @@ import {
   type ParsedConcernSubcategory,
   type ParsedMdSection,
   type SectionSpec,
+  type SnapshotKind,
 } from "../scheduler-admin-md.ts";
 
 // NOTE: catalog-uploader helpers (CONCERN_CATEGORY_SLUGS Set form,
@@ -59,18 +79,6 @@ export interface ValidationFinding {
   field: string;
   level: "error" | "warning";
   message: string;
-}
-
-/**
- * Compute a confirm_token from md_content + computed diff. The dry_run call
- * returns this; the apply call must pass it back unchanged. Prevents
- * "the advisor approved version X but we apply version Y" race conditions.
- */
-async function computeConfirmToken(
-  mdHash: string,
-  diffSummary: Record<string, unknown>,
-): Promise<string> {
-  return await sha256Hex(JSON.stringify({ md: mdHash, diff: diffSummary }));
 }
 
 // ─── Shared types ───────────────────────────────────────────────────────────
@@ -100,54 +108,97 @@ export interface UploadResult {
   confirm_token?: string;
   /** Set on a successful apply — the audit-log row id, usable with revert_md_upload. */
   audit_log_id?: number;
+  /** Set on apply-mode RPC failures — canonical reason_code per ADR-007. */
+  reason_code?: string;
+  /** Per ADR-002 attempt_id — only populated by revert paths; null for apply paths since apply RPCs don't write attempt rows. */
+  attempt_id?: number | null;
   error_message?: string;
 }
 
-// ─── Audit log helper ───────────────────────────────────────────────────────
+// ─── Internal helper — error-path audit row insert ──────────────────────────
+//
+// Mirrors the pattern in scheduler-admin-catalog.ts:_logAuditError. Used for
+// the (PARSE FAIL / VALIDATE FAIL / FETCH FAIL) error paths only. Happy-path
+// audit row inserts go inline through logAuditEntry() so the snapshot +
+// diff_summary + rows_* counts stay adjacent to the data they describe.
+//
+// Critically: this helper is only called when `!dry_run`. dry-run failures
+// return the failure result without writing an audit row (matching the V2
+// catalog pattern — no DB side-effects on dry-run).
 
-async function logAdminAudit(
+async function _logAuditError(
   sb: SupabaseClient,
-  args: {
-    audit: AdminAudit;
-    table_name: string;
-    operation: "upload_md" | "manual_change" | "export_md" | "revert_upload";
-    rows_added?: number;
-    rows_modified?: number;
-    rows_deactivated?: number;
-    md_content_hash?: string;
-    diff_summary?: Record<string, unknown>;
-    pre_state_snapshot?: Record<string, unknown> | null;
-    error_message?: string;
-  },
-): Promise<number | null> {
-  const { data, error } = await sb
-    .from("scheduler_admin_audit_log")
-    .insert({
-      oauth_client_id: args.audit.oauth_client_id,
-      user_label: args.audit.display_name,
-      table_name: args.table_name,
-      operation: args.operation,
-      rows_added: args.rows_added ?? 0,
-      rows_modified: args.rows_modified ?? 0,
-      rows_deactivated: args.rows_deactivated ?? 0,
-      md_content_hash: args.md_content_hash ?? null,
-      diff_summary: args.diff_summary ?? null,
-      pre_state_snapshot: args.pre_state_snapshot ?? null,
-      error_message: args.error_message ?? null,
-    })
-    .select("id")
-    .single();
-  if (error) {
-    console.warn(JSON.stringify({
-      level: "warning",
-      msg: "scheduler_admin_audit_log_insert_failed",
-      detail: error.message,
-      table_name: args.table_name,
-      operation: args.operation,
-    }));
-    return null;
+  shopId: number,
+  audit: AdminAudit,
+  tableName: string,
+  hash: string,
+  errorMessage: string,
+): Promise<void> {
+  await logAuditEntry({
+    supabase: sb,
+    shopId,
+    oauthClientId: audit.oauth_client_id,
+    userLabel: audit.display_name,
+    tableName,
+    operation: "upload_md",
+    mdContentHash: hash,
+    errorMessage,
+  });
+}
+
+// ─── Apply-RPC error classifier (mirrors ADR-008 outer classifier) ─────────
+//
+// The 5 apply RPCs RAISE EXCEPTION with one of the canonical prefixes per
+// ADR-007. Parse the SQLERRM and classify into a reason_code. NEVER throws —
+// returns an opaque "rpc_failed" fallback so the audit trail still surfaces.
+
+function classifyApplyRpcError(
+  errorMessage: string | null | undefined,
+): { reason_code: string; sanitized: string } {
+  const msg = errorMessage ?? "";
+
+  if (msg.includes("staleness_check_failed:")) {
+    return {
+      reason_code: "current_state_drift",
+      sanitized:
+        "DB state diverged since the prior dry_run. Re-run dry_run for a fresh confirm_token, present the new diff to the advisor, then re-apply.",
+    };
   }
-  return (data?.id as number) ?? null;
+  if (msg.includes("confirm_token_mismatch:")) {
+    return {
+      reason_code: "confirm_token_mismatch",
+      sanitized:
+        "confirm_token mismatch — DB state or MD content changed since dry_run, OR a different actor/category/today was used. Re-run dry_run for a fresh token.",
+    };
+  }
+  if (msg.includes("revert_blocked: snapshot_invalid:")) {
+    return {
+      reason_code: "snapshot_invalid",
+      sanitized:
+        "snapshot_invalid — apply RPC rejected p_audit/p_diff/p_snapshot input shape. This is a bug in the orchestrator-mcp call, NOT a user error.",
+    };
+  }
+  if (msg.includes("revert_blocked: cross_shop_hijack_attempt:")) {
+    return {
+      reason_code: "cross_shop_hijack_attempt",
+      sanitized:
+        "cross_shop_hijack_attempt — apply RPC rejected a request where p_shop_id did not match the row's tenant scope.",
+    };
+  }
+  if (msg.includes("revert_blocked: fk_target_tenant_mismatch:") ||
+      msg.includes("revert_blocked: fk_broken:")) {
+    return {
+      reason_code: "fk_broken",
+      sanitized:
+        "fk_broken — apply RPC raised a foreign-key violation. A referenced row may have been deleted concurrently, or the diff payload references a row owned by another tenant.",
+    };
+  }
+  // Generic fallback — surfaces the raw message minimally (the apply RPC
+  // already sanitizes user-facing prefixes).
+  return {
+    reason_code: "rpc_failed",
+    sanitized: msg || "apply RPC returned an error with no message",
+  };
 }
 
 // ─── Duplicate-upload short-circuit ─────────────────────────────────────────
@@ -155,7 +206,8 @@ async function logAdminAudit(
 /**
  * Check whether the SAME md_content_hash was already uploaded for this
  * table. If so, return a duplicate_upload=true short-circuit result so the
- * advisor knows their file didn't change.
+ * advisor knows their file didn't change. Safe on BOTH dry_run + apply
+ * (does no writes either way per research-03 §4.1).
  */
 async function checkDuplicate(
   sb: SupabaseClient,
@@ -213,13 +265,7 @@ export async function uploadRoutineServicesMd(
     parsed = parseMdTable(args.md_content);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    await logAdminAudit(sb, {
-      audit: args.audit,
-      table_name: tableName,
-      operation: "upload_md",
-      md_content_hash: hash,
-      error_message: msg,
-    });
+    await _logAuditError(sb, shopId, args.audit, tableName, hash, msg);
     return {
       ok: false,
       table_name: tableName,
@@ -238,13 +284,7 @@ export async function uploadRoutineServicesMd(
   );
   if (missingColumns.length > 0) {
     const msg = `missing required columns: ${missingColumns.join(", ")}`;
-    await logAdminAudit(sb, {
-      audit: args.audit,
-      table_name: tableName,
-      operation: "upload_md",
-      md_content_hash: hash,
-      error_message: msg,
-    });
+    await _logAuditError(sb, shopId, args.audit, tableName, hash, msg);
     return {
       ok: false,
       table_name: tableName,
@@ -314,13 +354,7 @@ export async function uploadRoutineServicesMd(
 
   if (validRows.length === 0) {
     const msg = `no valid rows (${validationErrors.length} validation errors)`;
-    await logAdminAudit(sb, {
-      audit: args.audit,
-      table_name: tableName,
-      operation: "upload_md",
-      md_content_hash: hash,
-      error_message: msg,
-    });
+    await _logAuditError(sb, shopId, args.audit, tableName, hash, msg);
     return {
       ok: false,
       table_name: tableName,
@@ -344,13 +378,7 @@ export async function uploadRoutineServicesMd(
     .eq("shop_id", shopId);
   if (fetchErr) {
     const msg = `current-state fetch failed: ${fetchErr.message}`;
-    await logAdminAudit(sb, {
-      audit: args.audit,
-      table_name: tableName,
-      operation: "upload_md",
-      md_content_hash: hash,
-      error_message: msg,
-    });
+    await _logAuditError(sb, shopId, args.audit, tableName, hash, msg);
     return {
       ok: false,
       table_name: tableName,
@@ -423,16 +451,19 @@ export async function uploadRoutineServicesMd(
     deactivated: deactivates,
   };
 
-  await logAdminAudit(sb, {
-    audit: args.audit,
-    table_name: tableName,
+  await logAuditEntry({
+    supabase: sb,
+    shopId,
+    oauthClientId: args.audit.oauth_client_id,
+    userLabel: args.audit.display_name,
+    tableName,
     operation: "upload_md",
-    rows_added: adds.length,
-    rows_modified: mods.length,
-    rows_deactivated: deactivates.length,
-    md_content_hash: hash,
-    diff_summary: diffSummary,
-    error_message: applyError ?? undefined,
+    rowsAdded: adds.length,
+    rowsModified: mods.length,
+    rowsDeactivated: deactivates.length,
+    mdContentHash: hash,
+    diffSummary,
+    errorMessage: applyError ?? undefined,
   });
 
   if (applyError) {
@@ -530,13 +561,7 @@ export async function uploadTestingServicesMd(
     parsed = parseMdTable(args.md_content);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    await logAdminAudit(sb, {
-      audit: args.audit,
-      table_name: tableName,
-      operation: "upload_md",
-      md_content_hash: hash,
-      error_message: msg,
-    });
+    await _logAuditError(sb, shopId, args.audit, tableName, hash, msg);
     return {
       ok: false,
       table_name: tableName,
@@ -554,13 +579,7 @@ export async function uploadTestingServicesMd(
   );
   if (missingColumns.length > 0) {
     const msg = `missing required columns: ${missingColumns.join(", ")}`;
-    await logAdminAudit(sb, {
-      audit: args.audit,
-      table_name: tableName,
-      operation: "upload_md",
-      md_content_hash: hash,
-      error_message: msg,
-    });
+    await _logAuditError(sb, shopId, args.audit, tableName, hash, msg);
     return {
       ok: false,
       table_name: tableName,
@@ -619,13 +638,7 @@ export async function uploadTestingServicesMd(
 
   if (validRows.length === 0) {
     const msg = `no valid rows (${validationErrors.length} validation errors)`;
-    await logAdminAudit(sb, {
-      audit: args.audit,
-      table_name: tableName,
-      operation: "upload_md",
-      md_content_hash: hash,
-      error_message: msg,
-    });
+    await _logAuditError(sb, shopId, args.audit, tableName, hash, msg);
     return {
       ok: false,
       table_name: tableName,
@@ -648,13 +661,7 @@ export async function uploadTestingServicesMd(
     .eq("shop_id", shopId);
   if (fetchErr) {
     const msg = `current-state fetch failed: ${fetchErr.message}`;
-    await logAdminAudit(sb, {
-      audit: args.audit,
-      table_name: tableName,
-      operation: "upload_md",
-      md_content_hash: hash,
-      error_message: msg,
-    });
+    await _logAuditError(sb, shopId, args.audit, tableName, hash, msg);
     return {
       ok: false,
       table_name: tableName,
@@ -726,16 +733,19 @@ export async function uploadTestingServicesMd(
     deactivated: deactivates,
   };
 
-  await logAdminAudit(sb, {
-    audit: args.audit,
-    table_name: tableName,
+  await logAuditEntry({
+    supabase: sb,
+    shopId,
+    oauthClientId: args.audit.oauth_client_id,
+    userLabel: args.audit.display_name,
+    tableName,
     operation: "upload_md",
-    rows_added: adds.length,
-    rows_modified: mods.length,
-    rows_deactivated: deactivates.length,
-    md_content_hash: hash,
-    diff_summary: diffSummary,
-    error_message: applyError ?? undefined,
+    rowsAdded: adds.length,
+    rowsModified: mods.length,
+    rowsDeactivated: deactivates.length,
+    mdContentHash: hash,
+    diffSummary,
+    errorMessage: applyError ?? undefined,
   });
 
   return {
@@ -783,7 +793,11 @@ export async function exportTestingServicesMd(
   return { md_content: md, row_count: (data ?? []).length };
 }
 
-// ─── concern_questions ──────────────────────────────────────────────────────
+// ─── concern_questions (Pattern S — E5d) ────────────────────────────────────
+//
+// Refactored 2026-05-26 per PLAN §4.1 — snapshot_kind = 'concern_questions_flat'.
+// Apply RPC: apply_concern_questions_flat_upload (migration 20260526000500).
+// Snapshot shape: {before: {<id>: row}, added_keys: [<new_ids>]}.
 
 const CONCERN_COLUMNS = [
   "category",
@@ -793,13 +807,35 @@ const CONCERN_COLUMNS = [
   "active",
 ];
 
+interface ConcernQuestionFlatRow {
+  id: number;
+  category: string;
+  question_text: string;
+  options: unknown;
+  display_order: number;
+  active: boolean;
+  /** Preserved during MODIFY — apply_concern_questions_flat_upload UPDATEs
+   *  every column; omitting subcategory_id / multi_select / required_facts
+   *  would NULL/default them. Fetched + carried forward unchanged. */
+  subcategory_id?: number | null;
+  multi_select?: boolean | null;
+  required_facts?: string[] | null;
+}
+
 export async function uploadConcernQuestionsMd(
   sb: SupabaseClient,
   shopId: number,
-  args: { md_content: string; audit: AdminAudit },
+  args: {
+    md_content: string;
+    audit: AdminAudit;
+    dry_run?: boolean;
+    expected_confirm_token?: string;
+  },
 ): Promise<UploadResult> {
   const tableName = "concern_questions";
-  const hash = await sha256Hex(args.md_content);
+  const { md_content, audit, dry_run = true, expected_confirm_token } = args;
+  const hash = await sha256Hex(md_content);
+
   if (await checkDuplicate(sb, tableName, hash)) {
     return {
       ok: true,
@@ -810,21 +846,17 @@ export async function uploadConcernQuestionsMd(
       rows_modified: 0,
       rows_deactivated: 0,
       duplicate_upload: true,
+      dry_run,
     };
   }
 
+  // ── 1. Parse
   let parsed;
   try {
-    parsed = parseMdTable(args.md_content);
+    parsed = parseMdTable(md_content);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    await logAdminAudit(sb, {
-      audit: args.audit,
-      table_name: tableName,
-      operation: "upload_md",
-      md_content_hash: hash,
-      error_message: msg,
-    });
+    if (!dry_run) await _logAuditError(sb, shopId, audit, tableName, hash, msg);
     return {
       ok: false,
       table_name: tableName,
@@ -833,6 +865,7 @@ export async function uploadConcernQuestionsMd(
       rows_added: 0,
       rows_modified: 0,
       rows_deactivated: 0,
+      dry_run,
       error_message: msg,
     };
   }
@@ -842,13 +875,7 @@ export async function uploadConcernQuestionsMd(
   );
   if (missingColumns.length > 0) {
     const msg = `missing required columns: ${missingColumns.join(", ")}`;
-    await logAdminAudit(sb, {
-      audit: args.audit,
-      table_name: tableName,
-      operation: "upload_md",
-      md_content_hash: hash,
-      error_message: msg,
-    });
+    if (!dry_run) await _logAuditError(sb, shopId, audit, tableName, hash, msg);
     return {
       ok: false,
       table_name: tableName,
@@ -857,19 +884,18 @@ export async function uploadConcernQuestionsMd(
       rows_added: 0,
       rows_modified: 0,
       rows_deactivated: 0,
+      dry_run,
       error_message: msg,
     };
   }
 
-  // concern_questions has no per-row natural key from the MD side; we
-  // use the (shop_id, category, question_text) tuple as the upsert key.
-  // The legacy id column is auto-generated.
   const VALID_CATEGORIES = [
     "noise", "vibration", "pulling", "smell", "smoke", "leak",
     "warning_light", "performance", "electrical", "hvac", "brakes",
     "steering", "tires", "other",
   ];
 
+  // ── 2. Validate rows
   const validationErrors: UploadResult["validation_errors"] = [];
   const validRows: Array<{
     category: string;
@@ -917,13 +943,7 @@ export async function uploadConcernQuestionsMd(
 
   if (validRows.length === 0) {
     const msg = `no valid rows (${validationErrors.length} validation errors)`;
-    await logAdminAudit(sb, {
-      audit: args.audit,
-      table_name: tableName,
-      operation: "upload_md",
-      md_content_hash: hash,
-      error_message: msg,
-    });
+    if (!dry_run) await _logAuditError(sb, shopId, audit, tableName, hash, msg);
     return {
       ok: false,
       table_name: tableName,
@@ -934,25 +954,23 @@ export async function uploadConcernQuestionsMd(
       rows_deactivated: 0,
       parse_errors: parsed.errors,
       validation_errors: validationErrors,
+      dry_run,
       error_message: msg,
     };
   }
 
-  // Fetch current state — match by (category, question_text) since question_text
-  // is the stable natural key for an advisor-edited catalog.
+  // ── 3. Fetch current state — include subcategory_id / multi_select /
+  // required_facts so MODIFIED rows preserve them through the apply RPC's
+  // full-column UPDATE.
   const { data: currentRows, error: fetchErr } = await sb
     .from("concern_questions")
-    .select("id, category, question_text, options, display_order, active")
+    .select(
+      "id, category, question_text, options, display_order, active, subcategory_id, multi_select, required_facts",
+    )
     .eq("shop_id", shopId);
   if (fetchErr) {
     const msg = `current-state fetch failed: ${fetchErr.message}`;
-    await logAdminAudit(sb, {
-      audit: args.audit,
-      table_name: tableName,
-      operation: "upload_md",
-      md_content_hash: hash,
-      error_message: msg,
-    });
+    if (!dry_run) await _logAuditError(sb, shopId, audit, tableName, hash, msg);
     return {
       ok: false,
       table_name: tableName,
@@ -961,133 +979,213 @@ export async function uploadConcernQuestionsMd(
       rows_added: 0,
       rows_modified: 0,
       rows_deactivated: 0,
+      dry_run,
       error_message: msg,
     };
   }
 
-  const currentByKey = new Map<string, typeof currentRows[number]>();
-  for (const row of currentRows ?? []) {
-    currentByKey.set(
-      `${row.category}::${row.question_text}`,
-      row,
-    );
+  const current = (currentRows ?? []) as unknown as ConcernQuestionFlatRow[];
+  const currentByKey = new Map<string, ConcernQuestionFlatRow>();
+  for (const row of current) {
+    currentByKey.set(`${row.category}::${row.question_text}`, row);
   }
   const uploadedKeys = new Set(
     validRows.map((r) => `${r.category}::${r.question_text}`),
   );
 
-  const adds: string[] = [];
-  const mods: string[] = [];
-  const deactivates: string[] = [];
+  // ── 4. Compute diff (no writes)
+  //   added:       new rows (no id; apply RPC INSERTs)
+  //   modified:    rows with id + new values
+  //   deactivated: ids to soft-delete
+  const added: Array<Record<string, unknown>> = [];
+  const modified: Array<Record<string, unknown>> = [];
+  const deactivated: number[] = [];
+  const snapshotBefore: Record<string, ConcernQuestionFlatRow> = {};
 
   for (const row of validRows) {
     const k = `${row.category}::${row.question_text}`;
-    const current = currentByKey.get(k);
-    if (!current) {
-      adds.push(k);
-    } else if (
-      JSON.stringify(current.options) !== JSON.stringify(row.options) ||
-      current.display_order !== row.display_order ||
-      current.active !== row.active
-    ) {
-      mods.push(k);
+    const existing = currentByKey.get(k);
+    if (!existing) {
+      added.push({
+        category: row.category,
+        question_text: row.question_text,
+        options: row.options,
+        display_order: row.display_order,
+        active: row.active,
+      });
+    } else {
+      const differs =
+        JSON.stringify(existing.options) !== JSON.stringify(row.options) ||
+        existing.display_order !== row.display_order ||
+        existing.active !== row.active;
+      if (differs) {
+        // Apply RPC SETs every column — preserve subcategory_id / multi_select
+        // / required_facts by passing existing values through unchanged (flat
+        // MD format doesn't carry them).
+        modified.push({
+          id: existing.id,
+          category: row.category,
+          question_text: row.question_text,
+          options: row.options,
+          display_order: row.display_order,
+          active: row.active,
+          subcategory_id: existing.subcategory_id ?? null,
+          multi_select: existing.multi_select ?? false,
+          required_facts: existing.required_facts ?? null,
+        });
+        snapshotBefore[String(existing.id)] = existing;
+      }
     }
   }
   for (const [key, row] of currentByKey) {
     if (!uploadedKeys.has(key) && row.active) {
-      deactivates.push(key);
+      deactivated.push(row.id);
+      snapshotBefore[String(row.id)] = row;
     }
   }
 
-  let applyError: string | null = null;
-  try {
-    if (adds.length > 0 || mods.length > 0) {
-      // Upsert by (shop_id, category, question_text). We perform two writes
-      // (insert net-new + update existing) to keep the SQL simple — Postgres
-      // doesn't allow ON CONFLICT against a non-unique tuple without a
-      // matching unique index, and we don't want to add one mid-flight.
-      for (const row of validRows) {
-        const k = `${row.category}::${row.question_text}`;
-        if (adds.includes(k)) {
-          const { error: insErr } = await sb
-            .from("concern_questions")
-            .insert({
-              shop_id: shopId,
-              category: row.category,
-              question_text: row.question_text,
-              options: row.options,
-              display_order: row.display_order,
-              active: row.active,
-              updated_by_oauth_client_id: args.audit.oauth_client_id,
-              updated_by_name: args.audit.display_name,
-            });
-          if (insErr) throw new Error(`concern insert failed for ${k}: ${insErr.message}`);
-        } else if (mods.includes(k)) {
-          const existing = currentByKey.get(k)!;
-          const { error: updErr } = await sb
-            .from("concern_questions")
-            .update({
-              options: row.options,
-              display_order: row.display_order,
-              active: row.active,
-              updated_at: new Date().toISOString(),
-              updated_by_oauth_client_id: args.audit.oauth_client_id,
-              updated_by_name: args.audit.display_name,
-            })
-            .eq("id", existing.id);
-          if (updErr) throw new Error(`concern update failed for ${k}: ${updErr.message}`);
-        }
-      }
-    }
-    if (deactivates.length > 0) {
-      for (const k of deactivates) {
-        const existing = currentByKey.get(k)!;
-        const { error: deactErr } = await sb
-          .from("concern_questions")
-          .update({
-            active: false,
-            updated_at: new Date().toISOString(),
-            updated_by_oauth_client_id: args.audit.oauth_client_id,
-            updated_by_name: args.audit.display_name,
-          })
-          .eq("id", existing.id);
-        if (deactErr) throw new Error(`concern deactivate failed for ${k}: ${deactErr.message}`);
-      }
-    }
-  } catch (e) {
-    applyError = e instanceof Error ? e.message : String(e);
-  }
-
-  const diffSummary = {
-    added: adds,
-    modified: mods,
-    deactivated: deactivates,
+  // ── 5. Build snapshot (added_keys: [] until apply RPC runs; placeholder)
+  const snapshotBase: Record<string, unknown> = {
+    snapshot_kind: "concern_questions_flat",
+    before: snapshotBefore,
+    added_keys: [] as number[],
   };
 
-  await logAdminAudit(sb, {
-    audit: args.audit,
-    table_name: tableName,
-    operation: "upload_md",
-    rows_added: adds.length,
-    rows_modified: mods.length,
-    rows_deactivated: deactivates.length,
-    md_content_hash: hash,
-    diff_summary: diffSummary,
-    error_message: applyError ?? undefined,
+  // ── 6. Compute canonical-current state + hash
+  // The TS-side canonical reads the CURRENT (pre-write) state. Hash must
+  // match what apply_concern_questions_flat_upload computes at STEP 2 via
+  // canonical_state_concern_questions_flat(p_shop_id, p_snapshot) — which
+  // reads the SAME table for the SAME shop, regardless of snapshot content
+  // for this kind. Per ADR-025 byte-parity contract.
+  let expectedCurrentHash: string;
+  let canonicalCurrent: string;
+  try {
+    canonicalCurrent = await computeCanonicalAfterState({
+      kind: "concern_questions_flat",
+      supabase: sb,
+      shopId,
+      snapshot: snapshotBase,
+    });
+    expectedCurrentHash = await sha256Hex(canonicalCurrent);
+  } catch (e) {
+    const msg = `canonical_state_concern_questions_flat compute failed: ${e instanceof Error ? e.message : String(e)}`;
+    if (!dry_run) await _logAuditError(sb, shopId, audit, tableName, hash, msg);
+    return {
+      ok: false,
+      table_name: tableName,
+      md_content_hash: hash,
+      rows_parsed: parsed.table.rows.length,
+      rows_added: 0,
+      rows_modified: 0,
+      rows_deactivated: 0,
+      validation_errors: validationErrors.length > 0 ? validationErrors : undefined,
+      dry_run,
+      error_message: msg,
+    };
+  }
+
+  // ── 7. Compute confirm_token via E2 helper (mirrors apply RPC formula)
+  const confirm_token = await computeConfirmToken({
+    shopId,
+    kind: "concern_questions_flat",
+    expectedCurrentHash,
+    mdContentHash: hash,
+    actorEmail: audit.display_name,
   });
 
+  // ── 8. Build diff_summary
+  const diffSummary: Record<string, unknown> = {
+    surfaces: ["concern_questions"],
+    added: added.map((a) => `${a.category}::${a.question_text}`),
+    modified: modified.map((m) => `${m.category}::${m.question_text}`),
+    deactivated_ids: deactivated,
+    unchanged_count: current.length - modified.length - deactivated.length,
+  };
+
+  // ── 9. Dry-run path — return preview, NO writes
+  if (dry_run) {
+    return {
+      ok: true,
+      table_name: tableName,
+      md_content_hash: hash,
+      rows_parsed: parsed.table.rows.length,
+      rows_added: added.length,
+      rows_modified: modified.length,
+      rows_deactivated: deactivated.length,
+      parse_errors: parsed.errors.length > 0 ? parsed.errors : undefined,
+      validation_errors: validationErrors.length > 0 ? validationErrors : undefined,
+      diff_summary: diffSummary,
+      dry_run: true,
+      confirm_token,
+    };
+  }
+
+  // ── 10. Apply mode — call apply_concern_questions_flat_upload RPC
+  const pAudit: Record<string, unknown> = {
+    actor_email: audit.display_name,
+    oauth_client_id: audit.oauth_client_id,
+    md_content_hash: hash,
+    expected_current_hash: expectedCurrentHash,
+    expected_confirm_token: expected_confirm_token ?? null,
+    dry_run: false,
+  };
+  const pDiff: Record<string, unknown> = {
+    added,
+    modified,
+    deactivated,
+  };
+
+  const { data: auditLogId, error: rpcErr } = await sb.rpc(
+    "apply_concern_questions_flat_upload",
+    {
+      p_shop_id: shopId,
+      p_snapshot: snapshotBase,
+      p_diff: pDiff,
+      p_audit: pAudit,
+    },
+  );
+
+  if (rpcErr) {
+    const { reason_code, sanitized } = classifyApplyRpcError(rpcErr.message);
+    console.warn(JSON.stringify({
+      level: "warning",
+      msg: "apply_concern_questions_flat_upload_failed",
+      shop_id: shopId,
+      reason_code,
+      detail: rpcErr.message,
+    }));
+    return {
+      ok: false,
+      table_name: tableName,
+      md_content_hash: hash,
+      rows_parsed: parsed.table.rows.length,
+      rows_added: 0,
+      rows_modified: 0,
+      rows_deactivated: 0,
+      validation_errors: validationErrors.length > 0 ? validationErrors : undefined,
+      diff_summary: diffSummary,
+      dry_run: false,
+      confirm_token,
+      reason_code,
+      attempt_id: null,
+      error_message: sanitized,
+    };
+  }
+
   return {
-    ok: !applyError,
+    ok: true,
     table_name: tableName,
     md_content_hash: hash,
     rows_parsed: parsed.table.rows.length,
-    rows_added: adds.length,
-    rows_modified: mods.length,
-    rows_deactivated: deactivates.length,
+    rows_added: added.length,
+    rows_modified: modified.length,
+    rows_deactivated: deactivated.length,
     parse_errors: parsed.errors.length > 0 ? parsed.errors : undefined,
     validation_errors: validationErrors.length > 0 ? validationErrors : undefined,
     diff_summary: diffSummary,
-    error_message: applyError ?? undefined,
+    dry_run: false,
+    confirm_token,
+    audit_log_id: (auditLogId as number | null) ?? undefined,
   };
 }
 
@@ -1118,7 +1216,15 @@ export async function exportConcernQuestionsMd(
   return { md_content: md, row_count: (data ?? []).length };
 }
 
-// ─── appointment_default_limits ────────────────────────────────────────────
+// ─── appointment_default_limits (Pattern S — E5b) ──────────────────────────
+//
+// Refactored 2026-05-26 per PLAN §4.4 — snapshot_kind = 'appointment_default_limits'.
+// Apply RPC: apply_appointment_default_limits_upload (migration 20260526000500).
+// Composite PK (shop_id, day_of_week) per E1cf-N1.
+// Snapshot keys are day_of_week integers 0..6.
+// Snapshot shape: {before: {<dow>: row}, added_keys: []}.
+// "Omitting a day_of_week from MD = leave alone" semantics (no soft-delete on
+// omission) per research-03 §148 + §316.
 
 const LIMITS_COLUMNS = [
   "day_of_week",
@@ -1129,13 +1235,29 @@ const LIMITS_COLUMNS = [
   "notes",
 ];
 
+interface AppointmentDefaultLimitRow {
+  day_of_week: number;
+  is_closed: boolean;
+  waiter_8am_slots: number;
+  waiter_9am_slots: number;
+  dropoff_total: number;
+  notes: string | null;
+}
+
 export async function uploadAppointmentDefaultLimitsMd(
   sb: SupabaseClient,
   shopId: number,
-  args: { md_content: string; audit: AdminAudit },
+  args: {
+    md_content: string;
+    audit: AdminAudit;
+    dry_run?: boolean;
+    expected_confirm_token?: string;
+  },
 ): Promise<UploadResult> {
   const tableName = "appointment_default_limits";
-  const hash = await sha256Hex(args.md_content);
+  const { md_content, audit, dry_run = true, expected_confirm_token } = args;
+  const hash = await sha256Hex(md_content);
+
   if (await checkDuplicate(sb, tableName, hash)) {
     return {
       ok: true,
@@ -1146,21 +1268,16 @@ export async function uploadAppointmentDefaultLimitsMd(
       rows_modified: 0,
       rows_deactivated: 0,
       duplicate_upload: true,
+      dry_run,
     };
   }
 
   let parsed;
   try {
-    parsed = parseMdTable(args.md_content);
+    parsed = parseMdTable(md_content);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    await logAdminAudit(sb, {
-      audit: args.audit,
-      table_name: tableName,
-      operation: "upload_md",
-      md_content_hash: hash,
-      error_message: msg,
-    });
+    if (!dry_run) await _logAuditError(sb, shopId, audit, tableName, hash, msg);
     return {
       ok: false,
       table_name: tableName,
@@ -1169,6 +1286,7 @@ export async function uploadAppointmentDefaultLimitsMd(
       rows_added: 0,
       rows_modified: 0,
       rows_deactivated: 0,
+      dry_run,
       error_message: msg,
     };
   }
@@ -1178,13 +1296,7 @@ export async function uploadAppointmentDefaultLimitsMd(
   );
   if (missingColumns.length > 0) {
     const msg = `missing required columns: ${missingColumns.join(", ")}`;
-    await logAdminAudit(sb, {
-      audit: args.audit,
-      table_name: tableName,
-      operation: "upload_md",
-      md_content_hash: hash,
-      error_message: msg,
-    });
+    if (!dry_run) await _logAuditError(sb, shopId, audit, tableName, hash, msg);
     return {
       ok: false,
       table_name: tableName,
@@ -1193,19 +1305,13 @@ export async function uploadAppointmentDefaultLimitsMd(
       rows_added: 0,
       rows_modified: 0,
       rows_deactivated: 0,
+      dry_run,
       error_message: msg,
     };
   }
 
   const validationErrors: UploadResult["validation_errors"] = [];
-  const validRows: Array<{
-    day_of_week: number;
-    is_closed: boolean;
-    waiter_8am_slots: number;
-    waiter_9am_slots: number;
-    dropoff_total: number;
-    notes: string | null;
-  }> = [];
+  const validRows: AppointmentDefaultLimitRow[] = [];
   parsed.table.rows.forEach((r, idx) => {
     const dow = coerceInt(r.day_of_week);
     const closed = coerceBool(r.is_closed);
@@ -1244,13 +1350,7 @@ export async function uploadAppointmentDefaultLimitsMd(
 
   if (validRows.length === 0) {
     const msg = `no valid rows (${validationErrors.length} validation errors)`;
-    await logAdminAudit(sb, {
-      audit: args.audit,
-      table_name: tableName,
-      operation: "upload_md",
-      md_content_hash: hash,
-      error_message: msg,
-    });
+    if (!dry_run) await _logAuditError(sb, shopId, audit, tableName, hash, msg);
     return {
       ok: false,
       table_name: tableName,
@@ -1261,6 +1361,7 @@ export async function uploadAppointmentDefaultLimitsMd(
       rows_deactivated: 0,
       parse_errors: parsed.errors,
       validation_errors: validationErrors,
+      dry_run,
       error_message: msg,
     };
   }
@@ -1272,13 +1373,7 @@ export async function uploadAppointmentDefaultLimitsMd(
     .eq("shop_id", shopId);
   if (fetchErr) {
     const msg = `current-state fetch failed: ${fetchErr.message}`;
-    await logAdminAudit(sb, {
-      audit: args.audit,
-      table_name: tableName,
-      operation: "upload_md",
-      md_content_hash: hash,
-      error_message: msg,
-    });
+    if (!dry_run) await _logAuditError(sb, shopId, audit, tableName, hash, msg);
     return {
       ok: false,
       table_name: tableName,
@@ -1287,75 +1382,182 @@ export async function uploadAppointmentDefaultLimitsMd(
       rows_added: 0,
       rows_modified: 0,
       rows_deactivated: 0,
+      dry_run,
       error_message: msg,
     };
   }
 
-  const currentByDow = new Map<number, typeof currentRows[number]>();
-  for (const row of currentRows ?? []) {
-    currentByDow.set(row.day_of_week as number, row);
+  const current = (currentRows ?? []) as unknown as AppointmentDefaultLimitRow[];
+  const currentByDow = new Map<number, AppointmentDefaultLimitRow>();
+  for (const row of current) {
+    currentByDow.set(row.day_of_week, row);
   }
 
-  const adds: number[] = [];
-  const mods: number[] = [];
+  // Compute diff — composite-PK keyed on day_of_week (0..6 integer).
+  // Per research-03 + PLAN §4.4: omitting a day_of_week = leave alone
+  // (NO soft-delete on omission).
+  const added: Array<Record<string, unknown>> = [];
+  const modified: Array<Record<string, unknown>> = [];
+  const snapshotBefore: Record<string, AppointmentDefaultLimitRow> = {};
+
   for (const row of validRows) {
-    const current = currentByDow.get(row.day_of_week);
-    if (!current) {
-      adds.push(row.day_of_week);
+    const existing = currentByDow.get(row.day_of_week);
+    if (!existing) {
+      added.push({
+        day_of_week: row.day_of_week,
+        is_closed: row.is_closed,
+        waiter_8am_slots: row.waiter_8am_slots,
+        waiter_9am_slots: row.waiter_9am_slots,
+        dropoff_total: row.dropoff_total,
+        notes: row.notes,
+      });
     } else if (
-      current.is_closed !== row.is_closed ||
-      current.waiter_8am_slots !== row.waiter_8am_slots ||
-      current.waiter_9am_slots !== row.waiter_9am_slots ||
-      current.dropoff_total !== row.dropoff_total ||
-      (current.notes ?? null) !== row.notes
+      existing.is_closed !== row.is_closed ||
+      existing.waiter_8am_slots !== row.waiter_8am_slots ||
+      existing.waiter_9am_slots !== row.waiter_9am_slots ||
+      existing.dropoff_total !== row.dropoff_total ||
+      (existing.notes ?? null) !== row.notes
     ) {
-      mods.push(row.day_of_week);
+      modified.push({
+        day_of_week: row.day_of_week,
+        is_closed: row.is_closed,
+        waiter_8am_slots: row.waiter_8am_slots,
+        waiter_9am_slots: row.waiter_9am_slots,
+        dropoff_total: row.dropoff_total,
+        notes: row.notes,
+      });
+      snapshotBefore[String(row.day_of_week)] = existing;
     }
   }
 
-  let applyError: string | null = null;
+  const snapshotBase: Record<string, unknown> = {
+    snapshot_kind: "appointment_default_limits",
+    before: snapshotBefore,
+    added_keys: [] as number[],
+  };
+
+  // Canonical-current + hash
+  let expectedCurrentHash: string;
   try {
-    const upsertRows = validRows.map((r) => ({
-      ...r,
-      shop_id: shopId,
-      updated_at: new Date().toISOString(),
-      updated_by_oauth_client_id: args.audit.oauth_client_id,
-      updated_by_name: args.audit.display_name,
-    }));
-    const { error: upsertErr } = await sb
-      .from("appointment_default_limits")
-      .upsert(upsertRows, { onConflict: "shop_id,day_of_week" });
-    if (upsertErr) throw new Error(`upsert failed: ${upsertErr.message}`);
+    const canonicalCurrent = await computeCanonicalAfterState({
+      kind: "appointment_default_limits",
+      supabase: sb,
+      shopId,
+      snapshot: snapshotBase,
+    });
+    expectedCurrentHash = await sha256Hex(canonicalCurrent);
   } catch (e) {
-    applyError = e instanceof Error ? e.message : String(e);
+    const msg = `canonical_state_appointment_default_limits compute failed: ${e instanceof Error ? e.message : String(e)}`;
+    if (!dry_run) await _logAuditError(sb, shopId, audit, tableName, hash, msg);
+    return {
+      ok: false,
+      table_name: tableName,
+      md_content_hash: hash,
+      rows_parsed: parsed.table.rows.length,
+      rows_added: 0,
+      rows_modified: 0,
+      rows_deactivated: 0,
+      validation_errors: validationErrors.length > 0 ? validationErrors : undefined,
+      dry_run,
+      error_message: msg,
+    };
   }
 
-  const diffSummary = { added: adds, modified: mods };
-
-  await logAdminAudit(sb, {
-    audit: args.audit,
-    table_name: tableName,
-    operation: "upload_md",
-    rows_added: adds.length,
-    rows_modified: mods.length,
-    rows_deactivated: 0,
-    md_content_hash: hash,
-    diff_summary: diffSummary,
-    error_message: applyError ?? undefined,
+  // confirm_token via E2 helper
+  const confirm_token = await computeConfirmToken({
+    shopId,
+    kind: "appointment_default_limits",
+    expectedCurrentHash,
+    mdContentHash: hash,
+    actorEmail: audit.display_name,
   });
 
+  const diffSummary: Record<string, unknown> = {
+    surfaces: ["appointment_default_limits"],
+    added: added.map((a) => a.day_of_week),
+    modified: modified.map((m) => m.day_of_week),
+  };
+
+  // Dry-run path
+  if (dry_run) {
+    return {
+      ok: true,
+      table_name: tableName,
+      md_content_hash: hash,
+      rows_parsed: parsed.table.rows.length,
+      rows_added: added.length,
+      rows_modified: modified.length,
+      rows_deactivated: 0,
+      parse_errors: parsed.errors.length > 0 ? parsed.errors : undefined,
+      validation_errors: validationErrors.length > 0 ? validationErrors : undefined,
+      diff_summary: diffSummary,
+      dry_run: true,
+      confirm_token,
+    };
+  }
+
+  // Apply mode — call apply_appointment_default_limits_upload RPC
+  const pAudit: Record<string, unknown> = {
+    actor_email: audit.display_name,
+    oauth_client_id: audit.oauth_client_id,
+    md_content_hash: hash,
+    expected_current_hash: expectedCurrentHash,
+    expected_confirm_token: expected_confirm_token ?? null,
+    dry_run: false,
+  };
+  const pDiff: Record<string, unknown> = { added, modified };
+
+  const { data: auditLogId, error: rpcErr } = await sb.rpc(
+    "apply_appointment_default_limits_upload",
+    {
+      p_shop_id: shopId,
+      p_snapshot: snapshotBase,
+      p_diff: pDiff,
+      p_audit: pAudit,
+    },
+  );
+
+  if (rpcErr) {
+    const { reason_code, sanitized } = classifyApplyRpcError(rpcErr.message);
+    console.warn(JSON.stringify({
+      level: "warning",
+      msg: "apply_appointment_default_limits_upload_failed",
+      shop_id: shopId,
+      reason_code,
+      detail: rpcErr.message,
+    }));
+    return {
+      ok: false,
+      table_name: tableName,
+      md_content_hash: hash,
+      rows_parsed: parsed.table.rows.length,
+      rows_added: 0,
+      rows_modified: 0,
+      rows_deactivated: 0,
+      validation_errors: validationErrors.length > 0 ? validationErrors : undefined,
+      diff_summary: diffSummary,
+      dry_run: false,
+      confirm_token,
+      reason_code,
+      attempt_id: null,
+      error_message: sanitized,
+    };
+  }
+
   return {
-    ok: !applyError,
+    ok: true,
     table_name: tableName,
     md_content_hash: hash,
     rows_parsed: parsed.table.rows.length,
-    rows_added: adds.length,
-    rows_modified: mods.length,
+    rows_added: added.length,
+    rows_modified: modified.length,
     rows_deactivated: 0,
     parse_errors: parsed.errors.length > 0 ? parsed.errors : undefined,
     validation_errors: validationErrors.length > 0 ? validationErrors : undefined,
     diff_summary: diffSummary,
-    error_message: applyError ?? undefined,
+    dry_run: false,
+    confirm_token,
+    audit_log_id: (auditLogId as number | null) ?? undefined,
   };
 }
 
@@ -1386,17 +1588,36 @@ export async function exportAppointmentDefaultLimitsMd(
   return { md_content: md, row_count: (data ?? []).length };
 }
 
-// ─── closed_dates ───────────────────────────────────────────────────────────
+// ─── closed_dates (Pattern S — E5c) ─────────────────────────────────────────
+//
+// Refactored 2026-05-26 per PLAN §4.5 — snapshot_kind = 'closed_dates_future'.
+// Apply RPC: apply_closed_dates_upload (migration 20260526000500).
+// Snapshot shape: {before: {<closed_date>: row}, added_keys: [<new_dates>],
+//                  original_today: <YYYY-MM-DD>}.
+// `original_today` is REQUIRED per ADR-013 — preserves past-closures-immutable
+// invariant. The apply RPC takes per-date advisory locks (ADR-013) AFTER the
+// surface lock (ADR-024).
+//
+// `today` is computed UTC here (matches legacy behavior). Future hardening
+// will compute it in shop TZ Postgres-side via lock_surface_for_kind passing
+// the shop's tz.
 
 const CLOSED_COLUMNS = ["closed_date", "reason"];
 
 export async function uploadClosedDatesMd(
   sb: SupabaseClient,
   shopId: number,
-  args: { md_content: string; audit: AdminAudit },
+  args: {
+    md_content: string;
+    audit: AdminAudit;
+    dry_run?: boolean;
+    expected_confirm_token?: string;
+  },
 ): Promise<UploadResult> {
   const tableName = "closed_dates";
-  const hash = await sha256Hex(args.md_content);
+  const { md_content, audit, dry_run = true, expected_confirm_token } = args;
+  const hash = await sha256Hex(md_content);
+
   if (await checkDuplicate(sb, tableName, hash)) {
     return {
       ok: true,
@@ -1407,21 +1628,16 @@ export async function uploadClosedDatesMd(
       rows_modified: 0,
       rows_deactivated: 0,
       duplicate_upload: true,
+      dry_run,
     };
   }
 
   let parsed;
   try {
-    parsed = parseMdTable(args.md_content);
+    parsed = parseMdTable(md_content);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    await logAdminAudit(sb, {
-      audit: args.audit,
-      table_name: tableName,
-      operation: "upload_md",
-      md_content_hash: hash,
-      error_message: msg,
-    });
+    if (!dry_run) await _logAuditError(sb, shopId, audit, tableName, hash, msg);
     return {
       ok: false,
       table_name: tableName,
@@ -1430,6 +1646,7 @@ export async function uploadClosedDatesMd(
       rows_added: 0,
       rows_modified: 0,
       rows_deactivated: 0,
+      dry_run,
       error_message: msg,
     };
   }
@@ -1439,13 +1656,7 @@ export async function uploadClosedDatesMd(
   );
   if (missingColumns.length > 0) {
     const msg = `missing required columns: ${missingColumns.join(", ")}`;
-    await logAdminAudit(sb, {
-      audit: args.audit,
-      table_name: tableName,
-      operation: "upload_md",
-      md_content_hash: hash,
-      error_message: msg,
-    });
+    if (!dry_run) await _logAuditError(sb, shopId, audit, tableName, hash, msg);
     return {
       ok: false,
       table_name: tableName,
@@ -1454,6 +1665,7 @@ export async function uploadClosedDatesMd(
       rows_added: 0,
       rows_modified: 0,
       rows_deactivated: 0,
+      dry_run,
       error_message: msg,
     };
   }
@@ -1478,13 +1690,7 @@ export async function uploadClosedDatesMd(
 
   if (validRows.length === 0) {
     const msg = `no valid rows (${validationErrors.length} validation errors)`;
-    await logAdminAudit(sb, {
-      audit: args.audit,
-      table_name: tableName,
-      operation: "upload_md",
-      md_content_hash: hash,
-      error_message: msg,
-    });
+    if (!dry_run) await _logAuditError(sb, shopId, audit, tableName, hash, msg);
     return {
       ok: false,
       table_name: tableName,
@@ -1495,29 +1701,32 @@ export async function uploadClosedDatesMd(
       rows_deactivated: 0,
       parse_errors: parsed.errors,
       validation_errors: validationErrors,
+      dry_run,
       error_message: msg,
     };
   }
 
-  // closed_dates is a complete-replace table. We replace FUTURE-only rows
-  // (past closed_dates are immutable history). The uploader's MD file is
-  // assumed to be the canonical list of future closures.
-  const today = new Date().toISOString().slice(0, 10);
+  // Compute original_today UTC (legacy behavior; matches existing uploader).
+  // The apply RPC stores this in p_audit so future revert can derive the
+  // SAME forward window for canonical byte-parity.
+  const original_today = new Date().toISOString().slice(0, 10);
+
+  // Fetch current FUTURE-only rows (past closures are immutable).
+  // Filter past dates from validRows BEFORE diff so we don't generate
+  // p_diff.added/modified entries that the apply RPC would reject.
+  const futureValidRows = validRows.filter((r) => r.closed_date >= original_today);
+  // Track any past dates that were in the MD (we just ignore them — past
+  // closures are read-only history).
+  const pastRowsIgnored = validRows.length - futureValidRows.length;
 
   const { data: currentRows, error: fetchErr } = await sb
     .from("closed_dates")
-    .select("closed_date, reason")
+    .select("closed_date, reason, source")
     .eq("shop_id", shopId)
-    .gte("closed_date", today);
+    .gte("closed_date", original_today);
   if (fetchErr) {
     const msg = `current-state fetch failed: ${fetchErr.message}`;
-    await logAdminAudit(sb, {
-      audit: args.audit,
-      table_name: tableName,
-      operation: "upload_md",
-      md_content_hash: hash,
-      error_message: msg,
-    });
+    if (!dry_run) await _logAuditError(sb, shopId, audit, tableName, hash, msg);
     return {
       ok: false,
       table_name: tableName,
@@ -1526,81 +1735,184 @@ export async function uploadClosedDatesMd(
       rows_added: 0,
       rows_modified: 0,
       rows_deactivated: 0,
+      dry_run,
       error_message: msg,
     };
   }
 
-  const currentByDate = new Map<string, string | null>();
-  for (const row of currentRows ?? []) {
-    currentByDate.set(row.closed_date as string, (row.reason ?? null) as string | null);
+  type ClosedDateRow = { closed_date: string; reason: string | null; source: string | null };
+  const current = (currentRows ?? []) as unknown as ClosedDateRow[];
+  const currentByDate = new Map<string, ClosedDateRow>();
+  for (const row of current) {
+    currentByDate.set(row.closed_date, row);
   }
-  const uploadedDates = new Set(validRows.map((r) => r.closed_date));
+  const uploadedDates = new Set(futureValidRows.map((r) => r.closed_date));
 
-  const adds: string[] = [];
-  const mods: string[] = [];
-  const deactivates: string[] = [];
+  // Compute diff
+  const added: Array<Record<string, unknown>> = [];
+  const modified: Array<Record<string, unknown>> = [];
+  const deactivated: string[] = [];
+  const snapshotBefore: Record<string, ClosedDateRow> = {};
 
-  for (const row of validRows) {
-    if (!currentByDate.has(row.closed_date)) {
-      adds.push(row.closed_date);
-    } else if (currentByDate.get(row.closed_date) !== row.reason) {
-      mods.push(row.closed_date);
+  for (const row of futureValidRows) {
+    const existing = currentByDate.get(row.closed_date);
+    if (!existing) {
+      added.push({
+        closed_date: row.closed_date,
+        reason: row.reason,
+        source: "admin",
+      });
+    } else if ((existing.reason ?? null) !== row.reason) {
+      modified.push({
+        closed_date: row.closed_date,
+        reason: row.reason,
+        source: existing.source ?? "admin",
+      });
+      snapshotBefore[row.closed_date] = existing;
     }
   }
-  for (const [date] of currentByDate) {
+  for (const [date, row] of currentByDate) {
     if (!uploadedDates.has(date)) {
-      deactivates.push(date); // future closed_date dropped from MD = remove
+      deactivated.push(date);
+      snapshotBefore[date] = row;
     }
   }
 
-  let applyError: string | null = null;
+  // Snapshot — original_today is REQUIRED for canonical scope per ADR-013.
+  const snapshotBase: Record<string, unknown> = {
+    snapshot_kind: "closed_dates_future",
+    before: snapshotBefore,
+    added_keys: [] as string[],
+    original_today,
+  };
+
+  // Canonical-current + hash
+  let expectedCurrentHash: string;
   try {
-    if (adds.length > 0 || mods.length > 0) {
-      const upsertRows = validRows.map((r) => ({ ...r, shop_id: shopId }));
-      const { error: upsertErr } = await sb
-        .from("closed_dates")
-        .upsert(upsertRows, { onConflict: "shop_id,closed_date" });
-      if (upsertErr) throw new Error(`upsert failed: ${upsertErr.message}`);
-    }
-    if (deactivates.length > 0) {
-      const { error: delErr } = await sb
-        .from("closed_dates")
-        .delete()
-        .eq("shop_id", shopId)
-        .in("closed_date", deactivates)
-        .gte("closed_date", today); // belt+suspenders — never touch past
-      if (delErr) throw new Error(`delete failed: ${delErr.message}`);
-    }
+    const canonicalCurrent = await computeCanonicalAfterState({
+      kind: "closed_dates_future",
+      supabase: sb,
+      shopId,
+      snapshot: snapshotBase,
+    });
+    expectedCurrentHash = await sha256Hex(canonicalCurrent);
   } catch (e) {
-    applyError = e instanceof Error ? e.message : String(e);
+    const msg = `canonical_state_closed_dates_future compute failed: ${e instanceof Error ? e.message : String(e)}`;
+    if (!dry_run) await _logAuditError(sb, shopId, audit, tableName, hash, msg);
+    return {
+      ok: false,
+      table_name: tableName,
+      md_content_hash: hash,
+      rows_parsed: parsed.table.rows.length,
+      rows_added: 0,
+      rows_modified: 0,
+      rows_deactivated: 0,
+      validation_errors: validationErrors.length > 0 ? validationErrors : undefined,
+      dry_run,
+      error_message: msg,
+    };
   }
 
-  const diffSummary = { added: adds, modified: mods, deactivated: deactivates };
-
-  await logAdminAudit(sb, {
-    audit: args.audit,
-    table_name: tableName,
-    operation: "upload_md",
-    rows_added: adds.length,
-    rows_modified: mods.length,
-    rows_deactivated: deactivates.length,
-    md_content_hash: hash,
-    diff_summary: diffSummary,
-    error_message: applyError ?? undefined,
+  // confirm_token via E2 helper (closed_dates_future kind REQUIRES originalToday)
+  const confirm_token = await computeConfirmToken({
+    shopId,
+    kind: "closed_dates_future",
+    expectedCurrentHash,
+    mdContentHash: hash,
+    actorEmail: audit.display_name,
+    originalToday: original_today,
   });
 
+  const diffSummary: Record<string, unknown> = {
+    surfaces: ["closed_dates"],
+    added: added.map((a) => a.closed_date),
+    modified: modified.map((m) => m.closed_date),
+    deactivated,
+    original_today,
+    past_rows_ignored: pastRowsIgnored,
+  };
+
+  // Dry-run path
+  if (dry_run) {
+    return {
+      ok: true,
+      table_name: tableName,
+      md_content_hash: hash,
+      rows_parsed: parsed.table.rows.length,
+      rows_added: added.length,
+      rows_modified: modified.length,
+      rows_deactivated: deactivated.length,
+      parse_errors: parsed.errors.length > 0 ? parsed.errors : undefined,
+      validation_errors: validationErrors.length > 0 ? validationErrors : undefined,
+      diff_summary: diffSummary,
+      dry_run: true,
+      confirm_token,
+    };
+  }
+
+  // Apply mode — call apply_closed_dates_upload RPC
+  const pAudit: Record<string, unknown> = {
+    actor_email: audit.display_name,
+    oauth_client_id: audit.oauth_client_id,
+    md_content_hash: hash,
+    expected_current_hash: expectedCurrentHash,
+    expected_confirm_token: expected_confirm_token ?? null,
+    original_today,
+    dry_run: false,
+  };
+  const pDiff: Record<string, unknown> = { added, modified, deactivated };
+
+  const { data: auditLogId, error: rpcErr } = await sb.rpc(
+    "apply_closed_dates_upload",
+    {
+      p_shop_id: shopId,
+      p_snapshot: snapshotBase,
+      p_diff: pDiff,
+      p_audit: pAudit,
+    },
+  );
+
+  if (rpcErr) {
+    const { reason_code, sanitized } = classifyApplyRpcError(rpcErr.message);
+    console.warn(JSON.stringify({
+      level: "warning",
+      msg: "apply_closed_dates_upload_failed",
+      shop_id: shopId,
+      reason_code,
+      detail: rpcErr.message,
+    }));
+    return {
+      ok: false,
+      table_name: tableName,
+      md_content_hash: hash,
+      rows_parsed: parsed.table.rows.length,
+      rows_added: 0,
+      rows_modified: 0,
+      rows_deactivated: 0,
+      validation_errors: validationErrors.length > 0 ? validationErrors : undefined,
+      diff_summary: diffSummary,
+      dry_run: false,
+      confirm_token,
+      reason_code,
+      attempt_id: null,
+      error_message: sanitized,
+    };
+  }
+
   return {
-    ok: !applyError,
+    ok: true,
     table_name: tableName,
     md_content_hash: hash,
     rows_parsed: parsed.table.rows.length,
-    rows_added: adds.length,
-    rows_modified: mods.length,
-    rows_deactivated: deactivates.length,
+    rows_added: added.length,
+    rows_modified: modified.length,
+    rows_deactivated: deactivated.length,
     parse_errors: parsed.errors.length > 0 ? parsed.errors : undefined,
     validation_errors: validationErrors.length > 0 ? validationErrors : undefined,
     diff_summary: diffSummary,
-    error_message: applyError ?? undefined,
+    dry_run: false,
+    confirm_token,
+    audit_log_id: (auditLogId as number | null) ?? undefined,
   };
 }
 
@@ -1727,26 +2039,30 @@ export async function findOrphanCustomers(
   return { orphans, count: orphans.length, lookback_days: lookback };
 }
 
-// ─── Concern category MD upload (NEW v9b, 2026-05-14) ───────────────────────
+// ─── Concern category MD upload (Pattern S — E5e) ───────────────────────────
 //
-// Per chat-design.md "Architecture amendment — 2026-05-14" §Step 7 redesign
-// plus the 14 drafted concern docs in dotfiles/.../references/concerns/.
+// Refactored 2026-05-26 per PLAN §4.2 + R6-B3 + E1b-N1 + E1cf-N4 — snapshot_kind
+// = 'concern_questions_per_category'. Apply RPC: apply_concern_category_upload
+// (migration 20260526000500).
 //
-// Unlike the other Md upload tools (which parse a single GFM TABLE),
-// concern docs are HIERARCHICAL — one MD file per category, with sub-
-// category sections and numbered questions. The tool:
-//   1. parseConcernCategoryMd(md)            — structural parse
-//   2. diff against current DB state         — identify added/modified/dropped
-//   3. UPSERT subcategories                   — active=true for those in MD
-//   4. UPSERT concern_questions               — active=true for those in MD
-//   5. SOFT-DELETE absent rows                — active=false (preserves history)
-//   6. AUDIT-LOG to scheduler_admin_audit_log — including md_content_hash
+// Significant rewrite: legacy code INTERLEAVED diff + apply across two tables
+// (concern_subcategories + concern_questions). New design: parse → fetch BOTH
+// tables → build NESTED diff (subcategories + questions, each with
+// added/modified/deactivated) → compute confirm_token → dry-run early return
+// → else call apply RPC.
 //
-// Re-uploading the SAME MD content fast-paths to a no-op via the hash check.
+// Per E1cf-N4 the p_diff shape is:
+//   {
+//     subcategories: { added: SubcategoryRow[], modified: SubcategoryRow[], deactivated: [<id>] },
+//     questions:     { added: QuestionWithSlug[], modified: QuestionRow[], deactivated: [<id>] }
+//   }
+// where QuestionWithSlug = QuestionRow & { slug_of_sub: string } — the apply
+// RPC uses slug_of_sub to resolve subcategory_id for newly-INSERTed subs.
 //
-// Caller must pass:
-//   - category_slug — MUST match one of the 14 enum values (validated)
-//   - md_content    — the .md file content from references/concerns/{slug}/{slug}-concerns.md
+// Per E1b-N1 snapshot fields are EXACTLY:
+//   subcategories_before, added_subcategory_ids,
+//   questions_before, added_question_ids
+// (the canonical_state + revert handler read these by name).
 
 const CONCERN_CATEGORY_SLUGS = [
   "noise",
@@ -1773,6 +2089,14 @@ interface SubcategoryRow {
   display_label: string;
   display_order: number;
   active: boolean;
+  /** Preserved during MODIFY — apply RPC's UPDATE sets ALL columns, so omitting
+   *  these from the modified payload would NULL them out. Fetched + carried
+   *  forward unchanged unless the MD format ever supports editing them. */
+  description?: string | null;
+  positive_examples?: string[] | null;
+  negative_examples?: string[] | null;
+  synonyms?: string[] | null;
+  eligible_testing_service_keys?: string[] | null;
 }
 
 interface ConcernQuestionRow {
@@ -1787,6 +2111,37 @@ interface ConcernQuestionRow {
    *  rebuild + new MD format. */
   options?: unknown;
   multi_select?: boolean;
+  /** Preserved during MODIFY — same rationale as SubcategoryRow descriptive
+   *  fields above. required_facts is ORDERED (MD-order preserved per ADR-025
+   *  canonical_state_question_required_facts_v2). */
+  required_facts?: string[] | null;
+}
+
+// Default-options for new questions (the multiple-choice card needs at
+// least one option even when the MD didn't supply one). Plain yes/no/skip
+// is the safe initial set; advisors revise via upsertConcernQuestionOptions
+// or future MD format extensions.
+const DEFAULT_OPTIONS_VALUE: Array<{ label: string; value: string }> = [
+  { label: "Yes", value: "yes" },
+  { label: "No", value: "no" },
+  { label: "Sometimes / Not sure", value: "sometimes" },
+];
+
+/** Order-sensitive deep-equal for option arrays. */
+function optionsEqualOrder(
+  a: unknown,
+  b: Array<{ label: string; value: string }>,
+): boolean {
+  if (!Array.isArray(a)) return false;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const aEntry = a[i];
+    const bEntry = b[i];
+    if (!aEntry || typeof aEntry !== "object" || !bEntry) return false;
+    const ao = aEntry as Record<string, unknown>;
+    if (ao.label !== bEntry.label || ao.value !== bEntry.value) return false;
+  }
+  return true;
 }
 
 export async function uploadConcernCategoryMd(
@@ -1796,9 +2151,12 @@ export async function uploadConcernCategoryMd(
     category_slug: string;
     md_content: string;
     audit: AdminAudit;
+    dry_run?: boolean;
+    expected_confirm_token?: string;
   },
 ): Promise<UploadResult> {
   const tableName = "concern_questions";
+  const { md_content, audit, dry_run = true, expected_confirm_token } = args;
 
   if (!CONCERN_CATEGORY_SLUGS.includes(args.category_slug as ConcernCategorySlug)) {
     return {
@@ -1809,12 +2167,13 @@ export async function uploadConcernCategoryMd(
       rows_added: 0,
       rows_modified: 0,
       rows_deactivated: 0,
+      dry_run,
       error_message: `category_slug must be one of: ${CONCERN_CATEGORY_SLUGS.join(", ")}`,
     };
   }
   const categorySlug = args.category_slug as ConcernCategorySlug;
 
-  const hash = await sha256Hex(args.md_content);
+  const hash = await sha256Hex(md_content);
   if (await checkDuplicate(sb, tableName, hash)) {
     return {
       ok: true,
@@ -1825,22 +2184,17 @@ export async function uploadConcernCategoryMd(
       rows_modified: 0,
       rows_deactivated: 0,
       duplicate_upload: true,
+      dry_run,
     };
   }
 
-  // ── 1. Parse the MD doc ───────────────────────────────────────────────────
+  // ── 1. Parse the MD doc
   let parsed;
   try {
-    parsed = parseConcernCategoryMd(args.md_content);
+    parsed = parseConcernCategoryMd(md_content);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    await logAdminAudit(sb, {
-      audit: args.audit,
-      table_name: tableName,
-      operation: "upload_md",
-      md_content_hash: hash,
-      error_message: msg,
-    });
+    if (!dry_run) await _logAuditError(sb, shopId, audit, tableName, hash, msg);
     return {
       ok: false,
       table_name: tableName,
@@ -1849,6 +2203,7 @@ export async function uploadConcernCategoryMd(
       rows_added: 0,
       rows_modified: 0,
       rows_deactivated: 0,
+      dry_run,
       error_message: msg,
     };
   }
@@ -1858,21 +2213,19 @@ export async function uploadConcernCategoryMd(
     0,
   );
 
-  // ── 2. Fetch current state for this (shop_id, category) ───────────────────
-  const { data: subRows, error: subFetchErr } = await sb
+  // ── 2. Fetch current state for this (shop_id, category)
+  // Select ALL descriptive columns so MODIFIED rows can preserve them — the
+  // apply RPC's UPDATE sets every column; omitting one would NULL it out.
+  const { data: subRowsData, error: subFetchErr } = await sb
     .from("concern_subcategories")
-    .select("id, slug, display_label, display_order, active")
+    .select(
+      "id, slug, display_label, display_order, active, description, positive_examples, negative_examples, synonyms, eligible_testing_service_keys",
+    )
     .eq("shop_id", shopId)
     .eq("category", categorySlug);
   if (subFetchErr) {
     const msg = `concern_subcategories fetch failed: ${subFetchErr.message}`;
-    await logAdminAudit(sb, {
-      audit: args.audit,
-      table_name: tableName,
-      operation: "upload_md",
-      md_content_hash: hash,
-      error_message: msg,
-    });
+    if (!dry_run) await _logAuditError(sb, shopId, audit, tableName, hash, msg);
     return {
       ok: false,
       table_name: tableName,
@@ -1881,27 +2234,22 @@ export async function uploadConcernCategoryMd(
       rows_added: 0,
       rows_modified: 0,
       rows_deactivated: 0,
+      dry_run,
       error_message: msg,
     };
   }
-  const currentSubs = (subRows ?? []) as SubcategoryRow[];
+  const currentSubs = (subRowsData ?? []) as unknown as SubcategoryRow[];
 
-  const { data: qRows, error: qFetchErr } = await sb
+  const { data: qRowsData, error: qFetchErr } = await sb
     .from("concern_questions")
     .select(
-      "id, subcategory_id, question_text, display_order, active, options, multi_select",
+      "id, subcategory_id, question_text, display_order, active, options, multi_select, required_facts",
     )
     .eq("shop_id", shopId)
     .eq("category", categorySlug);
   if (qFetchErr) {
     const msg = `concern_questions fetch failed: ${qFetchErr.message}`;
-    await logAdminAudit(sb, {
-      audit: args.audit,
-      table_name: tableName,
-      operation: "upload_md",
-      md_content_hash: hash,
-      error_message: msg,
-    });
+    if (!dry_run) await _logAuditError(sb, shopId, audit, tableName, hash, msg);
     return {
       ok: false,
       table_name: tableName,
@@ -1910,35 +2258,34 @@ export async function uploadConcernCategoryMd(
       rows_added: 0,
       rows_modified: 0,
       rows_deactivated: 0,
+      dry_run,
       error_message: msg,
     };
   }
-  const currentQuestions = (qRows ?? []) as ConcernQuestionRow[];
+  const currentQuestions = (qRowsData ?? []) as unknown as ConcernQuestionRow[];
 
-  const nowIso = new Date().toISOString();
-  let subAdded = 0;
-  let subModified = 0;
-  let subDeactivated = 0;
-  let qAdded = 0;
-  let qModified = 0;
-  let qDeactivated = 0;
-
-  // ── 3. Upsert sub-categories ──────────────────────────────────────────────
-  const currentSubBySlug = new Map(currentSubs.map((s) => [s.slug, s]));
+  // ── 3. Build the NESTED diff (no writes)
+  // currentSubBySlug: existing subcategories for this category, keyed by slug
+  // mdSubBySlug:      parsed MD subcategories, keyed by slug
+  const currentSubBySlug = new Map<string, SubcategoryRow>();
+  for (const s of currentSubs) currentSubBySlug.set(s.slug, s);
   const mdSubBySlug = new Map<string, ParsedConcernSubcategory>();
-  parsed.subcategories.forEach((s) => mdSubBySlug.set(s.slug, s));
+  for (const s of parsed.subcategories) mdSubBySlug.set(s.slug, s);
 
-  // Default-options for new questions (the multiple-choice card needs at
-  // least one option even when the MD didn't supply one). Plain yes/no/skip
-  // is the safe initial set; advisors revise via upsertConcernQuestionOptions
-  // or future MD format extensions.
-  const DEFAULT_OPTIONS = JSON.stringify([
-    { label: "Yes", value: "yes" },
-    { label: "No", value: "no" },
-    { label: "Sometimes / Not sure", value: "sometimes" },
-  ]);
+  // Existing question lookup by (subcategory_id, question_text)
+  const currentQByKey = new Map<string, ConcernQuestionRow>();
+  for (const q of currentQuestions) {
+    if (q.subcategory_id !== null) {
+      currentQByKey.set(`${q.subcategory_id}::${q.question_text}`, q);
+    }
+  }
 
-  const subIdBySlug = new Map<string, number>();
+  // ── 3a. Subcategory diff
+  const subAdded: Array<Record<string, unknown>> = [];
+  const subModified: Array<Record<string, unknown>> = [];
+  const subDeactivated: number[] = [];
+  const subcategoriesBefore: Record<string, SubcategoryRow> = {};
+
   for (const mdSub of parsed.subcategories) {
     const existing = currentSubBySlug.get(mdSub.slug);
     if (existing) {
@@ -1947,265 +2294,497 @@ export async function uploadConcernCategoryMd(
         existing.display_order !== mdSub.display_order ||
         existing.active !== true;
       if (needsUpdate) {
-        const { error } = await sb
-          .from("concern_subcategories")
-          .update({
-            display_label: mdSub.display_label,
-            display_order: mdSub.display_order,
-            active: true,
-            updated_at: nowIso,
-            updated_by_oauth_client_id: args.audit.oauth_client_id,
-            updated_by_name: args.audit.display_name,
-          })
-          .eq("id", existing.id);
-        if (error) {
-          await logAdminAudit(sb, {
-            audit: args.audit,
-            table_name: tableName,
-            operation: "upload_md",
-            md_content_hash: hash,
-            error_message: `subcategory update failed: ${error.message}`,
-          });
-          return {
-            ok: false,
-            table_name: tableName,
-            md_content_hash: hash,
-            rows_parsed: totalQuestions,
-            rows_added: 0,
-            rows_modified: 0,
-            rows_deactivated: 0,
-            error_message: `subcategory update failed: ${error.message}`,
-          };
-        }
-        subModified += 1;
-      }
-      subIdBySlug.set(mdSub.slug, existing.id);
-    } else {
-      const { data, error } = await sb
-        .from("concern_subcategories")
-        .insert({
-          shop_id: shopId,
-          category: categorySlug,
+        // Apply RPC SETs every column — preserve descriptive fields by passing
+        // existing values through unchanged (MD format doesn't carry them).
+        subModified.push({
+          id: existing.id,
           slug: mdSub.slug,
           display_label: mdSub.display_label,
           display_order: mdSub.display_order,
           active: true,
-          updated_by_oauth_client_id: args.audit.oauth_client_id,
-          updated_by_name: args.audit.display_name,
-        })
-        .select("id")
-        .single();
-      if (error || !data) {
-        const msg = `subcategory insert failed: ${error?.message ?? "no id returned"}`;
-        await logAdminAudit(sb, {
-          audit: args.audit,
-          table_name: tableName,
-          operation: "upload_md",
-          md_content_hash: hash,
-          error_message: msg,
+          description: existing.description ?? null,
+          positive_examples: existing.positive_examples ?? null,
+          negative_examples: existing.negative_examples ?? null,
+          synonyms: existing.synonyms ?? null,
+          eligible_testing_service_keys: existing.eligible_testing_service_keys ?? null,
         });
-        return {
-          ok: false,
-          table_name: tableName,
-          md_content_hash: hash,
-          rows_parsed: totalQuestions,
-          rows_added: 0,
-          rows_modified: 0,
-          rows_deactivated: 0,
-          error_message: msg,
-        };
+        subcategoriesBefore[String(existing.id)] = existing;
       }
-      subIdBySlug.set(mdSub.slug, data.id as number);
-      subAdded += 1;
+    } else {
+      // New subcategory — apply RPC INSERTs + resolves id by slug for any
+      // questions referencing it via slug_of_sub. Descriptive fields default
+      // to NULL on insert (matches legacy uploader behavior).
+      subAdded.push({
+        slug: mdSub.slug,
+        display_label: mdSub.display_label,
+        display_order: mdSub.display_order,
+        active: true,
+      });
     }
   }
-
-  // Soft-delete sub-categories that are no longer in the MD
   for (const existing of currentSubs) {
     if (!mdSubBySlug.has(existing.slug) && existing.active) {
-      const { error } = await sb
-        .from("concern_subcategories")
-        .update({
-          active: false,
-          updated_at: nowIso,
-          updated_by_oauth_client_id: args.audit.oauth_client_id,
-          updated_by_name: args.audit.display_name,
-        })
-        .eq("id", existing.id);
-      if (!error) subDeactivated += 1;
+      subDeactivated.push(existing.id);
+      subcategoriesBefore[String(existing.id)] = existing;
     }
   }
 
-  // ── 4. Upsert concern_questions ───────────────────────────────────────────
-  // Build a lookup of current questions keyed by (subcategory_id, text)
-  const currentByKey = new Map<string, ConcernQuestionRow>();
-  currentQuestions.forEach((q) => {
-    if (q.subcategory_id !== null) {
-      currentByKey.set(`${q.subcategory_id}::${q.question_text}`, q);
-    }
-  });
+  // ── 3b. Question diff (per-sub, identified by slug_of_sub)
+  // For modified questions: they live under an EXISTING sub, so subcategory_id
+  // is known. For added questions: they may live under either an existing OR
+  // newly-INSERTed sub — we carry slug_of_sub so apply RPC resolves.
+  const qAdded: Array<Record<string, unknown>> = [];
+  const qModified: Array<Record<string, unknown>> = [];
+  const qDeactivated: number[] = [];
+  const questionsBefore: Record<string, ConcernQuestionRow> = {};
 
-  const seenQuestionIds = new Set<number>();
-  // Deep-equality check for options arrays (order-sensitive — a reorder
-  // is a meaningful diff). Compares [{label,value}] tuples. Used to
-  // decide whether the MD's options differ from the DB's. Added
-  // 2026-05-18 with the new MD options + multi_select format.
-  const optionsEqual = (
-    a: unknown,
-    b: Array<{ label: string; value: string }>,
-  ): boolean => {
-    if (!Array.isArray(a)) return false;
-    if (a.length !== b.length) return false;
-    for (let i = 0; i < a.length; i++) {
-      const aEntry = a[i];
-      const bEntry = b[i];
-      if (!aEntry || typeof aEntry !== "object" || !bEntry) return false;
-      const ao = aEntry as Record<string, unknown>;
-      if (ao.label !== bEntry.label || ao.value !== bEntry.value) return false;
-    }
-    return true;
-  };
+  // Build slug→existing-sub-id lookup (existing subs only — added subs have
+  // no id yet, but the apply RPC resolves those at insert time via the
+  // v_sub_id_by_slug JSONB).
+  const existingSubIdBySlug = new Map<string, number>();
+  for (const s of currentSubs) existingSubIdBySlug.set(s.slug, s.id);
+
+  const seenExistingQIds = new Set<number>();
 
   for (const mdSub of parsed.subcategories) {
-    const subId = subIdBySlug.get(mdSub.slug);
-    if (subId === undefined) continue;
+    const existingSubId = existingSubIdBySlug.get(mdSub.slug);
     for (const q of mdSub.questions) {
-      const key = `${subId}::${q.question_text}`;
-      const existing = currentByKey.get(key);
-      if (existing) {
-        seenQuestionIds.add(existing.id);
-        // MD-parsed options/multi_select are honored when present.
-        // Absent options → don't touch the DB row (preserves the
-        // canonical state for legacy MDs that don't carry options
-        // yet). Absent multi_select (i.e., no `[multi]` prefix in MD)
-        // → don't touch — preserve canonical state.
-        const updateFields: Record<string, unknown> = {};
-        if (existing.display_order !== q.display_order) {
-          updateFields.display_order = q.display_order;
-        }
-        if (existing.active !== true) {
-          updateFields.active = true;
-        }
-        if (
-          q.options !== undefined &&
-          !optionsEqual(existing.options, q.options)
-        ) {
-          updateFields.options = q.options;
-        }
-        if (
-          q.multi_select !== undefined &&
-          existing.multi_select !== q.multi_select
-        ) {
-          updateFields.multi_select = q.multi_select;
-        }
-        if (Object.keys(updateFields).length > 0) {
-          updateFields.updated_at = nowIso;
-          updateFields.updated_by_oauth_client_id = args.audit.oauth_client_id;
-          updateFields.updated_by_name = args.audit.display_name;
-          const { error } = await sb
-            .from("concern_questions")
-            .update(updateFields)
-            .eq("id", existing.id);
-          if (!error) qModified += 1;
+      // Default options when MD didn't supply any (legacy MDs).
+      const effectiveOptions =
+        q.options !== undefined ? q.options : DEFAULT_OPTIONS_VALUE;
+      const effectiveMultiSelect = q.multi_select === true;
+
+      // Existing question? Only possible when the sub already exists (and
+      // has an id we can match against).
+      let existingQ: ConcernQuestionRow | undefined;
+      if (existingSubId !== undefined) {
+        existingQ = currentQByKey.get(`${existingSubId}::${q.question_text}`);
+      }
+
+      if (existingQ) {
+        seenExistingQIds.add(existingQ.id);
+        // Determine if any field changed
+        const needsUpdate =
+          existingQ.display_order !== q.display_order ||
+          existingQ.active !== true ||
+          (q.options !== undefined &&
+            !optionsEqualOrder(existingQ.options, q.options)) ||
+          (q.multi_select !== undefined &&
+            existingQ.multi_select !== q.multi_select);
+        if (needsUpdate) {
+          // For modified questions we have a known subcategory_id (existing
+          // sub). Include slug_of_sub for symmetry + future-proofing (apply
+          // RPC uses it as a defensive resolver). Preserve required_facts
+          // by passing the existing value — apply RPC SETs every column.
+          qModified.push({
+            id: existingQ.id,
+            slug_of_sub: mdSub.slug,
+            subcategory_id: existingSubId,
+            question_text: q.question_text,
+            options:
+              q.options !== undefined ? q.options : (existingQ.options ?? DEFAULT_OPTIONS_VALUE),
+            multi_select:
+              q.multi_select !== undefined
+                ? q.multi_select
+                : (existingQ.multi_select ?? false),
+            display_order: q.display_order,
+            active: true,
+            required_facts: existingQ.required_facts ?? null,
+          });
+          questionsBefore[String(existingQ.id)] = existingQ;
         }
       } else {
-        // New question — use parsed options when present; fall back to
-        // DEFAULT_OPTIONS (yes/no/sometimes) for legacy MDs without
-        // options. multi_select defaults to FALSE when absent.
-        const options =
-          q.options !== undefined ? q.options : JSON.parse(DEFAULT_OPTIONS);
-        const multi_select = q.multi_select === true;
-        const { error } = await sb.from("concern_questions").insert({
-          shop_id: shopId,
-          category: categorySlug,
-          subcategory_id: subId,
+        // New question — apply RPC resolves subcategory_id via slug_of_sub.
+        qAdded.push({
+          slug_of_sub: mdSub.slug,
           question_text: q.question_text,
-          options,
-          multi_select,
+          options: effectiveOptions,
+          multi_select: effectiveMultiSelect,
           display_order: q.display_order,
           active: true,
-          updated_by_oauth_client_id: args.audit.oauth_client_id,
-          updated_by_name: args.audit.display_name,
         });
-        if (!error) qAdded += 1;
       }
     }
   }
 
-  // Soft-delete questions that are no longer in the MD
+  // Soft-delete questions no longer in MD (only consider questions tied to
+  // a known subcategory).
   for (const q of currentQuestions) {
-    if (q.subcategory_id !== null && !seenQuestionIds.has(q.id) && q.active) {
-      const { error } = await sb
-        .from("concern_questions")
-        .update({
-          active: false,
-          updated_at: nowIso,
-          updated_by_oauth_client_id: args.audit.oauth_client_id,
-          updated_by_name: args.audit.display_name,
-        })
-        .eq("id", q.id);
-      if (!error) qDeactivated += 1;
+    if (q.subcategory_id !== null && !seenExistingQIds.has(q.id) && q.active) {
+      qDeactivated.push(q.id);
+      questionsBefore[String(q.id)] = q;
     }
   }
 
-  // ── 5. Audit + return ─────────────────────────────────────────────────────
-  const diff = {
+  // ── 4. Build snapshot per E1b-N1 EXACT field names
+  // (subcategories_before, added_subcategory_ids, questions_before,
+  //  added_question_ids). category_slug is also injected so canonical_state
+  // can derive the per-category scope without grovelling row data.
+  const snapshotBase: Record<string, unknown> = {
+    snapshot_kind: "concern_questions_per_category",
+    category_slug: categorySlug,
+    subcategories_before: subcategoriesBefore,
+    added_subcategory_ids: [] as number[],
+    questions_before: questionsBefore,
+    added_question_ids: [] as number[],
+  };
+
+  // ── 5. Canonical-current + hash (requires category_slug — see R6-B3)
+  let expectedCurrentHash: string;
+  try {
+    const canonicalCurrent = await computeCanonicalAfterState({
+      kind: "concern_questions_per_category",
+      supabase: sb,
+      shopId,
+      snapshot: snapshotBase,
+    });
+    expectedCurrentHash = await sha256Hex(canonicalCurrent);
+  } catch (e) {
+    const msg = `canonical_state_concern_category_upload compute failed: ${e instanceof Error ? e.message : String(e)}`;
+    if (!dry_run) await _logAuditError(sb, shopId, audit, tableName, hash, msg);
+    return {
+      ok: false,
+      table_name: tableName,
+      md_content_hash: hash,
+      rows_parsed: totalQuestions,
+      rows_added: 0,
+      rows_modified: 0,
+      rows_deactivated: 0,
+      dry_run,
+      error_message: msg,
+    };
+  }
+
+  // ── 6. confirm_token via E2 helper (per-category kind REQUIRES categorySlug)
+  const confirm_token = await computeConfirmToken({
+    shopId,
+    kind: "concern_questions_per_category",
+    expectedCurrentHash,
+    mdContentHash: hash,
+    actorEmail: audit.display_name,
+    categorySlug,
+  });
+
+  // ── 7. Build diff_summary (surfaces[] = BOTH physical tables per E1f apply RPC)
+  // Surface advisor-visible warning about DEFAULT_OPTIONS injection for new
+  // questions whose MD didn't carry options.
+  const defaultedQuestionKeys: string[] = [];
+  for (const mdSub of parsed.subcategories) {
+    for (const q of mdSub.questions) {
+      if (q.options === undefined) {
+        // Only counts as "defaulted" if it would be an INSERT (not an
+        // existing row preserving its options).
+        const subId = existingSubIdBySlug.get(mdSub.slug);
+        const existing = subId !== undefined
+          ? currentQByKey.get(`${subId}::${q.question_text}`)
+          : undefined;
+        if (!existing) {
+          defaultedQuestionKeys.push(`${mdSub.slug}::${q.question_text}`);
+        }
+      }
+    }
+  }
+  const validationWarnings: ValidationFinding[] = [];
+  for (const key of defaultedQuestionKeys) {
+    validationWarnings.push({
+      key,
+      field: "options",
+      level: "warning",
+      message:
+        "MD did not supply options — apply will inject default [Yes / No / Sometimes-Not-sure]. Add an options line in the MD to override.",
+    });
+  }
+
+  const diffSummary: Record<string, unknown> = {
+    surfaces: ["concern_subcategories", "concern_questions"],
     category_slug: categorySlug,
     display_label: parsed.display_label,
     subcategories: {
-      added: subAdded,
-      modified: subModified,
-      deactivated: subDeactivated,
+      added: subAdded.map((s) => s.slug),
+      modified: subModified.map((s) => s.slug),
+      deactivated_ids: subDeactivated,
       total_in_md: parsed.subcategories.length,
     },
     questions: {
-      added: qAdded,
-      modified: qModified,
-      deactivated: qDeactivated,
+      added: qAdded.map((q) => `${q.slug_of_sub}::${q.question_text}`),
+      modified: qModified.map((q) => `${q.slug_of_sub}::${q.question_text}`),
+      deactivated_ids: qDeactivated,
       total_in_md: totalQuestions,
     },
   };
 
-  await logAdminAudit(sb, {
-    audit: args.audit,
-    table_name: tableName,
-    operation: "upload_md",
+  // ── 8. Dry-run path
+  if (dry_run) {
+    return {
+      ok: true,
+      table_name: tableName,
+      md_content_hash: hash,
+      rows_parsed: totalQuestions,
+      rows_added: subAdded.length + qAdded.length,
+      rows_modified: subModified.length + qModified.length,
+      rows_deactivated: subDeactivated.length + qDeactivated.length,
+      validation_warnings: validationWarnings.length > 0 ? validationWarnings : undefined,
+      diff_summary: diffSummary,
+      dry_run: true,
+      confirm_token,
+    };
+  }
+
+  // ── 9. Apply mode — call apply_concern_category_upload RPC
+  const pAudit: Record<string, unknown> = {
+    actor_email: audit.display_name,
+    oauth_client_id: audit.oauth_client_id,
     md_content_hash: hash,
-    rows_added: subAdded + qAdded,
-    rows_modified: subModified + qModified,
-    rows_deactivated: subDeactivated + qDeactivated,
-    diff_summary: diff,
-  });
+    expected_current_hash: expectedCurrentHash,
+    expected_confirm_token: expected_confirm_token ?? null,
+    dry_run: false,
+  };
+  // Per E1cf-N4 the apply RPC expects nested shape with slug_of_sub on
+  // every question (added + modified).
+  const pDiff: Record<string, unknown> = {
+    subcategories: {
+      added: subAdded,
+      modified: subModified,
+      deactivated: subDeactivated.map((id) => String(id)),
+    },
+    questions: {
+      added: qAdded,
+      modified: qModified,
+      deactivated: qDeactivated.map((id) => String(id)),
+    },
+  };
+
+  const { data: auditLogId, error: rpcErr } = await sb.rpc(
+    "apply_concern_category_upload",
+    {
+      p_shop_id: shopId,
+      p_snapshot: snapshotBase,
+      p_diff: pDiff,
+      p_audit: pAudit,
+      p_category_slug: categorySlug,
+    },
+  );
+
+  if (rpcErr) {
+    const { reason_code, sanitized } = classifyApplyRpcError(rpcErr.message);
+    console.warn(JSON.stringify({
+      level: "warning",
+      msg: "apply_concern_category_upload_failed",
+      shop_id: shopId,
+      category_slug: categorySlug,
+      reason_code,
+      detail: rpcErr.message,
+    }));
+    return {
+      ok: false,
+      table_name: tableName,
+      md_content_hash: hash,
+      rows_parsed: totalQuestions,
+      rows_added: 0,
+      rows_modified: 0,
+      rows_deactivated: 0,
+      validation_warnings: validationWarnings.length > 0 ? validationWarnings : undefined,
+      diff_summary: diffSummary,
+      dry_run: false,
+      confirm_token,
+      reason_code,
+      attempt_id: null,
+      error_message: sanitized,
+    };
+  }
 
   return {
     ok: true,
     table_name: tableName,
     md_content_hash: hash,
     rows_parsed: totalQuestions,
-    rows_added: subAdded + qAdded,
-    rows_modified: subModified + qModified,
-    rows_deactivated: subDeactivated + qDeactivated,
-    diff_summary: diff,
+    rows_added: subAdded.length + qAdded.length,
+    rows_modified: subModified.length + qModified.length,
+    rows_deactivated: subDeactivated.length + qDeactivated.length,
+    validation_warnings: validationWarnings.length > 0 ? validationWarnings : undefined,
+    diff_summary: diffSummary,
+    dry_run: false,
+    confirm_token,
+    audit_log_id: (auditLogId as number | null) ?? undefined,
   };
 }
 
-// ─── Concern category guidelines (added 2026-05-18) ─────────────────────────
+// ─── exportConcernCategoryMd (E6 — 2026-05-26) ──────────────────────────────
 //
-// concern_category_guidelines is a tiny table — one row per (shop_id,
-// category) — that stores the prose paragraph the diagnostic LLM reads
-// BEFORE the questions for each category. It's narrower scope than the
-// questions/subcategories upload: just one prose blob per category.
+// Per PLAN §5.2 + research-02 §Q6. Pure UI-facing serializer for the admin-app
+// download → edit → re-upload round trip. Reads `concern_subcategories` +
+// `concern_questions` (ACTIVE only) for one (shop_id, category) and emits the
+// hierarchical MD format `parseConcernCategoryMd` consumes.
 //
-// upload_concern_category_guidelines_md:
-//   1. Parse MD (parseConcernCategoryGuidelineMd) → { display_label, prose }
-//   2. SHA-256 dedupe — re-uploading identical content is a no-op
-//   3. UPSERT the row keyed on (shop_id, category)
-//   4. Audit-log to scheduler_admin_audit_log
+// IMPORTANT — round-trip contract:
+//   parseConcernCategoryMd(serializeConcernCategoryMd(subs, qs, label)) ===
+//     { display_label: label,
+//       subcategories: [ { slug, display_label, display_order, questions: [...] }, ... ] }
 //
-// The customer-facing wizard doesn't render this prose; only the
-// diagnostic LLM reads it (system-prompt context). Per Chris's 2026-05-18
-// directive, advisors can edit one category's guideline via Claude
-// Desktop without filing a code change.
+// Stable round-trip rules:
+//   - Question numbers come from INDEX POSITION (idx + 1) within the sub-cat,
+//     NOT from the DB `display_order` column. Two questions with the same DB
+//     display_order would otherwise re-number across export/upload (research-02
+//     §Open #5).
+//   - Options always emit `Label=value` form (no shorthand), for unambiguous
+//     reparse (research-02 §Open #2).
+//   - Sub-category headers emit `display_label` so the parser regenerates the
+//     same slug via `slugifyForConcernSubcategory(label)`.
+//   - `[multi]` prefix is emitted iff `multi_select === true`.
+//   - Trailing HTML comment + `---` HR are parser-ignored — informational only.
+//
+// CRITICAL — per ADR-025 this exporter is for the admin-app UI ONLY. It is
+// NOT the byte-parity source for the staleness check. The canonical-state
+// byte-parity contract is between `canonical_state_concern_category_upload`
+// (plpgsql, E1b) and `computeCanonicalAfterState({kind: 'concern_questions_per_category'})`
+// (TS, E2). The two formats are intentionally divergent (UI vs staleness).
+
+export interface ExportConcernCategorySubRow {
+  /** id is unused by the serializer but kept in the type so the DB-reading
+   *  exporter can pass the raw row through without restructuring. */
+  id: number;
+  slug: string;
+  display_label: string;
+  display_order: number;
+}
+
+export interface ExportConcernCategoryQuestionRow {
+  subcategory_id: number;
+  question_text: string;
+  display_order: number;
+  options: Array<{ label: string; value: string }> | null;
+  multi_select: boolean | null;
+}
+
+/**
+ * Pure serializer — does NOT touch the SupabaseClient. Unit-testable per
+ * PLAN §5 + research-02 §Q8. Subs MUST already be in the desired display
+ * order; questions MUST already be in the desired display order within their
+ * subcategory_id. The serializer groups by subcategory_id and numbers
+ * questions by index position (NOT DB display_order).
+ */
+export function serializeConcernCategoryMd(
+  subs: ExportConcernCategorySubRow[],
+  questions: ExportConcernCategoryQuestionRow[],
+  categoryLabel: string,
+): string {
+  const lines: string[] = [];
+  lines.push(`# ${categoryLabel}`);
+  lines.push("");
+
+  const qBySubId = new Map<number, ExportConcernCategoryQuestionRow[]>();
+  for (const q of questions) {
+    const arr = qBySubId.get(q.subcategory_id) ?? [];
+    arr.push(q);
+    qBySubId.set(q.subcategory_id, arr);
+  }
+
+  for (const s of subs) {
+    lines.push(`-- ${s.display_label} Checklist --`);
+    const qs = qBySubId.get(s.id) ?? [];
+    qs.forEach((q, idx) => {
+      const prefix = q.multi_select ? "[multi] " : "";
+      lines.push(`${idx + 1}. ${prefix}${q.question_text}`);
+      if (q.options && q.options.length > 0) {
+        // Always emit Label=value form (no shorthand) for unambiguous reparse.
+        // The parser tolerates either form, but emitting both shapes from the
+        // same input would create export/upload non-determinism.
+        const optStr = q.options
+          .map((o) => `${o.label}=${o.value}`)
+          .join(" | ");
+        lines.push(`   - ${optStr}`);
+      }
+    });
+    lines.push("");
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * DB-reading exporter for one (shop_id, category). Resolves the H1 display
+ * label from `concern_category_guidelines.display_label` (canonical), falling
+ * back to a title-cased slug when no guideline row exists yet. Reads only
+ * ACTIVE rows from both tables (matches the uploader's diff semantics —
+ * soft-deleted rows are excluded from the round-trip surface).
+ *
+ * @returns { md_content, row_count } — row_count is the SUM of sub-categories
+ *   + questions returned. row_count === 0 means no active rows for this
+ *   (shop, category); the UI may surface an empty-state.
+ */
+export async function exportConcernCategoryMd(
+  sb: SupabaseClient,
+  shopId: number,
+  args: { category_slug: string },
+): Promise<{ md_content: string; row_count: number }> {
+  if (!CONCERN_CATEGORY_SLUGS.includes(args.category_slug as ConcernCategorySlug)) {
+    throw new Error(
+      `category_slug must be one of: ${CONCERN_CATEGORY_SLUGS.join(", ")}`,
+    );
+  }
+  const categorySlug = args.category_slug as ConcernCategorySlug;
+
+  // Sub-categories (ACTIVE only) for this (shop, category).
+  const { data: subRows, error: subErr } = await sb
+    .from("concern_subcategories")
+    .select("id, slug, display_label, display_order")
+    .eq("shop_id", shopId)
+    .eq("category", categorySlug)
+    .eq("active", true)
+    .order("display_order", { ascending: true });
+  if (subErr) {
+    throw new Error(`concern_subcategories export failed: ${subErr.message}`);
+  }
+  const subs = (subRows ?? []) as ExportConcernCategorySubRow[];
+
+  // Questions (ACTIVE only) for this (shop, category). Grouped by
+  // subcategory_id at serialize time.
+  const { data: qRows, error: qErr } = await sb
+    .from("concern_questions")
+    .select("subcategory_id, question_text, display_order, options, multi_select")
+    .eq("shop_id", shopId)
+    .eq("category", categorySlug)
+    .eq("active", true)
+    .order("display_order", { ascending: true });
+  if (qErr) {
+    throw new Error(`concern_questions export failed: ${qErr.message}`);
+  }
+  const questions = (qRows ?? []) as ExportConcernCategoryQuestionRow[];
+
+  // Resolve H1 label: prefer the guideline row's display_label (canonical),
+  // fall back to a title-cased slug ("warning_light" → "Warning light").
+  const { data: guide } = await sb
+    .from("concern_category_guidelines")
+    .select("display_label")
+    .eq("shop_id", shopId)
+    .eq("category", categorySlug)
+    .maybeSingle();
+  const categoryLabel = (guide?.display_label as string | undefined) ??
+    (categorySlug.charAt(0).toUpperCase() +
+      categorySlug.slice(1).replace(/_/g, " "));
+
+  const body = serializeConcernCategoryMd(subs, questions, categoryLabel);
+
+  // Trailing HR + HTML comment are parser-ignored — informational only so
+  // a downstream human reader can see what shop/category the file is from.
+  const md = [
+    body,
+    "---",
+    "",
+    `<!-- exported from concern_subcategories + concern_questions (shop_id=${shopId}, category=${categorySlug}) -->`,
+    "",
+  ].join("\n");
+
+  return { md_content: md, row_count: subs.length + questions.length };
+}
+
+// ─── Concern category guidelines (Pattern S — E5a) ──────────────────────────
+//
+// Refactored 2026-05-26 per PLAN §4.3 — snapshot_kind = 'concern_category_guidelines'.
+// Apply RPC: apply_concern_category_guideline_upload (migration 20260526000500).
+// Composite PK (shop_id, category) — single row per category.
+// Snapshot shape: {before: {<category>: existing|null}, added_keys: existing ? [] : [category]}.
+// Revert handles BOTH update-back AND hard-DELETE (when original was INSERT).
 
 export async function uploadConcernCategoryGuidelineMd(
   sb: SupabaseClient,
@@ -2214,9 +2793,12 @@ export async function uploadConcernCategoryGuidelineMd(
     category_slug: string;
     md_content: string;
     audit: AdminAudit;
+    dry_run?: boolean;
+    expected_confirm_token?: string;
   },
 ): Promise<UploadResult> {
   const tableName = "concern_category_guidelines";
+  const { md_content, audit, dry_run = true, expected_confirm_token } = args;
 
   if (!CONCERN_CATEGORY_SLUGS.includes(args.category_slug as ConcernCategorySlug)) {
     return {
@@ -2227,12 +2809,13 @@ export async function uploadConcernCategoryGuidelineMd(
       rows_added: 0,
       rows_modified: 0,
       rows_deactivated: 0,
+      dry_run,
       error_message: `category_slug must be one of: ${CONCERN_CATEGORY_SLUGS.join(", ")}`,
     };
   }
   const categorySlug = args.category_slug as ConcernCategorySlug;
 
-  const hash = await sha256Hex(args.md_content);
+  const hash = await sha256Hex(md_content);
   if (await checkDuplicate(sb, tableName, hash)) {
     return {
       ok: true,
@@ -2243,21 +2826,17 @@ export async function uploadConcernCategoryGuidelineMd(
       rows_modified: 0,
       rows_deactivated: 0,
       duplicate_upload: true,
+      dry_run,
     };
   }
 
+  // ── 1. Parse
   let parsed;
   try {
-    parsed = parseConcernCategoryGuidelineMd(args.md_content);
+    parsed = parseConcernCategoryGuidelineMd(md_content);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    await logAdminAudit(sb, {
-      audit: args.audit,
-      table_name: tableName,
-      operation: "upload_md",
-      md_content_hash: hash,
-      error_message: msg,
-    });
+    if (!dry_run) await _logAuditError(sb, shopId, audit, tableName, hash, msg);
     return {
       ok: false,
       table_name: tableName,
@@ -2266,12 +2845,12 @@ export async function uploadConcernCategoryGuidelineMd(
       rows_added: 0,
       rows_modified: 0,
       rows_deactivated: 0,
+      dry_run,
       error_message: msg,
     };
   }
 
-  // Fetch existing row to determine added vs modified for the diff
-  // summary (and to skip the write when nothing actually changed).
+  // ── 2. Fetch existing row
   const { data: existing, error: fetchErr } = await sb
     .from("concern_category_guidelines")
     .select("display_label, guideline_prose")
@@ -2280,13 +2859,7 @@ export async function uploadConcernCategoryGuidelineMd(
     .maybeSingle();
   if (fetchErr) {
     const msg = `concern_category_guidelines fetch failed: ${fetchErr.message}`;
-    await logAdminAudit(sb, {
-      audit: args.audit,
-      table_name: tableName,
-      operation: "upload_md",
-      md_content_hash: hash,
-      error_message: msg,
-    });
+    if (!dry_run) await _logAuditError(sb, shopId, audit, tableName, hash, msg);
     return {
       ok: false,
       table_name: tableName,
@@ -2295,114 +2868,667 @@ export async function uploadConcernCategoryGuidelineMd(
       rows_added: 0,
       rows_modified: 0,
       rows_deactivated: 0,
+      dry_run,
       error_message: msg,
     };
   }
 
-  let rowsAdded = 0;
-  let rowsModified = 0;
-  const nowIso = new Date().toISOString();
+  const priorExisted = !!existing;
+  const willChange =
+    !priorExisted ||
+    (existing!.display_label !== parsed.display_label ||
+      existing!.guideline_prose !== parsed.guideline_prose);
 
-  if (!existing) {
-    // INSERT
-    const { error: insertErr } = await sb
-      .from("concern_category_guidelines")
-      .insert({
-        shop_id: shopId,
-        category: categorySlug,
-        display_label: parsed.display_label,
-        guideline_prose: parsed.guideline_prose,
-        updated_at: nowIso,
-        updated_by_oauth_client_id: args.audit.oauth_client_id,
-        updated_by_name: args.audit.display_name,
-      });
-    if (insertErr) {
-      const msg = `concern_category_guidelines insert failed: ${insertErr.message}`;
-      await logAdminAudit(sb, {
-        audit: args.audit,
-        table_name: tableName,
-        operation: "upload_md",
-        md_content_hash: hash,
-        error_message: msg,
-      });
-      return {
-        ok: false,
-        table_name: tableName,
-        md_content_hash: hash,
-        rows_parsed: 1,
-        rows_added: 0,
-        rows_modified: 0,
-        rows_deactivated: 0,
-        error_message: msg,
-      };
-    }
-    rowsAdded = 1;
-  } else {
-    const changed =
-      existing.display_label !== parsed.display_label ||
-      existing.guideline_prose !== parsed.guideline_prose;
-    if (changed) {
-      const { error: updateErr } = await sb
-        .from("concern_category_guidelines")
-        .update({
-          display_label: parsed.display_label,
-          guideline_prose: parsed.guideline_prose,
-          updated_at: nowIso,
-          updated_by_oauth_client_id: args.audit.oauth_client_id,
-          updated_by_name: args.audit.display_name,
-        })
-        .eq("shop_id", shopId)
-        .eq("category", categorySlug);
-      if (updateErr) {
-        const msg = `concern_category_guidelines update failed: ${updateErr.message}`;
-        await logAdminAudit(sb, {
-          audit: args.audit,
-          table_name: tableName,
-          operation: "upload_md",
-          md_content_hash: hash,
-          error_message: msg,
-        });
-        return {
-          ok: false,
-          table_name: tableName,
-          md_content_hash: hash,
-          rows_parsed: 1,
-          rows_added: 0,
-          rows_modified: 0,
-          rows_deactivated: 0,
-          error_message: msg,
-        };
-      }
-      rowsModified = 1;
-    }
+  // ── 3. Build snapshot per PLAN §4.3
+  // before[<category>] = existing row | null (insert case)
+  // added_keys = [category] if insert, [] if update.
+  const beforeRow = priorExisted
+    ? { ...existing!, shop_id: shopId, category: categorySlug }
+    : null;
+  const snapshotBase: Record<string, unknown> = {
+    snapshot_kind: "concern_category_guidelines",
+    before: { [categorySlug]: beforeRow },
+    added_keys: priorExisted ? ([] as string[]) : [categorySlug],
+  };
+
+  // ── 4. Canonical-current + hash
+  let expectedCurrentHash: string;
+  try {
+    const canonicalCurrent = await computeCanonicalAfterState({
+      kind: "concern_category_guidelines",
+      supabase: sb,
+      shopId,
+      snapshot: snapshotBase,
+    });
+    expectedCurrentHash = await sha256Hex(canonicalCurrent);
+  } catch (e) {
+    const msg = `canonical_state_concern_category_guideline compute failed: ${e instanceof Error ? e.message : String(e)}`;
+    if (!dry_run) await _logAuditError(sb, shopId, audit, tableName, hash, msg);
+    return {
+      ok: false,
+      table_name: tableName,
+      md_content_hash: hash,
+      rows_parsed: 1,
+      rows_added: 0,
+      rows_modified: 0,
+      rows_deactivated: 0,
+      dry_run,
+      error_message: msg,
+    };
   }
 
-  const diff = {
+  // ── 5. confirm_token via E2 helper (guideline kind REQUIRES categorySlug)
+  const confirm_token = await computeConfirmToken({
+    shopId,
+    kind: "concern_category_guidelines",
+    expectedCurrentHash,
+    mdContentHash: hash,
+    actorEmail: audit.display_name,
+    categorySlug,
+  });
+
+  const action = !priorExisted ? "inserted" : willChange ? "updated" : "no-op";
+  const diffSummary: Record<string, unknown> = {
+    surfaces: ["concern_category_guidelines"],
     category_slug: categorySlug,
     display_label: parsed.display_label,
     prose_length: parsed.guideline_prose.length,
-    action: rowsAdded ? "inserted" : rowsModified ? "updated" : "no-op",
+    action,
   };
 
-  await logAdminAudit(sb, {
-    audit: args.audit,
-    table_name: tableName,
-    operation: "upload_md",
+  // ── 6. Dry-run path
+  if (dry_run) {
+    return {
+      ok: true,
+      table_name: tableName,
+      md_content_hash: hash,
+      rows_parsed: 1,
+      rows_added: !priorExisted ? 1 : 0,
+      rows_modified: priorExisted && willChange ? 1 : 0,
+      rows_deactivated: 0,
+      diff_summary: diffSummary,
+      dry_run: true,
+      confirm_token,
+    };
+  }
+
+  // ── 7. Apply mode — call apply_concern_category_guideline_upload RPC
+  const pAudit: Record<string, unknown> = {
+    actor_email: audit.display_name,
+    oauth_client_id: audit.oauth_client_id,
     md_content_hash: hash,
-    rows_added: rowsAdded,
-    rows_modified: rowsModified,
-    rows_deactivated: 0,
-    diff_summary: diff,
-  });
+    expected_current_hash: expectedCurrentHash,
+    expected_confirm_token: expected_confirm_token ?? null,
+    dry_run: false,
+  };
+  // Per apply RPC contract: p_diff carries display_label, guideline_prose,
+  // prior_existed. The RPC uses prior_existed to decide INSERT vs UPDATE
+  // semantics for revert (insert → revert hard-DELETEs; update → revert
+  // restores prior row).
+  const pDiff: Record<string, unknown> = {
+    display_label: parsed.display_label,
+    guideline_prose: parsed.guideline_prose,
+    prior_existed: priorExisted,
+  };
+
+  const { data: auditLogId, error: rpcErr } = await sb.rpc(
+    "apply_concern_category_guideline_upload",
+    {
+      p_shop_id: shopId,
+      p_snapshot: snapshotBase,
+      p_diff: pDiff,
+      p_audit: pAudit,
+      p_category_slug: categorySlug,
+    },
+  );
+
+  if (rpcErr) {
+    const { reason_code, sanitized } = classifyApplyRpcError(rpcErr.message);
+    console.warn(JSON.stringify({
+      level: "warning",
+      msg: "apply_concern_category_guideline_upload_failed",
+      shop_id: shopId,
+      category_slug: categorySlug,
+      reason_code,
+      detail: rpcErr.message,
+    }));
+    return {
+      ok: false,
+      table_name: tableName,
+      md_content_hash: hash,
+      rows_parsed: 1,
+      rows_added: 0,
+      rows_modified: 0,
+      rows_deactivated: 0,
+      diff_summary: diffSummary,
+      dry_run: false,
+      confirm_token,
+      reason_code,
+      attempt_id: null,
+      error_message: sanitized,
+    };
+  }
 
   return {
     ok: true,
     table_name: tableName,
     md_content_hash: hash,
     rows_parsed: 1,
-    rows_added: rowsAdded,
-    rows_modified: rowsModified,
+    rows_added: !priorExisted ? 1 : 0,
+    rows_modified: priorExisted && willChange ? 1 : 0,
     rows_deactivated: 0,
-    diff_summary: diff,
+    diff_summary: diffSummary,
+    dry_run: false,
+    confirm_token,
+    audit_log_id: (auditLogId as number | null) ?? undefined,
   };
 }
+
+// ─── exportConcernCategoryGuidelineMd (E6 — 2026-05-26) ─────────────────────
+//
+// Per PLAN §5.1 + research-02 §Q5. Pure UI-facing serializer for the admin-app
+// download → edit → re-upload round trip. Reads `concern_category_guidelines`
+// for one (shop_id, category) and emits the MD format that
+// `parseConcernCategoryGuidelineMd` consumes.
+//
+// IMPORTANT — round-trip contract:
+//   parseConcernCategoryGuidelineMd(
+//     serializeConcernCategoryGuidelineMd(state, shop_id, slug)
+//   ) === { display_label: state.display_label,
+//           guideline_prose: state.guideline_prose }
+//
+// Stable round-trip rules:
+//   - H1 emits `# {display_label} — Diagnostic Guideline`; the parser
+//     strips the trailing ` — Diagnostic Guideline` suffix so display_label
+//     round-trips literally.
+//   - Prose body is emitted verbatim (no normalization). The parser's
+//     blank-line collapse is a no-op when there are no consecutive blanks.
+//   - Trailing `---` HR terminates the parser; the HTML comment after is
+//     informational only and parser-ignored.
+//
+// EMPTY-STATE BEHAVIOR (research-02 §Open #1):
+// When no row exists yet for (shop, category), this exporter returns
+// `{ md_content: "", row_count: 0 }` — the UI uses row_count===0 as a sentinel
+// to seed a new doc rather than render invalid (parser-rejecting) MD.
+// Emitting a placeholder scaffold was considered + deferred (UI concern, not
+// exporter concern).
+//
+// CRITICAL — per ADR-025 this exporter is for the admin-app UI ONLY. It is
+// NOT the byte-parity source for the staleness check. The canonical-state
+// byte-parity contract is between `canonical_state_concern_category_guideline`
+// (plpgsql, E1b) and `computeCanonicalAfterState({kind: 'concern_category_guidelines'})`
+// (TS, E2). The two formats are intentionally divergent (UI vs staleness).
+
+export interface ExportConcernCategoryGuidelineState {
+  display_label: string;
+  guideline_prose: string;
+}
+
+/**
+ * Pure serializer — does NOT touch the SupabaseClient. Unit-testable per
+ * PLAN §5 + research-02 §Q8. Emits an MD doc that round-trips through
+ * `parseConcernCategoryGuidelineMd`. The shopId + categorySlug are folded
+ * into the trailing HTML comment only (parser-ignored) for debugging.
+ */
+export function serializeConcernCategoryGuidelineMd(
+  state: ExportConcernCategoryGuidelineState,
+  shopId: number,
+  categorySlug: string,
+): string {
+  return [
+    `# ${state.display_label} — Diagnostic Guideline`,
+    "",
+    state.guideline_prose,
+    "",
+    "---",
+    "",
+    `<!-- exported from concern_category_guidelines (shop_id=${shopId}, category=${categorySlug}) -->`,
+    "",
+  ].join("\n");
+}
+
+/**
+ * DB-reading exporter for one (shop_id, category) guideline row. When no
+ * row exists yet (UI hasn't seeded one), returns
+ * `{ md_content: "", row_count: 0 }` — the empty md_content is a sentinel
+ * for "no guideline yet" so the UI can switch into a seed-new flow rather
+ * than render parser-rejecting MD.
+ */
+export async function exportConcernCategoryGuidelineMd(
+  sb: SupabaseClient,
+  shopId: number,
+  args: { category_slug: string },
+): Promise<{ md_content: string; row_count: number }> {
+  if (!CONCERN_CATEGORY_SLUGS.includes(args.category_slug as ConcernCategorySlug)) {
+    throw new Error(
+      `category_slug must be one of: ${CONCERN_CATEGORY_SLUGS.join(", ")}`,
+    );
+  }
+  const categorySlug = args.category_slug as ConcernCategorySlug;
+
+  const { data, error } = await sb
+    .from("concern_category_guidelines")
+    .select("display_label, guideline_prose")
+    .eq("shop_id", shopId)
+    .eq("category", categorySlug)
+    .maybeSingle();
+  if (error) {
+    throw new Error(
+      `concern_category_guidelines export failed: ${error.message}`,
+    );
+  }
+  if (!data) {
+    // No row yet — return the empty sentinel. UI uses row_count===0 to seed
+    // a new doc rather than render invalid MD.
+    return { md_content: "", row_count: 0 };
+  }
+
+  const state: ExportConcernCategoryGuidelineState = {
+    display_label: data.display_label as string,
+    guideline_prose: data.guideline_prose as string,
+  };
+  return {
+    md_content: serializeConcernCategoryGuidelineMd(state, shopId, categorySlug),
+    row_count: 1,
+  };
+}
+
+// ─── listSchedulerAdminAuditLog (E7 — 2026-05-26) ────────────────────────────
+//
+// Per ADR-021 + PLAN §6. Returns up to `limit` (default 10, max 50) recent
+// scheduler_admin_audit_log rows for the caller shop, with a per-row
+// `revert_eligibility` hint computed TS-side from cheap predicates (9 reasons
+// — STRICT SUBSET of the ADR-007 canonical reason_code enum). The eligibility
+// hint is NON-AUTHORITATIVE: the UI uses it to enable/disable a Revert button,
+// but the authoritative eligibility answer always comes from invoking
+// revert_md_upload_attempt directly (which surfaces drift / token-mismatch /
+// attempt-time rejections via ADR-008's classifier).
+//
+// SQL surface filter lives in the SECURITY DEFINER RPC
+// `list_scheduler_admin_audit_log_filtered` (migration 20260526000600). The
+// RPC handles the ADR-021 conditional COALESCE fallback + JSONB `?` existence
+// operator with positional binding the PostgREST builder can't easily express.
+
+/** ADR-021 §"Part 2 — reasons union (9 values, STRICT SUBSET of ADR-007)". */
+export type RevertEligibilityReason =
+  | "not_upload_md"
+  | "snapshot_pruned"
+  | "no_snapshot"
+  | "table_not_supported"
+  | "upload_failed"
+  | "successor_revert_exists"
+  | "over_30_day_cutoff"
+  | "shop_id_unknown_pre_migration_backfill"
+  | "cannot_safely_verify";
+
+export interface RevertEligibility {
+  is_revertable: boolean;
+  reasons: RevertEligibilityReason[];
+}
+
+/** Output shape per ADR-021 §6.3. `occurred_at` matches the DB column name. */
+export interface AuditLogEntry {
+  id: number;
+  occurred_at: string;
+  table_name: string;
+  operation: string;
+  shop_id: number | null;
+  user_label: string | null;
+  oauth_client_id: string | null;
+  md_content_hash: string | null;
+  rows_added: number;
+  rows_modified: number;
+  rows_deactivated: number;
+  error_message: string | null;
+  diff_summary: Record<string, unknown> | null;
+  successor_revert_id: number | null;
+  reverts_upload_id: number | null;
+  revert_eligibility: RevertEligibility;
+}
+
+export interface ListSchedulerAdminAuditLogResult {
+  rows: AuditLogEntry[];
+  total_returned: number;
+}
+
+/**
+ * Logical surface → physical table_name mapping per ADR-021. Five logical
+ * surfaces (subcategory_descriptions, subcategory_service_map, concern_
+ * subcategories share concern_subcategories; question_required_facts +
+ * concern_questions share concern_questions). The wrapper passes BOTH the
+ * logical surface (matched by modern rows via diff_summary->surfaces) AND
+ * the physical table (legacy-row fallback) so the conditional SQL clause
+ * can disambiguate.
+ */
+type SurfaceFilter =
+  | "routine_services"
+  | "testing_services"
+  | "subcategory_descriptions"
+  | "subcategory_service_map"
+  | "question_required_facts"
+  | "concern_questions"
+  | "concern_subcategories"
+  | "concern_category_guidelines"
+  | "appointment_default_limits"
+  | "closed_dates";
+
+const SURFACE_TO_TABLE: Record<SurfaceFilter, string> = {
+  routine_services: "routine_services",
+  testing_services: "testing_services",
+  subcategory_descriptions: "concern_subcategories",
+  subcategory_service_map: "concern_subcategories",
+  question_required_facts: "concern_questions",
+  concern_questions: "concern_questions",
+  concern_subcategories: "concern_subcategories",
+  concern_category_guidelines: "concern_category_guidelines",
+  appointment_default_limits: "appointment_default_limits",
+  closed_dates: "closed_dates",
+};
+
+/**
+ * The 10 snapshot kinds the revert dispatch (E1b-e) knows how to handle.
+ * Mirror of `SnapshotKind` in scheduler-admin-md.ts — kept locally for the
+ * cheap eligibility predicate's `table_not_supported` check. Drift between
+ * this set and the dispatch's CASE branches surfaces at attempt-time as
+ * `snapshot_kind_unknown` (ADR-011 reclassifies to `crashed`); the list-tool
+ * surfaces it pre-flight as `table_not_supported`.
+ */
+const KNOWN_SNAPSHOT_KINDS: ReadonlySet<string> = new Set<string>([
+  "testing_services_v2",
+  "routine_services_v2",
+  "concern_subcategories_descriptions_v2",
+  "concern_subcategories_map_v2",
+  "concern_questions_required_facts_v2",
+  "concern_questions_flat",
+  "concern_questions_per_category",
+  "concern_category_guidelines",
+  "appointment_default_limits",
+  "closed_dates_future",
+]);
+
+/**
+ * Resolve snapshot_kind from a raw audit row. Modern rows carry
+ * `diff_summary.kind` explicitly (added with the v2 dispatch). Legacy rows
+ * lack it; fall back to a table_name-based heuristic for the two legacy
+ * V1 tables that still write audit rows (testing_services + routine_services
+ * per the revert-of-V2 path); everything else returns null → caller surfaces
+ * `table_not_supported`.
+ */
+function resolveSnapshotKind(
+  diffSummary: Record<string, unknown> | null,
+  tableName: string,
+): string | null {
+  // Prefer explicit kind on modern rows.
+  if (
+    diffSummary &&
+    typeof (diffSummary as { kind?: unknown }).kind === "string"
+  ) {
+    const k = (diffSummary as { kind: string }).kind;
+    return KNOWN_SNAPSHOT_KINDS.has(k) ? k : null;
+  }
+  // Legacy fallback for the two pre-v2 catalog tables (the only ones whose
+  // historical rows have no diff_summary.kind but DO have a valid snapshot
+  // shape — testing_services + routine_services). Everything else without
+  // diff_summary.kind returns null → `table_not_supported`.
+  if (tableName === "testing_services") return "testing_services_v2";
+  if (tableName === "routine_services") return "routine_services_v2";
+  return null;
+}
+
+/** Shape of `pre_state_snapshot` we care about for the cannot_safely_verify
+ *  cheap check. We never deserialize the full snapshot here — only inspect
+ *  the two hash-related fields. */
+interface SnapshotShape {
+  after_hash?: unknown;
+  expected_after_state_canonical?: unknown;
+  // … (other fields irrelevant to the cheap predicate)
+}
+
+/**
+ * Compute per-row revert eligibility from cheap predicates per ADR-021.
+ * ALL predicates are O(1) audit-row column reads except `successor_revert_exists`
+ * which we batch resolve in a single follow-up query (passed in via
+ * `successorRevertExists`).
+ */
+function computeRevertEligibility(args: {
+  operation: string;
+  preStateSnapshot: SnapshotShape | null;
+  snapshotPrunedAt: string | null;
+  errorMessage: string | null;
+  occurredAt: string;
+  shopId: number | null;
+  diffSummary: Record<string, unknown> | null;
+  tableName: string;
+  successorRevertExists: boolean;
+}): RevertEligibility {
+  const reasons: RevertEligibilityReason[] = [];
+
+  // 1. operation !== 'upload_md' → not_upload_md (blocks revert-of-revert chains)
+  if (args.operation !== "upload_md") {
+    reasons.push("not_upload_md");
+  }
+
+  // 2. snapshot_pruned_at IS NOT NULL → snapshot_pruned (30-day retention)
+  if (args.snapshotPrunedAt !== null) {
+    reasons.push("snapshot_pruned");
+  }
+
+  // 3. pre_state_snapshot IS NULL → no_snapshot (apply failed before snapshot,
+  //    or pre-2026-05-19 legacy row)
+  if (args.preStateSnapshot === null) {
+    reasons.push("no_snapshot");
+  }
+
+  // 4. error_message IS NOT NULL on the upload row → upload_failed
+  //    (NOT the v0.5-removed 'failed' revert-attempt outcome — this is the
+  //     original upload's partial-write failure)
+  if (args.errorMessage !== null) {
+    reasons.push("upload_failed");
+  }
+
+  // 5. occurred_at < now() - INTERVAL '30 days' → over_30_day_cutoff
+  //    (per ADR-007 naming: no leading digits)
+  const occurredMs = Date.parse(args.occurredAt);
+  const cutoffMs = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  if (!Number.isNaN(occurredMs) && occurredMs < cutoffMs) {
+    reasons.push("over_30_day_cutoff");
+  }
+
+  // 6. shop_id IS NULL OR shop_id <= 0 → shop_id_unknown_pre_migration_backfill
+  //    (Migration A leaves shop_id NULL on historical rows; backfill PHASE 2
+  //     sets sentinel -1 for rows whose shop_id couldn't be derived;
+  //     Migration B then flips to NOT NULL + CHECK (shop_id > 0 OR shop_id = -1).
+  //     This check covers both intermediate states.)
+  if (args.shopId === null || args.shopId <= 0) {
+    reasons.push("shop_id_unknown_pre_migration_backfill");
+  }
+
+  // 7. snapshot_kind unresolvable → table_not_supported
+  //    (The 10 known kinds match the dispatch CASE branches; anything else
+  //     is a pre-v2 row for a table the revert system never learned about.)
+  const snapshotKind = resolveSnapshotKind(args.diffSummary, args.tableName);
+  if (snapshotKind === null) {
+    reasons.push("table_not_supported");
+  }
+
+  // 8. successor_revert_exists (batched O(1) lookup) — caller has already
+  //    queried reverts_upload_id IN (...) for the result set.
+  if (args.successorRevertExists) {
+    reasons.push("successor_revert_exists");
+  }
+
+  // 9. snapshot present but missing BOTH after_hash AND
+  //    expected_after_state_canonical → cannot_safely_verify
+  //    (Same enum the inner revert RPC surfaces at attempt time when
+  //     force_no_after_hash was NOT passed — drift-detection impossible.)
+  if (args.preStateSnapshot !== null) {
+    const hasAfterHash = args.preStateSnapshot.after_hash != null;
+    const hasCanonical =
+      args.preStateSnapshot.expected_after_state_canonical != null;
+    if (!hasAfterHash && !hasCanonical) {
+      reasons.push("cannot_safely_verify");
+    }
+  }
+
+  return {
+    is_revertable: reasons.length === 0,
+    reasons,
+  };
+}
+
+export interface ListSchedulerAdminAuditLogArgs {
+  surface_filter?: SurfaceFilter;
+  limit?: number;
+  only_successful?: boolean;
+  only_revertable?: boolean;
+}
+
+/**
+ * Edge-callable list tool. Fetches up to `limit` recent audit rows for the
+ * caller shop via the SECURITY DEFINER RPC, then computes per-row
+ * revert_eligibility from cheap predicates. The `only_revertable` filter
+ * runs TS-side AFTER eligibility computation so the full 9-reason union is
+ * available — the SQL layer cannot express the same logic without per-row
+ * canonical reads (deferred to the authoritative revert_md_upload_attempt
+ * call per ADR-021).
+ */
+export async function listSchedulerAdminAuditLog(
+  sb: SupabaseClient,
+  shopId: number,
+  args: ListSchedulerAdminAuditLogArgs,
+): Promise<ListSchedulerAdminAuditLogResult> {
+  const limit = args.limit ?? 10;
+  const onlySuccessful = args.only_successful ?? false;
+  const onlyRevertable = args.only_revertable ?? false;
+  const surfaceFilter = args.surface_filter ?? null;
+  const tableFilter =
+    surfaceFilter !== null ? SURFACE_TO_TABLE[surfaceFilter] : null;
+
+  const { data: rawRows, error: rpcError } = await sb.rpc(
+    "list_scheduler_admin_audit_log_filtered",
+    {
+      p_shop_id: shopId,
+      p_surface_filter: surfaceFilter,
+      p_table_filter: tableFilter,
+      p_only_successful: onlySuccessful,
+      p_limit: limit,
+    },
+  );
+  if (rpcError) {
+    throw new Error(
+      `list_scheduler_admin_audit_log RPC failed: ${rpcError.message}`,
+    );
+  }
+  const rowsRaw = (rawRows ?? []) as Array<{
+    id: number;
+    occurred_at: string;
+    table_name: string;
+    operation: string;
+    shop_id: number | null;
+    user_label: string | null;
+    oauth_client_id: string | null;
+    md_content_hash: string | null;
+    rows_added: number;
+    rows_modified: number;
+    rows_deactivated: number;
+    error_message: string | null;
+    diff_summary: Record<string, unknown> | null;
+    pre_state_snapshot: SnapshotShape | null;
+    snapshot_pruned_at: string | null;
+    successor_revert_id: number | null;
+    reverts_upload_id: number | null;
+  }>;
+
+  // ─── Successor-revert existence: one O(1) batched IN-list query ──────
+  // For each upload row in the result set, check whether any audit row
+  // with operation='revert_upload' AND reverts_upload_id = this.id exists.
+  // We only care about upload_md rows (revert rows can't be re-reverted),
+  // so scope the IN-list to those. Also bound to the same shop_id for
+  // multi-tenant safety even though RLS would already filter.
+  const uploadIds = rowsRaw
+    .filter((r) => r.operation === "upload_md")
+    .map((r) => r.id);
+  const successorSet = new Set<number>();
+  if (uploadIds.length > 0) {
+    const { data: successorRows, error: successorErr } = await sb
+      .from("scheduler_admin_audit_log")
+      .select("reverts_upload_id")
+      .eq("shop_id", shopId)
+      .eq("operation", "revert_upload")
+      .is("error_message", null)
+      .in("reverts_upload_id", uploadIds);
+    if (successorErr) {
+      throw new Error(
+        `successor-revert lookup failed: ${successorErr.message}`,
+      );
+    }
+    for (const row of (successorRows ?? []) as Array<{
+      reverts_upload_id: number | null;
+    }>) {
+      if (row.reverts_upload_id !== null) {
+        successorSet.add(row.reverts_upload_id);
+      }
+    }
+  }
+
+  // ─── Compute eligibility per row ─────────────────────────────────────
+  const enriched: AuditLogEntry[] = rowsRaw.map((r) => {
+    const revert_eligibility = computeRevertEligibility({
+      operation: r.operation,
+      preStateSnapshot: r.pre_state_snapshot,
+      snapshotPrunedAt: r.snapshot_pruned_at,
+      errorMessage: r.error_message,
+      occurredAt: r.occurred_at,
+      shopId: r.shop_id,
+      diffSummary: r.diff_summary,
+      tableName: r.table_name,
+      successorRevertExists: successorSet.has(r.id),
+    });
+    return {
+      id: r.id,
+      occurred_at: r.occurred_at,
+      table_name: r.table_name,
+      operation: r.operation,
+      shop_id: r.shop_id,
+      user_label: r.user_label,
+      oauth_client_id: r.oauth_client_id,
+      md_content_hash: r.md_content_hash,
+      rows_added: r.rows_added,
+      rows_modified: r.rows_modified,
+      rows_deactivated: r.rows_deactivated,
+      error_message: r.error_message,
+      diff_summary: r.diff_summary,
+      successor_revert_id: r.successor_revert_id,
+      reverts_upload_id: r.reverts_upload_id,
+      revert_eligibility,
+    };
+  });
+
+  // ─── TS-side only_revertable filter (uses the full reasons union) ────
+  // Cannot push this into the SQL layer per ADR-021 — successor-revert is
+  // a follow-up query, snapshot_kind resolution is JS-side, and the
+  // cannot_safely_verify predicate inspects snapshot internals.
+  const filtered = onlyRevertable
+    ? enriched.filter((r) => r.revert_eligibility.is_revertable)
+    : enriched;
+
+  return {
+    rows: filtered,
+    total_returned: filtered.length,
+  };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// E5 (2026-05-26): the prior local `logAdminAudit()` helper has been REMOVED.
+// All 36 prior inline `logAdminAudit(...)` call sites in this file now route
+// through the E2 `logAuditEntry()` helper (which REQUIRES shopId — closes the
+// historical "may forget shop_id" footgun documented in scheduler-admin-md.ts
+// comments + Migration A/B hardening). Error-path inserts go through the local
+// `_logAuditError()` shorthand (above); happy-path inserts inline the full call
+// so the snapshot + diff_summary + counts stay adjacent to the data they
+// describe. See ROUND-6-RESIDUALS E2-N2 + this E5 refactor for the migration
+// audit. The 5 LEGACY uploaders (uploadConcernQuestionsMd, uploadConcernCategoryMd,
+// uploadConcernCategoryGuidelineMd, uploadAppointmentDefaultLimitsMd,
+// uploadClosedDatesMd) write their happy-path audit row INSIDE the apply RPC
+// (atomic with mutations) per PLAN §4 + E1f migration 20260526000500.
+// ════════════════════════════════════════════════════════════════════════════

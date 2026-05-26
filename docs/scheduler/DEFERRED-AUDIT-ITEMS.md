@@ -634,6 +634,394 @@ trigger
   'appointments-sync'))` at the top of the function body.
 - **Source** — R4 Stream C IMPORTANT-C-4.
 
+### OBS-10 · Postgres major-version JSONB canonical-serialization stability (NEW 2026-05-26 per ADR-025 + E1b-author Open Item #4)
+
+- **What** — `canonical_state_concern_questions_flat` (and any future
+  `canonical_state_<kind>` that includes a JSONB-as-TEXT column via
+  `jsonb_column::TEXT`) relies on Postgres's `jsonb::text` serializer being
+  byte-stable across versions. The serializer is documented canonical
+  (key-sorted, no whitespace, NULL → "null", numbers normalized) and stable
+  within a single Postgres major version. If a major-version upgrade ever
+  changes the canonical-JSONB text format, EVERY existing audit row's
+  `expected_after_state_canonical` for `concern_questions_flat` becomes
+  stale and the next revert on any of those rows fails with
+  `current_state_drift` even though no data changed.
+- **Why deferred** — Postgres canonical-JSONB has been stable since 9.4
+  (the JSONB type's introduction). No major-version change in the
+  foreseeable Supabase upgrade path has been announced as changing the
+  serializer. Risk is real but bounded.
+- **Operator response if it materializes** — when a planned Postgres
+  upgrade is scheduled: (a) take a known-good `concern_questions_flat`
+  row before upgrade, record its `canonical_state_concern_questions_flat`
+  output, (b) take the same row's output after upgrade, (c) if byte-drift,
+  defer the upgrade OR run a backfill script that recomputes
+  `expected_after_state_canonical` for every affected audit row before the
+  upgrade lands in prod.
+- **When to revisit** — only at planned Postgres major-version upgrade
+  time (test sandbox + prod). Routine reads of this item are not needed.
+- **Source** — scheduler-edge-parity E1b dispatch-author Open Item #4
+  (2026-05-26 sub-agent abc71e5a185ae9426).
+
+### SEC-18 · Rename `actor_email` → `actor_label` + add separate strict-email `actor_email` column with CHECK + identity-resolution backfill (NEW 2026-05-26)
+
+- **What** — `scheduler_admin_audit_log.actor_email` and
+  `scheduler_admin_revert_attempts.actor_email` are named `actor_email`
+  but their actual semantic is "human-readable operator label" — callers
+  pass either an email OR a `display_name` (see ADR-010 actor_email row
+  for the honest naming note). Sentry tags, alert rules, and notification
+  paths cannot assume RFC-5322 email shape on these columns.
+- **Why deferred** — Phase 1 inherits the existing column name from the
+  pre-feature audit_log schema. Renaming + splitting requires (a) DDL on
+  a live table, (b) re-deriving canonical emails from the OAuth identity
+  provider for every historical row, (c) updating every writer (orchestrator-mcp,
+  admin-app, future surfaces) to populate BOTH columns, (d) updating every
+  reader (Sentry tag emitters, manual review emails, future notification
+  surfaces) to choose between strict-email and label semantics correctly.
+  Out of scope for Phase 1; tracked here for a future hardening pass.
+- **Proposed migration shape** (when this becomes important):
+  1. ADD COLUMN `actor_label TEXT NULL` on both tables.
+  2. Backfill `actor_label = actor_email` (copy current value verbatim —
+     it's already the human-readable label).
+  3. SET NOT NULL on `actor_label` once backfill verified.
+  4. UPDATE all writer paths to populate `actor_label` (the human-readable
+     label) AND `actor_email` (strict email when available, else NULL).
+  5. ADD CHECK constraint on `actor_email` enforcing RFC-5322 shape via
+     a regex CHECK (or NULL).
+  6. Backfill `actor_email` from OAuth identity provider lookups where
+     possible; leave NULL where unresolvable.
+  7. UPDATE all reader paths: Sentry tags use `actor_label`; notification
+     send-paths require non-NULL `actor_email`.
+- **When to revisit** — (a) when project policy adds "strict email
+  format" or "no PII in Sentry" requirements; (b) when a notification
+  send-path needs to email an operator and discovers the
+  display-name-in-email-column footgun; (c) as part of any future
+  audit_log schema refactor pass.
+- **Source** — scheduler-edge-parity ADR-Fix #11 (2026-05-26), Gemini
+  cross-verify chunk-1 BLOCKER "Data integrity violation in `actor_email`
+  field" + ADR-010 actor_email row honest naming note.
+
+### SEC-17 · Forward-looking guard — future surface writers must adopt Phase 1 per-`(shop_id, snapshot_kind)` surface advisory lock (NEW 2026-05-26)
+
+- **What** — `scheduler-edge-parity` Phase 1's `lock_targets_for_kind` helper
+  takes a mandatory Phase 1 per-`(shop_id, snapshot_kind)` surface advisory
+  lock as its first action (added 2026-05-26 ADR-Fix #7 to close the
+  Gemini-chunk-2 BLOCKER "Lock scope is narrower than canonicalization read
+  scope"). This serializes ALL surface writers within the same
+  (shop_id, kind) while a revert holds the lock. The serialization is
+  load-bearing for staleness-check correctness: without it, a concurrent
+  admin write to ANY row in the same surface (even a row outside the
+  snapshot's per-row scope) drifts the canonical-current value and produces
+  false-positive `current_state_drift` rejections — OR worse, lets a
+  concurrent insert/delete materialize that the snapshot's `expected_after_state_canonical`
+  did not anticipate, breaking the apply-vs-revert byte-parity contract.
+- **Future risk** — any new code path that mutates a Phase-1 surface
+  (admin tools, cron jobs, future apply RPCs for new uploaders, edge
+  functions, manual operator UPDATEs) MUST take the SAME per-`(shop_id, kind)`
+  surface advisory lock BEFORE mutating. If a new writer forgets, it
+  bypasses the revert path's serialization and reintroduces the
+  lock-scope-vs-read-scope mismatch class.
+- **In-scope existing writers — V2 TS uploader retrofit (NEW 2026-05-26 per ADR-Fix #23)**:
+  the 5 pre-existing V2 TypeScript upload paths DO NOT take Phase 1 surface
+  lock and therefore can drift the V2 surfaces' canonical-current state
+  during a concurrent V2 revert (false-positive `current_state_drift`):
+  - `_uploadCatalogV2('testing_services', ...)` → surface `testing_services_v2`
+  - `_uploadCatalogV2('routine_services', ...)` → surface `routine_services_v2`
+  - `uploadSubcategoryDescriptionsMdV2` → surface `concern_subcategories_descriptions_v2`
+  - `uploadSubcategoryServiceMapMdV2` → surface `concern_subcategories_map_v2`
+  - `uploadQuestionRequiredFactsMdV2` → surface `concern_questions_required_facts_v2`
+  Two viable retrofits (operator's choice when SEC-17 is addressed):
+  (a) thin RPC wrapper exposing `lock_surface_for_kind` to service_role
+  callers (override the ADR-005 internal-set NO-GRANT for THIS function
+  via a documented exception), invoked by the V2 TS uploaders before any
+  Supabase mutation; OR (b) migrate the 5 V2 paths to Pattern-S-style
+  plpgsql apply RPCs (matches the 5 NEW apply RPCs from this feature).
+  Option (b) is the canonical long-term direction (consolidates the
+  upload contract across all 10 surfaces); option (a) is the cheaper
+  short-term mitigation if V2 retrofit is operationally urgent before
+  Pattern-S-conversion bandwidth is available.
+- **Why deferred** — Phase 1 ships only the revert dispatch helper +
+  the apply RPCs already in scope (5 legacy uploaders). Existing surface
+  writers OUTSIDE this feature (e.g., Tekmetric webhook handlers that
+  write closed_dates indirectly, manual operator scripts) are not yet
+  audited. Phase 1's surface-lock fix closes the revert-path correctness
+  hole; the audit-and-adopt sweep for OTHER surface writers is a separate
+  cross-cutting workstream.
+- **Adoption pattern** (verbatim from ADR-024 Phase 1):
+  ```sql
+  -- BEFORE any row mutation on a Phase-1 surface, inside a SECURITY
+  -- DEFINER function (or service_role transaction) that knows the kind:
+  PERFORM pg_advisory_xact_lock(
+    p_shop_id::INT,                       -- high 32 bits: tenant scope
+    hashtext('surface:' || p_kind)        -- low 32 bits:  kind-namespaced surface scope
+  );
+  -- ... then mutate.
+  ```
+  Two-arg form keeps shop_id in the high 32 bits so cross-shop collisions
+  are structurally impossible; the kind-namespaced surface hash prevents
+  cross-surface collisions within a shop. The `'surface:'` prefix matches
+  ADR-024 verbatim.
+- **When to revisit** — (a) when a new code path is added that mutates
+  any of the 10 Phase-1 surfaces (testing_services, routine_services,
+  concern_subcategories descriptions/map, concern_questions required_facts/flat,
+  concern_questions per-category, concern_category_guidelines,
+  appointment_default_limits, closed_dates_future); (b) when a
+  silent-overwrite incident is observed in production; (c) as part of a
+  cross-cutting audit when scheduler usage scales beyond single-shop /
+  single-admin.
+- **Source** — scheduler-edge-parity ADR-Fix #7 (2026-05-26), Gemini
+  cross-verify chunk-2 BLOCKER "Lock scope is narrower than canonicalization
+  read scope, breaking staleness detection"
+  (`.claude/work/ai-review-2026-05-26T15-08-15Z.md`).
+
+### SEC-16 · Trigger on `scheduler_admin_revert_attempts` enforcing `shop_id = referenced upload.shop_id` (NEW 2026-05-26)
+
+- **What** — `scheduler-edge-parity` Phase 1's
+  `scheduler_admin_revert_attempts.shop_id` and `upload_id` are stored
+  independently. The FK on `upload_id` enforces row existence; the new
+  `shop_id > 0` CHECK (X-FIX-#27) enforces positivity. But the schema
+  does NOT enforce that `attempts.shop_id` equals
+  `scheduler_admin_audit_log[attempts.upload_id].shop_id`. The outer RPC's
+  STEP 0d pre-check enforces this at insert time (closes Fix #12 gap),
+  but direct service_role writes or manual operator UPDATEs could create
+  inconsistent rows.
+- **Why deferred** — same shape as SEC-14 (`revert_audit_log_id`
+  semantics): the outer RPC is the only writer under current design;
+  the semantic correctness comes from construction, not enforcement.
+  Trigger would be defense against (a) future writers that don't yet
+  exist, (b) operator backfill/triage UPDATEs.
+- **Proposed trigger** (when this becomes important):
+  ```sql
+  CREATE OR REPLACE FUNCTION public.scheduler_admin_revert_attempts_validate_shop_match_trg()
+  RETURNS TRIGGER
+  LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, extensions, public
+  AS $$
+  DECLARE
+    v_upload_shop_id INTEGER;
+  BEGIN
+    SELECT shop_id INTO v_upload_shop_id
+      FROM public.scheduler_admin_audit_log
+      WHERE id = NEW.upload_id;
+    IF v_upload_shop_id IS NULL THEN
+      RAISE EXCEPTION 'scheduler_admin_revert_attempts: upload_id=% has no audit-log row',
+        NEW.upload_id USING ERRCODE = '23503';
+    END IF;
+    IF v_upload_shop_id <> NEW.shop_id THEN
+      RAISE EXCEPTION 'scheduler_admin_revert_attempts: shop_id=% does not match upload_id=% audit-log shop_id=%',
+        NEW.shop_id, NEW.upload_id, v_upload_shop_id USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+  END;
+  $$;
+  CREATE TRIGGER scheduler_admin_revert_attempts_validate_shop_match
+    BEFORE INSERT OR UPDATE OF upload_id, shop_id
+    ON public.scheduler_admin_revert_attempts
+    FOR EACH ROW
+    EXECUTE FUNCTION public.scheduler_admin_revert_attempts_validate_shop_match_trg();
+  ```
+- **When to revisit** — same triggers as SEC-14: when admin-app adds
+  operator-facing UPDATE surfaces on `scheduler_admin_revert_attempts`,
+  OR when a non-RPC writer starts touching this table.
+- **Source** — scheduler-edge-parity Plan v0.5+IMPORTANTs+round3
+  X-FIX-#27 (2026-05-26), GPT round-3 chunk 2 IMPORTANT "The attempts
+  table does not enforce that attempts.shop_id matches the referenced
+  upload row".
+
+### SEC-15 · Phase 1.5 — Extend `lock_targets_for_kind` advisory key-namespace locks to all non-closed_dates handler kinds + 5 apply RPCs (NEW 2026-05-26)
+
+- **What** — `scheduler-edge-parity` Phase 1's `lock_targets_for_kind` helper
+  takes per-key advisory locks ONLY for `closed_dates_future`. The 9 other
+  handler kinds + the 5 apply RPCs rely on `SELECT … FOR UPDATE` for
+  existing rows. Per the absent-key TOCTOU analysis (PLAN.md §8.2
+  Invariant 2 X-FIX-#25 2026-05-26), this leaves a race window for:
+  1. UPSERT-restore of a row whose original upload DELETED it (revert
+     paths for soft-delete handlers — `revert_testing_services_v2`,
+     `revert_routine_services_v2`, `revert_concern_questions_flat`,
+     `revert_concern_category_upload`)
+  2. Apply-RPC INSERT of a new key not present in `p_snapshot.before`
+     (apply paths — `apply_concern_questions_flat_upload`,
+     `apply_concern_category_upload`, `apply_concern_category_guideline_upload`,
+     `apply_appointment_default_limits_upload`)
+  The race is between the inner RPC's step-6 hash check (or apply RPC's
+  hash re-verify) and the handler's UPSERT/INSERT — a concurrent same-shop
+  transaction can INSERT into the gap and the handler silently overwrites
+  via `ON CONFLICT (id) DO UPDATE WHERE shop_id = p_shop_id`.
+- **Why deferred** — Phase 1 has shipped 19 BLOCKERs + IMPORTANTs already;
+  adding this fix would add ~50-100 lines of new SQL across 14 sites (9
+  helper branches + 5 apply RPCs) plus sorted-key acquisition order to
+  avoid deadlocks plus concurrent-insert race tests for each kind.
+  Operational risk is bounded by current single-shop, single-admin-at-a-time
+  deployment. Phase 1.5 is the pragmatic landing window — after Phase 1
+  burns in and either confirms the race materializes (priority) or
+  confirms it doesn't (lower priority).
+- **Implementation pattern** (proven by `closed_dates_future` branch):
+  ```sql
+  -- In each lock_targets_for_kind branch, BEFORE the SELECT … FOR UPDATE,
+  -- take per-key advisory locks in sorted-key order:
+  PERFORM pg_advisory_xact_lock(
+    p_shop_id::INT,
+    hashtext('<kind>:' || k::TEXT)
+  ) FROM (
+    SELECT k FROM unnest(<keys_array>) AS k
+    ORDER BY k                              -- sorted to avoid deadlock
+  ) AS sorted_keys;
+  ```
+  The two-arg form (X-FIX-#16/#24) keeps shop_id in the high 32 bits +
+  key hash in the low 32 bits → cross-shop collision impossible. Same
+  pattern in the apply RPCs for keys in `p_diff.added ∪ p_diff.modified`.
+- **Race-detection bridge** (audit-log forensics until Phase 1.5 ships):
+  any unexpected `revert_audit_log_id` chain OR an `expected_after_state_canonical`
+  that doesn't match the original apply's `expected_after_state_canonical`
+  in the audit log suggests concurrent overwrite happened. Operators
+  should monitor for these anomalies. If observed, expedite Phase 1.5.
+- **When to revisit** — (a) immediately if any silent-overwrite incident
+  is observed in production, (b) routinely as part of Phase 1.5 planning
+  once Phase 1 has been live for 30+ days, (c) if the deployment scales
+  beyond single-shop / single-admin (concurrent admin sessions amplify
+  the race probability).
+- **Source** — scheduler-edge-parity Plan v0.5+IMPORTANTs+round3
+  X-FIX-#25 (2026-05-26), GPT round-3 chunk 3 BLOCKER + chunk 4 BLOCKER.
+
+### SEC-14 · Trigger on `scheduler_admin_revert_attempts.revert_audit_log_id` for operation/upload/shop/error semantics (NEW 2026-05-26)
+
+- **What** — `scheduler-edge-parity` Phase 1's
+  `scheduler_admin_revert_attempts.revert_audit_log_id` column has a plain
+  FK to `scheduler_admin_audit_log(id)` that enforces row existence but NOT:
+  - `operation = 'revert_upload'`
+  - `reverts_upload_id = this attempt's upload_id`
+  - `shop_id = this attempt's shop_id`
+  - `error_message IS NULL` (successful revert)
+  The outer RPC (`revert_md_upload_attempt`) sets this column by
+  construction to the inner RPC's just-INSERTed audit row id, so the value
+  is correct on the happy path. GPT chunk 2 IMPORTANT #35 flagged that this
+  is not schema-enforced — a future manual/operator UPDATE could write a
+  wrong audit_log_id.
+- **Why deferred** — the outer RPC is the only writer of this column under
+  current design. The semantic correctness comes from construction, not
+  enforcement. Adding a trigger would be defense against (a) future writers
+  that don't yet exist, (b) operator backfill/triage UPDATEs. Both surfaces
+  are narrow and not currently in scope for the Phase 1 ship.
+- **Proposed trigger** (when this becomes important — e.g., when admin-app
+  adds an operator triage surface that can mutate attempt rows):
+  ```sql
+  CREATE OR REPLACE FUNCTION public.scheduler_admin_revert_attempts_validate_audit_id_trg()
+  RETURNS TRIGGER
+  LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public
+  AS $$
+  BEGIN
+    IF NEW.revert_audit_log_id IS NULL THEN RETURN NEW; END IF;
+    IF NOT EXISTS (
+      SELECT 1 FROM public.scheduler_admin_audit_log
+        WHERE id = NEW.revert_audit_log_id
+          AND operation = 'revert_upload'
+          AND reverts_upload_id = NEW.upload_id
+          AND shop_id = NEW.shop_id
+          AND error_message IS NULL
+    ) THEN
+      RAISE EXCEPTION 'revert_audit_log_id=% does not satisfy contract for attempt: '
+        'must be operation=revert_upload, reverts_upload_id=%, shop_id=%, '
+        'error_message IS NULL', NEW.revert_audit_log_id, NEW.upload_id, NEW.shop_id
+        USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+  END;
+  $$;
+  CREATE TRIGGER scheduler_admin_revert_attempts_validate_audit_id
+    BEFORE INSERT OR UPDATE OF revert_audit_log_id
+    ON public.scheduler_admin_revert_attempts
+    FOR EACH ROW WHEN (NEW.revert_audit_log_id IS NOT NULL)
+    EXECUTE FUNCTION public.scheduler_admin_revert_attempts_validate_audit_id_trg();
+  ```
+- **When to revisit** — when admin-app adds operator-facing UPDATE surfaces
+  on `scheduler_admin_revert_attempts`, OR when a non-RPC writer (cron job,
+  manual psql triage script) starts touching this column.
+- **Source** — scheduler-edge-parity Plan v0.5+10fixes+IMPORTANTs X-FIX-#13
+  (2026-05-26), GPT chunk 2 IMPORTANT #35.
+
+### SEC-13 · Schema-stability guard — natural unique constraints close the absent-key TOCTOU race (NEW 2026-05-26)
+
+- **What** — `scheduler-edge-parity` Phase 1's revert helper `lock_targets_for_kind`
+  uses `SELECT … FOR UPDATE` for non-closed_dates kinds. This locks
+  ROWS, not the KEY NAMESPACE. The absent-key TOCTOU race (row
+  doesn't exist at lock time → concurrent INSERT can fill the gap)
+  is closed for the in-scope snapshot_kinds because:
+  1. Hard-DELETE handlers (CCG, ADL) operate on rows that EXIST at
+     lock time (the apply created them), and the natural composite
+     unique constraints (CCG: PK `(shop_id, category)`; ADL: unique
+     `(shop_id, day_of_week)`) prevent concurrent INSERT of a
+     colliding row while our row holds the slot — Postgres index
+     lock fires `23505 unique_violation` on the concurrent INSERT.
+  2. UPSERT-from-before handlers where the row was concurrently
+     hard-deleted are caught by canonical drift detection at
+     inner-RPC step 6: the concurrent change alters the canonical
+     hash → drift fires → revert aborts.
+  3. `closed_dates_future` uses explicit per-date advisory locks
+     already (the only kind that needs them, because closed_dates
+     mutation paths exist outside the revert helper too).
+  Full analysis in `docs/scheduler/edge-parity/PLAN.md` §8.2 Invariant 2
+  "Absent-key TOCTOU analysis".
+- **Why deferred** — the analysis above shows the layered defense
+  (per-row `FOR UPDATE` + canonical drift detection + natural unique
+  constraints) closes the race for all realistic scenarios. Adding
+  advisory locks for the other kinds would add deadlock surface
+  without closing any unprotected gap. The ONLY scenario where the
+  race re-opens is if a future schema change DROPs one of the
+  natural composite unique constraints.
+- **Guard** — any migration that DROPs a tenant-scoped unique
+  constraint on a revert-target table (CCG `(shop_id, category)` PK,
+  ADL `(shop_id, day_of_week)` unique, CS `(shop_id, category, slug)`
+  unique, etc.) MUST simultaneously extend `lock_targets_for_kind` to
+  add per-natural-key advisory locks for that kind, OR explicitly
+  document the new acceptable race surface.
+- **When to revisit** — anytime a PR proposes `ALTER TABLE … DROP
+  CONSTRAINT` on any of the above tables. Add to code-review
+  checklist: *"Does this migration drop a (shop_id, …) unique
+  constraint? If yes, does the same PR also add advisory key-namespace
+  locks to `lock_targets_for_kind` for the affected snapshot_kind?"*
+- **Source** — scheduler-edge-parity Plan v0.5 X-FIX-#9 (2026-05-26),
+  GPT cross-verify finding "Apply RPC staleness re-checks do not
+  protect absent-key inserts" + "For non-closed-date tables,
+  `SELECT … FOR UPDATE` only locks rows that already exist".
+
+### SEC-12 · Forward-looking guard — `closed_dates` mutation paths must take per-date advisory lock (NEW 2026-05-26)
+
+- **What** — `scheduler-edge-parity` Phase 1 (this feature) makes
+  `closed_dates` mutation lock-coherent: both `apply_closed_dates_upload`
+  (RPC) and `revert_closed_dates_future` (revert handler) take the
+  per-(shop_id, date) transaction-scoped advisory lock
+  `pg_advisory_xact_lock(shop_id::INT, hashtext(closed_date::TEXT))` (2-arg 64-bit-key form per X-FIX-#16 2026-05-26)
+  in sorted-date order before touching `closed_dates` rows. After
+  Phase 1 lands, those are the ONLY mutation paths in the
+  codebase, and both lock — full two-sided serialization.
+- **Why deferred** — this is a forward-looking guard, not a
+  current code issue. There is no concurrent code path that
+  bypasses the lock today (verified 2026-05-26 grep
+  `INSERT INTO closed_dates|UPDATE closed_dates|DELETE FROM
+  closed_dates|.from("closed_dates")` across `supabase/`). v0.5
+  PLAN incorrectly cited `block_appointment_capacity` as the
+  at-risk concurrent path; that function writes to `appointment_blocks`,
+  NOT `closed_dates` — see X-FIX-#8 (2026-05-26) PLAN §5.5
+  correction.
+- **Guard** — any FUTURE code path that mutates `closed_dates`
+  (admin tools, cron jobs, edge functions, server actions, RPCs,
+  webhooks) MUST adopt the
+  `pg_advisory_xact_lock(shop_id::INT, hashtext(closed_date::TEXT))` (2-arg 64-bit-key form per X-FIX-#16 2026-05-26)
+  pattern before any INSERT/UPDATE/DELETE on a `(shop_id, date)`
+  row. Otherwise the serialization becomes one-sided and phantom
+  inserts re-open the X14 window (concurrent editor writes a
+  `(shop, date)` row between revert's staleness check and its
+  hard-DELETE; revert's `FOR UPDATE` on existing rows won't see
+  a row that doesn't exist yet, but the apply/revert
+  advisory-lock pattern blocks the phantom insert).
+- **Where it lives** — convention documented in
+  `docs/scheduler/edge-parity/PLAN.md` §5.5 + §8.3 lock helper.
+- **When to revisit** — anytime a PR introduces a new
+  `closed_dates` mutation path (currently 0 such paths exist
+  outside Phase 1). Add to code-review checklist:
+  *"Does this code mutate `closed_dates`? If yes, does it call
+  `pg_advisory_xact_lock(hashtext('closed_date:' || shop_id || ':' || date))`
+  in sorted-date order BEFORE the mutation?"*
+- **Source** — scheduler-edge-parity Plan v0.5 X-FIX-#8 (2026-05-26).
+
 ### SEC-5 · IdleTimer + in-flight Server Action race (post-confirm
 guard already shipped, but pre-confirm window still exists)
 
@@ -920,6 +1308,43 @@ files
   (commit `3d9de2d`) — re-adds explicit `check_in_id` to both POST
   body + GET querystring so Sentry pairs by ID instead of recency,
   making pg_net's batch ordering irrelevant.
+
+### OBS-9 · `scheduler_admin_revert_attempts` retention cron (NEW 2026-05-25 — pending implementation alongside scheduler-edge-parity Plan)
+
+- **What's deferred** — the retention/archive cron for
+  `scheduler_admin_revert_attempts` (designed but not implemented in
+  the scheduler-edge-parity Plan v0.4). Operational target documented
+  in `docs/scheduler/edge-parity/PLAN.md` §3b CV2-B6 trade-off + §4.1
+  table comment + §8.5 retention paragraph:
+  - **Online** — 90 days from `completed_at` (terminal rows only).
+    Pending rows (`completed_at IS NULL`) NEVER pruned — they're
+    either stuck (alert via `scheduler_admin_revert_attempts_pending_idx`
+    partial index) or in-flight; both deserve human attention before
+    deletion.
+  - **Archive** — at day-91, copy row to
+    `scheduler_admin_revert_attempts_archive` (same shape; separate
+    table for tighter access control), then DELETE FROM live table.
+  - **Hard-delete** — day-365 from `completed_at` (archive table
+    purge). Schema CHECK constraints carry forward to archive table.
+- **Why deferred** — actual volume is unknown until first 90 days of
+  production data (operators rarely revert). Building the cron + the
+  archive table + the pg_cron schedule on day 1 risks tuning windows
+  for a usage pattern we haven't observed. The schema columns +
+  partial indexes are in place from day 1; only the cron + archive
+  table are deferred.
+- **PII surface** — rows carry `actor_email`, `oauth_client_id`, and
+  `error_detail` (which MAY include truncated diffs of customer-facing
+  scheduler content — see §3b CV2-B6 redaction policy). Privacy-policy
+  documentation should mention the 90/365 windows once finalized.
+- **When to revisit** — after 90 days of post-launch revert traffic,
+  measure: (a) row count per shop per month, (b) any pending-row
+  alerts that fired, (c) whether the 90-day window is the right
+  default. Implementation: pg_cron daily job gated behind a feature
+  flag so first run is observable + reversible.
+- **Source** — scheduler-edge-parity PLAN v0.4 (`docs/scheduler/edge-parity/PLAN.md`),
+  v0.4 cross-verify finding from `.claude/work/ai-review-2026-05-26T01-04-47Z.md`
+  (GPT NICE-TO-HAVE "Attempt table intentionally has no retention
+  limit despite actor/error data").
 
 ### CLN-11 · npm install + npm ci lock-file drift recurrence pattern (NEW 2026-05-23)
 

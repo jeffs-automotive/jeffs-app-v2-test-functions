@@ -38,7 +38,9 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 
 import {
+  computeCanonicalAfterState,
   formatPriceCents,
+  logAuditEntry,
   parseBool,
   parseCsvList,
   parseIntField,
@@ -51,6 +53,7 @@ import {
   type ParsedMdSection,
   type ParseError,
   type SectionSpec,
+  type SnapshotKind,
 } from "../scheduler-admin-md.ts";
 
 import type { AdminAudit, UploadResult, ValidationFinding } from "./scheduler-admin.ts";
@@ -93,6 +96,19 @@ interface ParsedCatalog<TRow> {
 interface CatalogConfig<TRow extends { service_key: string; active: boolean; starting_price_cents?: number | null }> {
   tableName: "testing_services" | "routine_services";
   selectColumns: string;
+  /** E4 (2026-05-26) — snapshot_kind written into pre_state_snapshot.kind +
+   *  used to compute expected_after_state_canonical via the E2 helper. MUST
+   *  match the closed allow-list in scheduler-admin-md.ts (`SnapshotKind`)
+   *  byte-for-byte; drift between this string and the plpgsql kind allow-list
+   *  is a production bug. Per PLAN §7 6-column kind mapping table:
+   *  testing_services_v2 ↔ testing_services surface,
+   *  routine_services_v2 ↔ routine_services surface. */
+  snapshotKind: Extract<SnapshotKind, "testing_services_v2" | "routine_services_v2">;
+  /** E4 (2026-05-26) — surface_filter enum value per PLAN §7 + ADR-021.
+   *  Written into diff_summary.surfaces[] so the list-audit-log tool's
+   *  modern surface-filter branch can match logical surface (not just
+   *  physical table_name). */
+  surfaceFilter: "testing_services" | "routine_services";
   /** Parse + validate ONE section into a typed row. Pushes findings if invalid. */
   parseSection: (
     section: ParsedMdSection,
@@ -124,6 +140,8 @@ interface TestingServiceRow {
 
 const TESTING_CONFIG: CatalogConfig<TestingServiceRow> = {
   tableName: "testing_services",
+  snapshotKind: "testing_services_v2",
+  surfaceFilter: "testing_services",
   selectColumns:
     "service_key, display_name, abbreviation, starting_price_cents, notes, description, example_keywords, concern_categories, active",
   parseSection: (section, findings) => {
@@ -242,6 +260,8 @@ interface RoutineServiceRow {
 
 const ROUTINE_CONFIG: CatalogConfig<RoutineServiceRow> = {
   tableName: "routine_services",
+  snapshotKind: "routine_services_v2",
+  surfaceFilter: "routine_services",
   selectColumns:
     "service_key, display_name, abbreviation, display_order, wait_eligible, requires_explanation, concern_categories, starting_price_cents, price_waived_note, description, active",
   parseSection: (section, findings) => {
@@ -378,7 +398,7 @@ async function _uploadCatalogV2<TRow extends {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (!dry_run) {
-      await _logAudit(sb, { audit, table_name: config.tableName, operation: "upload_md", md_content_hash: hash, error_message: msg });
+      await _logAuditError(sb, shopId, audit, config.tableName, hash, msg);
     }
     return _failResult(config.tableName, hash, 0, msg, dry_run);
   }
@@ -401,7 +421,7 @@ async function _uploadCatalogV2<TRow extends {
   if (validRows.length === 0 || errors.length > 0) {
     const msg = `${errors.length} validation error(s); 0 valid rows`;
     if (!dry_run) {
-      await _logAudit(sb, { audit, table_name: config.tableName, operation: "upload_md", md_content_hash: hash, error_message: msg });
+      await _logAuditError(sb, shopId, audit, config.tableName, hash, msg);
     }
     return {
       ok: false,
@@ -426,7 +446,7 @@ async function _uploadCatalogV2<TRow extends {
   if (fetchErr) {
     const msg = `current-state fetch failed: ${fetchErr.message}`;
     if (!dry_run) {
-      await _logAudit(sb, { audit, table_name: config.tableName, operation: "upload_md", md_content_hash: hash, error_message: msg });
+      await _logAuditError(sb, shopId, audit, config.tableName, hash, msg);
     }
     return _failResult(config.tableName, hash, sections.sections.length, msg, dry_run);
   }
@@ -505,7 +525,17 @@ async function _uploadCatalogV2<TRow extends {
   }
 
   // ── Build diff_summary
+  //
+  // E4 (2026-05-26): `surfaces[]` per ADR-021 + PLAN §7 6-column kind map +
+  // PLAN §6.2 surface filter SQL. The list_scheduler_admin_audit_log MCP tool
+  // matches rows with diff_summary->'surfaces' ? <surface_filter> on its
+  // modern branch (NULL-safe via COALESCE); fallback to table_name on legacy
+  // rows. Logical surface filter value (NOT physical table name) so the
+  // list tool can disambiguate the 3 logical surfaces that share
+  // table_name='concern_subcategories' and the 2 that share
+  // table_name='concern_questions'.
   const diffSummary: Record<string, unknown> = {
+    surfaces: [config.surfaceFilter],
     added: diff.added.map((r) => config.prettyRow(r)),
     modified: diff.modified.map((m) => ({
       service_key: m.after.service_key,
@@ -555,11 +585,11 @@ async function _uploadCatalogV2<TRow extends {
     };
   }
 
-  // ── Capture pre_state_snapshot (BEFORE writes)
+  // ── Capture pre_state_snapshot.before (BEFORE writes)
   const snapshotBefore: Record<string, TRow> = {};
   for (const mod of diff.modified) snapshotBefore[mod.before.service_key] = mod.before;
   for (const row of diff.deactivated) snapshotBefore[row.service_key] = row;
-  const snapshot = {
+  const snapshotBase = {
     before: snapshotBefore,
     added_keys: diff.added.map((r) => r.service_key),
   };
@@ -587,19 +617,84 @@ async function _uploadCatalogV2<TRow extends {
     applyError = e instanceof Error ? e.message : String(e);
   }
 
-  // ── Audit row (with snapshot if apply succeeded)
-  const audit_log_id = await _logAudit(sb, {
-    audit,
-    table_name: config.tableName,
+  // ── E4 (2026-05-26): Enrich pre_state_snapshot with the byte-parity fields
+  // the revert path needs per ADR-025 + ROUND-6-RESIDUALS E2-N1. Only do this
+  // on apply-success — on apply failure the snapshot stays null per the
+  // existing pattern (no point computing canonical for a half-applied state).
+  //
+  // `kind`                              — matches the snapshot_kind enum the
+  //                                       E3 backfill script writes for
+  //                                       historical V2 rows.
+  // `expected_after_state_canonical`    — post-mutation read via the E2 helper
+  //                                       (byte-parity with plpgsql
+  //                                       canonical_state_<kind> serializer
+  //                                       per ADR-025; pipe-delimited format).
+  // `after_hash`                        — SHA-256 hex of canonical text via
+  //                                       WebCrypto; mirrors pgcrypto's
+  //                                       encode(digest(..., 'sha256'), 'hex').
+  //
+  // SEC-17 Phase 1 surface lock is INTENTIONALLY NOT acquired here per the
+  // ROUND-6-RESIDUALS E1cf-N1 deferral — V2 TS uploaders remain
+  // non-cooperative writers in Phase 1. The byte-parity fields make audit
+  // rows revertable; the surface lock concern (concurrent-safety) is
+  // tracked separately.
+  let enrichedSnapshot: Record<string, unknown> | null = null;
+  if (!applyError) {
+    try {
+      const canonical = await computeCanonicalAfterState({
+        kind: config.snapshotKind,
+        supabase: sb,
+        shopId,
+        snapshot: snapshotBase,
+      });
+      const afterHash = await sha256Hex(canonical);
+      enrichedSnapshot = {
+        ...snapshotBase,
+        kind: config.snapshotKind,
+        expected_after_state_canonical: canonical,
+        after_hash: afterHash,
+      };
+    } catch (e) {
+      // Soft-fail on canonical compute — the apply already succeeded, so we
+      // still write the audit row (with snapshot=null + an error_message
+      // suffix), preferring a revertless audit row over no audit row at all.
+      // Future revert attempts on this row will surface as
+      // reason_code='cannot_safely_verify' per ADR-007 / ADR-021.
+      const detail = e instanceof Error ? e.message : String(e);
+      console.warn(
+        JSON.stringify({
+          level: "warning",
+          msg: "v2_uploader_canonical_after_state_compute_failed",
+          detail,
+          shop_id: shopId,
+          table_name: config.tableName,
+          kind: config.snapshotKind,
+        }),
+      );
+      enrichedSnapshot = null;
+      applyError =
+        `apply succeeded but expected_after_state_canonical compute failed: ${detail} ` +
+        `(audit row written without snapshot — revert on this upload will be blocked)`;
+    }
+  }
+
+  // ── Audit row (with enriched snapshot if apply succeeded)
+  const auditResult = await logAuditEntry({
+    supabase: sb,
+    shopId,
+    oauthClientId: audit.oauth_client_id,
+    userLabel: audit.display_name,
+    tableName: config.tableName,
     operation: "upload_md",
-    rows_added: diff.added.length,
-    rows_modified: diff.modified.length,
-    rows_deactivated: diff.deactivated.length,
-    md_content_hash: hash,
-    diff_summary: diffSummary,
-    pre_state_snapshot: applyError ? null : snapshot,
-    error_message: applyError ?? undefined,
+    rowsAdded: diff.added.length,
+    rowsModified: diff.modified.length,
+    rowsDeactivated: diff.deactivated.length,
+    mdContentHash: hash,
+    diffSummary,
+    preStateSnapshot: enrichedSnapshot,
+    errorMessage: applyError ?? undefined,
   });
+  const audit_log_id = "id" in auditResult ? auditResult.id : null;
 
   return {
     ok: !applyError,
@@ -638,50 +733,43 @@ function _failResult(
   };
 }
 
-async function _logAudit(
+/**
+ * E4 (2026-05-26) — shorthand for error-path audit-log inserts (parse fail,
+ * column-presence fail, validation fail, fetch fail, cross-validate fail).
+ * Mirrors the prior `_logAudit` error-path shape but threads shopId through
+ * the E2 `logAuditEntry` helper so audit_log.shop_id is always populated.
+ *
+ * Used ONLY for failure paths; the happy-path audit row is inlined in each
+ * uploader (it carries the enriched snapshot + diff_summary).
+ */
+async function _logAuditError(
   sb: SupabaseClient,
-  args: {
-    audit: AdminAudit;
-    table_name: string;
-    operation: "upload_md" | "revert_upload";
-    rows_added?: number;
-    rows_modified?: number;
-    rows_deactivated?: number;
-    md_content_hash?: string;
-    diff_summary?: Record<string, unknown>;
-    pre_state_snapshot?: Record<string, unknown> | null;
-    error_message?: string;
-  },
-): Promise<number | null> {
-  const { data, error } = await sb
-    .from("scheduler_admin_audit_log")
-    .insert({
-      oauth_client_id: args.audit.oauth_client_id,
-      user_label: args.audit.display_name,
-      table_name: args.table_name,
-      operation: args.operation,
-      rows_added: args.rows_added ?? 0,
-      rows_modified: args.rows_modified ?? 0,
-      rows_deactivated: args.rows_deactivated ?? 0,
-      md_content_hash: args.md_content_hash ?? null,
-      diff_summary: args.diff_summary ?? null,
-      pre_state_snapshot: args.pre_state_snapshot ?? null,
-      error_message: args.error_message ?? null,
-    })
-    .select("id")
-    .single();
-  if (error) {
-    console.warn(JSON.stringify({
-      level: "warning",
-      msg: "scheduler_admin_audit_log_insert_failed_v2",
-      detail: error.message,
-      table_name: args.table_name,
-      operation: args.operation,
-    }));
-    return null;
-  }
-  return (data?.id as number) ?? null;
+  shopId: number,
+  audit: AdminAudit,
+  tableName: string,
+  hash: string,
+  errorMessage: string,
+): Promise<void> {
+  await logAuditEntry({
+    supabase: sb,
+    shopId,
+    oauthClientId: audit.oauth_client_id,
+    userLabel: audit.display_name,
+    tableName,
+    operation: "upload_md",
+    mdContentHash: hash,
+    errorMessage,
+  });
 }
+
+// E4 (2026-05-26): the prior `_logAudit()` helper has been REMOVED. All 24
+// inline audit-row insert sites in this file now route through the E2
+// `logAuditEntry()` helper (which REQUIRES shopId — closes the historical
+// "may forget shop_id" footgun documented in scheduler-admin-md.ts comments).
+// Error-path inserts go through the local `_logAuditError()` shorthand
+// (above); happy-path inserts inline the full call so the snapshot
+// enrichment (kind / expected_after_state_canonical / after_hash) stays
+// adjacent to the data it depends on.
 
 // ═══════════════════════════════════════════════════════════════════════
 // Exporters — round-trip-safe Option B serialization
@@ -797,166 +885,194 @@ export async function exportRoutineServicesMdV2(
 // revert_md_upload — undo a recent upload
 // ═══════════════════════════════════════════════════════════════════════
 
+/**
+ * Pattern S — two-step revert flow per PLAN §7:
+ *   1. dry_run=true (default) returns structured outcome + confirm_token; NO writes.
+ *   2. dry_run=false + expected_confirm_token (from step 1) actually performs the revert.
+ *
+ * Replaces the legacy TS-side dispatcher (E5-era) with a thin wrapper around the
+ * outer plpgsql RPC `revert_md_upload_attempt`. The RPC handles dispatch across
+ * all 10 snapshot_kinds + audit-trail persistence per ADR-002. TS-side just
+ * passes args through, classifies on the structured outcome, and emits Sentry
+ * per ADR-010.
+ */
 export interface RevertArgs {
   /** ID returned in audit_log_id from a prior upload. */
   upload_id: number;
   audit: AdminAudit;
   /** Default TRUE — must explicitly pass false to apply the revert. */
   dry_run?: boolean;
+  /** Required for apply (dry_run=false) — token from a prior dry-run response. */
+  expected_confirm_token?: string;
+  /**
+   * ADR-014 escape hatch — operator override for snapshots that lack BOTH
+   * `after_hash` AND `expected_after_state_canonical`. When false (default),
+   * such snapshots reject with `reason_code='cannot_safely_verify'`. When true,
+   * the inner RPC skips the staleness check entirely — operator accepts the
+   * "we cannot verify what we're reverting OVER" risk. Use sparingly.
+   */
+  force_no_after_hash?: boolean;
 }
 
+/**
+ * Structured outcome shape — mirrors the outer RPC's `RETURNS TABLE` 10
+ * columns (per ADR-001) plus a derived `ok` boolean + `dry_run` echo. The
+ * outer RPC NEVER re-RAISEs from its EXCEPTION block (per ADR-001 + ADR-008);
+ * inner-path failures surface as `outcome IN ('rejected', 'crashed')` with
+ * the classified `reason_code` per ADR-007 + sanitized `error_message` per
+ * ADR-009. Verbose `error_detail` lives in `scheduler_admin_revert_attempts.error_detail`
+ * (DB-only per ADR-010) and is NOT returned here; operators pivot from the
+ * `attempt_id` to the row for full debug context.
+ */
 export interface RevertResult {
+  /** True iff outcome IN ('success', 'dry_run_success'). */
   ok: boolean;
   upload_id: number;
-  table_name?: string;
-  original_md_content_hash?: string;
-  original_diff?: Record<string, unknown>;
-  /** Plan of what the revert will do (always shown). */
-  revert_plan?: {
-    restore: Array<{ service_key: string; via: "upsert" }>;
-    deactivate: Array<{ service_key: string; reason: "was_added_by_original_upload" }>;
-    no_op_count: number;
-  };
-  dry_run?: boolean;
-  /** Set when dry_run=false and apply succeeded — the revert's own audit_log_id. */
-  revert_audit_log_id?: number;
-  error_message?: string;
+  /** One of: success, dry_run_success, rejected, crashed. */
+  outcome: "success" | "dry_run_success" | "rejected" | "crashed";
+  /** Canonical reason_code per ADR-007 — null on success outcomes. */
+  reason_code: string | null;
+  /** Sanitized public-facing error_message per ADR-009 — safe to log/display. */
+  error_message: string | null;
+  /** Pivot key into scheduler_admin_revert_attempts for full debug context. */
+  attempt_id: number | null;
+  dry_run: boolean;
+  /** Set when outcome=success — the revert's own audit_log_id (NOT the upload's). */
+  audit_log_id: number | null;
+  /** Set when outcome=dry_run_success — pass this back as expected_confirm_token to apply. */
+  confirm_token: string | null;
+  restored: number;
+  deactivated: number;
+  deleted: number;
 }
 
+/** Raw row shape returned by the outer RPC per ADR-001 RETURNS TABLE clause. */
+interface RevertRpcRow {
+  audit_log_id: number | null;
+  confirm_token: string | null;
+  restored: number;
+  deactivated: number;
+  deleted: number;
+  dry_run: boolean;
+  outcome: string;
+  reason_code: string | null;
+  error_message: string | null;
+  attempt_id: number | null;
+}
+
+/**
+ * E8 (2026-05-26) — REPLACED 145-line legacy TS-side dispatcher with this
+ * thin wrapper around the outer plpgsql RPC `revert_md_upload_attempt`.
+ * The RPC handles:
+ *   - STEP 0a/b/c/d guards + attempt-row pre-INSERT (ADR-002)
+ *   - Dispatch across all 10 snapshot_kinds (ADR-024)
+ *   - 12-step inner RPC: lock-targets → canonical-compute → staleness check
+ *     → token verify → per-kind handler → revert audit row INSERT (ADR-012)
+ *   - EXCEPTION classifier producing structured outcome (ADR-008 + ADR-009)
+ *
+ * TS-side responsibilities (~55 lines):
+ *   1. Pass through args (incl. dry_run + expected_confirm_token + force_no_after_hash)
+ *   2. Call sb.rpc('revert_md_upload_attempt').single()
+ *   3. Classify on data.outcome (NOT error_message)
+ *   4. Emit Sentry per ADR-010 redaction policy on rejected/crashed outcomes
+ *   5. Return structured RevertResult
+ *
+ * The OLD wrapper only handled testing_services + routine_services (2 of 10
+ * surfaces) with TS-side dispatch. This wrapper covers all 10 via the outer
+ * RPC's dispatch helper (lock_targets_for_kind → 10 CASE branches).
+ */
 export async function revertMdUpload(
   sb: SupabaseClient,
   shopId: number,
   args: RevertArgs,
 ): Promise<RevertResult> {
-  const { upload_id, audit, dry_run = true } = args;
-
-  const { data: row, error } = await sb
-    .from("scheduler_admin_audit_log")
-    .select("id, table_name, operation, md_content_hash, diff_summary, pre_state_snapshot, snapshot_pruned_at, occurred_at")
-    .eq("id", upload_id)
-    .maybeSingle();
-
-  if (error || !row) {
-    return { ok: false, upload_id, error_message: `audit log row ${upload_id} not found` };
-  }
-
-  if (row.operation !== "upload_md") {
-    return {
-      ok: false,
-      upload_id,
-      error_message: `cannot revert: audit row ${upload_id} is operation=${row.operation}, not upload_md (no revert-of-revert chains)`,
-    };
-  }
-
-  if (row.snapshot_pruned_at) {
-    return {
-      ok: false,
-      upload_id,
-      table_name: row.table_name as string,
-      error_message: `cannot revert: pre_state_snapshot was pruned on ${row.snapshot_pruned_at} (30-day retention)`,
-    };
-  }
-
-  if (!row.pre_state_snapshot) {
-    return {
-      ok: false,
-      upload_id,
-      table_name: row.table_name as string,
-      error_message: "cannot revert: no pre_state_snapshot captured (legacy upload before snapshot column was added, or upload failed before apply)",
-    };
-  }
-
-  const snapshot = row.pre_state_snapshot as {
-    before: Record<string, Record<string, unknown>>;
-    added_keys: string[];
-  };
-
-  const tableName = row.table_name as string;
-  if (tableName !== "testing_services" && tableName !== "routine_services") {
-    return {
-      ok: false,
-      upload_id,
-      table_name: tableName,
-      error_message: `revert only supports testing_services or routine_services (got ${tableName})`,
-    };
-  }
-
-  const restorePlan: Array<{ service_key: string; via: "upsert" }> = [];
-  for (const key of Object.keys(snapshot.before)) {
-    restorePlan.push({ service_key: key, via: "upsert" });
-  }
-  const deactivatePlan: Array<{ service_key: string; reason: "was_added_by_original_upload" }> = [];
-  for (const key of snapshot.added_keys) {
-    deactivatePlan.push({ service_key: key, reason: "was_added_by_original_upload" });
-  }
-
-  const plan = {
-    restore: restorePlan,
-    deactivate: deactivatePlan,
-    no_op_count: 0,
-  };
-
-  if (dry_run) {
-    return {
-      ok: true,
-      upload_id,
-      table_name: tableName,
-      original_md_content_hash: row.md_content_hash as string | undefined,
-      original_diff: row.diff_summary as Record<string, unknown> | undefined,
-      revert_plan: plan,
-      dry_run: true,
-    };
-  }
-
-  // ── Apply revert
-  let applyError: string | null = null;
-  try {
-    if (restorePlan.length > 0) {
-      const upsertRows = restorePlan.map((p) => ({
-        ...snapshot.before[p.service_key],
-        shop_id: shopId,
-      }));
-      const { error } = await sb.from(tableName).upsert(upsertRows, { onConflict: "shop_id,service_key" });
-      if (error) throw new Error(`restore upsert failed: ${error.message}`);
-    }
-    if (deactivatePlan.length > 0) {
-      const { error } = await sb
-        .from(tableName)
-        .update({ active: false })
-        .eq("shop_id", shopId)
-        .in("service_key", deactivatePlan.map((p) => p.service_key));
-      if (error) throw new Error(`deactivate-added failed: ${error.message}`);
-    }
-  } catch (e) {
-    applyError = e instanceof Error ? e.message : String(e);
-  }
-
-  const revert_audit_log_id = await _logAudit(sb, {
+  const {
+    upload_id,
     audit,
-    table_name: tableName,
-    operation: "revert_upload",
-    rows_added: 0,
-    rows_modified: restorePlan.length,
-    rows_deactivated: deactivatePlan.length,
-    md_content_hash: undefined,
-    diff_summary: {
-      reverted_upload_id: upload_id,
-      restored: restorePlan.map((p) => p.service_key),
-      deactivated_added: deactivatePlan.map((p) => p.service_key),
-    },
-    error_message: applyError ?? undefined,
-  });
+    dry_run = true,
+    expected_confirm_token,
+    force_no_after_hash = false,
+  } = args;
+
+  // Call outer RPC. Per ADR-001, the outer ALWAYS returns a structured row
+  // and NEVER re-RAISEs from its EXCEPTION block — inner-path failures
+  // surface as data.outcome IN ('rejected', 'crashed'). The `error` field
+  // only fires for STEP 0a/b/c RAISEs (Branch 3 per ADR-002 — malformed
+  // params before the EXCEPTION block opens) or PostgREST transport errors.
+  const { data, error } = await sb
+    .rpc("revert_md_upload_attempt", {
+      p_upload_id: upload_id,
+      p_shop_id: shopId,
+      p_actor_email: audit.display_name,
+      p_oauth_client_id: audit.oauth_client_id,
+      p_dry_run: dry_run,
+      p_expected_confirm_token: expected_confirm_token ?? null,
+      p_force_no_after_hash: force_no_after_hash,
+    })
+    .single<RevertRpcRow>();
+
+  if (error || !data) {
+    const errMsg = error?.message ?? "no row returned from revert_md_upload_attempt";
+    console.warn(JSON.stringify({
+      level: "error",
+      msg: "revert_md_upload_attempt_rpc_error",
+      shop_id: shopId,
+      upload_id,
+      dry_run,
+      detail: errMsg,
+    }));
+    return {
+      ok: false,
+      upload_id,
+      outcome: "crashed",
+      reason_code: null,
+      error_message: `RPC error (likely malformed params or transport failure): ${errMsg}`,
+      attempt_id: null,
+      dry_run,
+      audit_log_id: null,
+      confirm_token: null,
+      restored: 0,
+      deactivated: 0,
+      deleted: 0,
+    };
+  }
+
+  const OK_OUTCOMES = new Set(["success", "dry_run_success"]);
+  const isOk = OK_OUTCOMES.has(data.outcome);
+
+  if (!isOk) {
+    // Per ADR-010 redaction tier-1 (Sentry payload): include reason_code +
+    // outcome + attempt_id tags but NOT error_message detail (sanitized only)
+    // or error_detail (DB-only). Verbose detail lives in
+    // scheduler_admin_revert_attempts.error_detail; operators pivot from
+    // attempt_id to the row for full debug context.
+    console.warn(JSON.stringify({
+      level: data.outcome === "crashed" ? "error" : "warning",
+      msg: `revert_attempt:${data.outcome}`,
+      shop_id: shopId,
+      upload_id,
+      outcome: data.outcome,
+      reason_code: data.reason_code ?? "<none>",
+      attempt_id: data.attempt_id,
+      actor_email: audit.display_name,
+      oauth_client_id: audit.oauth_client_id,
+      dry_run,
+    }));
+  }
 
   return {
-    ok: !applyError,
+    ok: isOk,
     upload_id,
-    table_name: tableName,
-    original_md_content_hash: row.md_content_hash as string | undefined,
-    original_diff: row.diff_summary as Record<string, unknown> | undefined,
-    revert_plan: plan,
-    dry_run: false,
-    revert_audit_log_id: revert_audit_log_id ?? undefined,
-    error_message: applyError ?? undefined,
+    outcome: data.outcome as RevertResult["outcome"],
+    reason_code: data.reason_code,
+    error_message: data.error_message,
+    attempt_id: data.attempt_id,
+    dry_run: data.dry_run,
+    audit_log_id: data.audit_log_id,
+    confirm_token: data.confirm_token,
+    restored: data.restored,
+    deactivated: data.deactivated,
+    deleted: data.deleted,
   };
 }
 
@@ -1059,13 +1175,7 @@ export async function uploadSubcategoryServiceMapMdV2(
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (!dry_run) {
-      await _logAudit(sb, {
-        audit,
-        table_name: tableName,
-        operation: "upload_md",
-        md_content_hash: hash,
-        error_message: msg,
-      });
+      await _logAuditError(sb, shopId, audit, tableName, hash, msg);
     }
     return _failResult(tableName, hash, 0, msg, dry_run);
   }
@@ -1077,13 +1187,7 @@ export async function uploadSubcategoryServiceMapMdV2(
   if (missingColumns.length > 0) {
     const msg = `missing required columns: ${missingColumns.join(", ")}`;
     if (!dry_run) {
-      await _logAudit(sb, {
-        audit,
-        table_name: tableName,
-        operation: "upload_md",
-        md_content_hash: hash,
-        error_message: msg,
-      });
+      await _logAuditError(sb, shopId, audit, tableName, hash, msg);
     }
     return _failResult(tableName, hash, parsed.table.rows.length, msg, dry_run);
   }
@@ -1135,13 +1239,7 @@ export async function uploadSubcategoryServiceMapMdV2(
   if (uploadRows.length === 0 || errors.length > 0) {
     const msg = `${errors.length} validation error(s); ${uploadRows.length} parseable rows`;
     if (!dry_run) {
-      await _logAudit(sb, {
-        audit,
-        table_name: tableName,
-        operation: "upload_md",
-        md_content_hash: hash,
-        error_message: msg,
-      });
+      await _logAuditError(sb, shopId, audit, tableName, hash, msg);
     }
     return {
       ok: false,
@@ -1167,13 +1265,7 @@ export async function uploadSubcategoryServiceMapMdV2(
   if (subsErr) {
     const msg = `concern_subcategories fetch failed: ${subsErr.message}`;
     if (!dry_run) {
-      await _logAudit(sb, {
-        audit,
-        table_name: tableName,
-        operation: "upload_md",
-        md_content_hash: hash,
-        error_message: msg,
-      });
+      await _logAuditError(sb, shopId, audit, tableName, hash, msg);
     }
     return _failResult(tableName, hash, parsed.table.rows.length, msg, dry_run);
   }
@@ -1194,13 +1286,7 @@ export async function uploadSubcategoryServiceMapMdV2(
   if (svcErr) {
     const msg = `testing_services fetch failed: ${svcErr.message}`;
     if (!dry_run) {
-      await _logAudit(sb, {
-        audit,
-        table_name: tableName,
-        operation: "upload_md",
-        md_content_hash: hash,
-        error_message: msg,
-      });
+      await _logAuditError(sb, shopId, audit, tableName, hash, msg);
     }
     return _failResult(tableName, hash, parsed.table.rows.length, msg, dry_run);
   }
@@ -1235,13 +1321,7 @@ export async function uploadSubcategoryServiceMapMdV2(
   if (crossHardErrors.length > 0) {
     const msg = `${crossHardErrors.length} cross-validation error(s)`;
     if (!dry_run) {
-      await _logAudit(sb, {
-        audit,
-        table_name: tableName,
-        operation: "upload_md",
-        md_content_hash: hash,
-        error_message: msg,
-      });
+      await _logAuditError(sb, shopId, audit, tableName, hash, msg);
     }
     return {
       ok: false,
@@ -1281,7 +1361,11 @@ export async function uploadSubcategoryServiceMapMdV2(
 
   const warnings: ValidationFinding[] = [...findings.filter((f) => f.level === "warning"), ...crossErrors.filter((f) => f.level === "warning")];
 
+  // E4 (2026-05-26): diff_summary.surfaces[] per ADR-021 + PLAN §7. Surface =
+  // 'subcategory_service_map' (logical) — disambiguates from the 2 other
+  // surfaces that share table_name='concern_subcategories'.
   const diffSummary: Record<string, unknown> = {
+    surfaces: ["subcategory_service_map"],
     modified: diffEntries.map((d) => ({
       category: d.category,
       subcategory_slug: d.subcategory_slug,
@@ -1332,7 +1416,7 @@ export async function uploadSubcategoryServiceMapMdV2(
     };
   }
 
-  // ── Capture pre_state_snapshot
+  // ── Capture pre_state_snapshot.before
   const snapshotBefore: Record<string, { id: number; category: string; slug: string; eligible_testing_service_keys: string[] }> = {};
   for (const d of diffEntries) {
     const sub = subByKey.get(`${d.category}::${d.subcategory_slug}`)!;
@@ -1343,7 +1427,7 @@ export async function uploadSubcategoryServiceMapMdV2(
       eligible_testing_service_keys: d.before,
     };
   }
-  const snapshot = { before: snapshotBefore, added_keys: [] as string[] };
+  const snapshotBase = { before: snapshotBefore, added_keys: [] as string[] };
 
   // ── Apply (UPDATE only — mapping uploads never INSERT subcategories)
   let applyError: string | null = null;
@@ -1364,19 +1448,64 @@ export async function uploadSubcategoryServiceMapMdV2(
     applyError = e instanceof Error ? e.message : String(e);
   }
 
+  // ── E4 (2026-05-26): Enrich snapshot with byte-parity fields after writes
+  // succeed. Kind = 'concern_subcategories_map_v2'. See _uploadCatalogV2 for
+  // the canonical rationale + soft-fail policy (apply succeeded but
+  // canonical compute failed → audit row written without snapshot, future
+  // revert blocked with cannot_safely_verify).
+  const SNAPSHOT_KIND: SnapshotKind = "concern_subcategories_map_v2";
+  let enrichedSnapshot: Record<string, unknown> | null = null;
+  if (!applyError) {
+    try {
+      const canonical = await computeCanonicalAfterState({
+        kind: SNAPSHOT_KIND,
+        supabase: sb,
+        shopId,
+        snapshot: snapshotBase,
+      });
+      const afterHash = await sha256Hex(canonical);
+      enrichedSnapshot = {
+        ...snapshotBase,
+        kind: SNAPSHOT_KIND,
+        expected_after_state_canonical: canonical,
+        after_hash: afterHash,
+      };
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : String(e);
+      console.warn(
+        JSON.stringify({
+          level: "warning",
+          msg: "v2_uploader_canonical_after_state_compute_failed",
+          detail,
+          shop_id: shopId,
+          table_name: tableName,
+          kind: SNAPSHOT_KIND,
+        }),
+      );
+      enrichedSnapshot = null;
+      applyError =
+        `apply succeeded but expected_after_state_canonical compute failed: ${detail} ` +
+        `(audit row written without snapshot — revert on this upload will be blocked)`;
+    }
+  }
+
   // ── Audit
-  const audit_log_id = await _logAudit(sb, {
-    audit,
-    table_name: tableName,
+  const auditResult = await logAuditEntry({
+    supabase: sb,
+    shopId,
+    oauthClientId: audit.oauth_client_id,
+    userLabel: audit.display_name,
+    tableName,
     operation: "upload_md",
-    rows_added: 0,
-    rows_modified: diffEntries.length,
-    rows_deactivated: 0,
-    md_content_hash: hash,
-    diff_summary: diffSummary,
-    pre_state_snapshot: applyError ? null : snapshot,
-    error_message: applyError ?? undefined,
+    rowsAdded: 0,
+    rowsModified: diffEntries.length,
+    rowsDeactivated: 0,
+    mdContentHash: hash,
+    diffSummary,
+    preStateSnapshot: enrichedSnapshot,
+    errorMessage: applyError ?? undefined,
   });
+  const audit_log_id = "id" in auditResult ? auditResult.id : null;
 
   return {
     ok: !applyError,
@@ -1739,7 +1868,7 @@ export async function uploadSubcategoryDescriptionsMdV2(
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (!dry_run) {
-      await _logAudit(sb, { audit, table_name: tableName, operation: "upload_md", md_content_hash: hash, error_message: msg });
+      await _logAuditError(sb, shopId, audit, tableName, hash, msg);
     }
     return _failResult(tableName, hash, 0, msg, dry_run);
   }
@@ -1782,7 +1911,7 @@ export async function uploadSubcategoryDescriptionsMdV2(
   if (validRows.length === 0 || errors.length > 0) {
     const msg = `${errors.length} validation error(s); ${validRows.length} valid rows`;
     if (!dry_run) {
-      await _logAudit(sb, { audit, table_name: tableName, operation: "upload_md", md_content_hash: hash, error_message: msg });
+      await _logAuditError(sb, shopId, audit, tableName, hash, msg);
     }
     return {
       ok: false,
@@ -1807,7 +1936,7 @@ export async function uploadSubcategoryDescriptionsMdV2(
   if (subsErr) {
     const msg = `concern_subcategories fetch failed: ${subsErr.message}`;
     if (!dry_run) {
-      await _logAudit(sb, { audit, table_name: tableName, operation: "upload_md", md_content_hash: hash, error_message: msg });
+      await _logAuditError(sb, shopId, audit, tableName, hash, msg);
     }
     return _failResult(tableName, hash, parsedRows.length, msg, dry_run);
   }
@@ -1850,7 +1979,7 @@ export async function uploadSubcategoryDescriptionsMdV2(
   if (crossHard.length > 0) {
     const msg = `${crossHard.length} cross-validation error(s)`;
     if (!dry_run) {
-      await _logAudit(sb, { audit, table_name: tableName, operation: "upload_md", md_content_hash: hash, error_message: msg });
+      await _logAuditError(sb, shopId, audit, tableName, hash, msg);
     }
     return {
       ok: false,
@@ -1905,7 +2034,11 @@ export async function uploadSubcategoryDescriptionsMdV2(
 
   const warnings: ValidationFinding[] = [...findings.filter((f) => f.level === "warning"), ...crossErrors.filter((f) => f.level === "warning")];
 
+  // E4 (2026-05-26): diff_summary.surfaces[] per ADR-021 + PLAN §7. Surface =
+  // 'subcategory_descriptions' (logical) — disambiguates from the 2 other
+  // surfaces that share table_name='concern_subcategories'.
   const diffSummary: Record<string, unknown> = {
+    surfaces: ["subcategory_descriptions"],
     modified: diffEntries.map((d) => ({
       category: d.category,
       slug: d.slug,
@@ -1955,7 +2088,7 @@ export async function uploadSubcategoryDescriptionsMdV2(
     };
   }
 
-  // ── Capture pre_state_snapshot
+  // ── Capture pre_state_snapshot.before
   const snapshotBefore: Record<string, {
     id: number;
     category: string;
@@ -1977,7 +2110,7 @@ export async function uploadSubcategoryDescriptionsMdV2(
       synonyms: d.before.synonyms,
     };
   }
-  const snapshot = { before: snapshotBefore, added_keys: [] as string[] };
+  const snapshotBase = { before: snapshotBefore, added_keys: [] as string[] };
 
   // ── Apply (UPDATE only — description uploads never INSERT)
   let applyError: string | null = null;
@@ -2001,18 +2134,61 @@ export async function uploadSubcategoryDescriptionsMdV2(
     applyError = e instanceof Error ? e.message : String(e);
   }
 
-  const audit_log_id = await _logAudit(sb, {
-    audit,
-    table_name: tableName,
+  // ── E4 (2026-05-26): Enrich snapshot with byte-parity fields after writes
+  // succeed. Kind = 'concern_subcategories_descriptions_v2'. See
+  // _uploadCatalogV2 for the canonical rationale + soft-fail policy.
+  const SNAPSHOT_KIND: SnapshotKind = "concern_subcategories_descriptions_v2";
+  let enrichedSnapshot: Record<string, unknown> | null = null;
+  if (!applyError) {
+    try {
+      const canonical = await computeCanonicalAfterState({
+        kind: SNAPSHOT_KIND,
+        supabase: sb,
+        shopId,
+        snapshot: snapshotBase,
+      });
+      const afterHash = await sha256Hex(canonical);
+      enrichedSnapshot = {
+        ...snapshotBase,
+        kind: SNAPSHOT_KIND,
+        expected_after_state_canonical: canonical,
+        after_hash: afterHash,
+      };
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : String(e);
+      console.warn(
+        JSON.stringify({
+          level: "warning",
+          msg: "v2_uploader_canonical_after_state_compute_failed",
+          detail,
+          shop_id: shopId,
+          table_name: tableName,
+          kind: SNAPSHOT_KIND,
+        }),
+      );
+      enrichedSnapshot = null;
+      applyError =
+        `apply succeeded but expected_after_state_canonical compute failed: ${detail} ` +
+        `(audit row written without snapshot — revert on this upload will be blocked)`;
+    }
+  }
+
+  const auditResult = await logAuditEntry({
+    supabase: sb,
+    shopId,
+    oauthClientId: audit.oauth_client_id,
+    userLabel: audit.display_name,
+    tableName,
     operation: "upload_md",
-    rows_added: 0,
-    rows_modified: diffEntries.length,
-    rows_deactivated: 0,
-    md_content_hash: hash,
-    diff_summary: diffSummary,
-    pre_state_snapshot: applyError ? null : snapshot,
-    error_message: applyError ?? undefined,
+    rowsAdded: 0,
+    rowsModified: diffEntries.length,
+    rowsDeactivated: 0,
+    mdContentHash: hash,
+    diffSummary,
+    preStateSnapshot: enrichedSnapshot,
+    errorMessage: applyError ?? undefined,
   });
+  const audit_log_id = "id" in auditResult ? auditResult.id : null;
 
   return {
     ok: !applyError,
@@ -2247,7 +2423,7 @@ export async function uploadQuestionRequiredFactsMdV2(
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (!dry_run) {
-      await _logAudit(sb, { audit, table_name: tableName, operation: "upload_md", md_content_hash: hash, error_message: msg });
+      await _logAuditError(sb, shopId, audit, tableName, hash, msg);
     }
     return _failResult(tableName, hash, 0, msg, dry_run);
   }
@@ -2259,7 +2435,7 @@ export async function uploadQuestionRequiredFactsMdV2(
   if (missingColumns.length > 0) {
     const msg = `missing required columns: ${missingColumns.join(", ")}`;
     if (!dry_run) {
-      await _logAudit(sb, { audit, table_name: tableName, operation: "upload_md", md_content_hash: hash, error_message: msg });
+      await _logAuditError(sb, shopId, audit, tableName, hash, msg);
     }
     return _failResult(tableName, hash, parsed.table.rows.length, msg, dry_run);
   }
@@ -2316,7 +2492,7 @@ export async function uploadQuestionRequiredFactsMdV2(
   if (uploadRows.length === 0 || errors.length > 0) {
     const msg = `${errors.length} validation error(s); ${uploadRows.length} parseable rows`;
     if (!dry_run) {
-      await _logAudit(sb, { audit, table_name: tableName, operation: "upload_md", md_content_hash: hash, error_message: msg });
+      await _logAuditError(sb, shopId, audit, tableName, hash, msg);
     }
     return {
       ok: false,
@@ -2344,7 +2520,7 @@ export async function uploadQuestionRequiredFactsMdV2(
   if (qsErr) {
     const msg = `concern_questions fetch failed: ${qsErr.message}`;
     if (!dry_run) {
-      await _logAudit(sb, { audit, table_name: tableName, operation: "upload_md", md_content_hash: hash, error_message: msg });
+      await _logAuditError(sb, shopId, audit, tableName, hash, msg);
     }
     return _failResult(tableName, hash, parsed.table.rows.length, msg, dry_run);
   }
@@ -2382,7 +2558,7 @@ export async function uploadQuestionRequiredFactsMdV2(
   if (crossHard.length > 0) {
     const msg = `${crossHard.length} cross-validation error(s)`;
     if (!dry_run) {
-      await _logAudit(sb, { audit, table_name: tableName, operation: "upload_md", md_content_hash: hash, error_message: msg });
+      await _logAuditError(sb, shopId, audit, tableName, hash, msg);
     }
     return {
       ok: false,
@@ -2416,7 +2592,11 @@ export async function uploadQuestionRequiredFactsMdV2(
 
   const warnings: ValidationFinding[] = [...findings.filter((f) => f.level === "warning"), ...crossErrors.filter((f) => f.level === "warning")];
 
+  // E4 (2026-05-26): diff_summary.surfaces[] per ADR-021 + PLAN §7. Surface =
+  // 'question_required_facts' (logical) — disambiguates from the other
+  // surface that shares table_name='concern_questions'.
   const diffSummary: Record<string, unknown> = {
+    surfaces: ["question_required_facts"],
     modified: diffEntries.map((d) => ({
       question_id: d.question_id,
       before: d.before,
@@ -2463,12 +2643,12 @@ export async function uploadQuestionRequiredFactsMdV2(
     };
   }
 
-  // ── Capture pre_state_snapshot
+  // ── Capture pre_state_snapshot.before
   const snapshotBefore: Record<string, { id: number; required_facts: string[] }> = {};
   for (const d of diffEntries) {
     snapshotBefore[`qid_${d.question_id}`] = { id: d.question_id, required_facts: d.before };
   }
-  const snapshot = { before: snapshotBefore, added_keys: [] as string[] };
+  const snapshotBase = { before: snapshotBefore, added_keys: [] as string[] };
 
   // ── Apply (UPDATE only — required_facts uploads never INSERT questions)
   let applyError: string | null = null;
@@ -2488,18 +2668,61 @@ export async function uploadQuestionRequiredFactsMdV2(
     applyError = e instanceof Error ? e.message : String(e);
   }
 
-  const audit_log_id = await _logAudit(sb, {
-    audit,
-    table_name: tableName,
+  // ── E4 (2026-05-26): Enrich snapshot with byte-parity fields after writes
+  // succeed. Kind = 'concern_questions_required_facts_v2'. See
+  // _uploadCatalogV2 for the canonical rationale + soft-fail policy.
+  const SNAPSHOT_KIND: SnapshotKind = "concern_questions_required_facts_v2";
+  let enrichedSnapshot: Record<string, unknown> | null = null;
+  if (!applyError) {
+    try {
+      const canonical = await computeCanonicalAfterState({
+        kind: SNAPSHOT_KIND,
+        supabase: sb,
+        shopId,
+        snapshot: snapshotBase,
+      });
+      const afterHash = await sha256Hex(canonical);
+      enrichedSnapshot = {
+        ...snapshotBase,
+        kind: SNAPSHOT_KIND,
+        expected_after_state_canonical: canonical,
+        after_hash: afterHash,
+      };
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : String(e);
+      console.warn(
+        JSON.stringify({
+          level: "warning",
+          msg: "v2_uploader_canonical_after_state_compute_failed",
+          detail,
+          shop_id: shopId,
+          table_name: tableName,
+          kind: SNAPSHOT_KIND,
+        }),
+      );
+      enrichedSnapshot = null;
+      applyError =
+        `apply succeeded but expected_after_state_canonical compute failed: ${detail} ` +
+        `(audit row written without snapshot — revert on this upload will be blocked)`;
+    }
+  }
+
+  const auditResult = await logAuditEntry({
+    supabase: sb,
+    shopId,
+    oauthClientId: audit.oauth_client_id,
+    userLabel: audit.display_name,
+    tableName,
     operation: "upload_md",
-    rows_added: 0,
-    rows_modified: diffEntries.length,
-    rows_deactivated: 0,
-    md_content_hash: hash,
-    diff_summary: diffSummary,
-    pre_state_snapshot: applyError ? null : snapshot,
-    error_message: applyError ?? undefined,
+    rowsAdded: 0,
+    rowsModified: diffEntries.length,
+    rowsDeactivated: 0,
+    mdContentHash: hash,
+    diffSummary,
+    preStateSnapshot: enrichedSnapshot,
+    errorMessage: applyError ?? undefined,
   });
+  const audit_log_id = "id" in auditResult ? auditResult.id : null;
 
   return {
     ok: !applyError,

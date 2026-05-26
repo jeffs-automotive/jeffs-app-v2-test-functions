@@ -77,8 +77,11 @@ import {
   uploadAppointmentDefaultLimitsMd,
   uploadClosedDatesMd,
   exportConcernQuestionsMd,
+  exportConcernCategoryMd,
+  exportConcernCategoryGuidelineMd,
   exportAppointmentDefaultLimitsMd,
   exportClosedDatesMd,
+  listSchedulerAdminAuditLog,
   runAppointmentsSync,
   findOrphanCustomers,
 } from "./tools/scheduler-admin.ts";
@@ -1160,33 +1163,55 @@ export function getSchedulerTools(args: SchedulerToolsArgs) {
 
       revert_md_upload: tool({
         description:
-          "Undo a previous bulk MD upload by audit_log_id. Reads the " +
-          "pre_state_snapshot JSONB captured at upload time and restores " +
-          "every affected row to its prior state (modified → reverted, " +
-          "added → deactivated). REJECTS revert-of-revert chains (can only " +
-          "revert operation=upload_md rows). REJECTS if snapshot was pruned " +
-          "(30-day retention). Use the same TWO-STEP flow as the uploaders: " +
-          "(1) dry_run=true (DEFAULT) returns the revert plan for advisor " +
-          "review, (2) dry_run=false applies. Supports testing_services and " +
-          "routine_services only (mapping-table revert: open follow-up). " +
-          "Returns: { ok, upload_id, table_name, " +
-          "original_md_content_hash, original_diff, revert_plan: { restore[], " +
-          "deactivate[], no_op_count }, dry_run, revert_audit_log_id?, " +
-          "error_message? }.",
+          "Undo a previous bulk MD upload by audit_log_id. Reads " +
+          "pre_state_snapshot from the audit_log row and dispatches to the " +
+          "correct revert handler based on snapshot_kind. Supports ALL 10 " +
+          "surfaces (V2 catalogs + 5 legacy uploaders). REJECTS revert-of-" +
+          "revert chains (operation must be upload_md). REJECTS if snapshot " +
+          "was pruned (30-day retention) OR if a prior successful revert " +
+          "already landed (successor_revert_exists). REJECTS if current state " +
+          "has drifted since the upload (current_state_drift) unless " +
+          "force_no_after_hash=true is passed AND the snapshot has neither " +
+          "after_hash nor canonical (operator override — use sparingly). " +
+          "TWO-STEP Pattern S flow: (1) dry_run=true (DEFAULT) returns " +
+          "structured outcome + confirm_token + restored/deactivated/deleted " +
+          "preview counts, NO writes. (2) dry_run=false + " +
+          "expected_confirm_token=<token from step 1> performs the revert " +
+          "atomically. The plpgsql outer RPC handles all dispatch, locking, " +
+          "and audit-trail persistence in scheduler_admin_revert_attempts " +
+          "(failure-trail observability per ADR-002). Returns: { ok, " +
+          "upload_id, outcome ('success' | 'dry_run_success' | 'rejected' | " +
+          "'crashed'), reason_code (canonical enum per ADR-007 — e.g. " +
+          "current_state_drift, snapshot_pruned, successor_revert_exists, " +
+          "confirm_token_mismatch, cannot_safely_verify), error_message " +
+          "(sanitized), attempt_id (pivot key into " +
+          "scheduler_admin_revert_attempts for debug), dry_run, " +
+          "audit_log_id (on success), confirm_token (on dry_run_success), " +
+          "restored, deactivated, deleted }.",
         inputSchema: z.object({
           upload_id: z
             .number()
             .int()
             .describe(
-              "The audit_log_id returned by the upload to revert. Find via list_admin_audits or the upload result.",
+              "The audit_log_id returned by the upload to revert. Find via list_scheduler_admin_audit_log or the upload result.",
             ),
-          dry_run: z.boolean().optional().default(true),
+          dry_run: z.boolean().optional().default(true).describe(
+            "DEFAULT true. Set false ONLY when calling with expected_confirm_token from a prior dry-run.",
+          ),
+          expected_confirm_token: z.string().optional().describe(
+            "REQUIRED when dry_run=false. Pass the confirm_token returned by the immediately-prior dry_run=true call. Apply rejects with confirm_token_mismatch if absent OR if state changed between dry-run and apply.",
+          ),
+          force_no_after_hash: z.boolean().optional().default(false).describe(
+            "ADR-014 operator override. ONLY use when the audit row is from before the snapshot enrichment shipped (snapshot has neither after_hash nor expected_after_state_canonical). Accepts the 'we cannot verify what we're reverting OVER' risk. Default false rejects such snapshots with cannot_safely_verify.",
+          ),
         }),
         execute: recorded(recorder, "revert_md_upload", (input) =>
           revertMdUpload(sb, shopId, {
             upload_id: input.upload_id,
             audit,
             dry_run: input.dry_run,
+            expected_confirm_token: input.expected_confirm_token,
+            force_no_after_hash: input.force_no_after_hash,
           }),
         ),
       }),
@@ -1539,6 +1564,93 @@ export function getSchedulerTools(args: SchedulerToolsArgs) {
         ),
       }),
 
+      export_concern_category_md: tool({
+        description:
+          "Export ONE category's hierarchical concern checklist (sub-categories " +
+          "+ questions) as markdown — round-trippable through " +
+          "upload_concern_category_md. Output format matches the " +
+          "references/concerns/{slug}/{slug}-concerns.md template: " +
+          "'# {Category}' + '-- {Sub-Category} Checklist --' sections + " +
+          "numbered question lines (with optional '[multi]' prefix and " +
+          "indented options). Only active sub-categories and questions are " +
+          "emitted (soft-deleted rows are omitted; matches the uploader's " +
+          "diff semantics). The H1 label is best-effort: resolved from the " +
+          "category's guideline row when present, else a title-cased slug — " +
+          "the uploader ignores the H1 (it keys off category_slug from the " +
+          "tool args), so this is cosmetic only. " +
+          "Returns: { md_content, row_count }.",
+        inputSchema: z.object({
+          category_slug: z
+            .enum([
+              "noise",
+              "vibration",
+              "pulling",
+              "smell",
+              "smoke",
+              "leak",
+              "warning_light",
+              "performance",
+              "electrical",
+              "hvac",
+              "brakes",
+              "steering",
+              "tires",
+              "other",
+            ])
+            .describe(
+              "The concern category to export. Must be one of the 14 enum values.",
+            ),
+        }),
+        execute: recorded(recorder, "export_concern_category_md", (input) =>
+          exportConcernCategoryMd(sb, shopId, {
+            category_slug: input.category_slug,
+          }),
+        ),
+      }),
+
+      export_concern_category_guideline_md: tool({
+        description:
+          "Export ONE category's diagnostic-guideline prose paragraph as " +
+          "markdown — round-trippable through " +
+          "upload_concern_category_guideline_md. Output: '# {Display} — " +
+          "Diagnostic Guideline' + prose body + '---' HR. When no guideline " +
+          "row exists yet for this (shop, category), returns " +
+          "{ md_content: \"\", row_count: 0 } — the empty md_content is a " +
+          "sentinel the UI uses to seed a new doc rather than render invalid " +
+          "MD. " +
+          "Returns: { md_content, row_count }.",
+        inputSchema: z.object({
+          category_slug: z
+            .enum([
+              "noise",
+              "vibration",
+              "pulling",
+              "smell",
+              "smoke",
+              "leak",
+              "warning_light",
+              "performance",
+              "electrical",
+              "hvac",
+              "brakes",
+              "steering",
+              "tires",
+              "other",
+            ])
+            .describe(
+              "The concern category whose guideline to export.",
+            ),
+        }),
+        execute: recorded(
+          recorder,
+          "export_concern_category_guideline_md",
+          (input) =>
+            exportConcernCategoryGuidelineMd(sb, shopId, {
+              category_slug: input.category_slug,
+            }),
+        ),
+      }),
+
       export_appointment_default_limits_md: tool({
         description:
           "Export the current appointment_default_limits as a markdown table " +
@@ -1558,6 +1670,84 @@ export function getSchedulerTools(args: SchedulerToolsArgs) {
         inputSchema: z.object({}),
         execute: recorded(recorder, "export_closed_dates_md", () =>
           exportClosedDatesMd(sb, shopId),
+        ),
+      }),
+
+      list_scheduler_admin_audit_log: tool({
+        description:
+          "Enumerate recent scheduler_admin_audit_log rows (last 30 days, " +
+          "default 10, max 50) with a per-row revert-eligibility hint. Use " +
+          "this to populate the /schedulerconfig admin UI's recent-uploads " +
+          "panel + enable/disable a 'Revert' button per row. Filter by " +
+          "logical surface_filter (one of 10 values — three surfaces share " +
+          "the concern_subcategories table, two share concern_questions; " +
+          "the tool handles disambiguation via diff_summary.surfaces for " +
+          "modern rows + table_name fallback for legacy rows). The " +
+          "revert_eligibility hint is NON-AUTHORITATIVE — the authoritative " +
+          "answer always comes from calling revert_md_upload directly " +
+          "(which surfaces drift / token-mismatch / attempt-time rejections " +
+          "via the dispatch's classifier). Per-row eligibility uses 9 cheap " +
+          "reasons (STRICT SUBSET of the canonical reason_code enum): " +
+          "not_upload_md, snapshot_pruned, no_snapshot, table_not_supported, " +
+          "upload_failed, successor_revert_exists, over_30_day_cutoff, " +
+          "shop_id_unknown_pre_migration_backfill, cannot_safely_verify. " +
+          "Returns: { rows: [...], total_returned }.",
+        inputSchema: z.object({
+          surface_filter: z
+            .enum([
+              "routine_services",
+              "testing_services",
+              "subcategory_descriptions",
+              "subcategory_service_map",
+              "question_required_facts",
+              "concern_questions",
+              "concern_subcategories",
+              "concern_category_guidelines",
+              "appointment_default_limits",
+              "closed_dates",
+            ])
+            .optional()
+            .describe(
+              "Logical surface to filter to. Omit to return rows for ALL " +
+                "surfaces (still scoped to caller shop + 30-day cutoff). " +
+                "Modern rows match via diff_summary.surfaces precision; " +
+                "legacy rows fall back to table_name.",
+            ),
+          limit: z
+            .number()
+            .int()
+            .min(1)
+            .max(50)
+            .optional()
+            .describe("Max rows to return. Default 10, max 50."),
+          only_successful: z
+            .boolean()
+            .optional()
+            .describe(
+              "When true, exclude rows where error_message IS NOT NULL. " +
+                "Default false (show both successful + failed uploads — failed = " +
+                "visible 'I tried but it broke').",
+            ),
+          only_revertable: z
+            .boolean()
+            .optional()
+            .describe(
+              "When true, only return rows whose revert_eligibility.is_revertable " +
+                "is true (i.e., all 9 cheap predicates passed). NON-AUTHORITATIVE " +
+                "— the authoritative answer comes from invoking revert_md_upload. " +
+                "Default false.",
+            ),
+        }),
+        execute: recorded(
+          recorder,
+          "list_scheduler_admin_audit_log",
+          (input) =>
+            listSchedulerAdminAuditLog(sb, shopId, {
+              surface_filter: input.surface_filter,
+              limit: input.limit,
+              only_successful: input.only_successful,
+              only_revertable: input.only_revertable,
+            }),
         ),
       }),
 

@@ -980,3 +980,936 @@ export function serializeMdSections(
   return out.join("\n").trim() + "\n";
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// scheduler-edge-parity E2 — Shared helpers for Pattern S + revert dispatch
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Authored 2026-05-26 per PLAN.md §4.8 + ROUND-6-RESIDUALS E1cf-N2 +
+// ADR-025 (pipe-delimited canonical state format).
+//
+// 4 exported helpers:
+//   1. computeConfirmToken(args)         — Pattern S deterministic token
+//                                          (mirrors plpgsql formula per E1cf-N2)
+//   2. computeCanonicalAfterState(args)  — 10 kind handlers emitting the
+//                                          pipe-delimited canonical format per
+//                                          ADR-025, byte-for-byte matching
+//                                          `canonical_state_<kind>` plpgsql in
+//                                          migration 20260526000100.
+//   3. canonicalizeDiff(diffSummary)     — stable JSON canonicalization
+//                                          (sorted object keys + allow-list
+//                                          set-typed array sorting).
+//   4. logAuditEntry(args)               — consolidated audit-row INSERT helper.
+//                                          REQUIRES shopId (closes prior NULL
+//                                          shop_id footgun — see Migration A).
+//
+// Import dependency: SupabaseClient from npm:@supabase/supabase-js@2 — same
+// specifier the 22 other _shared/ + _shared/tools/ files use. The original
+// E2 author's jsr: specifier produced "Property 'supabaseUrl' is protected"
+// errors at every call site (npm/jsr give nominally-distinct types from
+// Deno's perspective), discovered during E4 retrofit 2026-05-26.
+// ═══════════════════════════════════════════════════════════════════════════
+
+import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
+
+// ─── Snapshot kind allow-list (closed set) ─────────────────────────────────
+
+/**
+ * The 10 canonical snapshot_kind values per ADR-024 + ADR-025. This is the
+ * closed allow-list used by `lock_surface_for_kind`, the dispatch RPC,
+ * the apply RPCs' confirm_token formula (per E1cf-N2), and the TS-side
+ * `computeCanonicalAfterState()` helper.
+ *
+ * Drift between this list and the plpgsql allow-list = production bug.
+ */
+export type SnapshotKind =
+  | "testing_services_v2"
+  | "routine_services_v2"
+  | "concern_subcategories_descriptions_v2"
+  | "concern_subcategories_map_v2"
+  | "concern_questions_required_facts_v2"
+  | "concern_questions_flat"
+  | "concern_questions_per_category"
+  | "concern_category_guidelines"
+  | "appointment_default_limits"
+  | "closed_dates_future";
+
+const SNAPSHOT_KIND_ALLOWLIST: ReadonlySet<SnapshotKind> = new Set<SnapshotKind>([
+  "testing_services_v2",
+  "routine_services_v2",
+  "concern_subcategories_descriptions_v2",
+  "concern_subcategories_map_v2",
+  "concern_questions_required_facts_v2",
+  "concern_questions_flat",
+  "concern_questions_per_category",
+  "concern_category_guidelines",
+  "appointment_default_limits",
+  "closed_dates_future",
+]);
+
+/** Kinds whose confirm_token formula includes a `:<category_slug>` suffix. */
+const KINDS_REQUIRING_CATEGORY_SLUG: ReadonlySet<SnapshotKind> = new Set<
+  SnapshotKind
+>([
+  "concern_questions_per_category",
+  "concern_category_guidelines",
+]);
+
+/** Kinds whose confirm_token formula includes a `:<original_today>` suffix. */
+const KINDS_REQUIRING_ORIGINAL_TODAY: ReadonlySet<SnapshotKind> = new Set<
+  SnapshotKind
+>([
+  "closed_dates_future",
+]);
+
+// ─── 1. computeConfirmToken ─────────────────────────────────────────────────
+
+/**
+ * Arguments for `computeConfirmToken()`. The 5 base fields are required for
+ * every kind; the kind-specific fields (`categorySlug`, `originalToday`) are
+ * required only when the kind matches.
+ */
+export interface ComputeConfirmTokenArgs {
+  shopId: number;
+  kind: SnapshotKind;
+  expectedCurrentHash: string;
+  mdContentHash: string;
+  actorEmail: string;
+  /** REQUIRED when kind ∈ {concern_questions_per_category, concern_category_guidelines}; ignored otherwise. */
+  categorySlug?: string;
+  /** REQUIRED when kind = closed_dates_future. ISO `YYYY-MM-DD`. Ignored otherwise. */
+  originalToday?: string;
+}
+
+/**
+ * Compute the deterministic Pattern S confirm_token. MUST produce the same
+ * bytes as the plpgsql apply RPCs' inline formula (per ROUND-6-RESIDUALS
+ * E1cf-N2):
+ *
+ *   sha256(shop_id || ':' || kind || ':' || expected_current_hash || ':' ||
+ *          md_content_hash || ':' || actor_email [|| ':' || category_slug]
+ *                                  [|| ':' || original_today])
+ *
+ * Used by:
+ *   - E4 V2 catalog uploaders to compute the token for dry_run response
+ *   - E5a-e legacy uploader Pattern S refactors to compute the token
+ *   - Anywhere the TS side needs to verify a confirm_token matches.
+ *
+ * Token mismatch path in the apply RPC RAISEs
+ * `'revert_blocked: confirm_token_mismatch: …'`.
+ *
+ * @returns hex-encoded SHA-256 (64 chars lowercase) — matches pgcrypto's
+ *          `encode(digest(text, 'sha256'), 'hex')` output byte-for-byte.
+ *
+ * @throws if `kind` is not in the canonical allow-list, or if a kind-specific
+ *         field is required but missing.
+ */
+export async function computeConfirmToken(
+  args: ComputeConfirmTokenArgs,
+): Promise<string> {
+  if (!SNAPSHOT_KIND_ALLOWLIST.has(args.kind)) {
+    throw new Error(
+      `computeConfirmToken: kind "${args.kind}" not in canonical allow-list (10 kinds)`,
+    );
+  }
+  if (KINDS_REQUIRING_CATEGORY_SLUG.has(args.kind)) {
+    if (!args.categorySlug || args.categorySlug.length === 0) {
+      throw new Error(
+        `computeConfirmToken: kind "${args.kind}" REQUIRES categorySlug (got ${JSON.stringify(args.categorySlug)})`,
+      );
+    }
+  }
+  if (KINDS_REQUIRING_ORIGINAL_TODAY.has(args.kind)) {
+    if (!args.originalToday || !/^\d{4}-\d{2}-\d{2}$/.test(args.originalToday)) {
+      throw new Error(
+        `computeConfirmToken: kind "${args.kind}" REQUIRES originalToday in YYYY-MM-DD form (got ${JSON.stringify(args.originalToday)})`,
+      );
+    }
+  }
+
+  // Build the colon-delimited base input. Order is LOAD-BEARING — plpgsql
+  // formula concatenates in this exact sequence (per E1cf-N2 + each apply
+  // RPC's header comment).
+  let input = `${args.shopId}:${args.kind}:${args.expectedCurrentHash}:${args.mdContentHash}:${args.actorEmail}`;
+
+  if (KINDS_REQUIRING_CATEGORY_SLUG.has(args.kind)) {
+    input += `:${args.categorySlug}`;
+  }
+  if (KINDS_REQUIRING_ORIGINAL_TODAY.has(args.kind)) {
+    input += `:${args.originalToday}`;
+  }
+
+  // sha256Hex is already defined above (line ~343) — reuse for byte-parity
+  // with the apply RPCs' pgcrypto `encode(digest(text, 'sha256'), 'hex')`.
+  return await sha256Hex(input);
+}
+
+// ─── 2. computeCanonicalAfterState ─────────────────────────────────────────
+
+/**
+ * Arguments for `computeCanonicalAfterState()`. Uses a service-role
+ * SupabaseClient because the canonical-state query reads from tables whose
+ * RLS policies may not permit the caller's auth context. The apply / revert
+ * RPCs run as SECURITY DEFINER so they bypass RLS; the TS-side helper
+ * needs equivalent read access via service_role.
+ */
+export interface ComputeCanonicalAfterStateArgs {
+  kind: SnapshotKind;
+  supabase: SupabaseClient;
+  shopId: number;
+  /** The p_snapshot JSONB equivalent — same shape the apply path emits. */
+  snapshot: Record<string, unknown>;
+}
+
+/**
+ * TS-side mirror of plpgsql `canonical_state_<kind>(p_shop_id, p_snapshot)`.
+ * Emits the pipe-delimited canonical text per ADR-025 byte-for-byte
+ * identically to the matching plpgsql serializer in migration
+ * `20260526000100_revert_md_upload_dispatch.sql` (lines 518-1138).
+ *
+ * Used by:
+ *   - E4 V2 catalog uploader modifications to populate
+ *     `expected_after_state_canonical` AFTER write (post-mutation read)
+ *   - Revert-path diff diagnostics when TS code needs the current canonical
+ *     state for human-readable display
+ *
+ * The 5 NEW legacy apply RPCs (PLAN §4.1-4.5) compute their own
+ * `expected_after_state_canonical` server-side via `canonical_state_<kind>`
+ * — they do NOT use this TS helper.
+ *
+ * @throws on unknown kind, missing snapshot fields, or Supabase query error.
+ *
+ * Byte-parity contract per ADR-025 + E1b-N3: a future E10 integration test
+ * will seed deterministic data, call BOTH plpgsql `canonical_state_<kind>`
+ * (via Supabase RPC) AND this TS helper, and assert the two TEXT outputs
+ * are byte-for-byte identical.
+ */
+export async function computeCanonicalAfterState(
+  args: ComputeCanonicalAfterStateArgs,
+): Promise<string> {
+  const { kind, supabase, shopId, snapshot } = args;
+  if (!SNAPSHOT_KIND_ALLOWLIST.has(kind)) {
+    throw new Error(
+      `computeCanonicalAfterState: kind "${kind}" not in canonical allow-list (10 kinds)`,
+    );
+  }
+
+  switch (kind) {
+    case "testing_services_v2":
+      return await canonicalStateTestingServicesV2(supabase, shopId);
+    case "routine_services_v2":
+      return await canonicalStateRoutineServicesV2(supabase, shopId);
+    case "concern_subcategories_descriptions_v2":
+      return await canonicalStateSubcategoryDescriptionsV2(supabase, shopId);
+    case "concern_subcategories_map_v2":
+      return await canonicalStateSubcategoryServiceMapV2(supabase, shopId);
+    case "concern_questions_required_facts_v2":
+      return await canonicalStateQuestionRequiredFactsV2(supabase, shopId);
+    case "concern_questions_flat":
+      return await canonicalStateConcernQuestionsFlat(supabase, shopId);
+    case "concern_questions_per_category":
+      return await canonicalStateConcernCategoryUpload(supabase, shopId, snapshot);
+    case "concern_category_guidelines":
+      return await canonicalStateConcernCategoryGuideline(supabase, shopId, snapshot);
+    case "appointment_default_limits":
+      return await canonicalStateAppointmentDefaultLimits(supabase, shopId);
+    case "closed_dates_future":
+      return await canonicalStateClosedDatesFuture(supabase, shopId, snapshot);
+  }
+}
+
+// ─── Canonical-state value formatters (shared across handlers) ─────────────
+
+/** Mirror plpgsql `COALESCE(<col>, '<null>')` for nullable TEXT columns. */
+function nullStr(v: unknown): string {
+  if (v === null || v === undefined) return "<null>";
+  return String(v);
+}
+
+/** Mirror plpgsql `COALESCE(<col>::TEXT, '<null>')` for nullable scalars. */
+function nullScalar(v: unknown): string {
+  if (v === null || v === undefined) return "<null>";
+  return String(v);
+}
+
+/** Mirror plpgsql `CASE WHEN <col> THEN 'true' ELSE 'false' END`. */
+function boolStr(v: unknown): string {
+  return v ? "true" : "false";
+}
+
+/**
+ * Mirror plpgsql:
+ *   COALESCE((SELECT jsonb_agg(elem ORDER BY elem)::TEXT
+ *             FROM jsonb_array_elements_text(to_jsonb(COALESCE(col, '{}'::TEXT[])))
+ *             AS elem), '[]')
+ *
+ * Empty/null array → `'[]'`. Non-empty → JSON array with elements sorted
+ * lexicographically. Matches Postgres `jsonb_agg(elem ORDER BY elem)::TEXT`
+ * canonical form: `["a", "b", "c"]` with SPACE AFTER COMMA. Verified
+ * against test DB 2026-05-26 via `SELECT jsonb_agg(...)::TEXT` MCP query —
+ * Postgres canonical jsonb-text uses space-after-comma + space-after-colon
+ * (NOT what JS's `JSON.stringify` emits, which has no spaces). Closing this
+ * gap keeps byte-parity with the 6 columns × 4 kinds that use sorted-text
+ * arrays (example_keywords, concern_categories, positive_examples,
+ * negative_examples, synonyms, eligible_testing_service_keys).
+ * Strings only — pgcrypto array elements are TEXT in every canonical_state_<kind>
+ * call site (verified migration lines 545-547, 603-605, 660-670, 718-720).
+ */
+function sortedTextArray(v: unknown): string {
+  if (v === null || v === undefined) return "[]";
+  if (!Array.isArray(v) || v.length === 0) return "[]";
+  const strings = v.map((x) => String(x));
+  strings.sort(); // lexicographic ascending — same as Postgres `ORDER BY elem`
+  // Manual format: JSON.stringify on each element (proper escaping),
+  // join with ", " (space-after-comma matches Postgres jsonb-text).
+  return "[" + strings.map((s) => JSON.stringify(s)).join(", ") + "]";
+}
+
+/**
+ * Mirror plpgsql for ORDERED text arrays (per migration line 774-775):
+ *   (SELECT jsonb_agg(elem ORDER BY ord)
+ *    FROM unnest(COALESCE(col, '{}'::TEXT[])) WITH ORDINALITY AS s(elem, ord))
+ *
+ * Empty/null array → `'[]'`. Non-empty → JSON array preserving incoming
+ * order (NOT sorted). Used for `required_facts` only.
+ *
+ * Same space-after-comma rule as sortedTextArray — Postgres jsonb-text
+ * canonical form is `["a", "b"]` not `["a","b"]`. Verified 2026-05-26.
+ */
+function orderedTextArray(v: unknown): string {
+  if (v === null || v === undefined) return "[]";
+  if (!Array.isArray(v) || v.length === 0) return "[]";
+  return "[" + v.map((x) => JSON.stringify(String(x))).join(", ") + "]";
+}
+
+/**
+ * Mirror plpgsql `COALESCE(options::TEXT, '<null>')` for the JSONB `options`
+ * column on concern_questions. `options` is a JSONB array of {label,value}
+ * objects in DB; pg's `::TEXT` cast emits the canonical JSONB text form
+ * (object keys sorted, no whitespace).
+ *
+ * Postgres `jsonb::text` produces the canonical compact form with:
+ *   - keys sorted alphabetically within objects
+ *   - no whitespace
+ *   - string values JSON-escaped
+ *
+ * We mirror that via a custom canonical-stringify so values match
+ * byte-for-byte.
+ */
+function jsonbColumnText(v: unknown): string {
+  if (v === null || v === undefined) return "<null>";
+  return canonicalJsonbText(v);
+}
+
+/**
+ * Stringify a value matching Postgres's `jsonb::text` canonical form:
+ *   - object keys sorted alphabetically
+ *   - arrays preserve element order
+ *   - no whitespace
+ *   - strings double-quoted + JSON-escaped
+ *   - numbers as-is
+ *   - null → "null", true/false → "true"/"false"
+ */
+function canonicalJsonbText(value: unknown): string {
+  if (value === null) return "null";
+  if (value === undefined) return "null";
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "number") return Number.isFinite(value) ? String(value) : "null";
+  if (typeof value === "string") return JSON.stringify(value);
+  if (Array.isArray(value)) {
+    return "[" + value.map((x) => canonicalJsonbText(x)).join(", ") + "]";
+  }
+  if (typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    const keys = Object.keys(obj).sort();
+    const parts = keys.map(
+      (k) => `${JSON.stringify(k)}: ${canonicalJsonbText(obj[k])}`,
+    );
+    return "{" + parts.join(", ") + "}";
+  }
+  return "null";
+}
+
+// ─── Canonical-state handlers (10 kinds, mirror migration lines 518-1138) ──
+
+/** Kind 1: testing_services_v2 — mirrors migration lines 518-571. */
+async function canonicalStateTestingServicesV2(
+  sb: SupabaseClient,
+  shopId: number,
+): Promise<string> {
+  const { data, error } = await sb
+    .from("testing_services")
+    .select(
+      "id, service_key, display_name, abbreviation, starting_price_cents, notes, description, example_keywords, concern_categories, active",
+    )
+    .eq("shop_id", shopId)
+    .order("service_key", { ascending: true });
+  if (error) {
+    throw new Error(
+      `canonical_state_testing_services_v2: ${error.message}`,
+    );
+  }
+  const rows = (data ?? []) as unknown as Array<Record<string, unknown>>;
+  const lines = rows.map((r) =>
+    `| id=${nullStr(r.id)} | service_key=${nullStr(r.service_key)} | display_name=${nullStr(r.display_name)} | abbreviation=${nullStr(r.abbreviation)} | starting_price_cents=${nullScalar(r.starting_price_cents)} | notes=${nullStr(r.notes)} | description=${nullStr(r.description)} | example_keywords=${sortedTextArray(r.example_keywords)} | concern_categories=${sortedTextArray(r.concern_categories)} | active=${boolStr(r.active)} |`
+  );
+  const body = lines.join("\n");
+  return `# testing_services_v2 shop=${shopId} rows=${rows.length}\n${body}\n`;
+}
+
+/** Kind 2: routine_services_v2 — mirrors migration lines 579-632. */
+async function canonicalStateRoutineServicesV2(
+  sb: SupabaseClient,
+  shopId: number,
+): Promise<string> {
+  const { data, error } = await sb
+    .from("routine_services")
+    .select(
+      "id, service_key, display_name, abbreviation, display_order, wait_eligible, requires_explanation, concern_categories, starting_price_cents, price_waived_note, description, active",
+    )
+    .eq("shop_id", shopId)
+    .order("service_key", { ascending: true });
+  if (error) {
+    throw new Error(
+      `canonical_state_routine_services_v2: ${error.message}`,
+    );
+  }
+  const rows = (data ?? []) as unknown as Array<Record<string, unknown>>;
+  const lines = rows.map((r) =>
+    `| id=${nullStr(r.id)} | service_key=${nullStr(r.service_key)} | display_name=${nullStr(r.display_name)} | abbreviation=${nullStr(r.abbreviation)} | display_order=${nullScalar(r.display_order)} | wait_eligible=${boolStr(r.wait_eligible)} | requires_explanation=${boolStr(r.requires_explanation)} | concern_categories=${sortedTextArray(r.concern_categories)} | starting_price_cents=${nullScalar(r.starting_price_cents)} | price_waived_note=${nullStr(r.price_waived_note)} | description=${nullStr(r.description)} | active=${boolStr(r.active)} |`
+  );
+  const body = lines.join("\n");
+  return `# routine_services_v2 shop=${shopId} rows=${rows.length}\n${body}\n`;
+}
+
+/** Kind 3: concern_subcategories_descriptions_v2 — mirrors migration lines 639-689. */
+async function canonicalStateSubcategoryDescriptionsV2(
+  sb: SupabaseClient,
+  shopId: number,
+): Promise<string> {
+  const { data, error } = await sb
+    .from("concern_subcategories")
+    .select(
+      "id, category, slug, description, positive_examples, negative_examples, synonyms, active",
+    )
+    .eq("shop_id", shopId)
+    .order("category", { ascending: true })
+    .order("slug", { ascending: true });
+  if (error) {
+    throw new Error(
+      `canonical_state_subcategory_descriptions_v2: ${error.message}`,
+    );
+  }
+  const rows = (data ?? []) as unknown as Array<Record<string, unknown>>;
+  const lines = rows.map((r) =>
+    `| id=${nullStr(r.id)} | category=${nullStr(r.category)} | slug=${nullStr(r.slug)} | description=${nullStr(r.description)} | positive_examples=${sortedTextArray(r.positive_examples)} | negative_examples=${sortedTextArray(r.negative_examples)} | synonyms=${sortedTextArray(r.synonyms)} | active=${boolStr(r.active)} |`
+  );
+  const body = lines.join("\n");
+  return `# concern_subcategories_descriptions_v2 shop=${shopId} rows=${rows.length}\n${body}\n`;
+}
+
+/** Kind 4: concern_subcategories_map_v2 — mirrors migration lines 699-739. */
+async function canonicalStateSubcategoryServiceMapV2(
+  sb: SupabaseClient,
+  shopId: number,
+): Promise<string> {
+  const { data, error } = await sb
+    .from("concern_subcategories")
+    .select("id, category, slug, eligible_testing_service_keys, active")
+    .eq("shop_id", shopId)
+    .order("category", { ascending: true })
+    .order("slug", { ascending: true });
+  if (error) {
+    throw new Error(
+      `canonical_state_subcategory_service_map_v2: ${error.message}`,
+    );
+  }
+  const rows = (data ?? []) as unknown as Array<Record<string, unknown>>;
+  const lines = rows.map((r) =>
+    `| id=${nullStr(r.id)} | category=${nullStr(r.category)} | slug=${nullStr(r.slug)} | eligible_testing_service_keys=${sortedTextArray(r.eligible_testing_service_keys)} | active=${boolStr(r.active)} |`
+  );
+  const body = lines.join("\n");
+  return `# concern_subcategories_map_v2 shop=${shopId} rows=${rows.length}\n${body}\n`;
+}
+
+/** Kind 5: concern_questions_required_facts_v2 — mirrors migration lines 749-794.
+ *  NOTE: `required_facts` is ORDERED (MD-order preserved); use orderedTextArray. */
+async function canonicalStateQuestionRequiredFactsV2(
+  sb: SupabaseClient,
+  shopId: number,
+): Promise<string> {
+  const { data, error } = await sb
+    .from("concern_questions")
+    .select("id, required_facts, active")
+    .eq("shop_id", shopId)
+    .order("id", { ascending: true });
+  if (error) {
+    throw new Error(
+      `canonical_state_question_required_facts_v2: ${error.message}`,
+    );
+  }
+  const rows = (data ?? []) as unknown as Array<Record<string, unknown>>;
+  const lines = rows.map((r) =>
+    `| id=${nullStr(r.id)} | required_facts=${orderedTextArray(r.required_facts)} | active=${boolStr(r.active)} |`
+  );
+  const body = lines.join("\n");
+  return `# concern_questions_required_facts_v2 shop=${shopId} rows=${rows.length}\n${body}\n`;
+}
+
+/** Kind 6: concern_questions_flat — mirrors migration lines 805-845. */
+async function canonicalStateConcernQuestionsFlat(
+  sb: SupabaseClient,
+  shopId: number,
+): Promise<string> {
+  const { data, error } = await sb
+    .from("concern_questions")
+    .select("id, category, question_text, display_order, active, options")
+    .eq("shop_id", shopId)
+    .order("category", { ascending: true })
+    .order("display_order", { ascending: true })
+    .order("id", { ascending: true });
+  if (error) {
+    throw new Error(
+      `canonical_state_concern_questions_flat: ${error.message}`,
+    );
+  }
+  const rows = (data ?? []) as unknown as Array<Record<string, unknown>>;
+  // Column order in the format() string is: id, category, display_order,
+  // question_text, options, active — matches migration line 835-836.
+  const lines = rows.map((r) =>
+    `| id=${nullStr(r.id)} | category=${nullStr(r.category)} | display_order=${nullScalar(r.display_order)} | question_text=${nullStr(r.question_text)} | options=${jsonbColumnText(r.options)} | active=${boolStr(r.active)} |`
+  );
+  const body = lines.join("\n");
+  return `# concern_questions_flat shop=${shopId} rows=${rows.length}\n${body}\n`;
+}
+
+/** Kind 7: concern_questions_per_category (R6-B3) — mirrors migration lines 868-964.
+ *  Reads BOTH concern_subcategories AND concern_questions for (shop_id, category).
+ *  Category derived from snapshot: category_slug → subcategories_before first → questions_before first. */
+async function canonicalStateConcernCategoryUpload(
+  sb: SupabaseClient,
+  shopId: number,
+  snapshot: Record<string, unknown>,
+): Promise<string> {
+  // Derive category per migration lines 884-905.
+  let category: string | null = null;
+
+  const directSlug = snapshot["category_slug"];
+  if (typeof directSlug === "string" && directSlug.length > 0) {
+    category = directSlug;
+  }
+
+  if (category === null) {
+    const subsBefore = snapshot["subcategories_before"];
+    if (subsBefore && typeof subsBefore === "object" && !Array.isArray(subsBefore)) {
+      for (const key of Object.keys(subsBefore as Record<string, unknown>)) {
+        const row = (subsBefore as Record<string, unknown>)[key];
+        if (row && typeof row === "object" && !Array.isArray(row)) {
+          const c = (row as Record<string, unknown>)["category"];
+          if (typeof c === "string" && c.length > 0) {
+            category = c;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  if (category === null) {
+    const qsBefore = snapshot["questions_before"];
+    if (qsBefore && typeof qsBefore === "object" && !Array.isArray(qsBefore)) {
+      for (const key of Object.keys(qsBefore as Record<string, unknown>)) {
+        const row = (qsBefore as Record<string, unknown>)[key];
+        if (row && typeof row === "object" && !Array.isArray(row)) {
+          const c = (row as Record<string, unknown>)["category"];
+          if (typeof c === "string" && c.length > 0) {
+            category = c;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  if (category === null) {
+    throw new Error(
+      "canonical_state_concern_category_upload: snapshot missing category_slug AND has no subcategories_before/questions_before rows to derive it from",
+    );
+  }
+
+  // Subcategories block — mirrors migration lines 907-928.
+  const { data: subData, error: subErr } = await sb
+    .from("concern_subcategories")
+    .select("id, category, slug, display_label, display_order, active")
+    .eq("shop_id", shopId)
+    .eq("category", category)
+    .order("display_order", { ascending: true })
+    .order("slug", { ascending: true });
+  if (subErr) {
+    throw new Error(
+      `canonical_state_concern_category_upload (subcategories): ${subErr.message}`,
+    );
+  }
+  const subs = (subData ?? []) as unknown as Array<Record<string, unknown>>;
+  const subLines = subs.map((r) =>
+    `| id=${nullStr(r.id)} | slug=${nullStr(r.slug)} | display_label=${nullStr(r.display_label)} | display_order=${nullScalar(r.display_order)} | active=${boolStr(r.active)} |`
+  );
+  const subsBlock = subLines.join("\n");
+
+  // Questions block — mirrors migration lines 930-958. LEFT JOIN to
+  // subcategories on (id, shop_id) to source sub_slug. Sort by sub_slug,
+  // then display_order, then id.
+  const { data: qData, error: qErr } = await sb
+    .from("concern_questions")
+    .select(
+      "id, subcategory_id, question_text, display_order, active, multi_select, options",
+    )
+    .eq("shop_id", shopId)
+    .eq("category", category);
+  if (qErr) {
+    throw new Error(
+      `canonical_state_concern_category_upload (questions): ${qErr.message}`,
+    );
+  }
+  // Build sub_slug lookup from the sub rows we already fetched (matches the
+  // LEFT JOIN in plpgsql — same (id, shop_id) scoping).
+  const slugById = new Map<string, string>();
+  for (const s of subs) {
+    if (s.id !== null && s.id !== undefined) {
+      slugById.set(String(s.id), nullStr(s.slug));
+    }
+  }
+  type QRow = Record<string, unknown>;
+  type QRowWithSlug = Record<string, unknown> & { sub_slug: string };
+  const qRows: QRowWithSlug[] = ((qData ?? []) as unknown as QRow[]).map(
+    (r): QRowWithSlug => ({
+      ...r,
+      sub_slug: r.subcategory_id !== null && r.subcategory_id !== undefined
+        ? slugById.get(String(r.subcategory_id)) ?? "<null>"
+        : "<null>",
+    }),
+  );
+  // Sort: COALESCE(cs.slug, '') ASC, display_order ASC, id ASC.
+  // For empty/null sub_slug, the COALESCE produces empty string which
+  // sorts before any actual slug — match that here by treating "<null>"
+  // as the empty sort key. Plpgsql uses '' for missing slug; we use
+  // empty string for ordering, "<null>" for output.
+  qRows.sort((a, b) => {
+    const aSlugSort = a.sub_slug === "<null>" ? "" : a.sub_slug;
+    const bSlugSort = b.sub_slug === "<null>" ? "" : b.sub_slug;
+    if (aSlugSort < bSlugSort) return -1;
+    if (aSlugSort > bSlugSort) return 1;
+    const aOrd = a.display_order === null || a.display_order === undefined
+      ? Number.NEGATIVE_INFINITY
+      : Number(a.display_order);
+    const bOrd = b.display_order === null || b.display_order === undefined
+      ? Number.NEGATIVE_INFINITY
+      : Number(b.display_order);
+    if (aOrd < bOrd) return -1;
+    if (aOrd > bOrd) return 1;
+    const aId = BigInt(String(a.id ?? "0"));
+    const bId = BigInt(String(b.id ?? "0"));
+    if (aId < bId) return -1;
+    if (aId > bId) return 1;
+    return 0;
+  });
+  const qLines = qRows.map((r) =>
+    `| id=${nullStr(r.id)} | sub_slug=${r.sub_slug} | subcategory_id=${nullScalar(r.subcategory_id)} | display_order=${nullScalar(r.display_order)} | question_text=${nullStr(r.question_text)} | options=${jsonbColumnText(r.options)} | multi_select=${boolStr(r.multi_select)} | active=${boolStr(r.active)} |`
+  );
+  const qsBlock = qLines.join("\n");
+
+  // Final composition — mirrors migration line 960-963 format() exactly.
+  return `# concern_questions_per_category shop=${shopId} category=${category}\n## subcategories rows=${subs.length}\n${subsBlock}\n## questions rows=${qRows.length}\n${qsBlock}\n`;
+}
+
+/** Kind 8: concern_category_guidelines — mirrors migration lines 975-1020.
+ *  Category scope: distinct categories from snapshot.before keys + snapshot.added_keys. */
+async function canonicalStateConcernCategoryGuideline(
+  sb: SupabaseClient,
+  shopId: number,
+  snapshot: Record<string, unknown>,
+): Promise<string> {
+  // Mirror plpgsql lines 989-996: union of keys + added_keys, distinct,
+  // non-empty.
+  const set = new Set<string>();
+  const before = snapshot["before"];
+  if (before && typeof before === "object" && !Array.isArray(before)) {
+    for (const key of Object.keys(before as Record<string, unknown>)) {
+      if (key && key.length > 0) set.add(key);
+    }
+  }
+  const added = snapshot["added_keys"];
+  if (Array.isArray(added)) {
+    for (const v of added) {
+      const s = String(v);
+      if (s && s.length > 0) set.add(s);
+    }
+  }
+  const categories = Array.from(set);
+
+  // If no scope: read returns 0 rows; format() still emits the header.
+  if (categories.length === 0) {
+    return `# concern_category_guidelines shop=${shopId} rows=0\n\n`;
+  }
+
+  const { data, error } = await sb
+    .from("concern_category_guidelines")
+    .select("category, display_label, guideline_prose")
+    .eq("shop_id", shopId)
+    .in("category", categories)
+    .order("category", { ascending: true });
+  if (error) {
+    throw new Error(
+      `canonical_state_concern_category_guideline: ${error.message}`,
+    );
+  }
+  const rows = (data ?? []) as unknown as Array<Record<string, unknown>>;
+  const lines = rows.map((r) =>
+    `| category=${nullStr(r.category)} | display_label=${nullStr(r.display_label)} | guideline_prose=${nullStr(r.guideline_prose)} |`
+  );
+  const body = lines.join("\n");
+  return `# concern_category_guidelines shop=${shopId} rows=${rows.length}\n${body}\n`;
+}
+
+/** Kind 9: appointment_default_limits — mirrors migration lines 1030-1069.
+ *  Composite PK (shop_id, day_of_week) — id column excluded (per E1cf-N1).
+ *  Sort by day_of_week ASC. */
+async function canonicalStateAppointmentDefaultLimits(
+  sb: SupabaseClient,
+  shopId: number,
+): Promise<string> {
+  const { data, error } = await sb
+    .from("appointment_default_limits")
+    .select(
+      "day_of_week, is_closed, waiter_8am_slots, waiter_9am_slots, dropoff_total, notes",
+    )
+    .eq("shop_id", shopId)
+    .order("day_of_week", { ascending: true });
+  if (error) {
+    throw new Error(
+      `canonical_state_appointment_default_limits: ${error.message}`,
+    );
+  }
+  const rows = (data ?? []) as unknown as Array<Record<string, unknown>>;
+  const lines = rows.map((r) =>
+    `| day_of_week=${nullScalar(r.day_of_week)} | is_closed=${boolStr(r.is_closed)} | waiter_8am_slots=${nullScalar(r.waiter_8am_slots)} | waiter_9am_slots=${nullScalar(r.waiter_9am_slots)} | dropoff_total=${nullScalar(r.dropoff_total)} | notes=${nullStr(r.notes)} |`
+  );
+  const body = lines.join("\n");
+  return `# appointment_default_limits shop=${shopId} rows=${rows.length}\n${body}\n`;
+}
+
+/** Kind 10: closed_dates_future — mirrors migration lines 1082-1134.
+ *  Filters closed_date >= snapshot.original_today (REQUIRED snapshot field).
+ *  id column INTENTIONALLY EXCLUDED per migration line 1102 comment. */
+async function canonicalStateClosedDatesFuture(
+  sb: SupabaseClient,
+  shopId: number,
+  snapshot: Record<string, unknown>,
+): Promise<string> {
+  const originalToday = snapshot["original_today"];
+  if (
+    typeof originalToday !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(originalToday)
+  ) {
+    throw new Error(
+      "canonical_state_closed_dates_future: snapshot missing original_today (required to scope canonical read to the same forward window the uploader saw)",
+    );
+  }
+
+  const { data, error } = await sb
+    .from("closed_dates")
+    .select("closed_date, reason, source")
+    .eq("shop_id", shopId)
+    .gte("closed_date", originalToday)
+    .order("closed_date", { ascending: true });
+  if (error) {
+    throw new Error(
+      `canonical_state_closed_dates_future: ${error.message}`,
+    );
+  }
+  const rows = (data ?? []) as unknown as Array<Record<string, unknown>>;
+  const lines = rows.map((r) =>
+    `| closed_date=${nullStr(r.closed_date)} | reason=${nullStr(r.reason)} | source=${nullStr(r.source)} |`
+  );
+  const body = lines.join("\n");
+  return `# closed_dates_future shop=${shopId} rows=${rows.length} original_today=${originalToday}\n${body}\n`;
+}
+
+// ─── 3. canonicalizeDiff ───────────────────────────────────────────────────
+
+/**
+ * Allow-list of object keys whose values are SET-typed arrays — i.e., array
+ * order is NOT semantically meaningful so we sort for stability. Per PLAN
+ * §4.8: keys ending in `_keys` or `_ids`, plus `surfaces`.
+ */
+function isSetTypedArrayKey(key: string): boolean {
+  if (key === "surfaces") return true;
+  if (key.endsWith("_keys")) return true;
+  if (key.endsWith("_ids")) return true;
+  return false;
+}
+
+/**
+ * Stable JSON canonicalization for the `diff_summary` JSONB column. Used
+ * (indirectly) by `computeConfirmToken()` callers that derive the
+ * `md_content_hash` / `expected_current_hash` inputs, and by tests that
+ * compare diff_summary across runs.
+ *
+ * Rules per PLAN §4.8:
+ *   - Object keys ALWAYS sorted alphabetically
+ *   - Set-typed arrays sorted (allow-list: keys ending in `_keys` or
+ *     `_ids`, plus `surfaces`)
+ *   - Ordered arrays preserved (everything not in the sort allow-list)
+ *   - NULL → `null`
+ *   - Numbers as-is
+ *   - Strings JSON-escaped, double-quoted
+ *
+ * Test invariant: `canonicalizeDiff({z: 1, a: 2}) === '{"a":2,"z":1}'`.
+ */
+export function canonicalizeDiff(diff: Record<string, unknown>): string {
+  return stringifyCanonical(diff, /* parentKey */ undefined);
+}
+
+function stringifyCanonical(value: unknown, parentKey: string | undefined): string {
+  if (value === null || value === undefined) return "null";
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "number") return Number.isFinite(value) ? String(value) : "null";
+  if (typeof value === "string") return JSON.stringify(value);
+  if (Array.isArray(value)) {
+    // Sort only if parent key is in the set-typed allow-list. Otherwise
+    // preserve order (ordered arrays like `questions[]`, `options[]`).
+    const items = value.map((x) => stringifyCanonical(x, undefined));
+    if (parentKey !== undefined && isSetTypedArrayKey(parentKey)) {
+      // Sort the already-stringified array elements lexicographically for
+      // determinism. Mirrors plpgsql `jsonb_agg(elem ORDER BY elem)`.
+      items.sort();
+    }
+    return "[" + items.join(",") + "]";
+  }
+  if (typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    const keys = Object.keys(obj).sort();
+    const parts = keys.map(
+      (k) => `${JSON.stringify(k)}:${stringifyCanonical(obj[k], k)}`,
+    );
+    return "{" + parts.join(",") + "}";
+  }
+  return "null";
+}
+
+// ─── 4. logAuditEntry (consolidated) ───────────────────────────────────────
+
+/**
+ * Arguments for `logAuditEntry()`. `shopId` is REQUIRED (replaces the
+ * historical "may forget shop_id" footgun the inline insert sites suffer).
+ */
+export interface LogAuditEntryArgs {
+  supabase: SupabaseClient;
+  /** REQUIRED. Throws if missing. Tenant scope per Migration A column. */
+  shopId: number;
+  oauthClientId?: string | null;
+  /** Operator-readable label per ADR-010 actor_email semantic. */
+  userLabel?: string | null;
+  /** 'routine_services' | 'testing_services' | 'concern_questions' | etc. */
+  tableName: string;
+  operation: "upload_md" | "manual_change" | "export_md" | "revert_upload";
+  rowsAdded?: number;
+  rowsModified?: number;
+  rowsDeactivated?: number;
+  mdContentHash?: string | null;
+  diffSummary?: Record<string, unknown> | null;
+  errorMessage?: string | null;
+  preStateSnapshot?: Record<string, unknown> | null;
+  successorRevertId?: number | null;
+  revertsUploadId?: number | null;
+}
+
+/**
+ * MIGRATION NOTE: this helper REPLACES inline insert sites in
+ * scheduler-admin.ts + scheduler-admin-catalog.ts. E4 + E5 builders MUST
+ * refactor those sites to call this helper instead of inline-inserting;
+ * the existing inline sites have a known bug where shop_id can be NULL
+ * (fixed in Migration A + B).
+ *
+ * Call sites to migrate (audit before changing):
+ *   - supabase/functions/_shared/tools/scheduler-admin.ts:
+ *       logAdminAudit() helper at L108 + 33 inline call sites
+ *       (L216, L241, L317, L347, L426, L533, L557, L622, L651, L729,
+ *        L821, L845, L920, L949, L1067, L1157, L1181, L1247, L1275,
+ *        L1335, L1418, L1442, L1481, L1514, L1580, L1837, L1869, L1898,
+ *        L1962, L2000, L2169, L2254, L2283, L2321, L2358, L2387)
+ *   - supabase/functions/_shared/tools/scheduler-admin-catalog.ts:
+ *       _logAudit() helper at L641 + 24 inline call sites
+ *       (L381, L404, L429, L591, L934, L1062, L1080, L1138, L1170, L1197,
+ *        L1238, L1368, L1742, L1785, L1810, L1853, L2004, L2250, L2262,
+ *        L2319, L2347, L2385, L2491)
+ *
+ * Refactor scope for E4/E5: replace each inline insert with a
+ * `logAuditEntry()` call that EXPLICITLY threads through the caller's
+ * `shopId`. The existing helpers `logAdminAudit` + `_logAudit` should be
+ * deleted in the same PR.
+ *
+ * Logs Sentry-style structured warnings on insert failure (matches the
+ * inline sites' current log shape so dashboards keep working).
+ *
+ * @returns `{ id }` on success or `{ error }` on insert failure. Caller
+ *          can ignore the result if it only needs side-effect logging.
+ *
+ * @throws if `shopId` is missing/null/non-positive (sentinel `-1` is
+ *         BLOCKED on new writes — Migration A's sentinel handling is for
+ *         backfill ONLY).
+ */
+export async function logAuditEntry(
+  args: LogAuditEntryArgs,
+): Promise<{ id: number } | { error: string }> {
+  // REQUIRED-shopId guard. Sentinel `-1` is only for backfill; new writes
+  // MUST carry a real positive shop_id.
+  if (
+    args.shopId === undefined ||
+    args.shopId === null ||
+    typeof args.shopId !== "number" ||
+    !Number.isFinite(args.shopId) ||
+    args.shopId <= 0
+  ) {
+    throw new Error(
+      `logAuditEntry: shopId is REQUIRED and must be a positive integer (got ${JSON.stringify(args.shopId)}). Sentinel -1 is reserved for backfill PHASE 2 only — new writes always carry a real shop_id.`,
+    );
+  }
+
+  const { data, error } = await args.supabase
+    .from("scheduler_admin_audit_log")
+    .insert({
+      shop_id: args.shopId,
+      oauth_client_id: args.oauthClientId ?? null,
+      user_label: args.userLabel ?? null,
+      table_name: args.tableName,
+      operation: args.operation,
+      rows_added: args.rowsAdded ?? 0,
+      rows_modified: args.rowsModified ?? 0,
+      rows_deactivated: args.rowsDeactivated ?? 0,
+      md_content_hash: args.mdContentHash ?? null,
+      diff_summary: args.diffSummary ?? null,
+      pre_state_snapshot: args.preStateSnapshot ?? null,
+      error_message: args.errorMessage ?? null,
+      successor_revert_id: args.successorRevertId ?? null,
+      reverts_upload_id: args.revertsUploadId ?? null,
+    })
+    .select("id")
+    .single();
+
+  if (error) {
+    console.warn(
+      JSON.stringify({
+        level: "warning",
+        msg: "scheduler_admin_audit_log_insert_failed",
+        detail: error.message,
+        shop_id: args.shopId,
+        table_name: args.tableName,
+        operation: args.operation,
+      }),
+    );
+    return { error: error.message };
+  }
+
+  return { id: data?.id as number };
+}
+
