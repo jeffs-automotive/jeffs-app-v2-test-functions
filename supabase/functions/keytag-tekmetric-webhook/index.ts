@@ -304,12 +304,28 @@ interface LogEventInput {
  * processing and return 200 (we already handled this logical event).
  */
 async function logEvent(raw: LogEventInput): Promise<string | null> {
+  // Plain INSERT + catch unique-violation (23505). The partial unique index
+  // `keytag_webhook_events_event_hash_uniq` (event_hash WHERE event_hash IS
+  // NOT NULL AND idempotency_active = true) enforces idempotency at the DB
+  // level. PostgREST's `onConflict=event_hash` cannot infer a partial index
+  // (no WHERE-clause predicate is sent), which is why the previous
+  // `.upsert({onConflict, ignoreDuplicates: true})` raised
+  // `42P10: no unique or exclusion constraint matching the ON CONFLICT
+  // specification` on every call — silent regression 2026-05-22 through
+  // 2026-05-26.
   const { data, error } = await sb
     .from("keytag_webhook_events")
-    .upsert(raw, { onConflict: "event_hash", ignoreDuplicates: true })
+    .insert(raw)
     .select("id")
     .maybeSingle();
-  if (error) throw new Error(`Log upsert failed: ${error.message}`);
+  if (error) {
+    if (error.code === "23505") {
+      // Duplicate Tekmetric retry — partial unique index caught it. Caller
+      // treats null as "already handled, skip downstream processing."
+      return null;
+    }
+    throw new Error(`Log insert failed: ${error.message}`);
+  }
   return data ? (data.id as string) : null;
 }
 

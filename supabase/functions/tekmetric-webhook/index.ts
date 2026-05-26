@@ -243,39 +243,46 @@ export async function handler(req: Request): Promise<Response> {
   // Idempotency at the DB level (audit B5 — migration 20260522191500).
   // event_hash is a GENERATED ALWAYS column derived from
   // (event_kind, entity_id, status_id, raw_body.data.updatedDate) — see
-  // migration. .upsert with ignoreDuplicates: true means duplicate retries
-  // are silently no-op'd at the DB level and `inserted` is NULL.
+  // migration.
+  //
+  // We use plain INSERT + catch unique-violation (23505) instead of
+  // .upsert({onConflict, ignoreDuplicates}). PostgREST's onConflict cannot
+  // infer the partial unique index `tekmetric_webhook_events_event_hash_uniq`
+  // (WHERE event_hash IS NOT NULL AND idempotency_active = true) because
+  // PostgREST does NOT send the WHERE-clause predicate. The prior upsert
+  // raised `42P10: no unique or exclusion constraint matching the ON
+  // CONFLICT specification` on EVERY call — silent regression 2026-05-22
+  // through 2026-05-26 (all webhooks dropped, function returned 200 anyway).
   const { data: inserted, error: insertErr } = await getSb()
     .from("tekmetric_webhook_events")
-    .upsert(insertRow, { onConflict: "event_hash", ignoreDuplicates: true })
+    .insert(insertRow)
     .select("id")
     .maybeSingle();
 
   if (insertErr) {
-    // Log to function stdout so the failure shows up in `supabase functions logs`,
-    // but still return 200 — Tekmetric retrying won't help if our DB is down,
-    // and we don't want a flood of retries to make the situation worse.
-    console.error("tekmetric-webhook: upsert failed:", insertErr.message, "row:", JSON.stringify(insertRow).slice(0, 500));
+    if (insertErr.code === "23505") {
+      // Duplicate retry — partial unique index caught it. Return 200 so
+      // Tekmetric stops retrying; structured log for observability.
+      console.log(JSON.stringify({
+        msg: "tekmetric-webhook: duplicate event ignored",
+        event_kind_inferred: eventKindInferred,
+      }));
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          logged: true,
+          duplicate: true,
+          event_kind_inferred: eventKindInferred,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }
+    // Other error — log to function stdout so the failure shows up in
+    // `supabase functions logs`, but still return 200 — Tekmetric retrying
+    // won't help if our DB is down, and a flood of retries makes it worse.
+    console.error("tekmetric-webhook: insert failed:", insertErr.message, "row:", JSON.stringify(insertRow).slice(0, 500));
     return new Response(
       JSON.stringify({ ok: false, logged: false, error: insertErr.message }),
-      { status: 200, headers: { "Content-Type": "application/json" } },
-    );
-  }
-
-  if (inserted === null) {
-    // Duplicate retry — DB-level idempotency caught it. Return 200 so
-    // Tekmetric stops retrying; structured log for observability.
-    console.log(JSON.stringify({
-      msg: "tekmetric-webhook: duplicate event ignored",
-      event_kind_inferred: eventKindInferred,
-    }));
-    return new Response(
-      JSON.stringify({
-        ok: true,
-        logged: true,
-        duplicate: true,
-        event_kind_inferred: eventKindInferred,
-      }),
       { status: 200, headers: { "Content-Type": "application/json" } },
     );
   }
