@@ -535,8 +535,11 @@ export async function getAppointmentEligibility(
  * state, zip}`. The address.address2 is now a first-class field, not
  * a manually concatenated suffix on streetAddress.
  *
- * Phone number is sent as "###-###-####" (dashed) per the curl example,
- * NOT E.164 (+1#########). We strip the +1 prefix and re-format.
+ * Phone number is sent as bare 10 digits (e.g. "6105595520"), NOT E.164
+ * and NOT dashed. Verified 2026-05-26 against a live customer GET (the
+ * comment block that previously claimed "dashed format" was misreading
+ * the curl example — Tekmetric STORES and RETURNS bare digits). Sending
+ * dashes corrupts the in-app phone display until the next manual edit.
  */
 export async function createNewCustomer(
   sb: SupabaseClient,
@@ -555,10 +558,10 @@ export async function createNewCustomer(
     };
   },
 ): Promise<{ customer_id: number }> {
-  // Phone: E.164 (+15555550100) → Tekmetric dashed format (555-555-0100).
+  // Phone: E.164 (+15555550100) → bare 10 digits (5555550100) for Tekmetric.
   const digits = args.phone_e164.replace(/\D/g, "").replace(/^1/, "");
-  const phoneDashed = digits.length === 10
-    ? `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`
+  const phoneOut = digits.length === 10
+    ? digits
     : args.phone_e164; // fall through unchanged if unexpected shape
 
   const body: Record<string, unknown> = {
@@ -569,7 +572,7 @@ export async function createNewCustomer(
     email: args.email?.trim() ? [args.email.trim()] : [],
     phones: [
       {
-        number: phoneDashed,
+        number: phoneOut,
         type: "Mobile",
         primary: true,
       },
@@ -726,7 +729,9 @@ export async function patchCustomer(
   // Aligned to the POST shape that's known to work:
   //   - email: ARRAY of strings (not a single string)
   //   - phones (plural key, not "phone")
-  //   - phone.number in dashed format "###-###-####" (not E.164)
+  //   - phone.number as bare 10 digits "##########" (NOT dashed, NOT E.164).
+  //     Verified 2026-05-26 against a live customer GET — Tekmetric stores
+  //     and returns bare digits; sending dashes corrupts the in-app display.
   //   - address1/address2/city/state/zip (not streetAddress concat)
   //
   // We still preserve existing phone-entry ids by matching E.164 digits
@@ -737,15 +742,13 @@ export async function patchCustomer(
   const phonesArray = editedPhones
     ? editedPhones.slice(0, 2).map((p) => {
         const digits = p.phone_e164.replace(/\D/g, "").replace(/^1/, "");
-        const dashed = digits.length === 10
-          ? `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`
-          : p.phone_e164;
+        const numberOut = digits.length === 10 ? digits : p.phone_e164;
         const matchedExisting = existingPhones.find(
           (ep) => ep.number?.replace(/\D/g, "").replace(/^1/, "") === digits,
         );
         return {
           id: matchedExisting?.id,
-          number: dashed,
+          number: numberOut,
           type: matchedExisting?.type ?? "Mobile",
           primary: p.is_primary,
         };
