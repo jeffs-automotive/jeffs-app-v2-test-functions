@@ -14,6 +14,7 @@ import {
   markKeytagPostedAction,
   type MarkKeytagPostedState,
 } from "@/actions/keytag/mark-keytag-posted";
+import { formatEastern } from "@/lib/format-time";
 import { ConfirmationDialog } from "./ConfirmationDialog";
 import { TagBadge } from "./TagBadge";
 
@@ -30,7 +31,7 @@ export function MarkKeytagPostedForm() {
   useEffect(() => {
     if (state.kind === "success") {
       toast.success(`Marked ${state.data.tag_label} as posted A/R`, {
-        description: `RO #${state.data.ro_number} at ${new Date(state.data.posted_at).toLocaleString()}`,
+        description: `RO #${state.data.ro_number} at ${formatEastern(state.data.posted_at)}`,
       });
       setDialogOpen(false);
     }

@@ -26,6 +26,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { formatEastern } from "@/lib/format-time";
 import {
   callKeytagTool,
   OrchestratorClientError,
@@ -161,9 +162,7 @@ export async function LiveStateTab({ actorEmail }: LiveStateTabProps) {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground">
-                          {entry.last_activity_at
-                            ? new Date(entry.last_activity_at).toLocaleString()
-                            : "—"}
+                          {formatEastern(entry.last_activity_at)}
                         </TableCell>
                         <TableCell>
                           {staleness.isStale ? (

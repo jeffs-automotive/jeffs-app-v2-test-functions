@@ -13,6 +13,7 @@ import {
   whoIsOnTagAction,
   type WhoIsOnTagState,
 } from "@/actions/keytag/who-is-on-tag";
+import { formatEastern } from "@/lib/format-time";
 import { TagBadge } from "./TagBadge";
 
 const initialState: WhoIsOnTagState = { kind: "idle" };
@@ -129,7 +130,7 @@ function WhoIsOnTagResultDisplay({
       </div>
       {r.last_activity_at && (
         <p className="mt-2 border-t border-border pt-2 text-xs text-muted-foreground">
-          Last activity: {new Date(r.last_activity_at).toLocaleString()}
+          Last activity: {formatEastern(r.last_activity_at)}
         </p>
       )}
     </div>

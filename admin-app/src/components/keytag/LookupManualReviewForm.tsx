@@ -14,6 +14,7 @@ import {
   lookupManualReviewAction,
   type LookupManualReviewState,
 } from "@/actions/keytag/lookup-manual-review";
+import { formatEastern } from "@/lib/format-time";
 import { ResolveManualReviewForm } from "./ResolveManualReviewForm";
 
 const initialState: LookupManualReviewState = { kind: "idle" };
@@ -157,7 +158,7 @@ function ReviewResultDisplay({
         )}
         {isResolved && (
           <p className="mt-3 rounded border border-dashed border-border bg-muted/30 p-3 text-xs text-muted-foreground">
-            Resolved <span className="font-medium">{r.resolved_at}</span> with choice{" "}
+            Resolved <span className="font-medium">{formatEastern(r.resolved_at)}</span> with choice{" "}
             <span className="font-mono">{r.resolved_choice}</span>.
           </p>
         )}

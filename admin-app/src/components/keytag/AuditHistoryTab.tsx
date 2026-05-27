@@ -25,6 +25,7 @@ import {
   callKeytagTool,
   OrchestratorClientError,
 } from "@/lib/orchestrator/client";
+import { formatEastern } from "@/lib/format-time";
 import type {
   GetKeytagAuditHistoryArgs,
   TagColor,
@@ -172,7 +173,7 @@ export async function AuditHistoryTab({
                     return (
                       <TableRow key={entry.id}>
                         <TableCell className="text-xs text-muted-foreground">
-                          {new Date(entry.occurred_at).toLocaleString()}
+                          {formatEastern(entry.occurred_at)}
                         </TableCell>
                         <TableCell>
                           <TagBadge
