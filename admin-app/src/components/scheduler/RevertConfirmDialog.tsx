@@ -29,6 +29,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { formatUtcLong } from "@/lib/scheduler/format";
 import type {
   AuditLogEntry,
   SchedulerRevertConfirmation,
@@ -78,7 +79,7 @@ export function RevertConfirmDialog({
     onOpenChange(next);
   }
 
-  const targetWhen = new Date(targetRow.occurred_at);
+  const targetWhenStr = formatUtcLong(targetRow.occurred_at);
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -88,7 +89,7 @@ export function RevertConfirmDialog({
           <DialogDescription>
             Audit row #{targetRow.id} by{" "}
             <span className="font-mono">{targetRow.user_label ?? "unknown"}</span> at{" "}
-            {targetWhen.toLocaleString()}
+            {targetWhenStr}
           </DialogDescription>
         </DialogHeader>
 
@@ -103,7 +104,7 @@ export function RevertConfirmDialog({
             </div>
             <p className="text-xs text-amber-900">
               This will restore the catalog state to before upload #{targetRow.id}{" "}
-              ({targetWhen.toLocaleString()}).
+              ({targetWhenStr}).
               {newerUploads.length === 0 ? (
                 " No newer uploads to this surface — straightforward revert."
               ) : (
@@ -118,7 +119,7 @@ export function RevertConfirmDialog({
               <ul className="mt-2 space-y-1 text-xs text-amber-900">
                 {newerUploads.map((r) => (
                   <li key={r.id}>
-                    <span className="font-mono">#{r.id}</span> · {new Date(r.occurred_at).toLocaleString()} ·{" "}
+                    <span className="font-mono">#{r.id}</span> · {formatUtcLong(r.occurred_at)} ·{" "}
                     {r.user_label ?? "unknown"} · +{r.rows_added} mod {r.rows_modified} deact {r.rows_deactivated}{" "}
                     <span className="font-medium">(will be undone)</span>
                   </li>
