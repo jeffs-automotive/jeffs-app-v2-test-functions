@@ -21,6 +21,7 @@ import { AppShell, PageHeader } from "@/components/shell/AppShell";
 import { SchedulerConfigTabs } from "@/components/scheduler/SchedulerConfigTabs";
 import { CatalogEditorTab } from "@/components/scheduler/CatalogEditorTab";
 import { ConcernsPerCategoryTab } from "@/components/scheduler/ConcernsPerCategoryTab";
+import { OperationsTab } from "@/components/scheduler/OperationsTab";
 import { listRecentUploadsAction } from "@/actions/scheduler/list-recent-uploads";
 import { uploadSubcategoryDescriptionsAction } from "@/actions/scheduler/upload-subcategory-descriptions";
 import { exportSubcategoryDescriptionsAction } from "@/actions/scheduler/export-subcategory-descriptions";
@@ -251,6 +252,7 @@ export default async function SchedulerConfigPage() {
             );
           })()
         }
+        operations={<OperationsTab />}
       />
     </AppShell>
   );

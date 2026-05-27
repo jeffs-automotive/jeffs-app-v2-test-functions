@@ -284,6 +284,52 @@ export interface ListSchedulerAdminAuditLogArgs {
   only_revertable?: boolean;
 }
 
+// ─── Operations tools (D.7 — NOT Pattern S; one-shot soft-confirm) ──────
+
+/** Args for the appointments-sync trigger. Optional `full_backfill` re-pulls
+ * the entire 7-day window vs incremental delta. */
+export interface RunAppointmentsSyncArgs {
+  full_backfill?: boolean;
+}
+
+/** Per plan §7.5 — wide-open shape since the edge response evolves; cards
+ * type-narrow at the consumer. Common fields documented. */
+export interface RunAppointmentsSyncResult {
+  ok: boolean;
+  status?: string;
+  /** Total rows synced this run. */
+  summary?: {
+    appointments_upserted?: number;
+    appointments_soft_deleted?: number;
+    duration_ms?: number;
+    [k: string]: unknown;
+  };
+  /** Edge fn may surface its own message string. */
+  message?: string;
+  [k: string]: unknown;
+}
+
+export interface FindOrphanCustomersArgs {
+  /** Default 30 days, max 180. */
+  lookback_days?: number;
+}
+
+export interface OrphanCustomerEntry {
+  customer_id?: number | string | null;
+  tekmetric_id?: number | string | null;
+  name?: string | null;
+  last_seen_at?: string | null;
+  last_synced_at?: string | null;
+  [k: string]: unknown;
+}
+
+export interface FindOrphanCustomersResult {
+  orphans: OrphanCustomerEntry[];
+  count: number;
+  lookback_days?: number;
+  [k: string]: unknown;
+}
+
 // ─── Tool-name to arg/return mapping (typed dispatch) ────────────────────
 //
 // Keys are the SNAKE_CASE wire names per scheduler-tools.ts registry. NOT
@@ -354,6 +400,14 @@ export interface SchedulerToolMap {
   list_scheduler_admin_audit_log: {
     args: ListSchedulerAdminAuditLogArgs;
     result: ListSchedulerAdminAuditLogResult;
+  };
+  run_appointments_sync: {
+    args: RunAppointmentsSyncArgs;
+    result: RunAppointmentsSyncResult;
+  };
+  find_orphan_customers: {
+    args: FindOrphanCustomersArgs;
+    result: FindOrphanCustomersResult;
   };
 }
 
@@ -449,3 +503,22 @@ export type SchedulerExportState =
 // List-audit action — no useActionState; consumed by the Server Component
 // directly. Re-exported for component prop typing.
 export type ListAuditLogState = ListSchedulerAdminAuditLogResult;
+
+// ─── Operations action state (D.7) — NOT Pattern S ─────────────────────
+//
+// Per plan v0.5 §7.5 the Operations tab uses a SEPARATE state-type tree
+// from CatalogUploadState — keeps the two surfaces from accidentally
+// sharing plumbing (e.g. dry_run / expected_confirm_token flow that
+// doesn't apply to one-shot tools).
+
+export type RunAppointmentsSyncState =
+  | { kind: "idle" }
+  | { kind: "success"; data: RunAppointmentsSyncResult; timestamp: number }
+  | { kind: "tool_error"; data: { message: string }; timestamp: number }
+  | { kind: "transport_error"; message: string; timestamp: number };
+
+export type FindOrphanCustomersState =
+  | { kind: "idle" }
+  | { kind: "success"; data: FindOrphanCustomersResult; timestamp: number }
+  | { kind: "tool_error"; data: { message: string }; timestamp: number }
+  | { kind: "transport_error"; message: string; timestamp: number };
