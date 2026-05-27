@@ -1,15 +1,17 @@
 /**
- * /schedulerconfig — D.3 landed 2026-05-27 (all 5 V2 catalog tabs live).
+ * /schedulerconfig — D.4 landed 2026-05-27 (8 of 10 catalog tabs live).
  *
  * Per plan v0.5 §9 build order:
  *   - D.1 ✅ types + md-file-utils + orchestrator types
  *   - D.2 ✅ Subcategory descriptions END-TO-END (pilot)
- *   - D.3 ✅ Routine + testing + sub-map + req-facts tabs (this commit)
- *   - D.4-D.7 — 3 ex-legacy-now-Pattern-S tabs + concerns-per-cat +
- *     closed-dates calendar + Operations
+ *   - D.3 ✅ Routine + testing + sub-map + req-facts
+ *   - D.4 ✅ Concerns-flat + appt-limits + closed-dates MD path (this commit)
+ *   - D.5 — Concerns-per-category (needs category picker + sub-surface picker)
+ *   - D.6 — Closed-dates inline block/unblock calendar (additive to D.4)
+ *   - D.7 — Operations tab
  *
- * RSC fetches all 5 recent-uploads lists in parallel via Promise.all so the
- * page renders in one round-trip, not five sequential ones.
+ * RSC fetches all 8 recent-uploads lists in parallel via Promise.all so the
+ * page renders in one round-trip.
  *
  * Auth gate: requireAdmin() — actor_email derived server-side, never from
  * client.
@@ -29,6 +31,12 @@ import { uploadSubcategoryServiceMapAction } from "@/actions/scheduler/upload-su
 import { exportSubcategoryServiceMapAction } from "@/actions/scheduler/export-subcategory-service-map";
 import { uploadQuestionRequiredFactsAction } from "@/actions/scheduler/upload-question-required-facts";
 import { exportQuestionRequiredFactsAction } from "@/actions/scheduler/export-question-required-facts";
+import { uploadConcernQuestionsAction } from "@/actions/scheduler/upload-concern-questions";
+import { exportConcernQuestionsAction } from "@/actions/scheduler/export-concern-questions";
+import { uploadAppointmentDefaultLimitsAction } from "@/actions/scheduler/upload-appointment-default-limits";
+import { exportAppointmentDefaultLimitsAction } from "@/actions/scheduler/export-appointment-default-limits";
+import { uploadClosedDatesAction } from "@/actions/scheduler/upload-closed-dates";
+import { exportClosedDatesAction } from "@/actions/scheduler/export-closed-dates";
 import type {
   AuditLogEntry,
   SchedulerAdminSurface,
@@ -58,8 +66,8 @@ async function loadRecentUploads(
 export default async function SchedulerConfigPage() {
   const { email } = await requireAdmin();
 
-  // Fetch all 5 V2 catalog tabs' recent-uploads lists in parallel — one
-  // round-trip instead of five sequential ones. Each call degrades to
+  // Fetch all 8 catalog tabs' recent-uploads lists in parallel — one
+  // round-trip instead of eight sequential ones. Each call degrades to
   // `error: <msg>` so one slow surface can't block the page.
   const [
     subDescLoad,
@@ -67,12 +75,18 @@ export default async function SchedulerConfigPage() {
     testingLoad,
     subMapLoad,
     reqFactsLoad,
+    concernsFlatLoad,
+    apptLimitsLoad,
+    closedDatesLoad,
   ] = await Promise.all([
     loadRecentUploads("subcategory_descriptions"),
     loadRecentUploads("routine_services"),
     loadRecentUploads("testing_services"),
     loadRecentUploads("subcategory_service_map"),
     loadRecentUploads("question_required_facts"),
+    loadRecentUploads("concern_questions"),
+    loadRecentUploads("appointment_default_limits"),
+    loadRecentUploads("closed_dates"),
   ]);
 
   return (
@@ -151,6 +165,45 @@ export default async function SchedulerConfigPage() {
               recentUploads={reqFactsLoad.rows}
               exportFilenameBase="question-required-facts"
               currentStateSummary="Required ExtractedFacts slot names per concern question (gates stage-3 'answered' check)."
+            />
+          </TabBody>
+        }
+        concernsFlat={
+          <TabBody load={concernsFlatLoad} label="Concern questions (flat)">
+            <CatalogEditorTab
+              surface="concern_questions"
+              surfaceLabel="Concern questions (flat)"
+              uploadAction={uploadConcernQuestionsAction}
+              exportAction={exportConcernQuestionsAction}
+              recentUploads={concernsFlatLoad.rows}
+              exportFilenameBase="concern-questions-flat"
+              currentStateSummary="Whole-table flat upload of concern_questions across all 14 categories. For per-category iteration use the Concerns-per-cat tab (coming in D.5)."
+            />
+          </TabBody>
+        }
+        apptLimits={
+          <TabBody load={apptLimitsLoad} label="Appointment default limits">
+            <CatalogEditorTab
+              surface="appointment_default_limits"
+              surfaceLabel="Appointment default limits"
+              uploadAction={uploadAppointmentDefaultLimitsAction}
+              exportAction={exportAppointmentDefaultLimitsAction}
+              recentUploads={apptLimitsLoad.rows}
+              exportFilenameBase="appointment-default-limits"
+              currentStateSummary="Per-day-of-week default appointment capacity limits. Composite PK (shop_id, day_of_week)."
+            />
+          </TabBody>
+        }
+        closedDates={
+          <TabBody load={closedDatesLoad} label="Closed dates">
+            <CatalogEditorTab
+              surface="closed_dates"
+              surfaceLabel="Closed dates"
+              uploadAction={uploadClosedDatesAction}
+              exportAction={exportClosedDatesAction}
+              recentUploads={closedDatesLoad.rows}
+              exportFilenameBase="closed-dates"
+              currentStateSummary="Future-dated closures (past dates immutable). The inline per-day block/unblock calendar comes in D.6."
             />
           </TabBody>
         }
