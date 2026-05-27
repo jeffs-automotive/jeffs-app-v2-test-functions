@@ -31,9 +31,8 @@ export default async function DashboardPage() {
           href="/schedulerconfig"
           icon={Settings}
           title="Scheduler config"
-          description="Testing services, routine services, concerns, subcategories, required facts, appointment limits, closed dates."
-          badge="8 surfaces"
-          comingSoon
+          description="Subcategory descriptions, routine + testing services, concerns, required facts, appointment limits, closed dates. Pattern S two-step apply with revert."
+          badge="10 surfaces"
         />
       </section>
 
