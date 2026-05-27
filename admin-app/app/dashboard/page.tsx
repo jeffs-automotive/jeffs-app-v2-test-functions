@@ -16,7 +16,7 @@ export default async function DashboardPage() {
     <AppShell email={email}>
       <PageHeader
         title="Admin dashboard"
-        description="Internal tooling for Jeff's Automotive. Replaces what you do through Claude Desktop today."
+        description=""
       />
 
       <section className="grid gap-6 sm:grid-cols-2">

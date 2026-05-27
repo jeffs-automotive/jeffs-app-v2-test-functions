@@ -42,8 +42,8 @@ export default async function KeytagsPage({ searchParams }: KeytagsPageProps) {
   return (
     <AppShell email={email}>
       <PageHeader
-        title="Key tags"
-        description="Live state, lookup, assign / release / revert / posted, bulk reconcile, manual reviews, and audit history — all wired to the orchestrator MCP that powers Claude Desktop today."
+        title="Key Tags"
+        description="Key Tag Managemment"
       />
 
       <KeytagsTabs
