@@ -22,6 +22,11 @@ import { SchedulerConfigTabs } from "@/components/scheduler/SchedulerConfigTabs"
 import { CatalogEditorTab } from "@/components/scheduler/CatalogEditorTab";
 import { ConcernsPerCategoryTab } from "@/components/scheduler/ConcernsPerCategoryTab";
 import { OperationsTab } from "@/components/scheduler/OperationsTab";
+import { CapacityCalendarStrip } from "@/components/scheduler/CapacityCalendarStrip";
+import {
+  listCapacityCalendarAction,
+  type CapacityCalendarLoad,
+} from "@/actions/scheduler/list-capacity-calendar";
 import { listRecentUploadsAction } from "@/actions/scheduler/list-recent-uploads";
 import { uploadSubcategoryDescriptionsAction } from "@/actions/scheduler/upload-subcategory-descriptions";
 import { exportSubcategoryDescriptionsAction } from "@/actions/scheduler/export-subcategory-descriptions";
@@ -65,6 +70,23 @@ async function loadRecentUploads(
   }
 }
 
+interface CapacityCalendarFetch {
+  load: CapacityCalendarLoad | null;
+  error: string | null;
+}
+
+async function loadCapacityCalendar(): Promise<CapacityCalendarFetch> {
+  try {
+    const load = await listCapacityCalendarAction();
+    return { load, error: null };
+  } catch (e) {
+    return {
+      load: null,
+      error: e instanceof Error ? e.message : String(e),
+    };
+  }
+}
+
 export default async function SchedulerConfigPage() {
   const { email } = await requireAdmin();
 
@@ -86,6 +108,7 @@ export default async function SchedulerConfigPage() {
     closedDatesLoad,
     perCatQuestionsLoad,
     perCatGuidelinesLoad,
+    capacityCalendar,
   ] = await Promise.all([
     loadRecentUploads("subcategory_descriptions"),
     loadRecentUploads("routine_services"),
@@ -97,6 +120,7 @@ export default async function SchedulerConfigPage() {
     loadRecentUploads("closed_dates"),
     loadRecentUploads("concern_subcategories"),
     loadRecentUploads("concern_category_guidelines"),
+    loadCapacityCalendar(),
   ]);
 
   return (
@@ -205,17 +229,49 @@ export default async function SchedulerConfigPage() {
           </TabBody>
         }
         closedDates={
-          <TabBody load={closedDatesLoad} label="Closed dates">
-            <CatalogEditorTab
-              surface="closed_dates"
-              surfaceLabel="Closed dates"
-              uploadAction={uploadClosedDatesAction}
-              exportAction={exportClosedDatesAction}
-              recentUploads={closedDatesLoad.rows}
-              exportFilenameBase="closed-dates"
-              currentStateSummary="Future-dated closures (past dates immutable). The inline per-day block/unblock calendar comes in D.6."
-            />
-          </TabBody>
+          <div className="space-y-8">
+            <TabBody load={closedDatesLoad} label="Closed dates">
+              <CatalogEditorTab
+                surface="closed_dates"
+                surfaceLabel="Closed dates"
+                uploadAction={uploadClosedDatesAction}
+                exportAction={exportClosedDatesAction}
+                recentUploads={closedDatesLoad.rows}
+                exportFilenameBase="closed-dates"
+                currentStateSummary={
+                  <>
+                    Future-dated full-day closures (past dates immutable). For ad-hoc
+                    per-day appointment blocks (with optional reason text) see the
+                    capacity calendar below.
+                  </>
+                }
+              />
+            </TabBody>
+            <div>
+              <h2 className="mb-2 text-base font-semibold">
+                Per-day capacity (next 90 days)
+              </h2>
+              <p className="mb-3 text-xs text-muted-foreground">
+                Shows merged state from <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">closed_dates</code> (read-only here; manage via MD path above) and{" "}
+                <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">appointment_blocks</code> (ad-hoc per-day blocks managed here).
+              </p>
+              {capacityCalendar.error || !capacityCalendar.load ? (
+                <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm">
+                  <p className="font-medium text-destructive">
+                    Couldn&apos;t load capacity calendar.
+                  </p>
+                  <p className="mt-1 text-xs text-foreground">
+                    {capacityCalendar.error ?? "Unknown error."}
+                  </p>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    The MD-upload path above still works for managing closed_dates.
+                  </p>
+                </div>
+              ) : (
+                <CapacityCalendarStrip load={capacityCalendar.load} />
+              )}
+            </div>
+          </div>
         }
         concernsPerCat={
           // Errors on EITHER sub-surface's audit-log fetch are surfaced

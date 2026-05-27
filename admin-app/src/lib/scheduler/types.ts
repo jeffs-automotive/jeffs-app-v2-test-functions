@@ -330,6 +330,37 @@ export interface FindOrphanCustomersResult {
   [k: string]: unknown;
 }
 
+// ─── Block / unblock appointment capacity (D.6) ─────────────────────────
+
+export interface BlockAppointmentCapacityArgs {
+  /** YYYY-MM-DD. */
+  date: string;
+  /** Omit (with `time` omitted) for whole-day block. */
+  type?: "waiter" | "dropoff";
+  /** Slot time; only valid with `type=waiter`. */
+  time?: "08:00" | "09:00";
+  reason?: string;
+}
+
+export interface BlockAppointmentCapacityResult {
+  block_id?: string | number | null;
+  [k: string]: unknown;
+}
+
+export interface UnblockAppointmentCapacityArgs {
+  /** YYYY-MM-DD. */
+  date: string;
+  /** Match must be EXACT — omit to unblock a whole-day block. */
+  type?: "waiter" | "dropoff";
+  /** Slot time; only valid with `type=waiter`. */
+  time?: "08:00" | "09:00";
+}
+
+export interface UnblockAppointmentCapacityResult {
+  removed?: number;
+  [k: string]: unknown;
+}
+
 // ─── Tool-name to arg/return mapping (typed dispatch) ────────────────────
 //
 // Keys are the SNAKE_CASE wire names per scheduler-tools.ts registry. NOT
@@ -408,6 +439,14 @@ export interface SchedulerToolMap {
   find_orphan_customers: {
     args: FindOrphanCustomersArgs;
     result: FindOrphanCustomersResult;
+  };
+  block_appointment_capacity: {
+    args: BlockAppointmentCapacityArgs;
+    result: BlockAppointmentCapacityResult;
+  };
+  unblock_appointment_capacity: {
+    args: UnblockAppointmentCapacityArgs;
+    result: UnblockAppointmentCapacityResult;
   };
 }
 
