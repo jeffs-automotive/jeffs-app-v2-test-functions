@@ -67,6 +67,13 @@ export interface CatalogEditorTabProps {
   currentStateSummary?: ReactNode;
   /** Suggested filename when the user clicks Export (e.g., "subcategory-descriptions"). */
   exportFilenameBase: string;
+  /**
+   * Extra form fields the action needs beyond the universal Pattern S shape.
+   * Used by `<ConcernsPerCategoryTab>` to inject `category_slug` into every
+   * dispatched FormData (preview, apply, export). For the 8 universal
+   * surfaces leave this undefined.
+   */
+  extraFormFields?: Record<string, string>;
 }
 
 export function CatalogEditorTab({
@@ -77,7 +84,17 @@ export function CatalogEditorTab({
   recentUploads,
   currentStateSummary,
   exportFilenameBase,
+  extraFormFields,
 }: CatalogEditorTabProps) {
+  // Helper to inject extra fields into a FormData before dispatch.
+  function withExtras(fd: FormData): FormData {
+    if (extraFormFields) {
+      for (const [k, v] of Object.entries(extraFormFields)) {
+        fd.set(k, v);
+      }
+    }
+    return fd;
+  }
   const router = useRouter();
   const [uploadState, dispatchUpload, isUploadPending] = useActionState(
     uploadAction,
@@ -156,7 +173,7 @@ export function CatalogEditorTab({
   // ─── Handlers ──────────────────────────────────────────────────────────
 
   function handleExport() {
-    startTransition(() => dispatchExport(new FormData()));
+    startTransition(() => dispatchExport(withExtras(new FormData())));
   }
 
   async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
@@ -183,7 +200,7 @@ export function CatalogEditorTab({
     const fd = new FormData();
     fd.set("md_content", md);
     fd.set("dry_run", "true");
-    startTransition(() => dispatchUpload(fd));
+    startTransition(() => dispatchUpload(withExtras(fd)));
   }
 
   function handleConfirmApply() {
@@ -193,7 +210,7 @@ export function CatalogEditorTab({
     fd.set("md_content", previewedMd);
     fd.set("dry_run", "false");
     fd.set("expected_confirm_token", uploadState.confirmation.confirm_token);
-    startTransition(() => dispatchUpload(fd));
+    startTransition(() => dispatchUpload(withExtras(fd)));
   }
 
   function handleDialogOpenChange(next: boolean) {

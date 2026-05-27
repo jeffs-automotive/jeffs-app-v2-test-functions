@@ -20,6 +20,7 @@ import { requireAdmin } from "@/lib/auth";
 import { AppShell, PageHeader } from "@/components/shell/AppShell";
 import { SchedulerConfigTabs } from "@/components/scheduler/SchedulerConfigTabs";
 import { CatalogEditorTab } from "@/components/scheduler/CatalogEditorTab";
+import { ConcernsPerCategoryTab } from "@/components/scheduler/ConcernsPerCategoryTab";
 import { listRecentUploadsAction } from "@/actions/scheduler/list-recent-uploads";
 import { uploadSubcategoryDescriptionsAction } from "@/actions/scheduler/upload-subcategory-descriptions";
 import { exportSubcategoryDescriptionsAction } from "@/actions/scheduler/export-subcategory-descriptions";
@@ -66,9 +67,13 @@ async function loadRecentUploads(
 export default async function SchedulerConfigPage() {
   const { email } = await requireAdmin();
 
-  // Fetch all 8 catalog tabs' recent-uploads lists in parallel — one
-  // round-trip instead of eight sequential ones. Each call degrades to
+  // Fetch all 10 catalog tabs' recent-uploads lists in parallel — one
+  // round-trip instead of ten sequential ones. Each call degrades to
   // `error: <msg>` so one slow surface can't block the page.
+  //
+  // concern_subcategories + concern_category_guidelines are the underlying
+  // audit-log surfaces for the Concerns-per-category tab's Questions and
+  // Guidelines sub-surfaces respectively.
   const [
     subDescLoad,
     routineLoad,
@@ -78,6 +83,8 @@ export default async function SchedulerConfigPage() {
     concernsFlatLoad,
     apptLimitsLoad,
     closedDatesLoad,
+    perCatQuestionsLoad,
+    perCatGuidelinesLoad,
   ] = await Promise.all([
     loadRecentUploads("subcategory_descriptions"),
     loadRecentUploads("routine_services"),
@@ -87,6 +94,8 @@ export default async function SchedulerConfigPage() {
     loadRecentUploads("concern_questions"),
     loadRecentUploads("appointment_default_limits"),
     loadRecentUploads("closed_dates"),
+    loadRecentUploads("concern_subcategories"),
+    loadRecentUploads("concern_category_guidelines"),
   ]);
 
   return (
@@ -206,6 +215,41 @@ export default async function SchedulerConfigPage() {
               currentStateSummary="Future-dated closures (past dates immutable). The inline per-day block/unblock calendar comes in D.6."
             />
           </TabBody>
+        }
+        concernsPerCat={
+          // Errors on EITHER sub-surface's audit-log fetch are surfaced
+          // jointly above the picker; both lists are passed in and the
+          // active sub-surface picks one.
+          (() => {
+            const combinedError =
+              perCatQuestionsLoad.error ?? perCatGuidelinesLoad.error;
+            if (combinedError) {
+              return (
+                <div className="space-y-4">
+                  <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm">
+                    <p className="font-medium text-destructive">
+                      Couldn&apos;t load recent uploads for Concerns-per-category.
+                    </p>
+                    <p className="mt-1 text-xs text-foreground">{combinedError}</p>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Picker + upload + export still work below — only the
+                      &ldquo;Recent uploads&rdquo; panel is affected.
+                    </p>
+                  </div>
+                  <ConcernsPerCategoryTab
+                    questionsRecentUploads={perCatQuestionsLoad.rows}
+                    guidelinesRecentUploads={perCatGuidelinesLoad.rows}
+                  />
+                </div>
+              );
+            }
+            return (
+              <ConcernsPerCategoryTab
+                questionsRecentUploads={perCatQuestionsLoad.rows}
+                guidelinesRecentUploads={perCatGuidelinesLoad.rows}
+              />
+            );
+          })()
         }
       />
     </AppShell>
