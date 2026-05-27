@@ -4,6 +4,18 @@
 > Round-2 cross-verify artifact: `.claude/work/ai-review-2026-05-27T00-48-29Z.md`
 > Round-1 cross-verify artifact: `.claude/work/ai-review-2026-05-27T00-38-03Z.md`
 > Authored: 2026-05-26 · v1 (ship-to-implement decision)
+> Updated: 2026-05-26 · v2 (all 5 residuals CLOSED — see CLOSURE STATUS below)
+
+## CLOSURE STATUS — all residuals closed (2026-05-26)
+
+| ID | Disposition | Where closed |
+|---|---|---|
+| R-BL-1 | Closed during D.6 | `admin-app/src/lib/scheduler/shop-id.ts` — `resolveAdminShopId()` documents that block/unblock tools derive shop_id from the orchestrator's actor-email resolution (NEVER from form fields). Block/unblock Server Actions hardcode no shop_id arg in the FormData; the edge tool fills shop_id from session. |
+| R-IMP-1 | Closed inline in plan §2 | Heading reworded; explicit confirmation-shape map added |
+| R-IMP-2 | Closed during D.5 | `ConcernsPerCategoryTab.tsx` uses `key={`${category}-${subSurface}`}` React-key remount pattern — every tuple switch forces full unmount + remount, dropping all per-tuple state cleanly. Simpler than the proposed `useEffect`-based reset. |
+| R-IMP-3 | Closed inline in plan §2 | Concerns wording corrected to "independently addressable by revert" + explicit `current_state_drift` risk callout + concrete table-overlap invariants |
+| R-IMP-4 | Closed inline in plan §7 | Explicit invalidation contract section added — both MD path and per-day path call `revalidatePath("/schedulerconfig")` |
+| R-IMP-5 | Closed inline in plan §7.5 | "Idempotency + concurrency contract" section added — per-invocation idempotency via upsert, cross-tab concurrency intentionally NOT prevented + documented operator runbook |
 
 ## Trend
 

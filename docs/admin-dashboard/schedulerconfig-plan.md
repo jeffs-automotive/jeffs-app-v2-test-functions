@@ -31,14 +31,24 @@ SERVICE_ROLE + X-Actor-Email auth path the Keytags page uses today.
 
 ---
 
-## 2. Scope — all 10 surfaces, all Pattern S (post edge-parity)
+## 2. Scope — 10 MD-upload surfaces on Pattern S; 1 per-day surface + Operations on soft-confirm (post edge-parity)
 
 The `scheduler-edge-parity` feature (committed 2026-05-26 as
 `4443d77` in jeffs-app-v2-test-functions; companion `74a0487` in
 dotfiles-v2-test-data) added Pattern S (dry_run + `expected_confirm_token`
 + `pre_state_snapshot` + revert) to the 5 previously-legacy uploaders.
-Net effect for this plan: **the legacy/V2 split no longer exists.**
-All 10 catalog surfaces share the same two-step Pattern S shape.
+Net effect for this plan: **the legacy/V2 split no longer exists for MD uploaders.**
+All 10 MD-upload surfaces share the same two-step Pattern S shape.
+
+> **Confirmation-shape map (closes R-IMP-1):** Pattern S is the
+> shape used by every MD-upload tool (rows 1–9a in the table below).
+> Row 9b (per-day inline block/unblock — co-located on the closed-dates
+> tab) and the Operations tab (run_appointments_sync + find_orphan_customers)
+> use one-shot soft-confirm modals with **no revert** — the inverse
+> action is the recovery path. The phrase "all 10 surfaces, all Pattern S"
+> from earlier drafts referred to the 10 MD-upload surfaces specifically;
+> per-row and operations tools are intentionally NOT Pattern S because
+> they're single-row mutations or idempotent on the edge.
 
 ### Build-first tab (Chris's call 2026-05-25, still valid)
 
@@ -93,14 +103,25 @@ similar but operate on different data shapes:
   category picker + sub-surface picker (per §6). Useful when iterating
   on a single category's content without disturbing others.
 
-Both surfaces produce distinct audit-log rows; both are independently
-revertable. The flat path mutates `concern_questions`; the per-category
-path mutates `concern_subcategories` + `concern_questions` (subs) OR
-`concern_category_guidelines` (guidelines). They do NOT conflict at
-the row level — different tables, different scoping. But both can fire
-against the same `concern_questions` rows if the per-category sub-surface
-includes questions whose IDs the flat path also rewrote; in that case
-edge-side `current_state_drift` rejects whichever apply is second.
+Both surfaces produce distinct audit-log rows (separate `surface_filter`
+enum values), so each is **independently addressable by revert** — clicking
+Revert on one row never wipes the other surface's audit-log row. But the
+flat path and the per-category subs path BOTH mutate `concern_questions`,
+so revert of one may **fail with `current_state_drift`** if the other
+surface has touched overlapping `concern_questions` rows between the
+target upload and the revert attempt. The `<RevertConfirmDialog>`
+lost-update warning banner (§4) surfaces this case before the user
+clicks Apply, listing every newer upload (regardless of which surface)
+that will be undone (closes R-IMP-3 — earlier "independently revertable"
+phrasing was an overclaim).
+
+Concrete invariants:
+- **Per-category guidelines path** mutates ONLY `concern_category_guidelines`
+  — no overlap with flat path; revert is fully independent.
+- **Per-category subs path** mutates `concern_subcategories` (no overlap)
+  + `concern_questions` (possible overlap with flat path).
+- **Flat path** mutates ONLY `concern_questions` (possible overlap with
+  per-category subs path).
 
 ### Out of scope (forever or for a separate build)
 
@@ -525,6 +546,34 @@ Precedence rules:
      "Calendar refreshed — recent MD upload landed" so they're not
      surprised when a row they see changes.
 
+### Invalidation contract (closes R-IMP-4)
+
+Both the MD path and the per-day path share state — every UI piece on
+the closed-dates tab must observe mutations from either path. The
+contract:
+
+- **MD path apply/revert success** → action calls
+  `revalidatePath("/schedulerconfig")` server-side. The page-level RSC
+  re-fetches both the audit-log list AND the 90-day capacity calendar
+  load in its `Promise.all` block. `<CapacityCalendarStrip>` re-renders
+  with fresh closed-dates + appointment_blocks data.
+- **Per-day path (`block_appointment_capacity` /
+  `unblock_appointment_capacity`) success** → action also calls
+  `revalidatePath("/schedulerconfig")`. The page-level RSC re-fetches
+  the same `Promise.all` block, which:
+  1. Refreshes `<CapacityCalendarStrip>` (immediate; user sees the day
+     flip status).
+  2. Invalidates any cached "current state summary" or export-cache
+     state in the closed-dates `<CatalogEditorTab>` instance. Because
+     the `<CatalogEditorTab>` doesn't persist `previewedMd` /
+     `confirm_token` server-side, in-memory state for an open Pattern S
+     modal is unaffected — but the next Preview click will hit fresh
+     `pre_state_snapshot` data, so any subsequent Apply will reflect
+     reality.
+- **No client-side `router.refresh()` is needed** beyond what
+  `revalidatePath` already triggers via Next.js — the RSC's revalidation
+  signals propagate to the active route automatically.
+
 ---
 
 ## 7.5 Operations tab UI (closes Gemini v0.4 NICE-TO-HAVE + GPT IMP)
@@ -557,14 +606,46 @@ preview, no revert, no recent-uploads list). It's two independent
 ### `<RunSyncCard>` shape
 
 - One-shot soft-confirm action backed by `run_appointments_sync` tool
-- No Pattern S (idempotent on the edge — re-running while one is
-  in-flight queues OR returns the in-flight job_id depending on
-  edge behavior; either way safe)
+- No Pattern S (the underlying edge function is idempotent at the per-run
+  level — see "Idempotency + concurrency contract" below)
 - Loading spinner during pending state (pattern: `keytag/ReconcileTab.tsx`)
 - Toast on success with row counts (e.g., "12 appointments synced")
 - Toast on error with the structured tool error message
-- "Last run" timestamp updates after success (cached per-action result
-  via `useState` — refreshed on tab mount + after a successful run)
+- "Last run" timestamp shown in the success card body. Phase D source:
+  the user's OWN last successful invocation in this session (from
+  `useActionState` timestamp). Global "last run from any session" is
+  NOT surfaced in Phase D — it would require an additional read tool
+  + table query; deferred to Phase E if Chris asks.
+
+### Idempotency + concurrency contract (closes R-IMP-5)
+
+`run_appointments_sync` is the wrapper over the `appointments-sync` edge
+function (cron-driven every 5 min in normal operation). Contract:
+
+- **Per-invocation idempotency:** the edge function writes via
+  `appointments.upsert` keyed on `(shop_id, tekmetric_id)`, so
+  re-invoking with the same input window is safe. No duplicate-row
+  risk.
+- **Concurrent runs from the same shop:** the edge function does NOT
+  hold a distributed lock. Two concurrent runs CAN happen if (a) the
+  cron fires while a manual run is in flight, OR (b) two admins click
+  Run sync now simultaneously. Both will complete; the second one's
+  upsert writes are no-ops for any rows the first already touched, and
+  fresh inserts for any rows that landed between the two reads. Net
+  effect: no corruption, no duplicate rows, but the second run's
+  "synced N rows" count may double-count the first run's work.
+- **`<RunSyncCard>` UX during in-flight:** the button shows
+  `loading={isPending}` + `loadingText="Syncing…"` (per
+  `OperationsTab.tsx`); the button is disabled while the user's OWN
+  request is in flight, preventing same-tab double-click. **Cross-tab /
+  cross-admin concurrent runs are NOT prevented in the UI** — they're
+  safe per the contract above but produce mildly confusing counts.
+  Operator runbook: if you double-clicked or someone else ran sync
+  near-simultaneously, the counts shown are a superset; trust the
+  database, not the toast.
+- **No retry on transport error:** the user sees a transport_error
+  toast and is expected to retry manually. We do NOT auto-retry because
+  the edge function's per-run cost (Tekmetric API calls) is non-trivial.
 
 ### `<FindOrphansCard>` shape
 
