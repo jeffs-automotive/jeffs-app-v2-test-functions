@@ -42,7 +42,12 @@ export async function resolveOpenAIApiKey() {
  *   { ok: true, markdown: string, usage: {prompt_tokens, completion_tokens} }
  *   { ok: false, error: string }
  */
-export async function callGpt({ systemInstruction, userMessage, apiKey, timeoutMs = 180_000 }) {
+// timeoutMs raised from 180s → 600s (2026-05-26). On 30k+ input token plan
+// reviews with the new full-audit prompt, GPT-5.5 has timed out at 180s
+// (verified twice during scheduler-edge-parity v0.4 cross-verify rounds).
+// 600s gives headroom for deep audits on large plan docs without burning
+// cache on retries.
+export async function callGpt({ systemInstruction, userMessage, apiKey, timeoutMs = 600_000 }) {
   if (!apiKey) {
     return { ok: false, error: "Missing OPENAI_API_KEY" };
   }

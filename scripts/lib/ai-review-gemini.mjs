@@ -49,7 +49,10 @@ export async function resolveGeminiApiKey() {
  *
  * Caller is responsible for fail/retry decisions.
  */
-export async function callGemini({ systemInstruction, userMessage, apiKey, timeoutMs = 180_000 }) {
+// timeoutMs raised from 180s → 600s (2026-05-26) for symmetry with GPT lib
+// — Gemini hasn't timed out on plan reviews but 180s is too tight a default
+// for deep-audit calls on 30k+ input token docs.
+export async function callGemini({ systemInstruction, userMessage, apiKey, timeoutMs = 600_000 }) {
   if (!apiKey) {
     return { ok: false, error: "Missing GOOGLE_GENERATIVE_AI_API_KEY" };
   }
@@ -60,7 +63,9 @@ export async function callGemini({ systemInstruction, userMessage, apiKey, timeo
     generationConfig: {
       temperature: 0.2,
       topP: 0.95,
-      maxOutputTokens: 8192,
+      // Raised from 8192 → 16384 (2026-05-26) per Chris's "full audit" rule
+      // — prior cap was truncating findings on multi-blocker plans.
+      maxOutputTokens: 16384,
     },
   };
 
