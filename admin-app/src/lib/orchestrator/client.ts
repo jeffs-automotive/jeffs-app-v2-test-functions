@@ -33,6 +33,13 @@ const ORCHESTRATOR_FUNCTION_NAME = "orchestrator-mcp";
 const ALLOWED_HOST_SUFFIX = ".supabase.co";
 
 /**
+ * Default fetch timeout. Most tool calls finish in under 5 s; the longest
+ * (`runBulkReconcile`) routinely takes 5-30 s depending on the Tekmetric
+ * API; bump via options.timeoutMs when calling slow tools.
+ */
+const DEFAULT_TIMEOUT_MS = 30_000;
+
+/**
  * Errors raised by the orchestrator client. Distinguished from generic
  * network errors so Server Actions can map them to user-facing messages.
  */
@@ -117,31 +124,24 @@ interface JsonRpcFailure {
 type JsonRpcResponseEnvelope = JsonRpcSuccess | JsonRpcFailure;
 
 /**
- * Call a single orchestrator tool by name with typed args. Returns the
- * tool's parsed result (the inner JSON of the MCP text-content envelope).
+ * Untyped JSON-RPC transport — used by every typed wrapper
+ * (`callKeytagTool`, `callSchedulerTool`, etc.). Public so other tool
+ * domains (scheduler, etc.) can share the env validation + host-allowlist
+ * + Sentry instrumentation without copying the body.
  *
- * Throws OrchestratorClientError for transport/protocol failures.
- * Tool-level "ok: false" responses (e.g., not-found, validation errors,
+ * Throws OrchestratorClientError for transport/protocol failures. Tool-
+ * level "ok: false" responses (e.g., not-found, validation errors,
  * Pattern A confirmation prompts) are returned to the caller — they're
  * part of the tool's normal return shape, not exceptional failures.
  *
- * @param toolName - registered tool name (typed against KeytagToolMap)
- * @param args     - tool args (typed)
- * @param actorEmail - the authenticated employee's email; threaded through
- *                    X-Actor-Email so the edge fn's audit log captures
- *                    who-did-what. Must match the regex enforced
- *                    server-side: ends with @jeffsautomotive.com.
- *
- * Timeout: default 30s, configurable. The longest-running tool
- * (`runBulkReconcile`) routinely takes 5-30 seconds depending on the
- * Tekmetric API; bump to 60s when calling it.
+ * Typed wrappers cast the `unknown` return to the per-tool result type.
  */
-export async function callKeytagTool<N extends KeytagToolName>(
-  toolName: N,
-  args: KeytagToolMap[N]["args"],
+export async function callOrchestratorRpc(
+  toolName: string,
+  args: unknown,
   actorEmail: string,
   options?: { timeoutMs?: number },
-): Promise<KeytagToolMap[N]["result"]> {
+): Promise<unknown> {
   const url = buildOrchestratorUrl();
   const serviceRoleKey = resolveServiceRoleKey();
   if (!serviceRoleKey) {
@@ -150,7 +150,7 @@ export async function callKeytagTool<N extends KeytagToolName>(
     );
   }
 
-  const timeoutMs = options?.timeoutMs ?? 30_000;
+  const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const requestId = crypto.randomUUID();
 
   const body = {
@@ -272,5 +272,34 @@ export async function callKeytagTool<N extends KeytagToolName>(
     );
   }
 
+  return parsed;
+}
+
+/**
+ * Call a single orchestrator tool by name with typed KEYTAG args. Returns
+ * the tool's parsed result.
+ *
+ * Thin typed wrapper around `callOrchestratorRpc` — see that function for
+ * transport details. Behavior is unchanged from the pre-refactor (2026-05-26)
+ * implementation; the body now delegates to the shared transport.
+ *
+ * @param toolName - registered tool name (typed against KeytagToolMap)
+ * @param args     - tool args (typed)
+ * @param actorEmail - the authenticated employee's email; threaded through
+ *                    X-Actor-Email so the edge fn's audit log captures
+ *                    who-did-what. Must match the regex enforced
+ *                    server-side: ends with @jeffsautomotive.com.
+ *
+ * Timeout: default 30s, configurable. The longest-running tool
+ * (`runBulkReconcile`) routinely takes 5-30 seconds depending on the
+ * Tekmetric API; bump to 60s when calling it.
+ */
+export async function callKeytagTool<N extends KeytagToolName>(
+  toolName: N,
+  args: KeytagToolMap[N]["args"],
+  actorEmail: string,
+  options?: { timeoutMs?: number },
+): Promise<KeytagToolMap[N]["result"]> {
+  const parsed = await callOrchestratorRpc(toolName, args, actorEmail, options);
   return parsed as KeytagToolMap[N]["result"];
 }
