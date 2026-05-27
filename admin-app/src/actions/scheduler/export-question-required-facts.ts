@@ -1,7 +1,7 @@
 "use server";
 
 /**
- * exportSubcategoryDescriptionsAction — fetch current state as MD.
+ * exportQuestionRequiredFactsAction — fetch current state as MD.
  * Thin wrapper; see `./_export-md-helper.ts` for the shared impl.
  */
 import { wrapAdminAction } from "@/lib/instrument-action";
@@ -13,14 +13,14 @@ async function impl(
   fd: FormData,
 ): Promise<SchedulerExportState> {
   return executeSchedulerExportAction(
-    "export_subcategory_descriptions_md",
+    "export_question_required_facts_md",
     prev,
     fd,
   );
 }
 
-export const exportSubcategoryDescriptionsAction = wrapAdminAction(
-  "exportSubcategoryDescriptions",
+export const exportQuestionRequiredFactsAction = wrapAdminAction(
+  "exportQuestionRequiredFacts",
   impl,
-  { orchestratorTool: "export_subcategory_descriptions_md" },
+  { orchestratorTool: "export_question_required_facts_md" },
 );
