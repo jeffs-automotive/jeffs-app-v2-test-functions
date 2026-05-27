@@ -43,7 +43,7 @@ import {
 } from "@/components/ui/table";
 import { runAppointmentsSyncAction } from "@/actions/scheduler/run-appointments-sync";
 import { findOrphanCustomersAction } from "@/actions/scheduler/find-orphan-customers";
-import { formatUtcShort } from "@/lib/scheduler/format";
+import { formatEastern } from "@/lib/format-time";
 import type {
   RunAppointmentsSyncState,
   FindOrphanCustomersState,
@@ -95,7 +95,7 @@ function RunSyncCard() {
 
   const summary = state.kind === "success" ? state.data.summary : undefined;
   const lastRunAt =
-    state.kind === "success" ? formatUtcShort(new Date(state.timestamp)) : null;
+    state.kind === "success" ? formatEastern(new Date(state.timestamp)) : null;
 
   return (
     <Card>
@@ -270,10 +270,10 @@ function FindOrphansCard() {
                     </TableCell>
                     <TableCell className="text-sm">{o.name ?? "—"}</TableCell>
                     <TableCell className="font-mono text-xs">
-                      {o.last_seen_at ? formatUtcShort(o.last_seen_at) : "—"}
+                      {o.last_seen_at ? formatEastern(o.last_seen_at) : "—"}
                     </TableCell>
                     <TableCell className="font-mono text-xs">
-                      {o.last_synced_at ? formatUtcShort(o.last_synced_at) : "—"}
+                      {o.last_synced_at ? formatEastern(o.last_synced_at) : "—"}
                     </TableCell>
                   </TableRow>
                 ))}

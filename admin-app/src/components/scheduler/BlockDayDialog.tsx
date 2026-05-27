@@ -28,7 +28,7 @@ import {
   blockAppointmentCapacityAction,
   type BlockAppointmentCapacityState,
 } from "@/actions/scheduler/block-appointment-capacity";
-import { formatUtcLong } from "@/lib/scheduler/format";
+import { formatEasternDate } from "@/lib/format-time";
 
 const initial: BlockAppointmentCapacityState = { kind: "idle" };
 
@@ -99,7 +99,7 @@ export function BlockDayDialog({
           </DialogTitle>
           <DialogDescription>
             Blocks all appointment capacity on{" "}
-            <span className="font-mono">{formatUtcLong(date)}</span>. Customers
+            <span className="font-mono">{formatEasternDate(date)}</span>. Customers
             won&apos;t be able to book this day until you unblock it.
           </DialogDescription>
         </DialogHeader>

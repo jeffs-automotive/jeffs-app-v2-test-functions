@@ -37,7 +37,7 @@ import {
   type UnblockAppointmentCapacityState,
 } from "@/actions/scheduler/unblock-appointment-capacity";
 import { BlockDayDialog } from "./BlockDayDialog";
-import { formatUtcShort } from "@/lib/scheduler/format";
+import { formatEasternDate } from "@/lib/format-time";
 import type {
   CapacityCalendarLoad,
   ClosedDateRow,
@@ -174,13 +174,13 @@ export function CapacityCalendarStrip({ load }: CapacityCalendarStripProps) {
     <>
       <div className="rounded-lg border border-border bg-background">
         <div className="border-b border-border bg-muted/30 px-4 py-2 text-xs text-muted-foreground">
-          Next {load.days_ahead} days · {load.start_date} → {load.end_date} · times shown in UTC
+          Next {load.days_ahead} days · {formatEasternDate(load.start_date)} → {formatEasternDate(load.end_date)} · dates shown in Eastern Time
         </div>
         <ul className="divide-y divide-border" role="list">
           {days.map((day) => (
             <li key={day.date} className="flex items-center gap-3 px-4 py-2 text-sm">
-              <span className="font-mono text-xs text-muted-foreground" style={{ width: "11ch" }}>
-                {formatUtcShort(`${day.date}T00:00:00Z`).slice(0, 6)}
+              <span className="font-mono text-xs text-muted-foreground" style={{ width: "10ch" }}>
+                {formatEasternDate(day.date)}
               </span>
               <DayStatusContent
                 day={day}

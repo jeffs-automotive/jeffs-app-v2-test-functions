@@ -26,7 +26,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { revertMdUploadAction } from "@/actions/scheduler/revert-md-upload";
-import { formatUtcShort } from "@/lib/scheduler/format";
+import { formatEastern } from "@/lib/format-time";
 import type {
   AuditLogEntry,
   SchedulerRevertState,
@@ -166,7 +166,7 @@ export function RecentUploadsList({ rows, surface, surfaceLabel }: RecentUploads
             return (
               <TableRow key={row.id} className={isFailed ? "opacity-60" : undefined}>
                 <TableCell className="font-mono text-xs">
-                  {formatUtcShort(row.occurred_at)}
+                  {formatEastern(row.occurred_at)}
                 </TableCell>
                 <TableCell className="text-xs">{row.user_label ?? "—"}</TableCell>
                 <TableCell className="text-right font-mono text-xs">

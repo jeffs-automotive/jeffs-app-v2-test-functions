@@ -29,7 +29,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { formatUtcLong } from "@/lib/scheduler/format";
+import { formatEasternLong } from "@/lib/format-time";
 import type {
   AuditLogEntry,
   SchedulerRevertConfirmation,
@@ -79,7 +79,7 @@ export function RevertConfirmDialog({
     onOpenChange(next);
   }
 
-  const targetWhenStr = formatUtcLong(targetRow.occurred_at);
+  const targetWhenStr = formatEasternLong(targetRow.occurred_at);
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -119,7 +119,7 @@ export function RevertConfirmDialog({
               <ul className="mt-2 space-y-1 text-xs text-amber-900">
                 {newerUploads.map((r) => (
                   <li key={r.id}>
-                    <span className="font-mono">#{r.id}</span> · {formatUtcLong(r.occurred_at)} ·{" "}
+                    <span className="font-mono">#{r.id}</span> · {formatEasternLong(r.occurred_at)} ·{" "}
                     {r.user_label ?? "unknown"} · +{r.rows_added} mod {r.rows_modified} deact {r.rows_deactivated}{" "}
                     <span className="font-medium">(will be undone)</span>
                   </li>
