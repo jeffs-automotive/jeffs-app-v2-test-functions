@@ -2,7 +2,19 @@
 
 > Per-phase status tracker for the 7 plans in [`plans/`](./plans/). Companion to the index at [`plans/PLANS-MASTER.md`](./plans/PLANS-MASTER.md) — the master defines WHAT each plan does; this file tracks WHAT'S LANDED.
 >
-> **Last refresh:** 2026-05-24/25 (Plan 04 Phase 5B revalidate-scope reduction landed). Update this file in the same commit that closes a phase. Always cite the commit SHA so future readers can `git show <sha>` for the actual change.
+> **Last refresh:** 2026-05-27 (memory + docs consolidation pass — adds Plan 04 follow-up sweep + edge-parity + schedulerconfig context). Update this file in the same commit that closes a phase. Always cite the commit SHA so future readers can `git show <sha>` for the actual change.
+>
+> ## Out-of-band ships post-Plan 04 Phase 5B (not driven by the 7-plan roadmap, but architecturally relevant)
+>
+> | Ship | Date | Where to find it |
+> |---|---|---|
+> | Plan 04 follow-up fixes (P0.1–P2.12, H1–H3, M1–M3, L1, C1) — 20 fixes across BLOCKERs / IMPORTANTs / NICE-TO-HAVEs surfaced by post-Phase 5B validator + cross-verify | 2026-05-24/25 | Task list #46–#67; commits referenced in scheduler arch doc § 15 |
+> | admin-app Phase A — Microsoft Entra OAuth + sandbox routes (sibling Next.js app at `admin-app/`) | 2026-05-25 | `docs/admin-dashboard/PLAN.md` Phase A + `.claude/memory/scheduler/scheduler_system_architecture.md` § 5b |
+> | admin-app Phase C — Keytags page wired to all 10 orchestrator MCP tools | 2026-05-25 | `docs/admin-dashboard/PLAN.md` Phase C + `.claude/memory/keytag/keytag_system_architecture.md` § 5 |
+> | scheduler-edge-parity feature — Pattern S retrofit + 17 migrations + revert dispatch + 25 ADRs | 2026-05-26 (commit `4443d77`) | `docs/scheduler/edge-parity/PLAN.md` + 25 ADRs in `decisions/` + `.claude/memory/scheduler/scheduler_system_architecture.md` § 8.4 |
+> | admin-app Phase D — schedulerconfig UI (10 live tabs) | 2026-05-26/27 (commits `0dc24bf` → `4b7d570`) | `docs/admin-dashboard/schedulerconfig-plan.md` v0.5 + `ROUND-2-RESIDUALS.md` |
+>
+> These shipped without going through the 7-plan roadmap because they're feature work (not audit remediation). Plans 05/06/07 remain unstarted.
 
 ---
 

@@ -1,9 +1,22 @@
 # Round-6 cross-verify residuals — punch-list for builders
 
+## CLOSURE STATUS — edge-parity SHIPPED (2026-05-26, commit `4443d77`)
+
+| Group | Status | Where to verify |
+|---|---|---|
+| R6-B1 — ADR-005 inventory count | CLOSED in E1b | Migration `20260526000100_revert_md_upload_dispatch.sql` applies NO-GRANT triple per signature; verified via `pg_proc` query post-Migration B. ADR-005 now says "25 internal functions." |
+| R6-B2 — `lock_surface_for_kind` missing from inventory | CLOSED in E1b | Function exists in `20260526000100`; PLAN.md §3 + ADR-006 + ADR-INDEX updated. |
+| R6-B3 — `canonical_state_concern_category_upload` scope | CLOSED in E1b | Serializer covers BOTH `concern_subcategories` + `concern_questions` per category; aligns with `exportConcernCategoryMd` from E6. |
+| R6-B4 — ADR-005 Consequences stale "GRANT TO service_role" wording | CLOSED in ADR-Fix #21 + #22 (Restructure round 4) | Consequences paragraph rewritten; only 6 outer-callable entry points carry GRANT, all 25 internal functions follow NO-GRANT pattern. |
+| Round-6 IMPORTANTs (R6-I1–N) | Mostly CLOSED via subsequent ADR-Fix rounds + 21 Migration B fixes (Fix #1–#27) | See `.claude/memory/scheduler/scheduler_system_architecture.md` §8 + §13. Any residual operational items absorbed into `docs/scheduler/DEFERRED-AUDIT-ITEMS.md`. |
+| E10 — pgTAP + Vitest test matrix | PENDING — separate /feature-start cycle | Per PLAN §10; tracked at task #223 in session state + listed under "Known deferred items" in scheduler arch doc § 15 (TEST-4). |
+
 **E1b status update (2026-05-26):** Migration A (E1a) + dispatch migration (E1b) authored. R6-B1 + R6-B2 + R6-B3 + R6-B4 all CLOSED in E1b. Sub-agent author surfaced 7 new open items; Chris's call: accept agent's pipe-delimited canonical-format design → ADR-025 written as supersession of ADR-024 §3. 2 surgical fixes applied inline (closed_dates id removal + WITH ORDINALITY for required_facts). 3 new E1b-derived coordination items added below (E1b-N1 / E1b-N2 / E1b-N3).
 
 
 **Status:** Documented 2026-05-26 at the close of pre-implementation cross-verify (6 rounds total: 3 monolithic-plan rounds → ADR restructure → 3 ADR-fix rounds). Chris's call: ship to `/feature-implement` and let builder agents close these as they go.
+
+> **Note (2026-05-27 doc-consolidation pass):** This file documented the punch-list AT THE TIME OF /feature-implement transition. The work has now shipped. Per-residual closure happened across many commits + ADR-Fix rounds; the table above gives the high-level resolution map. The full residual list below is preserved as a historical reference for the builder mindset — DO NOT mark new BLOCKERs against this file.
 
 **Trend:** 16 → 6 → 4 → 4 BLOCKERs across rounds 3-6. The final 4 BLOCKERs are documentation drift introduced BY the round-5 fixes themselves (count math + missing-function-in-inventory), NOT structural design problems. The design itself stabilized after round-4 ADR restructure.
 
