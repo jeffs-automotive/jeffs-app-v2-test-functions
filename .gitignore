@@ -1,7 +1,11 @@
-# .claude is a junction to dotfiles-v2-test-data — that content lives in its own repo.
-# Never track from this repo: would duplicate the dotfiles repo's content.
+# .claude and .mcp.json are symlinks into dotfiles-v2-test-data — that content
+# lives in its own repo and is created per-machine by dotfiles install.ps1/install.sh.
+# Never track from this repo: would duplicate the dotfiles repo's content and bake
+# in a layout-specific symlink target. (.mcp.json was previously committed as a
+# symlink-blob with a hardcoded ../../ path; untracked 2026-05-29 to stay layout-agnostic.)
 .claude/
 .claude
+.mcp.json
 
 # Per-folder Supabase CLI local state — never commit, all machine-specific
 supabase/.temp/         # link state (project ref, temp creds)
