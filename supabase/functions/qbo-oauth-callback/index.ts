@@ -2,13 +2,19 @@
 //
 // Self-contained, stateless (no DB). Two GET modes on the same registered path:
 //   GET ?start=1              -> 302 to Intuit's authorize endpoint (with a signed state)
-//   GET ?code&state&realmId   -> verify state, exchange code -> tokens, render the
+//   GET ?code&state&realmId   -> verify state, exchange code -> tokens, print the
 //                                refresh_token + realmId for the operator to copy into the
 //                                local QuickBooks MCP server (@qboapi/qbo-mcp-server).
 //
 // verify_jwt is false (set in config.toml) because Intuit redirects an UNAUTHENTICATED
 // browser here. This is an operator-only bootstrap: it never stores tokens server-side and
 // only succeeds for whoever can complete Intuit's own login + consent for the QBO company.
+//
+// Responses are PLAIN TEXT on purpose: Supabase Edge Functions force
+// `Content-Type: text/plain` on responses (anti-phishing; documented in mcp-auth/index.ts),
+// so HTML would display as raw source. Plain text renders cleanly and the success page's
+// KEY=value lines are easy to copy. Only the start-redirect (302) and method-guard (405)
+// are non-200; every human-facing page is a 200 whose text conveys the outcome.
 //
 // Concept adapted from the v1 app's QBO callback; written fresh here. No qbo_connections
 // table, no dashboard redirect — this feature only needs to surface the refresh_token.
@@ -17,12 +23,7 @@
 // QBO_STATE_SECRET (HMAC key for the state param). QBO_ENVIRONMENT is informational only.
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import {
-  base64UrlEncode,
-  escapeHtml,
-  functionUrl,
-  randomToken,
-} from "../_shared/oauth.ts";
+import { base64UrlEncode, functionUrl, randomToken } from "../_shared/oauth.ts";
 import { withSentryScope } from "../_shared/sentry-edge.ts";
 
 const FUNCTION_NAME = "qbo-oauth-callback";
@@ -68,24 +69,18 @@ async function verifyState(state: string): Promise<boolean> {
   return Number.isFinite(expiry) && Date.now() < expiry;
 }
 
-/** Wraps body in a minimal branded HTML page. */
-function html(body: string, status = 200): Response {
-  return new Response(
-    `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
-      `<meta name="viewport" content="width=device-width,initial-scale=1">` +
-      `<title>QuickBooks OAuth — Jeff's Automotive</title><style>` +
-      `body{font-family:system-ui,-apple-system,sans-serif;max-width:640px;margin:3rem auto;padding:0 1rem;line-height:1.55;color:#18181b}` +
-      `pre{background:#f4f4f5;border-radius:8px;padding:1rem;overflow:auto;white-space:pre-wrap;word-break:break-all}` +
-      `.k{color:#96003C;font-weight:600;margin:1rem 0 .25rem}a{color:#96003C}` +
-      `</style></head><body>${body}</body></html>`,
-    { status, headers: { "content-type": "text/html; charset=utf-8" } },
-  );
+/** Plain-text response (Supabase forces text/plain on edge fns anyway). */
+function text(body: string, status = 200): Response {
+  return new Response(body, {
+    status,
+    headers: { "content-type": "text/plain; charset=utf-8" },
+  });
 }
 
 Deno.serve((req) =>
   withSentryScope(req, FUNCTION_NAME, async () => {
     if (req.method !== "GET") {
-      return new Response("Method not allowed", { status: 405 });
+      return text("Method not allowed.", 405);
     }
 
     const missing: string[] = [];
@@ -93,13 +88,12 @@ Deno.serve((req) =>
     if (!CLIENT_SECRET) missing.push("QBO_CLIENT_SECRET");
     if (!STATE_SECRET) missing.push("QBO_STATE_SECRET");
     if (missing.length > 0) {
-      return html(
-        `<h1>QuickBooks OAuth — not configured</h1>` +
-          `<p>Missing edge secret(s): <code>${escapeHtml(missing.join(", "))}</code>.</p>` +
-          `<p>Set them once, then retry:</p><pre>supabase secrets set \\\n  ${
-            escapeHtml(missing.map((m) => `${m}=…`).join(" \\\n  "))
-          } \\\n  --project-ref itzdasxobllfiuolmbxu</pre>`,
-        200,
+      return text(
+        `QuickBooks OAuth - not configured\n\n` +
+          `Missing edge secret(s): ${missing.join(", ")}\n\n` +
+          `Set them once, then retry:\n\n` +
+          `  supabase secrets set ${missing.map((m) => `${m}=...`).join(" ")} \\\n` +
+          `    --project-ref itzdasxobllfiuolmbxu\n`,
       );
     }
 
@@ -112,11 +106,7 @@ Deno.serve((req) =>
 
     // Intuit returned an error (e.g., user denied consent)
     if (oauthError) {
-      return html(
-        `<h1>Authorization failed</h1><p>Intuit returned: <code>${escapeHtml(oauthError)}</code></p>` +
-          `<p><a href="?start=1">Try again</a></p>`,
-        200,
-      );
+      return text(`Authorization failed.\n\nIntuit returned: ${oauthError}\n\nStart over: ?start=1\n`);
     }
 
     // START mode — no code yet: redirect the operator to Intuit's consent screen.
@@ -132,19 +122,13 @@ Deno.serve((req) =>
 
     // CALLBACK mode — validate state + company, then exchange the code.
     if (!state || !(await verifyState(state))) {
-      return html(
-        `<h1>Invalid or expired link</h1>` +
-          `<p>The handshake link expired (10 min) or the state was tampered with. ` +
-          `<a href="?start=1">Start over</a>.</p>`,
-        200,
+      return text(
+        `Invalid or expired link.\n\nThe handshake link expired (10 min) or the state was ` +
+          `tampered with.\n\nStart over: ?start=1\n`,
       );
     }
     if (!realmId) {
-      return html(
-        `<h1>Missing company id</h1><p>Intuit did not return a <code>realmId</code>. ` +
-          `<a href="?start=1">Start over</a>.</p>`,
-        200,
-      );
+      return text(`Missing company id.\n\nIntuit did not return a realmId.\n\nStart over: ?start=1\n`);
     }
 
     const basic = btoa(`${CLIENT_ID}:${CLIENT_SECRET}`);
@@ -165,10 +149,8 @@ Deno.serve((req) =>
     const raw = await tokenRes.text();
     if (!tokenRes.ok) {
       console.error(`[${FUNCTION_NAME}] token exchange failed: HTTP ${tokenRes.status}`);
-      return html(
-        `<h1>Token exchange failed</h1><p>Intuit returned HTTP ${tokenRes.status}.</p>` +
-          `<pre>${escapeHtml(raw)}</pre><p><a href="?start=1">Start over</a></p>`,
-        200,
+      return text(
+        `Token exchange failed.\n\nIntuit returned HTTP ${tokenRes.status}:\n\n${raw}\n\nStart over: ?start=1\n`,
       );
     }
 
@@ -176,20 +158,19 @@ Deno.serve((req) =>
     try {
       tokens = JSON.parse(raw);
     } catch {
-      return html(`<h1>Unexpected token response</h1><pre>${escapeHtml(raw)}</pre>`, 200);
+      return text(`Unexpected token response:\n\n${raw}\n`);
     }
     const refresh = tokens.refresh_token ?? "";
 
-    return html(
-      `<h1>QuickBooks connected ✓</h1>` +
-        `<p>Copy these into the QuickBooks MCP server's <code>.env</code> ` +
-        `(<code>~/quickbooks-online-mcp-server</code>) and your machine env vars — ` +
-        `see <code>QUICKBOOKS-MCP-SETUP.md</code> in the dotfiles repo.</p>` +
-        `<div class="k">QUICKBOOKS_REFRESH_TOKEN</div><pre>${escapeHtml(refresh)}</pre>` +
-        `<div class="k">QUICKBOOKS_REALM_ID</div><pre>${escapeHtml(realmId)}</pre>` +
-        `<div class="k">QUICKBOOKS_ENVIRONMENT</div><pre>production</pre>` +
-        `<p style="color:#b91c1c"><strong>Treat the refresh token like a password.</strong> ` +
-        `It rotates on each use; re-run <a href="?start=1">this flow</a> if it ever stops working.</p>`,
+    return text(
+      `QuickBooks connected.\n\n` +
+        `Copy these into the QuickBooks MCP server .env (~/quickbooks-online-mcp-server)\n` +
+        `and your machine env vars - see QUICKBOOKS-MCP-SETUP.md in the dotfiles repo:\n\n` +
+        `QUICKBOOKS_REFRESH_TOKEN=${refresh}\n` +
+        `QUICKBOOKS_REALM_ID=${realmId}\n` +
+        `QUICKBOOKS_ENVIRONMENT=production\n\n` +
+        `Treat the refresh token like a password. It rotates on each use; re-run\n` +
+        `this flow (?start=1) if it ever stops working.\n`,
     );
   })
 );
