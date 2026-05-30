@@ -48,6 +48,16 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+
+  // Clean, extension-less URLs for the public legal pages. Intuit's app-profile
+  // validator rejects URLs ending in ".html", so we serve the static files in
+  // public/legal/ at /legal/eula and /legal/privacy. The .html paths still work.
+  async rewrites() {
+    return [
+      { source: "/legal/eula", destination: "/legal/eula.html" },
+      { source: "/legal/privacy", destination: "/legal/privacy.html" },
+    ];
+  },
 };
 
 const sentryWebpackPluginOptions = {
