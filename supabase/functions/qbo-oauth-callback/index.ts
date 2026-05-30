@@ -99,7 +99,7 @@ Deno.serve((req) =>
           `<p>Set them once, then retry:</p><pre>supabase secrets set \\\n  ${
             escapeHtml(missing.map((m) => `${m}=…`).join(" \\\n  "))
           } \\\n  --project-ref itzdasxobllfiuolmbxu</pre>`,
-        500,
+        200,
       );
     }
 
@@ -115,7 +115,7 @@ Deno.serve((req) =>
       return html(
         `<h1>Authorization failed</h1><p>Intuit returned: <code>${escapeHtml(oauthError)}</code></p>` +
           `<p><a href="?start=1">Try again</a></p>`,
-        400,
+        200,
       );
     }
 
@@ -136,14 +136,14 @@ Deno.serve((req) =>
         `<h1>Invalid or expired link</h1>` +
           `<p>The handshake link expired (10 min) or the state was tampered with. ` +
           `<a href="?start=1">Start over</a>.</p>`,
-        400,
+        200,
       );
     }
     if (!realmId) {
       return html(
         `<h1>Missing company id</h1><p>Intuit did not return a <code>realmId</code>. ` +
           `<a href="?start=1">Start over</a>.</p>`,
-        400,
+        200,
       );
     }
 
@@ -168,7 +168,7 @@ Deno.serve((req) =>
       return html(
         `<h1>Token exchange failed</h1><p>Intuit returned HTTP ${tokenRes.status}.</p>` +
           `<pre>${escapeHtml(raw)}</pre><p><a href="?start=1">Start over</a></p>`,
-        502,
+        200,
       );
     }
 
@@ -176,7 +176,7 @@ Deno.serve((req) =>
     try {
       tokens = JSON.parse(raw);
     } catch {
-      return html(`<h1>Unexpected token response</h1><pre>${escapeHtml(raw)}</pre>`, 502);
+      return html(`<h1>Unexpected token response</h1><pre>${escapeHtml(raw)}</pre>`, 200);
     }
     const refresh = tokens.refresh_token ?? "";
 
