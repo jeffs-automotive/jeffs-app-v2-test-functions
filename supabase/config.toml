@@ -645,3 +645,14 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/qbo-oauth-callback/deno.json"
 entrypoint = "./functions/qbo-oauth-callback/index.ts"
+
+[functions.qbo-webhook]
+enabled = true
+# QuickBooks Online webhook receiver. Intuit POSTs an unauthenticated request whose
+# auth IS the `intuit-signature` header (HMAC-SHA256 of the raw body with the Webhook
+# Verifier Token), so verify_jwt MUST be false or the platform gateway rejects it before
+# our handler verifies the signature. Inert (acks without processing) until
+# QBO_WEBHOOK_VERIFIER_TOKEN is set.
+verify_jwt = false
+import_map = "./functions/qbo-webhook/deno.json"
+entrypoint = "./functions/qbo-webhook/index.ts"
