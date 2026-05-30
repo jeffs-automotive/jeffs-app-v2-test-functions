@@ -633,3 +633,15 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/sentry-webhook/deno.json"
 entrypoint = "./functions/sentry-webhook/index.ts"
+
+[functions.qbo-oauth-callback]
+enabled = true
+# One-time QuickBooks Online (Intuit) OAuth handshake helper — operator bootstrap.
+# Intuit redirects an UNAUTHENTICATED browser here after consent, so verify_jwt MUST
+# be false (the platform gateway would otherwise reject the no-JWT request before our
+# handler runs). Security: inert without the QBO_CLIENT_ID / QBO_CLIENT_SECRET /
+# QBO_STATE_SECRET edge secrets; validates an HMAC-signed, 10-min state; never stores
+# tokens server-side; only succeeds for whoever completes Intuit's own login + consent.
+verify_jwt = false
+import_map = "./functions/qbo-oauth-callback/deno.json"
+entrypoint = "./functions/qbo-oauth-callback/index.ts"
