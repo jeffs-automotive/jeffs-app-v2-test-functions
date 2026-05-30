@@ -49,13 +49,29 @@ const nextConfig: NextConfig = {
     ];
   },
 
-  // Clean, extension-less URLs for the public legal pages. Intuit's app-profile
-  // validator rejects URLs ending in ".html", so we serve the static files in
-  // public/legal/ at /legal/eula and /legal/privacy. The .html paths still work.
+  // Clean, extension-less URLs for the public legal + QBO connect-flow pages.
+  // Intuit's app-profile validator rejects URLs ending in ".html", so we serve the
+  // static files in public/ at extension-less paths. The .html paths still work.
   async rewrites() {
     return [
       { source: "/legal/eula", destination: "/legal/eula.html" },
       { source: "/legal/privacy", destination: "/legal/privacy.html" },
+      { source: "/qbo/connected", destination: "/qbo/connected.html" },
+      { source: "/qbo/disconnected", destination: "/qbo/disconnected.html" },
+    ];
+  },
+
+  // Intuit "Connect" app URL. /qbo/connect lives on our branded domain and kicks off
+  // the OAuth flow by redirecting into the qbo-oauth-callback edge function (?start=1).
+  // Temporary (307) redirect — it's a flow entry point, not a permanent move.
+  async redirects() {
+    return [
+      {
+        source: "/qbo/connect",
+        destination:
+          "https://itzdasxobllfiuolmbxu.supabase.co/functions/v1/qbo-oauth-callback?start=1",
+        permanent: false,
+      },
     ];
   },
 };
