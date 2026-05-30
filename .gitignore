@@ -1,8 +1,10 @@
-# .claude and .mcp.json are symlinks into dotfiles-v2-test-data — that content
-# lives in its own repo and is created per-machine by dotfiles install.ps1/install.sh.
-# Never track from this repo: would duplicate the dotfiles repo's content and bake
-# in a layout-specific symlink target. (.mcp.json was previously committed as a
-# symlink-blob with a hardcoded ../../ path; untracked 2026-05-29 to stay layout-agnostic.)
+# .claude and .mcp.json come from dotfiles-v2-test-data, created per-machine by its
+# install.ps1/install.sh. Never track from this repo (would duplicate dotfiles content
+# and bake in machine/OS-specific values):
+#   .claude   = SYMLINK to the dotfiles config tree (OS-neutral).
+#   .mcp.json = GENERATED from the dotfiles canonical .mcp.json, with an OS-correct npx
+#               launcher (Windows: cmd /c npx; macOS/Linux: npx). Was previously a
+#               committed symlink-blob with a hardcoded ../../ path; untracked 2026-05-29.
 .claude/
 .claude
 .mcp.json
