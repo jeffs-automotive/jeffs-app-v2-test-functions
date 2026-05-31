@@ -1,81 +1,91 @@
 #!/usr/bin/env node
 /**
- * code-review.mjs — local specialized code-review gate (deterministic).
+ * code-review.mjs — local atomic-specialist code-review gate (deterministic).
  *
- * Runs N specialized reviewer agents (security / pattern / regression) over a
- * set of changed files using the OpenAI Agents SDK (@openai/agents). Each agent
- * reads files + its assigned .claude/rules/*.md itself (via function tools),
- * applies two-pass verification, and returns structured JSON findings. One JSON
- * report is written per agent, plus a _summary.json.
+ * Runs ATOMIC reviewer agents (one invariant each) over the set of changed files
+ * using the OpenAI Agents SDK (@openai/agents). Each agent reads ALL changed files
+ * + any assigned .claude/rules/*.md (via function tools), hunts for its ONE
+ * invariant, and returns structured JSON findings. One JSON report per agent, plus
+ * a _summary.json.
  *
  * RIGIDITY (the point of this script):
- *   - Rigid WORKFLOW: control flow is code-driven, not model-driven. An explicit
- *     loop runs ONE agent over ONE file per model call (agents × files). Coverage
- *     — every file checked by every applicable reviewer — is guaranteed by the
- *     loop, not by the model deciding it read enough. A bounded retry loop re-runs
- *     a job that errors or returns malformed output.
- *   - Rigid INPUT: validated by a zod schema before any API call. Missing file or
- *     unknown agent => hard fail (exit 2). No warn-and-continue.
- *   - Rigid OUTPUT: every finding re-validated after the run — severity in enum,
- *     >=1 line number, `filename` resolves to a real repo file (== file under
- *     review for single-file reviewers; any repo file for cross-file reviewers),
- *     and `rule_violated` MUST cite a rule file in that agent's scope. Failures go
- *     to `rejected_findings` with a reason (never silently dropped or passed).
- *     Findings are sorted deterministically so the report is stable.
+ *   - Rigid WORKFLOW: control flow is code-driven. One job per selected agent; each
+ *     job runs that agent ONCE over ALL changed files. Coverage — every selected
+ *     invariant is checked against the whole changeset — is guaranteed by the loop,
+ *     not by the model. Bounded retry re-runs a job that errors or returns malformed
+ *     output. Agents are auto-skipped when no changed file matches their scopeGlobs
+ *     (unless explicitly named via --agents).
+ *   - Rigid INPUT: validated before any API call. Missing file or unknown agent =>
+ *     hard fail (exit 2). No warn-and-continue.
+ *   - Rigid OUTPUT: every finding re-validated — severity in enum, >=1 line number,
+ *     `filename` resolves to a real changed file (or any repo file for crossFile/
+ *     regression agents), and `rule_violated` MUST cite one of the agent's anchors
+ *     (rule file, invariant key, or incident ref). Failures go to `rejected_findings`
+ *     with a reason. Findings sorted deterministically for a stable report.
  *
- * This is the LOCAL implementation of the workflow that can also be authored in
- * OpenAI Agent Builder. Builder can't express local filesystem tools, so the
- * graph + prompts are designed there and the tools + deterministic loop live
- * here. See docs/code-review/agent-builder-design.md.
- *
- * The orchestrator (Claude Code, via /code-review) passes ONLY filenames — the
- * agents read the file contents themselves.
+ * Orchestrator (Claude Code, via /code-review) passes ONLY filenames — agents read
+ * the file contents themselves.
  *
  * Usage:
  *   node scripts/code-review.mjs --files <a,b,c>
- *   node scripts/code-review.mjs [--agents security,pattern,regression]
- *                                [--out-dir <dir>] [--model <id>]
- *                                <file1> <file2> ...
+ *   node scripts/code-review.mjs [--agents <key,key>] [--app scheduler|admin|db|both]
+ *                                [--out-dir <dir>] [--model <id>] <file1> <file2> ...
  *
  * Env:
  *   OPENAI_API_KEY           API key (falls back to prod .env.local, same as ai-review).
  *   CODE_REVIEW_MODEL        Model id (default: gpt-5.5-2026-04-23).
- *   CODE_REVIEW_MAX_TURNS    Per-run agent loop cap (default: 25).
+ *   CODE_REVIEW_MAX_TURNS    Per-job agent loop cap (default: 30).
  *   CODE_REVIEW_MAX_RETRIES  Per-job retries on error/malformed output (default: 2).
  *   CODE_REVIEW_CONCURRENCY  Max parallel model calls (default: 4).
  *
- * Exit codes (match scripts/ai-review.mjs convention):
- *   0 - all jobs ran (findings, including blockers, are NOT a failure)
+ * Exit codes:
+ *   0 - all selected jobs ran (findings, including blockers, are NOT a failure)
  *   1 - one or more jobs hard-failed after retries; partial reports written
  *   2 - bad args / bad input (no files, missing file, unknown agent, bad flag)
  *
- * NOTE: the gate decision (block a push/deploy on blockers) is made by the
- * caller / a future PreToolUse hook reading these reports — NOT by this script's
- * exit code. A clean run with 5 blockers still exits 0.
+ * The gate decision (block a push/deploy on blockers) is made by the caller / a
+ * future PreToolUse hook reading these reports — NOT by this script's exit code.
  */
 
 import { readFile, writeFile, mkdir, readdir, stat } from "node:fs/promises";
 import { resolve, dirname, join, relative, extname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 
-import { SHARED_PREAMBLE, AGENTS } from "./lib/code-review-agents.mjs";
+const execFileAsync = promisify(execFile);
+
+// Agent definitions live in the dotfiles repo (everything agent-related is
+// version-controlled there) and are reached through the .agents/ directory
+// junction at the repo root (main/.agents -> dotfiles/.../.agents), mirroring
+// the existing .claude symlink. Skills are read at runtime from
+// .agents/skills/code-review/{key}/SKILL.md through the same junction.
+import { SHARED_PREAMBLE, AGENTS } from "../.agents/code-review/code-review-agents.mjs";
 import { resolveOpenAIApiKey } from "./lib/ai-review-gpt.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "..");
 
-const SCHEMA_VERSION = "code-review-1.0";
+const SCHEMA_VERSION = "code-review-2.0";
 const MODEL = process.env.CODE_REVIEW_MODEL || "gpt-5.5-2026-04-23";
-const MAX_TURNS = Number(process.env.CODE_REVIEW_MAX_TURNS) || 25;
+const MAX_TURNS = Number(process.env.CODE_REVIEW_MAX_TURNS) || 30;
 const MAX_RETRIES = Number.isFinite(Number(process.env.CODE_REVIEW_MAX_RETRIES))
   ? Number(process.env.CODE_REVIEW_MAX_RETRIES)
   : 2;
 const CONCURRENCY = Number(process.env.CODE_REVIEW_CONCURRENCY) || 4;
+// gpt-5.5 reasoning models: ModelSettings.reasoning.effort (none|minimal|low|medium|high|xhigh).
+// Official guidance: keep at medium (the default) — higher effort under open-ended tool
+// access can cause OVERTHINKING/over-flagging. Treat as a last-mile knob.
+const REASONING_EFFORT = process.env.CODE_REVIEW_REASONING_EFFORT || "medium";
+// NOTE: a separate critic/verifier second pass is deliberately NOT built yet. The
+// primary defenses are (1) the in-prompt self-verification loop in SHARED_PREAMBLE and
+// (2) the evidence_line runner gate in validateFinding. Add an LLM-as-critic pass only
+// if re-testing still shows false positives after these.
 
-const RULES_DIR = resolve(REPO_ROOT, ".claude/rules");
 const DEFAULT_OUT_DIR = resolve(REPO_ROOT, ".claude/work/verification-reports");
 
 const READ_FILE_CHAR_CAP = 400_000;
+const GIT_DIFF_CHAR_CAP = 300_000;
 const SEARCH_MAX_MATCHES = 200;
 const SEARCH_FILE_SIZE_CAP = 500_000;
 const SEARCH_EXCLUDE_DIRS = new Set([
@@ -114,16 +124,46 @@ async function fileExists(repoRelPath) {
   }
 }
 
+// Per-run cache of file line arrays (1-based access via index+1) for evidence checks.
+const _fileLinesCache = new Map();
+async function readFileLines(repoRelPath) {
+  if (_fileLinesCache.has(repoRelPath)) return _fileLinesCache.get(repoRelPath);
+  let lines = null;
+  try {
+    const text = await readFile(safePath(repoRelPath), "utf8");
+    lines = text.split("\n");
+  } catch {
+    lines = null;
+  }
+  _fileLinesCache.set(repoRelPath, lines);
+  return lines;
+}
+
+// Normalize a code line for tolerant comparison: collapse runs of whitespace,
+// trim ends. Keeps punctuation/identifiers that make a line distinctive.
+function normalizeCode(s) {
+  return String(s || "").replace(/\s+/g, " ").trim();
+}
+
+// An agent applies to the changeset if it has no scopeGlobs (always) or any
+// changed file path includes one of its scopeGlobs fragments.
+function agentMatchesFiles(def, files) {
+  if (!def.scopeGlobs || def.scopeGlobs.length === 0) return true;
+  return files.some((f) => def.scopeGlobs.some((g) => f.includes(g)));
+}
+
 // ─── arg parsing ─────────────────────────────────────────────────────────────
 
 function parseArgs(argv) {
-  const args = { files: [], agents: null, outDir: null, model: null, help: false };
+  const args = { files: [], agents: null, app: null, outDir: null, model: null, help: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--files") {
       args.files.push(...(argv[++i] || "").split(",").map((s) => s.trim()).filter(Boolean));
     } else if (a === "--agents") {
       args.agents = (argv[++i] || "").split(",").map((s) => s.trim()).filter(Boolean);
+    } else if (a === "--app") {
+      args.app = (argv[++i] || "").trim();
     } else if (a === "--out-dir") {
       args.outDir = argv[++i];
     } else if (a === "--model") {
@@ -136,7 +176,6 @@ function parseArgs(argv) {
       args.files.push(a);
     }
   }
-  // de-dupe + normalize file paths
   args.files = [...new Set(args.files.map(toRepoRel))];
   return args;
 }
@@ -144,23 +183,24 @@ function parseArgs(argv) {
 function usage() {
   return `Usage:
   node scripts/code-review.mjs --files <a,b,c>
-  node scripts/code-review.mjs [--agents ${AGENTS.map((a) => a.key).join(",")}] <file1> <file2> ...
+  node scripts/code-review.mjs [--agents <key,key>] [--app scheduler|admin|db|both] <file1> ...
 
 Flags:
-  --files <a,b,c>     Comma-separated changed files (repo-relative). Also accepts
-                      positional file args.
-  --agents <list>     Which reviewers to run. Default: all (${AGENTS.map((a) => a.key).join(", ")}).
-  --out-dir <dir>     Where to write JSON reports. Default:
-                      .claude/work/verification-reports/
+  --files <a,b,c>     Comma-separated changed files (repo-relative). Also positional.
+  --agents <list>     Run exactly these agent keys (skips scopeGlobs auto-filter).
+  --app <name>        Restrict to agents whose targetApp is <name> or "both".
+  --out-dir <dir>     Report dir. Default: .claude/work/verification-reports/
   --model <id>        Override model (default env CODE_REVIEW_MODEL or ${MODEL}).
 
-Deterministic: runs one reviewer over one file per model call (agents x files),
-with per-job retries and post-run output validation. Exit: 0 ran · 1 a job failed
-after retries · 2 bad args/input.
+Known agents: ${AGENTS.map((a) => a.key).join(", ")}
+
+Deterministic: one job per selected agent, each scanning ALL changed files for its
+one invariant, with retries + post-run output validation. Exit: 0 ran · 1 a job
+failed after retries · 2 bad args/input.
 `;
 }
 
-// ─── concurrency pool (deterministic accumulation; workers never throw) ───────
+// ─── concurrency pool ────────────────────────────────────────────────────────
 
 async function pool(items, limit, worker) {
   const results = new Array(items.length);
@@ -279,68 +319,174 @@ function buildTools(tool, z) {
     errorFunction: (_ctx, err) => `search_repo failed: ${err instanceof Error ? err.message : String(err)}`,
   });
 
-  return [read_file, list_dir, read_rule, search_repo];
+  const git_diff = tool({
+    name: "git_diff",
+    description:
+      "Show the git diff (changes vs HEAD: staged + unstaged) so you can see EXACTLY what changed — added/removed/modified lines. Pass a repo-relative path to scope to one file, or empty string for all changes. Use this to find changed/renamed/removed exports and changed signatures/columns. New untracked files won't appear in the diff (read them with read_file instead).",
+    parameters: z.object({
+      path: z.string().describe("repo-relative file to scope the diff, or empty string for all changes"),
+    }),
+    async execute({ path: p }) {
+      const argsArr = ["-c", "core.quotepath=false", "diff", "HEAD"];
+      if (p && p.trim()) {
+        safePath(p); // throws if the pathspec escapes the repo root
+        argsArr.push("--", p);
+      }
+      try {
+        const { stdout } = await execFileAsync("git", argsArr, {
+          cwd: REPO_ROOT,
+          maxBuffer: 32 * 1024 * 1024,
+          windowsHide: true,
+        });
+        if (!stdout.trim()) {
+          return p && p.trim()
+            ? `no tracked changes vs HEAD for ${p} (it may be a new/untracked file — use read_file)`
+            : "no tracked changes vs HEAD";
+        }
+        return stdout.length > GIT_DIFF_CHAR_CAP
+          ? stdout.slice(0, GIT_DIFF_CHAR_CAP) + `\n\n... [TRUNCATED git diff at ${GIT_DIFF_CHAR_CAP} chars]`
+          : stdout;
+      } catch (err) {
+        return `git_diff failed: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    },
+    errorFunction: (_ctx, err) => `git_diff failed: ${err instanceof Error ? err.message : String(err)}`,
+  });
+
+  const read_skill = tool({
+    name: "read_skill",
+    description:
+      "Read your invariant's SKILL — a package of operational knowledge with concrete GOOD-vs-BAD code examples of exactly what your one invariant's violation looks like (and what is NOT a violation). Call with name = your skill name (given in your task). Optionally pass reference = a filename under the skill's references/ folder to read a specific example file. Read your SKILL.md BEFORE reviewing so you know precisely what to flag and what to ignore.",
+    parameters: z.object({
+      name: z.string().describe("your skill name (the invariant key given in your task)"),
+      reference: z
+        .string()
+        .nullable()
+        .describe("optional: a filename under the skill's references/ folder; null to read SKILL.md"),
+    }),
+    async execute({ name, reference }) {
+      const skillRoot = join(".agents/skills/code-review", name);
+      const rel = reference && reference.trim()
+        ? join(skillRoot, "references", reference)
+        : join(skillRoot, "SKILL.md");
+      const abs = safePath(rel);
+      return await readFile(abs, "utf8");
+    },
+    errorFunction: (_ctx, err) =>
+      `read_skill failed: ${err instanceof Error ? err.message : String(err)} (skills live in .agents/skills/code-review/{name}/SKILL.md; if none exists, rely on your specialty instructions)`,
+  });
+
+  return [read_file, list_dir, read_rule, search_repo, git_diff, read_skill];
 }
 
-// ─── per-job input (one agent, one file) ─────────────────────────────────────
+// ─── per-agent input (one invariant, all files) ──────────────────────────────
 
-function buildInput(def, file) {
+function buildInput(def, files, hasSkill) {
   return [
-    `Review EXACTLY ONE changed file: ${file}`,
+    `Your single invariant: ${def.invariant}`,
     ``,
-    `Read it in full with read_file. Read EACH rule file in your scope with read_rule:`,
-    ...def.ruleScope.map((r) => `- ${r}`),
+    hasSkill
+      ? `STEP 1 — read your skill FIRST: call read_skill(name: "${def.key}"). It contains GOOD-vs-BAD code examples of exactly what this invariant's violation looks like and what is NOT a violation. Calibrate to it before flagging anything.`
+      : ``,
+    `Changed files to review (repo-relative). Read EACH in full with read_file:`,
+    ...files.map((f) => `- ${f}`),
+    def.ruleScope && def.ruleScope.length
+      ? `\nRule files in your scope — read EACH with read_rule: ${def.ruleScope.join(", ")}`
+      : ``,
     def.crossFile
-      ? `\nUse search_repo to find dependents. Findings may anchor to the dependent/caller file (its repo-relative path + line), not only ${file}.`
-      : `\nReport findings ONLY in ${file}. The "filename" of every finding must be exactly "${file}".`,
+      ? `\nFindings may anchor to a dependent/caller file (its repo-relative path + line), not only the changed files.`
+      : `\nReport findings ONLY in the changed files above. Each finding's "filename" must be one of them.`,
     ``,
-    `Apply two-pass verification and return ALL in-scope findings for this file. Return an empty findings array if there are none. Every finding must cite a named rule from one of: ${def.ruleScope.map((r) => `${r}.md`).join(", ")}.`,
-  ].join("\n");
+    `Hunt across ALL the files for violations of ONLY this invariant. For EVERY finding: set "evidence_line" to the EXACT verbatim text of the offending line copied from read_file output (this is verified against the file — a quote that doesn't match is discarded), and set "line_numbers" to that line's real number. If you cannot quote the exact offending line, do NOT report it. Return an empty findings array if there are no real violations. Set "rule_violated" to cite one of: ${def.anchors.join(", ")}.`,
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
-// ─── output validation (rigid) ───────────────────────────────────────────────
+// ─── output validation (rigid, anchor-based) ─────────────────────────────────
 
-/**
- * Validate one raw finding against the agent's contract.
- * Returns { ok: true, finding } or { ok: false, reason, finding }.
- */
-async function validateFinding(def, file, raw) {
+async function validateFinding(def, fileSet, raw) {
   const filename = typeof raw.filename === "string" ? toRepoRel(raw.filename) : "";
 
-  // 1. filename must resolve to a real repo file.
   if (!filename) return { ok: false, reason: "missing filename", finding: raw };
-  if (!def.crossFile && filename !== file) {
-    return { ok: false, reason: `filename '${filename}' != file under review '${file}' (single-file reviewer)`, finding: raw };
-  }
-  if (!(await fileExists(filename))) {
-    return { ok: false, reason: `filename '${filename}' does not resolve to a repo file (possible hallucination)`, finding: raw };
+
+  if (def.crossFile) {
+    if (!(await fileExists(filename))) {
+      return { ok: false, reason: `filename '${filename}' does not resolve to a repo file`, finding: raw };
+    }
+  } else {
+    if (!fileSet.has(filename)) {
+      return { ok: false, reason: `filename '${filename}' is not one of the changed files under review`, finding: raw };
+    }
   }
 
-  // 2. severity in enum (zod already enforces, but guard defensively).
   if (!(raw.severity in SEVERITY_RANK)) {
     return { ok: false, reason: `bad severity '${raw.severity}'`, finding: raw };
   }
 
-  // 3. >=1 concrete, positive, integer line number.
-  const lines = Array.isArray(raw.line_numbers)
+  let lines = Array.isArray(raw.line_numbers)
     ? raw.line_numbers.filter((n) => Number.isInteger(n) && n > 0)
     : [];
   if (lines.length === 0) {
     return { ok: false, reason: "no concrete line_numbers", finding: raw };
   }
 
-  // 4. rule-anchoring: rule_violated must cite a rule file in this agent's scope.
+  // Anchor check: rule_violated must cite one of this agent's anchors.
   const rv = String(raw.rule_violated || "").toLowerCase();
-  const inScope = def.ruleScope.some((r) => rv.includes(r.toLowerCase()));
-  if (!inScope) {
+  const anchored = def.anchors.some((a) => rv.includes(a.toLowerCase()));
+  if (!anchored) {
     return {
       ok: false,
-      reason: `rule_violated '${raw.rule_violated}' cites no rule in scope (${def.ruleScope.join(", ")})`,
+      reason: `rule_violated '${raw.rule_violated}' cites no valid anchor (${def.anchors.join(", ")})`,
       finding: raw,
     };
   }
 
-  // Normalized, accepted finding.
+  // ── EVIDENCE GATE (anti-hallucination + mislocation auto-correct) ──
+  // The model must quote the verbatim offending line in evidence_line. We verify
+  // it against the real file. Match rule: a file line MATCHES the evidence only if
+  // that line CONTAINS the evidence (content.includes(evidence)). We do NOT use the
+  // reverse direction (evidence.includes(content)) — that falsely matched trivial
+  // lines like "{" against any evidence containing a brace. Require a reasonably
+  // distinctive quote (>= 12 normalized chars) so a weak quote can't match broadly.
+  const evidence = normalizeCode(raw.evidence_line);
+  if (evidence.length < 12) {
+    return {
+      ok: false,
+      reason: `evidence_line missing or too short to verify (need a verbatim quote of the offending line): '${raw.evidence_line ?? ""}'`,
+      finding: raw,
+    };
+  }
+  const fileLines = await readFileLines(filename);
+  let corrected = false;
+  if (fileLines) {
+    const matches = (lineNo) => normalizeCode(fileLines[lineNo - 1] ?? "").includes(evidence);
+    const citedHit = lines.filter(matches);
+    if (citedHit.length > 0) {
+      lines = citedHit; // keep only cited lines that actually contain the quote
+    } else {
+      // Cited lines don't contain the quote → locate it; auto-correct the number.
+      const found = [];
+      for (let i = 0; i < fileLines.length; i++) {
+        if (normalizeCode(fileLines[i]).includes(evidence)) {
+          found.push(i + 1);
+          if (found.length >= 5) break;
+        }
+      }
+      if (found.length === 0) {
+        return {
+          ok: false,
+          reason: `evidence_line not found in ${filename} (likely hallucinated/paraphrased): '${raw.evidence_line}'`,
+          finding: raw,
+        };
+      }
+      lines = found;
+      corrected = true;
+    }
+  }
+  // If fileLines is null the file couldn't be read; we already confirmed it exists,
+  // so fall through trusting the cited lines rather than dropping a finding.
+
   return {
     ok: true,
     finding: {
@@ -348,6 +494,8 @@ async function validateFinding(def, file, raw) {
       severity: raw.severity,
       rule_violated: String(raw.rule_violated),
       line_numbers: [...new Set(lines)].sort((a, b) => a - b),
+      evidence_line: String(raw.evidence_line ?? ""),
+      line_corrected: corrected,
       issue_found: String(raw.issue_found ?? ""),
       explanation: String(raw.explanation ?? ""),
       recommended_fix: String(raw.recommended_fix ?? ""),
@@ -368,13 +516,15 @@ function sortFindings(findings) {
   });
 }
 
-// ─── one job: one agent over one file, with bounded retry ────────────────────
+// ─── one job: one agent over all files, bounded retry ────────────────────────
 
-async function runJob({ Agent, run }, def, agent, file) {
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function runJob({ run }, def, agent, files, fileSet, hasSkill) {
   let lastErr = null;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
-      const result = await run(agent, buildInput(def, file), { maxTurns: MAX_TURNS });
+      const result = await run(agent, buildInput(def, files, hasSkill), { maxTurns: MAX_TURNS });
       const out = result.finalOutput;
       if (!out || !Array.isArray(out.findings)) {
         throw new Error("model returned no structured findings array");
@@ -382,16 +532,22 @@ async function runJob({ Agent, run }, def, agent, file) {
       const accepted = [];
       const rejected = [];
       for (const raw of out.findings) {
-        const v = await validateFinding(def, file, raw);
+        const v = await validateFinding(def, fileSet, raw);
         if (v.ok) accepted.push(v.finding);
-        else rejected.push({ file, reason: v.reason, raw: v.finding });
+        else rejected.push({ reason: v.reason, raw: v.finding });
       }
-      return { ok: true, file, attempts: attempt + 1, accepted, rejected };
+      return { ok: true, attempts: attempt + 1, accepted: sortFindings(accepted), rejected };
     } catch (e) {
       lastErr = e instanceof Error ? e.message : String(e);
+      // Backoff before retrying. Rescues transient rate-limit 429s (concurrency
+      // bursts) and 5xx; a quota-exhausted 429 still fails after retries — which
+      // is correct, it must surface as status:"failed", never as a clean pass.
+      if (attempt < MAX_RETRIES) {
+        await sleep(1000 * Math.pow(2, attempt)); // 1s, 2s, 4s, ...
+      }
     }
   }
-  return { ok: false, file, attempts: MAX_RETRIES + 1, error: lastErr, accepted: [], rejected: [] };
+  return { ok: false, attempts: MAX_RETRIES + 1, error: lastErr, accepted: [], rejected: [] };
 }
 
 // ─── report writers ──────────────────────────────────────────────────────────
@@ -400,32 +556,28 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-async function writeReport(outDir, def, files, jobs) {
-  const accepted = [];
-  const rejected = [];
-  const failedFiles = [];
-  let okFiles = 0;
-  for (const j of jobs) {
-    if (j.ok) {
-      okFiles++;
-      accepted.push(...j.accepted);
-      rejected.push(...j.rejected);
-    } else {
-      failedFiles.push({ file: j.file, error: j.error });
-    }
-  }
+async function writeReport(outDir, def, files, job) {
+  // Explicit tri-state status so NO consumer can mistake a failed run (429 /
+  // crash → issues:[]) for a clean pass (also issues:[]). Never infer
+  // pass/fail from issues.length alone.
+  //   "failed"   — the agent never produced a valid result (API error, retries exhausted)
+  //   "clean"    — ran successfully, found nothing
+  //   "findings" — ran successfully, found ≥1 issue
+  const status = !job.ok ? "failed" : job.accepted.length > 0 ? "findings" : "clean";
   const report = {
     schema_version: SCHEMA_VERSION,
     agent: def.key,
+    invariant: def.invariant,
+    target_app: def.targetApp,
     model: MODEL,
     generated_at: nowIso(),
     files_reviewed: files,
     rules_in_scope: def.ruleScope,
-    ok: failedFiles.length === 0,
-    coverage: { files_total: files.length, files_ok: okFiles, files_failed: failedFiles.length },
-    failed_files: failedFiles,
-    issues: sortFindings(accepted),
-    rejected_findings: rejected,
+    status,
+    ok: job.ok,
+    error: job.ok ? null : job.error,
+    issues: job.accepted,
+    rejected_findings: job.rejected,
   };
   const path = join(outDir, `${def.key}.json`);
   await writeFile(path, JSON.stringify(report, null, 2) + "\n", "utf8");
@@ -447,13 +599,20 @@ async function main() {
     process.exit(0);
   }
 
-  // ── RIGID INPUT VALIDATION (fail fast, exit 2) ──
+  // ── RIGID INPUT VALIDATION ──
   if (args.files.length === 0) {
     process.stderr.write(`Error: at least one file is required.\n\n${usage()}`);
     process.exit(2);
   }
+  if (args.app && !["scheduler", "admin", "db", "both"].includes(args.app)) {
+    process.stderr.write(`Error: --app must be scheduler|admin|db|both (got '${args.app}').\n`);
+    process.exit(2);
+  }
+
   const byKey = new Map(AGENTS.map((a) => [a.key, a]));
-  let selected = AGENTS;
+
+  // Selection: explicit --agents wins; else auto-filter by scopeGlobs (+ --app).
+  let selected;
   if (args.agents) {
     selected = [];
     for (const k of args.agents) {
@@ -464,7 +623,13 @@ async function main() {
       }
       selected.push(def);
     }
+  } else {
+    selected = AGENTS.filter((d) => agentMatchesFiles(d, args.files));
+    if (args.app) {
+      selected = selected.filter((d) => d.targetApp === args.app || d.targetApp === "both");
+    }
   }
+
   // Every input file must exist — rigid, no warn-and-continue.
   const missing = [];
   for (const f of args.files) {
@@ -473,6 +638,29 @@ async function main() {
   if (missing.length > 0) {
     process.stderr.write(`Error: file(s) not found:\n${missing.map((m) => `  - ${m}`).join("\n")}\n`);
     process.exit(2);
+  }
+
+  if (selected.length === 0) {
+    process.stderr.write(
+      `[code-review] No agents match the changed files (scopeGlobs filter). Nothing to do.\n`,
+    );
+    // Still emit an empty summary so callers have a stable artifact.
+    const outDir = args.outDir ? resolve(args.outDir) : DEFAULT_OUT_DIR;
+    await mkdir(outDir, { recursive: true });
+    const summary = {
+      schema_version: SCHEMA_VERSION,
+      generated_at: nowIso(),
+      model: args.model || MODEL,
+      files_reviewed: args.files,
+      agents: [],
+      totals: { issues: 0, blocker: 0, important: 0, "nice-to-have": 0, rejected: 0 },
+      reports: [],
+      all_jobs_ok: true,
+      note: "no agents matched the changed files",
+    };
+    await writeFile(join(outDir, "_summary.json"), JSON.stringify(summary, null, 2) + "\n", "utf8");
+    process.stdout.write(JSON.stringify(summary) + "\n");
+    process.exit(0);
   }
 
   // ── Load SDK ──
@@ -496,12 +684,17 @@ async function main() {
 
   const model = args.model || MODEL;
 
-  // Rigid OUTPUT schema (structured-output contract). Strict mode: all required.
+  // Rigid OUTPUT schema (structured-output contract). All fields required.
+  // evidence_line: the VERBATIM text of the primary offending line, copied from
+  // tool output. The runner verifies it against the file (anti-hallucination +
+  // auto-corrects mislocated line numbers). A finding whose evidence_line is not
+  // found in the file is rejected as a likely hallucination.
   const Finding = z.object({
     filename: z.string(),
     severity: z.enum(["blocker", "important", "nice-to-have"]),
     rule_violated: z.string(),
     line_numbers: z.array(z.number()),
+    evidence_line: z.string(),
     issue_found: z.string(),
     explanation: z.string(),
     recommended_fix: z.string(),
@@ -512,7 +705,17 @@ async function main() {
   const outDir = args.outDir ? resolve(args.outDir) : DEFAULT_OUT_DIR;
   await mkdir(outDir, { recursive: true });
 
-  // One Agent instance per reviewer (reused across its files).
+  const fileSet = new Set(args.files);
+
+  // Which selected agents have a SKILL.md (good-vs-bad example pack)?
+  const skillKeys = new Set();
+  for (const def of selected) {
+    if (await fileExists(join(".agents/skills/code-review", def.key, "SKILL.md"))) {
+      skillKeys.add(def.key);
+    }
+  }
+
+  // One Agent per selected invariant.
   const agents = new Map();
   for (const def of selected) {
     agents.set(
@@ -523,53 +726,47 @@ async function main() {
         model,
         tools,
         outputType: ReviewOutput,
+        modelSettings: { reasoning: { effort: REASONING_EFFORT } },
       }),
     );
   }
 
-  // ── RIGID WORKFLOW: explicit job grid (agents x files), code-driven ──
-  const jobGrid = [];
-  for (const def of selected) {
-    for (const file of args.files) {
-      jobGrid.push({ def, file });
-    }
-  }
-
   process.stderr.write(
-    `[code-review] ${selected.length} reviewer(s) x ${args.files.length} file(s) = ${jobGrid.length} job(s) · model ${model} · maxTurns ${MAX_TURNS} · retries ${MAX_RETRIES} · concurrency ${CONCURRENCY}\n`,
+    `[code-review] ${selected.length} atomic agent(s) over ${args.files.length} file(s) · model ${model} · maxTurns ${MAX_TURNS} · retries ${MAX_RETRIES} · concurrency ${CONCURRENCY}\n`,
   );
+  process.stderr.write(`[code-review]   agents: ${selected.map((d) => d.key).join(", ")}\n`);
 
-  const jobResults = await pool(jobGrid, CONCURRENCY, async ({ def, file }) => {
-    const r = await runJob({ Agent, run }, def, agents.get(def.key), file);
-    const status = r.ok ? `${r.accepted.length} found${r.rejected.length ? `, ${r.rejected.length} rejected` : ""}` : `FAILED: ${r.error}`;
-    process.stderr.write(`[code-review]   ${def.key} · ${file} · ${status}\n`);
-    return { def, ...r };
+  // ── RIGID WORKFLOW: one job per agent, each over ALL files ──
+  const jobResults = await pool(selected, CONCURRENCY, async (def) => {
+    const job = await runJob({ run }, def, agents.get(def.key), args.files, fileSet, skillKeys.has(def.key));
+    const status = job.ok
+      ? `${job.accepted.length} found${job.rejected.length ? `, ${job.rejected.length} rejected` : ""}`
+      : `FAILED: ${job.error}`;
+    process.stderr.write(`[code-review]   ${def.key} · ${status}\n`);
+    return { def, job };
   });
 
-  // Group job results by agent (deterministic order = selected order).
-  const byAgent = new Map(selected.map((d) => [d.key, []]));
-  for (const r of jobResults) byAgent.get(r.def.key).push(r);
-
-  const writes = [];
-  for (const def of selected) {
-    writes.push(writeReport(outDir, def, args.files, byAgent.get(def.key)));
-  }
-  const written = await Promise.all(writes);
+  const written = await Promise.all(jobResults.map(({ def, job }) => writeReport(outDir, def, args.files, job)));
 
   // ── Summary ──
   let anyFailed = false;
+  const failedAgents = [];
   const summaryRows = [];
   for (const { report } of written) {
-    if (!report.ok) anyFailed = true;
+    if (!report.ok) {
+      anyFailed = true;
+      failedAgents.push({ agent: report.agent, error: report.error });
+    }
     const counts = { blocker: 0, important: 0, "nice-to-have": 0 };
     for (const issue of report.issues) counts[issue.severity]++;
     summaryRows.push({
       agent: report.agent,
+      target_app: report.target_app,
+      status: report.status,
       ok: report.ok,
       total: report.issues.length,
       ...counts,
       rejected: report.rejected_findings.length,
-      coverage: report.coverage,
     });
   }
   const totals = summaryRows.reduce(
@@ -583,21 +780,45 @@ async function main() {
     },
     { issues: 0, blocker: 0, important: 0, "nice-to-have": 0, rejected: 0 },
   );
+  totals.failed = failedAgents.length;
+
+  // Gate verdict — FAIL-CLOSED. "block" if any blocker finding OR any agent
+  // failed to run (a 429/crash is NOT a pass — the code was never reviewed).
+  // A consumer (/feature-verify, a pre-push hook) gates on `gate`, never on
+  // issue counts alone. block_reasons makes the cause explicit.
+  const blockReasons = [];
+  if (totals.blocker > 0) blockReasons.push(`${totals.blocker} blocker finding(s)`);
+  if (failedAgents.length > 0) {
+    blockReasons.push(`${failedAgents.length} agent(s) failed to run (review incomplete): ${failedAgents.map((f) => f.agent).join(", ")}`);
+  }
+  const gate = blockReasons.length > 0 ? "block" : "pass";
 
   const summary = {
     schema_version: SCHEMA_VERSION,
     generated_at: nowIso(),
     model,
     files_reviewed: args.files,
+    gate,
+    block_reasons: blockReasons,
     agents: summaryRows,
     totals,
+    failed_agents: failedAgents,
     reports: written.map((w) => relative(REPO_ROOT, w.path).replace(/\\/g, "/")),
     all_jobs_ok: !anyFailed,
+    review_complete: !anyFailed,
   };
   await writeFile(join(outDir, "_summary.json"), JSON.stringify(summary, null, 2) + "\n", "utf8");
 
+  if (failedAgents.length > 0) {
+    process.stderr.write(
+      `[code-review] ⚠ ${failedAgents.length} agent(s) FAILED to run — review INCOMPLETE, not clean:\n`,
+    );
+    for (const f of failedAgents) {
+      process.stderr.write(`[code-review]     ✗ ${f.agent}: ${f.error}\n`);
+    }
+  }
   process.stderr.write(
-    `[code-review] done · ${totals.issues} issue(s): ${totals.blocker} blocker, ${totals.important} important · ${totals.rejected} rejected · reports in ${relative(REPO_ROOT, outDir).replace(/\\/g, "/")}/\n`,
+    `[code-review] gate=${gate.toUpperCase()} · ${totals.issues} issue(s): ${totals.blocker} blocker, ${totals.important} important · ${totals.failed} failed · ${totals.rejected} rejected · reports in ${relative(REPO_ROOT, outDir).replace(/\\/g, "/")}/\n`,
   );
 
   process.stdout.write(JSON.stringify(summary) + "\n");

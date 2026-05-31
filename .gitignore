@@ -7,6 +7,8 @@
 #               committed symlink-blob with a hardcoded ../../ path; untracked 2026-05-29.
 .claude/
 .claude
+.agents/
+.agents
 .mcp.json
 
 # Per-folder Supabase CLI local state — never commit, all machine-specific
