@@ -5,10 +5,13 @@
   "description": "Repo-root package.json — exists only so scripts/ can resolve npm deps from Node's ESM resolver. Application code lives under scheduler-app/. Edge functions live under supabase/functions/ (Deno; not npm-managed).",
   "type": "module",
   "scripts": {
-    "prepare": "husky"
+    "prepare": "husky",
+    "code-review": "node scripts/code-review.mjs"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.105.4"
+    "@openai/agents": "^0.11.6",
+    "@supabase/supabase-js": "^2.105.4",
+    "zod": "^4.0.0"
   },
   "devDependencies": {
     "husky": "^9.1.7"
