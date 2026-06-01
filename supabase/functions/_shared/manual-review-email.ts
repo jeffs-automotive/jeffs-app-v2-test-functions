@@ -14,8 +14,8 @@ import type {
   ManualReviewContext,
   ManualReviewOption,
 } from "./manual-review.ts";
+import { sendResendEmail } from "./resend-client.ts";
 
-const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 const REVIEW_TO_EMAIL =
   Deno.env.get("KEYTAG_REPORT_TO_EMAIL") ?? "service@jeffsautomotive.com";
 const REVIEW_FROM_EMAIL =
@@ -38,46 +38,17 @@ export interface SendManualReviewEmailResult {
 export async function sendManualReviewEmail(
   args: SendManualReviewEmailArgs,
 ): Promise<SendManualReviewEmailResult> {
-  if (!RESEND_API_KEY) {
-    return { sent: false, error: "RESEND_API_KEY not configured" };
-  }
-
-  const subject = buildSubject(args);
-  const html = buildHtml(args);
-
-  try {
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${RESEND_API_KEY}`,
-        "Content-Type": "application/json",
-        // Idempotency: code is unique by DB constraint, so per-code dedup
-        // is safe. If the same code is somehow re-issued (shouldn't happen),
-        // Resend will dedupe and we won't double-send.
-        "Idempotency-Key": `keytag-manual-review:${args.code}`,
-      },
-      body: JSON.stringify({
-        from: REVIEW_FROM_EMAIL,
-        to: [REVIEW_TO_EMAIL],
-        subject,
-        html,
-      }),
-    });
-    if (res.status === 409) {
-      // Resend dedup hit — already sent. Treat as success.
-      return { sent: true };
-    }
-    if (!res.ok) {
-      const text = await res.text();
-      return {
-        sent: false,
-        error: `HTTP ${res.status}: ${text.slice(0, 300)}`,
-      };
-    }
-    return { sent: true };
-  } catch (e) {
-    return { sent: false, error: e instanceof Error ? e.message : String(e) };
-  }
+  // HTTP transport extracted to ./resend-client.ts (file-size-refactor batch 1).
+  // Idempotency: code is unique by DB constraint, so per-code dedup is safe —
+  // a re-issued code → Resend 409 → treated as sent (no double-send).
+  const r = await sendResendEmail({
+    from: REVIEW_FROM_EMAIL,
+    to: REVIEW_TO_EMAIL,
+    subject: buildSubject(args),
+    html: buildHtml(args),
+    idempotencyKey: `keytag-manual-review:${args.code}`,
+  });
+  return r.ok ? { sent: true } : { sent: false, error: r.error };
 }
 
 // ─── Subject + HTML helpers ─────────────────────────────────────────────────

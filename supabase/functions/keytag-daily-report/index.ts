@@ -38,9 +38,9 @@ import {
 } from "../_shared/scheduler-auth.ts";
 import { logEdgeError } from "../_shared/log-edge-error.ts";
 import { withSentryScope } from "../_shared/sentry-edge.ts";
+import { sendResendEmail } from "../_shared/resend-client.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 const SHOP_ID = parseInt(
   Deno.env.get(ENV_NAMES.TEKMETRIC_SHOP_ID) ?? "7476",
   10,
@@ -663,56 +663,23 @@ async function sendViaResend(args: {
   status: number;
   deduped?: boolean;
 }> {
-  if (!RESEND_API_KEY) {
-    return { ok: false, status: 0, error: "RESEND_API_KEY not configured" };
-  }
-  try {
-    const headers: Record<string, string> = {
-      Authorization: `Bearer ${RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    };
-    if (args.idempotencyKey) {
-      headers["Idempotency-Key"] = args.idempotencyKey;
-    }
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        from: REPORT_FROM_EMAIL,
-        to: [REPORT_TO_EMAIL],
-        subject: args.subject,
-        html: args.html,
-      }),
-    });
-    const text = await res.text();
-
-    // 409 = idempotency replay. Resend's safety check fires when the same
-    // idempotency key is used again within 24h. Treat as success (the
-    // email DID land earlier — we'd just be re-sending an updated body).
-    // Matches the transcript-dispatcher pattern (commit 9466de0).
-    if (res.status === 409) {
-      return { ok: true, status: 409, deduped: true };
-    }
-
-    if (!res.ok) {
-      return { ok: false, status: res.status, error: text.slice(0, 500) };
-    }
-
-    let resend_id: string | undefined;
-    try {
-      const json = JSON.parse(text);
-      if (typeof json.id === "string") resend_id = json.id;
-    } catch {
-      // 200 with non-JSON body — still treat as success
-    }
-    return { ok: true, status: res.status, resend_id };
-  } catch (e) {
-    return {
-      ok: false,
-      status: 0,
-      error: e instanceof Error ? e.message : String(e),
-    };
-  }
+  // HTTP transport extracted to _shared/resend-client.ts (file-size-refactor
+  // batch 1). Behavior preserved: optional idempotency key, 409 = deduped
+  // success, resend id parsed from the 2xx body.
+  const r = await sendResendEmail({
+    from: REPORT_FROM_EMAIL,
+    to: REPORT_TO_EMAIL,
+    subject: args.subject,
+    html: args.html,
+    idempotencyKey: args.idempotencyKey ?? undefined,
+  });
+  return {
+    ok: r.ok,
+    status: r.status,
+    resend_id: r.id,
+    error: r.error,
+    deduped: r.deduped,
+  };
 }
 
 // ─── HTTP handler ────────────────────────────────────────────────────────────
