@@ -35,15 +35,21 @@
 - **Phase G — observability + tests.** Sentry source-map upload ✅ (`admin-app/next.config.ts`
   `withSentryConfig`). Audit is covered at the orchestrator/tool layer (X-Actor-Email →
   `keytag_audit_log`; scheduler tools' own audit log) — no separate dashboard-intent log was added.
-  **Test harness BOOTSTRAPPED 2026-06-01** (was the A6 gap — admin-app had zero tests). Vitest 4 +
-  RTL/jsdom + MSW + Playwright, mirroring scheduler-app: `admin-app/vitest.config.ts`,
-  `playwright.config.ts`, `tests/setup.ts`, first unit suite `tests/unit/shop-id.test.ts` (4 tests,
-  green — pins the shop-id-server-derived invariant), and `e2e/auth-gate.spec.ts` (unauth protected
-  routes → /login). typecheck + `npm run test` green.
-  **Remaining to expand:** DAL unit tests (orchestrator-client host-allowlist, md-file-utils),
-  component tests for the schedulerconfig/keytag tabs, authed read/write E2E (mocked OAuth session),
-  then enable the 80% coverage threshold (currently off so the first run is green). E2E needs
-  `npx playwright install chromium` + a running app to execute.
+  **Test harness BUILT 2026-06-01** (was the A6 gap — admin-app had zero tests). Vitest 4 + RTL/jsdom
+  + MSW + Playwright, mirroring scheduler-app. **38 unit/component tests, green; typecheck clean.**
+  Covered: `shop-id`, `isConfirmationRequired`, `resolve-keys`, `md-file-utils`, orchestrator
+  **host-allowlist** (env-stub + fetch-spy security test), `ConfirmationDialog` (Pattern A gate),
+  `TagBadge`, and `AssignKeytagForm` (action-mocked `useActionState` Pattern A flow). E2E: `auth-gate`
+  (unauth → /login) + `dashboard.authed` (seeded `@supabase/ssr` session → authed render; read-only;
+  `auth.setup.ts` seeds via supabase-js + @supabase/ssr's own cookie serializer, password from
+  `E2E_TEST_USER_PASSWORD` env-only).
+  **Remaining to expand:** the other keytag forms + schedulerconfig tabs (reuse the proven RTL +
+  action-mock patterns), then enable the 80% coverage threshold (off so the run is green).
+  **Write-path E2E stays deferred** (drives the real orchestrator → real Tekmetric/keytag data).
+  **To run E2E:** `vercel env pull .env.local` (Supabase creds — the app won't boot without them) →
+  `npx playwright install chromium` → `E2E_TEST_USER_PASSWORD=… npm run test:e2e`. The authed setup
+  also assumes the test user has a Supabase password (Microsoft-OAuth-only users have none — set one,
+  or switch the fixture to `admin.generateLink`).
 - **Per-row single-field edit UI** (ROUND-2 §10 Q1). block/unblock shipped; the broader
   `upsert_*`/`patch_*`/`deactivate_*` single-row editors remain MD-upload-only (the CatalogEditorTab
   edits via MD templates, not per-field) — still deferred.
