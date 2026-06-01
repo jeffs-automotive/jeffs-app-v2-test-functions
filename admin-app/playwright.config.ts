@@ -13,13 +13,15 @@ import path from "node:path";
  *    auth.setup.ts) proves requireAdmin PASSES for a real @jeffsautomotive.com user. READ-ONLY —
  *    no write flows (those drive the real orchestrator → real Tekmetric/keytag data).
  *
- * `loadEnvConfig` pulls admin-app/.env.local into this process so the setup can read
- * NEXT_PUBLIC_SUPABASE_URL + the anon/publishable key (the same creds the dev server uses).
+ * `loadEnvConfig` pulls admin-app/.env.local into this process so the setup can read the Supabase
+ * URL + anon/publishable key + the SERVICE_ROLE key (the same creds the dev server uses).
  *
  * Run locally (auto-starts `next dev -p 3001`):
- *   npx playwright install chromium            # one-time browser fetch
- *   E2E_TEST_USER_PASSWORD=… npm run test:e2e  # password NEVER committed — env only
- * Without E2E_TEST_USER_PASSWORD the authed specs skip cleanly; the auth-gate spec still runs.
+ *   npx vercel env pull .env.local   # Supabase URL/anon + SERVICE_ROLE (the app won't boot without)
+ *   npx playwright install chromium  # one-time browser fetch
+ *   npm run test:e2e
+ * The authed setup mints a session via admin.generateLink (service-role) — NO password needed.
+ * Without test Supabase creds the authed specs skip cleanly; the auth-gate spec still runs.
  *
  * Against a deployed target: PLAYWRIGHT_BASE_URL=https://… (+ VERCEL_AUTOMATION_BYPASS_SECRET).
  */

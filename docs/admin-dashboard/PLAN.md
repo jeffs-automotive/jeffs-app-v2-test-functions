@@ -46,10 +46,10 @@
   **Remaining to expand:** the other keytag forms + schedulerconfig tabs (reuse the proven RTL +
   action-mock patterns), then enable the 80% coverage threshold (off so the run is green).
   **Write-path E2E stays deferred** (drives the real orchestrator → real Tekmetric/keytag data).
-  **To run E2E:** `vercel env pull .env.local` (Supabase creds — the app won't boot without them) →
-  `npx playwright install chromium` → `E2E_TEST_USER_PASSWORD=… npm run test:e2e`. The authed setup
-  also assumes the test user has a Supabase password (Microsoft-OAuth-only users have none — set one,
-  or switch the fixture to `admin.generateLink`).
+  **To run E2E:** `npx vercel env pull .env.local` (Supabase URL/anon + SERVICE_ROLE — the app won't
+  boot without them) → `npx playwright install chromium` → `npm run test:e2e`. The authed setup mints
+  a session via `admin.generateLink` (service-role) — no password needed; works for the Microsoft-OAuth
+  test user.
 - **Per-row single-field edit UI** (ROUND-2 §10 Q1). block/unblock shipped; the broader
   `upsert_*`/`patch_*`/`deactivate_*` single-row editors remain MD-upload-only (the CatalogEditorTab
   edits via MD templates, not per-field) — still deferred.
