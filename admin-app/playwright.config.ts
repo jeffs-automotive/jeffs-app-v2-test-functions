@@ -1,22 +1,35 @@
 import { defineConfig, devices } from "@playwright/test";
+import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
 
 /**
- * Playwright config for admin-app (Phase G — added 2026-06-01).
+ * Playwright config for admin-app (Phase G).
  *
- * The dashboard is Microsoft-Entra-gated, so the hermetic smoke surface that
- * needs NO Microsoft session is the AUTH GATE: an unauthenticated request to a
- * protected route must redirect to /login (requireAdmin(), src/lib/auth.ts).
- * Authenticated read/write E2E (mocked OAuth session cookie) is a follow-up.
+ * Two surfaces:
+ *  - **auth gate** (`*.spec.ts`, unauthenticated): a protected route must redirect to /login
+ *    (requireAdmin, src/lib/auth.ts). No session needed.
+ *  - **authed** (`*.authed.spec.ts`): a seeded @supabase/ssr session (project "setup" →
+ *    auth.setup.ts) proves requireAdmin PASSES for a real @jeffsautomotive.com user. READ-ONLY —
+ *    no write flows (those drive the real orchestrator → real Tekmetric/keytag data).
+ *
+ * `loadEnvConfig` pulls admin-app/.env.local into this process so the setup can read
+ * NEXT_PUBLIC_SUPABASE_URL + the anon/publishable key (the same creds the dev server uses).
  *
  * Run locally (auto-starts `next dev -p 3001`):
- *   npm run test:e2e
- *   (first time: `npx playwright install chromium` to fetch the browser)
+ *   npx playwright install chromium            # one-time browser fetch
+ *   E2E_TEST_USER_PASSWORD=… npm run test:e2e  # password NEVER committed — env only
+ * Without E2E_TEST_USER_PASSWORD the authed specs skip cleanly; the auth-gate spec still runs.
  *
- * Against a deployed preview/prod:
- *   PLAYWRIGHT_BASE_URL=https://...vercel.app \
- *   VERCEL_AUTOMATION_BYPASS_SECRET=<Vercel project → Deployment Protection → Bypass> \
- *   npm run test:e2e
+ * Against a deployed target: PLAYWRIGHT_BASE_URL=https://… (+ VERCEL_AUTOMATION_BYPASS_SECRET).
  */
+// @next/env is CommonJS — bridge via createRequire so Playwright's ESM loader can use it.
+const { loadEnvConfig } = createRequire(import.meta.url)("@next/env") as typeof import("@next/env");
+loadEnvConfig(process.cwd());
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const STORAGE_STATE = path.join(__dirname, "e2e", ".auth", "state.json");
+
 export default defineConfig({
   testDir: "./e2e",
   timeout: 60_000,
@@ -38,7 +51,23 @@ export default defineConfig({
     actionTimeout: 15_000,
     navigationTimeout: 30_000,
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    // Seeds the @supabase/ssr session into STORAGE_STATE (empty state if no creds).
+    { name: "setup", testMatch: /auth\.setup\.ts/ },
+    // Unauthenticated — the auth-gate spec.
+    {
+      name: "chromium",
+      use: { ...devices["Desktop Chrome"] },
+      testIgnore: [/auth\.setup\.ts/, /\.authed\.spec\.ts/],
+    },
+    // Authenticated — uses the seeded session; runs only the *.authed.spec.ts files.
+    {
+      name: "chromium-authed",
+      use: { ...devices["Desktop Chrome"], storageState: STORAGE_STATE },
+      dependencies: ["setup"],
+      testMatch: /\.authed\.spec\.ts/,
+    },
+  ],
   // Only auto-start the dev server when running locally without a target URL.
   webServer:
     process.env.PLAYWRIGHT_BASE_URL || process.env.CI
