@@ -14,6 +14,18 @@ const eslintConfig = [
   {
     ignores: [".next/**", "node_modules/**"],
   },
+  // File-size guardrail — WARN only (a tripwire, not a hard law). Counts
+  // code-only lines. See docs/code-quality/file-size-audit-and-strategy-2026-05-31.md.
+  {
+    rules: {
+      "max-lines": ["warn", { max: 500, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  // Exempt generated DB types if present.
+  {
+    files: ["src/lib/database.types.ts", "**/database.types.ts"],
+    rules: { "max-lines": "off" },
+  },
 ];
 
 export default eslintConfig;
