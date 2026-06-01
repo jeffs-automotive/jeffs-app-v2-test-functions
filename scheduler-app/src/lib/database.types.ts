@@ -1458,10 +1458,13 @@ export type Database = {
           occurred_at: string
           operation: string
           pre_state_snapshot: Json | null
+          reverts_upload_id: number | null
           rows_added: number
           rows_deactivated: number
           rows_modified: number
+          shop_id: number
           snapshot_pruned_at: string | null
+          successor_revert_id: number | null
           table_name: string
           user_label: string | null
         }
@@ -1474,10 +1477,13 @@ export type Database = {
           occurred_at?: string
           operation: string
           pre_state_snapshot?: Json | null
+          reverts_upload_id?: number | null
           rows_added?: number
           rows_deactivated?: number
           rows_modified?: number
+          shop_id: number
           snapshot_pruned_at?: string | null
+          successor_revert_id?: number | null
           table_name: string
           user_label?: string | null
         }
@@ -1490,14 +1496,98 @@ export type Database = {
           occurred_at?: string
           operation?: string
           pre_state_snapshot?: Json | null
+          reverts_upload_id?: number | null
           rows_added?: number
           rows_deactivated?: number
           rows_modified?: number
+          shop_id?: number
           snapshot_pruned_at?: string | null
+          successor_revert_id?: number | null
           table_name?: string
           user_label?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "scheduler_admin_audit_log_reverts_upload_id_fkey"
+            columns: ["reverts_upload_id"]
+            isOneToOne: false
+            referencedRelation: "scheduler_admin_audit_log"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduler_admin_audit_log_successor_revert_id_fkey"
+            columns: ["successor_revert_id"]
+            isOneToOne: false
+            referencedRelation: "scheduler_admin_audit_log"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scheduler_admin_revert_attempts: {
+        Row: {
+          actor_email: string | null
+          attempted_at: string
+          completed_at: string | null
+          dry_run: boolean
+          dry_run_confirm_token_hash: string | null
+          error_detail: string | null
+          id: number
+          metadata: Json | null
+          oauth_client_id: string | null
+          outcome: string
+          reason_code: string | null
+          revert_audit_log_id: number | null
+          shop_id: number
+          upload_id: number
+        }
+        Insert: {
+          actor_email?: string | null
+          attempted_at?: string
+          completed_at?: string | null
+          dry_run: boolean
+          dry_run_confirm_token_hash?: string | null
+          error_detail?: string | null
+          id?: number
+          metadata?: Json | null
+          oauth_client_id?: string | null
+          outcome: string
+          reason_code?: string | null
+          revert_audit_log_id?: number | null
+          shop_id: number
+          upload_id: number
+        }
+        Update: {
+          actor_email?: string | null
+          attempted_at?: string
+          completed_at?: string | null
+          dry_run?: boolean
+          dry_run_confirm_token_hash?: string | null
+          error_detail?: string | null
+          id?: number
+          metadata?: Json | null
+          oauth_client_id?: string | null
+          outcome?: string
+          reason_code?: string | null
+          revert_audit_log_id?: number | null
+          shop_id?: number
+          upload_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduler_admin_revert_attempts_revert_audit_log_id_fkey"
+            columns: ["revert_audit_log_id"]
+            isOneToOne: false
+            referencedRelation: "scheduler_admin_audit_log"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduler_admin_revert_attempts_upload_id_fkey"
+            columns: ["upload_id"]
+            isOneToOne: false
+            referencedRelation: "scheduler_admin_audit_log"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       scheduler_audit_log: {
         Row: {
@@ -1923,6 +2013,53 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      apply_appointment_default_limits_upload: {
+        Args: {
+          p_audit: Json
+          p_diff: Json
+          p_shop_id: number
+          p_snapshot: Json
+        }
+        Returns: number
+      }
+      apply_closed_dates_upload: {
+        Args: {
+          p_audit: Json
+          p_diff: Json
+          p_shop_id: number
+          p_snapshot: Json
+        }
+        Returns: number
+      }
+      apply_concern_category_guideline_upload: {
+        Args: {
+          p_audit: Json
+          p_category_slug: string
+          p_diff: Json
+          p_shop_id: number
+          p_snapshot: Json
+        }
+        Returns: number
+      }
+      apply_concern_category_upload: {
+        Args: {
+          p_audit: Json
+          p_category_slug: string
+          p_diff: Json
+          p_shop_id: number
+          p_snapshot: Json
+        }
+        Returns: number
+      }
+      apply_concern_questions_flat_upload: {
+        Args: {
+          p_audit: Json
+          p_diff: Json
+          p_shop_id: number
+          p_snapshot: Json
+        }
+        Returns: number
+      }
       apply_wizard_transition: {
         Args: {
           p_assistant_bubble_text?: string
@@ -1951,9 +2088,57 @@ export type Database = {
         Args: { p_audit_log_id: number; p_review_id: number }
         Returns: undefined
       }
+      canonical_state_appointment_default_limits: {
+        Args: { p_shop_id: number; p_snapshot: Json }
+        Returns: string
+      }
+      canonical_state_closed_dates_future: {
+        Args: { p_shop_id: number; p_snapshot: Json }
+        Returns: string
+      }
+      canonical_state_concern_category_guideline: {
+        Args: { p_shop_id: number; p_snapshot: Json }
+        Returns: string
+      }
+      canonical_state_concern_category_upload: {
+        Args: { p_shop_id: number; p_snapshot: Json }
+        Returns: string
+      }
+      canonical_state_concern_questions_flat: {
+        Args: { p_shop_id: number; p_snapshot: Json }
+        Returns: string
+      }
+      canonical_state_question_required_facts_v2: {
+        Args: { p_shop_id: number; p_snapshot: Json }
+        Returns: string
+      }
+      canonical_state_routine_services_v2: {
+        Args: { p_shop_id: number; p_snapshot: Json }
+        Returns: string
+      }
+      canonical_state_subcategory_descriptions_v2: {
+        Args: { p_shop_id: number; p_snapshot: Json }
+        Returns: string
+      }
+      canonical_state_subcategory_service_map_v2: {
+        Args: { p_shop_id: number; p_snapshot: Json }
+        Returns: string
+      }
+      canonical_state_testing_services_v2: {
+        Args: { p_shop_id: number; p_snapshot: Json }
+        Returns: string
+      }
       check_manual_review_lockout: {
         Args: { p_user_label: string }
         Returns: boolean
+      }
+      compute_current_canonical_for_kind: {
+        Args: { p_kind: string; p_shop_id: number; p_snapshot: Json }
+        Returns: string
+      }
+      compute_unified_diff: {
+        Args: { p_current: string; p_expected: string; p_max_lines?: number }
+        Returns: string
       }
       consume_keytag_confirmation_token: {
         Args: {
@@ -2043,6 +2228,42 @@ export type Database = {
         }[]
       }
       hydrate_session_reset: { Args: { p_chat_id: string }; Returns: Json }
+      list_scheduler_admin_audit_log_filtered: {
+        Args: {
+          p_limit: number
+          p_only_successful: boolean
+          p_shop_id: number
+          p_surface_filter: string
+          p_table_filter: string
+        }
+        Returns: {
+          diff_summary: Json
+          error_message: string
+          id: number
+          md_content_hash: string
+          oauth_client_id: string
+          occurred_at: string
+          operation: string
+          pre_state_snapshot: Json
+          reverts_upload_id: number
+          rows_added: number
+          rows_deactivated: number
+          rows_modified: number
+          shop_id: number
+          snapshot_pruned_at: string
+          successor_revert_id: number
+          table_name: string
+          user_label: string
+        }[]
+      }
+      lock_surface_for_kind: {
+        Args: { p_kind: string; p_shop_id: number }
+        Returns: undefined
+      }
+      lock_targets_for_kind: {
+        Args: { p_kind: string; p_shop_id: number; p_snapshot: Json }
+        Returns: number
+      }
       log_keytag_audit: {
         Args: {
           p_action: string
@@ -2147,12 +2368,144 @@ export type Database = {
           review_id: number
         }[]
       }
+      revert_appointment_default_limits: {
+        Args: { p_shop_id: number; p_snapshot: Json }
+        Returns: {
+          deactivated: number
+          deleted: number
+          details: Json
+          restored: number
+        }[]
+      }
+      revert_closed_dates_future: {
+        Args: { p_shop_id: number; p_snapshot: Json }
+        Returns: {
+          deactivated: number
+          deleted: number
+          details: Json
+          restored: number
+        }[]
+      }
+      revert_concern_category_guideline: {
+        Args: { p_shop_id: number; p_snapshot: Json }
+        Returns: {
+          deactivated: number
+          deleted: number
+          details: Json
+          restored: number
+        }[]
+      }
+      revert_concern_category_upload: {
+        Args: { p_shop_id: number; p_snapshot: Json }
+        Returns: {
+          deactivated: number
+          deleted: number
+          details: Json
+          restored: number
+        }[]
+      }
+      revert_concern_questions_flat: {
+        Args: { p_shop_id: number; p_snapshot: Json }
+        Returns: {
+          deactivated: number
+          deleted: number
+          details: Json
+          restored: number
+        }[]
+      }
       revert_keytag_to_assigned: {
         Args: { p_last_activity_at?: string; p_ro_id: number }
         Returns: {
           prior_status: string
           tag_color: string
           tag_number: number
+        }[]
+      }
+      revert_md_upload_apply: {
+        Args: {
+          p_actor_email: string
+          p_attempt_id: number
+          p_dry_run: boolean
+          p_expected_confirm_token: string
+          p_force_no_after_hash: boolean
+          p_oauth_client_id: string
+          p_shop_id: number
+          p_upload_id: number
+        }
+        Returns: {
+          audit_log_id: number
+          confirm_token: string
+          deactivated: number
+          deleted: number
+          restored: number
+        }[]
+      }
+      revert_md_upload_attempt: {
+        Args: {
+          p_actor_email: string
+          p_dry_run: boolean
+          p_expected_confirm_token: string
+          p_force_no_after_hash: boolean
+          p_oauth_client_id: string
+          p_shop_id: number
+          p_upload_id: number
+        }
+        Returns: {
+          attempt_id: number
+          audit_log_id: number
+          confirm_token: string
+          deactivated: number
+          deleted: number
+          dry_run: boolean
+          error_message: string
+          outcome: string
+          reason_code: string
+          restored: number
+        }[]
+      }
+      revert_question_required_facts_v2: {
+        Args: { p_shop_id: number; p_snapshot: Json }
+        Returns: {
+          deactivated: number
+          deleted: number
+          details: Json
+          restored: number
+        }[]
+      }
+      revert_routine_services_v2: {
+        Args: { p_shop_id: number; p_snapshot: Json }
+        Returns: {
+          deactivated: number
+          deleted: number
+          details: Json
+          restored: number
+        }[]
+      }
+      revert_subcategory_descriptions_v2: {
+        Args: { p_shop_id: number; p_snapshot: Json }
+        Returns: {
+          deactivated: number
+          deleted: number
+          details: Json
+          restored: number
+        }[]
+      }
+      revert_subcategory_service_map_v2: {
+        Args: { p_shop_id: number; p_snapshot: Json }
+        Returns: {
+          deactivated: number
+          deleted: number
+          details: Json
+          restored: number
+        }[]
+      }
+      revert_testing_services_v2: {
+        Args: { p_shop_id: number; p_snapshot: Json }
+        Returns: {
+          deactivated: number
+          deleted: number
+          details: Json
+          restored: number
         }[]
       }
       run_admin_snapshot_prune: { Args: never; Returns: undefined }
