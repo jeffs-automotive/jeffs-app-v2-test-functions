@@ -35,8 +35,15 @@
 - **Phase G — observability + tests.** Sentry source-map upload ✅ (`admin-app/next.config.ts`
   `withSentryConfig`). Audit is covered at the orchestrator/tool layer (X-Actor-Email →
   `keytag_audit_log`; scheduler tools' own audit log) — no separate dashboard-intent log was added.
-  **Automated tests: NOT done — admin-app has NO Playwright/Vitest config and zero test files (the
-  agent-audit A6 finding). This is the main open item for admin-app.**
+  **Test harness BOOTSTRAPPED 2026-06-01** (was the A6 gap — admin-app had zero tests). Vitest 4 +
+  RTL/jsdom + MSW + Playwright, mirroring scheduler-app: `admin-app/vitest.config.ts`,
+  `playwright.config.ts`, `tests/setup.ts`, first unit suite `tests/unit/shop-id.test.ts` (4 tests,
+  green — pins the shop-id-server-derived invariant), and `e2e/auth-gate.spec.ts` (unauth protected
+  routes → /login). typecheck + `npm run test` green.
+  **Remaining to expand:** DAL unit tests (orchestrator-client host-allowlist, md-file-utils),
+  component tests for the schedulerconfig/keytag tabs, authed read/write E2E (mocked OAuth session),
+  then enable the 80% coverage threshold (currently off so the first run is green). E2E needs
+  `npx playwright install chromium` + a running app to execute.
 - **Per-row single-field edit UI** (ROUND-2 §10 Q1). block/unblock shipped; the broader
   `upsert_*`/`patch_*`/`deactivate_*` single-row editors remain MD-upload-only (the CatalogEditorTab
   edits via MD templates, not per-field) — still deferred.
