@@ -1,12 +1,56 @@
 # Admin dashboard — implementation plan
 
-> **Status:** Phases A + C ✅ COMPLETE 2026-05-25. Keytags surface fully wired to all 10 orchestrator MCP tools. Ready to start Phase D (Scheduler config — closed-dates + appointment-limits + routine-services first).
+> **Status:** Phases A–F ✅ SHIPPED — keytags page + the full schedulerconfig tabbed UI (D/E/F landed as ONE tabbed page, not per-route pages). Phase G PARTIAL: Sentry source-maps ✅, **automated tests still missing**. NEW workstream folded in: QBO integration (`qbo-api-client` paused at approved plan). See **"Current state (reconciled 2026-05-31)"** below — that section, not the §5 phase list, is the source of truth.
 > **Owner:** Chris (decisions) + Claude (build).
 > **Scope:** new internal Next.js dashboard at `admin.jeffsautomotive.com` with Microsoft SSO (Entra ID), two pages (scheduler config + keytag ops). Replaces what Claude Desktop currently does for these two domains.
 >
 > **Refresh this file** at the end of every session that does admin-dashboard work. Move phase rows from "Remaining" to "Completed" with commit SHA. Bump "Last updated."
 >
-> **Last updated:** 2026-05-25 (Phase C complete — Keytags page fully functional).
+> **Last updated:** 2026-05-31 (reconciled against actual `admin-app/` source — D/E/F found shipped as the unified schedulerconfig tabs; QBO workstream folded in; Phase G tests flagged as the open gap).
+
+---
+
+## Current state (reconciled 2026-05-31)
+
+> Reconciled against the actual `admin-app/` source — routes (`app/`), `src/actions/`,
+> `src/components/`. The §5 phased plan below predates the build and is kept for historical context;
+> **this section is the source of truth for what's done and what's left.**
+
+### Shipped ✅
+- **Phase A — scaffold + Entra auth.** `app/login`, `app/auth/callback`, `app/page.tsx`,
+  `app/dashboard`, `requireAdmin()` gate (`src/lib/auth.ts`).
+- **Phase B — UI primitives.** Folded into C: `src/components/ui/*` (table, tabs, …) + `src/components/shell/*`.
+- **Phase C — Keytags page.** `app/keytags` + 6 tabs (`LiveStateTab`, `AssignReleaseTab`,
+  `PostedRevertTab`, `ReconcileTab`, `ManualReviewsTab`, `AuditHistoryTab`) over 8 `src/actions/keytag/*`.
+- **Phases D + E + F — Scheduler config (ONE tabbed page, not per-route).** `app/schedulerconfig` →
+  `SchedulerConfigTabs` with `CatalogEditorTab` (all 10 MD-upload catalogs: closed-dates,
+  appointment-default-limits, routine-services, testing-services, concern-category/questions/guideline,
+  subcategory-descriptions, subcategory-service-map, question-required-facts), `ConcernsPerCategoryTab`,
+  `CapacityCalendarStrip` (closed-dates/capacity + block/unblock), `OperationsTab` (run-appointments-sync
+  + find-orphan-customers), `RevertConfirmDialog` (Pattern S revert). Backed by ~30
+  `src/actions/scheduler/*` (upload_/export_/revert/list per surface). Phase-D cross-verify residuals:
+  all 5 closed (`ROUND-2-RESIDUALS.md`).
+
+### Remaining / partial ⚠️
+- **Phase G — observability + tests.** Sentry source-map upload ✅ (`admin-app/next.config.ts`
+  `withSentryConfig`). Audit is covered at the orchestrator/tool layer (X-Actor-Email →
+  `keytag_audit_log`; scheduler tools' own audit log) — no separate dashboard-intent log was added.
+  **Automated tests: NOT done — admin-app has NO Playwright/Vitest config and zero test files (the
+  agent-audit A6 finding). This is the main open item for admin-app.**
+- **Per-row single-field edit UI** (ROUND-2 §10 Q1). block/unblock shipped; the broader
+  `upsert_*`/`patch_*`/`deactivate_*` single-row editors remain MD-upload-only (the CatalogEditorTab
+  edits via MD templates, not per-field) — still deferred.
+- **§8 open items.** O1 (Sentry — shared project, effectively done), O2–O6 decided, O7 (per-row
+  edit-history surface) optional.
+
+### NEW workstream — QBO / Intuit integration (not in the original §5 plan)
+Lives in admin-app. `qbo-app-onboarding` **shipped** (public EULA/Privacy at `/legal/*`, the branded
+`/qbo/connect|connected|disconnected` URLs, the `qbo-oauth-callback` + `qbo-webhook` edge functions —
+webhook signature round-trip verified). **`qbo-api-client` is PAUSED at its approved plan**
+(`docs/qbo/qbo-api-client-plan.md`: admin-app DAL, server-side token storage + auto-refresh, read+write
+with production keys and **every first real-books write human-gated**) — ready for `/feature-implement`.
+The review layer is pre-armed: 5 QBO atomic invariants in the OpenAI gate + the `quickbooks-compliance`
+Claude agent.
 
 ---
 
@@ -118,6 +162,10 @@ jeffs-app-v2-test-functions/    (existing repo)
 ---
 
 ## 5. Phased build
+
+> **HISTORICAL** (2026-05-25 plan). Phases A–F shipped — D/E/F as the unified `schedulerconfig` tabs,
+> not the per-route pages sketched here. See "Current state (reconciled 2026-05-31)" near the top for
+> actual status. Kept below for the original intent + Phase A/C/G detail.
 
 Each phase ends with a working deploy + commit. Stop points for Chris to check in between phases.
 
