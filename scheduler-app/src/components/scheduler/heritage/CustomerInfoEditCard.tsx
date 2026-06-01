@@ -3,6 +3,11 @@
 import { useMemo, useState, type FormEvent } from "react";
 
 import { Button, Card, Field, Input } from "@/components/ui";
+import {
+  formatPhoneForDisplay,
+  normalizePhoneE164,
+  e164ToDisplay,
+} from "@/lib/scheduler/phone-format";
 
 /**
  * Step 5 (returning customer) — Customer info edit per chat-design.md
@@ -28,31 +33,7 @@ import { Button, Card, Field, Input } from "@/components/ui";
  * `edited_address` + `primary_email_for_description`.
  */
 
-const PHONE_DISPLAY_REGEX = /^(\d{0,3})(\d{0,3})(\d{0,4})$/;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-function formatPhoneForDisplay(input: string): string {
-  const d = input.replace(/\D/g, "").slice(0, 10);
-  const m = d.match(PHONE_DISPLAY_REGEX);
-  if (!m) return d;
-  const [, a, b, c] = m;
-  if (!a) return "";
-  if (!b) return a;
-  if (!c) return `(${a}) ${b}`;
-  return `(${a}) ${b}-${c}`;
-}
-
-function normalizePhoneE164(input: string): string | null {
-  const d = input.replace(/\D/g, "");
-  if (d.length === 10) return `+1${d}`;
-  if (d.length === 11 && d.startsWith("1")) return `+${d}`;
-  return null;
-}
-
-function e164ToDisplay(e164: string): string {
-  const d = e164.replace(/\D/g, "").slice(-10);
-  return formatPhoneForDisplay(d);
-}
 
 export interface PhoneEntry {
   phone_e164: string;
