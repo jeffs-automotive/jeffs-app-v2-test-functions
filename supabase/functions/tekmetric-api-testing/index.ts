@@ -74,7 +74,7 @@ import {
   checkSchedulerBearer,
   unauthorizedResponse,
 } from "../_shared/scheduler-auth.ts";
-import { withSentryScope } from "../_shared/sentry-edge.ts";
+import { withSentryScope, Sentry } from "../_shared/sentry-edge.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -315,12 +315,11 @@ async function tekmetricCall(
   const mergedQuery: Record<string, string | number | boolean | undefined | null> = {
     ...(query ?? {}),
   };
-  if (!("shop" in mergedQuery) && !("customerId" in mergedQuery)) {
-    // Most Tekmetric resource endpoints accept `shop` as the scoping key.
-    // /customers/{id} (no query needed) and /vehicles/{id} (no shop) work fine
-    // with an extra shop= param attached; Tekmetric ignores unknown query keys.
-    mergedQuery.shop = SHOP_ID;
-  }
+  // shop_id is ALWAYS server-derived — overwrite any caller-supplied `shop`
+  // tenant key (shop-id-server-derived / shop-agnostic.md). Most Tekmetric
+  // endpoints scope by `shop`; /customers/{id} & /vehicles/{id} ignore the
+  // extra param. Forcing it prevents a caller from scoping to another shop.
+  mergedQuery.shop = SHOP_ID;
 
   const res = await tekmetricFetch(sb, path, {
     method: "GET",
@@ -756,7 +755,10 @@ async function logTestWrite(args: {
   result: TekmetricWriteResult;
 }): Promise<void> {
   try {
-    await sb.from("scheduler_admin_audit_log").insert({
+    const auditRes = await sb.from("scheduler_admin_audit_log").insert({
+      // shop_id is NOT NULL since migration 20260526100000 (hardening part B1);
+      // omitting it made this best-effort audit insert silently fail.
+      shop_id: SHOP_ID,
       table_name: "tekmetric_api",
       operation: args.op,
       diff_summary: {
@@ -768,7 +770,22 @@ async function logTestWrite(args: {
           JSON.stringify(args.result.body).slice(0, 500),
       },
     });
+    if (auditRes.error) {
+      Sentry.captureMessage("tekmetric-api-testing: audit insert failed", {
+        level: "warning",
+        tags: { tekmetric_op: args.op },
+        extra: { detail: auditRes.error.message },
+      });
+      console.warn(
+        JSON.stringify({
+          level: "warning",
+          msg: "test_write_audit_log_failed",
+          detail: auditRes.error.message,
+        }),
+      );
+    }
   } catch (e) {
+    Sentry.captureException(e, { tags: { tekmetric_op: args.op } });
     console.warn(
       JSON.stringify({
         level: "warning",
@@ -777,6 +794,24 @@ async function logTestWrite(args: {
       }),
     );
   }
+}
+
+/**
+ * Build the response for a write op. Surfaces a downstream Tekmetric failure to
+ * Sentry (silent-webhook-200 fix) and returns 502 instead of a silent 200.
+ */
+function writeOpResponse(op: string, result: TekmetricWriteResult): Response {
+  if (result.status >= 400) {
+    Sentry.captureMessage(`tekmetric ${op} returned ${result.status}`, {
+      level: "error",
+      tags: { tekmetric_op: op },
+      extra: { url_called: result.url_called, status: result.status },
+    });
+  }
+  return jsonResponse(
+    { ok: result.status < 400, op, ...result },
+    result.status >= 400 ? 502 : 200,
+  );
 }
 
 // ─── Write op handlers ──────────────────────────────────────────────────────
@@ -791,7 +826,8 @@ async function handleTestPostAppointment(
     );
   }
   const bodyWithShop: Record<string, unknown> = { ...args.body };
-  if (!("shopId" in bodyWithShop)) bodyWithShop.shopId = SHOP_ID;
+  // Always server-derived; never honor a client-supplied shopId.
+  bodyWithShop.shopId = SHOP_ID;
 
   const scope = { op: "test_post_appointment", body: bodyWithShop };
   const incomingToken = asString(args.confirmation_token);
@@ -824,9 +860,7 @@ async function handleTestPostAppointment(
 
   const result = await tekmetricWrite("POST", "/appointments", bodyWithShop);
   await logTestWrite({ op: "test_post_appointment", scope, result });
-  return jsonResponse(
-    { ok: result.status < 400, op: "test_post_appointment", ...result },
-  );
+  return writeOpResponse("test_post_appointment", result);
 }
 
 async function handleUpdateAppointment(
@@ -886,9 +920,7 @@ async function handleUpdateAppointment(
 
   const result = await tekmetricWrite("PATCH", path, args.body);
   await logTestWrite({ op: "update_appointment", scope, result });
-  return jsonResponse(
-    { ok: result.status < 400, op: "update_appointment", ...result },
-  );
+  return writeOpResponse("update_appointment", result);
 }
 
 async function handleDeleteAppointment(
@@ -935,9 +967,7 @@ async function handleDeleteAppointment(
 
   const result = await tekmetricWrite("DELETE", path);
   await logTestWrite({ op: "delete_appointment", scope, result });
-  return jsonResponse(
-    { ok: result.status < 400, op: "delete_appointment", ...result },
-  );
+  return writeOpResponse("delete_appointment", result);
 }
 
 async function handleRawGet(
