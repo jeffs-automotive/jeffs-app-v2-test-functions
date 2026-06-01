@@ -356,6 +356,28 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Surfaces a non-fatal Supabase RPC/select error for one RO without aborting
+ * the cron loop. Routes through logEdgeError (writes a scheduler_error_log row
+ * AND fires Sentry.captureMessage with tags; never throws). Returns true if
+ * `error` was set (caller may reflect an error in the per-RO result).
+ */
+async function surfaceRpcError(
+  error: { message: string } | null,
+  ctx: { op: string; ro_id: number; ro_number: number | null },
+): Promise<boolean> {
+  if (!error) return false;
+  await logEdgeError(sb, {
+    surface: `keytag-bulk-reconcile/${ctx.op}`,
+    origin_id: "keytag-bulk-reconcile",
+    level: "error",
+    error_code: `rpc_${ctx.op}_failed`,
+    message: error.message,
+    context: { shop_id: SHOP_ID, ro_id: ctx.ro_id, ro_number: ctx.ro_number },
+  });
+  return true;
+}
+
 // ── DB helpers ──────────────────────────────────────────────────────────────
 
 interface ExistingTag {
@@ -616,31 +638,35 @@ async function reconcileOne(
           detail: "skipped: invalid ro_id or ro_number type in Tekmetric response",
         };
       }
-      const { data: priorHistoryRows } = await sb
+      const { data: priorHistoryRows, error: priorHistoryErr } = await sb
         .from("keytag_audit_log")
         .select("id, action, occurred_at, tag_color, tag_number, reason")
         .or(`ro_id.eq.${ro.id},ro_number.eq.${ro.repairOrderNumber}`)
         .neq("action", "manual_review_issued") // skip prior review-issuance rows
         .order("occurred_at", { ascending: false })
         .limit(3);
+      if (
+        await surfaceRpcError(priorHistoryErr, {
+          op: "prior_history_lookup",
+          ro_id: ro.id,
+          ro_number: ro.repairOrderNumber,
+        })
+      ) {
+        // Fail safe: could not read prior history, so we must NOT auto-assign
+        // (would clobber a real prior tag). Skip this RO this run.
+        return { ...base, action: "error", error: "prior_history_lookup_failed" };
+      }
       const priorHistory = priorHistoryRows?.[0];
       if (priorHistory) {
-        // De-dup: don't issue if an unresolved DRF/REG already exists for this RO
-        const { data: existingReview } = await sb
-          .from("keytag_manual_reviews")
-          .select("code")
-          .in("category", ["work_approved_drift", "ar_regression"])
-          .is("resolved_at", null)
-          .filter("context->>ro_id", "eq", String(ro.id))
-          .limit(1)
-          .maybeSingle();
-        if (existingReview) {
-          return {
-            ...base,
-            action: "noop",
-            detail: `existing manual review ${existingReview.code} pending for this RO`,
-          };
-        }
+        // Dedup is enforced canonically inside issueManualReview() by the
+        // (category, ro_id) gate (manual-review.ts; arch doc §6). A previous
+        // local pre-dedup here scoped to the CATEGORY SET
+        // [work_approved_drift, ar_regression] over-suppressed across runs (a
+        // prior REG could block a later-run DRF for the same RO — the REG/DRF
+        // classification below is a heuristic that can flip between nightly
+        // runs) and was pending-only. Removed as redundant + mis-scoped; the
+        // created:false path below handles the exact (category, ro_id)
+        // duplicate correctly. (obs-hardening 2026-06-01)
 
         // Distinguish REG vs DRF: REG = the prior history shows the RO was in
         // A/R recently (marked_posted somewhere in last few entries) AND
@@ -733,14 +759,21 @@ async function reconcileOne(
         });
         if (postErr) {
           // Roll back — DB ended up inconsistent
-          await sb.rpc("release_keytag_for_ro", {
+          const { error: rollbackErr } = await sb.rpc("release_keytag_for_ro", {
             p_ro_id: ro.id,
             p_reason: "rollback_mark_posted_failed",
+          });
+          await surfaceRpcError(rollbackErr, {
+            op: "release_keytag_for_ro_rollback",
+            ro_id: ro.id,
+            ro_number: ro.repairOrderNumber,
           });
           return {
             ...base,
             action: "error",
-            error: `mark_posted_after_assign: ${postErr.message}`,
+            error: rollbackErr
+              ? `mark_posted_after_assign: ${postErr.message}; ROLLBACK ALSO FAILED: ${rollbackErr.message}`
+              : `mark_posted_after_assign: ${postErr.message}`,
           };
         }
       }
@@ -748,10 +781,15 @@ async function reconcileOne(
       const patch = await patchKeytagToTekmetric(ro.id, wire);
       // Record the PATCH result on the keytag row for audit + future cleanup.
       // (Webhook handler already does this; reconcile must too for parity.)
-      await sb.rpc("record_keytag_patched", {
+      const { error: recordPatchedErr } = await sb.rpc("record_keytag_patched", {
         p_ro_id: ro.id,
         p_success: patch.ok,
         p_error: patch.error ?? null,
+      });
+      await surfaceRpcError(recordPatchedErr, {
+        op: "record_keytag_patched",
+        ro_id: ro.id,
+        ro_number: ro.repairOrderNumber,
       });
 
       // Tekmetric PATCH failed → issue PAF manual review (keep DB assignment).
@@ -797,7 +835,7 @@ async function reconcileOne(
       }
 
       // Audit-log entry for successful reconcile assignment
-      await sb.rpc("log_keytag_audit", {
+      const { error: auditAssignedErr } = await sb.rpc("log_keytag_audit", {
         p_tag_color: color,
         p_tag_number: number,
         p_action: "assigned",
@@ -812,6 +850,11 @@ async function reconcileOne(
           : "reconcile:wip_no_tag_first_time",
         p_tekmetric_patch_ok: patch.ok,
         p_tekmetric_patch_error: patch.error ?? null,
+      });
+      await surfaceRpcError(auditAssignedErr, {
+        op: "log_keytag_audit_assigned",
+        ro_id: ro.id,
+        ro_number: ro.repairOrderNumber,
       });
 
       return {
@@ -858,7 +901,7 @@ async function reconcileOne(
         };
       }
       // Audit-log entry for forward-pass revert
-      await sb.rpc("log_keytag_audit", {
+      const { error: auditRevertedFwdErr } = await sb.rpc("log_keytag_audit", {
         p_tag_color: existing.tag_color,
         p_tag_number: existing.tag_number,
         p_action: "reverted",
@@ -869,6 +912,11 @@ async function reconcileOne(
         p_new_status: "assigned",
         p_user_label: null,
         p_reason: "reconcile:forward_pass_ar_unposted_back_to_wip",
+      });
+      await surfaceRpcError(auditRevertedFwdErr, {
+        op: "log_keytag_audit_reverted_forward",
+        ro_id: ro.id,
+        ro_number: ro.repairOrderNumber,
       });
       flippedAction = "reverted";
     } else if (!dryRun && needsFlipToPosted) {
@@ -888,7 +936,7 @@ async function reconcileOne(
         };
       }
       // Audit-log entry for forward-pass flip-to-posted
-      await sb.rpc("log_keytag_audit", {
+      const { error: auditPostedFwdErr } = await sb.rpc("log_keytag_audit", {
         p_tag_color: existing.tag_color,
         p_tag_number: existing.tag_number,
         p_action: "marked_posted",
@@ -900,12 +948,22 @@ async function reconcileOne(
         p_user_label: null,
         p_reason: "reconcile:forward_pass_assigned_seen_as_ar_in_tekmetric",
       });
+      await surfaceRpcError(auditPostedFwdErr, {
+        op: "log_keytag_audit_marked_posted_forward",
+        ro_id: ro.id,
+        ro_number: ro.repairOrderNumber,
+      });
       flippedAction = "marked_posted";
     } else if (!dryRun && lastActivityAt) {
       // Just refresh the activity clock
-      await sb.rpc("touch_keytag_activity", {
+      const { error: touchFwdErr } = await sb.rpc("touch_keytag_activity", {
         p_ro_id: ro.id,
         p_last_activity_at: lastActivityAt,
+      });
+      await surfaceRpcError(touchFwdErr, {
+        op: "touch_keytag_activity_forward",
+        ro_id: ro.id,
+        ro_number: ro.repairOrderNumber,
       });
     }
 
@@ -1101,11 +1159,20 @@ async function reverseReconcileOne(
       // unusual) or there's a race. Touch activity.
       if (!dryRun && updatedDate) {
         if (tag.status === "posted_ar") {
-          await sb.rpc("revert_keytag_to_assigned", {
+          const { error: revRevertErr } = await sb.rpc("revert_keytag_to_assigned", {
             p_ro_id: tag.ro_id,
             p_last_activity_at: updatedDate,
           });
-          await sb.rpc("log_keytag_audit", {
+          if (
+            await surfaceRpcError(revRevertErr, {
+              op: "revert_keytag_to_assigned_reverse",
+              ro_id: tag.ro_id,
+              ro_number: tag.ro_number,
+            })
+          ) {
+            return { ...base, action: "error", error: `reverse_revert_to_assigned: ${revRevertErr!.message}` };
+          }
+          const { error: auditRevertedRevErr } = await sb.rpc("log_keytag_audit", {
             p_tag_color: tag.tag_color,
             p_tag_number: tag.tag_number,
             p_action: "reverted",
@@ -1117,15 +1184,25 @@ async function reverseReconcileOne(
             p_user_label: null,
             p_reason: "reconcile:reverse_pass_ar_unposted_back_to_wip",
           });
+          await surfaceRpcError(auditRevertedRevErr, {
+            op: "log_keytag_audit_reverted_reverse",
+            ro_id: tag.ro_id,
+            ro_number: tag.ro_number,
+          });
           return {
             ...base,
             action: "reverted",
             detail: "reverse_pass_revert_to_assigned (RO is WIP)",
           };
         }
-        await sb.rpc("touch_keytag_activity", {
+        const { error: touchRevWipErr } = await sb.rpc("touch_keytag_activity", {
           p_ro_id: tag.ro_id,
           p_last_activity_at: updatedDate,
+        });
+        await surfaceRpcError(touchRevWipErr, {
+          op: "touch_keytag_activity_reverse_wip",
+          ro_id: tag.ro_id,
+          ro_number: tag.ro_number,
         });
       }
       return {
@@ -1139,12 +1216,21 @@ async function reverseReconcileOne(
       // Tag held, RO is A/R. Forward pass should've caught — refresh anyway.
       if (!dryRun) {
         if (tag.status === "assigned") {
-          await sb.rpc("mark_keytag_posted", {
+          const { error: revPostErr } = await sb.rpc("mark_keytag_posted", {
             p_ro_id: tag.ro_id,
             p_posted_at: postedDate,
             p_last_activity_at: postedDate ?? updatedDate,
           });
-          await sb.rpc("log_keytag_audit", {
+          if (
+            await surfaceRpcError(revPostErr, {
+              op: "mark_keytag_posted_reverse",
+              ro_id: tag.ro_id,
+              ro_number: tag.ro_number,
+            })
+          ) {
+            return { ...base, action: "error", error: `reverse_mark_posted_flip: ${revPostErr!.message}` };
+          }
+          const { error: auditPostedRevErr } = await sb.rpc("log_keytag_audit", {
             p_tag_color: tag.tag_color,
             p_tag_number: tag.tag_number,
             p_action: "marked_posted",
@@ -1156,6 +1242,11 @@ async function reverseReconcileOne(
             p_user_label: null,
             p_reason: "reconcile:reverse_pass_assigned_seen_as_ar",
           });
+          await surfaceRpcError(auditPostedRevErr, {
+            op: "log_keytag_audit_marked_posted_reverse",
+            ro_id: tag.ro_id,
+            ro_number: tag.ro_number,
+          });
           return {
             ...base,
             action: "marked_posted",
@@ -1163,9 +1254,14 @@ async function reverseReconcileOne(
           };
         }
         if (postedDate ?? updatedDate) {
-          await sb.rpc("touch_keytag_activity", {
+          const { error: touchRevArErr } = await sb.rpc("touch_keytag_activity", {
             p_ro_id: tag.ro_id,
             p_last_activity_at: postedDate ?? updatedDate,
+          });
+          await surfaceRpcError(touchRevArErr, {
+            op: "touch_keytag_activity_reverse_ar",
+            ro_id: tag.ro_id,
+            ro_number: tag.ro_number,
           });
         }
       }
@@ -1179,9 +1275,14 @@ async function reverseReconcileOne(
     // Status 1 (Estimate) or 3 (Completed): keep tag — keys still in shop
     // or work done awaiting post. Just refresh activity from updatedDate.
     if (!dryRun && updatedDate) {
-      await sb.rpc("touch_keytag_activity", {
+      const { error: touchRevKeepErr } = await sb.rpc("touch_keytag_activity", {
         p_ro_id: tag.ro_id,
         p_last_activity_at: updatedDate,
+      });
+      await surfaceRpcError(touchRevKeepErr, {
+        op: "touch_keytag_activity_reverse_keep",
+        ro_id: tag.ro_id,
+        ro_number: tag.ro_number,
       });
     }
     return {
@@ -1325,12 +1426,51 @@ Deno.serve((req: Request) => withSentryScope(req, "keytag-bulk-reconcile", async
       results,
     };
 
+    // If any per-RO reconciliation recorded a failed DB write, this run is
+    // degraded. The Sentry cron check-in is fire-and-forget (the SQL wrapper
+    // fires status=ok regardless of our HTTP response — migration 20260523022303),
+    // so a non-2xx alone is invisible to the cron monitor; the captureMessage
+    // below is the ONLY surface that fires for a degraded run. The 207 is a
+    // harmless HTTP signal for future direct callers.
+    if (summary.actions.error > 0) {
+      const erroredRos = results
+        .filter((r) => r.action === "error")
+        .map((r) => ({ ro_id: r.ro_id, ro_number: r.ro_number, error: r.error }));
+      try {
+        Sentry.withScope((scope) => {
+          scope.setTag("shop_id", String(SHOP_ID));
+          scope.setTag("event", "reconcile_per_ro_errors");
+          scope.setContext("reconcile", {
+            error_count: summary.actions.error,
+            total_results: results.length,
+            dry_run: dryRun,
+            errored_ros: erroredRos.slice(0, 50),
+          });
+          Sentry.captureMessage(
+            `keytag-bulk-reconcile completed with ${summary.actions.error} per-RO error(s)`,
+            "error",
+          );
+        });
+      } catch {
+        console.warn(JSON.stringify({ level: "warning", msg: "reconcile_degraded_sentry_capture_failed" }));
+      }
+      return new Response(JSON.stringify(summary), {
+        status: 207,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     return new Response(JSON.stringify(summary), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
+    // Top-level failure: the inner catch swallows the throw, so withSentryScope
+    // never sees it — capture explicitly (obs-hardening 2026-06-01).
+    Sentry.captureException(e, {
+      tags: { shop_id: String(SHOP_ID), surface: "keytag-bulk-reconcile" },
+    });
     console.error("keytag-bulk-reconcile failed:", msg);
     return new Response(
       JSON.stringify({
