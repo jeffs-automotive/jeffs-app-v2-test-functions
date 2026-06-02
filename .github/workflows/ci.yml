@@ -111,6 +111,32 @@ jobs:
         run: supabase stop
         if: always()
 
+  admin-app:
+    name: Admin-app (typecheck + lint + vitest)
+    runs-on: ubuntu-latest
+    # Independent of scheduler-app quick-check — admin-app is a separate Next.js
+    # app with its own lockfile. Hermetic: the Vitest unit/component tests mock
+    # Supabase / Sentry / fetch, so no secrets or network are needed. The
+    # Playwright E2E (admin-app/e2e/*.spec.ts) is intentionally NOT run here —
+    # its authed setup needs the live test Supabase project + SERVICE_ROLE secret
+    # (see admin-app/playwright.config.ts). Run E2E locally, or add a
+    # secrets-gated job later (mirrors playwright-smoke below).
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: 'admin-app/package-lock.json'
+      - name: Install
+        run: cd admin-app && npm ci
+      - name: Typecheck
+        run: cd admin-app && npm run typecheck
+      - name: Lint
+        run: cd admin-app && npm run lint
+      - name: Vitest
+        run: cd admin-app && npm run test
+
   playwright-smoke:
     name: Playwright smoke
     runs-on: ubuntu-latest

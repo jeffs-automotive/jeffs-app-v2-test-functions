@@ -12,13 +12,22 @@ const compat = new FlatCompat({
 const eslintConfig = [
   ...compat.extends("next/core-web-vitals", "next/typescript"),
   {
-    ignores: [".next/**", "node_modules/**"],
+    ignores: [".next/**", "node_modules/**", "next-env.d.ts"],
   },
   // File-size guardrail — WARN only (a tripwire, not a hard law). Counts
   // code-only lines. See docs/code-quality/file-size-audit-and-strategy-2026-05-31.md.
   {
     rules: {
       "max-lines": ["warn", { max: 500, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  // Honor the `_`-prefix convention for intentionally-unused vars/args/catch bindings.
+  {
+    rules: {
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_", caughtErrorsIgnorePattern: "^_" },
+      ],
     },
   },
   // Exempt generated DB types if present.
