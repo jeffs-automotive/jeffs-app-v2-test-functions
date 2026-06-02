@@ -317,7 +317,7 @@ the work lands.
 
 ## Security / hardening
 
-### SEC-7 · BotID + rate-limit activation — **BotID HALF RESOLVED 2026-05-25; rate-limit half still deferred**
+### SEC-7 · BotID + rate-limit activation — **BOTH HALVES SHIPPED (BotID 2026-05-25; rate-limit 2026-06-02)**
 
 - **BotID half — RESOLVED 2026-05-25.** The original entry below
   claimed `initBotId()` was wired in `instrumentation-client.ts`
@@ -335,7 +335,15 @@ the work lands.
   (all three wizard surfaces per `BookPageShell.tsx`).
   Verified: typecheck clean, 273/273 tests pass, `npm run build`
   emits the routes with BotID rewrites injected.
-- **Rate-limit half — still deferred** (per the pivot below).
+- **Rate-limit half — SHIPPED 2026-06-02** (feature `sec7-rate-limit-swap`, commits
+  `8ba58ab` + `52c86f9`). Per-IP → a live Vercel Firewall rule "SEC-7 OTP per-IP rate
+  limit" (30 req/60s per IP on `POST /`, deny 60s). Per-phone (3/hr) →
+  `check_and_increment_rate_limit` Postgres RPC + `rate_limit_buckets` table + nightly
+  pruner cron (migration `20260602015500`). `@upstash/ratelimit` + `@upstash/redis`
+  dropped. Plan: `docs/scheduler/plans/SEC-7-rate-limit-postgres-swap-plan.md`.
+  **RESIDUALS:** extend the Firewall rule to `/book` + `/book-v2` (only `POST /` covered
+  so far); update `.claude/memory/scheduler/scheduler_system_architecture.md`. The
+  historical pivot section below is retained for context.
 
 ### SEC-7 (historical context) · BotID + rate-limit activation (NEW 2026-05-23 · DESIGN PIVOT 2026-05-23 PM · DEFERRED TO PRE-LAUNCH)
 
