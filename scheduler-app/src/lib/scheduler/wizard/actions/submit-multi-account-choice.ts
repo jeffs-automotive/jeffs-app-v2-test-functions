@@ -38,6 +38,7 @@ import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 // advances. Bot + rate gates only apply to the SMS-sending branch.
 import { checkBotForSensitiveAction } from "@/lib/security/check-bot";
 import { checkPhoneRateLimit } from "@/lib/security/rate-limit";
+import { getCachedSessionRow } from "@/lib/scheduler/cache";
 
 const submitMultiAccountChoiceSchema = z.discriminatedUnion("action", [
   z.object({
@@ -141,11 +142,11 @@ async function submitMultiAccountChoiceV2Impl(
     // (Plan 04 spec proposed `Array<{ id: number }>` — corrected here
     // per the live schema; the spec shape would reject every legitimate
     // selection.)
-    const { data: rowReadResult } = await supabase
-      .from("customer_chat_sessions")
-      .select("phone_e164, pending_candidates")
-      .eq("id", chatId)
-      .maybeSingle();
+    // SEC-7: read via the shared getCachedSessionRow helper (per-request
+    // memoized, service-role; throws on DB error → caught by the outer
+    // try/catch, which fails the IDOR gate closed). Replaces the prior
+    // ad-hoc read that silently dropped the Supabase error.
+    const rowReadResult = await getCachedSessionRow(chatId);
 
     // ─── PLAN-04 Phase 3B (closes I-COR-5) — IDOR defense ─────────────
     // The disambiguation card only renders customer_ids that came from

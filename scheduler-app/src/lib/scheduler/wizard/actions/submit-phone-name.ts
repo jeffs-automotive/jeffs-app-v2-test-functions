@@ -38,6 +38,7 @@ import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 // the DB-level otp_codes 3/phone/hour cap is the final backstop.
 import { checkBotForSensitiveAction } from "@/lib/security/check-bot";
 import { checkPhoneRateLimit } from "@/lib/security/rate-limit";
+import { getCachedSessionRow } from "@/lib/scheduler/cache";
 
 // ─── Input validation ───────────────────────────────────────────────────────
 
@@ -164,18 +165,10 @@ async function submitPhoneNameV2Impl(
     // step2-direct's §4.3 reconciliation matrix needs it to decide between
     // 'show_no_match_choose_path' (returning) and 'show_new_customer_info_card'
     // (new / unsure).
-    const { data: row, error: bucketReadErr } = await supabase
-      .from("customer_chat_sessions")
-      .select("customer_self_identified")
-      .eq("id", chatId)
-      .maybeSingle();
-    if (bucketReadErr) {
-      Sentry.captureException(bucketReadErr, {
-        tags: { surface: "submit_phone_name_v2_bucket_read" },
-        level: "error",
-      });
-      return { ok: false, error: bucketReadErr.message };
-    }
+    // SEC-7: read via the shared getCachedSessionRow helper (per-request
+    // memoized, service-role; throws on DB error → caught by the outer
+    // try/catch). The prewrite above didn't touch customer_self_identified.
+    const row = await getCachedSessionRow(chatId);
     const bucket =
       (row?.customer_self_identified as
         | "returning"

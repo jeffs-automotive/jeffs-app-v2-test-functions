@@ -19,7 +19,7 @@
 import * as Sentry from "@sentry/nextjs";
 import { z } from "zod";
 
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getCachedSessionRow } from "@/lib/scheduler/cache";
 import {
   callOtpResend,
   OtpDirectError,
@@ -98,23 +98,21 @@ async function resendOtpV2Impl(
     // cooldown). The cooldown check rejects rapid-fire resends BEFORE
     // we hit Upstash + the edge fn + Telnyx — cheapest reject for the
     // most common attacker pattern (scripted button-spam).
-    const supabase = createSupabaseAdminClient();
-    const { data: phoneRow, error: phoneReadErr } = await supabase
-      .from("customer_chat_sessions")
-      .select("phone_e164, otp_sent_at")
-      .eq("id", chatId)
-      .maybeSingle();
-    if (phoneReadErr) {
-      // Don't fail-closed — log and continue. The edge fn will also
-      // resolve this row and either succeed or return its own
-      // structured error. We just skip the phone-rate-limit + cooldown
-      // on this path.
+    // SEC-7: read the session row via the shared getCachedSessionRow helper
+    // (per-request memoized, service-role). It throws on a DB error; we keep
+    // the resend path's fail-OPEN posture by catching + continuing (the edge
+    // fn re-resolves the row and the DB-level otp_codes limit backstops).
+    let phoneRow: Awaited<ReturnType<typeof getCachedSessionRow>> = null;
+    try {
+      phoneRow = await getCachedSessionRow(chatId);
+    } catch (e) {
       Sentry.captureMessage("resend_otp_v2 phone read for rate-limit failed", {
         level: "warning",
         tags: { surface: "resend_otp_v2_phone_read", chat_id: chatId },
-        extra: { error: phoneReadErr.message },
+        extra: { error: e instanceof Error ? e.message : String(e) },
       });
-    } else {
+    }
+    if (phoneRow) {
       // P2.12 server-side cooldown check. Skipped on first send (the
       // row has otp_sent_at=null until the initial sendOtp lands).
       const otpSentAtRaw = phoneRow?.otp_sent_at as string | null | undefined;

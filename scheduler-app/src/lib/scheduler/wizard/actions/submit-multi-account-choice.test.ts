@@ -157,8 +157,22 @@ vi.mock("@/lib/supabase/admin", () => ({
   createSupabaseAdminClient: () => createSupabaseAdminClientMock(),
 }));
 
+// SEC-7: the action now reads the session row via getCachedSessionRow
+// (cache.ts) instead of an ad-hoc supabase select. Mock it to return the
+// same combinedReadResult fixture, throwing on its `error` to match the
+// helper's throw-on-error contract. The supabase mock above still backs the
+// picker UPDATE.
+vi.mock("@/lib/scheduler/cache", () => ({
+  getCachedSessionRow: vi.fn(async () => {
+    if (combinedReadResult.error) throw combinedReadResult.error;
+    return combinedReadResult.data;
+  }),
+  sessionTag: (chatId: string) => `session-${chatId}`,
+}));
+
 // Import the SUT after mocks are wired.
 import { submitMultiAccountChoiceV2 } from "./submit-multi-account-choice";
+import { getCachedSessionRow } from "@/lib/scheduler/cache";
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -173,6 +187,7 @@ beforeEach(() => {
   awtCalls.length = 0;
   otpResendCalls.length = 0;
   chainCalls.length = 0;
+  vi.mocked(getCachedSessionRow).mockClear();
   botCheckResult = { ok: true };
   phoneCheckResult = { allowed: true, reason: "" };
   otpResendResult = { ok: true };
@@ -215,12 +230,8 @@ describe("submitMultiAccountChoiceV2 — 'select' happy path (IDOR check passes)
       selected_customer_id: CANDIDATE_A_ID,
     });
 
-    // Combined read fired.
-    const readCall = chainCalls.find(
-      (c) => c.table === "customer_chat_sessions" && c.op === "select",
-    );
-    expect(readCall).toBeDefined();
-    expect(readCall!.cols).toBe("phone_e164, pending_candidates");
+    // Session row was read via getCachedSessionRow (SEC-7).
+    expect(vi.mocked(getCachedSessionRow)).toHaveBeenCalledWith(CHAT_ID);
 
     // H2: NO direct supabase .update before OTP. The write moved into
     // applyWizardTransition AFTER OTP success.
@@ -468,12 +479,8 @@ describe("submitMultiAccountChoiceV2 — security gates short-circuit before IDO
     if (!result.ok) {
       expect(result.error).toBe("rate_limited_phone");
     }
-    // IDOR check passed (read happened) but write did not.
-    expect(
-      chainCalls.find(
-        (c) => c.table === "customer_chat_sessions" && c.op === "select",
-      ),
-    ).toBeDefined();
+    // IDOR check passed (read happened via getCachedSessionRow) but write did not.
+    expect(vi.mocked(getCachedSessionRow)).toHaveBeenCalledWith(CHAT_ID);
     expect(
       chainCalls.find(
         (c) => c.table === "customer_chat_sessions" && c.op === "update",
