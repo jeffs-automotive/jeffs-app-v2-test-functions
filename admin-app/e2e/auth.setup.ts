@@ -42,14 +42,12 @@ function writeState(cookies: Array<Record<string, unknown>>): void {
   writeFileSync(STATE_PATH, JSON.stringify({ cookies, origins: [] }, null, 2) + "\n");
 }
 
-setup("authenticate — seed @supabase/ssr session (admin generateLink)", async () => {
-  if (!SUPABASE_URL || !ANON_KEY || !SERVICE_ROLE) {
-    // No test Supabase creds (run `npx vercel env pull .env.local`). Empty state
-    // → the authed specs detect the missing creds and skip.
-    writeState([]);
-    return;
-  }
-
+/**
+ * One generateLink → verifyOtp attempt. Returns the @supabase/ssr-serialized
+ * auth cookies, or throws with a diagnostic message. Kept separate so the
+ * caller can retry it (see below).
+ */
+async function seedSessionCookies(): Promise<Array<{ name: string; value: string }>> {
   // 1) Admin (service-role): mint a magic-link token for the existing
   //    (Microsoft-OAuth) user — no password required.
   const admin = createClient(SUPABASE_URL, SERVICE_ROLE, {
@@ -71,6 +69,9 @@ setup("authenticate — seed @supabase/ssr session (admin generateLink)", async 
 
   // 2) Verify the token on a cookie-capturing @supabase/ssr client → a real
   //    session is established + persisted via setAll (the exact server cookie).
+  //    NB: verifyOtp must run on the @supabase/ssr client (not a plain
+  //    supabase-js client) so ITS serializer writes the exact sb-<ref>-auth-token
+  //    cookie — never hand-craft it.
   const captured: Array<{ name: string; value: string }> = [];
   const ssr = createServerClient(SUPABASE_URL, ANON_KEY, {
     cookies: {
@@ -84,12 +85,46 @@ setup("authenticate — seed @supabase/ssr session (admin generateLink)", async 
     type: "magiclink",
     token_hash: tokenHash,
   });
-  if (verifyErr) {
-    throw new Error(`verifyOtp (magiclink) failed for ${EMAIL}: ${verifyErr.message}.`);
-  }
+  if (verifyErr) throw new Error(`verifyOtp (magiclink) failed: ${verifyErr.message}`);
   if (captured.length === 0) {
     throw new Error(
       "verifyOtp succeeded but @supabase/ssr wrote no auth cookies — serializer/version change?",
+    );
+  }
+  return captured;
+}
+
+setup("authenticate — seed @supabase/ssr session (admin generateLink)", async () => {
+  if (!SUPABASE_URL || !ANON_KEY || !SERVICE_ROLE) {
+    // No test Supabase creds (run `npx vercel env pull .env.local`). Empty state
+    // → the authed specs detect the missing creds and skip.
+    writeState([]);
+    return;
+  }
+
+  // generateLink→verifyOtp can fail transiently on the freshly-minted token
+  // ("Email link is invalid or has expired") even when token/type/key are all
+  // correct — observed once, then passed on retry with no code change. Retry a
+  // few times with a short backoff so the seed (and CI) stays stable; each
+  // attempt mints a brand-new token.
+  const MAX_ATTEMPTS = 3;
+  let captured: Array<{ name: string; value: string }> | null = null;
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      captured = await seedSessionCookies();
+      break;
+    } catch (e) {
+      lastErr = e;
+      if (attempt < MAX_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
+      }
+    }
+  }
+  if (!captured) {
+    throw new Error(
+      `Failed to seed a @supabase/ssr session for ${EMAIL} after ${MAX_ATTEMPTS} attempts. ` +
+        `Last error: ${lastErr instanceof Error ? lastErr.message : String(lastErr)}`,
     );
   }
 
