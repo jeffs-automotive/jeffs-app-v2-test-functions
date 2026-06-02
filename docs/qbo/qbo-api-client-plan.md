@@ -201,3 +201,50 @@ supabase/migrations/<ts>_qbo_connections.sql   qbo_connections table + get/set R
 5. **Keys:** RESOLVED → **production** (decision #5 above).
 6. **Cross-verify:** RESOLVED → not the built-in command; a future specialized + generalized
    (GPT/Gemini/Claude) check-agent layer (decision #7 above).
+
+## Compliance re-review (2026-06-02, registered `quickbooks-compliance` agent) — folded refinements
+
+Verdict: FINDINGS (0 blocker, 2 important, 5 nice-to-have). All 9 load-bearing claims (token
+lifecycle, minorversion, requestid-held-constant, intuit_tid, Fault shape + codes, query semantics,
+SyncToken+sparse, base URL, webhook alignment) VERIFIED against official Intuit sources; the prior
+inline findings all re-confirmed correct. **Implement against THESE** where they conflict with older
+wording above:
+
+1. **(important) Add Fault code `"5010"` (Stale Object) → `kind:"conflict"`** — the canonical
+   SyncToken optimistic-lock failure on the write path. **NOT auto-retried** (a blind retry with the
+   stale token re-fails / could clobber the other writer); surface it so the caller re-reads
+   `SyncToken` + re-applies. Add an architecture-claim test. (errors.ts/entities.ts/client.ts §Writes.)
+2. **(important) Tier-unavailability codes DO exist** — map `"5030"` (feature-not-in-tier, tied to
+   class tracking on Essentials/Simple Start) + `"6190"` (invalid/read-only company status) →
+   `kind:"not_available"`. Still confirm the exact code + `Fault.type` against a live
+   Preferences/CompanyInfo read before pinning (3rd-party sourced; developer.intuit.com 403s to
+   fetchers). v1 (Invoice + Customer) is on Essentials → not blocked; forward-looking for
+   Class/Department/Budget. (Supersedes the §Tier-graceful "no dedicated code is confirmed" caveat.)
+3. **(nice) Fault `Error[].code` is a STRING, not an integer** (`"003001"` has a leading zero) — type
+   it `string`, compare with `===` against string literals
+   (`"6000"`,`"610"`,`"100"`,`"120"`,`"003001"`,`"5010"`,`"5030"`,`"6190"`). (Supersedes "branch on
+   the numeric code".)
+4. **(nice) `intuit_tid` header name CONFIRMED** = `intuit_tid` (lowercase underscore) — Intuit PHP
+   `CoreConstants::INTUIT_TID` + .NET `FaultHandler`. Keep the first-smoke full-header dump as
+   verification, not discovery. (Resolves an open-question #2 unknown.)
+5. **(nice) `minorversion = 75` is the current AND only supported version** — Intuit deprecated 1–74
+   on 2025-08-01 and IGNORES any value < 75. Pin 75 explicitly (don't rely on the SDK default); the
+   research "59" note is dead. (Resolves open-question #2.)
+6. **(nice) Throttle precedence** — `003001` arrives as HTTP 429; the retry decision keys on the HTTP
+   STATUS (429/5xx, honoring `Retry-After`), so it's retried first. Only surface `kind:"throttle"`
+   once retries are exhausted — don't let the kind short-circuit the retry.
+7. **(nice) Pin `intuit-oauth` EXACT `"4.2.3"`** (not `^4.2.0`) — 4.2.1 removed `response.data`,
+   4.2.3 restored it; token-only usage sidesteps it but exact-pin avoids a regressed minor.
+
+Stale plan assumption: **C1 is largely DONE** — admin-app already has Vitest 4 +
+`@vitest/coverage-v8` + MSW + RTL (Phase G harness). C1 shrinks to adding `intuit-oauth@4.2.3` + QBO
+MSW handlers/fixtures.
+
+Open-question status after this review: #2 (intuit_tid header + minorversion) → RESOLVED above;
+Essentials-excluded set → candidates `5030`/`6190` (confirm live). Remaining for Chris/implement:
+**#1 secret-at-rest (Vault vs pgcrypto)**, **#3 first write entity (Invoice vs Customer)**.
+
+Sources: Intuit "Changes to our Accounting API" (minorversion 75, 2025-08-01); Request ID idempotency
+(blogs.intuit.com/2015 + help.developer.intuit.com); PHP SDK `CoreConstants`/`IntuitResponse` + .NET
+`FaultHandler` (intuit_tid, 429→throttle, fault codes); npm `intuit-oauth` 4.2.3; QBO error-code
+references (5010/5030/6190/6000/610/120 — confirm against the live error-codes page at implement).
