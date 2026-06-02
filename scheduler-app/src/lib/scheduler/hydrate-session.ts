@@ -44,6 +44,7 @@
 
 import { cookies } from "next/headers";
 import { revalidateTag } from "next/cache";
+import { after } from "next/server";
 import * as Sentry from "@sentry/nextjs";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -117,13 +118,26 @@ export async function hydrateSession(): Promise<HydratedSession> {
     // Includes appointment_confirmed_at for the P0.1 post-confirm
     // terminal-state check below.
     const supabase = createSupabaseAdminClient();
-    const { data: row } = await supabase
+    const { data: row, error: rowError } = await supabase
       .from("customer_chat_sessions")
       .select(
         "id, status, last_active_at, hold_token, appointment_confirmed_at",
       )
       .eq("id", chatId)
       .maybeSingle();
+
+    if (rowError) {
+      // No-silent-failure (observability.md rule 9): surface a read error
+      // instead of treating it as "no row". Don't wipe on a failed read —
+      // return the existing chatId and let downstream hydrate against the
+      // live row (getCurrentCard does its own read + null-handling).
+      Sentry.captureException(new Error(rowError.message), {
+        tags: { surface: "hydrate_session_row_read" },
+        level: "warning",
+        extra: { chatId, code: rowError.code },
+      });
+      return { chatId };
+    }
 
     if (!row) {
       // No row yet for this cookie — fresh path. ensureSessionExists
@@ -213,16 +227,17 @@ export async function hydrateSession(): Promise<HydratedSession> {
         extra: { chatId, code: resetError.code },
       });
     } else {
-      // PLAN 04 PHASE 5B POST-VALIDATION FIX (Validator 1 C1, 2026-05-25):
-      // The RPC just wiped the DB row, but `getCachedSessionRow(chatId)`
-      // at line 98 above already populated the per-session Next.js data
-      // cache with the PRE-WIPE state. Without this revalidateTag,
-      // BookPageShell.tsx's downstream getCurrentCard(chatId) call would
-      // serve the cached pre-wipe row and render whatever stale step the
-      // customer had been stuck on — defeating Phase 1B's whole wipe-in-
-      // place purpose for up to 60s (the TTL backstop). Same pattern
-      // mark-abandoned/route.ts uses after IT writes to the session row.
-      revalidateTag(sessionTag(chatId));
+      // PLAN 04 Phase 5B (Validator 1 C1) + Sentry JEFFS-APP-V2-TEST-FUNCTIONS-R
+      // fix 2026-06-02: after the RPC wipe, invalidate the per-session cache so
+      // BookPageShell's downstream getCurrentCard(chatId) can't serve the
+      // pre-wipe row. With React cache() (cache.ts) this is a no-op today, kept
+      // as a future-ready signal for a cross-instance cache. It MUST run via
+      // `after()`: hydrateSession executes during the Server Component render,
+      // and revalidateTag is illegal during render (it threw "revalidateTag
+      // during render is unsupported" — 142 caught warnings). after() defers it
+      // to post-render where it's legal. (applyWizardTransition + mark-abandoned
+      // already call revalidateTag from legal action/route contexts.)
+      after(() => revalidateTag(sessionTag(chatId)));
     }
   } catch (e) {
     Sentry.captureException(e, {

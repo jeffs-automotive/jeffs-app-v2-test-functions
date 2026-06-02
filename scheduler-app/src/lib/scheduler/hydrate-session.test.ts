@@ -68,6 +68,15 @@ vi.mock("next/cache", () => ({
   revalidateTag: (tag: string) => revalidateTagMock(tag),
 }));
 
+// next/server — after() defers the post-wipe revalidateTag out of the render
+// path (Sentry …-R fix). Run the callback synchronously in tests so the C1
+// assertions still observe revalidateTag firing.
+vi.mock("next/server", () => ({
+  after: (cb: () => void | Promise<void>) => {
+    void cb();
+  },
+}));
+
 // Supabase admin client. The hydrate-session code uses TWO surfaces:
 //   - .from('customer_chat_sessions').select(...).eq(...).maybeSingle()
 //   - .rpc('hydrate_session_reset', { p_chat_id })
@@ -619,5 +628,34 @@ describe("hydrateSession — read shape + cache invalidation (post-validator C1/
     expect(rpcCalls).toHaveLength(1);
     // RPC failed → no cache invalidation (the row wasn't actually wiped).
     expect(revalidateTagMock).not.toHaveBeenCalled();
+  });
+
+  it("read error → surfaces to Sentry + returns the existing chatId, no wipe (no-silent-failure fix)", async () => {
+    cookieValue = VALID_UUID;
+    // maybeSingle() returns a Supabase error (NOT a throw) — previously this
+    // was silently dropped and treated as "no row".
+    rowReadResult = {
+      data: null,
+      error: {
+        code: "PGRST500",
+        message: "db read boom",
+        details: null,
+        hint: null,
+      },
+    };
+
+    const result = await hydrateSession();
+
+    // Returns the existing chatId (we don't decide to wipe off a failed read)…
+    expect(result).toEqual({ chatId: VALID_UUID });
+    // …the read was attempted, but NO wipe RPC fired…
+    expect(fromCalls).toHaveLength(1);
+    expect(rpcCalls).toHaveLength(0);
+    // …and the error surfaced (observability rule 9), not swallowed.
+    expect(sentryCaptureExceptionMock).toHaveBeenCalledTimes(1);
+    const [, opts] = sentryCaptureExceptionMock.mock.calls[0]!;
+    expect((opts as { tags: { surface: string } }).tags.surface).toBe(
+      "hydrate_session_row_read",
+    );
   });
 });
