@@ -32,8 +32,8 @@ jobs:
     name: Quick check (lint + typecheck)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: '24'
           cache: 'npm'
@@ -50,8 +50,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: [quick-check]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: '24'
           cache: 'npm'
@@ -66,7 +66,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [quick-check]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
@@ -90,7 +90,7 @@ jobs:
     # don't block PR merges while we audit + repair them.
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: supabase/setup-cli@v1
         with:
           # Pin to the version that matches local dev (per
@@ -122,8 +122,8 @@ jobs:
     # (see admin-app/playwright.config.ts). Run E2E locally, or add a
     # secrets-gated job later (mirrors playwright-smoke below).
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: '24'
           cache: 'npm'
@@ -148,8 +148,8 @@ jobs:
     # Tracked as CLN-10 in DEFERRED-AUDIT-ITEMS.md.
     if: github.event_name == 'workflow_dispatch'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: '24'
           cache: 'npm'
