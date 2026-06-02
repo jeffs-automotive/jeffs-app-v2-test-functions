@@ -91,6 +91,7 @@ function isInvalidGrant(e: unknown): boolean {
  */
 export async function getValidAccessToken(
   realmId?: string,
+  opts?: { forceRefresh?: boolean },
 ): Promise<{ accessToken: string; realmId: string }> {
   const conn = await loadConnection(realmId);
   if (!conn) {
@@ -99,7 +100,10 @@ export async function getValidAccessToken(
       { kind: "reconnect_required" },
     );
   }
-  if (conn.accessTokenExpiresAt - Date.now() > REFRESH_SKEW_MS) {
+  if (
+    !opts?.forceRefresh &&
+    conn.accessTokenExpiresAt - Date.now() > REFRESH_SKEW_MS
+  ) {
     return { accessToken: conn.accessToken, realmId: conn.realmId };
   }
 

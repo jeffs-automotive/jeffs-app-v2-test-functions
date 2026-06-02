@@ -73,6 +73,23 @@ describe("getValidAccessToken", () => {
     expect(rpcMock.mock.calls.some((c) => c[0] === "qbo_persist_tokens")).toBe(false);
   });
 
+  it("forceRefresh:true refreshes even when the current token is still valid", async () => {
+    routeRpc({ connection: [connectionRow()] }); // token valid ~1h
+    refreshUsingTokenMock.mockResolvedValue({
+      getToken: () => ({
+        access_token: "forced-new",
+        refresh_token: "r2",
+        expires_in: 3600,
+        x_refresh_token_expires_in: 8_726_400,
+      }),
+    });
+
+    const result = await getValidAccessToken(undefined, { forceRefresh: true });
+
+    expect(refreshUsingTokenMock).toHaveBeenCalledWith("refresh-current");
+    expect(result.accessToken).toBe("forced-new");
+  });
+
   it("refreshes + persists the ROTATED refresh token when near expiry, returns the new access token", async () => {
     routeRpc({
       connection: [
