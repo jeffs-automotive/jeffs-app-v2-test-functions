@@ -31,17 +31,13 @@ import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-t
 import type { WizardStep } from "@/lib/scheduler/session-state";
 import { logError } from "@/lib/scheduler/wizard/log-error";
 import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
-// PLAN-03 Phase 1 — defense-in-depth against SMS pumping. BotID classifies
-// the caller as bot/human via client-side challenge + server-side check;
-// Upstash imposes per-IP + per-phone-hash rate limits. Both fail OPEN on
-// outage / misconfiguration so legitimate OTPs aren't broken; the DB-level
-// otp_codes rate limit (3/phone/hour) is the final backstop.
+// SEC-7 — defense-in-depth against SMS pumping. BotID classifies the caller
+// as bot/human (client challenge + server check); the per-phone-hash limit
+// (3/hour) is a Postgres RPC; the per-IP limit is a Vercel Firewall edge rule
+// (no app code). The app gate fails OPEN so legitimate OTPs aren't broken;
+// the DB-level otp_codes 3/phone/hour cap is the final backstop.
 import { checkBotForSensitiveAction } from "@/lib/security/check-bot";
-import {
-  checkIpRateLimit,
-  checkPhoneRateLimit,
-} from "@/lib/security/rate-limit";
-import { getRequestIp } from "@/lib/security/get-request-ip";
+import { checkPhoneRateLimit } from "@/lib/security/rate-limit";
 
 // ─── Input validation ───────────────────────────────────────────────────────
 
@@ -117,10 +113,10 @@ async function submitPhoneNameV2Impl(
   }
   const { chatId, first_name, last_name, phone_e164 } = parsed.data;
 
-  // ─── PLAN-03 Phase 1 — SMS-pump defense (bot → IP → phone gates) ─────
-  // Order matters: cheapest check first (BotID is a single header read;
-  // Upstash adds a Redis round-trip). All three gates must pass before
-  // we touch the DB or call the edge function that talks to Telnyx.
+  // ─── SEC-7 — SMS-pump defense (bot → phone gates) ───────────────────
+  // Cheapest check first (BotID is a single header read). The per-IP limit
+  // is enforced upstream at the Vercel Firewall edge; the remaining gates
+  // must pass before we touch the DB or call the edge fn that talks to Telnyx.
   const bot = await checkBotForSensitiveAction();
   if (!bot.ok) {
     Sentry.captureMessage("submit_phone_name_v2 bot detected", {
@@ -128,16 +124,6 @@ async function submitPhoneNameV2Impl(
       tags: { surface: "submit_phone_name_v2_bot_gate", chat_id: chatId },
     });
     return { ok: false, error: "bot_detected" };
-  }
-
-  const ip = await getRequestIp();
-  const ipCheck = await checkIpRateLimit(ip);
-  if (!ipCheck.allowed) {
-    Sentry.captureMessage("submit_phone_name_v2 IP rate-limited", {
-      level: "warning",
-      tags: { surface: "submit_phone_name_v2_ip_limit", chat_id: chatId },
-    });
-    return { ok: false, error: ipCheck.reason };
   }
 
   const phoneCheck = await checkPhoneRateLimit(phone_e164);

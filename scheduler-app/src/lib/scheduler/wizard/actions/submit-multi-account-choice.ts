@@ -37,11 +37,7 @@ import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 // The 'none_of_these' branch does not — it just clears candidates and
 // advances. Bot + rate gates only apply to the SMS-sending branch.
 import { checkBotForSensitiveAction } from "@/lib/security/check-bot";
-import {
-  checkIpRateLimit,
-  checkPhoneRateLimit,
-} from "@/lib/security/rate-limit";
-import { getRequestIp } from "@/lib/security/get-request-ip";
+import { checkPhoneRateLimit } from "@/lib/security/rate-limit";
 
 const submitMultiAccountChoiceSchema = z.discriminatedUnion("action", [
   z.object({
@@ -117,12 +113,12 @@ async function submitMultiAccountChoiceV2Impl(
     const { selected_customer_id } = parsed.data;
     const supabase = createSupabaseAdminClient();
 
-    // ─── PLAN-03 Phase 1 — SMS-pump defense on the 'select' branch ────
-    // BotID first (cheapest), then IP rate-limit. Phone rate-limit needs
-    // the phone off the row — read it here so we can key the limit even
-    // though the action's arg only carries selected_customer_id. We
-    // reject BEFORE the picker write so a pumping bot can't churn the
-    // row's customer_id field while attacking.
+    // ─── SEC-7 — SMS-pump defense on the 'select' branch ──────────────
+    // BotID first (cheapest); the per-IP limit is enforced upstream at the
+    // Vercel Firewall edge. Phone rate-limit needs the phone off the row —
+    // read it below so we can key the limit even though the action's arg
+    // only carries selected_customer_id. We reject BEFORE the picker write
+    // so a pumping bot can't churn the row's customer_id field while attacking.
     const bot = await checkBotForSensitiveAction();
     if (!bot.ok) {
       Sentry.captureMessage("submit_multi_account_choice_v2 bot detected", {
@@ -133,22 +129,6 @@ async function submitMultiAccountChoiceV2Impl(
         },
       });
       return { ok: false, error: "bot_detected" };
-    }
-
-    const ip = await getRequestIp();
-    const ipCheck = await checkIpRateLimit(ip);
-    if (!ipCheck.allowed) {
-      Sentry.captureMessage(
-        "submit_multi_account_choice_v2 IP rate-limited",
-        {
-          level: "warning",
-          tags: {
-            surface: "submit_multi_account_choice_v2_ip_limit",
-            chat_id: chatId,
-          },
-        },
-      );
-      return { ok: false, error: ipCheck.reason };
     }
 
     // Combined row read: phone_e164 (for the phone rate-limit below)

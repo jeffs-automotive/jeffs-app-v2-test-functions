@@ -33,11 +33,7 @@ import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 // function), so we look the phone up here to key the rate limit. See
 // submit-phone-name.ts for the full pattern + rationale.
 import { checkBotForSensitiveAction } from "@/lib/security/check-bot";
-import {
-  checkIpRateLimit,
-  checkPhoneRateLimit,
-} from "@/lib/security/rate-limit";
-import { getRequestIp } from "@/lib/security/get-request-ip";
+import { checkPhoneRateLimit } from "@/lib/security/rate-limit";
 
 const resendOtpSchema = z.object({
   chatId: z.string().min(1),
@@ -80,13 +76,13 @@ async function resendOtpV2Impl(
   }
   const { chatId } = parsed.data;
 
-  // ─── PLAN-03 Phase 1 — SMS-pump defense ────────────────────────────
-  // Order: bot → IP rate-limit → phone rate-limit. The phone-limit needs
-  // the phone off the row (this action's arg is just chatId). If the row
-  // has no phone (shouldn't happen in the resend flow — the customer
-  // can only land on otp_pending after entering one — but defensively
-  // handle it), we skip the phone limit and let the IP + bot gates +
-  // DB-level limit cover us.
+  // ─── SEC-7 — SMS-pump defense ───────────────────────────────────────
+  // Order: bot → phone rate-limit. The per-IP limit is enforced upstream at
+  // the Vercel Firewall edge. The phone-limit needs the phone off the row
+  // (this action's arg is just chatId); if the row has no phone (shouldn't
+  // happen in the resend flow — the customer can only land on otp_pending
+  // after entering one — but defensively handle it), we skip the phone
+  // limit and let the bot gate + DB-level limit cover us.
   const bot = await checkBotForSensitiveAction();
   if (!bot.ok) {
     Sentry.captureMessage("resend_otp_v2 bot detected", {
@@ -94,16 +90,6 @@ async function resendOtpV2Impl(
       tags: { surface: "resend_otp_v2_bot_gate", chat_id: chatId },
     });
     return { ok: false, error: "bot_detected" };
-  }
-
-  const ip = await getRequestIp();
-  const ipCheck = await checkIpRateLimit(ip);
-  if (!ipCheck.allowed) {
-    Sentry.captureMessage("resend_otp_v2 IP rate-limited", {
-      level: "warning",
-      tags: { surface: "resend_otp_v2_ip_limit", chat_id: chatId },
-    });
-    return { ok: false, error: ipCheck.reason };
   }
 
   try {

@@ -79,21 +79,14 @@ vi.mock("@/lib/security/check-bot", () => ({
   checkBotForSensitiveAction: vi.fn(async () => botCheckResult),
 }));
 
-let ipCheckResult: { allowed: boolean; reason: string } = {
-  allowed: true,
-  reason: "",
-};
 let phoneCheckResult: { allowed: boolean; reason: string } = {
   allowed: true,
   reason: "",
 };
+// SEC-7: per-IP limiting moved to the Vercel Firewall edge — the action no
+// longer calls checkIpRateLimit / getRequestIp, so neither is mocked here.
 vi.mock("@/lib/security/rate-limit", () => ({
-  checkIpRateLimit: vi.fn(async () => ipCheckResult),
   checkPhoneRateLimit: vi.fn(async () => phoneCheckResult),
-}));
-
-vi.mock("@/lib/security/get-request-ip", () => ({
-  getRequestIp: vi.fn(async () => "1.2.3.4"),
 }));
 
 // Supabase mock — supports BOTH the combined SELECT (phone_e164 +
@@ -181,7 +174,6 @@ beforeEach(() => {
   otpResendCalls.length = 0;
   chainCalls.length = 0;
   botCheckResult = { ok: true };
-  ipCheckResult = { allowed: true, reason: "" };
   phoneCheckResult = { allowed: true, reason: "" };
   otpResendResult = { ok: true };
   combinedReadResult = {
@@ -460,22 +452,6 @@ describe("submitMultiAccountChoiceV2 — security gates short-circuit before IDO
       expect(result.error).toBe("bot_detected");
     }
     // Bot gate runs first — no DB read happened.
-    expect(chainCalls).toHaveLength(0);
-  });
-
-  it("IP rate-limit fires → returns IP reason, no DB read", async () => {
-    ipCheckResult = { allowed: false, reason: "rate_limited_ip" };
-
-    const result = await submitMultiAccountChoiceV2({
-      action: "select",
-      chatId: CHAT_ID,
-      selected_customer_id: CANDIDATE_A_ID,
-    });
-
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.error).toBe("rate_limited_ip");
-    }
     expect(chainCalls).toHaveLength(0);
   });
 
