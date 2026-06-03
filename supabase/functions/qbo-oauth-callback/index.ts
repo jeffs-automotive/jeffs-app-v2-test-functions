@@ -1,14 +1,16 @@
 // qbo-oauth-callback — one-time QuickBooks Online (Intuit) OAuth handshake helper.
 //
-// Self-contained, stateless (no DB). Two GET modes on the same registered path:
+// Self-contained. Two GET modes on the same registered path:
 //   GET ?start=1              -> 302 to Intuit's authorize endpoint (with a signed state)
-//   GET ?code&state&realmId   -> verify state, exchange code -> tokens, print the
-//                                refresh_token + realmId for the operator to copy into the
-//                                local QuickBooks MCP server (@qboapi/qbo-mcp-server).
+//   GET ?code&state&realmId   -> verify state, exchange code -> tokens, then SEED them into
+//                                qbo_connections (Vault) for the deployed Accounting Link
+//                                client AND print the refresh_token + realmId for the
+//                                optional local QuickBooks MCP server (@qboapi/qbo-mcp-server).
 //
 // verify_jwt is false (set in config.toml) because Intuit redirects an UNAUTHENTICATED
-// browser here. This is an operator-only bootstrap: it never stores tokens server-side and
-// only succeeds for whoever can complete Intuit's own login + consent for the QBO company.
+// browser here. This is an operator-only bootstrap: it stores the tokens server-side in
+// Vault (via the qbo_persist_tokens RPC) and only succeeds for whoever can complete
+// Intuit's own login + consent for the QBO company.
 //
 // Responses are PLAIN TEXT on purpose: Supabase Edge Functions force
 // `Content-Type: text/plain` on responses (anti-phishing; documented in mcp-auth/index.ts),
@@ -16,15 +18,16 @@
 // KEY=value lines are easy to copy. Only the start-redirect (302) and method-guard (405)
 // are non-200; every human-facing page is a 200 whose text conveys the outcome.
 //
-// Concept adapted from the v1 app's QBO callback; written fresh here. No qbo_connections
-// table, no dashboard redirect — this feature only needs to surface the refresh_token.
+// Concept adapted from the v1 app's QBO callback; written fresh here. Seeds qbo_connections
+// (added 2026-06-03) so the deployed admin-app client has its own server-side grant.
 //
 // Required edge secrets (supabase secrets set ...): QBO_CLIENT_ID, QBO_CLIENT_SECRET,
 // QBO_STATE_SECRET (HMAC key for the state param). QBO_ENVIRONMENT is informational only.
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "npm:@supabase/supabase-js@2";
 import { base64UrlEncode, functionUrl, randomToken } from "../_shared/oauth.ts";
-import { withSentryScope } from "../_shared/sentry-edge.ts";
+import { withSentryScope, Sentry } from "../_shared/sentry-edge.ts";
 
 const FUNCTION_NAME = "qbo-oauth-callback";
 const AUTHORIZE_URL = "https://appcenter.intuit.com/connect/oauth2";
@@ -154,18 +157,83 @@ Deno.serve((req) =>
       );
     }
 
-    let tokens: { refresh_token?: string; access_token?: string };
+    let tokens: {
+      refresh_token?: string;
+      access_token?: string;
+      expires_in?: number;
+      x_refresh_token_expires_in?: number;
+    };
     try {
       tokens = JSON.parse(raw);
     } catch {
       return text(`Unexpected token response:\n\n${raw}\n`);
     }
     const refresh = tokens.refresh_token ?? "";
+    const access = tokens.access_token ?? "";
+    if (!access || !refresh) {
+      return text(
+        `Token exchange returned an unexpected shape (missing access or refresh token).\n\n` +
+          `${raw}\n\nStart over: ?start=1\n`,
+      );
+    }
+
+    // Seed qbo_connections so the DEPLOYED Accounting Link client has its own
+    // server-side grant (Vault-backed). This is a SEPARATE grant from the local
+    // QuickBooks MCP server's — qbo_persist_tokens upserts the Vault secrets +
+    // the row (environment defaults to 'production'). Migration 20260602140000.
+    const now = Date.now();
+    const accessTtlS =
+      typeof tokens.expires_in === "number" ? tokens.expires_in : 3600;
+    const refreshTtlS =
+      typeof tokens.x_refresh_token_expires_in === "number"
+        ? tokens.x_refresh_token_expires_in
+        : 8_726_400;
+    let stored = false;
+    let storeError: string | null = null;
+    try {
+      const sb = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+        { auth: { persistSession: false, autoRefreshToken: false } },
+      );
+      const { error } = await sb.rpc("qbo_persist_tokens", {
+        p_realm_id: realmId,
+        p_access_token: access,
+        p_refresh_token: refresh,
+        p_access_token_expires_at: new Date(now + accessTtlS * 1000).toISOString(),
+        p_refresh_token_expires_at: new Date(now + refreshTtlS * 1000).toISOString(),
+      });
+      if (error) throw new Error(error.message);
+      stored = true;
+    } catch (e) {
+      // No silent failure: capture + structured log, and surface on the page so
+      // the operator can still fall back to the MCP env values below.
+      storeError = e instanceof Error ? e.message : String(e);
+      Sentry.captureException(e, {
+        tags: { qbo_op: "seed_qbo_connections", realm_id: realmId },
+      });
+      console.error(
+        JSON.stringify({
+          level: "error",
+          msg: "qbo-oauth-callback: qbo_persist_tokens failed",
+          realm_id: realmId,
+          error: storeError,
+        }),
+      );
+    }
+
+    const storeLine = stored
+      ? `Stored for the Accounting Link app (qbo_connections, realm ${realmId}).\n` +
+        `The deployed admin-app client can now read + refresh autonomously.\n\n`
+      : `WARNING: could NOT store to qbo_connections — ${storeError}\n` +
+        `The deployed app is NOT connected yet. Use the values below as a fallback\n` +
+        `and/or re-run ?start=1, or report this error.\n\n`;
 
     return text(
       `QuickBooks connected.\n\n` +
-        `Copy these into the QuickBooks MCP server .env (~/quickbooks-online-mcp-server)\n` +
-        `and your machine env vars - see QUICKBOOKS-MCP-SETUP.md in the dotfiles repo:\n\n` +
+        storeLine +
+        `Local QuickBooks MCP server (OPTIONAL) — copy into ~/quickbooks-online-mcp-server\n` +
+        `.env + machine env vars (see QUICKBOOKS-MCP-SETUP.md in the dotfiles repo):\n\n` +
         `QUICKBOOKS_REFRESH_TOKEN=${refresh}\n` +
         `QUICKBOOKS_REALM_ID=${realmId}\n` +
         `QUICKBOOKS_ENVIRONMENT=production\n\n` +
