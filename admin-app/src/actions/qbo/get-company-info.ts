@@ -23,7 +23,7 @@ async function getCompanyInfoImpl(): Promise<QboActionResult<unknown>> {
       "GET",
       `companyinfo/${realmId}`,
     );
-    return { ok: true, data };
+    return { ok: true, data, timestamp: Date.now() };
   } catch (e) {
     return qboFailure(e);
   }

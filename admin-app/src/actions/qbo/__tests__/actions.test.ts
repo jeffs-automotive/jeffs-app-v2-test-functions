@@ -42,7 +42,8 @@ describe("getCompanyInfoAction", () => {
   it("returns CompanyInfo on success (GET companyinfo/<realmId>)", async () => {
     requestMock.mockResolvedValue({ CompanyInfo: { CompanyName: "Jeff's" } });
     const r = await getCompanyInfoAction();
-    expect(r).toEqual({ ok: true, data: { CompanyInfo: { CompanyName: "Jeff's" } } });
+    expect(r).toMatchObject({ ok: true, data: { CompanyInfo: { CompanyName: "Jeff's" } } });
+    expect((r as { timestamp: number }).timestamp).toEqual(expect.any(Number));
     expect(requestMock).toHaveBeenCalledWith("GET", "companyinfo/R");
   });
 

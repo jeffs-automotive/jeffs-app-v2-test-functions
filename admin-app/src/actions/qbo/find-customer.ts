@@ -31,12 +31,13 @@ async function findCustomerImpl(
       ok: false,
       reason: "validation",
       message: parsed.error.issues.map((i) => i.message).join("; "),
+      timestamp: Date.now(),
     };
   }
   try {
     const qbl = `SELECT * FROM Customer WHERE DisplayName = '${escapeQbl(parsed.data.displayName)}'`;
     const data = await new QboClient().query(qbl);
-    return { ok: true, data };
+    return { ok: true, data, timestamp: Date.now() };
   } catch (e) {
     return qboFailure(e);
   }

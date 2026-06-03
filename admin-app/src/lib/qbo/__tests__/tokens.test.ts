@@ -139,4 +139,32 @@ describe("getValidAccessToken", () => {
     routeRpc({ connection: null, connectionError: { message: "db down" } });
     await expect(getValidAccessToken()).rejects.toMatchObject({ kind: "unknown" });
   });
+
+  it("single-flights concurrent refreshes (one token-endpoint call for both callers)", async () => {
+    routeRpc({
+      connection: [
+        connectionRow({
+          access_token_expires_at: new Date(Date.now() + 60_000).toISOString(),
+        }),
+      ],
+    });
+    refreshUsingTokenMock.mockResolvedValue({
+      getToken: () => ({
+        access_token: "sf-access",
+        refresh_token: "sf-refresh",
+        expires_in: 3600,
+        x_refresh_token_expires_in: 8_726_400,
+      }),
+    });
+
+    const [r1, r2] = await Promise.all([
+      getValidAccessToken(),
+      getValidAccessToken(),
+    ]);
+
+    expect(r1.accessToken).toBe("sf-access");
+    expect(r2.accessToken).toBe("sf-access");
+    // Both callers shared ONE token-endpoint call (no double rotation).
+    expect(refreshUsingTokenMock).toHaveBeenCalledTimes(1);
+  });
 });

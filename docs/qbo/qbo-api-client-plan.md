@@ -194,6 +194,11 @@ supabase/migrations/<ts>_qbo_connections.sql   qbo_connections table + get/set R
 2. **`intuit_tid` exact header name** + **current `minorversion`** + **Essentials-excluded entity set** —
    the three cite-or-omit unknowns from research; confirm via WebSearch/live response at implement.
 3. **First write entity:** Invoice assumed (canonical AR write). Confirm vs Customer-first.
+4. **Concurrent-refresh sibling-token behavior (added 2026-06-03 at verify):** `tokens.ts` uses an
+   in-process single-flight (one refresh per realm per lambda). Cross-lambda concurrent refreshes
+   rely on QBO's ~24h rotation grace. CONFIRM at the live smoke whether concurrent refreshes' sibling
+   tokens coexist (both valid) or the later issuance invalidates the earlier — if the latter, add a
+   cross-process guard (e.g. a Postgres advisory lock claimed *before* the token-endpoint call).
 
 ### Resolved (Chris, 2026-05-30)
 4. **Write smoke safety:** RESOLVED → real books, but **every first live write is a human gate**

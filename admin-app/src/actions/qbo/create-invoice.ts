@@ -27,11 +27,12 @@ async function createInvoiceImpl(
       ok: false,
       reason: "validation",
       message: parsed.error.issues.map((i) => i.message).join("; "),
+      timestamp: Date.now(),
     };
   }
   try {
     const data = await new QboClient().create("Invoice", parsed.data);
-    return { ok: true, data };
+    return { ok: true, data, timestamp: Date.now() };
   } catch (e) {
     return qboFailure(e);
   }

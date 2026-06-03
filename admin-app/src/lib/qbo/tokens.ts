@@ -22,6 +22,19 @@ const REFRESH_SKEW_MS = 5 * 60_000;
 const DEFAULT_ACCESS_TTL_S = 3600;
 const DEFAULT_REFRESH_TTL_S = 8_726_400;
 
+/**
+ * In-process registry of in-flight refreshes, keyed by realm. Collapses
+ * concurrent getValidAccessToken calls in THIS lambda into one token-endpoint
+ * call so we don't rotate the refresh token twice. Cross-lambda concurrency
+ * still relies on QBO's rotation grace (the predecessor refresh token stays
+ * valid ~24h); the exact concurrent-sibling behavior is unconfirmed — confirm
+ * at the live smoke (docs/qbo/qbo-api-client-plan.md open questions).
+ */
+const inflightRefresh = new Map<
+  string,
+  Promise<{ accessToken: string; realmId: string }>
+>();
+
 export interface QboConnection {
   realmId: string;
   environment: string;
@@ -107,7 +120,27 @@ export async function getValidAccessToken(
     return { accessToken: conn.accessToken, realmId: conn.realmId };
   }
 
-  // Refresh via intuit-oauth (owns the token endpoint + rotation).
+  // Single-flight: join an in-flight refresh for this realm if one exists,
+  // else start one. (get/set are synchronous, so no interleaving in JS.)
+  const existing = inflightRefresh.get(conn.realmId);
+  if (existing) return existing;
+  const refreshPromise = refreshAndPersist(conn);
+  inflightRefresh.set(conn.realmId, refreshPromise);
+  try {
+    return await refreshPromise;
+  } finally {
+    inflightRefresh.delete(conn.realmId);
+  }
+}
+
+/**
+ * Refresh via intuit-oauth (owns the token endpoint + rotation), then persist
+ * the rotated tokens + expiries. Only ever invoked through the single-flight
+ * registry above.
+ */
+async function refreshAndPersist(
+  conn: QboConnection,
+): Promise<{ accessToken: string; realmId: string }> {
   const oauth = new OAuthClient({
     environment: (conn.environment as QboEnvironment) || resolveQboEnvironment(),
     clientId: process.env.QBO_CLIENT_ID ?? "",
