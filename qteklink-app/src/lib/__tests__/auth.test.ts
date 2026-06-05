@@ -2,6 +2,12 @@
  * Unit tests for requireQtekUser / getQtekSession (the all-entrypoint auth
  * gate). Mocks both Supabase clients + next/navigation's redirect (which
  * throws, like the real one) so we can assert every reject branch.
+ *
+ * SECURITY note: the oid is resolved server-side inside the
+ * `qteklink_resolve_allowed_user` RPC (from auth.identities, keyed on the
+ * validated user.id) — NOT from user_metadata — so the tests mock the RPC, and
+ * the user fixture deliberately carries NO custom_claims (proving the gate does
+ * not depend on client-writable metadata).
  */
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 
@@ -12,8 +18,6 @@ vi.mock("../supabase/admin", () => ({
   createSupabaseAdminClient: vi.fn(),
 }));
 vi.mock("next/navigation", () => ({
-  // The real redirect() throws to halt rendering — mirror that so control
-  // never falls through a reject branch.
   redirect: vi.fn((url: string) => {
     throw new Error(`NEXT_REDIRECT:${url}`);
   }),
@@ -22,15 +26,24 @@ vi.mock("next/navigation", () => ({
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "../supabase/server";
 import { createSupabaseAdminClient } from "../supabase/admin";
-import { requireQtekUser, getQtekSession, extractEntraObjectId } from "../auth";
+import { requireQtekUser, getQtekSession } from "../auth";
 
-const ALLOWED_OID = "oid-active-admin";
+const ALLOWED_OID = "1afee9a1-271c-4180-b777-6d83b381aa5a";
 
+// Deliberately NO user_metadata/custom_claims — the gate must not depend on it.
 function mockUser(overrides: Record<string, unknown> = {}) {
+  return { id: "user-uuid-1", email: "admin@jeffsautomotive.com", ...overrides };
+}
+
+function row(overrides: Record<string, unknown> = {}) {
   return {
-    id: "user-uuid-1",
+    id: "row-1",
+    shop_id: 7476,
+    entra_object_id: ALLOWED_OID,
     email: "admin@jeffsautomotive.com",
-    user_metadata: { custom_claims: { oid: ALLOWED_OID, tid: "tid-1" } },
+    full_name: "Admin",
+    role: "admin",
+    active: true,
     ...overrides,
   };
 }
@@ -46,7 +59,8 @@ function setSession(user: unknown, getUserError: unknown = null) {
   });
 }
 
-function setAllowlist(rows: unknown, error: unknown = null) {
+// Mocks the qteklink_resolve_allowed_user RPC (keyed on the validated user id).
+function setResolver(rows: unknown, error: unknown = null) {
   const rpc = vi.fn().mockResolvedValue({ data: rows, error });
   (createSupabaseAdminClient as Mock).mockReturnValue({ rpc });
   return rpc;
@@ -54,20 +68,6 @@ function setAllowlist(rows: unknown, error: unknown = null) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-});
-
-describe("extractEntraObjectId", () => {
-  it("reads custom_claims.oid", () => {
-    expect(extractEntraObjectId(mockUser() as never)).toBe(ALLOWED_OID);
-  });
-  it("returns null when oid is absent", () => {
-    expect(
-      extractEntraObjectId(mockUser({ user_metadata: { custom_claims: {} } }) as never),
-    ).toBeNull();
-  });
-  it("returns null when user_metadata is missing", () => {
-    expect(extractEntraObjectId({ user_metadata: null } as never)).toBeNull();
-  });
 });
 
 describe("requireQtekUser", () => {
@@ -82,18 +82,18 @@ describe("requireQtekUser", () => {
     await expect(requireQtekUser()).rejects.toThrow("NEXT_REDIRECT:/login");
   });
 
-  it("signs out + redirects when the Entra oid claim is missing", async () => {
-    setSession(mockUser({ user_metadata: { custom_claims: {} } }));
-    setAllowlist([]);
-    await expect(requireQtekUser()).rejects.toThrow(
-      "NEXT_REDIRECT:/login?error=no_object_id",
-    );
-    expect(signOut).toHaveBeenCalledOnce();
+  it("resolves the allowlist by the validated user id (not user_metadata)", async () => {
+    setSession(mockUser());
+    const rpc = setResolver([row()]);
+    await requireQtekUser();
+    expect(rpc).toHaveBeenCalledWith("qteklink_resolve_allowed_user", {
+      p_user_id: "user-uuid-1",
+    });
   });
 
-  it("signs out + redirects when the oid is not on the allowlist", async () => {
+  it("signs out + redirects when the user is not on the allowlist", async () => {
     setSession(mockUser());
-    setAllowlist([]); // empty → not on list
+    setResolver([]); // empty → not on list (or no azure identity)
     await expect(requireQtekUser()).rejects.toThrow(
       "NEXT_REDIRECT:/login?error=not_allowed",
     );
@@ -102,9 +102,7 @@ describe("requireQtekUser", () => {
 
   it("signs out + redirects when the allowlisted user is deactivated", async () => {
     setSession(mockUser());
-    setAllowlist([
-      { id: "1", shop_id: 7476, entra_object_id: ALLOWED_OID, email: "a@b.com", full_name: null, role: "viewer", active: false },
-    ]);
+    setResolver([row({ role: "viewer", active: false })]);
     await expect(requireQtekUser()).rejects.toThrow(
       "NEXT_REDIRECT:/login?error=deactivated",
     );
@@ -113,9 +111,7 @@ describe("requireQtekUser", () => {
 
   it("returns the session for an active allowlisted user", async () => {
     setSession(mockUser());
-    setAllowlist([
-      { id: "1", shop_id: 7476, entra_object_id: ALLOWED_OID, email: "admin@jeffsautomotive.com", full_name: "A", role: "admin", active: true },
-    ]);
+    setResolver([row({ role: "admin", active: true })]);
     const session = await requireQtekUser();
     expect(session).toEqual({
       email: "admin@jeffsautomotive.com",
@@ -127,10 +123,12 @@ describe("requireQtekUser", () => {
     expect(signOut).not.toHaveBeenCalled();
   });
 
-  it("FAILS CLOSED — throws (does not grant) when the allowlist lookup errors", async () => {
+  it("FAILS CLOSED — throws (does not grant) when the resolver errors", async () => {
     setSession(mockUser());
-    setAllowlist(null, { message: "db down" });
-    await expect(requireQtekUser()).rejects.toThrow(/qteklink_get_allowed_user failed/);
+    setResolver(null, { message: "db down" });
+    await expect(requireQtekUser()).rejects.toThrow(
+      /qteklink_resolve_allowed_user failed/,
+    );
   });
 });
 
@@ -143,15 +141,19 @@ describe("getQtekSession", () => {
 
   it("returns null when not on the allowlist", async () => {
     setSession(mockUser());
-    setAllowlist([]);
+    setResolver([]);
+    expect(await getQtekSession()).toBeNull();
+  });
+
+  it("returns null when deactivated", async () => {
+    setSession(mockUser());
+    setResolver([row({ active: false })]);
     expect(await getQtekSession()).toBeNull();
   });
 
   it("returns the session for an active allowlisted user", async () => {
     setSession(mockUser());
-    setAllowlist([
-      { id: "1", shop_id: 7476, entra_object_id: ALLOWED_OID, email: "admin@jeffsautomotive.com", full_name: "A", role: "approver", active: true },
-    ]);
+    setResolver([row({ role: "approver" })]);
     expect(await getQtekSession()).toMatchObject({ role: "approver", shopId: 7476 });
   });
 });

@@ -21,7 +21,16 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  const next = searchParams.get("next") ?? "/";
+  // Only allow a clean root-relative path — blocks open-redirect payloads like
+  // `//evil.com` or `/\evil.com` (CWE-601) that survive URL normalization even
+  // with `origin` prepended.
+  const rawNext = searchParams.get("next") ?? "/";
+  const next =
+    rawNext.startsWith("/") &&
+    !rawNext.startsWith("//") &&
+    !rawNext.startsWith("/\\")
+      ? rawNext
+      : "/";
 
   if (!code) {
     return NextResponse.redirect(`${origin}/login?error=auth_callback_failed`);

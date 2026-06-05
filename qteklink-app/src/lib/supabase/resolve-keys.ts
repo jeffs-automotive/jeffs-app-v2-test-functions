@@ -1,13 +1,14 @@
 /**
  * Resolve Supabase API keys from the 2026 multi-form env surface.
  *
- * Copied verbatim from scheduler-app/src/lib/supabase/resolve-keys.ts
- * so admin-app handles env-var naming the same way (canonical 2026
- * JSON-dict form OR legacy singular form). Drift here would cause
- * mysterious "missing key" errors only on one of the two apps.
+ * Copied verbatim from admin-app / scheduler-app's resolve-keys.ts so
+ * qteklink-app handles env-var naming the same way (canonical 2026 JSON-dict
+ * form OR legacy singular form). Drift here would cause mysterious "missing
+ * key" errors on only one app.
  *
- * If you change this file: keep the two copies in sync OR extract to
- * a shared workspace package (deferred per PLAN.md D7).
+ * NOTE: this is now the THIRD copy (scheduler-app, admin-app, qteklink-app).
+ * If you change it, keep all three in sync OR extract to a shared workspace
+ * package (deferred per D7).
  */
 
 function parseKeyDict(raw: string | undefined): string[] {
