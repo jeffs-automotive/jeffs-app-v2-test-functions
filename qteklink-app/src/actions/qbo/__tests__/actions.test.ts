@@ -18,11 +18,11 @@ vi.mock("@/lib/qbo/tokens", () => ({
   getValidAccessToken: (...args: unknown[]) => getValidAccessTokenMock(...args),
 }));
 vi.mock("@/lib/auth", () => ({
-  requireAdmin: vi.fn(async () => ({ email: "admin@jeffsautomotive.com" })),
+  requireQtekUser: vi.fn(async () => ({ email: "admin@jeffsautomotive.com" })),
 }));
-// wrapAdminAction is pure observability — pass through to the inner fn in tests.
+// wrapQtekAction is pure observability — pass through to the inner fn in tests.
 vi.mock("@/lib/instrument-action", () => ({
-  wrapAdminAction: (_name: string, inner: (...a: unknown[]) => unknown) => inner,
+  wrapQtekAction: (_name: string, inner: (...a: unknown[]) => unknown) => inner,
 }));
 
 import { getCompanyInfoAction } from "@/actions/qbo/get-company-info";

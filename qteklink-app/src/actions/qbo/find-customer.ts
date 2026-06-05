@@ -7,8 +7,8 @@
  */
 import { z } from "zod";
 
-import { requireAdmin } from "@/lib/auth";
-import { wrapAdminAction } from "@/lib/instrument-action";
+import { requireQtekUser } from "@/lib/auth";
+import { wrapQtekAction } from "@/lib/instrument-action";
 import { QboClient } from "@/lib/qbo/client";
 import { qboFailure, type QboActionResult } from "./result";
 
@@ -24,7 +24,7 @@ function escapeQbl(v: string): string {
 async function findCustomerImpl(
   input: z.infer<typeof inputSchema>,
 ): Promise<QboActionResult<unknown>> {
-  await requireAdmin();
+  await requireQtekUser();
   const parsed = inputSchema.safeParse(input);
   if (!parsed.success) {
     return {
@@ -43,7 +43,7 @@ async function findCustomerImpl(
   }
 }
 
-export const findCustomerAction = wrapAdminAction(
+export const findCustomerAction = wrapQtekAction(
   "qboFindCustomer",
   findCustomerImpl,
 );

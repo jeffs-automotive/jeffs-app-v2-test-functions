@@ -215,8 +215,13 @@ designed deliberately (don't assume).
 ## 5. Locked decisions
 
 - **QuickBooks Online** is the target (not Desktop).
-- **Discounts: net into each income line**, computed via **pro-rata allocation on the
-  gross RO totals** (Section 4.3) — *not* line-item subtraction.
+- **Discounts: net into each income line via a LABOR → PARTS → SUBLET → FEE waterfall**
+  (fill labor first, overflow to parts, etc.). **CORRECTED 2026-06-03** from live
+  Accounting-Link QBO journal-entry analysis (50 posting days): the real books debit a
+  "Labor Discount" (Sales-Labor) every day with a smaller overflow to Sales-Parts, and
+  never reach sublet/fees. The earlier **pro-rata hypothesis (Section 4.3) was wrong.**
+  We post income **NET** and do **not** track a discount account/line in QBO (per Chris).
+  See `accounting-link-plan.md` §6.
 - Build inside the **test sandbox only**. `dotfiles-v2` and prod `jeffs-app-v2` are
   reference-only.
 

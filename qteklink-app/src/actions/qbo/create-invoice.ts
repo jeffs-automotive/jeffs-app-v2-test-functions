@@ -11,8 +11,8 @@
  */
 import { z } from "zod";
 
-import { requireAdmin } from "@/lib/auth";
-import { wrapAdminAction } from "@/lib/instrument-action";
+import { requireQtekUser } from "@/lib/auth";
+import { wrapQtekAction } from "@/lib/instrument-action";
 import { QboClient } from "@/lib/qbo/client";
 import { invoiceSchema } from "@/lib/qbo/entities";
 import { qboFailure, type QboActionResult } from "./result";
@@ -20,7 +20,7 @@ import { qboFailure, type QboActionResult } from "./result";
 async function createInvoiceImpl(
   input: z.infer<typeof invoiceSchema>,
 ): Promise<QboActionResult<unknown>> {
-  await requireAdmin();
+  await requireQtekUser();
   const parsed = invoiceSchema.safeParse(input);
   if (!parsed.success) {
     return {
@@ -38,7 +38,7 @@ async function createInvoiceImpl(
   }
 }
 
-export const createInvoiceAction = wrapAdminAction(
+export const createInvoiceAction = wrapQtekAction(
   "qboCreateInvoice",
   createInvoiceImpl,
 );
