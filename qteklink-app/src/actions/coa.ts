@@ -17,19 +17,6 @@ import { qboFailure, type QboActionResult } from "./qbo/result";
 
 type RefreshCoaState = QboActionResult<{ realmId: string; synced: number }>;
 
-/**
- * Re-throw Next.js control-flow errors — redirect()/notFound() carry a `NEXT_*`
- * digest and MUST propagate (e.g. requireQtekUser() redirecting an unauthorized
- * user); everything else is turned into the failure envelope.
- */
-function isNextControlFlowError(e: unknown): boolean {
-  const digest = (e as { digest?: unknown } | null)?.digest;
-  return (
-    typeof digest === "string" &&
-    (digest.startsWith("NEXT_REDIRECT") || digest === "NEXT_NOT_FOUND")
-  );
-}
-
 async function refreshCoaImpl(
   _prev: RefreshCoaState | null,
   _formData: FormData,
@@ -50,7 +37,6 @@ async function refreshCoaImpl(
     const data = await syncQboAccounts(shopId);
     return { ok: true, data, timestamp: Date.now() };
   } catch (e) {
-    if (isNextControlFlowError(e)) throw e;
     return qboFailure(e);
   }
 }

@@ -7,6 +7,7 @@
  */
 import { requireQtekUser } from "@/lib/auth";
 import { getCoaSummary } from "@/lib/dal/coa";
+import Link from "next/link";
 import SignOutButton from "./SignOutButton";
 import RefreshCoaButton from "./RefreshCoaButton";
 
@@ -49,6 +50,11 @@ export default async function DashboardPage() {
           </p>
           <p className="mt-2 mb-4 text-sm font-medium text-stone-900">{coaStatus}</p>
           <RefreshCoaButton />
+          <p className="mt-4 text-sm">
+            <Link href="/mappings" className="font-medium text-[#96003C] underline">
+              Manage account mappings &rarr;
+            </Link>
+          </p>
         </section>
       )}
 

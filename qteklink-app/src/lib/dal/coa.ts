@@ -17,6 +17,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { QboClient } from "@/lib/qbo/client";
 import { QboClientError } from "@/lib/qbo/errors";
 import { accountSchema, type QboAccount } from "@/lib/qbo/entities";
+import { resolveRealmForShop } from "@/lib/dal/realm";
 
 interface AccountQueryResponse {
   QueryResponse?: { Account?: unknown[] };
@@ -33,21 +34,6 @@ function toSyncRow(a: QboAccount) {
     classification: a.Classification ?? null,
     active: a.Active,
   };
-}
-
-/**
- * Resolve the QBO realm BOUND to this shop (multi-tenant safety — never a
- * global "most recent" lookup). Returns null when the shop has no connection.
- */
-async function resolveRealmForShop(shopId: number): Promise<string | null> {
-  const admin = createSupabaseAdminClient();
-  const { data, error } = await admin.rpc("qbo_resolve_realm_for_shop", {
-    p_shop_id: shopId,
-  });
-  if (error) {
-    throw new Error(`qbo_resolve_realm_for_shop failed: ${error.message}`);
-  }
-  return typeof data === "string" && data.length > 0 ? data : null;
 }
 
 /**
