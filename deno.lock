@@ -915,6 +915,7 @@
         "npm:@openai/agents@~0.11.6",
         "npm:@supabase/supabase-js@^2.105.4",
         "npm:husky@^9.1.7",
+        "npm:vercel@^54.7.1",
         "npm:zod@4"
       ]
     }

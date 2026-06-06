@@ -11,10 +11,14 @@
 .agents
 .mcp.json
 
-# Per-folder Supabase CLI local state — never commit, all machine-specific
-supabase/.temp/         # link state (project ref, temp creds)
-supabase/.branches/     # `supabase db branches` local pointer
-supabase/snippets/      # SQL snippets synced from dashboard (local cache)
+# Per-folder Supabase CLI local state — never commit, all machine-specific.
+# NOTE: keep these patterns on their own lines — git .gitignore does NOT support
+# inline (trailing) comments, so "supabase/.temp/   # ..." is read as a literal
+# path and silently matches nothing (that bug let supabase/.temp/cli-latest get
+# tracked). Comments must be on separate lines.
+supabase/.temp/
+supabase/.branches/
+supabase/snippets/
 
 # Supabase functions Deno cache (generated)
 supabase/functions/**/.cache/
