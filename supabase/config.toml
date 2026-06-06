@@ -509,6 +509,14 @@ import_map = "./functions/tekmetric-webhook/deno.json"
 # Uncomment to specify a custom file path to the entrypoint.
 # Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
 entrypoint = "./functions/tekmetric-webhook/index.ts"
+
+[functions.qteklink-webhook]
+enabled = true
+# QTekLink Tekmetric intake receiver (C3). Tekmetric cannot send custom headers;
+# auth is via `?token=<TEKMETRIC_WEBHOOK_TOKEN>` query string, validated in-function.
+verify_jwt = false
+import_map = "./functions/qteklink-webhook/deno.json"
+entrypoint = "./functions/qteklink-webhook/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/tekmetric-webhook/*.html" ]
