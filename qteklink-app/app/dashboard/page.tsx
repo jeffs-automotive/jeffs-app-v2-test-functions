@@ -1,16 +1,25 @@
 /**
- * /dashboard — the authed QTekLink landing (C0 placeholder).
+ * /dashboard — the authed QTekLink landing.
  *
- * Proves the end-to-end auth gate: requireQtekUser() enforces session + Entra
- * oid + allowlist + active, and we render the resolved identity + role. The
- * real surfaces (connection status, COA mapping, approval/resolution queues,
- * reconciliation) land in later phases (C6+).
+ * requireQtekUser() enforces session + Entra oid + allowlist + active. Admins
+ * get the live Chart-of-Accounts surface (C1); the mapping UI, approval /
+ * resolution queues, and reconciliation report land in later phases.
  */
 import { requireQtekUser } from "@/lib/auth";
+import { getCoaSummary } from "@/lib/dal/coa";
 import SignOutButton from "./SignOutButton";
+import RefreshCoaButton from "./RefreshCoaButton";
 
 export default async function DashboardPage() {
   const { email, role, shopId } = await requireQtekUser();
+  const coa = role === "admin" ? await getCoaSummary(shopId) : null;
+
+  let coaStatus = "QuickBooks isn't connected for this shop yet.";
+  if (coa?.realmId) {
+    coaStatus = coa.lastSyncedAt
+      ? `${coa.count} account${coa.count === 1 ? "" : "s"} mirrored · last synced ${new Date(coa.lastSyncedAt).toISOString().replace("T", " ").slice(0, 16)} UTC`
+      : "Not synced yet — click below to mirror your chart of accounts.";
+  }
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
@@ -29,6 +38,19 @@ export default async function DashboardPage() {
           <SignOutButton />
         </div>
       </header>
+
+      {role === "admin" && (
+        <section className="mt-8 rounded-lg border border-stone-200 bg-white p-6">
+          <h2 className="text-lg font-semibold text-stone-900">Chart of accounts</h2>
+          <p className="mt-1 text-sm text-stone-600">
+            Mirror your QuickBooks chart of accounts so QTekLink can map Tekmetric
+            line items to the right QBO accounts. Read-only — this never writes to
+            QuickBooks.
+          </p>
+          <p className="mt-2 mb-4 text-sm font-medium text-stone-900">{coaStatus}</p>
+          <RefreshCoaButton />
+        </section>
+      )}
 
       <section className="mt-8 rounded-lg border border-stone-200 bg-white p-6">
         <h2 className="text-lg font-semibold text-stone-900">Coming soon</h2>

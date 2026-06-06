@@ -49,7 +49,26 @@ export const invoiceSchema = z.object({
   TotalAmt: z.number().optional(),
 });
 
+/**
+ * QBO Account — the COA entries QTekLink mirrors into `qbo_accounts` (C1).
+ * Narrow projection of QBO's large Account entity: just the fields the mapping
+ * UI + post-time validation read.
+ */
+export const accountSchema = z.object({
+  Id: z.string().optional(),
+  Name: z.string(),
+  FullyQualifiedName: z.string().optional(),
+  AccountType: z.string().optional(),
+  AccountSubType: z.string().optional(),
+  Classification: z.string().optional(),
+  // QTekLink REQUIRES Active (fail-closed: safeParse DROPS a malformed account
+  // missing it, rather than defaulting it active). NOTE: QBO models Active as
+  // nullable, so this is an app-side tightening — Account responses do return it.
+  Active: z.boolean(),
+});
+
 export type QboRef = z.infer<typeof qboRefSchema>;
 export type QboCustomer = z.infer<typeof customerSchema>;
 export type QboInvoice = z.infer<typeof invoiceSchema>;
+export type QboAccount = z.infer<typeof accountSchema>;
 export type QboFaultEnvelope = z.infer<typeof faultEnvelopeSchema>;

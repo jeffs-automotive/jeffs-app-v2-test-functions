@@ -22,9 +22,22 @@ admin-app already uses. **Authentication is shared; QTekLink is restricted by th
 Add QTekLink's callback to the Supabase **Redirect URLs** allowlist:
 
 1. Supabase Dashboard → **Authentication → URL Configuration → Redirect URLs**
-2. Add: `https://qteklink.jeffsautomotive.com/auth/callback`
-3. (Optional, for Vercel preview deploys) add your preview pattern, e.g.
-   `https://jeffs-app-v2-test-qteklink-*.vercel.app/auth/callback`
+2. Add the **exact** callback, **with the `https://` scheme**:
+   `https://qteklink.jeffsautomotive.com/auth/callback`
+3. (Optional, Vercel preview deploys only) `https://jeffs-app-v2-test-qteklink-*.vercel.app/**`
+
+> ⚠️ **Use the exact URL + scheme — or you land on the scheduler app.** This Supabase
+> project is shared by 3 apps but has ONE **Site URL** (the scheduler). After OAuth,
+> Supabase redirects to your `redirect_to` **only if it matches an allow-list entry** —
+> otherwise it **falls back to the Site URL** (→ scheduler). Matching is a literal glob on
+> the FULL url, and `.`/`/` are separators (`*` won't cross them, `**` will). So a
+> scheme-less entry like `qteklink.jeffsautomotive.com/**` does **not** match
+> `https://qteklink.jeffsautomotive.com/auth/callback` → wrong app. Use the **exact path
+> with `https://`** (Supabase's own production recommendation; the app sends exactly
+> `${origin}/auth/callback`). Keep each app's exact callback in the list
+> (`https://admin.jeffsautomotive.com/auth/callback`,
+> `https://qteklink.jeffsautomotive.com/auth/callback`), and avoid broad patterns like
+> `https://*.jeffsautomotive.com/**`. — source: https://supabase.com/docs/guides/auth/redirect-urls
 
 That's the whole auth change. Azure already redirects to the shared
 `https://itzdasxobllfiuolmbxu.supabase.co/auth/v1/callback`; the app's `/auth/callback` is a

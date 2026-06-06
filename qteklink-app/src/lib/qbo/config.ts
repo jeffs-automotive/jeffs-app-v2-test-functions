@@ -1,8 +1,8 @@
 /**
- * QBO Accounting API client — static config (admin-app, Node runtime).
+ * QBO Accounting API client — static config (qteklink-app, Node runtime).
  *
  * Env-var names mirror the shipped `qbo-oauth-callback` edge fn
- * (`QBO_ENVIRONMENT` / `QBO_CLIENT_ID` / `QBO_CLIENT_SECRET`) so the admin-app
+ * (`QBO_ENVIRONMENT` / `QBO_CLIENT_ID` / `QBO_CLIENT_SECRET`) so the qteklink-app
  * client and the OAuth handshake stay in lockstep. Client ID/Secret are read
  * by `tokens.ts` (via `intuit-oauth`); this module owns the data-call surface
  * (base URL, minor version, retry/timeout caps).
@@ -33,10 +33,10 @@ export function qboBaseUrl(
 }
 
 /**
- * Minor-version pin. `75` is the CURRENT AND ONLY supported minor version:
- * Intuit deprecated 1–74 on 2025-08-01 and ignores any value < 75 (compliance
- * re-review 2026-06-02). Pinned explicitly so a future bump is deliberate, not
- * a silent SDK default. String form for the query param.
+ * Minor-version pin. `75` is the current Intuit SDK default (the official SDKs
+ * ship it) — see Intuit's "Minor versions" page for the authoritative current
+ * value. Pinned explicitly so a future bump is deliberate, not a silent SDK
+ * default. String form for the query param.
  */
 export const QBO_MINORVERSION = "75";
 
