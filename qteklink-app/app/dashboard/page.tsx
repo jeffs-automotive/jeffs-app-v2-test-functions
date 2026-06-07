@@ -10,10 +10,20 @@ import { getCoaSummary } from "@/lib/dal/coa";
 import Link from "next/link";
 import SignOutButton from "./SignOutButton";
 import RefreshCoaButton from "./RefreshCoaButton";
+import { resolveSupabaseUrl } from "@/lib/supabase/resolve-keys";
 
 export default async function DashboardPage() {
   const { email, role, shopId } = await requireQtekUser();
   const coa = role === "admin" ? await getCoaSummary(shopId) : null;
+
+  // The QBO OAuth handshake lives in the qbo-oauth-callback edge function:
+  // ?start=1 → Intuit consent → token exchange → qbo_connections. Connect + reconnect
+  // are the SAME flow (re-running overwrites the stored grant — the fix for an expired
+  // refresh token). Admin-only; gated again by Intuit's own login + consent.
+  const supabaseUrl = resolveSupabaseUrl();
+  const connectUrl = supabaseUrl
+    ? `${supabaseUrl.replace(/\/+$/, "")}/functions/v1/qbo-oauth-callback?start=1`
+    : null;
 
   let coaStatus = "QuickBooks isn't connected for this shop yet.";
   if (coa?.realmId) {
@@ -39,6 +49,19 @@ export default async function DashboardPage() {
           <SignOutButton />
         </div>
       </header>
+
+      {role === "admin" && (
+        <nav className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
+          <Link href="/mappings" className="font-medium text-[#96003C] hover:underline">
+            Account mappings
+          </Link>
+          {connectUrl && (
+            <a href={connectUrl} className="font-medium text-[#96003C] hover:underline">
+              {coa?.realmId ? "Reconnect QuickBooks" : "Connect QuickBooks"}
+            </a>
+          )}
+        </nav>
+      )}
 
       {role === "admin" && (
         <section className="mt-8 rounded-lg border border-stone-200 bg-white p-6">
