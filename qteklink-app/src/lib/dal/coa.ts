@@ -28,6 +28,7 @@ function toSyncRow(a: QboAccount) {
   return {
     qbo_account_id: a.Id ?? "",
     name: a.Name,
+    acct_num: a.AcctNum ?? null,
     fully_qualified_name: a.FullyQualifiedName ?? null,
     account_type: a.AccountType ?? null,
     account_sub_type: a.AccountSubType ?? null,

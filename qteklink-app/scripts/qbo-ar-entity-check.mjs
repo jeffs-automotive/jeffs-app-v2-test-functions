@@ -25,7 +25,11 @@ function serviceKey() {
         const s = typeof v === "string" ? v : v?.value;
         if (s) return s;
       }
-    } catch { /* not the JSON-dict form — fall back to the singular env vars below */ }
+    } catch {
+      // Not the JSON-dict form — fall through to the singular env vars below.
+      // Don't log the error object: a JSON.parse message can echo the malformed secret.
+      console.warn("SUPABASE_SECRET_KEYS was set but is not valid JSON; falling back to SUPABASE_SECRET_KEY / SUPABASE_SERVICE_ROLE_KEY.");
+    }
   }
   return process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || null;
 }

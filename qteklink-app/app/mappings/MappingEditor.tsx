@@ -111,7 +111,7 @@ export default function MappingEditor({ accounts }: { accounts: MappableAccount[
                 <optgroup key={type} label={type}>
                   {accts.map((a) => (
                     <option key={a.qboAccountId} value={a.qboAccountId}>
-                      {a.name}
+                      {a.acctNum ? `${a.acctNum} · ${a.name}` : a.name}
                     </option>
                   ))}
                 </optgroup>

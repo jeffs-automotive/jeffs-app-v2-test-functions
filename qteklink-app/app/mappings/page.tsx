@@ -100,6 +100,7 @@ export default async function MappingsPage() {
                             <span className="font-medium text-stone-900">{m.sourceKey}</span>
                             <span className="text-stone-400"> &rarr; </span>
                             <span className={m.accountStale ? "text-red-700 line-through" : "text-stone-700"}>
+                              {m.accountNum ? `${m.accountNum} · ` : ""}
                               {m.accountName ?? m.qboAccountId}
                             </span>
                             {m.accountStale && (

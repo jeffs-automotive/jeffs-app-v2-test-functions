@@ -27,6 +27,8 @@ export interface MappingRow {
   qboAccountId: string;
   /** Resolved account name (null if the account row is missing entirely). */
   accountName: string | null;
+  /** Resolved account NUMBER (QBO AcctNum, e.g. "120") for display; null if the account has none or the row is missing. */
+  accountNum: string | null;
   accountType: string | null;
   /** True when the mapped account has since been removed (soft-deleted) OR deactivated in QBO — re-map. */
   accountStale: boolean;
@@ -39,6 +41,8 @@ export interface MappingRow {
 export interface MappableAccount {
   qboAccountId: string;
   name: string;
+  /** QBO account NUMBER (AcctNum, e.g. "120"); null if the account has none. */
+  acctNum: string | null;
   accountType: string | null;
   accountSubType: string | null;
 }
@@ -67,6 +71,7 @@ interface MappingDbRow {
 interface AccountDbRow {
   qbo_account_id: string;
   name: string;
+  acct_num: string | null;
   account_type: string | null;
   active: boolean;
   deleted_at: string | null;
@@ -101,7 +106,7 @@ export async function listMappings(
   // shows its account name + can be flagged.
   const { data: acctData, error: acctErr } = await admin
     .from("qbo_accounts")
-    .select("qbo_account_id, name, account_type, active, deleted_at")
+    .select("qbo_account_id, name, acct_num, account_type, active, deleted_at")
     .eq("shop_id", shopId)
     .eq("realm_id", realmId);
   if (acctErr) throw new Error(`listMappings (accounts) failed: ${acctErr.message}`);
@@ -119,6 +124,7 @@ export async function listMappings(
       sourceId: m.source_id,
       qboAccountId: m.qbo_account_id,
       accountName: acct?.name ?? null,
+      accountNum: acct?.acct_num ?? null,
       accountType: acct?.account_type ?? null,
       accountStale: acct ? acct.deleted_at !== null || acct.active === false : true,
       postingRole: m.posting_role,
@@ -144,7 +150,7 @@ export async function listMappableAccounts(
   const admin = createSupabaseAdminClient();
   const { data, error } = await admin
     .from("qbo_accounts")
-    .select("qbo_account_id, name, account_type, account_sub_type")
+    .select("qbo_account_id, name, acct_num, account_type, account_sub_type")
     .eq("shop_id", shopId)
     .eq("realm_id", realmId)
     .eq("active", true)
@@ -157,12 +163,14 @@ export async function listMappableAccounts(
     (data ?? []) as {
       qbo_account_id: string;
       name: string;
+      acct_num: string | null;
       account_type: string | null;
       account_sub_type: string | null;
     }[]
   ).map((a) => ({
     qboAccountId: a.qbo_account_id,
     name: a.name,
+    acctNum: a.acct_num,
     accountType: a.account_type,
     accountSubType: a.account_sub_type,
   }));

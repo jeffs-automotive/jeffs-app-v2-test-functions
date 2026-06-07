@@ -60,9 +60,9 @@ describe("listMappings", () => {
     });
     const acctChain = chainResolving({
       data: [
-        { qbo_account_id: "275", name: "Sales - Labor", account_type: "Income", active: true, deleted_at: null },
-        { qbo_account_id: "999", name: "Removed Income", account_type: "Income", active: true, deleted_at: "2026-06-06T01:00:00Z" },
-        { qbo_account_id: "400", name: "Deactivated Income", account_type: "Income", active: false, deleted_at: null },
+        { qbo_account_id: "275", name: "Sales - Labor", acct_num: "412", account_type: "Income", active: true, deleted_at: null },
+        { qbo_account_id: "999", name: "Removed Income", acct_num: "601", account_type: "Income", active: true, deleted_at: "2026-06-06T01:00:00Z" },
+        { qbo_account_id: "400", name: "Deactivated Income", acct_num: null, account_type: "Income", active: false, deleted_at: null },
       ],
       error: null,
     });
@@ -72,7 +72,7 @@ describe("listMappings", () => {
     expect(rpcMock).toHaveBeenCalledWith("qbo_resolve_realm_for_shop", { p_shop_id: 7476 });
     expect(res.realmId).toBe(REALM);
     expect(res.mappings).toHaveLength(3);
-    expect(res.mappings[0]).toMatchObject({ qboAccountId: "275", accountName: "Sales - Labor", accountStale: false });
+    expect(res.mappings[0]).toMatchObject({ qboAccountId: "275", accountName: "Sales - Labor", accountNum: "412", accountStale: false });
     expect(res.mappings[1]).toMatchObject({ qboAccountId: "999", accountName: "Removed Income", accountStale: true });
     expect(res.mappings[2]).toMatchObject({ qboAccountId: "400", accountName: "Deactivated Income", accountStale: true });
   });
@@ -98,13 +98,13 @@ describe("listMappableAccounts", () => {
   it("returns live accounts for the picker", async () => {
     fromMock.mockReturnValue(
       chainResolving({
-        data: [{ qbo_account_id: "275", name: "Sales - Labor", account_type: "Income", account_sub_type: "ServiceFeeIncome" }],
+        data: [{ qbo_account_id: "275", name: "Sales - Labor", acct_num: "412", account_type: "Income", account_sub_type: "ServiceFeeIncome" }],
         error: null,
       }),
     );
     const res = await listMappableAccounts(7476);
     expect(fromMock).toHaveBeenCalledWith("qbo_accounts");
-    expect(res).toEqual([{ qboAccountId: "275", name: "Sales - Labor", accountType: "Income", accountSubType: "ServiceFeeIncome" }]);
+    expect(res).toEqual([{ qboAccountId: "275", name: "Sales - Labor", acctNum: "412", accountType: "Income", accountSubType: "ServiceFeeIncome" }]);
   });
 
   it("returns [] when the shop has no connection", async () => {

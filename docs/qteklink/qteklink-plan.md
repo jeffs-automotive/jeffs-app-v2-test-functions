@@ -23,7 +23,9 @@ One-way **Tekmetric → QBO** sync (nothing flows back). Fixes the commercial pr
 - **IN:** RO **revenue** (parts/labor/sublet/fees, net of discount), **A/R**, **cash/payments** (Undeposited), **credit-card processing fees**, **non-cash** routing, **change/refund/void** handling.
 - **OUT:** COGS / parts cost / sublet cost / A/P / vendor bills / POs / inventory. **Only expense posted = credit-card fees.**
 - **Sublet *sales* → income** (Sales – Sublet), never A/P.
-- **A/R *not* tracked by customer** → plain JE lines, RO#/name in the description; **bulk receivable** (Chris confirmed). API-permitted at minorversion 75 (live-verified; AL does it) — kept as a **build-time live-API check + fail-closed guard** (§13/§17), since the QBO *UI* mandates a name and it's minorversion-sensitive.
+- **A/R *not* tracked by customer** → plain JE lines, RO#/name in the description; **bulk receivable** (Chris confirmed). Works because the A/R target is an **Other Current Asset** account (Jeff's `[235]` "ACCOUNTS RECEIVABLE", **acct# 120**): QBO mandates a Customer `Entity` on a JE line **only** when that line posts to a true **Accounts Receivable**-*type* account (a Vendor for **Accounts Payable**) — Other-Current-Asset lines have no such mandate (live-verified at minorversion 75; AL does it). Kept as a **build-time live-API check + `ar_entity_rejected` fail-closed guard** (§13/§17) for the case A/R is ever mapped to a true A/R-type account.
+
+> **Macro / micro principle (Chris, 2026-06-07):** QBO is the **macro** roll-up (the overall financial picture); **Tekmetric is the micro** sub-ledger (per-customer, per-RO / per-vehicle detail). QTekLink rolls micro → macro: it posts **bulk JEs only** and **never creates QBO Customers, Invoices, or Vendors**. Consequence: bulk A/R ⇒ an **Other Current Asset** account (a true A/R-type account would force a per-customer `Entity` on every line); per-customer A/R aging lives in **Tekmetric**, not QBO — intended, not a gap.
 
 ---
 
@@ -107,7 +109,7 @@ Every table: `shop_id NOT NULL` **+ `realm_id NOT NULL`, both in every uniquenes
 
 > **Comprehensive mapping is the point of the app:** *every* Tekmetric line — fees, part categories, sublet, taxes, payment types — resolves to a QBO account via `qteklink_mappings`; **any unmapped item routes to the resolution queue (§9), so nothing is ever left unmapped.**
 
-**A/R + cash:** A/R → Accounts Receivable `[235]` (no `EntityRef`); CC fee → Bank/Credit Card Fees `[309]`.
+**A/R + cash:** A/R → "ACCOUNTS RECEIVABLE" `[235]` (acct# 120; QBO type **Other Current Asset** — *not* a true A/R-type account, so the bulk line carries no `EntityRef`; §0 macro/micro + §13). The `accounts_receivable` mapping role is constrained to **Other Current Asset** (migration `20260607020000`). CC fee → Bank/Credit Card Fees `[309]`.
 
 **Non-cash (`OTH` → `otherPaymentType.name`) → expense/contra, NOT Undeposited:** Tire Protection Plan → Tire Protection Plan Redemption `[1150040010]`; Shop Vehicle → Shop Vehicle Repair `[1150040014]`; **Mistake / Other / new → resolution queue**.
 
@@ -242,7 +244,7 @@ Authored **after** the app (Chris): `qtl-je-balances`, `qtl-discount-waterfall-c
 
 ## 17. Open questions / risks (verify during build)
 
-1. **A/R JE line without `EntityRef`** — API-permitted at minorversion 75 + live-proven, but UI-mandated + minorversion-sensitive → C5/C6 live-API check + the `ar_entity_rejected` fail-closed guard (§13).
+1. **A/R JE line without `EntityRef`** — **RESOLVED (2026-06-07).** The Entity mandate is **account-type-driven**, not a minorversion quirk: QBO requires a Customer `Entity` only on a line posting to a true **Accounts Receivable**-*type* account (a Vendor for **A/P**). Jeff's A/R target `[235]` (acct# 120) is **Other Current Asset**, so the bulk Entity-less line is structurally supported (live-verified at mv75 — probe JE 25735 accepted + deleted net-zero). The `accounts_receivable` mapping role is now constrained to **Other Current Asset** (migration `20260607020000`); the `ar_entity_rejected` guard stays as defense-in-depth for a future A/R-type misconfig / mv tightening.
 2. **Settle/completeness window** tuning.
 3. **Unpost event delivery** — confirm; else sync-time deltas.
 4. **First production QBO write** is human-approved.

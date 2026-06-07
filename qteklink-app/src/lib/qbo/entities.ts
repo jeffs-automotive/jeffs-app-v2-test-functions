@@ -1,6 +1,6 @@
 /**
  * Minimal Zod schemas for the QBO entities the v1 client touches (Customer,
- * Invoice) + the Fault envelope. Intentionally narrow — QBO entities are large;
+ * Invoice, Account, JournalEntry) + the Fault envelope. Intentionally narrow — QBO entities are large;
  * we model the fields v1 reads/writes and refine per-action later. `code` is a
  * STRING (e.g. "003001"). See docs/qbo/qbo-api-client-plan.md.
  */
@@ -57,6 +57,10 @@ export const invoiceSchema = z.object({
 export const accountSchema = z.object({
   Id: z.string().optional(),
   Name: z.string(),
+  // The user-facing account NUMBER (e.g. "120" for ACCOUNTS RECEIVABLE). QBO may
+  // OMIT it (many system accounts have none) or send null — .nullish() tolerates
+  // both so a null AcctNum never DROPS the account (true-mirror would soft-delete it).
+  AcctNum: z.string().nullish(),
   FullyQualifiedName: z.string().optional(),
   AccountType: z.string().optional(),
   AccountSubType: z.string().optional(),

@@ -34,6 +34,10 @@ SELECT is((SELECT relrowsecurity FROM pg_class WHERE relname='qteklink_mappings'
 SELECT ok(public.qteklink_role_accepts_type('income','Income'), 'role: income accepts Income');
 SELECT ok(NOT public.qteklink_role_accepts_type('income','Expense'), 'role: income rejects Expense');
 SELECT ok(public.qteklink_role_accepts_type('cc_fee','Expense'), 'role: cc_fee accepts Expense');
+SELECT ok(public.qteklink_role_accepts_type('accounts_receivable','Other Current Asset'), 'role: accounts_receivable accepts Other Current Asset (bulk customer-less A/R)');
+SELECT ok(NOT public.qteklink_role_accepts_type('accounts_receivable','Accounts Receivable'), 'role: accounts_receivable REJECTS a true Accounts Receivable type (it would force a per-line Customer Entity)');
+SELECT ok(public.qteklink_role_accepts_type('accounts_receivable', NULL::text) IS FALSE, 'role matrix is NULL-safe: accounts_receivable vs NULL type -> FALSE (not NULL)');
+SELECT ok(public.qteklink_role_accepts_type('income', NULL::text) IS FALSE, 'role matrix is NULL-safe: income vs NULL type -> FALSE (not NULL)');
 SELECT ok(public.qteklink_kind_accepts_role('labor','income'), 'kind: labor accepts income');
 SELECT ok(NOT public.qteklink_kind_accepts_role('labor','cc_fee'), 'kind: labor rejects cc_fee');
 SELECT ok(public.qteklink_kind_accepts_role('tax','sales_tax_payable'), 'kind: tax accepts sales_tax_payable');
@@ -49,7 +53,9 @@ INSERT INTO public.qbo_accounts (shop_id, realm_id, qbo_account_id, name, accoun
 VALUES
   (7476,'realm-A','275','Sales - Labor','Income',true,NULL),
   (7476,'realm-A','276','Sales - Sublet','Income',true,NULL),
-  (7476,'realm-A','235','Accounts Receivable','Accounts Receivable',true,NULL),
+  (7476,'realm-A','235','ACCOUNTS RECEIVABLE','Other Current Asset',true,NULL),  -- acct# 120; the bulk A/R target (OCA, not a true A/R type)
+  (7476,'realm-A','236','True A/R (synthetic)','Accounts Receivable',true,NULL), -- a real A/R-TYPE acct: must be REJECTED for the accounts_receivable role
+  (7476,'realm-A','237','No-Type Account',NULL,true,NULL),                        -- account_type NULL: must be unmappable for any role (NULL-safe gate)
   (7476,'realm-A','309','Bank/CC Fees','Expense',true,NULL),
   (7476,'realm-A','400','Inactive Income','Income',false,NULL),       -- INACTIVE
   (7476,'realm-A','999','Removed Income','Income',true,now()),        -- soft-deleted
@@ -58,6 +64,7 @@ VALUES
 -- ─── Happy paths ────────────────────────────────────────────────────────
 SELECT isnt(public.qteklink_set_mapping(7476,'realm-A','labor','Labor',NULL,'275','income'), NULL, 'labor->275 ok');
 SELECT isnt(public.qteklink_set_mapping(7476,'realm-A','system','cc_fee',NULL,'309','cc_fee'), NULL, 'system cc_fee->309 ok');
+SELECT isnt(public.qteklink_set_mapping(7476,'realm-A','system','accounts_receivable',NULL,'235','accounts_receivable'), NULL, 'system accounts_receivable -> 235 (Other Current Asset, acct# 120) ok');
 
 -- ─── pass_through (C5): fee-only flag, excluded from the discount waterfall ──
 SELECT isnt(public.qteklink_set_mapping(7476,'realm-A','fee','State Communication Fee',NULL,'276','income',true), NULL, 'pass-through fee mapping ok');
@@ -73,6 +80,8 @@ SELECT throws_ok($$ SELECT public.qteklink_set_mapping(7476,'realm-A','fee','X',
 SELECT throws_ok($$ SELECT public.qteklink_set_mapping(7476,'realm-A','labor','L2',NULL,'275','cc_fee') $$, 'P0001', NULL, 'kind<->role: labor cannot use cc_fee (RPC)');
 SELECT throws_ok($$ SELECT public.qteklink_set_mapping(7476,'realm-A','system','bogus',NULL,'235','accounts_receivable') $$, 'P0001', NULL, 'system bogus source_key rejected (RPC)');
 SELECT throws_ok($$ SELECT public.qteklink_set_mapping(7476,'realm-A','system','cc_fee',NULL,'309','accounts_receivable') $$, 'P0001', NULL, 'system role must equal source_key (RPC)');
+SELECT throws_ok($$ SELECT public.qteklink_set_mapping(7476,'realm-A','system','accounts_receivable',NULL,'236','accounts_receivable') $$, 'P0001', NULL, 'A/R role REJECTS a true Accounts-Receivable-TYPE account (236) — bulk A/R must be Other Current Asset');
+SELECT throws_ok($$ SELECT public.qteklink_set_mapping(7476,'realm-A','system','undeposited_funds',NULL,'237','undeposited_funds') $$, 'P0001', NULL, 'NULL account_type is unmappable for any role (NULL-safe role<->type gate)');
 -- the rejected attempts left the original labor->275 untouched
 SELECT is((SELECT qbo_account_id FROM public.qteklink_mappings WHERE shop_id=7476 AND realm_id='realm-A' AND kind='labor' AND source_key='Labor' AND active), '275', 'labor->275 unchanged after rejections');
 

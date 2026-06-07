@@ -25,6 +25,7 @@ SELECT * FROM no_plan();
 SELECT has_table('public', 'qbo_accounts', 'qbo_accounts table exists');
 SELECT has_table('public', 'qbo_coa_sync_state', 'qbo_coa_sync_state table exists');
 SELECT has_column('public', 'qbo_accounts', 'deleted_at', 'qbo_accounts has deleted_at (soft-delete)');
+SELECT has_column('public', 'qbo_accounts', 'acct_num', 'qbo_accounts has acct_num (QBO account number)');
 SELECT has_function('public', 'qbo_accounts_sync', ARRAY['integer', 'text', 'jsonb'], 'qbo_accounts_sync exists');
 SELECT has_function('public', 'qbo_resolve_realm_for_shop', ARRAY['integer'], 'qbo_resolve_realm_for_shop exists');
 SELECT is((SELECT relrowsecurity FROM pg_class WHERE relname='qbo_accounts' AND relnamespace='public'::regnamespace), true, 'RLS on qbo_accounts');
@@ -44,13 +45,19 @@ SELECT is(public.qbo_resolve_realm_for_shop(99999), NULL, 'resolver: no connecti
 SELECT is(
   public.qbo_accounts_sync(7476, 'realm-A', $json$[
     {"qbo_account_id":"275","name":"Sales - Labor","account_type":"Income","active":true},
-    {"qbo_account_id":"235","name":"Accounts Receivable","account_type":"Accounts Receivable","active":true},
+    {"qbo_account_id":"235","name":"ACCOUNTS RECEIVABLE","acct_num":"120","account_type":"Other Current Asset","active":true},
     {"qbo_account_id":"  ","name":"blank id","active":true},
     {"qbo_account_id":"BN","name":"   ","active":true}
   ]$json$::jsonb),
   2, 'initial sync returns live count 2 (blanks skipped)');
 SELECT is((SELECT account_count FROM public.qbo_coa_sync_state WHERE shop_id=7476 AND realm_id='realm-A'),
   2, 'sync-state live count = 2');
+
+-- acct_num (the QBO account NUMBER) round-trips; NULL when the payload omits it
+SELECT is((SELECT acct_num FROM public.qbo_accounts WHERE realm_id='realm-A' AND qbo_account_id='235'),
+  '120', 'acct_num "120" round-trips (235 ACCOUNTS RECEIVABLE)');
+SELECT is((SELECT acct_num FROM public.qbo_accounts WHERE realm_id='realm-A' AND qbo_account_id='275'),
+  NULL, 'acct_num NULL when the payload omits it (275)');
 
 -- ─── Rename with BOTH present: 275 renamed, both stay live ──────────────
 SELECT is(

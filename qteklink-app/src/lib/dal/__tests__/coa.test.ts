@@ -61,13 +61,14 @@ describe("syncQboAccounts", () => {
           {
             Id: "275",
             Name: "Sales - Labor",
+            AcctNum: null, // QBO sent AcctNum=null -> .nullish() keeps the account, maps to acct_num:null
             AccountType: "Income",
             AccountSubType: "ServiceFeeIncome",
             Classification: "Revenue",
             FullyQualifiedName: "Sales - Labor",
             Active: true,
           },
-          { Id: "235", Name: "Accounts Receivable", AccountType: "Accounts Receivable", Active: false },
+          { Id: "235", Name: "ACCOUNTS RECEIVABLE", AcctNum: "120", AccountType: "Other Current Asset", Active: false },
         ],
       },
     });
@@ -83,6 +84,7 @@ describe("syncQboAccounts", () => {
         {
           qbo_account_id: "275",
           name: "Sales - Labor",
+          acct_num: null, // no AcctNum on the fixture -> null
           fully_qualified_name: "Sales - Labor",
           account_type: "Income",
           account_sub_type: "ServiceFeeIncome",
@@ -91,9 +93,10 @@ describe("syncQboAccounts", () => {
         },
         {
           qbo_account_id: "235",
-          name: "Accounts Receivable",
+          name: "ACCOUNTS RECEIVABLE",
+          acct_num: "120",
           fully_qualified_name: null,
-          account_type: "Accounts Receivable",
+          account_type: "Other Current Asset",
           account_sub_type: null,
           classification: null,
           active: false,
