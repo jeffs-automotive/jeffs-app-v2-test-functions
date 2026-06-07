@@ -67,8 +67,45 @@ export const accountSchema = z.object({
   Active: z.boolean(),
 });
 
+/**
+ * QBO JournalEntry — the posting mechanism for QTekLink (C5 SALE builder + C8
+ * poster). Narrow projection: the fields we build/read. Each line is a debit OR a
+ * credit (JournalEntryLineDetail.PostingType) to an AccountRef; an A/R line may
+ * carry an Entity, but QTekLink posts bulk A/R WITHOUT one (plan §13 — verified at
+ * minorversion 75 + guarded by ar_entity_rejected). `.passthrough()` keeps QBO's
+ * other fields on read without modeling them.
+ */
+export const journalEntryLineSchema = z
+  .object({
+    Id: z.string().optional(),
+    Amount: z.number(),
+    Description: z.string().optional(),
+    DetailType: z.string().optional(),
+    JournalEntryLineDetail: z
+      .object({
+        PostingType: z.enum(["Debit", "Credit"]),
+        AccountRef: qboRefSchema,
+        Entity: z.unknown().optional(),
+      })
+      .passthrough(),
+  })
+  .passthrough();
+
+export const journalEntrySchema = z
+  .object({
+    Id: z.string().optional(),
+    SyncToken: z.string().optional(),
+    DocNumber: z.string().optional(),
+    TxnDate: z.string().optional(),
+    TotalAmt: z.number().optional(),
+    Line: z.array(journalEntryLineSchema),
+  })
+  .passthrough();
+
 export type QboRef = z.infer<typeof qboRefSchema>;
 export type QboCustomer = z.infer<typeof customerSchema>;
 export type QboInvoice = z.infer<typeof invoiceSchema>;
 export type QboAccount = z.infer<typeof accountSchema>;
+export type QboJournalEntryLine = z.infer<typeof journalEntryLineSchema>;
+export type QboJournalEntry = z.infer<typeof journalEntrySchema>;
 export type QboFaultEnvelope = z.infer<typeof faultEnvelopeSchema>;

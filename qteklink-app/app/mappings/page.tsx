@@ -107,6 +107,11 @@ export default async function MappingsPage() {
                                 removed / inactive in QBO
                               </span>
                             )}
+                            {m.passThrough && (
+                              <span className="ml-2 rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-600">
+                                pass-through
+                              </span>
+                            )}
                           </span>
                           <span className="mx-3 text-xs uppercase tracking-wide text-stone-400">
                             {ROLE_LABELS[m.postingRole as PostingRole] ?? m.postingRole}

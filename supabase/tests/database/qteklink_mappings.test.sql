@@ -23,7 +23,7 @@ SELECT * FROM no_plan();
 
 -- ─── Existence + RLS + trigger ──────────────────────────────────────────
 SELECT has_table('public', 'qteklink_mappings', 'qteklink_mappings table exists');
-SELECT has_function('public', 'qteklink_set_mapping', ARRAY['integer','text','text','text','text','text','text'], 'set_mapping exists');
+SELECT has_function('public', 'qteklink_set_mapping', ARRAY['integer','text','text','text','text','text','text','boolean'], 'set_mapping exists (8-arg incl. pass_through)');
 SELECT has_function('public', 'qteklink_deactivate_mapping', ARRAY['integer','text','uuid'], 'deactivate_mapping exists');
 SELECT has_function('public', 'qteklink_role_accepts_type', ARRAY['text','text'], 'role_accepts_type exists');
 SELECT has_function('public', 'qteklink_kind_accepts_role', ARRAY['text','text'], 'kind_accepts_role exists');
@@ -58,6 +58,12 @@ VALUES
 -- ─── Happy paths ────────────────────────────────────────────────────────
 SELECT isnt(public.qteklink_set_mapping(7476,'realm-A','labor','Labor',NULL,'275','income'), NULL, 'labor->275 ok');
 SELECT isnt(public.qteklink_set_mapping(7476,'realm-A','system','cc_fee',NULL,'309','cc_fee'), NULL, 'system cc_fee->309 ok');
+
+-- ─── pass_through (C5): fee-only flag, excluded from the discount waterfall ──
+SELECT isnt(public.qteklink_set_mapping(7476,'realm-A','fee','State Communication Fee',NULL,'276','income',true), NULL, 'pass-through fee mapping ok');
+SELECT is((SELECT pass_through FROM public.qteklink_mappings WHERE shop_id=7476 AND realm_id='realm-A' AND kind='fee' AND source_key='State Communication Fee' AND active), true, 'pass_through stored true on the fee mapping');
+SELECT throws_ok($$ SELECT public.qteklink_set_mapping(7476,'realm-A','labor','Labor2',NULL,'275','income',true) $$, 'P0001', NULL, 'RPC guard: pass_through rejected on a non-fee kind');
+SELECT throws_ok($$ INSERT INTO public.qteklink_mappings (shop_id,realm_id,kind,source_key,qbo_account_id,posting_role,pass_through,active) VALUES (7476,'realm-A','labor','LX','275','income',true,true) $$, '23514', NULL, 'CHECK: pass_through rejected on a non-fee direct insert');
 
 -- ─── Rejections (RPC + trigger) ─────────────────────────────────────────
 SELECT throws_ok($$ SELECT public.qteklink_set_mapping(7476,'realm-A','labor','L1',NULL,'309','income') $$, 'P0001', NULL, 'role<->type: income rejects an Expense account (trigger)');

@@ -31,6 +31,8 @@ export interface MappingRow {
   /** True when the mapped account has since been removed (soft-deleted) OR deactivated in QBO — re-map. */
   accountStale: boolean;
   postingRole: string;
+  /** Fee mappings only: this pass-through / mandated fee is excluded from the C5 discount waterfall. */
+  passThrough: boolean;
   effectiveFrom: string;
 }
 
@@ -47,6 +49,8 @@ export interface SetMappingInput {
   sourceId?: string | null;
   qboAccountId: string;
   postingRole: string;
+  /** Fee mappings only: exclude this fee from the C5 discount waterfall. */
+  passThrough?: boolean;
 }
 
 interface MappingDbRow {
@@ -56,6 +60,7 @@ interface MappingDbRow {
   source_id: string | null;
   qbo_account_id: string;
   posting_role: string;
+  pass_through: boolean;
   effective_from: string;
 }
 
@@ -83,7 +88,7 @@ export async function listMappings(
 
   const { data: mapData, error: mapErr } = await admin
     .from("qteklink_mappings")
-    .select("id, kind, source_key, source_id, qbo_account_id, posting_role, effective_from")
+    .select("id, kind, source_key, source_id, qbo_account_id, posting_role, pass_through, effective_from")
     .eq("shop_id", shopId)
     .eq("realm_id", realmId)
     .eq("active", true)
@@ -117,6 +122,7 @@ export async function listMappings(
       accountType: acct?.account_type ?? null,
       accountStale: acct ? acct.deleted_at !== null || acct.active === false : true,
       postingRole: m.posting_role,
+      passThrough: m.pass_through === true,
       effectiveFrom: m.effective_from,
     };
   });
@@ -188,6 +194,7 @@ export async function setMapping(
     p_source_id: input.sourceId ?? null,
     p_qbo_account_id: input.qboAccountId,
     p_posting_role: input.postingRole,
+    p_pass_through: input.passThrough ?? false,
   });
   if (error) {
     // P0001 = a deliberate business rejection from the RPC (role-incompat,

@@ -130,8 +130,19 @@ describe("setMapping", () => {
       p_source_id: null,
       p_qbo_account_id: "275",
       p_posting_role: "income",
+      p_pass_through: false,
     });
     expect(res).toEqual({ id: "new-uuid" });
+  });
+
+  it("passes p_pass_through:true for a pass-through fee mapping", async () => {
+    rpcMock.mockImplementation((fn: string) => {
+      if (fn === "qbo_resolve_realm_for_shop") return Promise.resolve({ data: REALM, error: null });
+      if (fn === "qteklink_set_mapping") return Promise.resolve({ data: "fee-uuid", error: null });
+      return Promise.resolve({ data: null, error: null });
+    });
+    await setMapping(7476, { kind: "fee", sourceKey: "State Communication Fee", qboAccountId: "276", postingRole: "income", passThrough: true });
+    expect(rpcMock).toHaveBeenCalledWith("qteklink_set_mapping", expect.objectContaining({ p_kind: "fee", p_pass_through: true }));
   });
 
   it("FAILS CLOSED with reconnect_required when the shop has no connection", async () => {

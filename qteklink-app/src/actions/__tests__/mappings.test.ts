@@ -45,8 +45,27 @@ describe("setMappingAction", () => {
       sourceId: null,
       qboAccountId: "275",
       postingRole: "income",
+      passThrough: false,
     });
     expect(r).toMatchObject({ ok: true, data: { id: "new-uuid" } });
+  });
+
+  it("passes passThrough:true for a fee marked pass-through", async () => {
+    const r = await setMappingAction(
+      null,
+      fd({ kind: "fee", source_key: "State Communication Fee", qbo_account_id: "276", posting_role: "income", pass_through: "on" }),
+    );
+    expect(setMappingMock).toHaveBeenCalledWith(7476, expect.objectContaining({ kind: "fee", passThrough: true }));
+    expect(r).toMatchObject({ ok: true });
+  });
+
+  it("rejects pass-through on a NON-fee kind (no DAL call)", async () => {
+    const r = await setMappingAction(
+      null,
+      fd({ kind: "labor", source_key: "Labor", qbo_account_id: "275", posting_role: "income", pass_through: "on" }),
+    );
+    expect(r).toMatchObject({ ok: false, reason: "validation" });
+    expect(setMappingMock).not.toHaveBeenCalled();
   });
 
   it("denies a non-admin BEFORE touching the DAL", async () => {

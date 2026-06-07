@@ -7,7 +7,7 @@
  * The account <select> is grouped by QBO account type; the DB RPC is the
  * authoritative role-compat gate, so an incompatible pick returns a clear error.
  */
-import { useActionState, useEffect, useRef } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { setMappingAction } from "@/actions/mappings";
 import {
@@ -21,12 +21,14 @@ import type { MappableAccount } from "@/lib/dal/mappings";
 export default function MappingEditor({ accounts }: { accounts: MappableAccount[] }) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
+  const [kind, setKind] = useState("labor");
   const [state, formAction, pending] = useActionState(setMappingAction, null);
 
   useEffect(() => {
     if (state?.ok) {
       router.refresh();
       formRef.current?.reset();
+      setKind("labor"); // form.reset() doesn't reset a controlled select
     }
   }, [state?.timestamp, state?.ok, router]);
 
@@ -58,7 +60,12 @@ export default function MappingEditor({ accounts }: { accounts: MappableAccount[
         <form ref={formRef} action={formAction} className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className="block">
             <span className={labelCls}>Kind</span>
-            <select name="kind" defaultValue="labor" className={fieldCls}>
+            <select
+              name="kind"
+              value={kind}
+              onChange={(e) => setKind(e.target.value)}
+              className={fieldCls}
+            >
               {MAPPING_KINDS.map((k) => (
                 <option key={k} value={k}>
                   {KIND_LABELS[k]}
@@ -111,6 +118,16 @@ export default function MappingEditor({ accounts }: { accounts: MappableAccount[
               ))}
             </select>
           </label>
+
+          {kind === "fee" && (
+            <label className="flex items-start gap-2 sm:col-span-2">
+              <input type="checkbox" name="pass_through" className="mt-0.5" />
+              <span className="text-sm text-stone-700">
+                <span className="font-medium">Pass-through fee</span> — exclude from the
+                discount waterfall (a mandated / third-party fee is never discounted).
+              </span>
+            </label>
+          )}
 
           <div className="sm:col-span-2">
             <button

@@ -16,13 +16,19 @@ import { setMapping, deactivateMapping } from "@/lib/dal/mappings";
 import { MAPPING_KINDS, POSTING_ROLES } from "@/lib/mappings/catalog";
 import { qboFailure, type QboActionResult } from "./qbo/result";
 
-const SetMappingSchema = z.object({
-  kind: z.enum(MAPPING_KINDS),
-  sourceKey: z.string().trim().min(1, "Source key is required.").max(200),
-  sourceId: z.string().trim().max(200).optional().nullable(),
-  qboAccountId: z.string().trim().min(1, "An account is required.").max(100),
-  postingRole: z.enum(POSTING_ROLES),
-});
+const SetMappingSchema = z
+  .object({
+    kind: z.enum(MAPPING_KINDS),
+    sourceKey: z.string().trim().min(1, "Source key is required.").max(200),
+    sourceId: z.string().trim().max(200).optional().nullable(),
+    qboAccountId: z.string().trim().min(1, "An account is required.").max(100),
+    postingRole: z.enum(POSTING_ROLES),
+    passThrough: z.boolean().optional(),
+  })
+  .refine((d) => !d.passThrough || d.kind === "fee", {
+    message: "Pass-through applies only to fee mappings.",
+    path: ["passThrough"],
+  });
 
 type SetMappingState = QboActionResult<{ id: string }>;
 type DeactivateState = QboActionResult<{ deactivated: boolean }>;
@@ -57,6 +63,7 @@ async function setMappingImpl(
       sourceId: formData.get("source_id") || null,
       qboAccountId: formData.get("qbo_account_id"),
       postingRole: formData.get("posting_role"),
+      passThrough: formData.get("pass_through") === "on",
     });
     if (!parsed.success) {
       return {
