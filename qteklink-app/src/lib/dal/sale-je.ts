@@ -1,6 +1,6 @@
 /**
- * SALE JE DAL (C5) — fetch an RO's latest `ro_posted` snapshot from the
- * append-only `qteklink_events` ledger, resolve the shop's active
+ * SALE JE DAL (C5) — fetch an RO's latest posting (`ro_posted` / `ro_sent_to_ar`)
+ * snapshot from the append-only `qteklink_events` ledger, resolve the shop's active
  * `qteklink_mappings`, and run the pure builder (`@/lib/sales/sale-builder`).
  *
  * Fat-DAL: the business logic is the PURE builder (unit-tested without mocks);
@@ -13,6 +13,7 @@
  */
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { resolveRealmForShop } from "@/lib/dal/realm";
+import { RO_POSTING_EVENT_KINDS } from "@/lib/events/kinds";
 import {
   buildSaleJournalEntry,
   normalizeName,
@@ -35,7 +36,7 @@ interface MappingRow {
 
 export interface BuildSaleResult {
   realmId: string | null;
-  /** null when the shop has no connection OR the RO has no ro_posted snapshot yet. */
+  /** null when the shop has no connection OR the RO has no posting snapshot yet. */
   je: SaleJournalEntry | null;
 }
 
@@ -52,7 +53,7 @@ function cents(v: unknown): number | null {
   return Number.isSafeInteger(n) ? n : null;
 }
 
-/** Map the raw `ro_posted` body.data into the typed snapshot the builder reads.
+/** Map the raw posting (`ro_posted` / `ro_sent_to_ar`) body.data into the typed snapshot the builder reads.
  *  Returns null (→ caller treats as "no usable snapshot") when required fields are
  *  missing/invalid — fail closed, never build a JE from corrupt data. */
 function parseSnapshot(data: unknown): RoSaleSnapshot | null {
@@ -134,7 +135,7 @@ function resolveMappings(rows: MappingRow[]): ResolvedMappings {
 
 /**
  * Build the SALE JE draft for one RO. Returns {realmId:null, je:null} when the
- * shop has no connection, and {realmId, je:null} when the RO has no ro_posted
+ * shop has no connection, and {realmId, je:null} when the RO has no posting
  * snapshot yet. Throws (FAIL CLOSED) on any DB error or an unusable snapshot.
  */
 export async function buildShopRoSaleJe(
@@ -147,14 +148,17 @@ export async function buildShopRoSaleJe(
 
   const admin = createSupabaseAdminClient();
 
-  // Latest ro_posted snapshot for this RO (append-only ledger → newest received).
+  // Latest POSTING snapshot for this RO (append-only ledger → newest received).
+  // ro_posted (paid) OR ro_sent_to_ar (on A/R) BOTH finalize the sale; an A/R RO
+  // arrives ONLY as ro_sent_to_ar (@/lib/events/kinds), so filtering ro_posted
+  // alone would silently drop every A/R sale. Latest-of-either wins via the order.
   const { data: evRows, error: evErr } = await admin
     .from("qteklink_events")
     .select("raw_body, received_at")
     .eq("shop_id", shopId)
     .eq("realm_id", realmId)
     .eq("tekmetric_ro_id", repairOrderId)
-    .eq("event_kind", "ro_posted")
+    .in("event_kind", [...RO_POSTING_EVENT_KINDS])
     // Latest by business posted-time, tie-break received_at — an out-of-order re-delivery
     // of an OLDER repost must not supersede the newest posted state.
     .order("tekmetric_event_at", { ascending: false, nullsFirst: false })
@@ -167,7 +171,7 @@ export async function buildShopRoSaleJe(
 
   const snapshot = parseSnapshot(latest.raw_body?.data);
   if (!snapshot) {
-    throw new Error(`buildShopRoSaleJe: ro_posted event for RO ${repairOrderId} has no usable snapshot`);
+    throw new Error(`buildShopRoSaleJe: posting event for RO ${repairOrderId} has no usable snapshot`);
   }
 
   const { data: mapRows, error: mapErr } = await admin

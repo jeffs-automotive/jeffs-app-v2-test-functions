@@ -119,6 +119,8 @@ Every table: `shop_id NOT NULL` **+ `realm_id NOT NULL`, both in every uniquenes
 
 ## 5. Posting model — separate, independently-dated JEs
 
+**Posting trigger (corrected 2026-06-07):** an RO is *posted* via **`ro_posted`** (posted + paid) **OR** **`ro_sent_to_ar`** (posted on A/R, unpaid) — **both build the SALE JE** (Dr A/R / Cr income); an A/R RO simply gets its A/R-clearing PAYMENT JE later. The builder + reconciliation read `RO_POSTING_EVENT_KINDS = {ro_posted, ro_sent_to_ar}` (`@/lib/events/kinds`). Filtering `ro_posted` alone silently drops ≈21% of sales — **live-verified: 144 of 685 in-window postings arrived ONLY as `ro_sent_to_ar`** (`ro_sent_to_ar` carries the identical RO snapshot, so the builder is otherwise unchanged).
+
 **SALE — one per RO, dated to the RO's posted date in the shop's local timezone** (`TxnDate` is a date — convert from UTC in `shop_timezone`). DocNumber `RO <#>`. Dr A/R `[235]` = net total; Cr each income account = gross − allocated discount (§6); Cr Sales Tax `[250]`.
 
 **PAYMENT — one per payment id, dated to the payment date** (own posting row + `requestid` + `qbo_je_id`):
@@ -126,6 +128,7 @@ Every table: `shop_id NOT NULL` **+ `realm_id NOT NULL`, both in every uniquenes
 - **Refund** (separate negative id, `applicationFee:null`) → own posting, refund-dated.
 - **Void** (same id flipped) → not-yet-posted: suppress; already-posted: **reversing** posting per §7.
 - **Non-cash (`OTH`)** → Dr <mapped expense> / Cr A/R.
+- **Method unknown — user picks (added 2026-06-07):** the RO snapshot has `amountPaid` (that it was paid) but **not how** — the method lives only on the `payment_made` event. When a payment webhook is missing (e.g. a Tekmetric ingestion outage), the daily approval surfaces the paid RO and the **user picks the method** (card / cash / check / non-cash), which routes the payment JE; the amount comes from `amountPaid`. For a manually-classified **card**, the `applicationFee` (CC fee) is also unknown → user enters it OR we post the deposit gross and let the fee land via bank-rec (Chris to decide at build). ≈1% of paid ROs (live: 5 of 509).
 
 A single RO has many payment rows/dates — each its own posting; never folded into the RO-dated sale JE. Posts balance (Σdr=Σcr) before submit. The bookkeeper continues to create bank deposits via Make Deposits (QTekLink posts only the JE-to-Undeposited entries — no Deposit objects).
 
@@ -166,6 +169,8 @@ Exact arithmetic only. All must hold or → resolution + error email (rest of ba
 - **Nightly `qteklink-sync`:** reduce → build sale + payment drafts (respect `settle_window_minutes`; **hold a payment draft until its RO's sale is reconciled/posted**) → reconcile → enqueue `pending` (or auto path). Build reads a **pinned source-state version**; the draft stores `source_state_hash`.
 - **Post-time (BOTH human + auto):** re-validate `source_state_hash` vs latest → **stale: rebuild** (human-gated rebuilds return to `pending` for re-approval; auto rebuilds + re-reconciles). The UI tells the approver when their click triggered a rebuild instead of a post.
 - **Concurrency/idempotency:** `FOR UPDATE SKIP LOCKED` + lease + the atomic lifecycle (§3); **`requestid` once per logical create, reused on retry**, unique `(shop_id, realm_id, requestid)`; a durable posting row records the operation **before** the QBO call + a **private-note marker** so a crash-after-create is detected by query (DocNumber alone isn't authoritative).
+- **API completeness safety-net (added 2026-06-07):** webhooks are the reliable primary source, but a transient Tekmetric **ingestion outage** silently drops events (live: a ~2-hour outage the morning of 2026-05-26 lost 8 postings). So the nightly `qteklink-sync` **also pulls the Tekmetric API** (the authoritative posted-RO + payment list for the day) **and the QBO API** (what actually landed), reconciles both against `qteklink_events`, and flags any gap → daily approval. A **~1–2% safety net** (+ the unpost/repost corrections of §7), **not** the primary path — webhooks (incl. `ro_sent_to_ar`) carry 97.8%.
+- **Daily approvals vs Accounting Link (validation phase; added 2026-06-07):** a per-business-day review surface (**local-ET** buckets) comparing QTekLink's computed daily roll-up against AL's actual daily JEs (JA-RO / JA-PAY / JA-FEE), where the operator confirms each day and resolves the method-unknown payments (§5). The build/reconcile path is unchanged; this is the human review/approval surface that the mapping is tuned against.
 
 ---
 

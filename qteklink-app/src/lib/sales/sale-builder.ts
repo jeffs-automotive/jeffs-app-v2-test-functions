@@ -3,7 +3,8 @@
  * directly unit-testable (the Fat-DAL business-logic layer; the DAL
  * `src/lib/dal/sale-je.ts` fetches the RO snapshot + mappings and calls this).
  *
- * Builds ONE per-RO SALE JE draft from the RO's `ro_posted` snapshot (plan §4/§5/§6):
+ * Builds ONE per-RO SALE JE draft from the RO's posting snapshot — `ro_posted`
+ * (paid) OR `ro_sent_to_ar` (on A/R); both finalize the sale (plan §4/§5/§6):
  *   Dr Accounts Receivable [235] = totalSales (net), NO EntityRef (bulk A/R — §13;
  *     `arEntityless` flags it so the C8 poster's ar_entity_rejected guard can detect
  *     a future QBO tightening rather than silently drop it).

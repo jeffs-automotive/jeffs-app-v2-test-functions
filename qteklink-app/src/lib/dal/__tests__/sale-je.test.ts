@@ -19,7 +19,7 @@ const REALM = "9341455608740708";
 
 function chainResolving(result: { data: unknown; error: unknown }) {
   const chain: Record<string, unknown> = {};
-  for (const m of ["select", "eq", "order", "limit"]) chain[m] = vi.fn(() => chain);
+  for (const m of ["select", "eq", "in", "order", "limit"]) chain[m] = vi.fn(() => chain);
   chain.then = (onF: (v: unknown) => unknown) => Promise.resolve(result).then(onF);
   return chain;
 }
@@ -65,7 +65,7 @@ describe("buildShopRoSaleJe", () => {
     expect(fromMock).not.toHaveBeenCalled();
   });
 
-  it("fetches the ro_posted snapshot + active mappings and builds a balanced JE", async () => {
+  it("fetches the posting snapshot + active mappings and builds a balanced JE", async () => {
     fromMock.mockImplementation((t: string) =>
       t === "qteklink_events"
         ? chainResolving({ data: [RO_152805_EVENT], error: null })
@@ -83,7 +83,19 @@ describe("buildShopRoSaleJe", () => {
     expect(je!.unmapped).toEqual([]);
   });
 
-  it("returns je:null when the RO has no ro_posted snapshot yet", async () => {
+  it("treats BOTH ro_posted and ro_sent_to_ar as postings (an A/R RO posts only as sent_to_ar)", async () => {
+    const evChain = chainResolving({ data: [RO_152805_EVENT], error: null });
+    fromMock.mockImplementation((t: string) =>
+      t === "qteklink_events" ? evChain : chainResolving({ data: MAPPING_ROWS, error: null }),
+    );
+    const { je } = await buildShopRoSaleJe(7476, 152805);
+    expect(je?.balanced).toBe(true);
+    // The ledger query MUST include both posting kinds — filtering ro_posted alone
+    // silently drops every A/R sale (≈21% of postings; plan §5).
+    expect(evChain.in).toHaveBeenCalledWith("event_kind", ["ro_posted", "ro_sent_to_ar"]);
+  });
+
+  it("returns je:null when the RO has no posting snapshot yet", async () => {
     fromMock.mockImplementation((t: string) =>
       t === "qteklink_events" ? chainResolving({ data: [], error: null }) : chainResolving({ data: [], error: null }),
     );
