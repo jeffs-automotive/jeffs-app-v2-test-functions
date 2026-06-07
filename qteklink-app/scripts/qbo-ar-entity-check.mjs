@@ -85,14 +85,24 @@ async function qbo(token, path, { method = "GET", body } = {}) {
 const main = async () => {
   const token = await accessToken();
 
-  const q = "SELECT Id, Name, AccountType FROM Account WHERE AccountType IN ('Accounts Receivable','Income') MAXRESULTS 100";
+  const q = "SELECT Id, Name, AccountType FROM Account WHERE Active = true MAXRESULTS 1000";
   const acct = await qbo(token, `query?query=${encodeURIComponent(q)}`);
   if (!acct.ok) throw new Error(`Account query failed (${acct.status}): ${JSON.stringify(acct.json)}`);
   const accounts = acct.json.QueryResponse?.Account ?? [];
-  const ar = accounts.find((a) => a.AccountType === "Accounts Receivable");
+  // Jeff's books have no "Accounts Receivable"-TYPE account — the bulk-receivable
+  // target (plan [235]) is a differently-typed account named like a receivable. Find
+  // it by name; the A/R-line Entity mandate is A/R-TYPE-specific, so its actual type is
+  // the whole point to report.
+  const ar =
+    accounts.find((a) => a.AccountType === "Accounts Receivable") ??
+    accounts.find((a) => /receivable|\bA\/R\b/i.test(a.Name ?? ""));
   const income = accounts.find((a) => a.AccountType === "Income");
-  if (!ar || !income) throw new Error(`could not find A/R + Income accounts (got ${accounts.length})`);
-  console.log(`Using A/R=[${ar.Id}] ${ar.Name}  |  Income=[${income.Id}] ${income.Name}`);
+  if (!ar || !income) {
+    const types = [...new Set(accounts.map((a) => a.AccountType))].sort().join(", ");
+    const named = accounts.filter((a) => /receivable/i.test(a.Name ?? "")).map((a) => `"${a.Name}"/${a.AccountType}`).join(" | ") || "NONE";
+    throw new Error(`could not find a receivable + Income account among ${accounts.length} active. Types: [${types}]; receivable-named: ${named}`);
+  }
+  console.log(`Using receivable=[${ar.Id}] "${ar.Name}" (type=${ar.AccountType})  |  Income=[${income.Id}] "${income.Name}"`);
 
   // $0.01 balanced JE; the A/R DEBIT line carries NO Entity (the thing under test).
   const je = {
