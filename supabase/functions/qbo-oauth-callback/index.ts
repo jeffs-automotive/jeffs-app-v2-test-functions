@@ -38,6 +38,12 @@ const STATE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const CLIENT_ID = Deno.env.get("QBO_CLIENT_ID") ?? "";
 const CLIENT_SECRET = Deno.env.get("QBO_CLIENT_SECRET") ?? "";
 const STATE_SECRET = Deno.env.get("QBO_STATE_SECRET") ?? "";
+// Where to land the browser after a SUCCESSFUL connect (instead of a plain-text page
+// that exposed the rotating refresh token). Defaults to the QTekLink app; override
+// with the QBO_CONNECTED_REDIRECT_URL secret if the host domain changes.
+const CONNECTED_REDIRECT_URL =
+  Deno.env.get("QBO_CONNECTED_REDIRECT_URL") ??
+  "https://qteklink.jeffsautomotive.com/qbo/connected";
 
 const enc = new TextEncoder();
 
@@ -222,23 +228,21 @@ Deno.serve((req) =>
       );
     }
 
-    const storeLine = stored
-      ? `Stored for the Accounting Link app (qbo_connections, realm ${realmId}).\n` +
-        `The deployed admin-app client can now read + refresh autonomously.\n\n`
-      : `WARNING: could NOT store to qbo_connections — ${storeError}\n` +
-        `The deployed app is NOT connected yet. Use the values below as a fallback\n` +
-        `and/or re-run ?start=1, or report this error.\n\n`;
-
+    if (stored) {
+      // Land the operator back in the app (not a plain-text page) and STOP printing
+      // the rotating refresh token on a web page — the tokens live in Vault and
+      // qteklink reads them server-side via qbo_get_connection.
+      return new Response(null, {
+        status: 302,
+        headers: { Location: CONNECTED_REDIRECT_URL },
+      });
+    }
+    // Authorized, but persisting to qbo_connections failed (already captured to Sentry
+    // above) → the app is NOT connected. Surface the error WITHOUT the token; retry.
     return text(
-      `QuickBooks connected.\n\n` +
-        storeLine +
-        `Local QuickBooks MCP server (OPTIONAL) — copy into ~/quickbooks-online-mcp-server\n` +
-        `.env + machine env vars (see QUICKBOOKS-MCP-SETUP.md in the dotfiles repo):\n\n` +
-        `QUICKBOOKS_REFRESH_TOKEN=${refresh}\n` +
-        `QUICKBOOKS_REALM_ID=${realmId}\n` +
-        `QUICKBOOKS_ENVIRONMENT=production\n\n` +
-        `Treat the refresh token like a password. It rotates on each use; re-run\n` +
-        `this flow (?start=1) if it ever stops working.\n`,
+      `Couldn't finish connecting.\n\n` +
+        `QuickBooks authorized, but storing the connection failed:\n\n${storeError}\n\n` +
+        `Please retry the handshake (?start=1) — or report this error.\n`,
     );
   })
 );
