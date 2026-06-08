@@ -157,7 +157,13 @@ Deno.serve((req) =>
 
     const raw = await tokenRes.text();
     if (!tokenRes.ok) {
+      // A 2xx human-facing page on a real downstream failure is a silent failure —
+      // surface it to Sentry first (no token material: status + realm only).
       console.error(`[${FUNCTION_NAME}] token exchange failed: HTTP ${tokenRes.status}`);
+      Sentry.captureException(new Error(`QBO token exchange failed: HTTP ${tokenRes.status}`), {
+        tags: { qbo_op: "token_exchange", realm_id: realmId },
+        extra: { status: tokenRes.status },
+      });
       return text(
         `Token exchange failed.\n\nIntuit returned HTTP ${tokenRes.status}:\n\n${raw}\n\nStart over: ?start=1\n`,
       );
@@ -171,12 +177,18 @@ Deno.serve((req) =>
     };
     try {
       tokens = JSON.parse(raw);
-    } catch {
+    } catch (e) {
+      // Unparseable token response returned as a 200 page — capture before surfacing.
+      Sentry.captureException(e, { tags: { qbo_op: "token_parse", realm_id: realmId } });
       return text(`Unexpected token response:\n\n${raw}\n`);
     }
     const refresh = tokens.refresh_token ?? "";
     const access = tokens.access_token ?? "";
     if (!access || !refresh) {
+      // Authorized but the token shape is wrong — a real failure behind a 200 page.
+      Sentry.captureException(new Error("QBO token response missing access or refresh token"), {
+        tags: { qbo_op: "token_shape", realm_id: realmId },
+      });
       return text(
         `Token exchange returned an unexpected shape (missing access or refresh token).\n\n` +
           `${raw}\n\nStart over: ?start=1\n`,
