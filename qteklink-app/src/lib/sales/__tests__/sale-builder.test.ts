@@ -28,7 +28,7 @@ const M: ResolvedMappings = {
   salesTaxAccountId: "250",
   tireFeeAccountId: "252",
 };
-const S: SaleSettings = { shopTimezone: "America/New_York", tireFeeCentsPerTire: 100 };
+const S: SaleSettings = { shopTimezone: "America/New_York", tireFeeCentsPerTire: 100, salesTaxRateBps: 600 };
 
 function snap(over: Partial<RoSaleSnapshot>): RoSaleSnapshot {
   return {
@@ -133,10 +133,11 @@ describe("buildSaleJournalEntry — discount waterfall overflow (labor → parts
 });
 
 describe("buildSaleJournalEntry — multi-category parts + tire fee", () => {
-  it("splits parts gross + the parts-bucket discount pro-rata across categories, and books the tire fee to PTAL", () => {
+  it("splits parts gross + the parts-bucket discount pro-rata across categories, and books the tire fee (excess above 6%) to PTAL", () => {
     const je = buildSaleJournalEntry(
       snap({
-        laborSales: 1000, partsSales: 10000, discountTotal: 3000, taxes: 400, totalSales: 8400,
+        // taxes 880 = round(6% × 8000 base) = 480 sales tax + 4 tires × $1 = 400 fee (realistic).
+        laborSales: 1000, partsSales: 10000, discountTotal: 3000, taxes: 880, totalSales: 8880,
         jobs: [job({
           labor: [{ rate: 1000, hours: 1 }],
           parts: [
@@ -151,9 +152,23 @@ describe("buildSaleJournalEntry — multi-category parts + tire fee", () => {
     // gross split 10000 by [6000,4000] = [6000,4000]; discount 2000 by [6000,4000] = [1200,800].
     expect(cr(je, "272")).toBe(4800); // PART 6000-1200
     expect(cr(je, "270")).toBe(3200); // TIRE 4000-800
-    expect(cr(je, "252")).toBe(400);  // tire fee 4 × $1 → PTAL
-    expect(je.lines.some((l) => l.accountId === "250")).toBe(false); // salesTax = 400-400 = 0, omitted
-    expect(dr(je, "235")).toBe(8400);
+    expect(cr(je, "252")).toBe(400);  // tire fee = 880 − round(6%×8000)=480 → 400, capped at 4×$1
+    expect(cr(je, "250")).toBe(480);  // sales tax = 880 − 400 tire fee
+    expect(dr(je, "235")).toBe(8880);
+    expect(je.balanced).toBe(true);
+  });
+
+  it("books NO tire fee when a tire-RO's tax is plain 6% (the C5 clamp fix: 56/85 real tire-ROs charge no fee)", () => {
+    // base 10000, taxes 600 = exactly 6% — Tekmetric charged no $1/tire fee on these tires.
+    // The OLD unconditional carve-out wrongly booked 2×$1 to PTAL; the clamp books $0.
+    const je = buildSaleJournalEntry(
+      snap({ partsSales: 10000, taxes: 600, totalSales: 10600,
+        jobs: [job({ parts: [{ retail: 5000, quantity: 2, partType: { code: "TIRE" } }] })] }),
+      M, S,
+    );
+    expect(cr(je, "252")).toBe(0);   // NO tire fee — taxes ≤ round(6%×base)
+    expect(je.lines.some((l) => l.accountId === "252")).toBe(false);
+    expect(cr(je, "250")).toBe(600); // all tax is sales tax
     expect(je.balanced).toBe(true);
   });
 });
@@ -209,13 +224,17 @@ describe("buildSaleJournalEntry — guards", () => {
     expect(je.balanced).toBe(true); // 0 === 0
   });
 
-  it("flags a tax split where the tire fee would exceed the tax lump", () => {
+  it("flags a tax split that would go negative (corrupt: a net-negative taxable base with tax)", () => {
+    // base = 500 − 1500 = −1000 (discounts exceed sales); 1 tire; taxes 50.
+    // clamp baseline = round(6%×−1000) = −60 → tireFee = min(50−(−60), 100) = 100 > taxes
+    // → salesTax = 50 − 100 = −50 < 0 → queued (never post a negative tax line).
     const je = buildSaleJournalEntry(
-      snap({ partsSales: 1000, taxes: 50, totalSales: 1050,
-        jobs: [job({ parts: [{ retail: 1000, quantity: 1, partType: { code: "TIRE" } }] })] }), // 1 tire → $1 fee, but taxes only $0.50
+      snap({ laborSales: 500, discountTotal: 1500, taxes: 50, totalSales: -950,
+        jobs: [job({ labor: [{ rate: 500, hours: 1 }], parts: [{ retail: 0, quantity: 1, partType: { code: "TIRE" } }] })] }),
       M, S,
     );
     expect(je.unmapped.some((u) => u.startsWith("tax_split:"))).toBe(true);
+    expect(je.balanced).toBe(false);
   });
 
   it("sums RO-level AND authorized job-level fees by normalized name", () => {
@@ -266,14 +285,15 @@ describe("C5 round-2 hardening (cross-verify)", () => {
   });
 
   it("normalizes the part category code (casing/whitespace) for mapping + the tire fee", () => {
+    // taxes 1400 = round(6%×20000)=1200 sales tax + 2 tires × $1 = 200 fee.
     const je = buildSaleJournalEntry(
-      snap({ partsSales: 20000, taxes: 200, totalSales: 20200, jobs: [job({ parts: [{ retail: 10000, quantity: 2, partType: { code: " tire " } }] })] }),
+      snap({ partsSales: 20000, taxes: 1400, totalSales: 21400, jobs: [job({ parts: [{ retail: 10000, quantity: 2, partType: { code: " tire " } }] })] }),
       M, S,
     );
     expect(cr(je, "270")).toBe(20000); // matched the TIRE part-category account
-    expect(cr(je, "252")).toBe(200);   // tire_qty 2 × $1.00 → PTAL
-    expect(cr(je, "250")).toBe(0);     // taxes 200 − tireFee 200 = 0 sales tax (omitted)
-    expect(dr(je, "235")).toBe(20200);
+    expect(cr(je, "252")).toBe(200);   // tire fee = 1400 − round(6%×20000)=1200 → 200 (2 × $1.00)
+    expect(cr(je, "250")).toBe(1200);  // sales tax = 1400 − 200
+    expect(dr(je, "235")).toBe(21400);
     expect(je.balanced).toBe(true);
   });
 });

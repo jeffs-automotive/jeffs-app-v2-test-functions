@@ -49,6 +49,12 @@ export default async function DashboardPage() {
           <Link href="/mappings" className="font-medium text-[#96003C] hover:underline">
             Account mappings
           </Link>
+          <Link href="/approvals" className="font-medium text-[#96003C] hover:underline">
+            Daily approvals
+          </Link>
+          <Link href="/postings" className="font-medium text-[#96003C] hover:underline">
+            Posting queue
+          </Link>
           <a href="/qbo/connect" className="font-medium text-[#96003C] hover:underline">
             {connected ? "Reconnect QuickBooks" : "Connect QuickBooks"}
           </a>

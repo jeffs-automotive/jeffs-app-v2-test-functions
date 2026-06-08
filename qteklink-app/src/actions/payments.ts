@@ -21,10 +21,9 @@ const RecordManualPaymentSchema = z
     repairOrderId: z.coerce.number().int().positive("A repair order id is required."),
     method: z.string().trim().min(1, "A payment method is required.").max(100),
     otherPaymentType: z.string().trim().max(200).optional().nullable(),
-    // integer CENTS (the UI converts dollars → cents). A manual pick is a PAID RO → > 0.
-    amountCents: z.coerce.number().int().positive("Amount must be greater than 0."),
+    // The GROSS amount + paid date are NOT client inputs — the DAL derives them from the
+    // RO's posting snapshot (amountPaid / postedDate). Only the CC fee is user-entered.
     ccFeeCents: z.coerce.number().int().nonnegative("CC fee must be ≥ 0.").optional(),
-    paymentDate: z.string().trim().min(1, "A payment date is required."),
   })
   // A non-cash pick needs its specific type (else it's guaranteed unmapped at post).
   .refine((d) => !NONCASH_METHODS.has(d.method.toLowerCase()) || Boolean(d.otherPaymentType?.trim()), {
@@ -57,9 +56,7 @@ async function recordManualPaymentImpl(
       repairOrderId: formData.get("repair_order_id"),
       method: formData.get("method"),
       otherPaymentType: formData.get("other_payment_type") || null,
-      amountCents: formData.get("amount_cents"),
       ccFeeCents: formData.get("cc_fee_cents") || 0,
-      paymentDate: formData.get("payment_date"),
     });
     if (!parsed.success) {
       return {

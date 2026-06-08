@@ -31,7 +31,7 @@ interface MappingRow {
   posting_role: string;
 }
 
-interface PaymentStateRow {
+export interface PaymentStateRow {
   payment_id: number | string;
   signed_amount_cents: number | string;
   signed_processing_fee_cents: number | string;
@@ -99,6 +99,25 @@ export function resolvePaymentMappings(rows: MappingRow[]): ResolvedPaymentMappi
   return m;
 }
 
+/** Map a `qteklink_payment_state` projection row → the normalized PaymentForBuild.
+ *  Pure; fail-closed on non-safe-integer money. Throws if payment_date is null. */
+export function stateRowToPayment(row: PaymentStateRow): PaymentForBuild {
+  if (!row.payment_date) {
+    throw new Error(`stateRowToPayment: payment ${String(row.payment_id)} has no payment_date`);
+  }
+  return {
+    paymentId: String(row.payment_id),
+    repairOrderId: row.repair_order_id != null ? safeCents(row.repair_order_id, "repair_order_id", row.payment_id) : null,
+    method: row.payment_type ?? "",
+    otherPaymentType: row.other_payment_type,
+    signedAmountCents: safeCents(row.signed_amount_cents, "signed_amount_cents", row.payment_id),
+    signedProcessingFeeCents: safeCents(row.signed_processing_fee_cents, "signed_processing_fee_cents", row.payment_id),
+    paymentDate: row.payment_date,
+    status: row.status,
+    isRefund: row.is_refund === true,
+  };
+}
+
 async function loadMappings(shopId: number, realmId: string): Promise<ResolvedPaymentMappings> {
   const admin = createSupabaseAdminClient();
   const { data, error } = await admin
@@ -142,18 +161,7 @@ export async function buildShopPaymentJe(
   }
 
   const settings: PaymentSettings = { shopTimezone: opts.shopTimezone ?? DEFAULT_SHOP_TZ };
-  const payment: PaymentForBuild = {
-    paymentId: String(row.payment_id),
-    repairOrderId: row.repair_order_id != null ? safeCents(row.repair_order_id, "repair_order_id", row.payment_id) : null,
-    method: row.payment_type ?? "",
-    otherPaymentType: row.other_payment_type,
-    signedAmountCents: safeCents(row.signed_amount_cents, "signed_amount_cents", row.payment_id),
-    signedProcessingFeeCents: safeCents(row.signed_processing_fee_cents, "signed_processing_fee_cents", row.payment_id),
-    paymentDate: row.payment_date,
-    status: row.status,
-    isRefund: row.is_refund === true,
-  };
-
+  const payment = stateRowToPayment(row);
   const mappings = await loadMappings(shopId, realmId);
   return { realmId, je: buildPaymentJournalEntry(payment, mappings, settings) };
 }

@@ -94,6 +94,12 @@ export interface SaleSettings {
   shopTimezone: string;
   /** Per-tire state fee in cents (PA = $1.00 = 100). */
   tireFeeCentsPerTire: number;
+  /** Sales-tax rate in basis points (PA = 6.00% = 600). Used ONLY to separate the
+   *  authoritative `taxes` lump into the per-tire fee (PTAL) vs sales tax — the payload
+   *  carries no per-line taxable flags and the $1/tire fee is bundled into `taxes`
+   *  inconsistently (validated on 685 real ROs). NOT a tax engine: it's the baseline
+   *  that isolates the tire-fee excess. Shop-specific → a future qteklink_settings row. */
+  salesTaxRateBps: number;
 }
 
 export type PostingType = "Debit" | "Credit";
@@ -111,6 +117,10 @@ export interface SaleJournalEntry {
   arEntityless: boolean;
   /** accountId → discount cents applied to it (audit / persisted in proposed_je). */
   discountAllocation: Record<string, number>;
+  /** The authoritative `taxes` lump split into the per-tire fee (PTAL) vs sales tax
+   *  (the clamp model). Always sums to ro.taxes. The §8 gate + daily approvals + the
+   *  C8 poster read this rather than re-deriving the split. */
+  taxSplit: { tireFeeCents: number; salesTaxCents: number };
   /** Sources with no active mapping (or a non-postable split) → C7 resolution queue. */
   unmapped: string[];
   balanced: boolean;
@@ -304,11 +314,25 @@ export function buildSaleJournalEntry(
       unmapped.push(`fee:${feeDisplay.get(k)}`);
     }
   }
-  // Tax split: tire_qty×$1 → PTAL; remainder → Sales Tax.
-  const tireFee = tireQty * settings.tireFeeCentsPerTire;
+  // ── Tax split: separate the authoritative `taxes` lump → tire fee (PTAL) + sales tax.
+  // The payload has NO per-line taxable flags AND the PA $1/tire fee is bundled INTO
+  // `taxes` — but INCONSISTENTLY (validated on 685 real ROs: only 27/85 tire-ROs
+  // actually charged it). So the tire fee is NOT tire_qty×$1 unconditionally — that
+  // over-stated PTAL / under-stated Sales Tax on the 56 no-fee tire-ROs. Instead the
+  // tire fee is the tax ABOVE the all-taxable baseline (round(rate×base)), capped at
+  // tire_qty×$1; everything else is sales tax:
+  //   PTAL = clamp(taxes − round(rate×base), 0, tire_qty×$1);  Sales Tax = taxes − PTAL.
+  // (`base` = the full pre-tax revenue; the real taxable base is ≤ this, so genuine
+  // sales tax can't exceed round(rate×base) — anything above it is the per-unit fee.)
+  const taxBaseCents = ro.laborSales + ro.partsSales + ro.subletSales + ro.feeTotal - ro.discountTotal;
+  const baselineSalesTax = Math.round((settings.salesTaxRateBps / 10000) * taxBaseCents);
+  const tireFeeCap = tireQty * settings.tireFeeCentsPerTire;
+  const tireFee = Math.max(0, Math.min(ro.taxes - baselineSalesTax, tireFeeCap));
   const salesTax = ro.taxes - tireFee;
   if (salesTax < 0) {
-    unmapped.push(`tax_split:tire_fee_${tireFee}_exceeds_taxes_${ro.taxes}`);
+    // Unreachable for a non-negative base (PTAL ≤ taxes there); a net-negative taxable
+    // base (discounts > sales) with tax present is corrupt → queue, never post.
+    unmapped.push(`tax_split:negative_sales_tax_${salesTax}_taxes_${ro.taxes}`);
   } else {
     if (tireFee > 0) {
       if (mappings.tireFeeAccountId) credits.push({ accountId: mappings.tireFeeAccountId, postingType: "Credit", amountCents: tireFee, description: `${docNumber} — Tire fee (PTAL)` });
@@ -340,6 +364,7 @@ export function buildSaleJournalEntry(
     lines,
     arEntityless: true,
     discountAllocation,
+    taxSplit: { tireFeeCents: tireFee, salesTaxCents: salesTax },
     unmapped,
     // Balanced only when fully mapped (no missing lines) AND debits === credits.
     balanced: unmapped.length === 0 && totalDebitsCents === totalCreditsCents,

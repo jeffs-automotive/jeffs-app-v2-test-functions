@@ -42,6 +42,10 @@ export interface QboRequestOptions {
   query?: Record<string, string | number | undefined>;
   /** Writes: add a `requestid` (idempotent, retry-safe). */
   idempotent?: boolean;
+  /** An explicit STABLE requestid (e.g. the qteklink_postings.requestid) — reused across
+   *  separate poster runs so a crash-after-create can't double-post. Overrides the
+   *  per-call random UUID. Must be ≤ 50 chars (QBO cap). */
+  requestId?: string;
   contentType?: string;
   accept?: string;
 }
@@ -73,8 +77,9 @@ export class QboClient {
     resource: string,
     opts: QboRequestOptions = {},
   ): Promise<T> {
-    // Computed ONCE; reused across every retry of this logical write.
-    const requestId = opts.idempotent ? randomUUID() : undefined;
+    // An explicit stable requestid (cross-run idempotency) wins; else a per-call UUID,
+    // computed ONCE and reused across every retry of this logical write.
+    const requestId = opts.requestId ?? (opts.idempotent ? randomUUID() : undefined);
 
     let auth = await this.auth();
     let triedForcedRefresh = false;
@@ -154,9 +159,10 @@ export class QboClient {
     });
   }
 
-  /** Create an entity (idempotent via requestid). */
-  create<T = unknown>(entity: string, body: unknown): Promise<T> {
-    return this.request<T>("POST", entity.toLowerCase(), { body, idempotent: true });
+  /** Create an entity (idempotent via requestid). Pass `requestId` for a STABLE,
+   *  cross-run idempotency key (the qteklink_postings.requestid); else a random UUID. */
+  create<T = unknown>(entity: string, body: unknown, requestId?: string): Promise<T> {
+    return this.request<T>("POST", entity.toLowerCase(), { body, idempotent: true, requestId });
   }
 
   /**

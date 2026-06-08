@@ -25,8 +25,9 @@ import {
 
 const DEFAULT_TIRE_FEE_CENTS = 100; // PA per-tire state fee = $1.00 (qteklink_settings → C8)
 const DEFAULT_SHOP_TZ = "America/New_York";
+const DEFAULT_SALES_TAX_BPS = 600; // PA state sales tax = 6.00% (qteklink_settings → C8)
 
-interface MappingRow {
+export interface MappingRow {
   kind: string;
   source_key: string;
   qbo_account_id: string;
@@ -56,7 +57,7 @@ function cents(v: unknown): number | null {
 /** Map the raw posting (`ro_posted` / `ro_sent_to_ar`) body.data into the typed snapshot the builder reads.
  *  Returns null (→ caller treats as "no usable snapshot") when required fields are
  *  missing/invalid — fail closed, never build a JE from corrupt data. */
-function parseSnapshot(data: unknown): RoSaleSnapshot | null {
+export function parseSnapshot(data: unknown): RoSaleSnapshot | null {
   if (!data || typeof data !== "object") return null;
   const d = data as Record<string, unknown>;
   // A posted RO must carry a parseable postedDate (the JE TxnDate source).
@@ -92,7 +93,7 @@ function parseSnapshot(data: unknown): RoSaleSnapshot | null {
 }
 
 /** Build ResolvedMappings from the shop's active qteklink_mappings rows. */
-function resolveMappings(rows: MappingRow[]): ResolvedMappings {
+export function resolveMappings(rows: MappingRow[]): ResolvedMappings {
   const r: ResolvedMappings = {
     laborAccountId: null,
     partCategoryAccountIds: {},
@@ -141,7 +142,7 @@ function resolveMappings(rows: MappingRow[]): ResolvedMappings {
 export async function buildShopRoSaleJe(
   shopId: number,
   repairOrderId: number,
-  opts: { shopTimezone?: string; tireFeeCentsPerTire?: number } = {},
+  opts: { shopTimezone?: string; tireFeeCentsPerTire?: number; salesTaxRateBps?: number } = {},
 ): Promise<BuildSaleResult> {
   const realmId = await resolveRealmForShop(shopId);
   if (!realmId) return { realmId: null, je: null };
@@ -189,6 +190,7 @@ export async function buildShopRoSaleJe(
   const settings: SaleSettings = {
     shopTimezone: opts.shopTimezone ?? DEFAULT_SHOP_TZ,
     tireFeeCentsPerTire: opts.tireFeeCentsPerTire ?? DEFAULT_TIRE_FEE_CENTS,
+    salesTaxRateBps: opts.salesTaxRateBps ?? DEFAULT_SALES_TAX_BPS,
   };
 
   return { realmId, je: buildSaleJournalEntry(snapshot, mappings, settings) };

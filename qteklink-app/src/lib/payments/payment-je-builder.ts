@@ -74,6 +74,9 @@ export interface PaymentJeLine {
 
 export interface PaymentJournalEntry {
   paymentId: string;
+  /** the Tekmetric RO this payment belongs to — the posting's subject (null only for a
+   *  malformed payment with no RO; such a draft can't be enqueued as a posting). */
+  repairOrderId: number | null;
   docNumber: string;
   txnDate: string;
   route: "deposit" | "non_cash" | "suppressed";
@@ -100,6 +103,7 @@ function suppressed(
 ): PaymentJournalEntry {
   return {
     paymentId: p.paymentId,
+    repairOrderId: p.repairOrderId,
     docNumber: `PAY ${p.paymentId}`,
     txnDate,
     route: "suppressed",
@@ -198,6 +202,7 @@ function finalize(
   }
   return {
     paymentId: p.paymentId,
+    repairOrderId: p.repairOrderId,
     docNumber,
     txnDate,
     route,
