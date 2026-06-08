@@ -57,8 +57,13 @@ export interface ResolvedPaymentMappings {
   arAccountId: string | null;
   /** system/cc_fee [309]. */
   ccFeeAccountId: string | null;
-  /** noncash_payment_type/<otherPaymentType.name> → account id. */
+  /** noncash_payment_type/<otherPaymentType.name> mapped as a true CONTRA (role
+   *  noncash_contra) → account id. */
   noncashAccountsByType: Record<string, string>;
+  /** noncash_payment_type/<otherPaymentType.name> mapped as a DEPOSIT (role
+   *  undeposited_funds — financing like Synchrony/Affirm) → the deposit account id
+   *  (Undeposited Funds or a clearing Other-Current-Asset). Routes Dr <acct> / Cr A/R. */
+  depositLikeAccountsByType: Record<string, string>;
 }
 
 export interface PaymentSettings {
@@ -150,8 +155,22 @@ export function buildPaymentJournalEntry(
   const unmapped: string[] = [];
 
   if (NONCASH_METHODS.has(p.method.trim().toLowerCase())) {
-    // NON-CASH: Dr <contra> / Cr A/R (flipped for a refund). No Undeposited, no fee.
     const key = (p.otherPaymentType ?? "").trim();
+
+    // FINANCING that DEPOSITS like a card (Synchrony/Affirm — mapped role undeposited_funds):
+    // Dr <deposit acct> / Cr A/R (gross, flipped for a refund). NO auto-fee — Tekmetric
+    // doesn't give the financing fee; the user enters it in QBO at reconcile (plan §5).
+    const depositAcct = key ? m.depositLikeAccountsByType[key] ?? null : null;
+    if (depositAcct) {
+      if (!m.arAccountId) unmapped.push("accounts_receivable");
+      if (m.arAccountId) {
+        lines.push({ accountId: depositAcct, postingType: inflow ? "Debit" : "Credit", amountCents: amt, description: desc });
+        lines.push({ accountId: m.arAccountId, postingType: inflow ? "Credit" : "Debit", amountCents: amt, description: desc });
+      }
+      return finalize(p, docNumber, txnDate, "deposit", lines, unmapped);
+    }
+
+    // TRUE NON-CASH: Dr <contra> / Cr A/R (flipped for a refund). No Undeposited, no fee.
     const contra = key ? m.noncashAccountsByType[key] ?? null : null;
     if (!contra) unmapped.push(`noncash:${key || "(none)"}`);
     if (!m.arAccountId) unmapped.push("accounts_receivable");

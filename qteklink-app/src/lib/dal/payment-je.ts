@@ -86,6 +86,7 @@ export function resolvePaymentMappings(rows: MappingRow[]): ResolvedPaymentMappi
     arAccountId: null,
     ccFeeAccountId: null,
     noncashAccountsByType: {},
+    depositLikeAccountsByType: {},
   };
   for (const r of rows) {
     if (r.kind === "system") {
@@ -93,7 +94,10 @@ export function resolvePaymentMappings(rows: MappingRow[]): ResolvedPaymentMappi
       else if (r.source_key === "accounts_receivable") m.arAccountId = r.qbo_account_id;
       else if (r.source_key === "cc_fee") m.ccFeeAccountId = r.qbo_account_id;
     } else if (r.kind === "noncash_payment_type") {
-      m.noncashAccountsByType[r.source_key] = r.qbo_account_id;
+      // role 'undeposited_funds' = financing that deposits like a card (Synchrony/Affirm);
+      // 'noncash_contra' = a true contra (warranty / internal).
+      if (r.posting_role === "undeposited_funds") m.depositLikeAccountsByType[r.source_key] = r.qbo_account_id;
+      else m.noncashAccountsByType[r.source_key] = r.qbo_account_id;
     }
   }
   return m;

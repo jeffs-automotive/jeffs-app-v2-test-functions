@@ -118,10 +118,15 @@ const MapItemSchema = z
     sourceKey: z.string().trim().min(1, "Pick a Tekmetric item.").max(200),
     qboAccountId: z.string().trim().min(1, "Pick a QuickBooks account.").max(100),
     passThrough: z.boolean().optional(),
+    depositsLikeCard: z.boolean().optional(),
   })
   .refine((d) => !d.passThrough || d.kind === "fee", {
     message: "Pass-through applies only to fee mappings.",
     path: ["passThrough"],
+  })
+  .refine((d) => !d.depositsLikeCard || d.kind === "noncash_payment_type", {
+    message: "Deposits-like-a-card applies only to non-cash payment types.",
+    path: ["depositsLikeCard"],
   });
 
 async function mapTekmetricItemImpl(
@@ -137,13 +142,19 @@ async function mapTekmetricItemImpl(
       sourceKey: formData.get("source_key"),
       qboAccountId: formData.get("qbo_account_id"),
       passThrough: formData.get("pass_through") === "on",
+      depositsLikeCard: formData.get("deposits_like_card") === "on",
     });
     if (!parsed.success) {
       return { ok: false, reason: "validation", message: parsed.error.issues[0]?.message ?? "Invalid mapping input.", timestamp: Date.now() };
     }
 
     // Derive the role server-side; a (kind, sourceKey) with no valid role isn't mappable.
-    const postingRole = derivePostingRole(parsed.data.kind, parsed.data.sourceKey);
+    // A financing non-cash type flagged "deposits like a card" books through the DEPOSIT
+    // path (role undeposited_funds) instead of a contra.
+    const postingRole =
+      parsed.data.depositsLikeCard && parsed.data.kind === "noncash_payment_type"
+        ? "undeposited_funds"
+        : derivePostingRole(parsed.data.kind, parsed.data.sourceKey);
     if (!postingRole) {
       return { ok: false, reason: "validation", message: "That item can't be mapped (unknown posting role).", timestamp: Date.now() };
     }

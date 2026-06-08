@@ -16,6 +16,7 @@ const M: ResolvedPaymentMappings = {
   arAccountId: "235",
   ccFeeAccountId: "309",
   noncashAccountsByType: { "Tire Protection Plan": "6834", "Shop Vehicle": "6101" },
+  depositLikeAccountsByType: {},
 };
 const S: PaymentSettings = { shopTimezone: "America/New_York" };
 
@@ -116,6 +117,45 @@ describe("buildPaymentJournalEntry — non-cash route", () => {
     expect(je.unmapped).toContain("noncash:Synchrony");
     expect(je.balanced).toBe(false);
     expect(je.lines).toHaveLength(0);
+  });
+});
+
+describe("buildPaymentJournalEntry — financing 'deposits like a card'", () => {
+  // Synchrony mapped as deposit-like (role undeposited_funds → the deposit account 366).
+  const MD: ResolvedPaymentMappings = { ...M, depositLikeAccountsByType: { Synchrony: "366" } };
+
+  it("Synchrony (financing) → DEPOSIT: Dr Undeposited / Cr A/R (gross, NO auto-fee)", () => {
+    const je = buildPaymentJournalEntry(
+      pay({ method: "Other", otherPaymentType: "Synchrony", signedAmountCents: 12000, signedProcessingFeeCents: 0 }),
+      MD, S,
+    );
+    expect(je.route).toBe("deposit");
+    expect(je.balanced).toBe(true);
+    expect(je.unmapped).toEqual([]);
+    expect(je.lines).toHaveLength(2); // deposit leg only — the financing fee is entered in QBO
+    expect(je.lines).toContainEqual(expect.objectContaining({ accountId: "366", postingType: "Debit", amountCents: 12000 }));
+    expect(je.lines).toContainEqual(expect.objectContaining({ accountId: "235", postingType: "Credit", amountCents: 12000 }));
+    expect(je.lines.some((l) => l.accountId === "309")).toBe(false); // no CC-fee line
+  });
+
+  it("a deposit-like financing REFUND flips: Dr A/R / Cr deposit account", () => {
+    const je = buildPaymentJournalEntry(
+      pay({ method: "Other", otherPaymentType: "Synchrony", signedAmountCents: -5000, signedProcessingFeeCents: 0, isRefund: true }),
+      MD, S,
+    );
+    expect(je.route).toBe("deposit");
+    expect(je.balanced).toBe(true);
+    expect(je.lines).toContainEqual(expect.objectContaining({ accountId: "235", postingType: "Debit", amountCents: 5000 }));
+    expect(je.lines).toContainEqual(expect.objectContaining({ accountId: "366", postingType: "Credit", amountCents: 5000 }));
+  });
+
+  it("a non-deposit non-cash type still routes non_cash (TPP not flagged deposit-like)", () => {
+    const je = buildPaymentJournalEntry(
+      pay({ method: "Other", otherPaymentType: "Tire Protection Plan", signedAmountCents: 19550, signedProcessingFeeCents: 0 }),
+      MD, S,
+    );
+    expect(je.route).toBe("non_cash");
+    expect(je.lines).toContainEqual(expect.objectContaining({ accountId: "6834", postingType: "Debit", amountCents: 19550 }));
   });
 });
 

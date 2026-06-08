@@ -30,6 +30,9 @@ export interface TekmetricItem {
   mappedQboAccountId: string | null;
   /** Current pass-through flag (fees only). */
   passThrough: boolean;
+  /** Current "deposits like a card" state (non-cash payment types only) — true when the
+   *  item's active mapping uses the undeposited_funds role (a financing/deposit type). */
+  depositsLikeCard: boolean;
   /** How many times this item was seen in the data (null for a fixed item). */
   seen: number | null;
 }
@@ -95,6 +98,7 @@ export async function listTekmetricItems(
       mappedAccountLabel: m ? accountLabel(m) : null,
       mappedQboAccountId: m?.qboAccountId ?? null,
       passThrough: m?.passThrough ?? false,
+      depositsLikeCard: m?.postingRole === "undeposited_funds",
       seen,
     });
   };

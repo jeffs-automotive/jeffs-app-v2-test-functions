@@ -146,6 +146,16 @@ describe("resolvePaymentMappings", () => {
       arAccountId: "235",
       ccFeeAccountId: "309",
       noncashAccountsByType: { "Tire Protection Plan": "6834" },
+      depositLikeAccountsByType: {},
     });
+  });
+
+  it("splits a non-cash type by role: undeposited_funds → deposit-like, else → contra", () => {
+    const m = resolvePaymentMappings([
+      { kind: "noncash_payment_type", source_key: "Synchrony", qbo_account_id: "366", posting_role: "undeposited_funds" },
+      { kind: "noncash_payment_type", source_key: "Shop Vehicle", qbo_account_id: "6101", posting_role: "noncash_contra" },
+    ]);
+    expect(m.depositLikeAccountsByType).toEqual({ Synchrony: "366" });
+    expect(m.noncashAccountsByType).toEqual({ "Shop Vehicle": "6101" });
   });
 });

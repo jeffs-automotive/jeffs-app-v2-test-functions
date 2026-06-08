@@ -24,6 +24,7 @@ export default function MappingEditor({
   const [token, setToken] = useState("");
   const [account, setAccount] = useState("");
   const [passThrough, setPassThrough] = useState(false);
+  const [depositsLikeCard, setDepositsLikeCard] = useState(false);
   const [state, formAction, pending] = useActionState(mapTekmetricItemAction, null);
 
   const item = items.find((i) => i.token === token) ?? null;
@@ -32,6 +33,7 @@ export default function MappingEditor({
   useEffect(() => {
     setAccount(item?.mappedQboAccountId ?? "");
     setPassThrough(item?.passThrough ?? false);
+    setDepositsLikeCard(item?.depositsLikeCard ?? false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
@@ -131,6 +133,25 @@ export default function MappingEditor({
               <span className="text-sm text-stone-700">
                 <span className="font-medium">Pass-through fee</span> — exclude from the
                 discount waterfall (a mandated / third-party fee is never discounted).
+              </span>
+            </label>
+          )}
+
+          {item?.kind === "noncash_payment_type" && (
+            <label className="flex items-start gap-2 sm:col-span-2">
+              <input
+                type="checkbox"
+                name="deposits_like_card"
+                checked={depositsLikeCard}
+                onChange={(e) => setDepositsLikeCard(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span className="text-sm text-stone-700">
+                <span className="font-medium">Deposits like a card</span> — a financing type
+                (Synchrony, Affirm…) that pays the shop&apos;s bank. Books{" "}
+                <span className="font-mono text-xs">Dr Undeposited / Cr A/R</span>; map it to{" "}
+                <span className="font-medium">Undeposited Funds</span> and enter the financing
+                fee in QuickBooks. Leave unticked for a true non-cash type (warranty / internal).
               </span>
             </label>
           )}
