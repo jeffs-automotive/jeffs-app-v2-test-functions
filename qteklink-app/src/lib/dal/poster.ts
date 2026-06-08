@@ -80,31 +80,18 @@ function subjectOf(row: ClaimedPosting): { subjectKind: "ro" | "payment"; subjec
 }
 
 /**
- * Post the next APPROVED posting for a shop. Returns the outcome. The QBO write is
- * mocked via `deps.client` in tests; in production it's a real QboClient bound to the
- * shop's realm. Throws only on a DB/infra failure (QBO faults are recorded, not thrown).
+ * Post one CLAIMED posting row to QBO (the shared post logic). The caller has already
+ * claimed the row (status='posting', lease held) via either qteklink_claim_posting (next)
+ * or qteklink_claim_posting_by_id (a specific id, the bulk action). The QBO write is mocked
+ * via `deps.client` in tests. Throws only on a DB/infra failure (QBO faults are recorded).
  */
-export async function postNextApproved(
+async function postClaimedRow(
   shopId: number,
-  deps: { client?: QboPostClient } = {},
+  realmId: string,
+  row: ClaimedPosting,
+  deps: { client?: QboPostClient },
 ): Promise<PostOutcome> {
-  const realmId = await resolveRealmForShop(shopId);
-  if (!realmId) return { status: "no_connection" };
-
   const admin = createSupabaseAdminClient();
-
-  // Crash recovery: re-queue any posting whose lease expired (best-effort).
-  const { error: rqErr } = await admin.rpc("qteklink_requeue_expired_leases", { p_shop_id: shopId, p_realm_id: realmId });
-  if (rqErr) throw new Error(`postNextApproved (requeue) failed: ${rqErr.message}`);
-
-  // Claim one approved posting (atomic, leased).
-  const { data: claimed, error: claimErr } = await admin.rpc("qteklink_claim_posting", {
-    p_shop_id: shopId, p_realm_id: realmId, p_lease_seconds: LEASE_SECONDS,
-  });
-  if (claimErr) throw new Error(`postNextApproved (claim) failed: ${claimErr.message}`);
-  const row = claimed as ClaimedPosting | null;
-  if (!row || !row.id) return { status: "idle" };
-
   const subject = subjectOf(row);
 
   const markFailed = async (retryable: boolean, response: unknown) => {
@@ -177,4 +164,53 @@ export async function postNextApproved(
       ? { status: "retry", postingId: row.id }
       : { status: "failed", postingId: row.id, reason: cls.reviewKind ?? "qbo_error" };
   }
+}
+
+/**
+ * Post the NEXT approved posting for a shop (the cron / single-step path). Requeues
+ * expired leases first (crash recovery), claims the next approved row, posts it.
+ */
+export async function postNextApproved(
+  shopId: number,
+  deps: { client?: QboPostClient } = {},
+): Promise<PostOutcome> {
+  const realmId = await resolveRealmForShop(shopId);
+  if (!realmId) return { status: "no_connection" };
+
+  const admin = createSupabaseAdminClient();
+
+  // Crash recovery: re-queue any posting whose lease expired (best-effort).
+  const { error: rqErr } = await admin.rpc("qteklink_requeue_expired_leases", { p_shop_id: shopId, p_realm_id: realmId });
+  if (rqErr) throw new Error(`postNextApproved (requeue) failed: ${rqErr.message}`);
+
+  const { data: claimed, error: claimErr } = await admin.rpc("qteklink_claim_posting", {
+    p_shop_id: shopId, p_realm_id: realmId, p_lease_seconds: LEASE_SECONDS,
+  });
+  if (claimErr) throw new Error(`postNextApproved (claim) failed: ${claimErr.message}`);
+  const row = claimed as ClaimedPosting | null;
+  if (!row || !row.id) return { status: "idle" };
+  return postClaimedRow(shopId, realmId, row, deps);
+}
+
+/**
+ * Post ONE SPECIFIC approved posting by id (the bulk approve+post action's scoped path —
+ * never posts a different day/type). Claims that id atomically WHERE status='approved'
+ * (so an in-flight/posted/rejected row can't be re-posted); 'idle' when not claimable.
+ */
+export async function postApprovedPostingById(
+  shopId: number,
+  postingId: string,
+  deps: { client?: QboPostClient } = {},
+): Promise<PostOutcome> {
+  const realmId = await resolveRealmForShop(shopId);
+  if (!realmId) return { status: "no_connection" };
+
+  const admin = createSupabaseAdminClient();
+  const { data: claimed, error: claimErr } = await admin.rpc("qteklink_claim_posting_by_id", {
+    p_shop_id: shopId, p_realm_id: realmId, p_id: postingId, p_lease_seconds: LEASE_SECONDS,
+  });
+  if (claimErr) throw new Error(`postApprovedPostingById (claim) failed: ${claimErr.message}`);
+  const row = claimed as ClaimedPosting | null;
+  if (!row || !row.id) return { status: "idle" }; // not approved / already claimed / wrong tenant
+  return postClaimedRow(shopId, realmId, row, deps);
 }

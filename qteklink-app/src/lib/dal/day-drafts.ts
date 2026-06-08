@@ -1,0 +1,173 @@
+/**
+ * Shared day-draft builder — the single read path that turns one shop-local business
+ * day's source data (`qteklink_events` postings + `qteklink_payment_state` + manual
+ * picks) into the built SALE + PAYMENT JE drafts. Used by BOTH the reconcile job
+ * (`runDailyReconciliation` — gates/persists/enqueues) and the daily snapshot
+ * (`getDailySnapshot` — read-only). Factoring it here guarantees the snapshot's view of
+ * "postable vs blocked" can NEVER drift from what the reconcile actually enqueues.
+ *
+ * Fat-DAL: the JE builders + gates are pure; this is the thin DB seam. MULTI-TENANT: the
+ * caller has already resolved + verified `realmId`; every query scopes shop_id + realm_id.
+ * No silent failures: every DB error throws.
+ */
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { RO_POSTING_EVENT_KINDS } from "@/lib/events/kinds";
+import { parseSnapshot, resolveMappings, type MappingRow } from "@/lib/dal/sale-je";
+import { resolvePaymentMappings, stateRowToPayment, type PaymentStateRow } from "@/lib/dal/payment-je";
+import { listManualPayments } from "@/lib/dal/manual-payments";
+import { getShopSettings } from "@/lib/dal/settings";
+import type { UpsertReviewItemInput } from "@/lib/dal/review-items";
+import { buildSaleJournalEntry, toShopLocalDate, type SaleSettings } from "@/lib/sales/sale-builder";
+import {
+  buildPaymentJournalEntry, type PaymentForBuild, type PaymentJournalEntry, type PaymentSettings,
+} from "@/lib/payments/payment-je-builder";
+import type { SaleDraft } from "@/lib/reconcile/daily-rollup";
+import type { SaleGateSettings } from "@/lib/reconcile/sale-gate";
+
+/** A built payment draft + the normalized input it came from (gross/fee/status, which
+ *  the JE itself only carries embedded in its lines). */
+export interface DayPaymentDraft {
+  input: PaymentForBuild;
+  je: PaymentJournalEntry;
+}
+
+export interface DayDrafts {
+  tz: string;
+  gateSettings: SaleGateSettings;
+  sales: SaleDraft[];
+  payments: DayPaymentDraft[];
+  /** Pre-gate review items (unparseable snapshots + manual-pick conflicts). */
+  extraReviewItems: UpsertReviewItemInput[];
+}
+
+/**
+ * A GENEROUS UTC window [businessDate−1 00:00Z, businessDate+2 00:00Z) guaranteed to
+ * contain every event whose shop-local date is `businessDate` (any offset < 24h, even
+ * across DST). The exact local-date match is done in JS. Pure (no `Date.now()`).
+ */
+export function utcWindowForLocalDay(businessDate: string): { startIso: string; endIso: string } {
+  const midnightUtcMs = Date.parse(`${businessDate}T00:00:00Z`);
+  const DAY = 24 * 60 * 60 * 1000;
+  return {
+    startIso: new Date(midnightUtcMs - DAY).toISOString(),
+    endIso: new Date(midnightUtcMs + 2 * DAY).toISOString(),
+  };
+}
+
+/**
+ * Build every SALE + PAYMENT draft for one shop-local business day. The caller resolves
+ * `realmId` first (fail-closed on no connection). `opts` override the shop's configured
+ * settings (tests / one-offs).
+ */
+export async function buildDayDrafts(
+  shopId: number,
+  realmId: string,
+  businessDate: string,
+  opts: { shopTimezone?: string; tireFeeCentsPerTire?: number; salesTaxRateBps?: number } = {},
+): Promise<DayDrafts> {
+  const admin = createSupabaseAdminClient();
+
+  const { settings: shopSettings } = await getShopSettings(shopId);
+  const tz = opts.shopTimezone ?? shopSettings.shopTimezone;
+  const saleSettings: SaleSettings = {
+    shopTimezone: tz,
+    tireFeeCentsPerTire: opts.tireFeeCentsPerTire ?? shopSettings.tireFeeCents,
+    salesTaxRateBps: opts.salesTaxRateBps ?? shopSettings.salesTaxRateBps,
+  };
+  const gateSettings: SaleGateSettings = { salesTaxRateBps: saleSettings.salesTaxRateBps };
+  const paymentSettings: PaymentSettings = { shopTimezone: tz };
+
+  // ── mappings ONCE (resolved for both the sale builder and the payment builder) ──
+  const { data: mapRows, error: mapErr } = await admin
+    .from("qteklink_mappings")
+    .select("kind, source_key, qbo_account_id, posting_role, pass_through")
+    .eq("shop_id", shopId).eq("realm_id", realmId).eq("active", true)
+    .order("effective_from", { ascending: true });
+  if (mapErr) throw new Error(`buildDayDrafts (mappings) failed: ${mapErr.message}`);
+  const rows = (mapRows ?? []) as MappingRow[];
+  const saleMappings = resolveMappings(rows);
+  const paymentMappings = resolvePaymentMappings(rows);
+
+  // ── SALES: posting events in the generous UTC window → latest-per-RO → exact local date ──
+  const { startIso, endIso } = utcWindowForLocalDay(businessDate);
+  const { data: evRows, error: evErr } = await admin
+    .from("qteklink_events")
+    .select("tekmetric_ro_id, raw_body, received_at")
+    .eq("shop_id", shopId).eq("realm_id", realmId)
+    .in("event_kind", [...RO_POSTING_EVENT_KINDS])
+    .gte("tekmetric_event_at", startIso).lt("tekmetric_event_at", endIso)
+    .order("tekmetric_event_at", { ascending: false, nullsFirst: false })
+    .order("received_at", { ascending: false });
+  if (evErr) throw new Error(`buildDayDrafts (events) failed: ${evErr.message}`);
+
+  const extraReviewItems: UpsertReviewItemInput[] = [];
+  const latestByRo = new Map<string, unknown>(); // ro_id → newest raw_body.data (ordered desc → first wins)
+  for (const r of (evRows ?? []) as { tekmetric_ro_id: number | string | null; raw_body: { data?: unknown } | null }[]) {
+    const roKey = String(r.tekmetric_ro_id ?? "");
+    if (!roKey || latestByRo.has(roKey)) continue;
+    latestByRo.set(roKey, r.raw_body?.data ?? null);
+  }
+  const sales: SaleDraft[] = [];
+  for (const [roKey, data] of latestByRo.entries()) {
+    const snapshot = parseSnapshot(data);
+    if (!snapshot) {
+      // NEVER silently drop a real (but unparseable) sale — surface it (deduped by the §9 key).
+      extraReviewItems.push({ kind: "snapshot_unparseable", subjectKind: "ro", subjectRef: roKey, detail: {} });
+      continue;
+    }
+    if (toShopLocalDate(snapshot.postedDate, tz) !== businessDate) continue;
+    sales.push({ snapshot, je: buildSaleJournalEntry(snapshot, saleMappings, saleSettings) });
+  }
+
+  // ── PAYMENTS: real (payment_state) + manual picks, both for this local day ──
+  const payments: DayPaymentDraft[] = [];
+
+  const { data: psRows, error: psErr } = await admin
+    .from("qteklink_payment_state")
+    .select("payment_id, signed_amount_cents, signed_processing_fee_cents, status, is_refund, payment_type, other_payment_type, payment_date, repair_order_id")
+    .eq("shop_id", shopId).eq("realm_id", realmId)
+    .gte("payment_date", startIso).lt("payment_date", endIso);
+  if (psErr) throw new Error(`buildDayDrafts (payment_state) failed: ${psErr.message}`);
+  for (const row of (psRows ?? []) as PaymentStateRow[]) {
+    if (!row.payment_date || toShopLocalDate(row.payment_date, tz) !== businessDate) continue;
+    const input = stateRowToPayment(row);
+    payments.push({ input, je: buildPaymentJournalEntry(input, paymentMappings, paymentSettings) });
+  }
+
+  // Manual method-picks for the day.
+  const { manualPayments } = await listManualPayments(shopId);
+  const dayManual = manualPayments.filter((mp) => toShopLocalDate(mp.paymentDate, tz) === businessDate);
+
+  // ANTI-JOIN: a manual pick whose RO now has a REAL (non-voided) payment must NOT also
+  // post — it would double-post. (The record-time anti-join can't see a payment projected
+  // AFTER the pick; this reconcile-time check is the authoritative guard.)
+  const manualRoIds = [...new Set(dayManual.map((mp) => mp.repairOrderId))];
+  const conflictRoIds = new Set<number>();
+  if (manualRoIds.length > 0) {
+    const { data: confRows, error: confErr } = await admin
+      .from("qteklink_payment_state")
+      .select("repair_order_id")
+      .eq("shop_id", shopId).eq("realm_id", realmId)
+      .in("repair_order_id", manualRoIds).is("voided_at", null);
+    if (confErr) throw new Error(`buildDayDrafts (manual anti-join) failed: ${confErr.message}`);
+    for (const r of (confRows ?? []) as { repair_order_id: number | string }[]) conflictRoIds.add(Number(r.repair_order_id));
+  }
+
+  for (const mp of dayManual) {
+    if (conflictRoIds.has(mp.repairOrderId)) {
+      extraReviewItems.push({
+        kind: "manual_payment_conflict", subjectKind: "ro", subjectRef: String(mp.repairOrderId),
+        detail: { manualPaymentId: mp.id, reason: "a real payment exists for this RO; the manual pick is suppressed to avoid double-posting" },
+      });
+      continue;
+    }
+    const input: PaymentForBuild = {
+      paymentId: mp.id, repairOrderId: mp.repairOrderId, method: mp.method, otherPaymentType: mp.otherPaymentType,
+      signedAmountCents: mp.amountCents, signedProcessingFeeCents: mp.ccFeeCents, paymentDate: mp.paymentDate,
+      status: "succeeded", isRefund: false, manual: true,
+    };
+    payments.push({ input, je: buildPaymentJournalEntry(input, paymentMappings, paymentSettings) });
+  }
+
+  return { tz, gateSettings, sales, payments, extraReviewItems };
+}

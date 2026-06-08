@@ -153,6 +153,13 @@ export async function enqueuePostingForDraft(
 
 // ─── Approval-queue reads + transitions (the C8c approval UI consumes these) ─────
 
+export interface PostingJeLine {
+  accountId: string;
+  postingType: "Debit" | "Credit";
+  amountCents: number;
+  description: string;
+}
+
 export interface PostingRow {
   id: string;
   kind: string;
@@ -166,6 +173,10 @@ export interface PostingRow {
   docNumber: string | null;
   /** Σ debit cents from the proposed JE (the posting's gross) — null if no lines. */
   totalCents: number | null;
+  /** The persisted proposed-JE lines (what actually posts) — for the breakdown's posted rows. */
+  lines: PostingJeLine[];
+  /** The source fingerprint the JE was built from — to detect "changed since posted". */
+  sourceStateHash: string | null;
   createdAt: string;
 }
 
@@ -179,11 +190,45 @@ interface PostingListDbRow {
   txn_date: string;
   batch_date: string;
   qbo_je_id: string | null;
-  proposed_je: { je?: { lines?: { postingType?: string; amountCents?: number }[]; docNumber?: string } } | null;
+  proposed_je: {
+    je?: { lines?: { accountId?: string; postingType?: string; amountCents?: number; description?: string }[]; docNumber?: string };
+    source_state_hash?: string;
+  } | null;
   created_at: string;
 }
 
 const OPEN_POSTING_STATUSES = ["pending", "approved", "posting", "failed", "needs_resolution"];
+const POSTING_SELECT = "id, kind, tekmetric_ro_id, payment_id, status, posting_version, txn_date, batch_date, qbo_je_id, proposed_je, created_at";
+
+/** Map a posting row → PostingRow; totalCents = Σ Debit cents from the proposed JE. */
+function mapPostingRow(r: PostingListDbRow): PostingRow {
+  const rawLines = r.proposed_je?.je?.lines ?? [];
+  const lines: PostingJeLine[] = rawLines.map((l) => ({
+    accountId: String(l.accountId ?? ""),
+    postingType: l.postingType === "Credit" ? "Credit" : "Debit",
+    amountCents: Number.isSafeInteger(l.amountCents) ? (l.amountCents as number) : 0,
+    description: String(l.description ?? ""),
+  }));
+  const totalCents = lines
+    .filter((l) => l.postingType === "Debit")
+    .reduce((a, l) => a + l.amountCents, 0);
+  return {
+    id: r.id,
+    kind: r.kind,
+    tekmetricRoId: Number(r.tekmetric_ro_id),
+    paymentId: r.payment_id == null ? null : Number(r.payment_id),
+    status: r.status,
+    postingVersion: r.posting_version,
+    txnDate: r.txn_date,
+    batchDate: r.batch_date,
+    qboJeId: r.qbo_je_id,
+    docNumber: r.proposed_je?.je?.docNumber ?? null,
+    totalCents: lines.length > 0 ? totalCents : null,
+    lines,
+    sourceStateHash: r.proposed_je?.source_state_hash ?? null,
+    createdAt: r.created_at,
+  };
+}
 
 /** List a shop's postings (default: the OPEN/actionable ones) for the approval UI. */
 export async function listPostings(
@@ -196,34 +241,39 @@ export async function listPostings(
   const admin = createSupabaseAdminClient();
   const { data, error } = await admin
     .from("qteklink_postings")
-    .select("id, kind, tekmetric_ro_id, payment_id, status, posting_version, txn_date, batch_date, qbo_je_id, proposed_je, created_at")
+    .select(POSTING_SELECT)
     .eq("shop_id", shopId)
     .eq("realm_id", realmId)
     .in("status", opts.statuses ?? OPEN_POSTING_STATUSES)
     .order("created_at", { ascending: true });
   if (error) throw new Error(`listPostings failed: ${error.message}`);
 
-  const postings = ((data ?? []) as PostingListDbRow[]).map((r) => {
-    const lines = r.proposed_je?.je?.lines ?? [];
-    const totalCents = lines
-      .filter((l) => l.postingType === "Debit")
-      .reduce((a, l) => a + (Number.isSafeInteger(l.amountCents) ? (l.amountCents as number) : 0), 0);
-    return {
-      id: r.id,
-      kind: r.kind,
-      tekmetricRoId: Number(r.tekmetric_ro_id),
-      paymentId: r.payment_id == null ? null : Number(r.payment_id),
-      status: r.status,
-      postingVersion: r.posting_version,
-      txnDate: r.txn_date,
-      batchDate: r.batch_date,
-      qboJeId: r.qbo_je_id,
-      docNumber: r.proposed_je?.je?.docNumber ?? null,
-      totalCents: lines.length > 0 ? totalCents : null,
-      createdAt: r.created_at,
-    };
-  });
-  return { realmId, postings };
+  return { realmId, postings: ((data ?? []) as PostingListDbRow[]).map(mapPostingRow) };
+}
+
+/**
+ * List ALL of a shop's postings for one business day (`batch_date`) — every status, every
+ * version — for the daily snapshot's persisted-posting overlay (§3a precedence). Returns
+ * {realmId:null, postings:[]} when the shop has no connection.
+ */
+export async function listPostingsForDay(
+  shopId: number,
+  businessDate: string,
+): Promise<{ realmId: string | null; postings: PostingRow[] }> {
+  const realmId = await resolveRealmForShop(shopId);
+  if (!realmId) return { realmId: null, postings: [] };
+
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin
+    .from("qteklink_postings")
+    .select(POSTING_SELECT)
+    .eq("shop_id", shopId)
+    .eq("realm_id", realmId)
+    .eq("batch_date", businessDate)
+    .order("posting_version", { ascending: true });
+  if (error) throw new Error(`listPostingsForDay failed: ${error.message}`);
+
+  return { realmId, postings: ((data ?? []) as PostingListDbRow[]).map(mapPostingRow) };
 }
 
 /** Approve a pending posting (the human gate). Fails closed when no connection. */

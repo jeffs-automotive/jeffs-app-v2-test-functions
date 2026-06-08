@@ -1,126 +1,143 @@
 /**
- * /approvals — the daily reconciliation review surface (C7 §8/§9).
+ * /approvals — the daily-snapshot approval dashboard (approval-dashboard upgrade, plan §3.1).
  *
- * requireQtekUser() enforces session + Entra oid + allowlist + active. Everyone
- * allowed READS the open review queue; only admins run a day's reconciliation,
- * resolve an item, or record a manual payment (plan §14 — admins manage posting).
- * The page only READS (listOpenReviewItems) — the reconciliation job (a write) runs
- * via the admin RunReconcileForm action, never on render.
+ * requireQtekUser() enforces session + Entra oid + allowlist + active. The page only READS
+ * (`getDailySnapshot`) — the approve+post action (a live QBO write) is the admin-only
+ * ApproveDayControls (P4), never on render. `?date=` is a shop-local YYYY-MM-DD (validated;
+ * defaults to the shop-local today). The resolution queue lives at /approvals/review.
  */
 import Link from "next/link";
 import { requireQtekUser } from "@/lib/auth";
-import { listOpenReviewItems, type ReviewItemRow } from "@/lib/dal/review-items";
-import ResolveReviewItemForm from "./ResolveReviewItemForm";
-import RunReconcileForm from "./RunReconcileForm";
-import RecordManualPaymentForm from "./RecordManualPaymentForm";
+import { getDailySnapshot, type TypeRow } from "@/lib/dal/daily-snapshot";
+import { getShopSettings } from "@/lib/dal/settings";
+import { toShopLocalDate } from "@/lib/sales/sale-builder";
+import { fmtUsd, isIsoDate, addDaysIso } from "@/lib/format";
+import ApproveDayControls from "./ApproveDayControls";
 
-const KIND_LABELS: Record<string, string> = {
-  unmapped: "Unmapped account / source",
-  tax_identity: "Tax identity mismatch",
-  tax_high: "Sales tax above the 6% ceiling",
-  payment_corrupt: "Corrupt payment amount",
-};
+export const dynamic = "force-dynamic"; // a live per-request snapshot — never statically cached
 
-function reasonList(detail: Record<string, unknown>): string[] {
-  const r = detail.reasons;
-  return Array.isArray(r) ? r.map(String) : [];
-}
-
-function ReviewItemCard({ item, isAdmin }: { item: ReviewItemRow; isAdmin: boolean }) {
-  const reasons = reasonList(item.detail);
+function Kpi({ label, cents }: { label: string; cents: number }) {
   return (
-    <li className="rounded-lg border border-stone-200 bg-white p-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="rounded bg-[#96003C]/10 px-2 py-0.5 text-xs font-semibold text-[#96003C]">
-          {KIND_LABELS[item.kind] ?? item.kind}
-        </span>
-        <span className="text-xs uppercase tracking-wide text-stone-500">
-          {item.subjectKind} {item.subjectRef}
-        </span>
-        <span className="ml-auto text-xs text-stone-400">{new Date(item.createdAt).toLocaleString()}</span>
-      </div>
-
-      {reasons.length > 0 && (
-        <ul className="mt-2 flex flex-wrap gap-1.5">
-          {reasons.map((r) => (
-            <li key={r} className="rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-700">{r}</li>
-          ))}
-        </ul>
-      )}
-      {item.detail.docNumber != null && (
-        <p className="mt-2 text-xs text-stone-500">{String(item.detail.docNumber)}</p>
-      )}
-      {item.kind === "tax_high" && (
-        <p className="mt-1 text-xs text-stone-600">
-          sales tax {String(item.detail.salesTaxCents)}¢ vs 6% ceiling {String(item.detail.baselineSalesTaxCents)}¢
-          (base {String(item.detail.baseCents)}¢)
-        </p>
-      )}
-      {item.kind === "tax_identity" && (
-        <p className="mt-1 text-xs text-stone-600">
-          totalSales {String(item.detail.totalSales)}¢ vs component sum {String(item.detail.componentSum)}¢
-          (off by {String(item.detail.differenceCents)}¢)
-        </p>
-      )}
-
-      {isAdmin && <ResolveReviewItemForm id={item.id} />}
-    </li>
+    <div className="rounded-lg border border-stone-200 bg-white p-5 text-center">
+      <p className="text-xs font-medium uppercase tracking-wide text-stone-500">{label}</p>
+      <p className="mt-1 text-2xl font-bold text-stone-900">{fmtUsd(cents)}</p>
+    </div>
   );
 }
 
-export default async function ApprovalsPage() {
+const num = "px-3 py-2 text-right tabular-nums";
+
+function Row({ row, date }: { row: TypeRow; date: string }) {
+  const attn = row.needsAttentionCents;
+  return (
+    <tr className="border-t border-stone-100">
+      <td className="px-3 py-2 font-medium text-stone-800">{row.type}</td>
+      <td className={num}>{row.count}</td>
+      <td className={num}>
+        {attn > 0 ? (
+          <Link href={`/approvals/review?date=${date}`} className="font-medium text-amber-700 underline">
+            {fmtUsd(attn)}
+          </Link>
+        ) : (
+          <span className="text-stone-400">{fmtUsd(attn)}</span>
+        )}
+      </td>
+      <td className={num}>{fmtUsd(row.unapprovedCents)}</td>
+      <td className={num}>{fmtUsd(row.inProgressCents)}</td>
+      <td className={num}>{fmtUsd(row.postedCents)}</td>
+      <td className={`${num} font-semibold`}>{fmtUsd(row.totalCents)}</td>
+    </tr>
+  );
+}
+
+export default async function ApprovalsPage({ searchParams }: { searchParams: Promise<{ date?: string }> }) {
   const { email, role, shopId } = await requireQtekUser();
-  const isAdmin = role === "admin";
-  const { realmId, items } = await listOpenReviewItems(shopId);
+  const { realmId, settings } = await getShopSettings(shopId);
+
+  const { date: dateParam } = await searchParams;
+  const today = toShopLocalDate(new Date().toISOString(), settings.shopTimezone);
+  const date = dateParam && isIsoDate(dateParam) ? dateParam : today;
+
+  const snapshot = await getDailySnapshot(shopId, date);
+  const [roRow, payRow, feeRow] = snapshot.rows;
 
   return (
-    <main className="mx-auto max-w-4xl px-6 py-12">
+    <main className="mx-auto max-w-5xl px-6 py-12">
       <header className="flex items-center justify-between border-b border-stone-200 pb-4">
         <div>
-          <h1 className="text-2xl font-bold text-[#96003C]">Daily approvals</h1>
+          <h1 className="text-2xl font-bold text-[#96003C]">Daily approval</h1>
           <p className="text-sm text-stone-600">
-            Reconciliation review queue &middot;{" "}
-            <Link href="/dashboard" className="text-[#96003C] underline">back to dashboard</Link>
+            <Link href="/dashboard" className="text-[#96003C] underline">dashboard</Link>
+            {" · "}
+            <Link href={`/approvals/review?date=${date}`} className="text-[#96003C] underline">resolution queue</Link>
+            {role === "admin" && (<>{" · "}<Link href="/postings" className="text-[#96003C] underline">posting queue</Link></>)}
           </p>
         </div>
         <div className="text-right">
           <p className="text-sm font-medium text-stone-900">{email}</p>
-          <p className="text-xs uppercase tracking-wide text-stone-500">{role} &middot; shop {shopId}</p>
+          <p className="text-xs uppercase tracking-wide text-stone-500">{role} · shop {shopId}</p>
         </div>
       </header>
 
+      {/* date nav */}
+      <div className="mt-6 flex items-center justify-center gap-3">
+        <Link href={`/approvals?date=${addDaysIso(date, -1)}`} className="rounded border border-stone-300 px-3 py-1.5 text-sm hover:bg-stone-50">◀</Link>
+        <form className="flex items-center gap-2">
+          <input type="date" name="date" defaultValue={date} className="rounded border border-stone-300 px-3 py-1.5 text-sm" />
+          <button type="submit" className="rounded bg-stone-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-stone-700">Go</button>
+        </form>
+        <Link href={`/approvals?date=${addDaysIso(date, 1)}`} className="rounded border border-stone-300 px-3 py-1.5 text-sm hover:bg-stone-50">▶</Link>
+      </div>
+
       {!realmId ? (
         <section className="mt-8 rounded-lg border border-amber-200 bg-amber-50 p-6">
-          <p className="text-sm text-amber-800">
-            QuickBooks isn&apos;t connected for this shop yet. Connect it from the dashboard before reconciling.
-          </p>
+          <p className="text-sm text-amber-800">QuickBooks isn&apos;t connected for this shop yet. Connect it from the dashboard.</p>
         </section>
       ) : (
         <>
-          {isAdmin && (
-            <section className="mt-8 grid gap-6 md:grid-cols-2">
-              <RunReconcileForm />
-              <RecordManualPaymentForm />
-            </section>
-          )}
-
-          <section className="mt-8 rounded-lg border border-stone-200 bg-white p-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-stone-900">Open review items</h2>
-              <span className="text-3xl font-bold text-stone-900">{items.length}</span>
-            </div>
-            {items.length === 0 ? (
-              <p className="mt-2 text-sm text-stone-600">
-                Nothing to review — every reconciled draft is postable. Run a day above to refresh.
-              </p>
-            ) : (
-              <ul className="mt-4 space-y-3">
-                {items.map((item) => (
-                  <ReviewItemCard key={item.id} item={item} isAdmin={isAdmin} />
-                ))}
-              </ul>
-            )}
+          <section className="mt-8 grid gap-4 sm:grid-cols-3">
+            <Kpi label="Total sales (incl. tax)" cents={snapshot.kpis.salesCents} />
+            <Kpi label="Total payments" cents={snapshot.kpis.paymentsCents} />
+            <Kpi label="Total CC fees" cents={snapshot.kpis.ccFeesCents} />
           </section>
+
+          <section className="mt-6 overflow-hidden rounded-lg border border-stone-200 bg-white">
+            <table className="w-full text-sm">
+              <thead className="bg-stone-50 text-xs uppercase tracking-wide text-stone-500">
+                <tr>
+                  <th className="px-3 py-2 text-left">Type</th>
+                  <th className="px-3 py-2 text-right">Count</th>
+                  <th className="px-3 py-2 text-right">Needs attn</th>
+                  <th className="px-3 py-2 text-right">Unapproved</th>
+                  <th className="px-3 py-2 text-right">In progress</th>
+                  <th className="px-3 py-2 text-right">Posted</th>
+                  <th className="px-3 py-2 text-right">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {roRow && <Row row={roRow} date={date} />}
+                {payRow && <Row row={payRow} date={date} />}
+                {feeRow && <Row row={feeRow} date={date} />}
+              </tbody>
+            </table>
+          </section>
+
+          <div className="mt-4 flex items-center justify-between">
+            <p className="text-sm text-stone-600">
+              {snapshot.needsAttentionCount > 0 ? (
+                <Link href={`/approvals/review?date=${date}`} className="font-medium text-amber-700 underline">
+                  ⚠ {snapshot.needsAttentionCount} item{snapshot.needsAttentionCount === 1 ? "" : "s"} need attention
+                </Link>
+              ) : (
+                <span className="text-stone-400">Nothing needs attention.</span>
+              )}
+            </p>
+            <Link href={`/approvals/${date}/breakdown`} className="rounded border border-[#96003C] px-4 py-2 text-sm font-medium text-[#96003C] hover:bg-[#96003C]/5">
+              Open breakdown →
+            </Link>
+          </div>
+
+          {role === "admin" && <ApproveDayControls date={date} />}
         </>
       )}
     </main>

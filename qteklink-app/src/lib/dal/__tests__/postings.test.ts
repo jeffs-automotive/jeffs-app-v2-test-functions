@@ -122,6 +122,11 @@ describe("listPostings / approvePosting / rejectPosting", () => {
       id: "p1", kind: "sale", tekmetricRoId: 152805, paymentId: null, status: "pending",
       postingVersion: 1, txnDate: "2026-05-19", batchDate: "2026-05-19", qboJeId: null,
       docNumber: "RO 152805", totalCents: 11202, createdAt: "2026-05-19T00:00:00Z",
+      lines: [
+        { accountId: "", postingType: "Debit", amountCents: 11202, description: "" },
+        { accountId: "", postingType: "Credit", amountCents: 11202, description: "" },
+      ],
+      sourceStateHash: null,
     });
   });
 
