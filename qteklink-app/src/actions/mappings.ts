@@ -13,7 +13,7 @@ import { z } from "zod";
 import { requireQtekUser } from "@/lib/auth";
 import { wrapQtekAction } from "@/lib/instrument-action";
 import { setMapping, deactivateMapping } from "@/lib/dal/mappings";
-import { MAPPING_KINDS, POSTING_ROLES } from "@/lib/mappings/catalog";
+import { MAPPING_KINDS, POSTING_ROLES, derivePostingRole } from "@/lib/mappings/catalog";
 import { qboFailure, type QboActionResult } from "./qbo/result";
 
 const SetMappingSchema = z
@@ -106,7 +106,63 @@ async function deactivateMappingImpl(
   }
 }
 
+/**
+ * Map a discovered/fixed Tekmetric ITEM to an account (the picker UX). The user picks
+ * an item (which carries its kind + sourceKey) + an account; the posting ROLE is derived
+ * SERVER-SIDE from (kind, sourceKey) — never trusted from the client. The DB RPC remains
+ * the authoritative role<->account-type gate.
+ */
+const MapItemSchema = z
+  .object({
+    kind: z.enum(MAPPING_KINDS),
+    sourceKey: z.string().trim().min(1, "Pick a Tekmetric item.").max(200),
+    qboAccountId: z.string().trim().min(1, "Pick a QuickBooks account.").max(100),
+    passThrough: z.boolean().optional(),
+  })
+  .refine((d) => !d.passThrough || d.kind === "fee", {
+    message: "Pass-through applies only to fee mappings.",
+    path: ["passThrough"],
+  });
+
+async function mapTekmetricItemImpl(
+  _prev: SetMappingState | null,
+  formData: FormData,
+): Promise<SetMappingState> {
+  try {
+    const { shopId, role } = await requireQtekUser();
+    if (role !== "admin") return adminRequired();
+
+    const parsed = MapItemSchema.safeParse({
+      kind: formData.get("kind"),
+      sourceKey: formData.get("source_key"),
+      qboAccountId: formData.get("qbo_account_id"),
+      passThrough: formData.get("pass_through") === "on",
+    });
+    if (!parsed.success) {
+      return { ok: false, reason: "validation", message: parsed.error.issues[0]?.message ?? "Invalid mapping input.", timestamp: Date.now() };
+    }
+
+    // Derive the role server-side; a (kind, sourceKey) with no valid role isn't mappable.
+    const postingRole = derivePostingRole(parsed.data.kind, parsed.data.sourceKey);
+    if (!postingRole) {
+      return { ok: false, reason: "validation", message: "That item can't be mapped (unknown posting role).", timestamp: Date.now() };
+    }
+
+    const data = await setMapping(shopId, {
+      kind: parsed.data.kind,
+      sourceKey: parsed.data.sourceKey,
+      qboAccountId: parsed.data.qboAccountId,
+      postingRole,
+      passThrough: parsed.data.passThrough,
+    });
+    return { ok: true, data, timestamp: Date.now() };
+  } catch (e) {
+    return qboFailure(e);
+  }
+}
+
 export const setMappingAction = wrapQtekAction("qboSetMapping", setMappingImpl);
+export const mapTekmetricItemAction = wrapQtekAction("qboMapTekmetricItem", mapTekmetricItemImpl);
 export const deactivateMappingAction = wrapQtekAction(
   "qboDeactivateMapping",
   deactivateMappingImpl,

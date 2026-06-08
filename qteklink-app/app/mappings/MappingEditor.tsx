@@ -1,55 +1,68 @@
 "use client";
 
 /**
- * MappingEditor (C2, admin-only) — add/update one mapping via setMappingAction
- * (React 19 useActionState). On success it router.refresh()es so the server
- * component re-renders the list (keeps the action pure — no revalidatePath).
- * The account <select> is grouped by QBO account type; the DB RPC is the
- * authoritative role-compat gate, so an incompatible pick returns a clear error.
+ * MappingEditor — the Tekmetric-item picker. The admin picks an ITEM from a dropdown
+ * (each annotated with its current account in parentheses), then the QuickBooks account
+ * it should post to. No "source key" / "Tekmetric id" / "kind" / "posting role" jargon —
+ * the action derives those from the chosen item server-side. Fees keep the one
+ * pass-through judgment. On success it router.refresh()es so the server re-renders.
  */
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { setMappingAction } from "@/actions/mappings";
-import {
-  MAPPING_KINDS,
-  POSTING_ROLES,
-  KIND_LABELS,
-  ROLE_LABELS,
-} from "@/lib/mappings/catalog";
+import { mapTekmetricItemAction } from "@/actions/mappings";
+import type { TekmetricItem } from "@/lib/dal/tekmetric-items";
 import type { MappableAccount } from "@/lib/dal/mappings";
 
-export default function MappingEditor({ accounts }: { accounts: MappableAccount[] }) {
+export default function MappingEditor({
+  items,
+  accounts,
+}: {
+  items: TekmetricItem[];
+  accounts: MappableAccount[];
+}) {
   const router = useRouter();
-  const formRef = useRef<HTMLFormElement>(null);
-  const [kind, setKind] = useState("labor");
-  const [state, formAction, pending] = useActionState(setMappingAction, null);
+  const [token, setToken] = useState("");
+  const [account, setAccount] = useState("");
+  const [passThrough, setPassThrough] = useState(false);
+  const [state, formAction, pending] = useActionState(mapTekmetricItemAction, null);
+
+  const item = items.find((i) => i.token === token) ?? null;
+
+  // Selecting an item preselects its current account + pass-through (so "save" = update).
+  useEffect(() => {
+    setAccount(item?.mappedQboAccountId ?? "");
+    setPassThrough(item?.passThrough ?? false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
 
   useEffect(() => {
-    if (state?.ok) {
-      router.refresh();
-      formRef.current?.reset();
-      setKind("labor"); // form.reset() doesn't reset a controlled select
-    }
+    if (state?.ok) router.refresh();
   }, [state?.timestamp, state?.ok, router]);
 
-  const byType = new Map<string, MappableAccount[]>();
+  const itemGroups = new Map<string, TekmetricItem[]>();
+  for (const i of items) {
+    const arr = itemGroups.get(i.group) ?? [];
+    arr.push(i);
+    itemGroups.set(i.group, arr);
+  }
+  const acctByType = new Map<string, MappableAccount[]>();
   for (const a of accounts) {
     const t = a.accountType ?? "Other";
-    const arr = byType.get(t) ?? [];
+    const arr = acctByType.get(t) ?? [];
     arr.push(a);
-    byType.set(t, arr);
+    acctByType.set(t, arr);
   }
 
   const labelCls = "text-xs font-medium uppercase tracking-wide text-stone-500";
   const fieldCls =
-    "mt-1 w-full rounded border border-stone-300 px-3 py-2 text-sm focus:border-[#96003C] focus:outline-none";
+    "mt-1 w-full rounded border border-stone-300 px-3 py-2 text-sm focus:border-[#96003C] focus:outline-none disabled:bg-stone-50 disabled:text-stone-400";
 
   return (
     <section className="mt-8 rounded-lg border border-stone-200 bg-white p-6">
-      <h2 className="text-lg font-semibold text-stone-900">Add / update a mapping</h2>
+      <h2 className="text-lg font-semibold text-stone-900">Map a Tekmetric item</h2>
       <p className="mt-1 text-sm text-stone-600">
-        Setting a mapping for a source that&apos;s already mapped replaces it (the
-        previous one is kept as history).
+        Pick a Tekmetric item, then the QuickBooks account it should post to. The item&apos;s
+        current account (if any) shows in parentheses; picking a new one replaces it.
       </p>
 
       {accounts.length === 0 ? (
@@ -57,57 +70,44 @@ export default function MappingEditor({ accounts }: { accounts: MappableAccount[
           No chart-of-accounts yet — sync it from the dashboard first.
         </p>
       ) : (
-        <form ref={formRef} action={formAction} className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label className="block">
-            <span className={labelCls}>Kind</span>
-            <select
-              name="kind"
-              value={kind}
-              onChange={(e) => setKind(e.target.value)}
-              className={fieldCls}
-            >
-              {MAPPING_KINDS.map((k) => (
-                <option key={k} value={k}>
-                  {KIND_LABELS[k]}
-                </option>
+        <form action={formAction} className="mt-4 grid gap-4 sm:grid-cols-2">
+          {/* The chosen item carries kind + sourceKey (the action derives the role). */}
+          <input type="hidden" name="kind" value={item?.kind ?? ""} />
+          <input type="hidden" name="source_key" value={item?.sourceKey ?? ""} />
+
+          <label className="block sm:col-span-2">
+            <span className={labelCls}>Tekmetric item</span>
+            <select value={token} onChange={(e) => setToken(e.target.value)} required className={fieldCls}>
+              <option value="" disabled>
+                Select an item…
+              </option>
+              {[...itemGroups.entries()].map(([group, gi]) => (
+                <optgroup key={group} label={group}>
+                  {gi.map((i) => (
+                    <option key={i.token} value={i.token}>
+                      {i.label}
+                      {i.mappedAccountLabel ? ` (${i.mappedAccountLabel})` : ""}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
             </select>
-          </label>
-
-          <label className="block">
-            <span className={labelCls}>Posting role</span>
-            <select name="posting_role" defaultValue="income" className={fieldCls}>
-              {POSTING_ROLES.map((r) => (
-                <option key={r} value={r}>
-                  {ROLE_LABELS[r]}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="block">
-            <span className={labelCls}>Source key</span>
-            <input
-              name="source_key"
-              required
-              maxLength={200}
-              placeholder="e.g. Labor, Shop Supplies, Sales Tax"
-              className={fieldCls}
-            />
-          </label>
-
-          <label className="block">
-            <span className={labelCls}>Tekmetric id (optional)</span>
-            <input name="source_id" maxLength={200} placeholder="preferred match key" className={fieldCls} />
           </label>
 
           <label className="block sm:col-span-2">
             <span className={labelCls}>QuickBooks account</span>
-            <select name="qbo_account_id" required defaultValue="" className={fieldCls}>
+            <select
+              name="qbo_account_id"
+              value={account}
+              onChange={(e) => setAccount(e.target.value)}
+              required
+              disabled={!item}
+              className={fieldCls}
+            >
               <option value="" disabled>
-                Select an account…
+                {item ? "Select an account…" : "Pick a Tekmetric item first"}
               </option>
-              {[...byType.entries()].map(([type, accts]) => (
+              {[...acctByType.entries()].map(([type, accts]) => (
                 <optgroup key={type} label={type}>
                   {accts.map((a) => (
                     <option key={a.qboAccountId} value={a.qboAccountId}>
@@ -119,9 +119,15 @@ export default function MappingEditor({ accounts }: { accounts: MappableAccount[
             </select>
           </label>
 
-          {kind === "fee" && (
+          {item?.kind === "fee" && (
             <label className="flex items-start gap-2 sm:col-span-2">
-              <input type="checkbox" name="pass_through" className="mt-0.5" />
+              <input
+                type="checkbox"
+                name="pass_through"
+                checked={passThrough}
+                onChange={(e) => setPassThrough(e.target.checked)}
+                className="mt-0.5"
+              />
               <span className="text-sm text-stone-700">
                 <span className="font-medium">Pass-through fee</span> — exclude from the
                 discount waterfall (a mandated / third-party fee is never discounted).
@@ -132,10 +138,10 @@ export default function MappingEditor({ accounts }: { accounts: MappableAccount[
           <div className="sm:col-span-2">
             <button
               type="submit"
-              disabled={pending}
+              disabled={pending || !item}
               className="rounded bg-[#96003C] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#7e0033] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {pending ? "Saving…" : "Save mapping"}
+              {pending ? "Saving…" : item?.mappedAccountLabel ? "Update mapping" : "Save mapping"}
             </button>
             {state?.ok && <span className="ml-3 text-sm text-emerald-700">Mapping saved.</span>}
             {state && !state.ok && <span className="ml-3 text-sm text-red-700">{state.message}</span>}

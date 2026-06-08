@@ -10,6 +10,7 @@
 import Link from "next/link";
 import { requireQtekUser } from "@/lib/auth";
 import { listMappings, listMappableAccounts, type MappingRow } from "@/lib/dal/mappings";
+import { listTekmetricItems } from "@/lib/dal/tekmetric-items";
 import {
   MAPPING_KINDS,
   KIND_LABELS,
@@ -26,6 +27,7 @@ export default async function MappingsPage() {
 
   const { realmId, mappings } = await listMappings(shopId);
   const accounts = isAdmin && realmId ? await listMappableAccounts(shopId) : [];
+  const items = isAdmin && realmId ? (await listTekmetricItems(shopId)).items : [];
 
   const byKind = new Map<string, MappingRow[]>();
   for (const m of mappings) {
@@ -127,7 +129,7 @@ export default async function MappingsPage() {
             )}
           </section>
 
-          {isAdmin && <MappingEditor accounts={accounts} />}
+          {isAdmin && <MappingEditor items={items} accounts={accounts} />}
         </>
       )}
     </main>

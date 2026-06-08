@@ -51,3 +51,37 @@ export const ROLE_LABELS: Record<PostingRole, string> = {
   cc_fee: "Credit-card fee",
   noncash_contra: "Non-cash contra",
 };
+
+/**
+ * Derive the posting role from a Tekmetric item's (kind, sourceKey) — so the mapping
+ * UI never asks the user to pick a role, and the action derives it SERVER-SIDE (never
+ * trusts a client-supplied role). Returns null for an unknown tax/system key (→ reject).
+ * Income-bearing kinds (labor/part/fee/sublet) always credit an income account; the
+ * tax + system keys carry their specific liability/asset role.
+ */
+export function derivePostingRole(kind: string, sourceKey: string): PostingRole | null {
+  switch (kind) {
+    case "labor":
+    case "part_category":
+    case "fee":
+    case "sublet":
+      return "income";
+    case "noncash_payment_type":
+      return "noncash_contra";
+    case "tax": {
+      const k = sourceKey.trim().toLowerCase();
+      if (k === "sales tax") return "sales_tax_payable";
+      if (k === "tire tax") return "tire_fee_payable";
+      return null;
+    }
+    case "system": {
+      const k = sourceKey.trim().toLowerCase();
+      if (k === "accounts_receivable") return "accounts_receivable";
+      if (k === "undeposited_funds") return "undeposited_funds";
+      if (k === "cc_fee") return "cc_fee";
+      return null;
+    }
+    default:
+      return null;
+  }
+}
