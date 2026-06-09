@@ -107,5 +107,9 @@ describe("getDayBreakdown", () => {
 
     // Payments — two-column derivation
     expect(b.payments).toEqual([{ paymentId: "101", tekmetricRoId: 1, method: "Credit Card", amountCents: 1200, feeCents: 35, netCents: 1165, status: "unapproved" }]);
+
+    // Payments-summary card totals (abs gross + abs fee, matching the main snapshot KPIs)
+    expect(b.summary.paymentsTotalCents).toBe(1200);
+    expect(b.summary.feesTotalCents).toBe(35);
   });
 });

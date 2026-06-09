@@ -33,9 +33,27 @@ function StatusBadge({ status }: { status: SnapshotColumn }) {
 
 const numCell = "px-3 py-2 text-right tabular-nums";
 
-function SummaryTab({ rows, totalDebitCents, totalCreditCents, balanced }: { rows: SummaryRow[]; totalDebitCents: number; totalCreditCents: number; balanced: boolean }) {
+function Stat({ label, cents }: { label: string; cents: number }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-stone-200 bg-white">
+    <div>
+      <dt className="text-xs text-stone-500">{label}</dt>
+      <dd className="mt-0.5 text-lg font-bold tabular-nums text-stone-900">{fmtUsd(cents)}</dd>
+    </div>
+  );
+}
+
+function SummaryTab({ rows, totalDebitCents, totalCreditCents, balanced, paymentsTotalCents, feesTotalCents }: { rows: SummaryRow[]; totalDebitCents: number; totalCreditCents: number; balanced: boolean; paymentsTotalCents: number; feesTotalCents: number }) {
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg border border-stone-200 bg-white p-4">
+        <p className="text-xs font-medium uppercase tracking-wide text-stone-500">Payments summary</p>
+        <dl className="mt-2 grid grid-cols-3 gap-4">
+          <Stat label="Total payments" cents={paymentsTotalCents} />
+          <Stat label="Total CC fees" cents={feesTotalCents} />
+          <Stat label="Net to Undeposited" cents={paymentsTotalCents - feesTotalCents} />
+        </dl>
+      </div>
+      <div className="overflow-hidden rounded-lg border border-stone-200 bg-white">
       <p className="border-b border-stone-100 bg-stone-50 px-3 py-2 text-xs text-stone-500">
         Proposed + posted net for the day (postable rows; items in Needs attention are excluded).
       </p>
@@ -60,6 +78,7 @@ function SummaryTab({ rows, totalDebitCents, totalCreditCents, balanced }: { row
           </tr>
         </tfoot>
       </table>
+      </div>
     </div>
   );
 }

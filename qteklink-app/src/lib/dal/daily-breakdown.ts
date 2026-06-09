@@ -56,7 +56,7 @@ export interface SummaryRow {
 export interface DayBreakdown {
   realmId: string | null;
   businessDate: string;
-  summary: { rows: SummaryRow[]; totalDebitCents: number; totalCreditCents: number; balanced: boolean };
+  summary: { rows: SummaryRow[]; totalDebitCents: number; totalCreditCents: number; balanced: boolean; paymentsTotalCents: number; feesTotalCents: number };
   ros: RoBreakdown[];
   payments: PaymentBreakdown[];
 }
@@ -86,7 +86,7 @@ export async function getDayBreakdown(
 ): Promise<DayBreakdown> {
   const realmId = await resolveRealmForShop(shopId);
   if (!realmId) {
-    return { realmId: null, businessDate, summary: { rows: [], totalDebitCents: 0, totalCreditCents: 0, balanced: true }, ros: [], payments: [] };
+    return { realmId: null, businessDate, summary: { rows: [], totalDebitCents: 0, totalCreditCents: 0, balanced: true, paymentsTotalCents: 0, feesTotalCents: 0 }, ros: [], payments: [] };
   }
 
   const { sales, payments, gateSettings } = await buildDayDrafts(shopId, realmId, businessDate, opts);
@@ -178,11 +178,15 @@ export async function getDayBreakdown(
     .sort((a, b) => (a.acctNum ?? "").localeCompare(b.acctNum ?? "") || a.accountId.localeCompare(b.accountId));
   const totalDebitCents = summaryRows.reduce((a, r) => a + r.debitCents, 0);
   const totalCreditCents = summaryRows.reduce((a, r) => a + r.creditCents, 0);
+  // Payments-summary totals — sum the SAME payment set as the main snapshot KPIs (abs gross +
+  // abs fee), so the breakdown card matches the /approvals "Total payments" / "Total CC fees".
+  const paymentsTotalCents = paymentRows.reduce((a, r) => a + r.amountCents, 0);
+  const feesTotalCents = paymentRows.reduce((a, r) => a + r.feeCents, 0);
 
   return {
     realmId,
     businessDate,
-    summary: { rows: summaryRows, totalDebitCents, totalCreditCents, balanced: totalDebitCents === totalCreditCents },
+    summary: { rows: summaryRows, totalDebitCents, totalCreditCents, balanced: totalDebitCents === totalCreditCents, paymentsTotalCents, feesTotalCents },
     ros,
     payments: paymentRows,
   };
