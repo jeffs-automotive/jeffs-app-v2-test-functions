@@ -42,15 +42,16 @@ function Stat({ label, cents }: { label: string; cents: number }) {
   );
 }
 
-function SummaryTab({ rows, totalDebitCents, totalCreditCents, balanced, paymentsTotalCents, feesTotalCents }: { rows: SummaryRow[]; totalDebitCents: number; totalCreditCents: number; balanced: boolean; paymentsTotalCents: number; feesTotalCents: number }) {
+function SummaryTab({ rows, totalDebitCents, totalCreditCents, balanced, paymentsTotalCents, feesTotalCents, depositToUndepositedCents, nonCashCents }: { rows: SummaryRow[]; totalDebitCents: number; totalCreditCents: number; balanced: boolean; paymentsTotalCents: number; feesTotalCents: number; depositToUndepositedCents: number; nonCashCents: number }) {
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-stone-200 bg-white p-4">
         <p className="text-xs font-medium uppercase tracking-wide text-stone-500">Payments summary</p>
-        <dl className="mt-2 grid grid-cols-3 gap-4">
+        <dl className="mt-2 grid grid-cols-2 gap-4 sm:grid-cols-4">
           <Stat label="Total payments" cents={paymentsTotalCents} />
           <Stat label="Total CC fees" cents={feesTotalCents} />
-          <Stat label="Net to Undeposited" cents={paymentsTotalCents - feesTotalCents} />
+          <Stat label="To Undeposited (net of fees)" cents={depositToUndepositedCents} />
+          <Stat label="Non-cash (contra)" cents={nonCashCents} />
         </dl>
       </div>
       <div className="overflow-hidden rounded-lg border border-stone-200 bg-white">

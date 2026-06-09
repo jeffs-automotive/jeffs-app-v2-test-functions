@@ -56,7 +56,7 @@ export interface SummaryRow {
 export interface DayBreakdown {
   realmId: string | null;
   businessDate: string;
-  summary: { rows: SummaryRow[]; totalDebitCents: number; totalCreditCents: number; balanced: boolean; paymentsTotalCents: number; feesTotalCents: number };
+  summary: { rows: SummaryRow[]; totalDebitCents: number; totalCreditCents: number; balanced: boolean; paymentsTotalCents: number; feesTotalCents: number; depositToUndepositedCents: number; nonCashCents: number };
   ros: RoBreakdown[];
   payments: PaymentBreakdown[];
 }
@@ -86,7 +86,7 @@ export async function getDayBreakdown(
 ): Promise<DayBreakdown> {
   const realmId = await resolveRealmForShop(shopId);
   if (!realmId) {
-    return { realmId: null, businessDate, summary: { rows: [], totalDebitCents: 0, totalCreditCents: 0, balanced: true, paymentsTotalCents: 0, feesTotalCents: 0 }, ros: [], payments: [] };
+    return { realmId: null, businessDate, summary: { rows: [], totalDebitCents: 0, totalCreditCents: 0, balanced: true, paymentsTotalCents: 0, feesTotalCents: 0, depositToUndepositedCents: 0, nonCashCents: 0 }, ros: [], payments: [] };
   }
 
   const { sales, payments, gateSettings } = await buildDayDrafts(shopId, realmId, businessDate, opts);
@@ -144,6 +144,10 @@ export async function getDayBreakdown(
 
   // ── Payments (two-column) ──
   const paymentRows: PaymentBreakdown[] = [];
+  // Route-split totals for the card: a payment that books to Undeposited (deposit route =
+  // card/cash/check + any financing mapped "deposits like a card") vs a true non-cash contra.
+  let depositToUndepositedCents = 0;
+  let nonCashCents = 0;
   for (const p of payments) {
     const je = p.je;
     const g = gatePaymentDraft(je);
@@ -154,6 +158,10 @@ export async function getDayBreakdown(
     const status: SnapshotColumn = posting ? statusToColumn(posting.status) : postablePaymentIds.has(je.paymentId) ? "unapproved" : "needsAttention";
     const amountCents = Math.abs(p.input.signedAmountCents);
     const feeCents = Math.abs(p.input.signedProcessingFeeCents);
+    // je.route reflects the MAPPING (financing flagged "deposits like a card" → "deposit";
+    // a true contra type → "non_cash"). Net to Undeposited is the deposit route minus its fee.
+    if (je.route === "deposit") depositToUndepositedCents += amountCents - feeCents;
+    else if (je.route === "non_cash") nonCashCents += amountCents;
     paymentRows.push({
       paymentId: je.paymentId,
       tekmetricRoId: ro,
@@ -186,7 +194,7 @@ export async function getDayBreakdown(
   return {
     realmId,
     businessDate,
-    summary: { rows: summaryRows, totalDebitCents, totalCreditCents, balanced: totalDebitCents === totalCreditCents, paymentsTotalCents, feesTotalCents },
+    summary: { rows: summaryRows, totalDebitCents, totalCreditCents, balanced: totalDebitCents === totalCreditCents, paymentsTotalCents, feesTotalCents, depositToUndepositedCents, nonCashCents },
     ros,
     payments: paymentRows,
   };

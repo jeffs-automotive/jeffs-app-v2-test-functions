@@ -112,4 +112,20 @@ describe("getDayBreakdown", () => {
     expect(b.summary.paymentsTotalCents).toBe(1200);
     expect(b.summary.feesTotalCents).toBe(35);
   });
+
+  it("splits the payments-summary totals by booking route (deposit → Undeposited vs non-cash)", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const dep: any = { input: { paymentId: "1", signedAmountCents: 1000, signedProcessingFeeCents: 30, method: "Credit Card" }, je: { paymentId: "1", repairOrderId: 1, suppressed: false, lines: [], route: "deposit" } };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const nc: any = { input: { paymentId: "2", signedAmountCents: 400, signedProcessingFeeCents: 0, method: "Other" }, je: { paymentId: "2", repairOrderId: 2, suppressed: false, lines: [], route: "non_cash" } };
+    buildDayDraftsMock.mockResolvedValue({ tz: "America/New_York", gateSettings: { salesTaxRateBps: 600 }, sales: [], payments: [dep, nc], extraReviewItems: [] });
+    rollupDayMock.mockReturnValue({ postableSaleDrafts: [], postablePaymentDrafts: [], netByAccount: {}, saleCount: 0, paymentCount: 2, postableSales: 0, postablePayments: 0, reviewCount: 0, reviewItems: [] });
+    listPostingsForDayMock.mockResolvedValue({ realmId: REALM, postings: [] });
+
+    const b = await getDayBreakdown(7476, DATE);
+    expect(b.summary.paymentsTotalCents).toBe(1400); // 1000 + 400 (all payments)
+    expect(b.summary.feesTotalCents).toBe(30);
+    expect(b.summary.depositToUndepositedCents).toBe(970); // 1000 − 30 fee (deposit route only)
+    expect(b.summary.nonCashCents).toBe(400); // non-cash contra — excluded from Undeposited
+  });
 });
