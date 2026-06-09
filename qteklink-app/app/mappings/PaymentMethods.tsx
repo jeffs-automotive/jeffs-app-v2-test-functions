@@ -37,6 +37,7 @@ export default function PaymentMethods({
   const router = useRouter();
   const firstClass = methods.filter((m) => !m.configurable);
   const other = methods.filter((m) => m.configurable);
+  const classifiable = other.filter((m) => m.subtype != null && m.subtype !== ""); // a null sub-type can't be mapped
   const canEdit = accounts.length > 0; // accounts are only loaded for admins
 
   const [subtype, setSubtype] = useState("");
@@ -77,14 +78,29 @@ export default function PaymentMethods({
 
   const Rows = ({ rows }: { rows: PaymentMethodView[] }) => (
     <>
-      {rows.map((m) => (
-        <tr key={`${m.code}|${m.subtype ?? ""}`} className="border-t border-stone-100">
-          <td className="px-3 py-2 font-medium text-stone-800">{m.label}</td>
-          <td className="px-3 py-2"><BookingBadge m={m} /></td>
-          <td className={`${num} text-stone-500`}>{m.seen}</td>
-          <td className={num}>{fmtUsd(m.amountCents)}</td>
-        </tr>
-      ))}
+      {rows.map((m) => {
+        const fullyVoided = m.seen === 0 && m.voidedCount > 0;
+        return (
+          <tr key={`${m.code}|${m.subtype ?? ""}`} className="border-t border-stone-100">
+            <td className="px-3 py-2 font-medium text-stone-800">{m.label}</td>
+            <td className="px-3 py-2">
+              {fullyVoided ? (
+                <span className="rounded bg-stone-100 px-2 py-0.5 text-xs font-semibold text-stone-500">voided</span>
+              ) : (
+                <BookingBadge m={m} />
+              )}
+            </td>
+            <td className={`${num} text-stone-500`}>
+              {m.seen}
+              {m.voidedCount > 0 && <span className="block text-xs text-stone-400">{m.voidedCount} voided</span>}
+            </td>
+            <td className={num}>
+              {fmtUsd(m.amountCents)}
+              {m.voidedCount > 0 && <span className="block text-xs text-stone-400">voided {fmtUsd(m.voidedAmountCents)}</span>}
+            </td>
+          </tr>
+        );
+      })}
     </>
   );
 
@@ -123,7 +139,7 @@ export default function PaymentMethods({
         </tbody>
       </table>
 
-      {canEdit && other.length > 0 && (
+      {canEdit && classifiable.length > 0 && (
         <form action={formAction} className="mt-6 grid gap-4 border-t border-stone-200 pt-6 sm:grid-cols-2">
           <input type="hidden" name="kind" value="noncash_payment_type" />
           <input type="hidden" name="source_key" value={selected?.subtype ?? ""} />
@@ -134,7 +150,7 @@ export default function PaymentMethods({
             <span className={labelCls}>Classify an &ldquo;Other&rdquo; payment type</span>
             <select value={subtype} onChange={(e) => setSubtype(e.target.value)} required className={fieldCls}>
               <option value="" disabled>Select a payment type…</option>
-              {other.map((m) => (
+              {classifiable.map((m) => (
                 <option key={m.subtype ?? ""} value={m.subtype ?? ""}>
                   {m.label}{m.booking === "unmapped" ? " (not classified)" : ""}
                 </option>

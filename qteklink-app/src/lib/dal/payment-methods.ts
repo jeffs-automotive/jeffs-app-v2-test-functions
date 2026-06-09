@@ -42,6 +42,10 @@ export interface PaymentMethodView {
   subtype: string | null;
   seen: number;
   amountCents: number;
+  /** Voided payments of this method — shown in the view but kept OUT of seen/amountCents
+   *  (a voided payment never posts). */
+  voidedCount: number;
+  voidedAmountCents: number;
   /** How it books today. */
   booking: Booking;
   /** The account it books to (for display); null when unmapped. */
@@ -63,8 +67,12 @@ export interface PaymentMethodsView {
 export interface MethodAgg {
   paymentType: string | null;
   subtype: string | null;
+  /** ACTIVE (non-voided) count + amount. */
   seen: number;
   amountCents: number;
+  /** Voided count + amount (kept out of the active totals). */
+  voidedCount: number;
+  voidedAmountCents: number;
 }
 interface NoncashMap {
   sourceKey: string;
@@ -96,6 +104,8 @@ export function buildPaymentMethodsView(
         subtype: null,
         seen: a.seen,
         amountCents: a.amountCents,
+        voidedCount: a.voidedCount,
+        voidedAmountCents: a.voidedAmountCents,
         booking: "deposit_undeposited",
         accountLabel: undepositedAccountLabel,
         accountId: null,
@@ -110,6 +120,8 @@ export function buildPaymentMethodsView(
         subtype: a.subtype,
         seen: a.seen,
         amountCents: a.amountCents,
+        voidedCount: a.voidedCount,
+        voidedAmountCents: a.voidedAmountCents,
         booking,
         accountLabel: m?.accountLabel ?? null,
         accountId: m?.accountId ?? null,
@@ -137,23 +149,29 @@ export async function listPaymentMethods(shopId: number): Promise<PaymentMethods
   const admin = createSupabaseAdminClient();
   const { data: stateData, error } = await admin
     .from("qteklink_payment_state")
-    .select("payment_type, other_payment_type, signed_amount_cents")
+    .select("payment_type, other_payment_type, signed_amount_cents, status")
     .eq("shop_id", shopId)
     .eq("realm_id", realmId);
   if (error) throw new Error(`listPaymentMethods (state) failed: ${error.message}`);
 
-  // Aggregate distinct (payment_type, other_payment_type) → count + Σ abs amount.
+  // Aggregate distinct (payment_type, other_payment_type). A VOIDED payment is still shown, but
+  // tallied SEPARATELY — it stays out of the active count/amount because it never posts.
   const aggMap = new Map<string, MethodAgg>();
-  for (const r of (stateData ?? []) as { payment_type: string | null; other_payment_type: string | null; signed_amount_cents: number | string }[]) {
+  for (const r of (stateData ?? []) as { payment_type: string | null; other_payment_type: string | null; signed_amount_cents: number | string; status: string | null }[]) {
     const key = `${r.payment_type ?? ""}|${r.other_payment_type ?? ""}`;
     const raw = typeof r.signed_amount_cents === "number" ? r.signed_amount_cents : Number(r.signed_amount_cents);
     const amt = Number.isSafeInteger(raw) ? Math.abs(raw) : 0;
-    const cur = aggMap.get(key);
-    if (cur) {
+    let cur = aggMap.get(key);
+    if (!cur) {
+      cur = { paymentType: r.payment_type, subtype: r.other_payment_type, seen: 0, amountCents: 0, voidedCount: 0, voidedAmountCents: 0 };
+      aggMap.set(key, cur);
+    }
+    if (r.status === "voided") {
+      cur.voidedCount += 1;
+      cur.voidedAmountCents += amt;
+    } else {
       cur.seen += 1;
       cur.amountCents += amt;
-    } else {
-      aggMap.set(key, { paymentType: r.payment_type, subtype: r.other_payment_type, seen: 1, amountCents: amt });
     }
   }
 
