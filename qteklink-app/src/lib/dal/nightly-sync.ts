@@ -1,0 +1,95 @@
+/**
+ * Nightly qteklink-sync (C8, plan §10) — the per-shop work the daily-sync cron runs for the
+ * PRIOR business day (shop-local):
+ *   1. runDailyReconciliation → enqueue postable drafts (pending) + persist review items.
+ *   2. AUTO-POST (only when the shop's `auto_post` setting is ON — default off): reuse the
+ *      dashboard's planApproveDay → executeApproveDay to approve + LIVE-post the day's clean
+ *      drafts. Default-off means nothing posts to QBO unattended unless the shop opts in.
+ *   3. (Part 2) the Tekmetric + QBO 2-API completeness safety-net — added next.
+ *
+ * Reuses already-reviewed primitives; this is the thin nightly orchestration. MULTI-TENANT:
+ * each shop's realm is resolved server-side inside the reused DALs. No silent failures.
+ */
+import * as Sentry from "@sentry/nextjs";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { runDailyReconciliation } from "@/lib/dal/daily-reconcile";
+import { getShopSettings } from "@/lib/dal/settings";
+import { planApproveDay, executeApproveDay } from "@/lib/dal/approve-post-day";
+import { runSafetyNet, type SafetyNetResult } from "@/lib/dal/safety-net";
+import type { QboPostClient } from "@/lib/dal/poster";
+import { toShopLocalDate } from "@/lib/sales/sale-builder";
+import { addDaysIso } from "@/lib/format";
+
+export interface NightlyShopResult {
+  shopId: number;
+  businessDate: string;
+  connected: boolean;
+  enqueued: number;
+  reviewItems: number;
+  autoPostEnabled: boolean;
+  autoPosted: number;
+  autoPostFailed: number;
+  /** The 2-API completeness net result (null when it errored — see Sentry). */
+  safetyNet: SafetyNetResult | null;
+}
+
+/** Shops with a NON-EXPIRED QBO connection (a soft-disconnect expires the row). */
+export async function listConnectedShops(): Promise<number[]> {
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin
+    .from("qbo_connections")
+    .select("shop_id")
+    .gt("refresh_token_expires_at", new Date().toISOString());
+  if (error) throw new Error(`listConnectedShops failed: ${error.message}`);
+  return [...new Set(((data ?? []) as { shop_id: number }[]).map((r) => Number(r.shop_id)))];
+}
+
+/**
+ * Run the nightly sync for ONE shop. `businessDate` defaults to the shop-local PRIOR day
+ * (computed from the shop's tz). `deps.client` injects a QBO client for tests (defaults to
+ * the real client at post time). Throws (FAIL CLOSED) on a DB error.
+ */
+export async function runNightlySync(
+  shopId: number,
+  opts: { businessDate?: string; client?: QboPostClient } = {},
+): Promise<NightlyShopResult> {
+  const { settings } = await getShopSettings(shopId);
+  const businessDate =
+    opts.businessDate ?? addDaysIso(toShopLocalDate(new Date().toISOString(), settings.shopTimezone), -1);
+
+  // 1. reconcile (enqueue pending + persist review items). NO QBO write.
+  const recon = await runDailyReconciliation(shopId, businessDate);
+  const result: NightlyShopResult = {
+    shopId,
+    businessDate,
+    connected: recon.realmId != null,
+    enqueued: recon.enqueuedPostings,
+    reviewItems: recon.reviewCount,
+    autoPostEnabled: settings.autoPost,
+    autoPosted: 0,
+    autoPostFailed: 0,
+    safetyNet: null,
+  };
+  if (!recon.realmId) return result; // no connection → reconcile is a no-op; nothing to post
+
+  // 2. AUTO-POST only when the shop opted in. Reuses the SAME guarded path as the dashboard
+  // (plan → execute, hash-bound), so the cron can't post a different set than it computed.
+  if (settings.autoPost) {
+    const plan = await planApproveDay(shopId, businessDate, "day");
+    if (plan.realmId && plan.summary.jeCount > 0) {
+      const res = await executeApproveDay(shopId, businessDate, "day", plan.scopeHash, "cron@qteklink", {}, { client: opts.client });
+      result.autoPosted = res.posted;
+      result.autoPostFailed = res.failed;
+    }
+  }
+
+  // 3. the Tekmetric + QBO 2-API completeness safety-net. NON-FATAL: a transient external-API
+  // error must not discard the reconcile / auto-post result above — capture + continue.
+  try {
+    result.safetyNet = await runSafetyNet(shopId, recon.realmId, businessDate, settings.shopTimezone);
+  } catch (e) {
+    Sentry.captureException(e, { tags: { qteklink_cron: "safety-net", shop_id: String(shopId) } });
+  }
+
+  return result;
+}
