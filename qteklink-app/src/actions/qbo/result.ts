@@ -22,7 +22,7 @@ export type QboActionResult<T> =
  * envelope. qboFailure() re-throws them centrally so every action's catch can be
  * a bare `return qboFailure(e)`.
  */
-export function isNextControlFlowError(e: unknown): boolean {
+function isNextControlFlowError(e: unknown): boolean {
   const digest = (e as { digest?: unknown } | null)?.digest;
   return (
     typeof digest === "string" &&

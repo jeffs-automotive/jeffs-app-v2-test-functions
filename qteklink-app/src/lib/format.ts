@@ -4,7 +4,8 @@
  * shop-local `YYYY-MM-DD` strings — `addDaysIso` does UTC-midnight math so it never shifts
  * across the local tz (the date is already shop-local; we only step the calendar).
  */
-export function fmtCents(cents: number): string {
+/** Internal — only fmtUsd consumes it (cents → "10,667.65"). */
+function fmtCents(cents: number): string {
   return (cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 

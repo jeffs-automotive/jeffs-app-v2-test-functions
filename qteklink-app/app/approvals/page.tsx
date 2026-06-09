@@ -11,8 +11,9 @@ import { requireQtekUser } from "@/lib/auth";
 import { getDailySnapshot, type TypeRow } from "@/lib/dal/daily-snapshot";
 import { getShopSettings } from "@/lib/dal/settings";
 import { toShopLocalDate } from "@/lib/sales/sale-builder";
-import { fmtUsd, isIsoDate, addDaysIso } from "@/lib/format";
+import { fmtUsd, isIsoDate } from "@/lib/format";
 import ApproveDayControls from "./ApproveDayControls";
+import DateNav from "./DateNav";
 
 export const dynamic = "force-dynamic"; // a live per-request snapshot — never statically cached
 
@@ -79,15 +80,7 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
         </div>
       </header>
 
-      {/* date nav */}
-      <div className="mt-6 flex items-center justify-center gap-3">
-        <Link href={`/approvals?date=${addDaysIso(date, -1)}`} className="rounded border border-stone-300 px-3 py-1.5 text-sm hover:bg-stone-50">◀</Link>
-        <form className="flex items-center gap-2">
-          <input type="date" name="date" defaultValue={date} className="rounded border border-stone-300 px-3 py-1.5 text-sm" />
-          <button type="submit" className="rounded bg-stone-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-stone-700">Go</button>
-        </form>
-        <Link href={`/approvals?date=${addDaysIso(date, 1)}`} className="rounded border border-stone-300 px-3 py-1.5 text-sm hover:bg-stone-50">▶</Link>
-      </div>
+      <DateNav date={date} />
 
       {!realmId ? (
         <section className="mt-8 rounded-lg border border-amber-200 bg-amber-50 p-6">

@@ -1,26 +1,18 @@
 import { describe, it, expect } from "vitest";
-import {
-  customerSchema,
-  invoiceSchema,
-  faultEnvelopeSchema,
-} from "@/lib/qbo/entities";
+import { accountSchema } from "@/lib/qbo/entities";
 
-describe("qbo entities", () => {
-  it("customerSchema accepts a minimal customer", () => {
-    const c = customerSchema.parse({ Id: "1", SyncToken: "0", DisplayName: "Acme" });
-    expect(c.DisplayName).toBe("Acme");
+describe("accountSchema", () => {
+  it("parses a minimal account (Name + Active required)", () => {
+    const a = accountSchema.parse({ Name: "Accounts Receivable", Active: true });
+    expect(a.Name).toBe("Accounts Receivable");
   });
 
-  it("invoiceSchema requires CustomerRef + Line", () => {
-    expect(() => invoiceSchema.parse({ TxnDate: "2026-06-02" })).toThrow();
-    const inv = invoiceSchema.parse({ CustomerRef: { value: "1" }, Line: [] });
-    expect(inv.CustomerRef.value).toBe("1");
+  it("tolerates a null OR absent AcctNum (nullish — a null AcctNum never drops the account)", () => {
+    expect(accountSchema.parse({ Name: "X", Active: true, AcctNum: null }).AcctNum).toBeNull();
+    expect(accountSchema.parse({ Name: "X", Active: true }).AcctNum).toBeUndefined();
   });
 
-  it("faultEnvelopeSchema parses a Fault with a STRING code", () => {
-    const f = faultEnvelopeSchema.parse({
-      Fault: { Error: [{ code: "003001", Message: "throttle" }], type: "ThrottleFault" },
-    });
-    expect(f.Fault.Error[0]!.code).toBe("003001");
+  it("DROPS a malformed account missing Active (fail-closed)", () => {
+    expect(() => accountSchema.parse({ Name: "X" })).toThrow();
   });
 });
