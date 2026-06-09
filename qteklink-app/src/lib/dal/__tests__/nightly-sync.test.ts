@@ -1,7 +1,8 @@
 /**
- * Unit tests for the nightly qteklink-sync (C8 Part 1): reconcile always; auto-post ONLY
- * when the shop's auto_post is on (reusing the dashboard's plan→execute); no-connection
- * no-op; the shop-local prior-day default; listConnectedShops filtering.
+ * Unit tests for the nightly qteklink-sync (C8 Part 1): refresh the payment-state projection
+ * BEFORE reconciling (isolated so a corrupt payment can't block sales); reconcile always;
+ * auto-post ONLY when the shop's auto_post is on (reusing the dashboard's plan→execute);
+ * no-connection no-op; the shop-local prior-day default; listConnectedShops filtering.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -11,9 +12,11 @@ const planMock = vi.fn();
 const executeMock = vi.fn();
 const fromMock = vi.fn();
 const safetyNetMock = vi.fn();
+const reduceMock = vi.fn();
 
 vi.mock("@/lib/dal/daily-reconcile", () => ({ runDailyReconciliation: (...a: unknown[]) => reconMock(...a) }));
 vi.mock("@/lib/dal/settings", () => ({ getShopSettings: (...a: unknown[]) => settingsMock(...a) }));
+vi.mock("@/lib/dal/payment-state", () => ({ reduceShopPaymentState: (...a: unknown[]) => reduceMock(...a) }));
 vi.mock("@/lib/dal/approve-post-day", () => ({
   planApproveDay: (...a: unknown[]) => planMock(...a),
   executeApproveDay: (...a: unknown[]) => executeMock(...a),
@@ -30,9 +33,26 @@ beforeEach(() => {
   settingsMock.mockResolvedValue({ realmId: REALM, settings: { shopTimezone: "America/New_York", autoPost: false } });
   reconMock.mockResolvedValue({ realmId: REALM, enqueuedPostings: 5, reviewCount: 2 });
   safetyNetMock.mockResolvedValue({ tekmetricChecked: 3, tekmetricGaps: 0, qboChecked: 2, qboGaps: 0 });
+  reduceMock.mockResolvedValue({ realmId: REALM, events: 10, payments: 8 });
 });
 
 describe("runNightlySync", () => {
+  it("refreshes the payment-state projection BEFORE reconciling (payments read the projection)", async () => {
+    const r = await runNightlySync(7476, { businessDate: "2026-06-06" });
+    expect(reduceMock).toHaveBeenCalledWith(7476);
+    // Reduce MUST run before reconcile — else the day's payment drafts read a stale/empty projection.
+    expect(Math.min(...reduceMock.mock.invocationCallOrder)).toBeLessThan(Math.min(...reconMock.mock.invocationCallOrder));
+    expect(r.paymentStateReduced).toEqual({ events: 10, payments: 8 });
+  });
+
+  it("ISOLATES a reducer error — non-fatal; the SALE reconcile STILL runs (sales not blocked)", async () => {
+    reduceMock.mockRejectedValueOnce(new Error("corrupt payment event"));
+    const r = await runNightlySync(7476, { businessDate: "2026-06-06" });
+    expect(reconMock).toHaveBeenCalledWith(7476, "2026-06-06"); // sales NOT blocked by a bad payment
+    expect(r.enqueued).toBe(5); // reconcile result preserved
+    expect(r.paymentStateReduced).toBeNull(); // captured to Sentry, payment side degraded ALONE
+  });
+
   it("reconciles + does NOT auto-post when auto_post is off", async () => {
     const r = await runNightlySync(7476, { businessDate: "2026-06-06" });
     expect(reconMock).toHaveBeenCalledWith(7476, "2026-06-06");

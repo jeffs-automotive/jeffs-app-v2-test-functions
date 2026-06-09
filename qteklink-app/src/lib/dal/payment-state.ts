@@ -5,7 +5,7 @@
  *
  * Fat-DAL: the business logic is the PURE reducer in `@/lib/payments/reducer`
  * (unit-tested without mocks); this module is the thin DB seam. The nightly cron
- * (C8) calls `reduceShopPaymentState`; C5/C6 read the projection.
+ * (`runNightlySync`, C8) calls `reduceShopPaymentState` BEFORE the reconcile; C5/C6 read it.
  *
  * MULTI-TENANT: `shopId` is server-derived; the QBO `realmId` is resolved from the
  * bound connection (`resolveRealmForShop`). `qteklink_events` /

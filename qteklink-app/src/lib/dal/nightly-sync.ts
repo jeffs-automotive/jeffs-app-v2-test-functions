@@ -1,11 +1,14 @@
 /**
  * Nightly qteklink-sync (C8, plan §10) — the per-shop work the daily-sync cron runs for the
  * PRIOR business day (shop-local):
- *   1. runDailyReconciliation → enqueue postable drafts (pending) + persist review items.
- *   2. AUTO-POST (only when the shop's `auto_post` setting is ON — default off): reuse the
+ *   1. reduceShopPaymentState → refresh the C4 payment-state projection from qteklink_events so
+ *      the day's payment + CC-fee drafts see the latest state. ISOLATED (own try/catch): a
+ *      corrupt payment event degrades the payment side only, never blocks the SALE reconcile.
+ *   2. runDailyReconciliation → enqueue postable drafts (pending) + persist review items.
+ *   3. AUTO-POST (only when the shop's `auto_post` setting is ON — default off): reuse the
  *      dashboard's planApproveDay → executeApproveDay to approve + LIVE-post the day's clean
  *      drafts. Default-off means nothing posts to QBO unattended unless the shop opts in.
- *   3. (Part 2) the Tekmetric + QBO 2-API completeness safety-net — added next.
+ *   4. the Tekmetric + QBO 2-API completeness safety-net.
  *
  * Reuses already-reviewed primitives; this is the thin nightly orchestration. MULTI-TENANT:
  * each shop's realm is resolved server-side inside the reused DALs. No silent failures.
@@ -13,6 +16,7 @@
 import * as Sentry from "@sentry/nextjs";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { runDailyReconciliation } from "@/lib/dal/daily-reconcile";
+import { reduceShopPaymentState } from "@/lib/dal/payment-state";
 import { getShopSettings } from "@/lib/dal/settings";
 import { planApproveDay, executeApproveDay } from "@/lib/dal/approve-post-day";
 import { runSafetyNet, type SafetyNetResult } from "@/lib/dal/safety-net";
@@ -29,6 +33,9 @@ export interface NightlyShopResult {
   autoPostEnabled: boolean;
   autoPosted: number;
   autoPostFailed: number;
+  /** The C4 payment-state projection refresh (events read / payments upserted), or null if it
+   *  errored — isolated so a corrupt payment event can't block the SALE reconcile. */
+  paymentStateReduced: { events: number; payments: number } | null;
   /** The 2-API completeness net result (null when it errored — see Sentry). */
   safetyNet: SafetyNetResult | null;
 }
@@ -47,7 +54,7 @@ export async function listConnectedShops(): Promise<number[]> {
 /**
  * Run the nightly sync for ONE shop. `businessDate` defaults to the shop-local PRIOR day
  * (computed from the shop's tz). `deps.client` injects a QBO client for tests (defaults to
- * the real client at post time). Throws (FAIL CLOSED) on a DB error.
+ * the real client at post time). Throws (FAIL CLOSED) on a DB error in the reconcile/post path.
  */
 export async function runNightlySync(
   shopId: number,
@@ -57,7 +64,22 @@ export async function runNightlySync(
   const businessDate =
     opts.businessDate ?? addDaysIso(toShopLocalDate(new Date().toISOString(), settings.shopTimezone), -1);
 
-  // 1. reconcile (enqueue pending + persist review items). NO QBO write.
+  // 1. Refresh the C4 payment-state projection from qteklink_events BEFORE reconciling, so the
+  // day's payment + CC-fee drafts read the latest state (payments come from qteklink_payment_state,
+  // not the event ledger directly). reduceShopPaymentState FAILS CLOSED (throws on a corrupt
+  // payment_id / unsafe RO id / DB error / pagination cap); ISOLATE it in its OWN try/catch so a
+  // single bad payment event degrades ONLY the payment side and can never block the SALE reconcile
+  // (which reads qteklink_events directly). Per-shop isolation also exists in the cron's outer loop;
+  // this inner guard keeps the sale side alive WITHIN the shop.
+  let paymentStateReduced: { events: number; payments: number } | null = null;
+  try {
+    const reduced = await reduceShopPaymentState(shopId);
+    paymentStateReduced = { events: reduced.events, payments: reduced.payments };
+  } catch (e) {
+    Sentry.captureException(e, { tags: { qteklink_cron: "payment-state-reduce", shop_id: String(shopId) } });
+  }
+
+  // 2. reconcile (enqueue pending + persist review items). NO QBO write.
   const recon = await runDailyReconciliation(shopId, businessDate);
   const result: NightlyShopResult = {
     shopId,
@@ -68,11 +90,12 @@ export async function runNightlySync(
     autoPostEnabled: settings.autoPost,
     autoPosted: 0,
     autoPostFailed: 0,
+    paymentStateReduced,
     safetyNet: null,
   };
   if (!recon.realmId) return result; // no connection → reconcile is a no-op; nothing to post
 
-  // 2. AUTO-POST only when the shop opted in. Reuses the SAME guarded path as the dashboard
+  // 3. AUTO-POST only when the shop opted in. Reuses the SAME guarded path as the dashboard
   // (plan → execute, hash-bound), so the cron can't post a different set than it computed.
   if (settings.autoPost) {
     const plan = await planApproveDay(shopId, businessDate, "day");
@@ -83,7 +106,7 @@ export async function runNightlySync(
     }
   }
 
-  // 3. the Tekmetric + QBO 2-API completeness safety-net. NON-FATAL: a transient external-API
+  // 4. the Tekmetric + QBO 2-API completeness safety-net. NON-FATAL: a transient external-API
   // error must not discard the reconcile / auto-post result above — capture + continue.
   try {
     result.safetyNet = await runSafetyNet(shopId, recon.realmId, businessDate, settings.shopTimezone);
