@@ -228,6 +228,57 @@ export async function findLatestPostedDaily(
   return row ? mapDailyRow(row) : null;
 }
 
+// ─── Status index (the snapshot/breakdown views' day-grain truth) ─────────────
+
+export interface DailyStatusIndex {
+  /** ROs whose A/R line is LIVE in QBO (in the latest POSTED sales JE, not a delete). */
+  postedSaleRos: Set<number>;
+  /** roId → the LATEST sales-version's status (any status — a staged correction too). */
+  latestSaleStatusByRo: Map<number, string>;
+  postedPaymentIds: Set<string>;
+  latestPaymentStatusById: Map<string, string>;
+  postedFeePaymentIds: Set<string>;
+  latestFeeStatusById: Map<string, string>;
+  /** category → a posted version exists AND a newer staged version supersedes it
+   *  (the day needs re-approval — surface it, don't hide it). */
+  correctionStaged: Record<DailyCategory, boolean>;
+}
+
+/** PURE: index the day's category rows for per-RO/payment status resolution:
+ *  a constituent of the live POSTED JE is "posted"; else the latest version's status
+ *  applies; else the caller falls back to postable/blocked. */
+export function buildDailyStatusIndex(postings: DailyPostingRow[]): DailyStatusIndex {
+  const latest: Partial<Record<DailyCategory, DailyPostingRow>> = {};
+  const latestPosted: Partial<Record<DailyCategory, DailyPostingRow>> = {};
+  for (const r of postings) {
+    const l = latest[r.category];
+    if (!l || r.postingVersion > l.postingVersion) latest[r.category] = r;
+    if (r.status === "posted") {
+      const lp = latestPosted[r.category];
+      if (!lp || r.postingVersion > lp.postingVersion) latestPosted[r.category] = r;
+    }
+  }
+  const live = (c: DailyCategory): DailyPostingRow | undefined => {
+    const p = latestPosted[c];
+    return p && p.action !== "delete" ? p : undefined;
+  };
+  const idx: DailyStatusIndex = {
+    postedSaleRos: new Set(live("sales")?.constituents.roIds ?? []),
+    latestSaleStatusByRo: new Map((latest.sales?.constituents.roIds ?? []).map((ro) => [ro, latest.sales!.status])),
+    postedPaymentIds: new Set(live("payments")?.constituents.paymentIds ?? []),
+    latestPaymentStatusById: new Map((latest.payments?.constituents.paymentIds ?? []).map((id) => [id, latest.payments!.status])),
+    postedFeePaymentIds: new Set(live("fees")?.constituents.paymentIds ?? []),
+    latestFeeStatusById: new Map((latest.fees?.constituents.paymentIds ?? []).map((id) => [id, latest.fees!.status])),
+    correctionStaged: { sales: false, payments: false, fees: false },
+  };
+  for (const c of ["sales", "payments", "fees"] as const) {
+    const p = latestPosted[c];
+    const l = latest[c];
+    idx.correctionStaged[c] = Boolean(p && l && l.postingVersion > p.postingVersion && l.status !== "posted");
+  }
+  return idx;
+}
+
 // ─── The desired-vs-posted diff (enqueue) ─────────────────────────────────────
 
 export type DailyEnqueueAction =

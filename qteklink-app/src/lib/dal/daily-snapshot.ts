@@ -1,20 +1,23 @@
 /**
- * Daily-snapshot read model (approval-dashboard upgrade, plan §5) — the per-day, per-
- * transaction-type roll-up the main approval dashboard renders. Combines the LIVE day
- * drafts (`buildDayDrafts` → `rollupDay`, the same path the reconcile enqueues) with the
- * PERSISTED postings, applying the §3a source-of-truth precedence:
+ * Daily-snapshot read model (approval-dashboard upgrade §5 + daily-JE rework step 4) —
+ * the per-day, per-transaction-type roll-up the main approval dashboard renders.
+ * Combines the LIVE day drafts (`buildDayDrafts` → `rollupDay`, the same path the
+ * reconcile enqueues) with the DAY-CATEGORY posting ledger (`qteklink_daily_postings`),
+ * applying the §3a precedence at the day grain:
  *
- *   a persisted posting WINS (its status → the column; its proposed-JE debit total → the $)
+ *   a constituent of the live POSTED category JE → Posted
+ *   else a constituent of the latest staged category version → that version's column
  *   else a postable live draft → Unapproved (its debit total)
- *   else a blocked transaction → Needs attention (the SOURCE gross — known even when the
- *     JE can't fully build, e.g. an unmapped account)
+ *   else a blocked transaction → Needs attention (the SOURCE gross — known even when
+ *     the JE can't fully build, e.g. an unmapped account)
  *
- * "Payment Fee" is a DERIVED row: the CC fee follows its PARENT payment's column. Read-only,
- * shop+realm server-derived, integer cents, fail-closed. No mutation, no QBO write.
+ * "Payment Fee" is a DERIVED row: a fee follows the FEES category's status for its
+ * payment (fees post as their own daily JE), falling back to the parent payment's
+ * column. Read-only, shop+realm server-derived, integer cents, fail-closed.
  */
 import { resolveRealmForShop } from "@/lib/dal/realm";
 import { buildDayDrafts } from "@/lib/dal/day-drafts";
-import { listPostingsForDay, type PostingRow } from "@/lib/dal/postings";
+import { listDailyPostingsForDay, buildDailyStatusIndex, type DailyStatusIndex } from "@/lib/dal/daily-postings";
 import { rollupDay } from "@/lib/reconcile/daily-rollup";
 import { gatePaymentDraft } from "@/lib/reconcile/payment-gate";
 
@@ -82,10 +85,18 @@ function debitTotal(lines: { postingType: "Debit" | "Credit"; amountCents: numbe
     .reduce((a, l) => a + (Number.isSafeInteger(l.amountCents) ? l.amountCents : 0), 0);
 }
 
-/** Keep the highest-version posting per subject (the authoritative current state). */
-function keepLatest<K>(m: Map<K, PostingRow>, k: K, p: PostingRow): void {
-  const cur = m.get(k);
-  if (!cur || p.postingVersion > cur.postingVersion) m.set(k, p);
+/** The day-grain §3a resolution: live-posted constituent → posted; staged constituent →
+ *  its version's column; else postable/blocked. */
+function resolveColumn(
+  idx: DailyStatusIndex,
+  kind: "sale" | "payment",
+  key: number | string,
+  postable: boolean,
+): SnapshotColumn {
+  if (kind === "sale" ? idx.postedSaleRos.has(key as number) : idx.postedPaymentIds.has(key as string)) return "posted";
+  const staged = kind === "sale" ? idx.latestSaleStatusByRo.get(key as number) : idx.latestPaymentStatusById.get(key as string);
+  if (staged) return statusToColumn(staged);
+  return postable ? "unapproved" : "needsAttention";
 }
 
 export async function getDailySnapshot(
@@ -106,15 +117,8 @@ export async function getDailySnapshot(
 
   const { sales, payments, gateSettings } = await buildDayDrafts(shopId, realmId, businessDate, opts);
   const rollup = rollupDay(businessDate, sales, payments.map((p) => p.je), gateSettings);
-  const { postings } = await listPostingsForDay(shopId, businessDate);
-
-  // Persisted postings indexed by subject (latest version wins).
-  const salePostingByRo = new Map<number, PostingRow>();
-  const paymentPostingByKey = new Map<string, PostingRow>();
-  for (const p of postings) {
-    if (p.kind === "sale") keepLatest(salePostingByRo, p.tekmetricRoId, p);
-    else if (p.kind === "payment" && p.paymentId != null) keepLatest(paymentPostingByKey, `${p.tekmetricRoId}:${p.paymentId}`, p);
-  }
+  const { postings } = await listDailyPostingsForDay(shopId, businessDate);
+  const idx = buildDailyStatusIndex(postings);
 
   const postableSaleRos = new Set(rollup.postableSaleDrafts.map((d) => d.snapshot.repairOrderId));
   const postablePaymentIds = new Set(rollup.postablePaymentDrafts.map((j) => j.paymentId));
@@ -127,19 +131,10 @@ export async function getDailySnapshot(
   // ── SALES (Repair Order) — every parseable RO for the day ──
   for (const s of sales) {
     const ro = s.snapshot.repairOrderId;
-    const posting = salePostingByRo.get(ro);
-    let col: SnapshotColumn;
-    let cents: number;
-    if (posting) {
-      col = statusToColumn(posting.status);
-      cents = posting.totalCents ?? debitTotal(s.je.lines);
-    } else if (postableSaleRos.has(ro)) {
-      col = "unapproved";
-      cents = debitTotal(s.je.lines);
-    } else {
-      col = "needsAttention";
-      cents = s.snapshot.totalSales; // SOURCE gross — known even when the JE can't fully build
-    }
+    const col = resolveColumn(idx, "sale", ro, postableSaleRos.has(ro));
+    // A posted/staged RO's $ is its draft debit total (the daily JE itemizes the same
+    // per-RO A/R amounts); a blocked RO falls back to the SOURCE gross.
+    const cents = col === "needsAttention" ? s.snapshot.totalSales : debitTotal(s.je.lines);
     addToColumn(roRow, col, cents);
     if (col === "needsAttention") needsAttentionCount += 1;
   }
@@ -152,22 +147,22 @@ export async function getDailySnapshot(
     // to post; exclude it from the counts (mirrors rollupDay).
     if (je.suppressed && g.reviewItems.length === 0) continue;
 
-    const ro = je.repairOrderId;
-    const payIdNum = Number(je.paymentId);
-    const posting = ro != null && Number.isSafeInteger(payIdNum) ? paymentPostingByKey.get(`${ro}:${payIdNum}`) : undefined;
-
-    let col: SnapshotColumn;
-    if (posting) col = statusToColumn(posting.status);
-    else if (postablePaymentIds.has(je.paymentId)) col = "unapproved";
-    else col = "needsAttention";
-
+    const col = resolveColumn(idx, "payment", je.paymentId, postablePaymentIds.has(je.paymentId));
     const gross = Math.abs(p.input.signedAmountCents);
     addToColumn(payRow, col, gross);
     if (col === "needsAttention") needsAttentionCount += 1;
 
-    // Derived fee — same column as the PARENT payment (no separate attention count).
+    // Derived fee — fees post as their OWN daily JE: use the fees category's status for
+    // this payment when present, else follow the parent payment's column.
     const fee = Math.abs(p.input.signedProcessingFeeCents);
-    if (fee > 0) addToColumn(feeRow, col, fee);
+    if (fee > 0) {
+      const feeCol: SnapshotColumn = idx.postedFeePaymentIds.has(je.paymentId)
+        ? "posted"
+        : idx.latestFeeStatusById.has(je.paymentId)
+          ? statusToColumn(idx.latestFeeStatusById.get(je.paymentId)!)
+          : col;
+      addToColumn(feeRow, feeCol, fee);
+    }
   }
 
   return {
