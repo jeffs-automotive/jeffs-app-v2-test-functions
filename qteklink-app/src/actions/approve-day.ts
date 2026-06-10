@@ -21,7 +21,7 @@ const Schema = z.object({
 });
 
 export type ApproveDayDryRun = { needsConfirmation: true; scope: "day" | "sale" | "payment"; date: string; scopeHash: string; summary: ApproveDaySummary };
-export type ApproveDayExecuted = { posted: number; failed: number; skipped: number };
+export type ApproveDayExecuted = { posted: number; failed: number; skipped: number; stale: number };
 type ApproveDayState = QboActionResult<ApproveDayDryRun | ApproveDayExecuted>;
 
 function adminRequired(): { ok: false; reason: "validation"; message: string; timestamp: number } {
@@ -63,7 +63,7 @@ async function approveAndPostDayImpl(
         : "QuickBooks isn't connected for this shop.";
       return { ok: false, reason: "validation", message, timestamp: Date.now() };
     }
-    return { ok: true, data: { posted: result.posted, failed: result.failed, skipped: result.skipped }, timestamp: Date.now() };
+    return { ok: true, data: { posted: result.posted, failed: result.failed, skipped: result.skipped, stale: result.stale }, timestamp: Date.now() };
   } catch (e) {
     return qboFailure(e);
   }

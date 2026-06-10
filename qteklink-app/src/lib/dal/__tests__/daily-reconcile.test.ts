@@ -54,7 +54,7 @@ beforeEach(() => {
   rpcMock.mockImplementation((fn: string) => {
     if (fn === "qbo_resolve_realm_for_shop") return Promise.resolve({ data: REALM, error: null });
     if (fn === "qteklink_upsert_review_item") return Promise.resolve({ data: "item-id", error: null });
-    if (fn === "qteklink_enqueue_posting") return Promise.resolve({ data: "posting-uuid", error: null });
+    if (fn === "qteklink_enqueue_daily_posting") return Promise.resolve({ data: "daily-posting-uuid", error: null });
     return Promise.resolve({ data: null, error: null });
   });
 });
@@ -85,9 +85,14 @@ describe("runDailyReconciliation", () => {
     expect(r.persistedReviewItems).toBe(0);
     expect(r.netByAccount["235"]).toBe(10600); // A/R debit
     expect(rpcMock).not.toHaveBeenCalledWith("qteklink_upsert_review_item", expect.anything());
-    // the postable sale was enqueued into qteklink_postings (no QBO write here).
+    // The day's SALES category JE was enqueued into qteklink_daily_postings (daily-JE
+    // model: ≤3 rows/day; the empty payments/fees categories are noops). No QBO write.
     expect(r.enqueuedPostings).toBe(1);
-    expect(rpcMock).toHaveBeenCalledWith("qteklink_enqueue_posting", expect.objectContaining({ p_kind: "sale", p_tekmetric_ro_id: 101, p_payment_id: null }));
+    expect(r.dailyEnqueue).toEqual({ sales: "new", payments: "noop", fees: "noop" });
+    expect(rpcMock).toHaveBeenCalledWith("qteklink_enqueue_daily_posting", expect.objectContaining({
+      p_category: "sales", p_business_date: "2026-05-19", p_posting_version: 1, p_action: "create",
+      p_constituents: { ro_ids: [101], payment_ids: [] },
+    }));
   });
 
   it("persists a §9 review item for a non-postable (unmapped) RO", async () => {
@@ -152,7 +157,11 @@ describe("runDailyReconciliation", () => {
       fn === "qbo_resolve_realm_for_shop" ? Promise.resolve({ data: null, error: null }) : Promise.resolve({ data: null, error: null }),
     );
     const r = await runDailyReconciliation(7476, "2026-05-19");
-    expect(r).toEqual({ realmId: null, businessDate: "2026-05-19", saleCount: 0, paymentCount: 0, postableSales: 0, postablePayments: 0, reviewCount: 0, persistedReviewItems: 0, enqueuedPostings: 0, netByAccount: {} });
+    expect(r).toEqual({
+      realmId: null, businessDate: "2026-05-19", saleCount: 0, paymentCount: 0, postableSales: 0, postablePayments: 0,
+      reviewCount: 0, persistedReviewItems: 0, enqueuedPostings: 0,
+      dailyEnqueue: { sales: "noop", payments: "noop", fees: "noop" }, netByAccount: {},
+    });
     expect(fromMock).not.toHaveBeenCalled();
   });
 });

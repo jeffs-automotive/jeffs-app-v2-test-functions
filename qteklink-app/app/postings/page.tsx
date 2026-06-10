@@ -1,19 +1,18 @@
 /**
- * /postings — the posting approval queue + the auto_post/settings gate (C8c).
+ * /postings — the LEGACY per-RO/payment posting ledger (read-only) + the shop settings.
  *
- * requireQtekUser() enforces session + Entra oid + allowlist + active. Everyone allowed
- * READS the queue; only admins approve/reject, post, or change settings. The page only
- * READS (listPostings / getShopSettings); the writes are the admin client actions.
+ * Daily-JE rework step 4: posting is ALWAYS bulk-per-day from /approvals (up to 3 daily
+ * category JEs) — the individual approve/reject + "Post next approved" controls are
+ * REMOVED (Chris: never individual). This page remains a read-only view of the old
+ * ledger rows until the cleanup step retires the per-RO path entirely.
  *
- * ⚠️ The "Post next approved" button calls the LIVE QBO write path — it's the deliberate
- * human trigger for a real JournalEntry create. Nothing posts automatically here.
+ * requireQtekUser() enforces session + Entra oid + allowlist + active. Only admins
+ * change settings.
  */
 import Link from "next/link";
 import { requireQtekUser } from "@/lib/auth";
 import { listPostings, type PostingRow } from "@/lib/dal/postings";
 import { getShopSettings } from "@/lib/dal/settings";
-import ApprovePostingButtons from "./ApprovePostingButtons";
-import PostNextButton from "./PostNextButton";
 import SettingsForm from "./SettingsForm";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -28,7 +27,7 @@ function money(cents: number | null): string {
   return cents == null ? "—" : `$${(cents / 100).toFixed(2)}`;
 }
 
-function PostingCard({ p, isAdmin }: { p: PostingRow; isAdmin: boolean }) {
+function PostingCard({ p }: { p: PostingRow }) {
   return (
     <li className="rounded-lg border border-stone-200 bg-white p-4">
       <div className="flex flex-wrap items-center gap-2">
@@ -42,9 +41,6 @@ function PostingCard({ p, isAdmin }: { p: PostingRow; isAdmin: boolean }) {
         <span>txn {p.txnDate}</span>
         {p.qboJeId && <span className="text-green-700">QBO JE {p.qboJeId}</span>}
       </div>
-      {isAdmin && (p.status === "pending" || p.status === "approved") && (
-        <ApprovePostingButtons id={p.id} status={p.status} />
-      )}
     </li>
   );
 }
@@ -54,15 +50,14 @@ export default async function PostingsPage() {
   const isAdmin = role === "admin";
   const [{ realmId, postings }, { settings }] = await Promise.all([listPostings(shopId), getShopSettings(shopId)]);
 
-  const approved = postings.filter((p) => p.status === "approved");
-
   return (
     <main className="mx-auto max-w-4xl px-6 py-12">
       <header className="flex items-center justify-between border-b border-stone-200 pb-4">
         <div>
-          <h1 className="text-2xl font-bold text-[#96003C]">Posting queue</h1>
+          <h1 className="text-2xl font-bold text-[#96003C]">Posting ledger (legacy)</h1>
           <p className="text-sm text-stone-600">
-            Approve &amp; post to QuickBooks &middot;{" "}
+            Read-only &middot; posting is bulk-per-day from{" "}
+            <Link href="/approvals" className="text-[#96003C] underline">Approvals</Link> &middot;{" "}
             <Link href="/dashboard" className="text-[#96003C] underline">back to dashboard</Link>
           </p>
         </div>
@@ -82,26 +77,26 @@ export default async function PostingsPage() {
             <section className="mt-8 grid gap-6 md:grid-cols-2">
               <SettingsForm settings={settings} />
               <div className="rounded-lg border border-stone-200 bg-white p-6">
-                <h2 className="text-lg font-semibold text-stone-900">Post to QuickBooks</h2>
+                <h2 className="text-lg font-semibold text-stone-900">Posting moved to Approvals</h2>
                 <p className="mt-1 text-xs text-stone-500">
-                  {approved.length} approved posting{approved.length === 1 ? "" : "s"} ready. Posting writes a
-                  real JournalEntry to QuickBooks.
+                  QuickBooks writes are bulk-per-day: up to 3 daily journal entries (sales / payments /
+                  CC fees) from the <Link href="/approvals" className="text-[#96003C] underline">Approvals</Link> page.
+                  Individual postings are never approved one-by-one.
                 </p>
-                <div className="mt-3"><PostNextButton readyCount={approved.length} /></div>
               </div>
             </section>
           )}
 
           <section className="mt-8 rounded-lg border border-stone-200 bg-white p-6">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-stone-900">Open postings</h2>
+              <h2 className="text-lg font-semibold text-stone-900">Legacy per-RO rows (read-only)</h2>
               <span className="text-3xl font-bold text-stone-900">{postings.length}</span>
             </div>
             {postings.length === 0 ? (
-              <p className="mt-2 text-sm text-stone-600">Nothing queued. Run a day&apos;s reconciliation to enqueue postings.</p>
+              <p className="mt-2 text-sm text-stone-600">No legacy rows.</p>
             ) : (
               <ul className="mt-4 space-y-3">
-                {postings.map((p) => <PostingCard key={p.id} p={p} isAdmin={isAdmin} />)}
+                {postings.map((p) => <PostingCard key={p.id} p={p} />)}
               </ul>
             )}
           </section>

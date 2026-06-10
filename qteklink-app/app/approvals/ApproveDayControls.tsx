@@ -1,17 +1,28 @@
 "use client";
 
 /**
- * ApproveDayControls (admin-only) — the snapshot's "Approve + post" controls (plan §6). Each
- * button does a DRY RUN first (no write) → a confirm modal showing exactly what will post →
- * on confirm, the EXECUTE call (the live QBO write, bound to the dry-run's scope_hash). The
- * server re-verifies the hash, so the modal can't post a different set than was reviewed.
+ * ApproveDayControls (admin-only) — the snapshot's "Approve + post" controls (daily-JE
+ * rework: a day posts UP TO 3 category JournalEntries — sales / payments / CC fees —
+ * never individual per-RO/payment JEs). Each button does a DRY RUN first (no write) →
+ * a confirm modal showing exactly which category JEs will be created / replaced /
+ * deleted → on confirm, the EXECUTE call (the live QBO write, bound to the dry-run's
+ * scope_hash). The server re-verifies the hash, so the modal can't post a different
+ * set than was reviewed.
  */
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { approveAndPostDayAction, type ApproveDayDryRun } from "@/actions/approve-day";
 import { fmtUsd } from "@/lib/format";
 
-const SCOPE_LABEL = { day: "everything unapproved", sale: "Repair Orders", payment: "Customer Payments" } as const;
+const SCOPE_LABEL = { day: "the whole day", sale: "the sales JE", payment: "the payments + CC-fees JEs" } as const;
+
+const CATEGORY_LABEL = { sales: "Sales JE", payments: "Payments JE", fees: "CC-fees JE" } as const;
+const ACTION_LABEL = { create: "", update: " — replaces the posted JE", delete: " — deletes the posted JE (day emptied)" } as const;
+
+function categoryLine(c: { category: "sales" | "payments" | "fees"; action: "create" | "update" | "delete"; constituents: number }): string {
+  const what = c.category === "sales" ? `${c.constituents} RO${c.constituents === 1 ? "" : "s"}` : `${c.constituents} payment${c.constituents === 1 ? "" : "s"}`;
+  return `${CATEGORY_LABEL[c.category]} (${what})${ACTION_LABEL[c.action]}`;
+}
 
 export default function ApproveDayControls({ date }: { date: string }) {
   const router = useRouter();
@@ -42,7 +53,9 @@ export default function ApproveDayControls({ date }: { date: string }) {
       const res = await approveAndPostDayAction(null, fd);
       setModal(null);
       if (res.ok && !("needsConfirmation" in res.data)) {
-        setMsg({ kind: "ok", text: `Posted ${res.data.posted} · failed ${res.data.failed} · skipped ${res.data.skipped}.` });
+        const d = res.data;
+        const staleNote = d.stale > 0 ? ` · ${d.stale} changed since review (re-open and approve again)` : "";
+        setMsg({ kind: d.failed > 0 ? "err" : "ok", text: `Posted ${d.posted} JE${d.posted === 1 ? "" : "s"} · failed ${d.failed} · skipped ${d.skipped}${staleNote}.` });
         router.refresh();
       } else if (!res.ok) {
         setMsg({ kind: "err", text: res.message });
@@ -66,13 +79,13 @@ export default function ApproveDayControls({ date }: { date: string }) {
           <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
             <h3 className="text-lg font-semibold text-stone-900">Post to QuickBooks?</h3>
             <p className="mt-1 text-sm text-stone-600">
-              You&apos;re about to post <span className="font-semibold">{modal.summary.jeCount}</span> journal entr{modal.summary.jeCount === 1 ? "y" : "ies"} for <span className="font-medium">{date}</span> ({SCOPE_LABEL[modal.scope]}). This is a <span className="font-semibold text-[#96003C]">live write</span> to QuickBooks.
+              You&apos;re about to write <span className="font-semibold">{modal.summary.jeCount}</span> daily journal entr{modal.summary.jeCount === 1 ? "y" : "ies"} for <span className="font-medium">{date}</span> ({SCOPE_LABEL[modal.scope]}). This is a <span className="font-semibold text-[#96003C]">live write</span> to QuickBooks.
             </p>
             <ul className="mt-3 space-y-1 text-sm">
-              {modal.summary.perType.filter((t) => t.count > 0).map((t) => (
-                <li key={t.type} className="flex justify-between">
-                  <span className="text-stone-600">{t.type === "sale" ? "Repair Orders" : "Customer Payments"} ({t.count})</span>
-                  <span className="font-medium tabular-nums">{fmtUsd(t.cents)}</span>
+              {modal.summary.perCategory.map((c) => (
+                <li key={c.category} className="flex justify-between gap-3">
+                  <span className="text-stone-600">{categoryLine(c)}</span>
+                  <span className="font-medium tabular-nums">{c.action === "delete" ? "—" : fmtUsd(c.cents)}</span>
                 </li>
               ))}
             </ul>

@@ -20,7 +20,7 @@ import { reduceShopPaymentState } from "@/lib/dal/payment-state";
 import { getShopSettings } from "@/lib/dal/settings";
 import { planApproveDay, executeApproveDay } from "@/lib/dal/approve-post-day";
 import { runSafetyNet, type SafetyNetResult } from "@/lib/dal/safety-net";
-import type { QboPostClient } from "@/lib/dal/poster";
+import type { QboDailyWriteClient } from "@/lib/dal/daily-poster";
 import { toShopLocalDate } from "@/lib/sales/sale-builder";
 import { addDaysIso } from "@/lib/format";
 
@@ -58,7 +58,7 @@ export async function listConnectedShops(): Promise<number[]> {
  */
 export async function runNightlySync(
   shopId: number,
-  opts: { businessDate?: string; client?: QboPostClient } = {},
+  opts: { businessDate?: string; client?: QboDailyWriteClient } = {},
 ): Promise<NightlyShopResult> {
   const { settings } = await getShopSettings(shopId);
   const businessDate =
