@@ -60,7 +60,8 @@ interface ClaimedPosting {
   requestid: string;
 }
 
-function classifyPostError(e: unknown): { retry: boolean; reviewKind: string | null } {
+/** Shared QBO post-error classification (also used by the daily poster). */
+export function classifyPostError(e: unknown): { retry: boolean; reviewKind: string | null } {
   if (e instanceof QboClientError) {
     if (e.kind === "throttle" || e.kind === "network") return { retry: true, reviewKind: null };
     if (e.kind === "reconnect_required" || e.kind === "auth") return { retry: false, reviewKind: "reconnect_required" };

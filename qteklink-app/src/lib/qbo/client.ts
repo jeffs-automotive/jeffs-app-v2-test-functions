@@ -176,6 +176,17 @@ export class QboClient {
     });
   }
 
+  /** Delete an entity (`?operation=delete`; body = {Id, SyncToken}). Idempotent via
+   *  requestid like create — pass the STABLE requestid for cross-run safety. */
+  deleteEntity<T = unknown>(entity: string, body: unknown, requestId?: string): Promise<T> {
+    return this.request<T>("POST", entity.toLowerCase(), {
+      body,
+      query: { operation: "delete" },
+      idempotent: true,
+      requestId,
+    });
+  }
+
   private buildUrl(
     realmId: string,
     resource: string,
