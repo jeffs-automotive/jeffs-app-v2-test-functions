@@ -6,7 +6,7 @@
  * Builds ONE per-RO SALE JE draft from the RO's posting snapshot — `ro_posted`
  * (paid) OR `ro_sent_to_ar` (on A/R); both finalize the sale (plan §4/§5/§6):
  *   Dr Accounts Receivable [235] = totalSales (net), NO EntityRef (bulk A/R — §13;
- *     `arEntityless` flags it so the C8 poster's ar_entity_rejected guard can detect
+ *     `arEntityless` flags it so the daily poster's ar_entity_rejected guard can detect
  *     a future QBO tightening rather than silently drop it).
  *   Cr each income account = GROSS − allocated discount:
  *     - Labor  → the labor income account (laborSales is authoritative).
@@ -115,11 +115,11 @@ export interface SaleJournalEntry {
   lines: JeLine[]; // zero-amount lines omitted
   /** The A/R debit carries no EntityRef (bulk receivable) — the ar_entity_rejected guard. */
   arEntityless: boolean;
-  /** accountId → discount cents applied to it (audit / persisted in proposed_je). */
+  /** accountId → discount cents applied to it (audit-only output — the daily ledger persists lines, not the allocation). */
   discountAllocation: Record<string, number>;
   /** The authoritative `taxes` lump split into the per-tire fee (PTAL) vs sales tax
-   *  (the clamp model). Always sums to ro.taxes. The §8 gate + daily approvals + the
-   *  C8 poster read this rather than re-deriving the split. */
+   *  (the clamp model). Always sums to ro.taxes. The §8 gate reads this rather than
+   *  re-deriving the split. */
   taxSplit: { tireFeeCents: number; salesTaxCents: number };
   /** Sources with no active mapping (or a non-postable split) → C7 resolution queue. */
   unmapped: string[];

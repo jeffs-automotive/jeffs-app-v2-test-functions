@@ -106,25 +106,3 @@ export async function requireQtekUser(): Promise<QtekSession> {
   };
 }
 
-/**
- * Soft variant — returns the session if present + allowed + active, else null.
- * Does NOT redirect. Use for conditional rendering (e.g., a "Sign in" link).
- */
-export async function getQtekSession(): Promise<QtekSession | null> {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
-
-  const allowed = await resolveAllowedUser(user.id);
-  if (!allowed || !allowed.active) return null;
-
-  return {
-    email: allowed.email || user.email || "",
-    userId: user.id,
-    objectId: allowed.entra_object_id,
-    shopId: allowed.shop_id,
-    role: allowed.role as QtekRole,
-  };
-}

@@ -6,9 +6,12 @@
  *     (the authoritative list) and flag any that produced NO webhook event in qteklink_events
  *     → 'missed_ro_webhook' review item. Catches an ingestion outage (the 2026-05-26 ~2h gap
  *     lost 8 postings).
- *   QBO landing — query QBO for the day's JournalEntries and flag any posting we marked
- *     'posted' whose qbo_je_id is NOT present → 'posted_je_missing' review item. Catches a JE
- *     deleted in QBO after we posted it.
+ *   QBO landing — query QBO for the day's JournalEntries and flag any LIVE daily category
+ *     JE we marked 'posted' (qteklink_daily_postings — the day-grain ledger; a posted
+ *     'delete' version means no live JE for that category) whose qbo_je_id is NOT present
+ *     → 'posted_je_missing' review item with a `day` subject. Catches a JE deleted in QBO
+ *     after we posted it. (Re-pointed from the retired per-RO qteklink_postings ledger,
+ *     which stopped receiving posted rows at the daily-JE rework.)
  *
  * Read-mostly (the only write is upsertReviewItem). Fail-closed: errors throw (a per-shop
  * failure is isolated by the cron). MULTI-TENANT: scoped by shop_id + realm_id throughout.
@@ -89,7 +92,15 @@ export async function runTekmetricCompletenessCheck(
 
 interface QboJeRow { Id?: string }
 
-/** QBO landing: postings we marked 'posted' whose JE is NOT in QBO for the day → review items. */
+interface PostedDailyRow {
+  category: string;
+  posting_version: number;
+  action: string;
+  qbo_je_id: string | null;
+}
+
+/** QBO landing: the day's LIVE daily category JEs (latest posted version per category,
+ *  unless that version is a delete) whose JE is NOT in QBO → `day` review items. */
 export async function runQboLandingCheck(
   shopId: number,
   realmId: string,
@@ -101,16 +112,23 @@ export async function runQboLandingCheck(
   if (!isIsoDate(businessDate)) throw new Error("runQboLandingCheck: businessDate must be ISO YYYY-MM-DD");
   const admin = createSupabaseAdminClient();
   const { data: posts, error } = await admin
-    .from("qteklink_postings")
-    .select("qbo_je_id, tekmetric_ro_id, kind, payment_id")
+    .from("qteklink_daily_postings")
+    .select("category, posting_version, action, qbo_je_id")
     .eq("shop_id", shopId)
     .eq("realm_id", realmId)
-    .eq("batch_date", businessDate)
-    .eq("status", "posted")
-    .not("qbo_je_id", "is", null);
-  if (error) throw new Error(`runQboLandingCheck (postings) failed: ${error.message}`);
-  const posted = (posts ?? []) as { qbo_je_id: string; tekmetric_ro_id: number | string; kind: string; payment_id: number | string | null }[];
-  if (posted.length === 0) return { checked: 0, gaps: 0 };
+    .eq("business_date", businessDate)
+    .eq("status", "posted");
+  if (error) throw new Error(`runQboLandingCheck (daily postings) failed: ${error.message}`);
+
+  // The LIVE JE per category = the latest POSTED version; a posted 'delete' means the
+  // category has no JE in QBO (nothing to check).
+  const latestByCategory = new Map<string, PostedDailyRow>();
+  for (const r of (posts ?? []) as PostedDailyRow[]) {
+    const cur = latestByCategory.get(r.category);
+    if (!cur || r.posting_version > cur.posting_version) latestByCategory.set(r.category, r);
+  }
+  const live = [...latestByCategory.values()].filter((r) => r.action !== "delete" && r.qbo_je_id != null);
+  if (live.length === 0) return { checked: 0, gaps: 0 };
 
   // The JE ids QBO actually has for the day's TxnDate.
   const query = deps.qboQuery ?? ((qbl: string) => new QboClient({ realmId }).query(qbl));
@@ -121,22 +139,22 @@ export async function runQboLandingCheck(
   // If we hit the result cap, JE membership is unreliable (a real JE could be on a later
   // page) — skip flagging rather than emit FALSE 'missing' items. (>1000 JEs/day is unreal
   // for one shop; the guard just makes the check provably false-positive-free.)
-  if (jes.length >= 1000) return { checked: posted.length, gaps: 0 };
+  if (jes.length >= 1000) return { checked: live.length, gaps: 0 };
   const inQbo = new Set(jes.map((j) => String(j.Id)));
 
   let gaps = 0;
-  for (const p of posted) {
+  for (const p of live) {
     if (!inQbo.has(String(p.qbo_je_id))) {
       await upsertReviewItem(shopId, {
         kind: "posted_je_missing",
-        subjectKind: p.kind === "payment" ? "payment" : "ro",
-        subjectRef: p.kind === "payment" ? String(p.payment_id) : String(p.tekmetric_ro_id),
-        detail: { reason: "marked posted but the JE is not in QuickBooks for this day (deleted?)", qboJeId: p.qbo_je_id, businessDate },
+        subjectKind: "day",
+        subjectRef: `${businessDate}:${p.category}`,
+        detail: { reason: "daily JE marked posted but not in QuickBooks for this day (deleted?)", qboJeId: p.qbo_je_id, category: p.category, businessDate },
       });
       gaps++;
     }
   }
-  return { checked: posted.length, gaps };
+  return { checked: live.length, gaps };
 }
 
 /** Both halves of the 2-API safety-net. */

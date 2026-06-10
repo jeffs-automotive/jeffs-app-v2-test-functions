@@ -155,6 +155,36 @@ describe("postDailyPostingById", () => {
     }));
   });
 
+  it("STALE + day emptied + NO live JE → refreshes as an empty CREATE (never a v1 'delete' that would trip the correction CHECK)", async () => {
+    setup({ claim: claimRow({ source_state_hash: "h-stale" }) }); // v1 create, claimed
+    fromResults.push([]); // no posted version → nothing live to delete
+    const client = okClient();
+    const r = await postDailyPostingById(7476, "dp-1", { client, rebuild: rebuilds.empty });
+    expect(r).toEqual({ status: "stale_refreshed", postingId: "dp-1" });
+    expect(rpcMock).toHaveBeenCalledWith("qteklink_refresh_daily_posting", expect.objectContaining({
+      p_id: "dp-1", p_action: "create", p_source_state_hash: EMPTY_HASH,
+      p_proposed_je: expect.objectContaining({ je: expect.objectContaining({ lines: [] }) }),
+    }));
+    expect(client.create).not.toHaveBeenCalled();
+    expect(client.deleteEntity).not.toHaveBeenCalled();
+  });
+
+  it("STALE + day emptied + a LIVE posted JE → refreshes as a DELETE (the correction the next approval posts)", async () => {
+    setup({ claim: claimRow({ source_state_hash: "h-stale", action: "update", posting_version: 2 }) });
+    fromResults.push([postedDbRow()]); // live JE exists
+    const r = await postDailyPostingById(7476, "dp-1", { client: okClient(), rebuild: rebuilds.empty });
+    expect(r).toEqual({ status: "stale_refreshed", postingId: "dp-1" });
+    expect(rpcMock).toHaveBeenCalledWith("qteklink_refresh_daily_posting", expect.objectContaining({ p_action: "delete" }));
+  });
+
+  it("forwards the caller's settings overrides into the rebuild (the hash contract)", async () => {
+    setup({ claim: claimRow() });
+    const rebuild = vi.fn().mockResolvedValue(DESIRED);
+    const opts = { shopTimezone: "America/Chicago", salesTaxRateBps: 700 };
+    await postDailyPostingById(7476, "dp-1", { client: okClient(), rebuild }, opts);
+    expect(rebuild).toHaveBeenCalledWith(7476, REALM, DATE, "sales", opts);
+  });
+
   it("UPDATE: full-replacement under the live JE's id + current SyncToken", async () => {
     setup({ claim: claimRow({ action: "update", posting_version: 2 }) });
     fromResults.push([postedDbRow()]); // the live JE (QBO-100, token 4)

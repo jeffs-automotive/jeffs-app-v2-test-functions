@@ -172,7 +172,7 @@ describe("executeApproveDay", () => {
     expect(enqueueDailyMock).toHaveBeenCalledTimes(3);
     expect(approveDailyMock).toHaveBeenCalledTimes(3);
     for (const c of ["sales", "payments", "fees"]) {
-      expect(postDailyMock).toHaveBeenCalledWith(7476, `dp-${c}`, expect.anything());
+      expect(postDailyMock).toHaveBeenCalledWith(7476, `dp-${c}`, expect.anything(), expect.anything());
     }
   });
 
@@ -183,7 +183,7 @@ describe("executeApproveDay", () => {
     expect(r.posted).toBe(3);
     expect(enqueueDailyMock).toHaveBeenCalledTimes(2); // payments + fees only
     expect(approveDailyMock).toHaveBeenCalledTimes(2);
-    expect(postDailyMock).toHaveBeenCalledWith(7476, "dp-sales", expect.anything());
+    expect(postDailyMock).toHaveBeenCalledWith(7476, "dp-sales", expect.anything(), expect.anything());
   });
 
   it("surfaces the poster's stale-release as `stale` (re-approval required)", async () => {

@@ -1,3 +1,5 @@
+> **STATUS 2026-06-10:** PR1 (e2a99b3) + PR2 (042cd0f) SHIPPED. **PR3 (Workstream C1/C2) is SUPERSEDED by the daily-JE rework** (docs/qteklink/daily-je-rework-plan.md) — the per-RO posting lifecycle it targeted was deleted; corrections are first-class update/delete versions of the DAILY JEs. Still open: C3 (standalone-refund review item), PR4 (D1-D3, E1), the residual F items.
+
 # QTekLink — pipeline completion & wiring plan
 
 > Status: PLAN (awaiting Chris approval + cross-verify). Authored 2026-06-08 from a two-batch,

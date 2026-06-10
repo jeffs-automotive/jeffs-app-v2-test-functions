@@ -19,7 +19,8 @@
  *   REFUND (signed amount NEGATIVE): the SAME route with Debit/Credit FLIPPED — money
  *     out, A/R restored — dated to the refund's own date.
  *   VOID (status 'voided'): SUPPRESSED — no JE. A reversal of an ALREADY-POSTED payment
- *     is the C7 desired-vs-posted diff's job, not the builder's (it can't see posted state).
+ *     is the DAY-grain desired-vs-posted diff's job (a correction version of the daily
+ *     JE), not the builder's (it can't see posted state).
  *
  * Money is integer cents throughout; a non-integer-cents input is suppressed (fail
  * closed). A missing mapping (undeposited / A/R / cc_fee / the non-cash account)
@@ -133,7 +134,7 @@ export function buildPaymentJournalEntry(
   const docNumber = `PAY ${p.paymentId}`;
   const txnDate = toShopLocalDate(p.paymentDate, settings.shopTimezone);
 
-  // Voided → not posted (a reversal of an already-posted payment is the C7 diff's
+  // Voided → not posted (a reversal of an already-posted payment is the day-grain diff's
   // job). Case-insensitive so a reduced status variant can't slip through and post.
   if (p.status.trim().toLowerCase() === "voided") return suppressed(p, txnDate, "voided");
 

@@ -12,8 +12,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
-    "test:e2e": "playwright test"
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@sentry/nextjs": "^10.52.0",
@@ -30,12 +29,9 @@
     "zod": "^4.1.8"
   },
   "devDependencies": {
-    "@axe-core/playwright": "^4.0.0",
-    "@playwright/test": "^1.58.0",
     "@tailwindcss/postcss": "^4.0.0",
     "@testing-library/jest-dom": "^6.0.0",
     "@testing-library/react": "^16.0.0",
-    "@testing-library/user-event": "^14.0.0",
     "@types/node": "^25.6.2",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

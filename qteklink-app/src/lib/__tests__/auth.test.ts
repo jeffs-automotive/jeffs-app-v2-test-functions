@@ -1,5 +1,5 @@
 /**
- * Unit tests for requireQtekUser / getQtekSession (the all-entrypoint auth
+ * Unit tests for requireQtekUser (the all-entrypoint auth
  * gate). Mocks both Supabase clients + next/navigation's redirect (which
  * throws, like the real one) so we can assert every reject branch.
  *
@@ -26,7 +26,7 @@ vi.mock("next/navigation", () => ({
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "../supabase/server";
 import { createSupabaseAdminClient } from "../supabase/admin";
-import { requireQtekUser, getQtekSession } from "../auth";
+import { requireQtekUser } from "../auth";
 
 const ALLOWED_OID = "1afee9a1-271c-4180-b777-6d83b381aa5a";
 
@@ -132,28 +132,3 @@ describe("requireQtekUser", () => {
   });
 });
 
-describe("getQtekSession", () => {
-  it("returns null when there is no session (no redirect)", async () => {
-    setSession(null);
-    expect(await getQtekSession()).toBeNull();
-    expect(redirect).not.toHaveBeenCalled();
-  });
-
-  it("returns null when not on the allowlist", async () => {
-    setSession(mockUser());
-    setResolver([]);
-    expect(await getQtekSession()).toBeNull();
-  });
-
-  it("returns null when deactivated", async () => {
-    setSession(mockUser());
-    setResolver([row({ active: false })]);
-    expect(await getQtekSession()).toBeNull();
-  });
-
-  it("returns the session for an active allowlisted user", async () => {
-    setSession(mockUser());
-    setResolver([row({ role: "approver" })]);
-    expect(await getQtekSession()).toMatchObject({ role: "approver", shopId: 7476 });
-  });
-});

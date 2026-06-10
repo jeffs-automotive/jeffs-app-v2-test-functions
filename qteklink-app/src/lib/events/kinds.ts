@@ -15,4 +15,12 @@
  * snapshot (totalSales / jobs / fees / postedDate), so `parseSnapshot` is unchanged.
  */
 export const RO_POSTING_EVENT_KINDS = ["ro_posted", "ro_sent_to_ar"] as const;
-export type RoPostingEventKind = (typeof RO_POSTING_EVENT_KINDS)[number];
+
+/** A posting REVERSAL — "Repair Order #N unposted by …" (~2/day in real traffic): the RO
+ *  returns to WIP and its sale must NOT be recognized (until a later re-post). */
+export const RO_UNPOST_EVENT_KIND = "ro_unposted" as const;
+
+/** The sale-side LATEST-EVENT scan set: the posting kinds + the unpost reversal. A
+ *  consumer picking "the RO's newest event" MUST scan all three — scanning only the
+ *  posting kinds resurrects an unposted RO's stale sale from its superseded posted event. */
+export const RO_SALE_SCAN_EVENT_KINDS = [...RO_POSTING_EVENT_KINDS, RO_UNPOST_EVENT_KIND] as const;

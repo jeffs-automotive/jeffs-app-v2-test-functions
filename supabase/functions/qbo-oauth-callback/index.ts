@@ -3,7 +3,7 @@
 // Self-contained. Two GET modes on the same registered path:
 //   GET ?start=1              -> 302 to Intuit's authorize endpoint (with a signed state)
 //   GET ?code&state&realmId   -> verify state, exchange code -> tokens, then SEED them into
-//                                qbo_connections (Vault) for the deployed Accounting Link
+//                                qbo_connections (Vault) for the deployed QTekLink
 //                                client AND print the refresh_token + realmId for the
 //                                optional local QuickBooks MCP server (@qboapi/qbo-mcp-server).
 //
@@ -195,7 +195,7 @@ Deno.serve((req) =>
       );
     }
 
-    // Seed qbo_connections so the DEPLOYED Accounting Link client has its own
+    // Seed qbo_connections so the DEPLOYED QTekLink client has its own
     // server-side grant (Vault-backed). This is a SEPARATE grant from the local
     // QuickBooks MCP server's — qbo_persist_tokens upserts the Vault secrets +
     // the row (environment defaults to 'production'). Migration 20260602140000.

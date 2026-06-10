@@ -13,22 +13,8 @@ import { z } from "zod";
 import { requireQtekUser } from "@/lib/auth";
 import { wrapQtekAction } from "@/lib/instrument-action";
 import { setMapping, deactivateMapping } from "@/lib/dal/mappings";
-import { MAPPING_KINDS, POSTING_ROLES, derivePostingRole } from "@/lib/mappings/catalog";
+import { MAPPING_KINDS, derivePostingRole } from "@/lib/mappings/catalog";
 import { qboFailure, type QboActionResult } from "./qbo/result";
-
-const SetMappingSchema = z
-  .object({
-    kind: z.enum(MAPPING_KINDS),
-    sourceKey: z.string().trim().min(1, "Source key is required.").max(200),
-    sourceId: z.string().trim().max(200).optional().nullable(),
-    qboAccountId: z.string().trim().min(1, "An account is required.").max(100),
-    postingRole: z.enum(POSTING_ROLES),
-    passThrough: z.boolean().optional(),
-  })
-  .refine((d) => !d.passThrough || d.kind === "fee", {
-    message: "Pass-through applies only to fee mappings.",
-    path: ["passThrough"],
-  });
 
 type SetMappingState = QboActionResult<{ id: string }>;
 type DeactivateState = QboActionResult<{ deactivated: boolean }>;
@@ -45,40 +31,6 @@ function adminRequired(): {
     message: "Admin role required to manage mappings.",
     timestamp: Date.now(),
   };
-}
-
-async function setMappingImpl(
-  _prev: SetMappingState | null,
-  formData: FormData,
-): Promise<SetMappingState> {
-  // Full-body guard (observability rule 1/2): auth + validation + DB all inside
-  // the try; qboFailure re-throws Next redirect()/notFound() so they navigate.
-  try {
-    const { shopId, role } = await requireQtekUser();
-    if (role !== "admin") return adminRequired();
-
-    const parsed = SetMappingSchema.safeParse({
-      kind: formData.get("kind"),
-      sourceKey: formData.get("source_key"),
-      sourceId: formData.get("source_id") || null,
-      qboAccountId: formData.get("qbo_account_id"),
-      postingRole: formData.get("posting_role"),
-      passThrough: formData.get("pass_through") === "on",
-    });
-    if (!parsed.success) {
-      return {
-        ok: false,
-        reason: "validation",
-        message: parsed.error.issues[0]?.message ?? "Invalid mapping input.",
-        timestamp: Date.now(),
-      };
-    }
-
-    const data = await setMapping(shopId, parsed.data);
-    return { ok: true, data, timestamp: Date.now() };
-  } catch (e) {
-    return qboFailure(e);
-  }
 }
 
 async function deactivateMappingImpl(
@@ -172,7 +124,6 @@ async function mapTekmetricItemImpl(
   }
 }
 
-export const setMappingAction = wrapQtekAction("qboSetMapping", setMappingImpl);
 export const mapTekmetricItemAction = wrapQtekAction("qboMapTekmetricItem", mapTekmetricItemImpl);
 export const deactivateMappingAction = wrapQtekAction(
   "qboDeactivateMapping",

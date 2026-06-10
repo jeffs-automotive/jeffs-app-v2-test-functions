@@ -1,31 +1,13 @@
 /**
- * SALE JE DAL (C5) — fetch an RO's latest posting (`ro_posted` / `ro_sent_to_ar`)
- * snapshot from the append-only `qteklink_events` ledger, resolve the shop's active
- * `qteklink_mappings`, and run the pure builder (`@/lib/sales/sale-builder`).
- *
- * Fat-DAL: the business logic is the PURE builder (unit-tested without mocks);
- * this module is the thin DB seam. C8's posting pipeline calls it.
- *
- * MULTI-TENANT: `shopId` is server-derived; `realmId` from the bound connection
- * (`resolveRealmForShop`). `qteklink_events` / `qteklink_mappings` are
- * service_role-only and service_role bypasses RLS → every query scopes shop_id +
- * realm_id. No silent failures: every DB error throws.
+ * SALE snapshot parsing + mapping resolution (C5) — the PURE seam between the raw
+ * `qteklink_events` posting payloads / `qteklink_mappings` rows and the pure sale
+ * builder (`@/lib/sales/sale-builder`): `parseSnapshot` (fail-closed payload → typed
+ * snapshot) + `resolveMappings` (rows → the builder's account lookups). Consumed by
+ * the shared day-draft builder (`day-drafts.ts`). (The per-RO `buildShopRoSaleJe`
+ * DAL that lived here was retired with the per-RO posting path — the daily pipeline
+ * builds whole days.)
  */
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { resolveRealmForShop } from "@/lib/dal/realm";
-import { RO_POSTING_EVENT_KINDS } from "@/lib/events/kinds";
-import {
-  buildSaleJournalEntry,
-  normalizeName,
-  type ResolvedMappings,
-  type RoSaleSnapshot,
-  type SaleJournalEntry,
-  type SaleSettings,
-} from "@/lib/sales/sale-builder";
-
-const DEFAULT_TIRE_FEE_CENTS = 100; // PA per-tire state fee = $1.00 (qteklink_settings → C8)
-const DEFAULT_SHOP_TZ = "America/New_York";
-const DEFAULT_SALES_TAX_BPS = 600; // PA state sales tax = 6.00% (qteklink_settings → C8)
+import { normalizeName, type ResolvedMappings, type RoSaleSnapshot } from "@/lib/sales/sale-builder";
 
 export interface MappingRow {
   kind: string;
@@ -33,12 +15,6 @@ export interface MappingRow {
   qbo_account_id: string;
   posting_role: string;
   pass_through: boolean;
-}
-
-export interface BuildSaleResult {
-  realmId: string | null;
-  /** null when the shop has no connection OR the RO has no posting snapshot yet. */
-  je: SaleJournalEntry | null;
 }
 
 function num(v: unknown): number {
@@ -134,64 +110,3 @@ export function resolveMappings(rows: MappingRow[]): ResolvedMappings {
   return r;
 }
 
-/**
- * Build the SALE JE draft for one RO. Returns {realmId:null, je:null} when the
- * shop has no connection, and {realmId, je:null} when the RO has no posting
- * snapshot yet. Throws (FAIL CLOSED) on any DB error or an unusable snapshot.
- */
-export async function buildShopRoSaleJe(
-  shopId: number,
-  repairOrderId: number,
-  opts: { shopTimezone?: string; tireFeeCentsPerTire?: number; salesTaxRateBps?: number } = {},
-): Promise<BuildSaleResult> {
-  const realmId = await resolveRealmForShop(shopId);
-  if (!realmId) return { realmId: null, je: null };
-
-  const admin = createSupabaseAdminClient();
-
-  // Latest POSTING snapshot for this RO (append-only ledger → newest received).
-  // ro_posted (paid) OR ro_sent_to_ar (on A/R) BOTH finalize the sale; an A/R RO
-  // arrives ONLY as ro_sent_to_ar (@/lib/events/kinds), so filtering ro_posted
-  // alone would silently drop every A/R sale. Latest-of-either wins via the order.
-  const { data: evRows, error: evErr } = await admin
-    .from("qteklink_events")
-    .select("raw_body, received_at")
-    .eq("shop_id", shopId)
-    .eq("realm_id", realmId)
-    .eq("tekmetric_ro_id", repairOrderId)
-    .in("event_kind", [...RO_POSTING_EVENT_KINDS])
-    // Latest by business posted-time, tie-break received_at — an out-of-order re-delivery
-    // of an OLDER repost must not supersede the newest posted state.
-    .order("tekmetric_event_at", { ascending: false, nullsFirst: false })
-    .order("received_at", { ascending: false })
-    .limit(1);
-  if (evErr) throw new Error(`buildShopRoSaleJe (events) failed: ${evErr.message}`);
-
-  const latest = (evRows ?? [])[0] as { raw_body: { data?: unknown } | null } | undefined;
-  if (!latest) return { realmId, je: null }; // not posted yet
-
-  const snapshot = parseSnapshot(latest.raw_body?.data);
-  if (!snapshot) {
-    throw new Error(`buildShopRoSaleJe: posting event for RO ${repairOrderId} has no usable snapshot`);
-  }
-
-  const { data: mapRows, error: mapErr } = await admin
-    .from("qteklink_mappings")
-    .select("kind, source_key, qbo_account_id, posting_role, pass_through")
-    .eq("shop_id", shopId)
-    .eq("realm_id", realmId)
-    .eq("active", true)
-    // Deterministic order: if two active rows collapse to the same normalized key
-    // (e.g. cased fee-name variants), the latest effective_from wins the overwrite.
-    .order("effective_from", { ascending: true });
-  if (mapErr) throw new Error(`buildShopRoSaleJe (mappings) failed: ${mapErr.message}`);
-
-  const mappings = resolveMappings((mapRows ?? []) as MappingRow[]);
-  const settings: SaleSettings = {
-    shopTimezone: opts.shopTimezone ?? DEFAULT_SHOP_TZ,
-    tireFeeCentsPerTire: opts.tireFeeCentsPerTire ?? DEFAULT_TIRE_FEE_CENTS,
-    salesTaxRateBps: opts.salesTaxRateBps ?? DEFAULT_SALES_TAX_BPS,
-  };
-
-  return { realmId, je: buildSaleJournalEntry(snapshot, mappings, settings) };
-}

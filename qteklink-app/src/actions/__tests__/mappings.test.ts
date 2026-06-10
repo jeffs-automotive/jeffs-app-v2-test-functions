@@ -21,7 +21,7 @@ vi.mock("@/lib/instrument-action", () => ({
   wrapQtekAction: (_name: string, inner: (...a: unknown[]) => unknown) => inner,
 }));
 
-import { setMappingAction, deactivateMappingAction } from "../mappings";
+import { mapTekmetricItemAction, deactivateMappingAction } from "../mappings";
 
 function fd(entries: Record<string, string>): FormData {
   const f = new FormData();
@@ -36,33 +36,50 @@ beforeEach(() => {
   deactivateMappingMock.mockResolvedValue({ deactivated: true });
 });
 
-describe("setMappingAction", () => {
-  it("admin + valid input -> calls setMapping with the SESSION shop + parsed fields", async () => {
-    const r = await setMappingAction(null, fd({ kind: "labor", source_key: "Labor", qbo_account_id: "275", posting_role: "income" }));
+describe("mapTekmetricItemAction (the picker — the only mapping-set surface)", () => {
+  it("admin + valid input -> calls setMapping with the SESSION shop + the SERVER-derived role", async () => {
+    const r = await mapTekmetricItemAction(null, fd({ kind: "labor", source_key: "Labor", qbo_account_id: "275" }));
     expect(setMappingMock).toHaveBeenCalledWith(7476, {
       kind: "labor",
       sourceKey: "Labor",
-      sourceId: null,
       qboAccountId: "275",
-      postingRole: "income",
+      postingRole: "income", // derived server-side from (kind, sourceKey) — never client input
       passThrough: false,
     });
     expect(r).toMatchObject({ ok: true, data: { id: "new-uuid" } });
   });
 
   it("passes passThrough:true for a fee marked pass-through", async () => {
-    const r = await setMappingAction(
+    const r = await mapTekmetricItemAction(
       null,
-      fd({ kind: "fee", source_key: "State Communication Fee", qbo_account_id: "276", posting_role: "income", pass_through: "on" }),
+      fd({ kind: "fee", source_key: "State Communication Fee", qbo_account_id: "276", pass_through: "on" }),
     );
     expect(setMappingMock).toHaveBeenCalledWith(7476, expect.objectContaining({ kind: "fee", passThrough: true }));
     expect(r).toMatchObject({ ok: true });
   });
 
   it("rejects pass-through on a NON-fee kind (no DAL call)", async () => {
-    const r = await setMappingAction(
+    const r = await mapTekmetricItemAction(
       null,
-      fd({ kind: "labor", source_key: "Labor", qbo_account_id: "275", posting_role: "income", pass_through: "on" }),
+      fd({ kind: "labor", source_key: "Labor", qbo_account_id: "275", pass_through: "on" }),
+    );
+    expect(r).toMatchObject({ ok: false, reason: "validation" });
+    expect(setMappingMock).not.toHaveBeenCalled();
+  });
+
+  it("deposits-like-card on a non-cash type derives role undeposited_funds (the financing path)", async () => {
+    const r = await mapTekmetricItemAction(
+      null,
+      fd({ kind: "noncash_payment_type", source_key: "Synchrony", qbo_account_id: "366", deposits_like_card: "on" }),
+    );
+    expect(setMappingMock).toHaveBeenCalledWith(7476, expect.objectContaining({ postingRole: "undeposited_funds" }));
+    expect(r).toMatchObject({ ok: true });
+  });
+
+  it("rejects deposits-like-card on a NON-noncash kind (no DAL call)", async () => {
+    const r = await mapTekmetricItemAction(
+      null,
+      fd({ kind: "labor", source_key: "Labor", qbo_account_id: "275", deposits_like_card: "on" }),
     );
     expect(r).toMatchObject({ ok: false, reason: "validation" });
     expect(setMappingMock).not.toHaveBeenCalled();
@@ -70,19 +87,19 @@ describe("setMappingAction", () => {
 
   it("denies a non-admin BEFORE touching the DAL", async () => {
     requireQtekUserMock.mockResolvedValue({ shopId: 7476, role: "approver" });
-    const r = await setMappingAction(null, fd({ kind: "labor", source_key: "Labor", qbo_account_id: "275", posting_role: "income" }));
+    const r = await mapTekmetricItemAction(null, fd({ kind: "labor", source_key: "Labor", qbo_account_id: "275" }));
     expect(r).toMatchObject({ ok: false, reason: "validation" });
     expect(setMappingMock).not.toHaveBeenCalled();
   });
 
-  it("rejects an invalid kind/role with a validation envelope (no DAL call)", async () => {
-    const r = await setMappingAction(null, fd({ kind: "bogus", source_key: "Labor", qbo_account_id: "275", posting_role: "income" }));
+  it("rejects an invalid kind with a validation envelope (no DAL call)", async () => {
+    const r = await mapTekmetricItemAction(null, fd({ kind: "bogus", source_key: "Labor", qbo_account_id: "275" }));
     expect(r).toMatchObject({ ok: false, reason: "validation" });
     expect(setMappingMock).not.toHaveBeenCalled();
   });
 
   it("rejects a blank source_key (no DAL call)", async () => {
-    const r = await setMappingAction(null, fd({ kind: "labor", source_key: "   ", qbo_account_id: "275", posting_role: "income" }));
+    const r = await mapTekmetricItemAction(null, fd({ kind: "labor", source_key: "   ", qbo_account_id: "275" }));
     expect(r).toMatchObject({ ok: false, reason: "validation" });
     expect(setMappingMock).not.toHaveBeenCalled();
   });
@@ -91,14 +108,14 @@ describe("setMappingAction", () => {
     setMappingMock.mockRejectedValue(
       new QboClientError("posting_role income is not compatible with account type Expense", { kind: "unknown" }),
     );
-    const r = await setMappingAction(null, fd({ kind: "labor", source_key: "Labor", qbo_account_id: "309", posting_role: "income" }));
+    const r = await mapTekmetricItemAction(null, fd({ kind: "labor", source_key: "Labor", qbo_account_id: "309" }));
     expect(r).toMatchObject({ ok: false, reason: "unknown" });
     if (!r.ok) expect(r.message).toMatch(/not compatible with account type Expense/);
   });
 
   it("re-throws Next redirect control-flow errors (auth redirect must navigate)", async () => {
     requireQtekUserMock.mockRejectedValue(Object.assign(new Error("NEXT_REDIRECT"), { digest: "NEXT_REDIRECT;replace;/login;307;" }));
-    await expect(setMappingAction(null, fd({ kind: "labor", source_key: "Labor", qbo_account_id: "275", posting_role: "income" }))).rejects.toThrow("NEXT_REDIRECT");
+    await expect(mapTekmetricItemAction(null, fd({ kind: "labor", source_key: "Labor", qbo_account_id: "275" }))).rejects.toThrow("NEXT_REDIRECT");
     expect(setMappingMock).not.toHaveBeenCalled();
   });
 });

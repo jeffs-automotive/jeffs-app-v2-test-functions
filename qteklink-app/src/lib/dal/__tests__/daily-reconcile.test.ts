@@ -95,6 +95,44 @@ describe("runDailyReconciliation", () => {
     }));
   });
 
+  it("an RO whose NEWEST event is ro_unposted is DROPPED (benign reversal — no sale, no review item)", async () => {
+    const posted = roEvent(101, "2026-05-19T15:39:04Z");
+    // The unpost arrives AFTER the posting event (newer tekmetric_event_at) — same RO.
+    const unposted = {
+      tekmetric_ro_id: 101, received_at: "2026-05-19T16:00:00Z", event_kind: "ro_unposted",
+      raw_body: { event: "Repair Order #101 unposted by x", data: { id: 101, shopId: 7476, postedDate: "2026-05-19T15:39:04Z" } },
+    };
+    routeFrom({
+      qteklink_mappings: MAPPINGS,
+      // ordered DESC by event time in the real query; the mock returns as-is → newest first.
+      qteklink_events: [unposted, { ...posted, event_kind: "ro_posted" }],
+      qteklink_payment_state: [],
+      qteklink_manual_payments: [],
+    });
+    const r = await runDailyReconciliation(7476, "2026-05-19");
+    expect(r.saleCount).toBe(0); // the reversed RO never builds a sale
+    expect(r.reviewCount).toBe(0); // benign — not a review item
+    expect(r.dailyEnqueue.sales).toBe("noop");
+    expect(rpcMock).not.toHaveBeenCalledWith("qteklink_upsert_review_item", expect.anything());
+  });
+
+  it("a re-post AFTER an unpost recognizes the sale again (newest event wins)", async () => {
+    const reposted = { ...roEvent(101, "2026-05-19T17:00:00Z"), event_kind: "ro_posted" };
+    const unposted = {
+      tekmetric_ro_id: 101, received_at: "2026-05-19T16:00:00Z", event_kind: "ro_unposted",
+      raw_body: { event: "Repair Order #101 unposted by x", data: { id: 101, shopId: 7476, postedDate: "2026-05-19T15:39:04Z" } },
+    };
+    routeFrom({
+      qteklink_mappings: MAPPINGS,
+      qteklink_events: [reposted, unposted], // newest (the re-post) first
+      qteklink_payment_state: [],
+      qteklink_manual_payments: [],
+    });
+    const r = await runDailyReconciliation(7476, "2026-05-19");
+    expect(r.saleCount).toBe(1);
+    expect(r.postableSales).toBe(1);
+  });
+
   it("persists a §9 review item for a non-postable (unmapped) RO", async () => {
     routeFrom({
       qteklink_mappings: MAPPINGS,

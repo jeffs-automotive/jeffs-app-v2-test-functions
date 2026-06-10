@@ -213,7 +213,9 @@ export async function executeApproveDay(
       }
       if (!postingId) { skipped++; continue; }
 
-      const outcome = await postDailyPostingById(shopId, postingId, deps);
+      // Forward the SAME settings overrides used to compute this scope — the poster's
+      // claim-time rebuild must hash identically or every post would stale-refresh.
+      const outcome = await postDailyPostingById(shopId, postingId, deps, opts);
       if (outcome.status === "posted") posted++;
       else if (outcome.status === "stale_refreshed") stale++;
       else if (outcome.status === "idle" || outcome.status === "no_connection") skipped++;

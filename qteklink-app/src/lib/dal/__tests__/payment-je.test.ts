@@ -1,8 +1,9 @@
 /**
- * Unit tests for the PAYMENT JE DAL (C6). Mocks the Supabase admin client; the pure
- * builder is covered in src/lib/payments/__tests__/payment-je-builder.test.ts —
- * here we verify the DB seam: realm binding, projection fetch, mapping resolution,
- * the manual method-pick path, and fail-closed behavior.
+ * Unit tests for the PAYMENT mapping/projection seam (payment-je): the pure
+ * `resolvePaymentMappings` + `stateRowToPayment` adapters (consumed by day-drafts)
+ * and the manual method-pick DAL (`buildShopManualPaymentJe`). The pure builder is
+ * covered in src/lib/payments/__tests__/payment-je-builder.test.ts. (The per-payment
+ * `buildShopPaymentJe` DAL was retired with the per-RO posting path.)
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -14,9 +15,9 @@ vi.mock("@/lib/supabase/admin", () => ({
 }));
 
 import {
-  buildShopPaymentJe,
   buildShopManualPaymentJe,
   resolvePaymentMappings,
+  stateRowToPayment,
 } from "../payment-je";
 
 const REALM = "9341455608740708";
@@ -48,70 +49,26 @@ function routeRealm(realm: string | null = REALM) {
       : Promise.resolve({ data: null, error: null }),
   );
 }
-function routeTables(stateRes: { data: unknown; error: unknown }, mapRes: { data: unknown; error: unknown }) {
-  fromMock.mockImplementation((t: string) =>
-    t === "qteklink_payment_state" ? chainResolving(stateRes) : chainResolving(mapRes),
-  );
-}
-
 beforeEach(() => {
   vi.clearAllMocks();
   routeRealm();
 });
 
-describe("buildShopPaymentJe", () => {
-  it("short-circuits when the shop has no connection", async () => {
-    routeRealm(null);
-    expect(await buildShopPaymentJe(7476, 57852813)).toEqual({ realmId: null, je: null });
-    expect(fromMock).not.toHaveBeenCalled();
+describe("stateRowToPayment", () => {
+  it("maps a projection row (incl. string-bigint cents — PostgREST may serialize bigint as a string)", () => {
+    const p = stateRowToPayment({ ...CARD_STATE, signed_amount_cents: "22510", signed_processing_fee_cents: "573", repair_order_id: "326283459" });
+    expect(p).toMatchObject({
+      paymentId: "57852813", repairOrderId: 326283459, method: "Credit Card",
+      signedAmountCents: 22510, signedProcessingFeeCents: 573, status: "succeeded", isRefund: false,
+    });
   });
 
-  it("reads the projection row + mappings and builds a balanced card JE (gross→net)", async () => {
-    routeTables({ data: [CARD_STATE], error: null }, { data: MAPPING_ROWS, error: null });
-    const { realmId, je } = await buildShopPaymentJe(7476, 57852813);
-    expect(realmId).toBe(REALM);
-    expect(je?.balanced).toBe(true);
-    expect(je?.route).toBe("deposit");
-    expect(je?.txnDate).toBe("2026-05-11");
-    expect(je?.docNumber).toBe("PAY 57852813");
-    expect(je?.lines).toHaveLength(4);
-    const undeposited = je!.lines.filter((l) => l.accountId === "366");
-    expect(undeposited.reduce((a, l) => a + (l.postingType === "Debit" ? l.amountCents : -l.amountCents), 0)).toBe(22510 - 573);
+  it("FAILS CLOSED on a non-safe-integer cents value from the projection", () => {
+    expect(() => stateRowToPayment({ ...CARD_STATE, signed_amount_cents: "9007199254740993" })).toThrow(/non-safe-integer signed_amount_cents/);
   });
 
-  it("returns je:null when the payment has no projection row yet", async () => {
-    routeTables({ data: [], error: null }, { data: MAPPING_ROWS, error: null });
-    expect(await buildShopPaymentJe(7476, 999)).toEqual({ realmId: REALM, je: null });
-  });
-
-  it("FAILS CLOSED on a projection row with no payment_date", async () => {
-    routeTables({ data: [{ ...CARD_STATE, payment_date: null }], error: null }, { data: MAPPING_ROWS, error: null });
-    await expect(buildShopPaymentJe(7476, 57852813)).rejects.toThrow(/no payment_date/);
-  });
-
-  it("FAILS CLOSED on a projection DB error", async () => {
-    routeTables({ data: null, error: { message: "boom" } }, { data: MAPPING_ROWS, error: null });
-    await expect(buildShopPaymentJe(7476, 57852813)).rejects.toThrow(/buildShopPaymentJe \(state\) failed/);
-  });
-
-  it("FAILS CLOSED on a mappings DB error", async () => {
-    routeTables({ data: [CARD_STATE], error: null }, { data: null, error: { message: "boom" } });
-    await expect(buildShopPaymentJe(7476, 57852813)).rejects.toThrow(/buildShopPaymentJe \(mappings\) failed/);
-  });
-
-  it("safe-parses string-bigint cents (PostgREST may serialize bigint as a string)", async () => {
-    routeTables(
-      { data: [{ ...CARD_STATE, signed_amount_cents: "22510", signed_processing_fee_cents: "573", repair_order_id: "326283459" }], error: null },
-      { data: MAPPING_ROWS, error: null },
-    );
-    const { je } = await buildShopPaymentJe(7476, 57852813);
-    expect(je?.balanced).toBe(true);
-    expect(je?.lines).toHaveLength(4);
-  });
-
-  it("FAILS CLOSED on a non-safe-integer cents value from the projection", async () => {
-    routeTables({ data: [{ ...CARD_STATE, signed_amount_cents: "9007199254740993" }], error: null }, { data: MAPPING_ROWS, error: null });
-    await expect(buildShopPaymentJe(7476, 57852813)).rejects.toThrow(/non-safe-integer signed_amount_cents/);
+  it("FAILS CLOSED on a row with no payment_date", () => {
+    expect(() => stateRowToPayment({ ...CARD_STATE, payment_date: null })).toThrow(/no payment_date/);
   });
 });
 

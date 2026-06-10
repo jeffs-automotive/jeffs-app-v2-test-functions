@@ -13,7 +13,7 @@
  */
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { resolveRealmForShop } from "@/lib/dal/realm";
-import { RO_POSTING_EVENT_KINDS } from "@/lib/events/kinds";
+import { RO_SALE_SCAN_EVENT_KINDS, RO_UNPOST_EVENT_KIND } from "@/lib/events/kinds";
 import { QboClientError } from "@/lib/qbo/errors";
 
 export interface RecordManualPaymentInput {
@@ -94,19 +94,25 @@ export async function recordManualPayment(
 
   const admin = createSupabaseAdminClient();
 
-  // (1) SERVER-DERIVE the gross amount + paid date from the RO's latest posting snapshot.
+  // (1) SERVER-DERIVE the gross amount + paid date from the RO's latest sale-scan event.
+  // The scan includes the UNPOST reversal: if the RO's newest event is `ro_unposted`,
+  // it is back in WIP — there is no recognized sale to attach a manual payment to.
   const { data: evRows, error: evErr } = await admin
     .from("qteklink_events")
-    .select("raw_body")
+    .select("event_kind, raw_body")
     .eq("shop_id", shopId)
     .eq("realm_id", realmId)
     .eq("tekmetric_ro_id", input.repairOrderId)
-    .in("event_kind", [...RO_POSTING_EVENT_KINDS])
+    .in("event_kind", [...RO_SALE_SCAN_EVENT_KINDS])
     .order("tekmetric_event_at", { ascending: false, nullsFirst: false })
     .order("received_at", { ascending: false })
     .limit(1);
   if (evErr) throw new Error(`recordManualPayment (RO snapshot) failed: ${evErr.message}`);
-  const ro = ((evRows ?? [])[0] as { raw_body: { data?: Record<string, unknown> } | null } | undefined)?.raw_body?.data;
+  const latest = (evRows ?? [])[0] as { event_kind: string; raw_body: { data?: Record<string, unknown> } | null } | undefined;
+  if (latest?.event_kind === RO_UNPOST_EVENT_KIND) {
+    throw new QboClientError(`RO ${input.repairOrderId} was UNPOSTED in Tekmetric — its sale is not recognized, so a manual payment can't be recorded against it.`, { kind: "unknown" });
+  }
+  const ro = latest?.raw_body?.data;
   if (!ro) {
     throw new QboClientError(`RO ${input.repairOrderId} has no posting snapshot — it can't be manually classified yet.`, { kind: "unknown" });
   }

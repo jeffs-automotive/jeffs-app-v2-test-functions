@@ -3,18 +3,16 @@ import react from "@vitejs/plugin-react";
 import path from "node:path";
 
 /**
- * Vitest config for admin-app (Phase G test harness — added 2026-06-01).
+ * Vitest config for qteklink-app.
  *
  * Mirrors scheduler-app/vitest.config.ts (the proven setup):
  * - Vitest 4 + @vitest/coverage-v8 (NOT istanbul — incompatible with SWC)
  * - jsdom environment for component/hook tests; pure-logic tests run fine too
  * - @vitejs/plugin-react: Vitest 4 + Rolldown's oxc parser doesn't transform JSX
  *   by default; the plugin handles the React 19 automatic jsx-runtime in .tsx tests
- * - Playwright owns e2e/; vitest must not pick up those specs
  *
- * Coverage thresholds are intentionally NOT enforced yet — admin-app is just
- * getting its first tests (the audit's A6 finding). Raise to 80% on src/lib/**
- * once the suite fills in, to match scheduler-app's target + admin PLAN.md Phase G.
+ * Coverage thresholds are intentionally NOT enforced yet. Raise to 80% on src/lib/**
+ * once the suite stabilizes, matching the project-wide DAL coverage target.
  */
 export default defineConfig({
   plugins: [react()],

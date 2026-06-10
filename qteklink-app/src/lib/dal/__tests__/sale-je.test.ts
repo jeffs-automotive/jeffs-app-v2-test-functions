@@ -1,43 +1,24 @@
 /**
- * Unit tests for the SALE JE DAL (C5). Mocks the Supabase admin client; the pure
- * builder's logic is covered in src/lib/sales/__tests__/sale-builder.test.ts —
- * here we verify the DB seam: realm binding, snapshot fetch, mapping resolution,
- * and fail-closed behavior.
+ * Unit tests for the SALE snapshot/mapping seam (sale-je): `parseSnapshot` (fail-closed
+ * payload → typed snapshot) + `resolveMappings` (mapping rows → the builder's account
+ * lookups), and their composition with the PURE sale builder. (The per-RO
+ * `buildShopRoSaleJe` DAL was retired with the per-RO posting path; the day pipeline
+ * consumes these seams via `day-drafts.ts`, whose tests cover the DB plumbing.)
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 
-const rpcMock = vi.fn();
-const fromMock = vi.fn();
+import { parseSnapshot, resolveMappings, type MappingRow } from "../sale-je";
+import { buildSaleJournalEntry } from "@/lib/sales/sale-builder";
 
-vi.mock("@/lib/supabase/admin", () => ({
-  createSupabaseAdminClient: () => ({ rpc: rpcMock, from: fromMock }),
-}));
-
-import { buildShopRoSaleJe } from "../sale-je";
-
-const REALM = "9341455608740708";
-
-function chainResolving(result: { data: unknown; error: unknown }) {
-  const chain: Record<string, unknown> = {};
-  for (const m of ["select", "eq", "in", "order", "limit"]) chain[m] = vi.fn(() => chain);
-  chain.then = (onF: (v: unknown) => unknown) => Promise.resolve(result).then(onF);
-  return chain;
-}
-
-const RO_152805_EVENT = {
-  raw_body: {
-    data: {
-      id: 152805, repairOrderNumber: "152805", postedDate: "2026-05-19T15:39:04Z",
-      partsSales: 5386, laborSales: 6494, subletSales: 0, feeTotal: 1188,
-      discountTotal: 2500, taxes: 634, totalSales: 11202,
-      fees: [{ name: "Shop supplies", total: 1188 }],
-      jobs: [{ authorized: true, parts: [{ retail: 5386, quantity: 1, partType: { code: "PART" } }], labor: [{ rate: 6494, hours: 1 }] }],
-    },
-  },
-  received_at: "2026-05-19T15:39:10Z",
+const RO_152805_DATA = {
+  id: 152805, repairOrderNumber: "152805", postedDate: "2026-05-19T15:39:04Z",
+  partsSales: 5386, laborSales: 6494, subletSales: 0, feeTotal: 1188,
+  discountTotal: 2500, taxes: 634, totalSales: 11202,
+  fees: [{ name: "Shop supplies", total: 1188 }],
+  jobs: [{ authorized: true, parts: [{ retail: 5386, quantity: 1, partType: { code: "PART" } }], labor: [{ rate: 6494, hours: 1 }] }],
 };
 
-const MAPPING_ROWS = [
+const MAPPING_ROWS: MappingRow[] = [
   { kind: "labor", source_key: "Labor", qbo_account_id: "275", posting_role: "income", pass_through: false },
   { kind: "part_category", source_key: "PART", qbo_account_id: "272", posting_role: "income", pass_through: false },
   { kind: "fee", source_key: "Shop supplies", qbo_account_id: "273", posting_role: "income", pass_through: false },
@@ -45,94 +26,52 @@ const MAPPING_ROWS = [
   { kind: "tax", source_key: "Sales tax", qbo_account_id: "250", posting_role: "sales_tax_payable", pass_through: false },
 ];
 
-function routeRealm(realm: string | null = REALM) {
-  rpcMock.mockImplementation((fn: string) =>
-    fn === "qbo_resolve_realm_for_shop"
-      ? Promise.resolve({ data: realm, error: null })
-      : Promise.resolve({ data: null, error: null }),
-  );
-}
+describe("parseSnapshot", () => {
+  it("maps a real posting payload into the typed snapshot", () => {
+    const s = parseSnapshot(RO_152805_DATA)!;
+    expect(s).toBeTruthy();
+    expect(s.repairOrderId).toBe(152805);
+    expect(s.repairOrderNumber).toBe("152805");
+    expect(s.totalSales).toBe(11202);
+    expect(s.discountTotal).toBe(2500);
+    expect(s.fees).toEqual([{ name: "Shop supplies", total: 1188 }]);
+    expect(s.jobs?.[0]?.authorized).toBe(true);
+  });
 
-beforeEach(() => {
-  vi.clearAllMocks();
-  routeRealm();
+  it("FAILS CLOSED (null) on a snapshot missing postedDate", () => {
+    expect(parseSnapshot({ id: 1, totalSales: 100 })).toBeNull();
+  });
+
+  it("FAILS CLOSED (null) on non-integer-cents money (no 100x / fractional-cent corruption)", () => {
+    expect(parseSnapshot({
+      id: 1, repairOrderNumber: "1", postedDate: "2026-05-19T15:39:04Z",
+      partsSales: 12.5, laborSales: 0, subletSales: 0, feeTotal: 0, discountTotal: 0, taxes: 0, totalSales: 12.5,
+    })).toBeNull();
+  });
 });
 
-describe("buildShopRoSaleJe", () => {
-  it("short-circuits when the shop has no connection", async () => {
-    routeRealm(null);
-    expect(await buildShopRoSaleJe(7476, 152805)).toEqual({ realmId: null, je: null });
-    expect(fromMock).not.toHaveBeenCalled();
+describe("resolveMappings", () => {
+  it("resolves the account lookups from active mapping rows", () => {
+    const m = resolveMappings(MAPPING_ROWS);
+    expect(m.laborAccountId).toBe("275");
+    expect(m.partCategoryAccountIds.PART).toBe("272");
+    expect(m.feeAccountsByName["shop supplies"]).toEqual({ accountId: "273", passThrough: false });
+    expect(m.arAccountId).toBe("235");
+    expect(m.salesTaxAccountId).toBe("250");
   });
+});
 
-  it("fetches the posting snapshot + active mappings and builds a balanced JE", async () => {
-    fromMock.mockImplementation((t: string) =>
-      t === "qteklink_events"
-        ? chainResolving({ data: [RO_152805_EVENT], error: null })
-        : chainResolving({ data: MAPPING_ROWS, error: null }),
-    );
-    const { realmId, je } = await buildShopRoSaleJe(7476, 152805);
-    expect(realmId).toBe(REALM);
-    expect(je).toBeTruthy();
-    expect(je!.balanced).toBe(true);
-    expect(je!.docNumber).toBe("RO 152805");
-    expect(je!.txnDate).toBe("2026-05-19");
-    const ar = je!.lines.find((l) => l.accountId === "235");
-    expect(ar).toMatchObject({ postingType: "Debit", amountCents: 11202 });
-    expect(je!.lines.find((l) => l.accountId === "275")?.amountCents).toBe(3994); // labor net of $25 discount
-    expect(je!.unmapped).toEqual([]);
-  });
-
-  it("treats BOTH ro_posted and ro_sent_to_ar as postings (an A/R RO posts only as sent_to_ar)", async () => {
-    const evChain = chainResolving({ data: [RO_152805_EVENT], error: null });
-    fromMock.mockImplementation((t: string) =>
-      t === "qteklink_events" ? evChain : chainResolving({ data: MAPPING_ROWS, error: null }),
-    );
-    const { je } = await buildShopRoSaleJe(7476, 152805);
-    expect(je?.balanced).toBe(true);
-    // The ledger query MUST include both posting kinds — filtering ro_posted alone
-    // silently drops every A/R sale (≈21% of postings; plan §5).
-    expect(evChain.in).toHaveBeenCalledWith("event_kind", ["ro_posted", "ro_sent_to_ar"]);
-  });
-
-  it("returns je:null when the RO has no posting snapshot yet", async () => {
-    fromMock.mockImplementation((t: string) =>
-      t === "qteklink_events" ? chainResolving({ data: [], error: null }) : chainResolving({ data: [], error: null }),
-    );
-    expect(await buildShopRoSaleJe(7476, 999)).toEqual({ realmId: REALM, je: null });
-  });
-
-  it("FAILS CLOSED on an events DB error", async () => {
-    fromMock.mockImplementation((t: string) =>
-      t === "qteklink_events" ? chainResolving({ data: null, error: { message: "boom" } }) : chainResolving({ data: [], error: null }),
-    );
-    await expect(buildShopRoSaleJe(7476, 152805)).rejects.toThrow(/buildShopRoSaleJe \(events\) failed/);
-  });
-
-  it("FAILS CLOSED on a mappings DB error", async () => {
-    fromMock.mockImplementation((t: string) =>
-      t === "qteklink_events"
-        ? chainResolving({ data: [RO_152805_EVENT], error: null })
-        : chainResolving({ data: null, error: { message: "boom" } }),
-    );
-    await expect(buildShopRoSaleJe(7476, 152805)).rejects.toThrow(/buildShopRoSaleJe \(mappings\) failed/);
-  });
-
-  it("FAILS CLOSED on a snapshot missing postedDate", async () => {
-    fromMock.mockImplementation((t: string) =>
-      t === "qteklink_events"
-        ? chainResolving({ data: [{ raw_body: { data: { id: 1, totalSales: 100 } }, received_at: "x" }], error: null })
-        : chainResolving({ data: MAPPING_ROWS, error: null }),
-    );
-    await expect(buildShopRoSaleJe(7476, 1)).rejects.toThrow(/no usable snapshot/);
-  });
-
-  it("FAILS CLOSED on a non-integer-cents money total (no 100x / fractional-cent corruption)", async () => {
-    fromMock.mockImplementation((t: string) =>
-      t === "qteklink_events"
-        ? chainResolving({ data: [{ raw_body: { data: { id: 1, repairOrderNumber: "1", postedDate: "2026-05-19T15:39:04Z", partsSales: 12.5, laborSales: 0, subletSales: 0, feeTotal: 0, discountTotal: 0, taxes: 0, totalSales: 12.5 } }, received_at: "x" }], error: null })
-        : chainResolving({ data: MAPPING_ROWS, error: null }),
-    );
-    await expect(buildShopRoSaleJe(7476, 1)).rejects.toThrow(/no usable snapshot/);
+describe("parseSnapshot + resolveMappings + the pure builder", () => {
+  it("composes into a balanced JE from a real payload (the day pipeline's exact path)", () => {
+    const snapshot = parseSnapshot(RO_152805_DATA)!;
+    const je = buildSaleJournalEntry(snapshot, resolveMappings(MAPPING_ROWS), {
+      shopTimezone: "America/New_York", tireFeeCentsPerTire: 100, salesTaxRateBps: 600,
+    });
+    expect(je.balanced).toBe(true);
+    expect(je.docNumber).toBe("RO 152805");
+    expect(je.txnDate).toBe("2026-05-19");
+    expect(je.lines.find((l) => l.accountId === "235")).toMatchObject({ postingType: "Debit", amountCents: 11202 });
+    expect(je.lines.find((l) => l.accountId === "275")?.amountCents).toBe(3994); // labor net of $25 discount
+    expect(je.unmapped).toEqual([]);
   });
 });

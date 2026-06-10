@@ -2,14 +2,21 @@
 
 /**
  * "Refresh COA" button (C1). Drives refreshCoaAction via React 19
- * useActionState and shows the result inline (the action's `timestamp` field
- * makes each result a fresh object).
+ * useActionState, shows the result inline (the action's `timestamp` field
+ * makes each result a fresh object), and router.refresh()es on success so the
+ * server-rendered "N accounts mirrored · last synced …" status line updates.
  */
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { refreshCoaAction } from "@/actions/coa";
 
 export default function RefreshCoaButton() {
+  const router = useRouter();
   const [state, formAction, pending] = useActionState(refreshCoaAction, null);
+
+  useEffect(() => {
+    if (state?.ok) router.refresh();
+  }, [state?.timestamp, state?.ok, router]);
 
   return (
     <div>

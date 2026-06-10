@@ -177,7 +177,7 @@ describe("buildPaymentJournalEntry — financing 'deposits like a card'", () => 
 });
 
 describe("buildPaymentJournalEntry — suppress + fail-closed", () => {
-  it("voided payment → suppressed (no lines; reversal-if-posted is C7's job)", () => {
+  it("voided payment → suppressed (no lines; reversal-if-posted is the day-grain diff's job)", () => {
     const je = buildPaymentJournalEntry(pay({ status: "voided" }), M, S);
     expect(je.suppressed).toBe(true);
     expect(je.route).toBe("suppressed");

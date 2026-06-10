@@ -11,7 +11,7 @@
  * No silent failures: every DB error throws.
  */
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { RO_POSTING_EVENT_KINDS } from "@/lib/events/kinds";
+import { RO_SALE_SCAN_EVENT_KINDS, RO_UNPOST_EVENT_KIND } from "@/lib/events/kinds";
 import { parseSnapshot, resolveMappings, type MappingRow } from "@/lib/dal/sale-je";
 import { resolvePaymentMappings, stateRowToPayment, type PaymentStateRow } from "@/lib/dal/payment-je";
 import { listManualPayments } from "@/lib/dal/manual-payments";
@@ -88,28 +88,34 @@ export async function buildDayDrafts(
   const saleMappings = resolveMappings(rows);
   const paymentMappings = resolvePaymentMappings(rows);
 
-  // ── SALES: posting events in the generous UTC window → latest-per-RO → exact local date ──
+  // ── SALES: posting + UNPOST events in the generous UTC window → latest-per-RO →
+  // exact local date. The unpost kind is in the scan so a posted-then-UNPOSTED RO's
+  // newest event wins and the stale sale is dropped (a benign reversal, like a voided
+  // payment — no review item; a later re-post supersedes the unpost and re-recognizes).
   const { startIso, endIso } = utcWindowForLocalDay(businessDate);
   const { data: evRows, error: evErr } = await admin
     .from("qteklink_events")
-    .select("tekmetric_ro_id, raw_body, received_at")
+    .select("tekmetric_ro_id, event_kind, raw_body, received_at")
     .eq("shop_id", shopId).eq("realm_id", realmId)
-    .in("event_kind", [...RO_POSTING_EVENT_KINDS])
+    .in("event_kind", [...RO_SALE_SCAN_EVENT_KINDS])
     .gte("tekmetric_event_at", startIso).lt("tekmetric_event_at", endIso)
     .order("tekmetric_event_at", { ascending: false, nullsFirst: false })
     .order("received_at", { ascending: false });
   if (evErr) throw new Error(`buildDayDrafts (events) failed: ${evErr.message}`);
 
   const extraReviewItems: UpsertReviewItemInput[] = [];
-  const latestByRo = new Map<string, unknown>(); // ro_id → newest raw_body.data (ordered desc → first wins)
-  for (const r of (evRows ?? []) as { tekmetric_ro_id: number | string | null; raw_body: { data?: unknown } | null }[]) {
+  // ro_id → newest event (ordered desc → first wins). Keeping the kind lets the unpost
+  // reversal shadow an older posting event.
+  const latestByRo = new Map<string, { kind: string; data: unknown }>();
+  for (const r of (evRows ?? []) as { tekmetric_ro_id: number | string | null; event_kind: string; raw_body: { data?: unknown } | null }[]) {
     const roKey = String(r.tekmetric_ro_id ?? "");
     if (!roKey || latestByRo.has(roKey)) continue;
-    latestByRo.set(roKey, r.raw_body?.data ?? null);
+    latestByRo.set(roKey, { kind: r.event_kind, data: r.raw_body?.data ?? null });
   }
   const sales: SaleDraft[] = [];
-  for (const [roKey, data] of latestByRo.entries()) {
-    const snapshot = parseSnapshot(data);
+  for (const [roKey, ev] of latestByRo.entries()) {
+    if (ev.kind === RO_UNPOST_EVENT_KIND) continue; // reversed — no sale to recognize
+    const snapshot = parseSnapshot(ev.data);
     if (!snapshot) {
       // NEVER silently drop a real (but unparseable) sale — surface it (deduped by the §9 key).
       extraReviewItems.push({ kind: "snapshot_unparseable", subjectKind: "ro", subjectRef: roKey, detail: {} });

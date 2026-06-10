@@ -27,8 +27,8 @@
  *   - `paymentDate`     = business event time (`tekmetric_event_at`).
  *   - `voided_at`       = the void event's `received_at` (when WE observed the void —
  *                         the only truthful "when voided" signal Tekmetric gives us).
- *   - `latest_event_at` = MAX `received_at` (latest OBSERVED activity — drives C8's
- *                         settle window; a void received days late must advance it).
+ *   - `latest_event_at` = MAX `received_at` (latest OBSERVED activity — reserved for the
+ *                         (unbuilt) settle-window hold; a void received days late must advance it).
  *
  * De-dup: events are folded once per `qteklink_events.id` (a replayed/paginated
  * duplicate ledger row collapses). Genuinely-distinct events (different id) all fold.

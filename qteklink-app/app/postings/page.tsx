@@ -3,8 +3,8 @@
  *
  * Daily-JE rework step 4: posting is ALWAYS bulk-per-day from /approvals (up to 3 daily
  * category JEs) — the individual approve/reject + "Post next approved" controls are
- * REMOVED (Chris: never individual). This page remains a read-only view of the old
- * ledger rows until the cleanup step retires the per-RO path entirely.
+ * REMOVED (Chris: never individual). The per-RO write path is fully retired; this page
+ * remains a read-only audit view of the legacy rows until Chris retires the rows too.
  *
  * requireQtekUser() enforces session + Entra oid + allowlist + active. Only admins
  * change settings.

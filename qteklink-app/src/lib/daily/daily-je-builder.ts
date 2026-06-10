@@ -23,7 +23,7 @@
  * by account) — stable source hashes depend on it. `overLineCap` flags a category bigger
  * than QBO should be asked to swallow (→ review item, never posted).
  *
- * Money is integer cents; lines are QboJeLineInput/PostingJeLine-shape compatible.
+ * Money is integer cents; lines are QboJeLineInput-shape compatible.
  */
 import type { SaleDraft } from "@/lib/reconcile/daily-rollup";
 import type { PaymentJournalEntry } from "@/lib/payments/payment-je-builder";

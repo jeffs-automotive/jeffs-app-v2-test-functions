@@ -1,9 +1,10 @@
 /**
  * /dashboard — the authed QTekLink landing.
  *
- * requireQtekUser() enforces session + Entra oid + allowlist + active. Admins
- * get the live Chart-of-Accounts surface (C1); the mapping UI, approval /
- * resolution queues, and reconciliation report land in later phases.
+ * requireQtekUser() enforces session + Entra oid + allowlist + active. The nav
+ * renders for EVERY role (the approvals/mappings/postings pages are all-roles
+ * READ surfaces; mutations stay admin-gated in the actions); the QuickBooks
+ * connect/COA card is admin-only.
  */
 import { requireQtekUser } from "@/lib/auth";
 import { getCoaSummary } from "@/lib/dal/coa";
@@ -44,22 +45,24 @@ export default async function DashboardPage() {
         </div>
       </header>
 
-      {role === "admin" && (
-        <nav className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
-          <Link href="/mappings" className="font-medium text-[#96003C] hover:underline">
-            Account mappings
-          </Link>
-          <Link href="/approvals" className="font-medium text-[#96003C] hover:underline">
-            Daily approvals
-          </Link>
-          <Link href="/postings" className="font-medium text-[#96003C] hover:underline">
-            Posting queue
-          </Link>
+      {/* The read pages are ALL-ROLES surfaces (mutations are admin-gated in the
+          actions) — only the QuickBooks connect flow is admin-only. */}
+      <nav className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
+        <Link href="/mappings" className="font-medium text-[#96003C] hover:underline">
+          Account mappings
+        </Link>
+        <Link href="/approvals" className="font-medium text-[#96003C] hover:underline">
+          Daily approvals
+        </Link>
+        <Link href="/postings" className="font-medium text-[#96003C] hover:underline">
+          Posting ledger
+        </Link>
+        {role === "admin" && (
           <a href="/qbo/connect" className="font-medium text-[#96003C] hover:underline">
             {connected ? "Reconnect QuickBooks" : "Connect QuickBooks"}
           </a>
-        </nav>
-      )}
+        )}
+      </nav>
 
       {role === "admin" && (
         <section className="mt-8 rounded-lg border border-stone-200 bg-white p-6">
@@ -85,11 +88,12 @@ export default async function DashboardPage() {
       )}
 
       <section className="mt-8 rounded-lg border border-stone-200 bg-white p-6">
-        <h2 className="text-lg font-semibold text-stone-900">Coming soon</h2>
+        <h2 className="text-lg font-semibold text-stone-900">How QTekLink posts</h2>
         <p className="mt-2 text-sm text-stone-600">
-          The sync dashboard — connection status, chart-of-accounts mapping,
-          the approval &amp; resolution queues, and the reconciliation report —
-          is being built. You&apos;re signed in and authorized.
+          Tekmetric webhooks land all day; the nightly sync builds each business day into up
+          to <span className="font-medium">3 daily journal entries</span> (sales, payments, CC
+          fees). Review a day on <Link href="/approvals" className="font-medium text-[#96003C] underline">Daily approvals</Link>{" "}
+          — nothing posts to QuickBooks without an admin&apos;s explicit approval.
         </p>
       </section>
     </main>

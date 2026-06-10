@@ -1,3 +1,5 @@
+> **POSTING GRAIN SUPERSEDED 2026-06-10:** §§ describing qteklink_ro_state, per-RO qteklink_postings rows, and per-RO desired-vs-posted corrections are historical — posting now happens at the (shop, realm, business_date, category) grain via qteklink_daily_postings (see docs/qteklink/daily-je-rework-plan.md). The mapping/intake/reducer sections remain accurate.
+
 # QTekLink — Build Plan
 
 > Feature: `qteklink` · Phase: **plan** · **v6 (2026-06-04 — build-ready; tax design finalized)**

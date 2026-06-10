@@ -1,3 +1,5 @@
+> **STATUS 2026-06-10:** SHIPPED, then partially SUPERSEDED by the daily-JE rework (docs/qteklink/daily-je-rework-plan.md): /postings is now a READ-ONLY legacy ledger (per-posting approve/retry controls removed — posting is bulk-per-day, up to 3 daily category JEs), and qteklink_ro_state is retired. The snapshot/breakdown surfaces this plan designed remain live at the day grain.
+
 # QTekLink — Approval-Dashboard Upgrade Plan (v2)
 
 **Status:** PLAN (awaiting Chris approval — no code yet)

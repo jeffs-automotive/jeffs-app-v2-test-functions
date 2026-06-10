@@ -43,6 +43,12 @@ describe("toQboJournalEntry", () => {
     expect(body.sparse).toBe(false);
   });
 
+  it("FAILS CLOSED on an UPDATE without the current SyncToken (never guesses '0')", () => {
+    expect(() =>
+      toQboJournalEntry({ docNumber: "RO 1", txnDate: "2026-05-19", privateNote: "m", lines: LINES, id: "QBO-9" }),
+    ).toThrow(/requires the current SyncToken/);
+  });
+
   it("FAILS CLOSED on a negative or non-integer cents amount", () => {
     expect(() => toQboJournalEntry({ docNumber: "x", txnDate: "2026-05-19", privateNote: "m", lines: [{ accountId: "1", postingType: "Debit", amountCents: -5, description: "" }] })).toThrow(/invalid cents/);
     expect(() => toQboJournalEntry({ docNumber: "x", txnDate: "2026-05-19", privateNote: "m", lines: [{ accountId: "1", postingType: "Debit", amountCents: 10.5, description: "" }] })).toThrow(/invalid cents/);

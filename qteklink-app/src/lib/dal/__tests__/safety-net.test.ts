@@ -50,12 +50,12 @@ describe("runTekmetricCompletenessCheck", () => {
   });
 });
 
-describe("runQboLandingCheck", () => {
-  it("flags a posted posting whose JE is NOT in QBO for the day", async () => {
+describe("runQboLandingCheck (day-grain ledger)", () => {
+  it("flags a LIVE posted daily category JE that is NOT in QBO for the day", async () => {
     fromMock.mockReturnValue(chain({
       data: [
-        { qbo_je_id: "JE1", tekmetric_ro_id: 10, kind: "sale", payment_id: null },
-        { qbo_je_id: "JE2", tekmetric_ro_id: 11, kind: "payment", payment_id: 101 },
+        { category: "sales", posting_version: 1, action: "create", qbo_je_id: "JE1" },
+        { category: "payments", posting_version: 1, action: "create", qbo_je_id: "JE2" },
       ],
       error: null,
     }));
@@ -63,10 +63,30 @@ describe("runQboLandingCheck", () => {
     const r = await runQboLandingCheck(7476, REALM, DATE, { qboQuery });
     expect(qboQuery).toHaveBeenCalledWith(expect.stringContaining(`TxnDate = '${DATE}'`));
     expect(r).toEqual({ checked: 2, gaps: 1 });
-    expect(upsertReviewItemMock).toHaveBeenCalledWith(7476, expect.objectContaining({ kind: "posted_je_missing", subjectKind: "payment", subjectRef: "101" }));
+    expect(upsertReviewItemMock).toHaveBeenCalledWith(7476, expect.objectContaining({
+      kind: "posted_je_missing", subjectKind: "day", subjectRef: `${DATE}:payments`,
+    }));
   });
 
-  it("no posted postings → no QBO query, no gaps", async () => {
+  it("the LATEST posted version wins; a posted DELETE means no live JE for the category", async () => {
+    fromMock.mockReturnValue(chain({
+      data: [
+        // sales: v1 create posted (JE1) superseded by v2 update posted (JE1, new content) → check JE1 once
+        { category: "sales", posting_version: 1, action: "create", qbo_je_id: "JE1" },
+        { category: "sales", posting_version: 2, action: "update", qbo_je_id: "JE1" },
+        // fees: v1 create posted then v2 DELETE posted → category has NO live JE → not checked
+        { category: "fees", posting_version: 1, action: "create", qbo_je_id: "JE3" },
+        { category: "fees", posting_version: 2, action: "delete", qbo_je_id: "JE3" },
+      ],
+      error: null,
+    }));
+    const qboQuery = vi.fn().mockResolvedValue({ QueryResponse: { JournalEntry: [{ Id: "JE1" }] } });
+    const r = await runQboLandingCheck(7476, REALM, DATE, { qboQuery });
+    expect(r).toEqual({ checked: 1, gaps: 0 }); // only the live sales JE; the deleted fees JE is exempt
+    expect(upsertReviewItemMock).not.toHaveBeenCalled();
+  });
+
+  it("no posted daily rows → no QBO query, no gaps", async () => {
     fromMock.mockReturnValue(chain({ data: [], error: null }));
     const qboQuery = vi.fn();
     const r = await runQboLandingCheck(7476, REALM, DATE, { qboQuery });

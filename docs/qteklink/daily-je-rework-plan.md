@@ -1,6 +1,6 @@
 # QTekLink — daily-JE posting rework (align to Accounting Link's structure)
 
-> Status: PLAN v2 (cross-verified — no code yet). v1 2026-06-09; v2 2026-06-10 folds the Gemini +
+> Status: SHIPPED 2026-06-10 (all 6 steps merged, 1954c3e..c7fff1b + the audit-hardening follow-up; kept as the design record). v1 2026-06-09; v2 2026-06-10 folds the Gemini +
 > GPT cross-verify (`.claude/work/ai-review-2026-06-10T02-08-35Z.md`). Settles a fundamental
 > divergence: QTekLink posts one JE per RO/payment; AL posts a few **daily category JEs**.
 > Chris's decision: match AL's STRUCTURE, but keep QTekLink's deposit-vs-contra payment ROUTING

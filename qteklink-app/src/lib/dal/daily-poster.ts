@@ -47,6 +47,15 @@ export interface QboDailyWriteClient {
   deleteEntity(entity: string, body: unknown, requestId?: string): Promise<unknown>;
 }
 
+/** Settings overrides forwarded into buildDayDrafts — MUST match what the enqueuing
+ *  caller used, or the rebuilt hash can never equal the enqueued hash (a permanent
+ *  stale-refresh loop). Production callers pass none (settings come from the shop row). */
+export interface RebuildOpts {
+  shopTimezone?: string;
+  tireFeeCentsPerTire?: number;
+  salesTaxRateBps?: number;
+}
+
 /** Rebuild the CURRENT desired category JE (null = the category is empty today) —
  *  injectable so tests don't stand up the whole draft pipeline. */
 export type RebuildDesired = (
@@ -54,6 +63,7 @@ export type RebuildDesired = (
   realmId: string,
   businessDate: string,
   category: DailyCategory,
+  opts?: RebuildOpts,
 ) => Promise<DailyJournalEntry | null>;
 
 export type DailyPostOutcome =
@@ -96,9 +106,10 @@ interface ClaimedDailyRow {
   } | null;
 }
 
-/** The default rebuild: the same pipeline the reconcile uses (drafts → gates → bundle). */
-const rebuildDesiredFromSource: RebuildDesired = async (shopId, realmId, businessDate, category) => {
-  const { sales, payments, gateSettings } = await buildDayDrafts(shopId, realmId, businessDate);
+/** The default rebuild: the same pipeline the reconcile uses (drafts → gates → bundle),
+ *  with the CALLER's settings overrides forwarded so the hash contract holds. */
+const rebuildDesiredFromSource: RebuildDesired = async (shopId, realmId, businessDate, category, opts = {}) => {
+  const { sales, payments, gateSettings } = await buildDayDrafts(shopId, realmId, businessDate, opts);
   const rollup = rollupDay(businessDate, sales, payments.map((p) => p.je), gateSettings);
   const bundle = buildDailyJournalEntries(businessDate, rollup.postableSaleDrafts, rollup.postablePaymentDrafts);
   return bundle[category];
@@ -107,11 +118,13 @@ const rebuildDesiredFromSource: RebuildDesired = async (shopId, realmId, busines
 /**
  * Post ONE SPECIFIC approved daily posting by id. 'idle' when not claimable (not
  * approved / already claimed / wrong tenant). Throws only on DB/infra failure.
+ * `opts` are the SAME settings overrides the enqueuing caller used (usually none).
  */
 export async function postDailyPostingById(
   shopId: number,
   postingId: string,
   deps: { client?: QboDailyWriteClient; rebuild?: RebuildDesired } = {},
+  opts: RebuildOpts = {},
 ): Promise<DailyPostOutcome> {
   const realmId = await resolveRealmForShop(shopId);
   if (!realmId) return { status: "no_connection" };
@@ -147,12 +160,15 @@ export async function postDailyPostingById(
   // stale daily JE would omit or duplicate source events. A mismatch RELEASES the row
   // back to pending with the fresh content — the human re-approves the changed money.
   const rebuild = deps.rebuild ?? rebuildDesiredFromSource;
-  const desired = await rebuild(shopId, realmId, businessDate, category);
+  const desired = await rebuild(shopId, realmId, businessDate, category, opts);
   const desiredHash = sourceStateHash(dailySourceState(category, businessDate, desired));
   if (desiredHash !== row.source_state_hash) {
     const livePosted = await findLatestPostedDaily(shopId, realmId, businessDate, category);
     const live = livePosted && livePosted.action !== "delete" ? livePosted : null;
-    const freshAction: DailyAction = desired ? (live ? "update" : "create") : "delete";
+    // Nothing desired + nothing live: there is nothing to delete — refresh as an empty
+    // 'create' (a 'delete' would violate the correction-version CHECK on a v1 row and
+    // wedge it); the next reconcile's diff WITHDRAWS the empty pending row.
+    const freshAction: DailyAction = desired ? (live ? "update" : "create") : live ? "delete" : "create";
     const { error: refErr } = await admin.rpc("qteklink_refresh_daily_posting", {
       p_shop_id: shopId, p_realm_id: realmId, p_id: row.id,
       p_action: freshAction,

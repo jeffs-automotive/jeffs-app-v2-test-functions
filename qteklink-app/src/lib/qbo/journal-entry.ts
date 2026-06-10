@@ -64,9 +64,14 @@ export function toQboJournalEntry(input: QboJeInput): Record<string, unknown> {
     Line: lines,
   };
   if (input.id) {
-    // Full-replacement update under SyncToken (NOT a sparse patch — §13).
+    // Full-replacement update under SyncToken (NOT a sparse patch — §13). A missing
+    // token FAILS CLOSED: guessing one gambles the optimistic lock (the caller must
+    // read the current SyncToken from the ledger or QBO first).
+    if (!input.syncToken) {
+      throw new Error(`toQboJournalEntry: update of JE ${input.id} requires the current SyncToken`);
+    }
     body.Id = input.id;
-    body.SyncToken = input.syncToken ?? "0";
+    body.SyncToken = input.syncToken;
     body.sparse = false;
   }
   return body;

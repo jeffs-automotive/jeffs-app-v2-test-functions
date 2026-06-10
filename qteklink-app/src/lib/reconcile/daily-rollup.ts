@@ -32,7 +32,8 @@ export interface DayRollup {
   netByAccount: Record<string, number>;
   /** Every §9 review item the gates emitted (the daily job persists these). */
   reviewItems: UpsertReviewItemInput[];
-  /** The drafts that passed the gate — the daily job enqueues these into qteklink_postings. */
+  /** The drafts that passed the gate — the daily job combines these into the day's
+   *  category JEs and enqueues them into qteklink_daily_postings. */
   postableSaleDrafts: SaleDraft[];
   postablePaymentDrafts: PaymentJournalEntry[];
 }

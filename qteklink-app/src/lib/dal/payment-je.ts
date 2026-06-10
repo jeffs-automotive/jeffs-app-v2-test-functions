@@ -1,11 +1,11 @@
 /**
- * PAYMENT JE DAL (C6) — fetch a payment's desired state from the C4
- * `qteklink_payment_state` projection (or accept a MANUAL method-pick), resolve the
- * shop's active `qteklink_mappings`, and run the pure builder (`@/lib/payments/
- * payment-je-builder`).
- *
- * Fat-DAL: the business logic is the PURE builder (unit-tested without mocks); this
- * module is the thin DB seam. C8's posting pipeline + the daily-approvals call it.
+ * PAYMENT mapping resolution + projection adapters (C6) — the seam between the C4
+ * `qteklink_payment_state` projection / `qteklink_mappings` rows and the pure payment
+ * builder (`@/lib/payments/payment-je-builder`): `resolvePaymentMappings` +
+ * `stateRowToPayment` (both pure, consumed by the shared day-draft builder) and
+ * `buildShopManualPaymentJe` (the manual method-pick path, consumed by
+ * `manual-payments.ts`). (The per-payment `buildShopPaymentJe` DAL was retired with
+ * the per-RO/payment posting path — the daily pipeline builds whole days.)
  *
  * MULTI-TENANT: `shopId` is server-derived; `realmId` from the bound connection
  * (`resolveRealmForShop`). `qteklink_payment_state` / `qteklink_mappings` are
@@ -74,7 +74,7 @@ export interface ManualPaymentInput {
 function safeCents(v: number | string, field: string, pid: unknown): number {
   const n = typeof v === "number" ? v : Number(v);
   if (!Number.isSafeInteger(n)) {
-    throw new Error(`buildShopPaymentJe: payment ${String(pid)} has a non-safe-integer ${field} (${String(v)})`);
+    throw new Error(`payment-je: payment ${String(pid)} has a non-safe-integer ${field} (${String(v)})`);
   }
   return n;
 }
@@ -131,43 +131,8 @@ async function loadMappings(shopId: number, realmId: string): Promise<ResolvedPa
     .eq("realm_id", realmId)
     .eq("active", true)
     .order("effective_from", { ascending: true });
-  if (error) throw new Error(`buildShopPaymentJe (mappings) failed: ${error.message}`);
+  if (error) throw new Error(`payment-je (mappings) failed: ${error.message}`);
   return resolvePaymentMappings((data ?? []) as MappingRow[]);
-}
-
-/**
- * Build the PAYMENT JE draft for one payment from the C4 projection. Returns
- * {realmId:null, je:null} when the shop has no connection, and {realmId, je:null}
- * when the payment has no projection row yet. Throws (FAIL CLOSED) on any DB error.
- */
-export async function buildShopPaymentJe(
-  shopId: number,
-  paymentId: number,
-  opts: { shopTimezone?: string } = {},
-): Promise<BuildPaymentResult> {
-  const realmId = await resolveRealmForShop(shopId);
-  if (!realmId) return { realmId: null, je: null };
-
-  const admin = createSupabaseAdminClient();
-  const { data: rows, error } = await admin
-    .from("qteklink_payment_state")
-    .select("payment_id, signed_amount_cents, signed_processing_fee_cents, status, is_refund, payment_type, other_payment_type, payment_date, repair_order_id")
-    .eq("shop_id", shopId)
-    .eq("realm_id", realmId)
-    .eq("payment_id", paymentId)
-    .limit(1);
-  if (error) throw new Error(`buildShopPaymentJe (state) failed: ${error.message}`);
-
-  const row = (rows ?? [])[0] as PaymentStateRow | undefined;
-  if (!row) return { realmId, je: null };
-  if (!row.payment_date) {
-    throw new Error(`buildShopPaymentJe: payment ${paymentId} has no payment_date`);
-  }
-
-  const settings: PaymentSettings = { shopTimezone: opts.shopTimezone ?? DEFAULT_SHOP_TZ };
-  const payment = stateRowToPayment(row);
-  const mappings = await loadMappings(shopId, realmId);
-  return { realmId, je: buildPaymentJournalEntry(payment, mappings, settings) };
 }
 
 /**

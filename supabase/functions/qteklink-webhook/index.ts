@@ -123,16 +123,26 @@ export function extractEvent(
   };
   if (!data) return out;
 
+  // TRUST MODEL (deliberate): `data.shopId` is the event's CLAIMED tenant — Tekmetric
+  // cannot send custom headers, so the payload carries the claim (same model as the
+  // deployed tekmetric-webhook + keytag webhook). The server-side binding is the
+  // handler's realm-resolve against qbo_connections (an un-onboarded shop id is ACKed
+  // but never stored), behind the constant-time URL-token auth. HARDENING when a
+  // second shop onboards: per-shop webhook tokens (token → shop binding server-side),
+  // so a payload shopId that mismatches the token's shop is rejected.
   out.shopId = numOrNull(data.shopId);
   out.sourceId = strOrNull(data.id); // entity's own id (RO id or payment id)
 
-  // Payment-family: payment_made, OR a refund/void that lands `unknown` but has
-  // the payment shape (repairOrderId + a payment date/type).
+  // Payment-family: payment_made, OR a refund/void that lands `unknown` but carries the
+  // payment flags. The refund/voided flags alone qualify — an A/R-applied void/refund
+  // can arrive WITHOUT repairOrderId (arPayment), and requiring it would store the row
+  // with payment_id NULL, invisible to the reducer's `payment_id IS NOT NULL` scan.
   const isPaymentFamily =
     eventKind === "payment_made" ||
+    data.refund != null ||
+    data.voided != null ||
     (data.repairOrderId != null &&
-      (data.paymentDate != null || data.paymentType != null ||
-        data.refund != null || data.voided != null));
+      (data.paymentDate != null || data.paymentType != null));
 
   if (isPaymentFamily) {
     out.paymentId = numOrNull(data.id);
