@@ -27,9 +27,9 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { resolveRealmForShop } from "@/lib/dal/realm";
 import { QboClient } from "@/lib/qbo/client";
+import { QboClientError } from "@/lib/qbo/errors";
 import { toQboJournalEntry, type QboJeLineInput } from "@/lib/qbo/journal-entry";
 import { upsertReviewItem } from "@/lib/dal/review-items";
-import { classifyPostError } from "@/lib/dal/poster";
 import { sourceStateHash } from "@/lib/dal/postings";
 import {
   dailySourceState,
@@ -65,6 +65,22 @@ export type DailyPostOutcome =
   | { status: "failed"; postingId: string; reason: string };
 
 const LEASE_SECONDS = 120;
+
+/** QBO post-error classification (§13): throttle/network retry; reconnect/auth hard-fail
+ *  with a reconnect review item; an Entity-mentioning validation fault trips the
+ *  ar_entity_rejected guard; anything else is a recorded qbo_error. (Moved from the
+ *  retired per-RO poster.) */
+export function classifyPostError(e: unknown): { retry: boolean; reviewKind: string | null } {
+  if (e instanceof QboClientError) {
+    if (e.kind === "throttle" || e.kind === "network") return { retry: true, reviewKind: null };
+    if (e.kind === "reconnect_required" || e.kind === "auth") return { retry: false, reviewKind: "reconnect_required" };
+    if (e.kind === "validation" && /entity/i.test(`${e.message} ${e.detail ?? ""}`)) {
+      return { retry: false, reviewKind: "ar_entity_rejected" };
+    }
+    return { retry: false, reviewKind: "qbo_error" };
+  }
+  return { retry: false, reviewKind: "qbo_error" };
+}
 
 interface ClaimedDailyRow {
   id: string;
