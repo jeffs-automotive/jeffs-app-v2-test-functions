@@ -175,7 +175,7 @@ export async function postDailyPostingById(
   const action = (row.action as DailyAction) ?? "create";
   const je = row.proposed_je?.je;
 
-  // update/delete need the LIVE JE's id + current SyncToken (latest posted version).
+  // update/delete need the LIVE JE's id + CURRENT SyncToken (latest posted version).
   let liveTarget: { qboJeId: string; qboSyncToken: string } | null = null;
   if (action === "update" || action === "delete") {
     const livePosted = await findLatestPostedDaily(shopId, realmId, businessDate, category);
@@ -184,7 +184,15 @@ export async function postDailyPostingById(
       await upsertReviewItem(shopId, { kind: "qbo_error", ...subject, detail: { postingId: row.id, reason: `no live QBO JE to ${action}` } });
       return { status: "failed", postingId: row.id, reason: "update_target_missing" };
     }
-    liveTarget = { qboJeId: livePosted.qboJeId, qboSyncToken: livePosted.qboSyncToken ?? "0" };
+    // FAIL CLOSED on a missing stored token — never guess one (a wrong SyncToken is an
+    // optimistic-lock gamble; mark_daily_posted records it on every create/update, so
+    // its absence on a live posted row is an anomaly a human must look at).
+    if (!livePosted.qboSyncToken) {
+      await markFailed(false, { error: "sync_token_missing" });
+      await upsertReviewItem(shopId, { kind: "qbo_error", ...subject, detail: { postingId: row.id, reason: `live QBO JE ${livePosted.qboJeId} has no stored SyncToken — cannot ${action} safely` } });
+      return { status: "failed", postingId: row.id, reason: "sync_token_missing" };
+    }
+    liveTarget = { qboJeId: livePosted.qboJeId, qboSyncToken: livePosted.qboSyncToken };
   }
 
   // Build the QBO payload (delete sends {Id, SyncToken} only).

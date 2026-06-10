@@ -180,6 +180,17 @@ describe("postDailyPostingById", () => {
     }));
   });
 
+  it("UPDATE with a live target but NO stored SyncToken fails CLOSED (never guesses '0')", async () => {
+    setup({ claim: claimRow({ action: "update", posting_version: 2 }) });
+    fromResults.push([postedDbRow({ qbo_sync_token: null })]);
+    const client = okClient();
+    const r = await postDailyPostingById(7476, "dp-1", { client, rebuild: rebuilds.same });
+    expect(r).toMatchObject({ status: "failed", reason: "sync_token_missing" });
+    expect(client.create).not.toHaveBeenCalled();
+    expect(client.deleteEntity).not.toHaveBeenCalled();
+    expect(rpcMock).toHaveBeenCalledWith("qteklink_mark_daily_failed", expect.objectContaining({ p_retryable: false }));
+  });
+
   it("DELETE: sends {Id, SyncToken} with operation=delete; marks posted with the deleted id", async () => {
     setup({ claim: claimRow({ action: "delete", posting_version: 2, source_state_hash: EMPTY_HASH, proposed_je: { je: { lines: [], docNumber: null, txnDate: DATE }, marker: "m" } }) });
     fromResults.push([postedDbRow()]);

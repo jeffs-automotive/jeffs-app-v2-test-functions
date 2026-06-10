@@ -70,13 +70,13 @@ interface PostingListDbRow {
   qbo_je_id: string | null;
   proposed_je: {
     je?: { lines?: { accountId?: string; postingType?: string; amountCents?: number; description?: string }[]; docNumber?: string };
-    source_state_hash?: string;
   } | null;
+  source_state_hash: string | null;
   created_at: string;
 }
 
 const OPEN_POSTING_STATUSES = ["pending", "approved", "posting", "failed", "needs_resolution"];
-const POSTING_SELECT = "id, kind, tekmetric_ro_id, payment_id, status, posting_version, txn_date, batch_date, qbo_je_id, proposed_je, created_at";
+const POSTING_SELECT = "id, kind, tekmetric_ro_id, payment_id, status, posting_version, txn_date, batch_date, qbo_je_id, proposed_je, source_state_hash, created_at";
 
 function mapPostingRow(r: PostingListDbRow): PostingRow {
   const rawLines = r.proposed_je?.je?.lines ?? [];
@@ -102,7 +102,7 @@ function mapPostingRow(r: PostingListDbRow): PostingRow {
     docNumber: r.proposed_je?.je?.docNumber ?? null,
     totalCents: lines.length > 0 ? totalCents : null,
     lines,
-    sourceStateHash: r.proposed_je?.source_state_hash ?? null,
+    sourceStateHash: r.source_state_hash ?? null,
     createdAt: r.created_at,
   };
 }
