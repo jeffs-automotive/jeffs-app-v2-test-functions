@@ -75,6 +75,10 @@ export interface PaymentJeLine {
   postingType: "Debit" | "Credit";
   amountCents: number;
   description: string;
+  /** Which daily-category JE this line belongs to: the payment's gross movement ("gross" →
+   *  the daily payments JE) or its CC-fee leg ("fee" → the daily fees JE). Structural — the
+   *  daily builder must never split by line position or description text. */
+  part: "gross" | "fee";
 }
 
 export interface PaymentJournalEntry {
@@ -164,8 +168,8 @@ export function buildPaymentJournalEntry(
     if (depositAcct) {
       if (!m.arAccountId) unmapped.push("accounts_receivable");
       if (m.arAccountId) {
-        lines.push({ accountId: depositAcct, postingType: inflow ? "Debit" : "Credit", amountCents: amt, description: desc });
-        lines.push({ accountId: m.arAccountId, postingType: inflow ? "Credit" : "Debit", amountCents: amt, description: desc });
+        lines.push({ accountId: depositAcct, postingType: inflow ? "Debit" : "Credit", amountCents: amt, description: desc, part: "gross" });
+        lines.push({ accountId: m.arAccountId, postingType: inflow ? "Credit" : "Debit", amountCents: amt, description: desc, part: "gross" });
       }
       return finalize(p, docNumber, txnDate, "deposit", lines, unmapped);
     }
@@ -175,8 +179,8 @@ export function buildPaymentJournalEntry(
     if (!contra) unmapped.push(`noncash:${key || "(none)"}`);
     if (!m.arAccountId) unmapped.push("accounts_receivable");
     if (contra && m.arAccountId) {
-      lines.push({ accountId: contra, postingType: inflow ? "Debit" : "Credit", amountCents: amt, description: desc });
-      lines.push({ accountId: m.arAccountId, postingType: inflow ? "Credit" : "Debit", amountCents: amt, description: desc });
+      lines.push({ accountId: contra, postingType: inflow ? "Debit" : "Credit", amountCents: amt, description: desc, part: "gross" });
+      lines.push({ accountId: m.arAccountId, postingType: inflow ? "Credit" : "Debit", amountCents: amt, description: desc, part: "gross" });
     }
     return finalize(p, docNumber, txnDate, "non_cash", lines, unmapped);
   }
@@ -186,8 +190,8 @@ export function buildPaymentJournalEntry(
   if (!m.undepositedAccountId) unmapped.push("undeposited_funds");
   if (!m.arAccountId) unmapped.push("accounts_receivable");
   if (m.undepositedAccountId && m.arAccountId) {
-    lines.push({ accountId: m.undepositedAccountId, postingType: inflow ? "Debit" : "Credit", amountCents: amt, description: desc });
-    lines.push({ accountId: m.arAccountId, postingType: inflow ? "Credit" : "Debit", amountCents: amt, description: desc });
+    lines.push({ accountId: m.undepositedAccountId, postingType: inflow ? "Debit" : "Credit", amountCents: amt, description: desc, part: "gross" });
+    lines.push({ accountId: m.arAccountId, postingType: inflow ? "Credit" : "Debit", amountCents: amt, description: desc, part: "gross" });
   }
   // The CC fee applies to a PAYMENT only (cards). A refund's applicationFee is null
   // (fee=0) in practice; a refund that DOES carry a fee has no defined accounting
@@ -198,8 +202,8 @@ export function buildPaymentJournalEntry(
   } else if (fee > 0) {
     if (!m.ccFeeAccountId) unmapped.push("cc_fee");
     if (m.ccFeeAccountId && m.undepositedAccountId) {
-      lines.push({ accountId: m.ccFeeAccountId, postingType: "Debit", amountCents: fee, description: `${docNumber} — CC fee` });
-      lines.push({ accountId: m.undepositedAccountId, postingType: "Credit", amountCents: fee, description: `${docNumber} — CC fee` });
+      lines.push({ accountId: m.ccFeeAccountId, postingType: "Debit", amountCents: fee, description: `${docNumber} — CC fee`, part: "fee" });
+      lines.push({ accountId: m.undepositedAccountId, postingType: "Credit", amountCents: fee, description: `${docNumber} — CC fee`, part: "fee" });
     }
   }
   return finalize(p, docNumber, txnDate, "deposit", lines, unmapped);

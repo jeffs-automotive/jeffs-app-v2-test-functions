@@ -56,6 +56,23 @@ describe("buildPaymentJournalEntry — deposit route", () => {
     expect(sum(undeposited, "Debit") - sum(undeposited, "Credit")).toBe(22510 - 573); // 21937
   });
 
+  it("tags every line with its daily-category part: gross pair vs fee pair (the structural split)", () => {
+    const je = buildPaymentJournalEntry(pay(), M, S);
+    const gross = je.lines.filter((l) => l.part === "gross");
+    const fee = je.lines.filter((l) => l.part === "fee");
+    expect(gross).toHaveLength(2);
+    expect(fee).toHaveLength(2);
+    expect(gross.every((l) => l.amountCents === 22510)).toBe(true);
+    expect(fee.every((l) => l.amountCents === 573)).toBe(true);
+    expect(fee.map((l) => l.accountId).sort()).toEqual(["309", "366"]);
+    // non-card routes are all-gross
+    const tpp = buildPaymentJournalEntry(
+      pay({ method: "Other", otherPaymentType: "Tire Protection Plan", signedProcessingFeeCents: 0 }),
+      M, S,
+    );
+    expect(tpp.lines.every((l) => l.part === "gross")).toBe(true);
+  });
+
   it("cash (no fee): two lines, no CC-fee line", () => {
     const je = buildPaymentJournalEntry(pay({ method: "Cash", signedProcessingFeeCents: 0 }), M, S);
     expect(je.route).toBe("deposit");
