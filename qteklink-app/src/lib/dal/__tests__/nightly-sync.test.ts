@@ -12,6 +12,7 @@ const planMock = vi.fn();
 const executeMock = vi.fn();
 const fromMock = vi.fn();
 const safetyNetMock = vi.fn();
+const sweepMock = vi.fn();
 const reduceMock = vi.fn();
 
 vi.mock("@/lib/dal/daily-reconcile", () => ({ runDailyReconciliation: (...a: unknown[]) => reconMock(...a) }));
@@ -22,6 +23,7 @@ vi.mock("@/lib/dal/approve-post-day", () => ({
   executeApproveDay: (...a: unknown[]) => executeMock(...a),
 }));
 vi.mock("@/lib/dal/safety-net", () => ({ runSafetyNet: (...a: unknown[]) => safetyNetMock(...a) }));
+vi.mock("@/lib/dal/posted-day-sweep", () => ({ sweepPostedDays: (...a: unknown[]) => sweepMock(...a) }));
 vi.mock("@/lib/supabase/admin", () => ({ createSupabaseAdminClient: () => ({ from: fromMock }) }));
 
 import { runNightlySync, listConnectedShops } from "../nightly-sync";

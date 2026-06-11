@@ -113,6 +113,7 @@ async function computeScope(
     if (!action) continue; // nothing desired, nothing live
 
     const desiredHash = sourceStateHash(dailySourceState(category, businessDate, je));
+    if (latest?.status === "acknowledged") continue; // Accounting Link's day — never post
     if (latest?.status === "posted" && latest.sourceStateHash === desiredHash) continue; // done
     if (latest?.status === "posting") continue; // in flight — locked
 

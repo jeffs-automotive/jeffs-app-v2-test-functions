@@ -48,14 +48,17 @@ export default async function DashboardPage() {
       {/* The read pages are ALL-ROLES surfaces (mutations are admin-gated in the
           actions) — only the QuickBooks connect flow is admin-only. */}
       <nav className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
-        <Link href="/mappings" className="font-medium text-[#96003C] hover:underline">
-          Account mappings
-        </Link>
         <Link href="/approvals" className="font-medium text-[#96003C] hover:underline">
           Daily approvals
         </Link>
         <Link href="/postings" className="font-medium text-[#96003C] hover:underline">
-          Posting ledger
+          Posting queue
+        </Link>
+        <Link href="/mappings" className="font-medium text-[#96003C] hover:underline">
+          Account mappings
+        </Link>
+        <Link href="/settings" className="font-medium text-[#96003C] hover:underline">
+          Settings
         </Link>
         {role === "admin" && (
           <a href="/qbo/connect" className="font-medium text-[#96003C] hover:underline">

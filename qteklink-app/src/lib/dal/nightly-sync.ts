@@ -8,7 +8,10 @@
  *   3. AUTO-POST (only when the shop's `auto_post` setting is ON — default off): reuse the
  *      dashboard's planApproveDay → executeApproveDay to approve + LIVE-post the day's clean
  *      drafts. Default-off means nothing posts to QBO unattended unless the shop opts in.
- *   4. the Tekmetric + QBO 2-API completeness safety-net.
+ *   4. sweepPostedDays — re-check every ALREADY-POSTED day: detect RO date moves (→ the
+ *      posting queue + office-manager/advisor emails), auto-post corrections for changed
+ *      posted days (→ office-manager email per change). ISOLATED (own try/catch).
+ *   5. the Tekmetric + QBO 2-API completeness safety-net.
  *
  * Reuses already-reviewed primitives; this is the thin nightly orchestration. MULTI-TENANT:
  * each shop's realm is resolved server-side inside the reused DALs. No silent failures.
@@ -20,6 +23,7 @@ import { reduceShopPaymentState } from "@/lib/dal/payment-state";
 import { getShopSettings } from "@/lib/dal/settings";
 import { planApproveDay, executeApproveDay } from "@/lib/dal/approve-post-day";
 import { runSafetyNet, type SafetyNetResult } from "@/lib/dal/safety-net";
+import { sweepPostedDays, type SweepResult } from "@/lib/dal/posted-day-sweep";
 import type { QboDailyWriteClient } from "@/lib/dal/daily-poster";
 import { toShopLocalDate } from "@/lib/sales/sale-builder";
 import { addDaysIso } from "@/lib/format";
@@ -36,6 +40,9 @@ export interface NightlyShopResult {
   /** The C4 payment-state projection refresh (events read / payments upserted), or null if it
    *  errored — isolated so a corrupt payment event can't block the SALE reconcile. */
   paymentStateReduced: { events: number; payments: number } | null;
+  /** The posted-day correction sweep (date moves + auto-posted corrections), or null
+   *  when it errored — isolated (see Sentry). */
+  sweep: SweepResult | null;
   /** The 2-API completeness net result (null when it errored — see Sentry). */
   safetyNet: SafetyNetResult | null;
 }
@@ -91,6 +98,7 @@ export async function runNightlySync(
     autoPosted: 0,
     autoPostFailed: 0,
     paymentStateReduced,
+    sweep: null,
     safetyNet: null,
   };
   if (!recon.realmId) return result; // no connection → reconcile is a no-op; nothing to post
@@ -106,7 +114,16 @@ export async function runNightlySync(
     }
   }
 
-  // 4. the Tekmetric + QBO 2-API completeness safety-net. NON-FATAL: a transient external-API
+  // 4. Posted-day correction sweep: date-move detection (→ posting queue + emails) and
+  // auto-posted corrections for changed posted days (→ office-manager email per change).
+  // NON-FATAL: a sweep error must not discard the reconcile result — capture + continue.
+  try {
+    result.sweep = await sweepPostedDays(shopId, { client: opts.client });
+  } catch (e) {
+    Sentry.captureException(e, { tags: { qteklink_cron: "posted-day-sweep", shop_id: String(shopId) } });
+  }
+
+  // 5. the Tekmetric + QBO 2-API completeness safety-net. NON-FATAL: a transient external-API
   // error must not discard the reconcile / auto-post result above — capture + continue.
   try {
     result.safetyNet = await runSafetyNet(shopId, recon.realmId, businessDate, settings.shopTimezone);

@@ -56,6 +56,8 @@ export function statusToColumn(status: string): SnapshotColumn {
     case "posting":
       return "inProgress";
     case "posted":
+    // acknowledged = approved WITHOUT posting (Accounting Link's day) — done.
+    case "acknowledged":
       return "posted";
     case "failed":
     case "rejected":

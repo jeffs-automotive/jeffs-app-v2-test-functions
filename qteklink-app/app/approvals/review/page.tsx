@@ -59,9 +59,9 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
     <main className="mx-auto max-w-4xl px-6 py-12">
       <header className="flex items-center justify-between border-b border-stone-200 pb-4">
         <div>
-          <h1 className="text-2xl font-bold text-[#96003C]">Resolution queue</h1>
+          <h1 className="text-2xl font-bold text-[#96003C]">Fix-it list</h1>
           <p className="text-sm text-stone-600">
-            <Link href={backDate ? `/approvals?date=${backDate}` : "/approvals"} className="text-[#96003C] underline">← daily approval</Link>
+            <Link href={backDate ? `/approvals?date=${backDate}` : "/approvals"} className="text-[#96003C] underline">← back to daily approvals</Link>
           </p>
         </div>
         <div className="text-right">
@@ -69,6 +69,12 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
           <p className="text-xs uppercase tracking-wide text-stone-500">{role} · shop {shopId}</p>
         </div>
       </header>
+
+      <section className="mt-4 rounded-lg border border-stone-200 bg-stone-50 p-4 text-sm text-stone-700">
+        Items land here when QTekLink can&apos;t post something on its own — usually a payment type
+        or fee that isn&apos;t matched to a QuickBooks account yet, or a payment that needs you to
+        say how it was paid. Fix each item below; the day then posts normally.
+      </section>
 
       {!realmId ? (
         <section className="mt-8 rounded-lg border border-amber-200 bg-amber-50 p-6">

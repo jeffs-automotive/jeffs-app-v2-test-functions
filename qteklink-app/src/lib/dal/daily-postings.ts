@@ -373,6 +373,12 @@ export async function enqueueDailyPosting(
     return { enqueueAction: "noop", action: null, postingId: null, postingVersion: null };
   }
 
+  // An ACKNOWLEDGED day-category is TERMINAL — approved WITHOUT posting (Accounting
+  // Link owns that day's books). Never re-enqueue it, no matter what changes.
+  if (latest && latest.status === "acknowledged") {
+    return { enqueueAction: "skip", action: null, postingId: latest.id, postingVersion: latest.postingVersion };
+  }
+
   // Posted and unchanged (the latest version IS the posted one and the hash matches).
   if (latest && latest.status === "posted" && latest.sourceStateHash === hash) {
     return { enqueueAction: "skip", action: null, postingId: null, postingVersion: latest.postingVersion };
@@ -427,6 +433,27 @@ export async function approveDailyPosting(
     throw new Error(`qteklink_approve_daily_posting failed: ${error.message}`);
   }
   return { approved: data === true };
+}
+
+/** Mark a PENDING day-category as acknowledged — approved WITHOUT posting (the day
+ *  is already in QuickBooks via Accounting Link). Terminal: the diff never touches
+ *  an acknowledged category again. */
+export async function acknowledgeDailyPosting(
+  shopId: number,
+  id: string,
+  acknowledgedBy: string,
+): Promise<{ acknowledged: boolean }> {
+  const realmId = await resolveRealmForShop(shopId);
+  if (!realmId) throw new QboClientError("QuickBooks is not connected for this shop.", { kind: "reconnect_required" });
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin.rpc("qteklink_acknowledge_daily_posting", {
+    p_shop_id: shopId, p_realm_id: realmId, p_id: id, p_acknowledged_by: acknowledgedBy,
+  });
+  if (error) {
+    if (error.code === "P0001") throw new QboClientError(error.message, { kind: "unknown" });
+    throw new Error(`qteklink_acknowledge_daily_posting failed: ${error.message}`);
+  }
+  return { acknowledged: data === true };
 }
 
 export async function rejectDailyPosting(

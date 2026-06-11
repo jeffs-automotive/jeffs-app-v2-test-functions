@@ -19,6 +19,11 @@ export interface ShopSettings {
   shopTimezone: string;
   salesTaxRateBps: number;
   tireFeeCents: number;
+  /** Who gets "a posted day changed" emails. Null = notifications not configured. */
+  officeManagerEmail: string | null;
+  /** Service advisors — also alerted when an RO moves to a different day.
+   *  Comma-separated in the DB; exposed as a clean array. */
+  advisorEmails: string[];
 }
 
 /** The built-in defaults (Jeff's / PA) used until a shop configures its own row. */
@@ -28,6 +33,8 @@ export const DEFAULT_SHOP_SETTINGS: ShopSettings = {
   shopTimezone: "America/New_York",
   salesTaxRateBps: 600,
   tireFeeCents: 100,
+  officeManagerEmail: null,
+  advisorEmails: [],
 };
 
 interface SettingsDbRow {
@@ -36,6 +43,16 @@ interface SettingsDbRow {
   shop_timezone: string;
   sales_tax_rate_bps: number | string;
   tire_fee_cents: number | string;
+  office_manager_email: string | null;
+  advisor_emails: string | null;
+}
+
+/** "a@x.com, b@x.com" → ["a@x.com","b@x.com"] (trimmed, de-blanked). */
+export function parseEmailList(raw: string | null): string[] {
+  return (raw ?? "")
+    .split(",")
+    .map((e) => e.trim())
+    .filter((e) => e.length > 0);
 }
 
 function safeInt(v: number | string, field: string): number {
@@ -57,7 +74,7 @@ export async function getShopSettings(
   const admin = createSupabaseAdminClient();
   const { data, error } = await admin
     .from("qteklink_settings")
-    .select("auto_post, settle_window_minutes, shop_timezone, sales_tax_rate_bps, tire_fee_cents")
+    .select("auto_post, settle_window_minutes, shop_timezone, sales_tax_rate_bps, tire_fee_cents, office_manager_email, advisor_emails")
     .eq("shop_id", shopId)
     .eq("realm_id", realmId)
     .limit(1);
@@ -73,6 +90,8 @@ export async function getShopSettings(
       shopTimezone: row.shop_timezone,
       salesTaxRateBps: safeInt(row.sales_tax_rate_bps, "sales_tax_rate_bps"),
       tireFeeCents: safeInt(row.tire_fee_cents, "tire_fee_cents"),
+      officeManagerEmail: row.office_manager_email,
+      advisorEmails: parseEmailList(row.advisor_emails),
     },
   };
 }
@@ -99,6 +118,9 @@ export async function upsertShopSettings(
     p_shop_timezone: input.shopTimezone ?? null,
     p_sales_tax_rate_bps: input.salesTaxRateBps ?? null,
     p_tire_fee_cents: input.tireFeeCents ?? null,
+    // null = unchanged; an explicit "" clears the recipient (the RPC contract).
+    p_office_manager_email: input.officeManagerEmail === undefined ? null : input.officeManagerEmail ?? "",
+    p_advisor_emails: input.advisorEmails === undefined ? null : input.advisorEmails.join(", "),
   });
   if (error) {
     if (error.code === "P0001") throw new QboClientError(error.message, { kind: "unknown" });

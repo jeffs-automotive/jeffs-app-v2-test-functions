@@ -12,6 +12,7 @@
  */
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { RO_SALE_SCAN_EVENT_KINDS, RO_UNPOST_EVENT_KIND } from "@/lib/events/kinds";
+import { listPendingDateMoves } from "@/lib/dal/date-moves";
 import { parseSnapshot, resolveMappings, type MappingRow } from "@/lib/dal/sale-je";
 import { resolvePaymentMappings, stateRowToPayment, type PaymentStateRow } from "@/lib/dal/payment-je";
 import { listManualPayments } from "@/lib/dal/manual-payments";
@@ -92,6 +93,17 @@ export async function buildDayDrafts(
   // exact local date. The unpost kind is in the scan so a posted-then-UNPOSTED RO's
   // newest event wins and the stale sale is dropped (a benign reversal, like a voided
   // payment — no review item; a later re-post supersedes the unpost and re-recognizes).
+  //
+  // DATE-MOVE HOLDS (the posting queue): while a move is PENDING (an RO unposted and
+  // re-posted to a DIFFERENT day, awaiting the office manager), BOTH days hold steady:
+  //   - the ORIGINAL day PINS the RO to its newest original-day snapshot (the newer
+  //     other-day event is ignored), so the posted JE doesn't churn;
+  //   - the NEW day EXCLUDES the RO entirely.
+  // Approving / resolving the move lifts the holds and the normal diff takes over.
+  const pendingMoves = await listPendingDateMoves(shopId, realmId);
+  const excludeRos = new Set(pendingMoves.filter((m) => m.newBusinessDate === businessDate).map((m) => m.tekmetricRoId));
+  const pinnedRos = new Set(pendingMoves.filter((m) => m.originalBusinessDate === businessDate).map((m) => m.tekmetricRoId));
+
   const { startIso, endIso } = utcWindowForLocalDay(businessDate);
   const { data: evRows, error: evErr } = await admin
     .from("qteklink_events")
@@ -110,6 +122,15 @@ export async function buildDayDrafts(
   for (const r of (evRows ?? []) as { tekmetric_ro_id: number | string | null; event_kind: string; raw_body: { data?: unknown } | null }[]) {
     const roKey = String(r.tekmetric_ro_id ?? "");
     if (!roKey || latestByRo.has(roKey)) continue;
+    const roNum = Number(roKey);
+    if (excludeRos.has(roNum)) continue; // held off this (new) day until the move is decided
+    if (pinnedRos.has(roNum)) {
+      // Pin: take the newest event that still belongs to THIS day (skip the unpost +
+      // the other-day re-post; the original posting event is always in this window).
+      if (r.event_kind === RO_UNPOST_EVENT_KIND) continue;
+      const snap = parseSnapshot(r.raw_body?.data ?? null);
+      if (!snap || toShopLocalDate(snap.postedDate, tz) !== businessDate) continue;
+    }
     latestByRo.set(roKey, { kind: r.event_kind, data: r.raw_body?.data ?? null });
   }
   const sales: SaleDraft[] = [];

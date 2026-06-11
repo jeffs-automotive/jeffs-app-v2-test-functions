@@ -48,7 +48,7 @@ export default async function MappingsPage() {
           <p className="text-sm text-stone-600">
             Tekmetric &rarr; QuickBooks &middot;{" "}
             <Link href="/dashboard" className="text-[#96003C] underline">
-              back to dashboard
+              back to home
             </Link>
           </p>
         </div>
@@ -59,6 +59,13 @@ export default async function MappingsPage() {
           </p>
         </div>
       </header>
+
+      <section className="mt-4 rounded-lg border border-stone-200 bg-stone-50 p-4 text-sm text-stone-700">
+        This page tells QTekLink which QuickBooks account each Tekmetric item belongs to —
+        labor, parts, fees, taxes, and payment types. If something shows{" "}
+        <span className="font-medium text-amber-700">not mapped</span>, pick an account for it;
+        days can&apos;t post until everything on them is mapped.
+      </section>
 
       {!realmId ? (
         <section className="mt-8 rounded-lg border border-amber-200 bg-amber-50 p-6">

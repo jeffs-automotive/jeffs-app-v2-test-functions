@@ -133,6 +133,45 @@ describe("runDailyReconciliation", () => {
     expect(r.postableSales).toBe(1);
   });
 
+  it("DATE-MOVE HOLD: the ORIGINAL day PINS the RO to its original-day snapshot while the move is pending", async () => {
+    // RO 101 was posted on 2026-05-19, then re-posted to 2026-05-20 (the newest event).
+    // A PENDING move exists → the 05-19 build must keep the ORIGINAL snapshot.
+    const original = { ...roEvent(101, "2026-05-19T15:39:04Z"), event_kind: "ro_posted" };
+    const moved = { ...roEvent(101, "2026-05-20T15:00:00Z"), event_kind: "ro_posted" };
+    routeFrom({
+      qteklink_mappings: MAPPINGS,
+      qteklink_events: [moved, original], // newest (the other-day re-post) first
+      qteklink_payment_state: [],
+      qteklink_manual_payments: [],
+      qteklink_ro_date_moves: [{
+        id: "mv-1", tekmetric_ro_id: 101, ro_number: "101", original_business_date: "2026-05-19",
+        new_business_date: "2026-05-20", original_total_cents: null, new_total_cents: 10600,
+        status: "pending", detected_at: "x", approved_by: null, approved_at: null, resolved_at: null,
+      }],
+    });
+    const r = await runDailyReconciliation(7476, "2026-05-19");
+    expect(r.saleCount).toBe(1); // pinned — the original day keeps the RO
+    expect(r.postableSales).toBe(1);
+  });
+
+  it("DATE-MOVE HOLD: the NEW day EXCLUDES the RO while the move is pending", async () => {
+    const moved = { ...roEvent(101, "2026-05-20T15:00:00Z"), event_kind: "ro_posted" };
+    routeFrom({
+      qteklink_mappings: MAPPINGS,
+      qteklink_events: [moved],
+      qteklink_payment_state: [],
+      qteklink_manual_payments: [],
+      qteklink_ro_date_moves: [{
+        id: "mv-1", tekmetric_ro_id: 101, ro_number: "101", original_business_date: "2026-05-19",
+        new_business_date: "2026-05-20", original_total_cents: null, new_total_cents: 10600,
+        status: "pending", detected_at: "x", approved_by: null, approved_at: null, resolved_at: null,
+      }],
+    });
+    const r = await runDailyReconciliation(7476, "2026-05-20");
+    expect(r.saleCount).toBe(0); // held off the new day until the office manager decides
+    expect(r.dailyEnqueue.sales).toBe("noop");
+  });
+
   it("persists a §9 review item for a non-postable (unmapped) RO", async () => {
     routeFrom({
       qteklink_mappings: MAPPINGS,

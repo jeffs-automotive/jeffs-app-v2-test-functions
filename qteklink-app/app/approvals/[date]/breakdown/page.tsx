@@ -160,9 +160,15 @@ export default async function BreakdownPage({ params, searchParams }: { params: 
   return (
     <main className="mx-auto max-w-4xl px-6 py-12">
       <header className="border-b border-stone-200 pb-4">
-        <h1 className="text-2xl font-bold text-[#96003C]">Breakdown — {date}</h1>
-        <p className="text-sm text-stone-600"><Link href={`/approvals?date=${date}`} className="text-[#96003C] underline">← daily approval</Link></p>
+        <h1 className="text-2xl font-bold text-[#96003C]">Day detail — {date}</h1>
+        <p className="text-sm text-stone-600"><Link href={`/approvals?date=${date}`} className="text-[#96003C] underline">← back to daily approvals</Link></p>
       </header>
+
+      <section className="mt-4 rounded-lg border border-stone-200 bg-stone-50 p-4 text-sm text-stone-700">
+        Everything that makes up this day&apos;s numbers. <span className="font-medium">Summary</span> shows
+        what hits each QuickBooks account; <span className="font-medium">Repair orders</span> and{" "}
+        <span className="font-medium">Payments</span> list every single item with its status.
+      </section>
 
       <nav className="mt-6 flex gap-2">
         {TABS.map((t) => (

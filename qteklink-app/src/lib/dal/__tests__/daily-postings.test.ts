@@ -209,6 +209,13 @@ describe("enqueueDailyPosting — the diff matrix", () => {
     expect(rpcMock).not.toHaveBeenCalled();
   });
 
+  it("an ACKNOWLEDGED category is TERMINAL — never re-enqueued, even when the day changes", async () => {
+    fromResults.push([dbRow({ status: "acknowledged", source_state_hash: "h-old" })]);
+    const r = await enqueueDailyPosting(7476, REALM, DATE, "sales", salesJe());
+    expect(r.enqueueAction).toBe("skip");
+    expect(rpcMock).not.toHaveBeenCalledWith("qteklink_enqueue_daily_posting", expect.anything());
+  });
+
   it("failed/rejected latest: unchanged → 'skip'; changed → a NEW version", async () => {
     const je = salesJe();
     const hash = sourceStateHash(dailySourceState("sales", DATE, je));

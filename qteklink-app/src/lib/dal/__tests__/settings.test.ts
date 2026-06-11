@@ -31,11 +31,19 @@ beforeEach(() => {
 });
 
 describe("getShopSettings", () => {
-  it("maps a configured row", async () => {
-    fromMock.mockReturnValue(chain({ data: [{ auto_post: true, settle_window_minutes: "30", shop_timezone: "America/Chicago", sales_tax_rate_bps: "825", tire_fee_cents: "200" }], error: null }));
+  it("maps a configured row (incl. the notification recipients)", async () => {
+    fromMock.mockReturnValue(chain({ data: [{
+      auto_post: true, settle_window_minutes: "30", shop_timezone: "America/Chicago",
+      sales_tax_rate_bps: "825", tire_fee_cents: "200",
+      office_manager_email: "om@shop.com", advisor_emails: "a@shop.com, b@shop.com",
+    }], error: null }));
     const { realmId, settings } = await getShopSettings(7476);
     expect(realmId).toBe(REALM);
-    expect(settings).toEqual({ autoPost: true, settleWindowMinutes: 30, shopTimezone: "America/Chicago", salesTaxRateBps: 825, tireFeeCents: 200 });
+    expect(settings).toEqual({
+      autoPost: true, settleWindowMinutes: 30, shopTimezone: "America/Chicago",
+      salesTaxRateBps: 825, tireFeeCents: 200,
+      officeManagerEmail: "om@shop.com", advisorEmails: ["a@shop.com", "b@shop.com"],
+    });
   });
 
   it("returns the DEFAULTS when the shop has no settings row", async () => {
@@ -71,7 +79,22 @@ describe("upsertShopSettings", () => {
     expect(rpcMock).toHaveBeenCalledWith("qteklink_upsert_settings", {
       p_shop_id: 7476, p_realm_id: REALM, p_auto_post: true, p_settle_window_minutes: null,
       p_shop_timezone: null, p_sales_tax_rate_bps: null, p_tire_fee_cents: null,
+      p_office_manager_email: null, p_advisor_emails: null,
     });
+  });
+
+  it("recipients: undefined = unchanged (null param); null/list = explicit set", async () => {
+    rpcMock.mockImplementation((fn: string) =>
+      fn === "qbo_resolve_realm_for_shop" ? Promise.resolve({ data: REALM, error: null }) : Promise.resolve({ data: null, error: null }),
+    );
+    await upsertShopSettings(7476, { officeManagerEmail: "om@shop.com", advisorEmails: ["a@shop.com", "b@shop.com"] });
+    expect(rpcMock).toHaveBeenCalledWith("qteklink_upsert_settings", expect.objectContaining({
+      p_office_manager_email: "om@shop.com", p_advisor_emails: "a@shop.com, b@shop.com",
+    }));
+    await upsertShopSettings(7476, { officeManagerEmail: null, advisorEmails: [] });
+    expect(rpcMock).toHaveBeenLastCalledWith("qteklink_upsert_settings", expect.objectContaining({
+      p_office_manager_email: "", p_advisor_emails: "", // "" clears (the RPC contract)
+    }));
   });
 
   it("FAILS CLOSED with reconnect_required when the shop has no connection", async () => {

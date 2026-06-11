@@ -20,7 +20,7 @@ SELECT * FROM no_plan();
 -- ─── Existence + RLS ────────────────────────────────────────────────────
 SELECT has_table('public', 'qteklink_settings', 'qteklink_settings exists');
 SELECT has_table('public', 'qteklink_ro_state', 'qteklink_ro_state exists');
-SELECT has_function('public', 'qteklink_upsert_settings', ARRAY['integer','text','boolean','integer','text','integer','integer'], 'upsert_settings RPC exists');
+SELECT has_function('public', 'qteklink_upsert_settings', ARRAY['integer','text','boolean','integer','text','integer','integer','text','text'], 'upsert_settings RPC exists (9-param incl. notification recipients)');
 SELECT has_function('public', 'qteklink_upsert_ro_state', ARRAY['integer','text','bigint','text','bigint','date','text','text','text','text'], 'upsert_ro_state RPC exists');
 SELECT is((SELECT relrowsecurity FROM pg_class WHERE relname='qteklink_settings' AND relnamespace='public'::regnamespace), true, 'RLS on qteklink_settings');
 SELECT is((SELECT relrowsecurity FROM pg_class WHERE relname='qteklink_ro_state' AND relnamespace='public'::regnamespace), true, 'RLS on qteklink_ro_state');
@@ -29,7 +29,7 @@ SELECT is((SELECT relrowsecurity FROM pg_class WHERE relname='qteklink_ro_state'
 SELECT ok(has_table_privilege('service_role','public.qteklink_settings','SELECT'), 'service_role SELECT settings');
 SELECT ok(NOT has_table_privilege('service_role','public.qteklink_settings','UPDATE'), 'service_role NO UPDATE settings');
 SELECT ok(NOT has_table_privilege('service_role','public.qteklink_ro_state','INSERT'), 'service_role NO INSERT ro_state');
-SELECT ok(has_function_privilege('service_role','public.qteklink_upsert_settings(integer,text,boolean,integer,text,integer,integer)','EXECUTE'), 'service_role EXECUTE upsert_settings');
+SELECT ok(has_function_privilege('service_role','public.qteklink_upsert_settings(integer,text,boolean,integer,text,integer,integer,text,text)','EXECUTE'), 'service_role EXECUTE upsert_settings');
 
 -- ─── Seed a connection (FK target) ──────────────────────────────────────
 INSERT INTO public.qbo_connections (realm_id, shop_id, access_token_expires_at, refresh_token_expires_at)
