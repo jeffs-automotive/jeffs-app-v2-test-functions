@@ -7,7 +7,7 @@
  *
  *   1. DETECT DATE MOVES first (`detectDateMoves`): an RO unposted and re-posted to a
  *      DIFFERENT day goes to the posting queue (pending = both days HELD) and the
- *      office manager + service advisors are emailed. Nothing changes in QBO yet.
+ *      DATE CHANGE ALERT recipients are emailed. Nothing changes in QBO yet.
  *   2. RE-RECONCILE the day. With the holds applied, any remaining difference is a
  *      real same-day change: an RO unposted (and not re-posted), an RO's totals
  *      edited, a payment voided/refunded late, etc. The diff stages a correction
@@ -16,8 +16,9 @@
  *      poster's claim-time staleness recheck still guards the write. A day-category
  *      that has NEVER been posted is NOT auto-posted — first-time posting stays a
  *      human decision on the Daily approvals page.
- *   4. EMAIL the office manager what changed: the journal entry title, which repair
- *      orders / payments were added or removed, and the old → new totals.
+ *   4. EMAIL the DAY CORRECTION ALERT recipients what changed: the journal entry
+ *      title, which repair orders / payments were added or removed, and the
+ *      old → new totals.
  *
  * Acknowledged days (approved without posting — Accounting Link's days) have no
  * posted rows, so the sweep never touches or emails about them.
@@ -107,15 +108,16 @@ export function describeCorrection(prior: DailyPostingRow, next: DailyPostingRow
     `day on the QTekLink Daily approvals page to see the full breakdown.`,
   );
   return {
-    subject: `QTekLink: ${next.docNumber ?? next.businessDate} was updated in QuickBooks`,
+    subject: `QTekLink Day Correction Alert: ${next.docNumber ?? next.businessDate} was updated in QuickBooks`,
     text: lines.join("\n"),
   };
 }
 
 /**
  * Apply staged corrections for ONE day: every PENDING version whose category has a
- * posted prior gets approved (system) + posted, and the office manager is emailed
- * the diff. First-time (never-posted) categories are left for human approval.
+ * posted prior gets approved (system) + posted, and the Day Correction Alert list
+ * is emailed the diff. First-time (never-posted) categories are left for human
+ * approval.
  */
 export async function applyDayCorrections(
   shopId: number,
@@ -124,7 +126,7 @@ export async function applyDayCorrections(
 ): Promise<SweepDayResult> {
   const { postings } = await listDailyPostingsForDay(shopId, businessDate);
   const { settings } = await getShopSettings(shopId);
-  const omTo = settings.officeManagerEmail ? [settings.officeManagerEmail] : [];
+  const correctionTo = settings.dayCorrectionAlertEmails;
 
   let posted = 0;
   let failed = 0;
@@ -140,7 +142,7 @@ export async function applyDayCorrections(
       if (outcome.status === "posted") {
         posted++;
         const { subject, text } = describeCorrection(prior, pending);
-        await sendQteklinkEmail({ to: omTo, subject, text });
+        await sendQteklinkEmail({ to: correctionTo, subject, text });
       } else if (outcome.status === "stale_refreshed") {
         // the day moved again mid-flight — the next sweep pass picks it up.
       } else {

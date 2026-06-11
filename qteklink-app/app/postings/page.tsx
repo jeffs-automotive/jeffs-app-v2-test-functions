@@ -4,13 +4,19 @@
  * already in QuickBooks. Nothing changes in QuickBooks until the office manager
  * decides here (or the RO is re-posted back to its original day in Tekmetric).
  *
- * Everyone signed in can READ; only admins act (enforced in the actions).
+ * EVERY page load re-scans (refreshDateMoves: detect + auto-resolve fixed items +
+ * send Date Change Alerts for new ones), so the list is always current without
+ * pressing anything. A re-scan failure never blocks the page — it's captured to
+ * Sentry and flagged in a banner. Everyone signed in can READ; only admins act
+ * (enforced in the actions).
  */
-import Link from "next/link";
+import * as Sentry from "@sentry/nextjs";
 import { requireQtekUser } from "@/lib/auth";
-import { listDateMoves, type DateMoveRow } from "@/lib/dal/date-moves";
+import { listDateMoves, refreshDateMoves, type DateMoveRow } from "@/lib/dal/date-moves";
 import { fmtUsd } from "@/lib/format";
 import { ApproveMoveButton, UnapproveMoveButton, RefreshQueueButton } from "./DateMoveControls";
+
+export const dynamic = "force-dynamic"; // the load-time re-scan must run every visit
 
 function MoveCard({ m, isAdmin }: { m: DateMoveRow; isAdmin: boolean }) {
   const ro = m.roNumber ?? String(m.tekmetricRoId);
@@ -47,6 +53,15 @@ function MoveCard({ m, isAdmin }: { m: DateMoveRow; isAdmin: boolean }) {
 export default async function PostingQueuePage() {
   const { email, role, shopId } = await requireQtekUser();
   const isAdmin = role === "admin";
+
+  // Re-scan on every load so fixed items clear themselves. Never block the page on it.
+  let rescanFailed = false;
+  try {
+    await refreshDateMoves(shopId);
+  } catch (e) {
+    rescanFailed = true;
+    Sentry.captureException(e, { tags: { qteklink_page: "postings", shop_id: String(shopId) } });
+  }
   const { realmId, open, recentlyResolved } = await listDateMoves(shopId);
 
   return (
@@ -54,10 +69,7 @@ export default async function PostingQueuePage() {
       <header className="flex items-center justify-between border-b border-stone-200 pb-4">
         <div>
           <h1 className="text-2xl font-bold text-[#96003C]">Posting queue</h1>
-          <p className="text-sm text-stone-600">
-            Repair orders that moved to a different day &middot;{" "}
-            <Link href="/dashboard" className="text-[#96003C] underline">back to home</Link>
-          </p>
+          <p className="text-sm text-stone-600">Repair orders that moved to a different day</p>
         </div>
         <div className="text-right">
           <p className="text-sm font-medium text-stone-900">{email}</p>
@@ -65,19 +77,30 @@ export default async function PostingQueuePage() {
         </div>
       </header>
 
+      {rescanFailed && (
+        <section className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
+          <p className="text-sm text-amber-800">
+            The automatic re-check didn&apos;t finish, so this list may be slightly out of date.
+            Press <span className="font-medium">Check again</span> or reload the page.
+          </p>
+        </section>
+      )}
+
       <section className="mt-6 rounded-lg border border-stone-200 bg-stone-50 p-5 text-sm text-stone-700">
         <h2 className="font-semibold text-stone-900">What this page is for</h2>
         <p className="mt-1">
           An item shows up here when a repair order was <span className="font-medium">unposted in
           Tekmetric and posted again on a different day</span>, but the original day&apos;s journal
-          entry is already in QuickBooks. Nothing changes in QuickBooks until you decide.
+          entry is already in QuickBooks. Nothing changes in QuickBooks until you decide. The list
+          re-checks itself every time this page opens.
         </p>
         <p className="mt-2 font-medium text-stone-900">For each item, do ONE of these:</p>
         <ul className="mt-1 list-disc pl-5 space-y-1">
           <li>
             <span className="font-medium">Usually:</span> ask the service advisor to re-post the
-            repair order on the <span className="font-medium">original day</span> in Tekmetric, then
-            press <span className="font-medium">Check again</span> — the item clears itself.
+            repair order on the <span className="font-medium">original day</span> in Tekmetric. The
+            item clears itself the next time this page opens (or press{" "}
+            <span className="font-medium">Check again</span>).
           </li>
           <li>
             <span className="font-medium">Only if the new date is really correct:</span> press{" "}

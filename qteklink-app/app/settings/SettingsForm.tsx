@@ -1,9 +1,11 @@
 "use client";
 
 /**
- * SettingsForm (admin-only) — edit posting + tax config and the notification
- * recipients via updateSettingsAction. auto_post is a sensitive gate (it bypasses
- * the approval step); the action enforces admin. router.refresh() on save.
+ * SettingsForm (admin-only) — edit posting + tax config and the alert-email
+ * recipients via updateSettingsAction. Recipients are configured PER NAMED EMAIL
+ * (Date Change Alert / Day Correction Alert), each accepting multiple
+ * comma-separated addresses. auto_post is a sensitive gate (it bypasses the
+ * approval step); the action enforces admin. router.refresh() on save.
  */
 import { useActionState, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -24,21 +26,41 @@ export default function SettingsForm({ settings }: { settings: ShopSettings }) {
   return (
     <form action={action} className="space-y-6">
       <section className="rounded-lg border border-stone-200 bg-white p-6">
-        <h2 className="text-lg font-semibold text-stone-900">Who gets notified</h2>
+        <h2 className="text-lg font-semibold text-stone-900">Email alerts</h2>
         <p className="mt-1 text-sm text-stone-600">
-          When a day that&apos;s already in QuickBooks changes, the office manager gets an email
-          explaining what changed. If a repair order moves to a different day, the service
-          advisors are emailed too.
+          QTekLink sends two kinds of alert emails. Choose who gets each one — every box
+          accepts several addresses, separated by commas.
         </p>
-        <div className="mt-4 space-y-3">
-          <label className={labelCls}>Office manager email
-            <input name="office_manager_email" type="email" placeholder="office@yourshop.com"
-              defaultValue={settings.officeManagerEmail ?? ""} className={inputCls} />
-          </label>
-          <label className={labelCls}>Service advisor emails (separate with commas)
-            <input name="advisor_emails" placeholder="advisor1@yourshop.com, advisor2@yourshop.com"
-              defaultValue={settings.advisorEmails.join(", ")} className={inputCls} />
-          </label>
+
+        <div className="mt-4 space-y-5">
+          <div>
+            <p className="text-sm font-semibold text-stone-900">Date Change Alert</p>
+            <p className="text-sm text-stone-600">
+              Sent when a repair order that&apos;s already in QuickBooks is re-posted in
+              Tekmetric on a <span className="font-medium">different day</span>. These people
+              should watch the Posting queue (usually the office manager and the service
+              advisors).
+            </p>
+            <label className={`${labelCls} mt-2`}>Send the Date Change Alert to
+              <input name="date_change_alert_emails"
+                placeholder="office@yourshop.com, advisor1@yourshop.com, advisor2@yourshop.com"
+                defaultValue={settings.dateChangeAlertEmails.join(", ")} className={inputCls} />
+            </label>
+          </div>
+
+          <div>
+            <p className="text-sm font-semibold text-stone-900">Day Correction Alert</p>
+            <p className="text-sm text-stone-600">
+              Sent when a day that was already posted to QuickBooks changes and QTekLink
+              updates the journal entry — so someone double-checks the entry (usually the
+              office manager).
+            </p>
+            <label className={`${labelCls} mt-2`}>Send the Day Correction Alert to
+              <input name="day_correction_alert_emails"
+                placeholder="office@yourshop.com, bookkeeper@yourshop.com"
+                defaultValue={settings.dayCorrectionAlertEmails.join(", ")} className={inputCls} />
+            </label>
+          </div>
         </div>
       </section>
 

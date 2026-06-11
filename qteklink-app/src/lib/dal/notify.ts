@@ -3,11 +3,11 @@
  * `qteklink-email` edge function (which holds the project's Resend credential;
  * this app authenticates to it with the service-role key, server-to-server).
  *
- * Recipients come from qteklink_settings (the /settings page): the OFFICE MANAGER
- * gets every "a posted day changed" alert; SERVICE ADVISORS are added when a
- * repair order moves to a different day (Chris's spec). When no recipient is
- * configured the send is SKIPPED but never silently: a structured log + a Sentry
- * warning fire so the gap is visible.
+ * Recipients come from qteklink_settings (the /settings page), configured PER
+ * NAMED EMAIL (Chris's spec): the DATE CHANGE ALERT list and the DAY CORRECTION
+ * ALERT list — each a comma-separated set of addresses. When a list is empty the
+ * send is SKIPPED but never silently: a structured log + a Sentry warning fire so
+ * the gap is visible.
  *
  * A failed send NEVER throws into the caller's money path — corrections must not
  * roll back because an email bounced. Failures are captured to Sentry.

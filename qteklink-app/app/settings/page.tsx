@@ -1,9 +1,9 @@
 /**
- * /settings — shop configuration: notification recipients (office manager + service
- * advisors), tax/timezone, and the nightly auto-post switch. Everyone signed in can
- * READ; only admins can save (enforced in the action).
+ * /settings — shop configuration: who receives each named alert email (Date Change
+ * Alert / Day Correction Alert — comma-separated lists), tax/timezone, and the
+ * nightly auto-post switch. Everyone signed in can READ; only admins can save
+ * (enforced in the action).
  */
-import Link from "next/link";
 import { requireQtekUser } from "@/lib/auth";
 import { getShopSettings } from "@/lib/dal/settings";
 import SettingsForm from "./SettingsForm";
@@ -17,10 +17,7 @@ export default async function SettingsPage() {
       <header className="flex items-center justify-between border-b border-stone-200 pb-4">
         <div>
           <h1 className="text-2xl font-bold text-[#96003C]">Settings</h1>
-          <p className="text-sm text-stone-600">
-            Who gets emails, tax rates, and posting options &middot;{" "}
-            <Link href="/dashboard" className="text-[#96003C] underline">back to home</Link>
-          </p>
+          <p className="text-sm text-stone-600">Who gets each alert email, tax rates, and posting options</p>
         </div>
         <div className="text-right">
           <p className="text-sm font-medium text-stone-900">{email}</p>
@@ -40,8 +37,8 @@ export default async function SettingsPage() {
             Settings can only be changed by an admin. You can see the current values below.
           </p>
           <dl className="mt-4 space-y-1 text-sm text-stone-800">
-            <div><dt className="inline font-medium">Office manager email:</dt> <dd className="inline">{settings.officeManagerEmail ?? "not set"}</dd></div>
-            <div><dt className="inline font-medium">Service advisor emails:</dt> <dd className="inline">{settings.advisorEmails.join(", ") || "not set"}</dd></div>
+            <div><dt className="inline font-medium">Date Change Alert goes to:</dt> <dd className="inline">{settings.dateChangeAlertEmails.join(", ") || "not set"}</dd></div>
+            <div><dt className="inline font-medium">Day Correction Alert goes to:</dt> <dd className="inline">{settings.dayCorrectionAlertEmails.join(", ") || "not set"}</dd></div>
             <div><dt className="inline font-medium">Auto-post:</dt> <dd className="inline">{settings.autoPost ? "on" : "off"}</dd></div>
           </dl>
         </section>

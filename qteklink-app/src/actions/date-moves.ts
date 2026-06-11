@@ -18,9 +18,7 @@
 import { z } from "zod";
 import { requireQtekUser } from "@/lib/auth";
 import { wrapQtekAction } from "@/lib/instrument-action";
-import { resolveRealmForShop } from "@/lib/dal/realm";
-import { getShopSettings } from "@/lib/dal/settings";
-import { approveDateMove, unapproveDateMove, detectDateMoves, notifyDateMoves, listDateMoves } from "@/lib/dal/date-moves";
+import { approveDateMove, unapproveDateMove, refreshDateMoves, listDateMoves } from "@/lib/dal/date-moves";
 import { runDailyReconciliation } from "@/lib/dal/daily-reconcile";
 import { applyDayCorrections } from "@/lib/dal/posted-day-sweep";
 import { qboFailure, type QboActionResult } from "./qbo/result";
@@ -102,13 +100,10 @@ async function refreshDateMovesImpl(_prev: RefreshState | null, _formData: FormD
   try {
     const { shopId, role } = await requireQtekUser();
     if (role !== "admin") return adminRequired();
-    const realmId = await resolveRealmForShop(shopId);
-    if (!realmId) {
+    const detect = await refreshDateMoves(shopId);
+    if (!detect) {
       return { ok: false, reason: "reconnect_required", message: "QuickBooks isn't connected for this shop.", timestamp: Date.now() };
     }
-    const { settings } = await getShopSettings(shopId);
-    const detect = await detectDateMoves(shopId, realmId, settings.shopTimezone);
-    await notifyDateMoves(shopId, detect.newOrChangedMoves);
     return { ok: true, data: { detected: detect.newOrChangedMoves.length, cleared: detect.autoResolved }, timestamp: Date.now() };
   } catch (e) {
     return qboFailure(e);

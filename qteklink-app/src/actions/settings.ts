@@ -13,29 +13,26 @@ import { qboFailure, type QboActionResult } from "./qbo/result";
 
 const emailRx = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/** A comma-separated recipient list: "" clears it; every non-blank entry must be a real address. */
+const emailListField = (which: string) =>
+  z
+    .string()
+    .trim()
+    .max(1000)
+    .refine(
+      (v) => v.split(",").map((e) => e.trim()).filter(Boolean).every((e) => emailRx.test(e)),
+      `${which} recipients must be valid email addresses, separated by commas.`,
+    )
+    .optional();
+
 const SettingsSchema = z.object({
   autoPost: z.boolean().optional(),
   settleWindowMinutes: z.coerce.number().int().nonnegative().max(1440).optional(),
   shopTimezone: z.string().trim().min(1).max(64).optional(),
   salesTaxRateBps: z.coerce.number().int().nonnegative().max(10000).optional(), // ≤ 100%
   tireFeeCents: z.coerce.number().int().nonnegative().max(100000).optional(),
-  // "" clears the recipient; a non-empty value must be a real email address.
-  officeManagerEmail: z
-    .string()
-    .trim()
-    .max(200)
-    .refine((v) => v === "" || emailRx.test(v), "Enter a valid email address for the office manager.")
-    .optional(),
-  // comma-separated; every non-blank entry must be a real email address.
-  advisorEmails: z
-    .string()
-    .trim()
-    .max(1000)
-    .refine(
-      (v) => v.split(",").map((e) => e.trim()).filter(Boolean).every((e) => emailRx.test(e)),
-      "Service advisor emails must be valid addresses, separated by commas.",
-    )
-    .optional(),
+  dateChangeAlertEmails: emailListField("Date Change Alert"),
+  dayCorrectionAlertEmails: emailListField("Day Correction Alert"),
 });
 
 function adminRequired(): { ok: false; reason: "validation"; message: string; timestamp: number } {
@@ -59,19 +56,19 @@ async function updateSettingsImpl(
       shopTimezone: formData.get("shop_timezone") || undefined,
       salesTaxRateBps: formData.get("sales_tax_rate_bps") || undefined,
       tireFeeCents: formData.get("tire_fee_cents") || undefined,
-      // the form always carries these fields → "" means "clear the recipient".
-      officeManagerEmail: formData.get("office_manager_email") == null ? undefined : String(formData.get("office_manager_email")),
-      advisorEmails: formData.get("advisor_emails") == null ? undefined : String(formData.get("advisor_emails")),
+      // the form always carries these fields → "" means "clear the list".
+      dateChangeAlertEmails: formData.get("date_change_alert_emails") == null ? undefined : String(formData.get("date_change_alert_emails")),
+      dayCorrectionAlertEmails: formData.get("day_correction_alert_emails") == null ? undefined : String(formData.get("day_correction_alert_emails")),
     });
     if (!parsed.success) {
       return { ok: false, reason: "validation", message: parsed.error.issues[0]?.message ?? "Invalid settings.", timestamp: Date.now() };
     }
+    const toList = (v: string | undefined) =>
+      v === undefined ? undefined : v.split(",").map((e) => e.trim()).filter(Boolean);
     await upsertShopSettings(shopId, {
       ...parsed.data,
-      officeManagerEmail: parsed.data.officeManagerEmail === undefined ? undefined : parsed.data.officeManagerEmail || null,
-      advisorEmails: parsed.data.advisorEmails === undefined
-        ? undefined
-        : parsed.data.advisorEmails.split(",").map((e) => e.trim()).filter(Boolean),
+      dateChangeAlertEmails: toList(parsed.data.dateChangeAlertEmails),
+      dayCorrectionAlertEmails: toList(parsed.data.dayCorrectionAlertEmails),
     });
     return { ok: true, data: { saved: true }, timestamp: Date.now() };
   } catch (e) {

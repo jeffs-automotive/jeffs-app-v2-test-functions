@@ -45,28 +45,6 @@ export default async function DashboardPage() {
         </div>
       </header>
 
-      {/* The read pages are ALL-ROLES surfaces (mutations are admin-gated in the
-          actions) — only the QuickBooks connect flow is admin-only. */}
-      <nav className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
-        <Link href="/approvals" className="font-medium text-[#96003C] hover:underline">
-          Daily approvals
-        </Link>
-        <Link href="/postings" className="font-medium text-[#96003C] hover:underline">
-          Posting queue
-        </Link>
-        <Link href="/mappings" className="font-medium text-[#96003C] hover:underline">
-          Account mappings
-        </Link>
-        <Link href="/settings" className="font-medium text-[#96003C] hover:underline">
-          Settings
-        </Link>
-        {role === "admin" && (
-          <a href="/qbo/connect" className="font-medium text-[#96003C] hover:underline">
-            {connected ? "Reconnect QuickBooks" : "Connect QuickBooks"}
-          </a>
-        )}
-      </nav>
-
       {role === "admin" && (
         <section className="mt-8 rounded-lg border border-stone-200 bg-white p-6">
           <h2 className="text-lg font-semibold text-stone-900">Chart of accounts</h2>
@@ -77,10 +55,13 @@ export default async function DashboardPage() {
           </p>
           <p className="mt-2 mb-4 text-sm font-medium text-stone-900">{coaStatus}</p>
           <RefreshCoaButton />
-          <p className="mt-4 text-sm">
+          <p className="mt-4 flex flex-wrap gap-x-5 gap-y-1 text-sm">
             <Link href="/mappings" className="font-medium text-[#96003C] underline">
               Manage account mappings &rarr;
             </Link>
+            <a href="/qbo/connect" className="font-medium text-[#96003C] underline">
+              {connected ? "Reconnect QuickBooks" : "Connect QuickBooks"}
+            </a>
           </p>
           {connected && (
             <div className="mt-4 border-t border-stone-100 pt-4">

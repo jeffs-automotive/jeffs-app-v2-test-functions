@@ -76,13 +76,7 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
       <header className="flex items-center justify-between border-b border-stone-200 pb-4">
         <div>
           <h1 className="text-2xl font-bold text-[#96003C]">Daily approvals</h1>
-          <p className="text-sm text-stone-600">
-            <Link href="/dashboard" className="text-[#96003C] underline">home</Link>
-            {" · "}
-            <Link href={`/approvals/review?date=${date}`} className="text-[#96003C] underline">fix-it list</Link>
-            {" · "}
-            <Link href="/postings" className="text-[#96003C] underline">posting queue</Link>
-          </p>
+          <p className="text-sm text-stone-600">Check a day&apos;s numbers, then post the whole day to QuickBooks</p>
         </div>
         <div className="text-right">
           <p className="text-sm font-medium text-stone-900">{email}</p>
@@ -91,11 +85,11 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
       </header>
 
       <section className="mt-4 rounded-lg border border-stone-200 bg-stone-50 p-4 text-sm text-stone-700">
-        Each day, check the numbers below, open the breakdown if you want the detail, then press{" "}
-        <span className="font-medium">Approve + post</span> to send the day to QuickBooks (up to 3
-        journal entries: sales, payments, card fees). Anything in{" "}
-        <span className="font-medium text-amber-700">Needs attention</span> is blocked until you fix
-        it on the fix-it list — everything else still posts.
+        Each day, check the numbers below (open the breakdown if you want the detail), then press{" "}
+        <span className="font-medium">Approve + post this day</span> — one button sends the whole
+        day to QuickBooks at once (up to 3 journal entries: sales, payments, card fees). If anything
+        shows in <span className="font-medium text-amber-700">Needs attention</span>, fix it on the
+        fix-it list first; the button stays locked until the day is clean.
       </section>
 
       <DateNav date={date} />
@@ -157,7 +151,9 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
             </Link>
           </div>
 
-          {role === "admin" && !isAcknowledged && <ApproveDayControls date={date} />}
+          {role === "admin" && !isAcknowledged && (
+            <ApproveDayControls date={date} blockedCount={snapshot.needsAttentionCount} />
+          )}
           {role === "admin" && !isAcknowledged && !hasPosted && (
             <div className="mt-4 rounded-lg border border-stone-200 bg-white p-5">
               <p className="text-sm text-stone-600">

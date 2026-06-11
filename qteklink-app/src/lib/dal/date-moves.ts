@@ -6,7 +6,7 @@
  * Lifecycle (qteklink_ro_date_moves):
  *   pending  — detected; BOTH days are HELD (the original day keeps the RO pinned to
  *              its original-day snapshot, the new day excludes it) until a human
- *              decides. The office manager + service advisors are emailed.
+ *              decides. The DATE CHANGE ALERT recipients are emailed.
  *   approved — the office manager accepted the new date: the holds lift and the
  *              correction sweep moves the RO between the two days' JEs.
  *   resolved — the RO was re-posted BACK to its original day in Tekmetric (the
@@ -14,10 +14,11 @@
  *   approved → pending via UNAPPROVE (accidental approval) — the holds re-engage and
  *              the sweep flips the JEs back.
  *
- * DETECTION (`detectDateMoves`) runs in the nightly sweep + on demand (the queue's
- * Refresh): for every RO inside a POSTED daily sales JE, look at the RO's newest
- * posting event — if its business day differs from the JE's day, upsert a move
- * (pending) and notify; if it matches again, auto-RESOLVE any open move.
+ * DETECTION (`detectDateMoves`) runs in the nightly sweep + on demand (every
+ * Posting-queue page load and its "Check again" button — `refreshDateMoves`): for
+ * every RO inside a POSTED daily sales JE, look at the RO's newest posting event —
+ * if its business day differs from the JE's day, upsert a move (pending) and
+ * notify; if it matches again, auto-RESOLVE any open move.
  *
  * MULTI-TENANT: shopId server-derived; realmId from the bound connection; every
  * query scopes shop_id + realm_id. No silent failures: DB errors throw.
@@ -276,11 +277,11 @@ export async function detectDateMoves(shopId: number, realmId: string, tz: strin
   return { scannedRos: roToDay.size, newOrChangedMoves, autoResolved };
 }
 
-/** Email the office manager + service advisors about new/changed date moves. */
+/** Send the DATE CHANGE ALERT (recipients from /settings) for new/changed moves. */
 export async function notifyDateMoves(shopId: number, moves: DateMoveRow[]): Promise<void> {
   if (moves.length === 0) return;
   const { settings } = await getShopSettings(shopId);
-  const to = [settings.officeManagerEmail, ...settings.advisorEmails].filter((e): e is string => Boolean(e));
+  const to = settings.dateChangeAlertEmails;
   for (const m of moves) {
     const ro = m.roNumber ?? String(m.tekmetricRoId);
     const lines = [
@@ -296,14 +297,28 @@ export async function notifyDateMoves(shopId: number, moves: DateMoveRow[]): Pro
       `  - APPROVE the date change (QTekLink will move the repair order between the two`,
       `    days' journal entries), or`,
       `  - have a service advisor re-post the repair order on the ORIGINAL day in`,
-      `    Tekmetric, then press "Check again" on the queue — it clears itself.`,
+      `    Tekmetric — the queue clears the item on its own the next time it checks.`,
     );
     await sendQteklinkEmail({
       to,
-      subject: `QTekLink: RO ${ro} moved from ${m.originalBusinessDate} to ${m.newBusinessDate}`,
+      subject: `QTekLink Date Change Alert: RO ${ro} moved from ${m.originalBusinessDate} to ${m.newBusinessDate}`,
       text: lines.join("\n"),
     });
   }
+}
+
+/**
+ * One-shot re-scan: detect (+ auto-resolve fixed items) and send the Date Change
+ * Alerts for anything new. Runs on EVERY Posting-queue page load and behind its
+ * "Check again" button. Returns null when QuickBooks isn't connected.
+ */
+export async function refreshDateMoves(shopId: number): Promise<DetectResult | null> {
+  const realmId = await resolveRealmForShop(shopId);
+  if (!realmId) return null;
+  const { settings } = await getShopSettings(shopId);
+  const detect = await detectDateMoves(shopId, realmId, settings.shopTimezone);
+  await notifyDateMoves(shopId, detect.newOrChangedMoves);
+  return detect;
 }
 
 // ─── Queue actions ────────────────────────────────────────────────────────────

@@ -1,7 +1,8 @@
 /**
  * Unit tests for the date-move queue DAL — detection (moved / back-on-day / unposted),
- * the upsert-changed → notify contract, and the notification recipients. Supabase
- * admin mocked (rpc by name, `from` by queued result sets); notify + settings mocked.
+ * the upsert-changed → notify contract, the Date Change Alert recipients, and the
+ * page-load `refreshDateMoves` wrapper. Supabase admin mocked (rpc by name, `from`
+ * by queued result sets); notify + settings mocked.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -27,7 +28,7 @@ vi.mock("@/lib/supabase/admin", () => ({
 vi.mock("@/lib/dal/notify", () => ({ sendQteklinkEmail: (...a: unknown[]) => sendMock(...a) }));
 vi.mock("@/lib/dal/settings", () => ({ getShopSettings: (...a: unknown[]) => settingsMock(...a) }));
 
-import { detectDateMoves, notifyDateMoves, type DateMoveRow } from "../date-moves";
+import { detectDateMoves, notifyDateMoves, refreshDateMoves, type DateMoveRow } from "../date-moves";
 
 const REALM = "9341455608740708";
 const TZ = "America/New_York";
@@ -46,13 +47,18 @@ beforeEach(() => {
   vi.clearAllMocks();
   fromResults.length = 0;
   rpcMock.mockImplementation((fn: string) => {
+    if (fn === "qbo_resolve_realm_for_shop") return Promise.resolve({ data: REALM, error: null });
     if (fn === "qteklink_upsert_date_move") return Promise.resolve({ data: [{ id: "mv-1", changed: true }], error: null });
     if (fn === "qteklink_resolve_date_move") return Promise.resolve({ data: true, error: null });
     return Promise.resolve({ data: null, error: null });
   });
   settingsMock.mockResolvedValue({
     realmId: REALM,
-    settings: { officeManagerEmail: "om@shop.com", advisorEmails: ["sa1@shop.com", "sa2@shop.com"], shopTimezone: TZ },
+    settings: {
+      dateChangeAlertEmails: ["om@shop.com", "sa1@shop.com", "sa2@shop.com"],
+      dayCorrectionAlertEmails: ["om@shop.com"],
+      shopTimezone: TZ,
+    },
   });
 });
 
@@ -120,11 +126,12 @@ describe("notifyDateMoves", () => {
     detectedAt: "2026-06-10T01:00:00Z", approvedBy: null, approvedAt: null, resolvedAt: null,
   };
 
-  it("emails the office manager AND the service advisors with RO#, original date, new date", async () => {
+  it("emails the Date Change Alert list with RO#, original date, new date", async () => {
     await notifyDateMoves(7476, [move]);
     expect(sendMock).toHaveBeenCalledTimes(1);
     const arg = sendMock.mock.calls[0]![0] as { to: string[]; subject: string; text: string };
     expect(arg.to).toEqual(["om@shop.com", "sa1@shop.com", "sa2@shop.com"]);
+    expect(arg.subject).toContain("Date Change Alert");
     expect(arg.subject).toContain("RO 152419");
     expect(arg.subject).toContain("2026-06-08");
     expect(arg.subject).toContain("2026-06-09");
@@ -134,6 +141,23 @@ describe("notifyDateMoves", () => {
 
   it("no moves → no email", async () => {
     await notifyDateMoves(7476, []);
+    expect(sendMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("refreshDateMoves (the page-load / Check-again path)", () => {
+  it("resolves the realm, detects, and sends the Date Change Alert in one call", async () => {
+    fromResults.push([postedSales("2026-06-08", [101])]); // posted sales days
+    fromResults.push([ev(101, "ro_posted", "2026-06-09T18:00:00Z")]); // moved to June 9
+    fromResults.push([]); // open moves
+    const r = await refreshDateMoves(7476);
+    expect(r?.newOrChangedMoves).toHaveLength(1);
+    expect(sendMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns null (no scan, no email) when QuickBooks isn't connected", async () => {
+    rpcMock.mockImplementation(() => Promise.resolve({ data: null, error: null })); // realm resolves null
+    expect(await refreshDateMoves(7476)).toBeNull();
     expect(sendMock).not.toHaveBeenCalled();
   });
 });

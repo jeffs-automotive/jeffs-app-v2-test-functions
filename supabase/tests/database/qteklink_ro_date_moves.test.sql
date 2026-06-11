@@ -71,15 +71,17 @@ SELECT is((SELECT status FROM public.qteklink_daily_postings WHERE shop_id=42424
 SELECT is(public.qteklink_acknowledge_daily_posting(424243,'pgtap-realm-B',
   (SELECT id FROM public.qteklink_daily_postings WHERE shop_id=424243 AND business_date='2026-06-01' AND category='sales'), 'chris@x.com'), false, 'acknowledge is pending-only (terminal)');
 
--- ─── Settings: the 9-param upsert sets + clears recipients ────────────────
-SELECT public.qteklink_upsert_settings(424243,'pgtap-realm-B', NULL, NULL, NULL, NULL, NULL, 'om@shop.com', 'a@shop.com, b@shop.com') AS _;
-SELECT is((SELECT office_manager_email FROM public.qteklink_settings WHERE shop_id=424243), 'om@shop.com', 'office manager email set');
-SELECT is((SELECT advisor_emails FROM public.qteklink_settings WHERE shop_id=424243), 'a@shop.com, b@shop.com', 'advisor emails set');
+-- ─── Settings: the 9-param upsert sets + clears the NAMED alert lists ─────
+-- (20260611090000: date_change_alert_emails / day_correction_alert_emails — both
+-- comma-separated multi-recipient lists; NULL = unchanged, '' = clear.)
+SELECT public.qteklink_upsert_settings(424243,'pgtap-realm-B', NULL, NULL, NULL, NULL, NULL, 'om@shop.com, sa@shop.com', 'om@shop.com, books@shop.com') AS _;
+SELECT is((SELECT date_change_alert_emails FROM public.qteklink_settings WHERE shop_id=424243), 'om@shop.com, sa@shop.com', 'Date Change Alert list set (comma-separated)');
+SELECT is((SELECT day_correction_alert_emails FROM public.qteklink_settings WHERE shop_id=424243), 'om@shop.com, books@shop.com', 'Day Correction Alert list set (comma-separated)');
 -- NULL leaves unchanged; '' clears
 SELECT public.qteklink_upsert_settings(424243,'pgtap-realm-B', true, NULL, NULL, NULL, NULL, NULL, NULL) AS _;
-SELECT is((SELECT office_manager_email FROM public.qteklink_settings WHERE shop_id=424243), 'om@shop.com', 'NULL recipient param leaves value unchanged');
+SELECT is((SELECT date_change_alert_emails FROM public.qteklink_settings WHERE shop_id=424243), 'om@shop.com, sa@shop.com', 'NULL list param leaves the list unchanged');
 SELECT public.qteklink_upsert_settings(424243,'pgtap-realm-B', NULL, NULL, NULL, NULL, NULL, '', '') AS _;
-SELECT is((SELECT office_manager_email FROM public.qteklink_settings WHERE shop_id=424243), NULL, 'empty string clears the recipient');
+SELECT is((SELECT date_change_alert_emails FROM public.qteklink_settings WHERE shop_id=424243), NULL, 'empty string clears the list');
 
 -- ─── SECURITY: anon denied ────────────────────────────────────────────────
 SET ROLE anon;

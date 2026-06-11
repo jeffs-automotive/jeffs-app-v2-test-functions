@@ -7,7 +7,6 @@
  * gate; this page resolves account names for display + flags any mapping whose
  * account has since been removed from QBO.
  */
-import Link from "next/link";
 import { requireQtekUser } from "@/lib/auth";
 import { listMappings, listMappableAccounts, type MappingRow } from "@/lib/dal/mappings";
 import { listTekmetricItems } from "@/lib/dal/tekmetric-items";
@@ -45,12 +44,7 @@ export default async function MappingsPage() {
       <header className="flex items-center justify-between border-b border-stone-200 pb-4">
         <div>
           <h1 className="text-2xl font-bold text-[#96003C]">Account mappings</h1>
-          <p className="text-sm text-stone-600">
-            Tekmetric &rarr; QuickBooks &middot;{" "}
-            <Link href="/dashboard" className="text-[#96003C] underline">
-              back to home
-            </Link>
-          </p>
+          <p className="text-sm text-stone-600">Which QuickBooks account each Tekmetric item posts to</p>
         </div>
         <div className="text-right">
           <p className="text-sm font-medium text-stone-900">{email}</p>

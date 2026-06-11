@@ -65,7 +65,7 @@ beforeEach(() => {
   realmMock.mockResolvedValue(REALM);
   settingsMock.mockResolvedValue({
     realmId: REALM,
-    settings: { officeManagerEmail: "om@shop.com", advisorEmails: [], shopTimezone: "America/New_York" },
+    settings: { dayCorrectionAlertEmails: ["om@shop.com"], dateChangeAlertEmails: [], shopTimezone: "America/New_York" },
   });
   approveDailyMock.mockResolvedValue({ approved: true });
   postDailyMock.mockResolvedValue({ status: "posted", postingId: "dp-x", qboJeId: "QBO-9", action: "update" });
@@ -78,6 +78,7 @@ describe("describeCorrection", () => {
     const prior = row({ status: "posted", postingVersion: 1, totalCents: 100000, constituents: { roIds: [101, 102], paymentIds: [] } });
     const next = row({ status: "pending", postingVersion: 2, action: "update", totalCents: 80000, constituents: { roIds: [101, 103], paymentIds: [] } });
     const { subject, text } = describeCorrection(prior, next);
+    expect(subject).toContain("Day Correction Alert");
     expect(subject).toContain(`QTL-RO-${DATE}`);
     expect(text).toContain("Journal entry: QTL-RO-2026-06-08");
     expect(text).toContain("New total:     $800.00 (was $1,000.00)");

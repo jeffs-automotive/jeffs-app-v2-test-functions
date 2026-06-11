@@ -19,11 +19,13 @@ export interface ShopSettings {
   shopTimezone: string;
   salesTaxRateBps: number;
   tireFeeCents: number;
-  /** Who gets "a posted day changed" emails. Null = notifications not configured. */
-  officeManagerEmail: string | null;
-  /** Service advisors — also alerted when an RO moves to a different day.
+  /** DATE CHANGE ALERT recipients — sent when a repair order on an already-posted
+   *  day is re-posted in Tekmetric on a different day (the posting-queue email).
    *  Comma-separated in the DB; exposed as a clean array. */
-  advisorEmails: string[];
+  dateChangeAlertEmails: string[];
+  /** DAY CORRECTION ALERT recipients — sent when a day already posted to QuickBooks
+   *  changed and QTekLink updated the journal entry. Comma-separated in the DB. */
+  dayCorrectionAlertEmails: string[];
 }
 
 /** The built-in defaults (Jeff's / PA) used until a shop configures its own row. */
@@ -33,8 +35,8 @@ export const DEFAULT_SHOP_SETTINGS: ShopSettings = {
   shopTimezone: "America/New_York",
   salesTaxRateBps: 600,
   tireFeeCents: 100,
-  officeManagerEmail: null,
-  advisorEmails: [],
+  dateChangeAlertEmails: [],
+  dayCorrectionAlertEmails: [],
 };
 
 interface SettingsDbRow {
@@ -43,8 +45,8 @@ interface SettingsDbRow {
   shop_timezone: string;
   sales_tax_rate_bps: number | string;
   tire_fee_cents: number | string;
-  office_manager_email: string | null;
-  advisor_emails: string | null;
+  date_change_alert_emails: string | null;
+  day_correction_alert_emails: string | null;
 }
 
 /** "a@x.com, b@x.com" → ["a@x.com","b@x.com"] (trimmed, de-blanked). */
@@ -74,7 +76,7 @@ export async function getShopSettings(
   const admin = createSupabaseAdminClient();
   const { data, error } = await admin
     .from("qteklink_settings")
-    .select("auto_post, settle_window_minutes, shop_timezone, sales_tax_rate_bps, tire_fee_cents, office_manager_email, advisor_emails")
+    .select("auto_post, settle_window_minutes, shop_timezone, sales_tax_rate_bps, tire_fee_cents, date_change_alert_emails, day_correction_alert_emails")
     .eq("shop_id", shopId)
     .eq("realm_id", realmId)
     .limit(1);
@@ -90,8 +92,8 @@ export async function getShopSettings(
       shopTimezone: row.shop_timezone,
       salesTaxRateBps: safeInt(row.sales_tax_rate_bps, "sales_tax_rate_bps"),
       tireFeeCents: safeInt(row.tire_fee_cents, "tire_fee_cents"),
-      officeManagerEmail: row.office_manager_email,
-      advisorEmails: parseEmailList(row.advisor_emails),
+      dateChangeAlertEmails: parseEmailList(row.date_change_alert_emails),
+      dayCorrectionAlertEmails: parseEmailList(row.day_correction_alert_emails),
     },
   };
 }
@@ -118,9 +120,9 @@ export async function upsertShopSettings(
     p_shop_timezone: input.shopTimezone ?? null,
     p_sales_tax_rate_bps: input.salesTaxRateBps ?? null,
     p_tire_fee_cents: input.tireFeeCents ?? null,
-    // null = unchanged; an explicit "" clears the recipient (the RPC contract).
-    p_office_manager_email: input.officeManagerEmail === undefined ? null : input.officeManagerEmail ?? "",
-    p_advisor_emails: input.advisorEmails === undefined ? null : input.advisorEmails.join(", "),
+    // null = unchanged; an explicit "" (empty list) clears the list (the RPC contract).
+    p_date_change_alert_emails: input.dateChangeAlertEmails === undefined ? null : input.dateChangeAlertEmails.join(", "),
+    p_day_correction_alert_emails: input.dayCorrectionAlertEmails === undefined ? null : input.dayCorrectionAlertEmails.join(", "),
   });
   if (error) {
     if (error.code === "P0001") throw new QboClientError(error.message, { kind: "unknown" });
