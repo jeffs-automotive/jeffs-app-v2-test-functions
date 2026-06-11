@@ -94,7 +94,7 @@ describe("describeCorrection", () => {
 });
 
 describe("applyDayCorrections", () => {
-  it("auto-approves + posts a staged correction and emails the office manager the diff", async () => {
+  it("a change made on a LATER day: auto-approves + posts the correction and sends the Day Correction Alert", async () => {
     listDailyMock.mockResolvedValue({
       realmId: REALM,
       postings: [
@@ -102,6 +102,8 @@ describe("applyDayCorrections", () => {
         row({ id: "v2", status: "pending", postingVersion: 2, action: "update", totalCents: 80000, constituents: { roIds: [101], paymentIds: [] } }),
       ],
     });
+    // newest RO event: June 11 — days AFTER the June 8 business day → email.
+    fromResults.push([{ tekmetric_event_at: "2026-06-11T14:00:00Z", received_at: "2026-06-11T14:00:01Z" }]);
     const r = await applyDayCorrections(7476, DATE);
     expect(r).toEqual({ businessDate: DATE, correctionsPosted: 1, correctionsFailed: 0 });
     expect(approveDailyMock).toHaveBeenCalledWith(7476, "v2", "system (auto-correction)");
@@ -110,6 +112,36 @@ describe("applyDayCorrections", () => {
     const email = sendMock.mock.calls[0]![0] as { to: string[]; subject: string; text: string };
     expect(email.to).toEqual(["om@shop.com"]);
     expect(email.text).toContain("Removed repair orders: 102");
+  });
+
+  it("SAME-DAY Tekmetric churn (Chris's rule): the correction still posts but NO email goes out", async () => {
+    listDailyMock.mockResolvedValue({
+      realmId: REALM,
+      postings: [
+        row({ id: "v1", status: "posted", postingVersion: 1, totalCents: 100000, constituents: { roIds: [101], paymentIds: [] }, qboJeId: "QBO-1" }),
+        row({ id: "v2", status: "pending", postingVersion: 2, action: "update", totalCents: 110000, constituents: { roIds: [101], paymentIds: [] } }),
+      ],
+    });
+    // newest RO event: 21:00 UTC June 8 = 5 PM America/New_York on June 8 — the SAME
+    // shop-local day as the business date → same-day fix, post silently.
+    fromResults.push([{ tekmetric_event_at: "2026-06-08T21:00:00Z", received_at: "2026-06-08T21:00:01Z" }]);
+    const r = await applyDayCorrections(7476, DATE);
+    expect(r).toEqual({ businessDate: DATE, correctionsPosted: 1, correctionsFailed: 0 });
+    expect(postDailyMock).toHaveBeenCalledWith(7476, "v2", expect.anything());
+    expect(sendMock).not.toHaveBeenCalled();
+  });
+
+  it("event lookup finds nothing → fails OPEN (the alert still goes out)", async () => {
+    listDailyMock.mockResolvedValue({
+      realmId: REALM,
+      postings: [
+        row({ id: "v1", status: "posted", postingVersion: 1, qboJeId: "QBO-1", constituents: { roIds: [101], paymentIds: [] } }),
+        row({ id: "v2", status: "pending", postingVersion: 2, action: "update", constituents: { roIds: [101], paymentIds: [] } }),
+      ],
+    });
+    // no fromResults pushed → the events query returns [] → can't prove same-day → email.
+    await applyDayCorrections(7476, DATE);
+    expect(sendMock).toHaveBeenCalledTimes(1);
   });
 
   it("a FIRST-TIME (never posted) category is NOT auto-posted — human approval only", async () => {

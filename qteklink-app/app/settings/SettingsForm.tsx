@@ -51,9 +51,11 @@ export default function SettingsForm({ settings }: { settings: ShopSettings }) {
           <div>
             <p className="text-sm font-semibold text-stone-900">Day Correction Alert</p>
             <p className="text-sm text-stone-600">
-              Sent when a day that was already posted to QuickBooks changes and QTekLink
-              updates the journal entry — so someone double-checks the entry (usually the
-              office manager).
+              Sent when a day that was already posted to QuickBooks changes afterward — for
+              example, a repair order unposted and re-posted on the same date with a
+              different total — so someone double-checks the entry (usually the office
+              manager). Fixes made the <span className="font-medium">same day</span> the
+              repair order was posted in Tekmetric don&apos;t send an email.
             </p>
             <label className={`${labelCls} mt-2`}>Send the Day Correction Alert to
               <input name="day_correction_alert_emails"

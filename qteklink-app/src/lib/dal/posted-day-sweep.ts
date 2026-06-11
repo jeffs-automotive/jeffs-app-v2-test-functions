@@ -18,7 +18,11 @@
  *      human decision on the Daily approvals page.
  *   4. EMAIL the DAY CORRECTION ALERT recipients what changed: the journal entry
  *      title, which repair orders / payments were added or removed, and the
- *      old → new totals.
+ *      old → new totals. EXCEPTION (Chris's rule): when the change happened on the
+ *      SAME shop-local day the repair order was posted in Tekmetric (same-day
+ *      churn — an advisor fixing a mistake during the business day), the
+ *      correction still posts but NO email goes out; alerts are only for changes
+ *      made on a LATER day.
  *
  * Acknowledged days (approved without posting — Accounting Link's days) have no
  * posted rows, so the sweep never touches or emails about them.
@@ -40,6 +44,8 @@ import { detectDateMoves, notifyDateMoves } from "@/lib/dal/date-moves";
 import { sendQteklinkEmail } from "@/lib/dal/notify";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { fmtUsd } from "@/lib/format";
+import { toShopLocalDate } from "@/lib/sales/sale-builder";
+import { RO_SALE_SCAN_EVENT_KINDS } from "@/lib/events/kinds";
 
 export interface SweepDayResult {
   businessDate: string;
@@ -74,6 +80,36 @@ async function listPostedDays(shopId: number, realmId: string): Promise<string[]
 function describeIds(label: string, ids: (string | number)[]): string | null {
   if (ids.length === 0) return null;
   return `  ${label}: ${ids.join(", ")}`;
+}
+
+/**
+ * The shop-local DAY of the newest Tekmetric posting event among the given ROs —
+ * i.e. when this day's repair orders last changed in Tekmetric. Used to spot
+ * SAME-DAY churn (change-day == business day → no Day Correction Alert). Returns
+ * null when nothing is found (the caller fails OPEN and sends the alert).
+ */
+async function latestRoChangeDay(
+  shopId: number,
+  realmId: string,
+  roIds: number[],
+  tz: string,
+): Promise<string | null> {
+  if (roIds.length === 0) return null;
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin
+    .from("qteklink_events")
+    .select("tekmetric_event_at, received_at")
+    .eq("shop_id", shopId)
+    .eq("realm_id", realmId)
+    .in("event_kind", [...RO_SALE_SCAN_EVENT_KINDS])
+    .in("tekmetric_ro_id", roIds)
+    .order("tekmetric_event_at", { ascending: false, nullsFirst: false })
+    .order("received_at", { ascending: false })
+    .limit(1);
+  if (error) throw new Error(`latestRoChangeDay failed: ${error.message}`);
+  const r = (data ?? [])[0] as { tekmetric_event_at: string | null; received_at: string } | undefined;
+  if (!r) return null;
+  return toShopLocalDate(r.tekmetric_event_at ?? r.received_at, tz);
 }
 
 /** Plain-language "what changed" for one applied correction (prior posted vs new). */
@@ -116,7 +152,10 @@ export function describeCorrection(prior: DailyPostingRow, next: DailyPostingRow
 /**
  * Apply staged corrections for ONE day: every PENDING version whose category has a
  * posted prior gets approved (system) + posted, and the Day Correction Alert list
- * is emailed the diff. First-time (never-posted) categories are left for human
+ * is emailed the diff — UNLESS the change is same-day churn (the day's repair
+ * orders last changed in Tekmetric ON the business day itself: an advisor fixing a
+ * mistake during the day; Chris's rule — post quietly, alert only for changes made
+ * on a later day). First-time (never-posted) categories are left for human
  * approval.
  */
 export async function applyDayCorrections(
@@ -125,7 +164,7 @@ export async function applyDayCorrections(
   deps: { client?: QboDailyWriteClient } = {},
 ): Promise<SweepDayResult> {
   const { postings } = await listDailyPostingsForDay(shopId, businessDate);
-  const { settings } = await getShopSettings(shopId);
+  const { realmId, settings } = await getShopSettings(shopId);
   const correctionTo = settings.dayCorrectionAlertEmails;
 
   let posted = 0;
@@ -141,8 +180,30 @@ export async function applyDayCorrections(
       const outcome = await postDailyPostingById(shopId, pending.id, deps);
       if (outcome.status === "posted") {
         posted++;
-        const { subject, text } = describeCorrection(prior, pending);
-        await sendQteklinkEmail({ to: correctionTo, subject, text });
+        // Same-day churn check (sales only — the rule is about repair orders). A
+        // lookup failure fails OPEN: better a spurious alert than a silent one.
+        let sameDayChurn = false;
+        if (category === "sales" && realmId) {
+          try {
+            const roIds = [...new Set([...prior.constituents.roIds, ...pending.constituents.roIds])].map(Number);
+            sameDayChurn = (await latestRoChangeDay(shopId, realmId, roIds, settings.shopTimezone)) === businessDate;
+          } catch (e) {
+            Sentry.captureException(e, {
+              tags: { qteklink_cron: "posted-day-sweep", shop_id: String(shopId) },
+              extra: { businessDate, category, step: "same-day-churn-check (failing open: alert sent)" },
+            });
+          }
+        }
+        if (sameDayChurn) {
+          console.log(JSON.stringify({
+            level: "info", surface: "posted-day-sweep", shop_id: shopId,
+            msg: "correction posted; Day Correction Alert suppressed (same-day churn)",
+            business_date: businessDate, category, posting_id: pending.id,
+          }));
+        } else {
+          const { subject, text } = describeCorrection(prior, pending);
+          await sendQteklinkEmail({ to: correctionTo, subject, text });
+        }
       } else if (outcome.status === "stale_refreshed") {
         // the day moved again mid-flight — the next sweep pass picks it up.
       } else {
