@@ -1,16 +1,22 @@
 /**
  * /settings — shop configuration: who receives each named alert email (Date Change
- * Alert / Day Correction Alert — comma-separated lists), tax/timezone, and the
- * nightly auto-post switch. Everyone signed in can READ; only admins can save
- * (enforced in the action).
+ * Alert / Day Correction Alert — comma-separated lists), tax/timezone, the nightly
+ * auto-post switch, and (admin-only) WHO CAN SIGN IN — the Microsoft-account
+ * allowlist that gates the whole app. Everyone signed in can READ the config;
+ * only admins can save or manage access (enforced in the actions).
  */
 import { requireQtekUser } from "@/lib/auth";
 import { getShopSettings } from "@/lib/dal/settings";
+import { listAllowedUsers } from "@/lib/dal/allowed-users";
 import SettingsForm from "./SettingsForm";
+import AllowedUsersManager from "./AllowedUsersManager";
+
+export const dynamic = "force-dynamic"; // settings + the access list must always be current
 
 export default async function SettingsPage() {
   const { email, role, shopId } = await requireQtekUser();
   const { realmId, settings } = await getShopSettings(shopId);
+  const allowedUsers = role === "admin" ? await listAllowedUsers(shopId) : [];
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
@@ -45,6 +51,16 @@ export default async function SettingsPage() {
       ) : (
         <div className="mt-8">
           <SettingsForm settings={settings} />
+
+          <section className="mt-6 rounded-lg border border-stone-200 bg-white p-6">
+            <h2 className="text-lg font-semibold text-stone-900">Who can sign in</h2>
+            <p className="mt-1 text-sm text-stone-600">
+              QTekLink only lets in the Microsoft accounts on this list. Add someone&apos;s work
+              email to give them access; turn access off to lock them out. You can never turn off
+              the last admin — so you can&apos;t lock yourself out of the shop.
+            </p>
+            <AllowedUsersManager users={allowedUsers} selfEmail={email} />
+          </section>
         </div>
       )}
     </main>
