@@ -1,3 +1,5 @@
+> **SUPERSEDED 2026-06-12 (audit):** The "/postings = READ-ONLY legacy ledger" status below is stale — `/postings` is now the **date-move queue** (repair orders re-posted to a different day); the legacy per-RO `listPostings` ledger read was deleted. And the Summary tab no longer NETS sales-minus-payments into one table: it previews **each journal entry separately** via `summary.jes` (sales / payments / fees, each balanced on its own). The `netByAccount` / netted-Summary sections below are obsolete.
+
 > **STATUS 2026-06-10:** SHIPPED, then partially SUPERSEDED by the daily-JE rework (docs/qteklink/daily-je-rework-plan.md): /postings is now a READ-ONLY legacy ledger (per-posting approve/retry controls removed — posting is bulk-per-day, up to 3 daily category JEs), and qteklink_ro_state is retired. The snapshot/breakdown surfaces this plan designed remain live at the day grain.
 
 # QTekLink — Approval-Dashboard Upgrade Plan (v2)

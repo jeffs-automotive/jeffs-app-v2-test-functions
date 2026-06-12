@@ -13,8 +13,7 @@
 import { z } from "zod";
 import { requireQtekUser } from "@/lib/auth";
 import { wrapQtekAction } from "@/lib/instrument-action";
-import { runDailyReconciliation } from "@/lib/dal/daily-reconcile";
-import { listDailyPostingsForDay, acknowledgeDailyPosting } from "@/lib/dal/daily-postings";
+import { acknowledgeDay } from "@/lib/dal/daily-reconcile";
 import { isIsoDate } from "@/lib/format";
 import { qboFailure, type QboActionResult } from "./qbo/result";
 
@@ -34,15 +33,12 @@ async function acknowledgeDayImpl(_prev: AckState | null, formData: FormData): P
     if (!parsed.success) {
       return { ok: false, reason: "validation", message: parsed.error.issues[0]?.message ?? "Invalid date.", timestamp: Date.now() };
     }
-    const date = parsed.data.date;
 
-    // Stage the day's rows (no QBO write), then acknowledge every pending one.
-    const recon = await runDailyReconciliation(shopId, date);
-    if (!recon.realmId) {
-      return { ok: false, reason: "reconnect_required", message: "QuickBooks isn't connected for this shop.", timestamp: Date.now() };
-    }
-    const { postings } = await listDailyPostingsForDay(shopId, date);
-    if (postings.some((p) => p.status === "posted" || p.status === "posting" || p.status === "approved")) {
+    const result = await acknowledgeDay(shopId, parsed.data.date, email);
+    if (!result.ok) {
+      if (result.reason === "reconnect_required") {
+        return { ok: false, reason: "reconnect_required", message: "QuickBooks isn't connected for this shop.", timestamp: Date.now() };
+      }
       return {
         ok: false,
         reason: "validation",
@@ -50,12 +46,7 @@ async function acknowledgeDayImpl(_prev: AckState | null, formData: FormData): P
         timestamp: Date.now(),
       };
     }
-    let acknowledged = 0;
-    for (const p of postings.filter((p) => p.status === "pending")) {
-      const r = await acknowledgeDailyPosting(shopId, p.id, email);
-      if (r.acknowledged) acknowledged++;
-    }
-    return { ok: true, data: { acknowledged }, timestamp: Date.now() };
+    return { ok: true, data: { acknowledged: result.acknowledged }, timestamp: Date.now() };
   } catch (e) {
     return qboFailure(e);
   }

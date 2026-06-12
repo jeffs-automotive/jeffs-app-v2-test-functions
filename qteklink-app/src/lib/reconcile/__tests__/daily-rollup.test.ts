@@ -34,15 +34,13 @@ function pay(over: Partial<PaymentForBuild>): PaymentForBuild {
     signedAmountCents: 10000, signedProcessingFeeCents: 0, paymentDate: "2026-05-19T15:39:04Z",
     status: "completed", isRefund: false, ...over };
 }
-const sumNet = (r: { netByAccount: Record<string, number> }) => Object.values(r.netByAccount).reduce((a, b) => a + b, 0);
-
 const saleDraft = (over: Partial<RoSaleSnapshot>) => {
   const s = snap(over);
   return { snapshot: s, je: buildSaleJournalEntry(s, SM, SS) };
 };
 
 describe("rollupDay", () => {
-  it("nets a fully-postable day (sale + payment) to ZERO across accounts", () => {
+  it("counts a fully-postable day (sale + payment) with no review items", () => {
     const sale = saleDraft({ partsSales: 10000, taxes: 600, totalSales: 10600,
       jobs: [job({ parts: [{ retail: 10000, quantity: 1, partType: { code: "PART" } }] })] });
     const payment = buildPaymentJournalEntry(pay({ signedProcessingFeeCents: 300 }), PM, PS);
@@ -51,22 +49,19 @@ describe("rollupDay", () => {
     expect(r.postableSales).toBe(1);
     expect(r.postablePayments).toBe(1);
     expect(r.reviewCount).toBe(0);
-    expect(sumNet(r)).toBe(0); // double-entry: a balanced day nets to 0
-    expect(r.netByAccount["235"]).toBe(600); // A/R: +10600 sale − 10000 payment
   });
 
-  it("collects review items + EXCLUDES the queued draft from the net", () => {
+  it("collects review items + EXCLUDES the queued draft from the postable set", () => {
     const ok = saleDraft({ partsSales: 10000, taxes: 600, totalSales: 10600,
       jobs: [job({ parts: [{ retail: 10000, quantity: 1, partType: { code: "PART" } }] })] });
     const queued = saleDraft({ feeTotal: 500, totalSales: 500, fees: [{ name: "Brand New Fee", total: 500 }] });
     const r = rollupDay("2026-05-19", [ok, queued], [], G);
 
     expect(r.saleCount).toBe(2);
-    expect(r.postableSales).toBe(1);
+    expect(r.postableSales).toBe(1); // the queued (unmapped) RO is excluded
+    expect(r.postableSaleDrafts).toHaveLength(1);
     expect(r.reviewCount).toBe(1);
     expect(r.reviewItems[0]!.kind).toBe("unmapped");
-    // the queued RO's A/R (500) is NOT in the net — only the postable one (10600).
-    expect(r.netByAccount["235"]).toBe(10600);
   });
 
   it("excludes benign-suppressed (voided) payments from the counts + raises no review", () => {

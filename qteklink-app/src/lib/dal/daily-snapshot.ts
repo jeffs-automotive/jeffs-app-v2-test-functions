@@ -24,7 +24,7 @@
  * THROW — a money view is never knowingly stale.
  */
 import { reduceShopPaymentState } from "@/lib/dal/payment-state";
-import { runDailyReconciliation } from "@/lib/dal/daily-reconcile";
+import { reconcileDayForView } from "@/lib/dal/daily-reconcile";
 import { buildDayDrafts } from "@/lib/dal/day-drafts";
 import { listDailyPostingsForDay, buildDailyStatusIndex, type DailyStatusIndex } from "@/lib/dal/daily-postings";
 import { rollupDay } from "@/lib/reconcile/daily-rollup";
@@ -90,9 +90,12 @@ function addToColumn(row: TypeRow, col: SnapshotColumn, cents: number): void {
   row.count += 1;
 }
 
-function debitTotal(lines: { postingType: "Debit" | "Credit"; amountCents: number }[]): number {
+function debitTotal(lines: { postingType: "Debit" | "Credit"; amountCents: number; part?: string }[]): number {
+  // The sale JE can carry a sales-tax OFFSET debit (PTAL owed but not charged) —
+  // exclude it so the RO row + "Total sales" KPI tie to Tekmetric's totalSales
+  // (audit 2026-06-12: an offset RO displayed totalSales + shortfall).
   return lines
-    .filter((l) => l.postingType === "Debit")
+    .filter((l) => l.postingType === "Debit" && l.part !== "tax_offset")
     .reduce((a, l) => a + (Number.isSafeInteger(l.amountCents) ? l.amountCents : 0), 0);
 }
 
@@ -130,11 +133,7 @@ export async function getDailySnapshot(
 
   // LIVE-ON-VIEW: re-reconcile the viewed day (stages the ledger + syncs review
   // items) unless it's fully acknowledged (Accounting Link's terminal history).
-  {
-    const { postings: existing } = await listDailyPostingsForDay(shopId, businessDate);
-    const acknowledged = existing.length > 0 && existing.every((p) => p.status === "acknowledged" || p.status === "rejected");
-    if (!acknowledged) await runDailyReconciliation(shopId, businessDate);
-  }
+  await reconcileDayForView(shopId, businessDate);
 
   const { sales, payments, gateSettings } = await buildDayDrafts(shopId, realmId, businessDate, opts);
   const rollup = rollupDay(businessDate, sales, payments.map((p) => p.je), gateSettings);

@@ -138,9 +138,18 @@ interface PostedSalesDay {
   roIds: number[];
 }
 
+/** Detection window — matches the correction sweep's lookback: a move on a day older
+ *  than this is out of correction range anyway, and the floor keeps the query bounded
+ *  (PostgREST silently caps responses at max_rows=1000 — an unbounded read would
+ *  silently MISS moves once history outgrows it; audit 2026-06-12). */
+const DETECT_LOOKBACK_DAYS = 35;
+/** Chunk size for `.in(tekmetric_ro_id, …)` scans (bounded URL length + row counts). */
+const RO_SCAN_CHUNK = 200;
+
 /** The LIVE posted sales JE per business day (latest posted version, not a delete). */
 async function listPostedSalesDays(shopId: number, realmId: string): Promise<PostedSalesDay[]> {
   const admin = createSupabaseAdminClient();
+  const since = new Date(Date.now() - DETECT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const { data, error } = await admin
     .from("qteklink_daily_postings")
     .select("business_date, posting_version, action, constituents")
@@ -148,6 +157,7 @@ async function listPostedSalesDays(shopId: number, realmId: string): Promise<Pos
     .eq("realm_id", realmId)
     .eq("category", "sales")
     .eq("status", "posted")
+    .gte("business_date", since)
     .order("posting_version", { ascending: true });
   if (error) throw new Error(`listPostedSalesDays failed: ${error.message}`);
 
@@ -186,32 +196,35 @@ export async function detectDateMoves(shopId: number, realmId: string, tz: strin
   for (const d of days) for (const ro of d.roIds) roToDay.set(ro, d.businessDate);
   if (roToDay.size === 0) return { scannedRos: 0, newOrChangedMoves: [], autoResolved: 0 };
 
-  // Newest sale-scan event per RO (one batched query; newest-first wins).
+  // Newest sale-scan event per RO (chunked batched queries; newest-first wins).
   const admin = createSupabaseAdminClient();
-  const { data: evRows, error: evErr } = await admin
-    .from("qteklink_events")
-    .select("tekmetric_ro_id, event_kind, raw_body, received_at")
-    .eq("shop_id", shopId)
-    .eq("realm_id", realmId)
-    .in("event_kind", [...RO_SALE_SCAN_EVENT_KINDS])
-    .in("tekmetric_ro_id", [...roToDay.keys()])
-    .order("tekmetric_event_at", { ascending: false, nullsFirst: false })
-    .order("received_at", { ascending: false });
-  if (evErr) throw new Error(`detectDateMoves (events) failed: ${evErr.message}`);
-
   interface LatestEv { kind: string; postedDate: string | null; roNumber: string | null; totalCents: number | null }
   const latestByRo = new Map<number, LatestEv>();
-  for (const r of (evRows ?? []) as { tekmetric_ro_id: number | string; event_kind: string; raw_body: { data?: Record<string, unknown> } | null }[]) {
-    const ro = Number(r.tekmetric_ro_id);
-    if (latestByRo.has(ro)) continue;
-    const d = r.raw_body?.data ?? {};
-    const total = typeof d.totalSales === "number" && Number.isSafeInteger(d.totalSales) ? d.totalSales : null;
-    latestByRo.set(ro, {
-      kind: r.event_kind,
-      postedDate: typeof d.postedDate === "string" ? d.postedDate : null,
-      roNumber: typeof d.repairOrderNumber === "string" || typeof d.repairOrderNumber === "number" ? String(d.repairOrderNumber) : null,
-      totalCents: total,
-    });
+  const allRoIds = [...roToDay.keys()];
+  for (let i = 0; i < allRoIds.length; i += RO_SCAN_CHUNK) {
+    const chunk = allRoIds.slice(i, i + RO_SCAN_CHUNK);
+    const { data: evRows, error: evErr } = await admin
+      .from("qteklink_events")
+      .select("tekmetric_ro_id, event_kind, raw_body, received_at")
+      .eq("shop_id", shopId)
+      .eq("realm_id", realmId)
+      .in("event_kind", [...RO_SALE_SCAN_EVENT_KINDS])
+      .in("tekmetric_ro_id", chunk)
+      .order("tekmetric_event_at", { ascending: false, nullsFirst: false })
+      .order("received_at", { ascending: false });
+    if (evErr) throw new Error(`detectDateMoves (events) failed: ${evErr.message}`);
+    for (const r of (evRows ?? []) as { tekmetric_ro_id: number | string; event_kind: string; raw_body: { data?: Record<string, unknown> } | null }[]) {
+      const ro = Number(r.tekmetric_ro_id);
+      if (latestByRo.has(ro)) continue;
+      const d = r.raw_body?.data ?? {};
+      const total = typeof d.totalSales === "number" && Number.isSafeInteger(d.totalSales) ? d.totalSales : null;
+      latestByRo.set(ro, {
+        kind: r.event_kind,
+        postedDate: typeof d.postedDate === "string" ? d.postedDate : null,
+        roNumber: typeof d.repairOrderNumber === "string" || typeof d.repairOrderNumber === "number" ? String(d.repairOrderNumber) : null,
+        totalCents: total,
+      });
+    }
   }
 
   // Open moves for auto-resolution lookups.

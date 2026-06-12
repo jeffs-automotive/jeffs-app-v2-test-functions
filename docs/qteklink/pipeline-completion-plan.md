@@ -1,3 +1,5 @@
+> **SUPERSEDED 2026-06-12 (audit):** The D-projection "nightly only" framing below is stale. The day-category projection now **refreshes on every day view** — opening `/approvals` or a day breakdown runs the live-on-view preamble (`reconcileDayForView`: re-reconcile the viewed day unless it's terminal), so a webhook that landed a minute ago is already reflected. The nightly cron (`app/api/cron/daily-sync`) stays as the verification net, not the only refresh.
+
 > **STATUS 2026-06-10:** PR1 (e2a99b3) + PR2 (042cd0f) SHIPPED. **PR3 (Workstream C1/C2) is SUPERSEDED by the daily-JE rework** (docs/qteklink/daily-je-rework-plan.md) — the per-RO posting lifecycle it targeted was deleted; corrections are first-class update/delete versions of the DAILY JEs. Still open: C3 (standalone-refund review item), PR4 (D1-D3, E1), the residual F items.
 
 # QTekLink — pipeline completion & wiring plan

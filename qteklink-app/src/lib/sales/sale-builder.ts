@@ -108,6 +108,9 @@ export interface JeLine {
   postingType: PostingType;
   amountCents: number;
   description: string;
+  /** "tax_offset" tags the sales-tax DEBIT that funds an owed-but-not-charged tire
+   *  fee — display totals exclude it so RO rows tie to Tekmetric's totalSales. */
+  part?: "tax_offset";
 }
 export interface SaleJournalEntry {
   docNumber: string; // "RO <#>"
@@ -340,7 +343,7 @@ export function buildSaleJournalEntry(
       // The fee is owed but wasn't (fully) charged on the RO: the shortfall comes out
       // of the sales-tax liability as a DEBIT offset (PTA is remitted with PA sales
       // tax, so the combined tax liability still equals the taxes actually charged).
-      if (mappings.salesTaxAccountId) taxOffsetDebit = { accountId: mappings.salesTaxAccountId, postingType: "Debit", amountCents: -salesTax, description: `${docNumber} — Sales tax offset (tire fee owed, not charged)` };
+      if (mappings.salesTaxAccountId) taxOffsetDebit = { accountId: mappings.salesTaxAccountId, postingType: "Debit", amountCents: -salesTax, description: `${docNumber} — Sales tax offset (tire fee owed, not charged)`, part: "tax_offset" };
       else unmapped.push("sales_tax_payable");
     }
   }

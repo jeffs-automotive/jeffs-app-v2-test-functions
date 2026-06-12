@@ -7,20 +7,28 @@
  * diff (create / update / delete; pending slots refresh in place). Returns the day's
  * roll-up. The daily-approvals UI + the nightly cron call it. NO QBO write happens here.
  *
+ * Also home to two orchestrations that belong with reconcile (cycle-safe — this module
+ * already imports daily-postings and owns `runDailyReconciliation`, so the reverse
+ * import would cycle): `reconcileDayForView` (the shared live-on-view preamble both read
+ * models use) + `acknowledgeDay` (the admin "covered by Accounting Link" flow).
+ *
  * Fat-DAL: the build + gates + roll-up + bundle are factored (`buildDayDrafts` + the
  * pure `@/lib/reconcile/*` + `@/lib/daily/*`); this is the thin persist/enqueue seam.
  * MULTI-TENANT: shopId server-derived; realmId from the bound connection. No silent
  * failures: errors throw; an unbalanced or over-cap category raises a `day` review item.
  */
 import { resolveRealmForShop } from "@/lib/dal/realm";
-import { enqueueDailyPosting, type DailyEnqueueAction } from "@/lib/dal/daily-postings";
+import {
+  enqueueDailyPosting,
+  listDailyPostingsForDay,
+  acknowledgeDailyPosting,
+  type DailyEnqueueAction,
+  type DailyPostingRow,
+} from "@/lib/dal/daily-postings";
 import { upsertReviewItem } from "@/lib/dal/review-items";
 import { rollupDay } from "@/lib/reconcile/daily-rollup";
 import { buildDayDrafts } from "@/lib/dal/day-drafts";
 import { buildDailyJournalEntries, DAILY_LINE_CAP, type DailyCategory } from "@/lib/daily/daily-je-builder";
-
-// Re-export for existing importers/tests (it moved into the shared day-drafts module).
-export { utcWindowForLocalDay } from "@/lib/dal/day-drafts";
 
 export interface DailyReconcileSummary {
   realmId: string | null;
@@ -38,8 +46,6 @@ export interface DailyReconcileSummary {
   enqueuedPostings: number;
   /** What the diff did per category (audit / the reconcile UI). */
   dailyEnqueue: Record<DailyCategory, DailyEnqueueAction>;
-  /** accountId → signed net cents (Dr − Cr) across POSTABLE drafts (QTL vs AL). */
-  netByAccount: Record<string, number>;
 }
 
 /**
@@ -57,7 +63,7 @@ export async function runDailyReconciliation(
     return {
       realmId: null, businessDate, saleCount: 0, paymentCount: 0, postableSales: 0, postablePayments: 0,
       reviewCount: 0, persistedReviewItems: 0, enqueuedPostings: 0,
-      dailyEnqueue: { sales: "noop", payments: "noop", fees: "noop" }, netByAccount: {},
+      dailyEnqueue: { sales: "noop", payments: "noop", fees: "noop" },
     };
   }
 
@@ -112,6 +118,64 @@ export async function runDailyReconciliation(
     persistedReviewItems: persisted,
     enqueuedPostings,
     dailyEnqueue,
-    netByAccount: rollup.netByAccount,
   };
+}
+
+// ─── Live-on-view preamble (shared by the snapshot + breakdown read models) ─────
+
+/**
+ * True when every staged row is terminal (acknowledged/rejected) — Accounting
+ * Link's history; such a day must never be re-reconciled or grow review items.
+ */
+export function isDayTerminal(postings: DailyPostingRow[]): boolean {
+  return postings.length > 0 && postings.every((p) => p.status === "acknowledged" || p.status === "rejected");
+}
+
+/**
+ * The live-on-view preamble (Chris 2026-06-12): re-reconcile the viewed day so a
+ * webhook that landed a minute ago is already reflected — UNLESS the day is terminal
+ * (fully acknowledged/rejected: Accounting Link's history, which must not grow review
+ * items). Extracted from the verbatim block both `getDailySnapshot` and
+ * `getDayBreakdown` carried. The caller has already resolved the realm. Throws on a
+ * DB error (a money view is never knowingly stale).
+ */
+export async function reconcileDayForView(shopId: number, businessDate: string): Promise<void> {
+  const { postings } = await listDailyPostingsForDay(shopId, businessDate);
+  if (!isDayTerminal(postings)) await runDailyReconciliation(shopId, businessDate);
+}
+
+// ─── Acknowledge-day orchestration (the admin "covered by Accounting Link" flow) ─
+
+/**
+ * Mark a whole business day "approved WITHOUT posting" — the day is already in
+ * QuickBooks via Accounting Link, so QTekLink records it done and never posts or
+ * corrects it. Reconcile first so the ≤3 category rows exist, refuse if the day has
+ * any entry QTekLink already posted/is posting (acknowledging would orphan real QBO
+ * entries), then flip every PENDING row to `acknowledged` (terminal).
+ *
+ * Home note: this orchestration lives HERE (daily-reconcile) rather than in
+ * daily-postings to stay cycle-safe — daily-reconcile already imports daily-postings
+ * (enqueue) and owns `runDailyReconciliation`; the reverse import (daily-postings →
+ * daily-reconcile) would create an import cycle.
+ */
+export async function acknowledgeDay(
+  shopId: number,
+  businessDate: string,
+  acknowledgedBy: string,
+): Promise<{ ok: true; acknowledged: number } | { ok: false; reason: "reconnect_required" | "already_posted" }> {
+  // Stage the day's rows (no QBO write), then acknowledge every pending one.
+  const recon = await runDailyReconciliation(shopId, businessDate);
+  if (!recon.realmId) return { ok: false, reason: "reconnect_required" };
+
+  const { postings } = await listDailyPostingsForDay(shopId, businessDate);
+  if (postings.some((p) => p.status === "posted" || p.status === "posting" || p.status === "approved")) {
+    return { ok: false, reason: "already_posted" };
+  }
+
+  let acknowledged = 0;
+  for (const p of postings.filter((p) => p.status === "pending")) {
+    const r = await acknowledgeDailyPosting(shopId, p.id, acknowledgedBy);
+    if (r.acknowledged) acknowledged++;
+  }
+  return { ok: true, acknowledged };
 }

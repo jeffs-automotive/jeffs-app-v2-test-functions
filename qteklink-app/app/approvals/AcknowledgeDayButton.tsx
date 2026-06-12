@@ -36,7 +36,7 @@ export default function AcknowledgeDayButton({ date }: { date: string }) {
         <CheckCheck aria-hidden="true" />
         Mark as covered by Accounting Link
       </Button>
-      {state?.ok === false && <span className="ml-2 text-xs text-red-700">{state.message}</span>}
+      {state?.ok === false && <span className="ml-2 text-xs text-red-700 dark:text-red-400">{state.message}</span>}
       <ConfirmDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}

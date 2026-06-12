@@ -12,6 +12,12 @@ export default function BreakdownLoading() {
         <Skeleton className="h-4 w-40" />
       </div>
 
+      <div className="mt-6 flex items-center justify-center gap-3">
+        <Skeleton className="size-8 rounded-lg" />
+        <Skeleton className="h-8 w-36 rounded-lg" />
+        <Skeleton className="size-8 rounded-lg" />
+      </div>
+
       <Skeleton className="mt-4 h-16 w-full rounded-lg" />
 
       <div className="mt-6 flex gap-2">

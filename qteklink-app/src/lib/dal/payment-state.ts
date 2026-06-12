@@ -28,6 +28,11 @@ import {
   type PaymentEventInput,
 } from "@/lib/payments/reducer";
 
+// MUST be ≤ PostgREST's max_rows (1000 in supabase/config.toml AND the hosted
+// default). If max_rows ever dropped BELOW this, PostgREST would silently cap each
+// page and `batch.length < pageSize` would misread a capped page as the last one —
+// permanently reducing a partial projection (audit 2026-06-12). Keep them equal or
+// keep this smaller.
 const PAGE_SIZE = 1000;
 // Fail-closed guard against an unbounded fetch loop (200k payment events is far
 // beyond any real shop's ledger; hitting it means something is wrong → abort

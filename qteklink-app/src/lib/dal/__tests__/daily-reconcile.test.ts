@@ -12,7 +12,8 @@ vi.mock("@/lib/supabase/admin", () => ({
   createSupabaseAdminClient: () => ({ rpc: rpcMock, from: fromMock }),
 }));
 
-import { runDailyReconciliation, utcWindowForLocalDay } from "../daily-reconcile";
+import { runDailyReconciliation } from "../daily-reconcile";
+import { utcWindowForLocalDay } from "@/lib/dal/day-drafts";
 
 const REALM = "9341455608740708";
 
@@ -83,7 +84,6 @@ describe("runDailyReconciliation", () => {
     expect(r.postableSales).toBe(1);
     expect(r.reviewCount).toBe(0);
     expect(r.persistedReviewItems).toBe(0);
-    expect(r.netByAccount["235"]).toBe(10600); // A/R debit
     expect(rpcMock).not.toHaveBeenCalledWith("qteklink_upsert_review_item", expect.anything());
     // The day's SALES category JE was enqueued into qteklink_daily_postings (daily-JE
     // model: ≤3 rows/day; the empty payments/fees categories are noops). No QBO write.
@@ -237,7 +237,7 @@ describe("runDailyReconciliation", () => {
     expect(r).toEqual({
       realmId: null, businessDate: "2026-05-19", saleCount: 0, paymentCount: 0, postableSales: 0, postablePayments: 0,
       reviewCount: 0, persistedReviewItems: 0, enqueuedPostings: 0,
-      dailyEnqueue: { sales: "noop", payments: "noop", fees: "noop" }, netByAccount: {},
+      dailyEnqueue: { sales: "noop", payments: "noop", fees: "noop" },
     });
     expect(fromMock).not.toHaveBeenCalled();
   });

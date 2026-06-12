@@ -16,9 +16,19 @@ const listDailyMock = vi.fn();
 const rollupDayMock = vi.fn();
 
 // getDailySnapshot refreshes the payment projection FIRST (freshness contract) and
-// takes the realm from its result; then it LIVE-reconciles the viewed day.
+// takes the realm from its result; then it LIVE-reconciles the viewed day via the shared
+// reconcileDayForView preamble. The mock mirrors that preamble's terminality gate over
+// the test's own seams (listDailyMock for postings; reconcileMock for the reconcile) so
+// the called/not-called assertions exercise the real not-when-terminal behavior.
 vi.mock("@/lib/dal/payment-state", () => ({ reduceShopPaymentState: (...a: unknown[]) => reduceMock(...a) }));
-vi.mock("@/lib/dal/daily-reconcile", () => ({ runDailyReconciliation: (...a: unknown[]) => reconcileMock(...a) }));
+vi.mock("@/lib/dal/daily-reconcile", () => ({
+  runDailyReconciliation: (...a: unknown[]) => reconcileMock(...a),
+  reconcileDayForView: async (shopId: number, businessDate: string) => {
+    const { postings } = (await listDailyMock(shopId, businessDate)) as { postings: { status: string }[] };
+    const terminal = postings.length > 0 && postings.every((p) => p.status === "acknowledged" || p.status === "rejected");
+    if (!terminal) await reconcileMock(shopId, businessDate);
+  },
+}));
 vi.mock("@/lib/dal/day-drafts", () => ({ buildDayDrafts: (...a: unknown[]) => buildDayDraftsMock(...a) }));
 vi.mock("@/lib/dal/daily-postings", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../daily-postings")>()),
@@ -100,7 +110,7 @@ describe("getDailySnapshot", () => {
   });
 
   it("LIVE-reconciles the viewed day — but NEVER a fully-acknowledged day (AL history is terminal)", async () => {
-    const empty = { postableSaleDrafts: [], postablePaymentDrafts: [], netByAccount: {}, saleCount: 0, paymentCount: 0, postableSales: 0, postablePayments: 0, reviewCount: 0, reviewItems: [] };
+    const empty = { postableSaleDrafts: [], postablePaymentDrafts: [], saleCount: 0, paymentCount: 0, postableSales: 0, postablePayments: 0, reviewCount: 0, reviewItems: [] };
     buildDayDraftsMock.mockResolvedValue({ sales: [], payments: [], gateSettings: {} });
     rollupDayMock.mockReturnValue(empty);
 
@@ -128,7 +138,7 @@ describe("getDailySnapshot", () => {
     });
     rollupDayMock.mockReturnValue({
       postableSaleDrafts: [s1, s2], postablePaymentDrafts: [p1.je, p2.je],
-      saleCount: 3, paymentCount: 2, postableSales: 2, postablePayments: 2, reviewCount: 1, netByAccount: {}, reviewItems: [],
+      saleCount: 3, paymentCount: 2, postableSales: 2, postablePayments: 2, reviewCount: 1, reviewItems: [],
     });
     listDailyMock.mockResolvedValue({
       realmId: REALM,
@@ -157,7 +167,7 @@ describe("getDailySnapshot", () => {
     const s1 = sale(1, 1000, 1000); // in the posted v1 JE → Posted (it IS in QBO)
     const s2 = sale(2, 900, 900); //   only in the staged pending v2 → Unapproved
     buildDayDraftsMock.mockResolvedValue({ tz: "America/New_York", gateSettings: { salesTaxRateBps: 600 }, sales: [s1, s2], payments: [], extraReviewItems: [] });
-    rollupDayMock.mockReturnValue({ postableSaleDrafts: [s1, s2], postablePaymentDrafts: [], saleCount: 2, paymentCount: 0, postableSales: 2, postablePayments: 0, reviewCount: 0, netByAccount: {}, reviewItems: [] });
+    rollupDayMock.mockReturnValue({ postableSaleDrafts: [s1, s2], postablePaymentDrafts: [], saleCount: 2, paymentCount: 0, postableSales: 2, postablePayments: 0, reviewCount: 0, reviewItems: [] });
     listDailyMock.mockResolvedValue({
       realmId: REALM,
       postings: [

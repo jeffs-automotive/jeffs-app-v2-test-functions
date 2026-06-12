@@ -35,7 +35,7 @@ SELECT has_table('public', 'qteklink_daily_postings', 'qteklink_daily_postings t
 SELECT has_function('public', 'qteklink_enqueue_daily_posting',
   ARRAY['integer','text','date','text','integer','text','jsonb','jsonb','text','text'], 'enqueue RPC exists');
 SELECT has_function('public', 'qteklink_claim_daily_posting_by_id', ARRAY['integer','text','uuid','integer'], 'claim_by_id RPC exists');
-SELECT has_function('public', 'qteklink_refresh_daily_posting', ARRAY['integer','text','uuid','text','jsonb','jsonb','text'], 'refresh RPC exists');
+SELECT has_function('public', 'qteklink_refresh_daily_posting', ARRAY['integer','text','uuid','text','jsonb','jsonb','text','text'], 'refresh RPC exists (8-param: +p_requestid, audit hardening 20260612160000)');
 SELECT is((SELECT relrowsecurity FROM pg_class WHERE relname='qteklink_daily_postings' AND relnamespace='public'::regnamespace), true, 'RLS on qteklink_daily_postings');
 
 -- ─── Least-privilege grant matrix ───────────────────────────────────────

@@ -152,6 +152,8 @@ describe("postDailyPostingById", () => {
     expect(client.create).not.toHaveBeenCalled();
     expect(rpcMock).toHaveBeenCalledWith("qteklink_refresh_daily_posting", expect.objectContaining({
       p_id: "dp-1", p_action: "create", p_source_state_hash: DESIRED_HASH,
+      // the requestid ROTATES with the refreshed content (audit 2026-06-12)
+      p_requestid: expect.stringMatching(/^qtl-[0-9a-f]{40}$/),
     }));
   });
 

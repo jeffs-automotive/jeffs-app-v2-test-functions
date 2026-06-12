@@ -1,7 +1,8 @@
 /**
  * /approvals/[date]/breakdown — the line-item drill-down (approval-dashboard upgrade, plan
  * §3.2): three tabs (Summary / Repair Orders / Payments) selected via `?tab=`. The RO rows
- * are native <details> (collapsible, no client JS). READ-only (`getDayBreakdown`). `[date]`
+ * are native <details> (collapsible, no client JS). Viewing re-reconciles the day on every
+ * request (force-dynamic) via `getDayBreakdown`, so the numbers refresh on view. `[date]`
  * is a shop-local YYYY-MM-DD, validated (else 404 via notFound).
  */
 import Link from "next/link";
@@ -82,9 +83,9 @@ function JeTable({ je }: { je: JePreview }) {
             <TableCell className="flex items-center gap-1.5 px-3 py-2">
               Totals
               {je.balanced ? (
-                <span className="inline-flex items-center gap-1 text-emerald-800"><CheckCircle2 className="size-4" aria-hidden="true" /> balanced</span>
+                <span className="inline-flex items-center gap-1 text-emerald-800 dark:text-emerald-300"><CheckCircle2 className="size-4" aria-hidden="true" /> balanced</span>
               ) : (
-                <span className="inline-flex items-center gap-1 text-amber-800"><AlertTriangle className="size-4" aria-hidden="true" /> unbalanced</span>
+                <span className="inline-flex items-center gap-1 text-amber-800 dark:text-amber-300"><AlertTriangle className="size-4" aria-hidden="true" /> unbalanced</span>
               )}
             </TableCell>
             <TableCell className={numCell}>{fmtUsd(je.totalDebitCents)}</TableCell>
@@ -141,18 +142,24 @@ function RosTab({ ros }: { ros: RoBreakdown[] }) {
           </summary>
           <div className="border-t border-border px-4 py-3">
             {ro.unmapped.length > 0 && (
-              <p className="mb-2 text-xs text-amber-800">Unmapped: {ro.unmapped.join(", ")}</p>
+              <p className="mb-2 text-xs text-amber-800 dark:text-amber-300">Unmapped: {ro.unmapped.join(", ")}</p>
             )}
             <table className="w-full text-sm">
               <tbody>
-                {ro.lines.map((l, i) => (
-                  <tr key={i} className="border-t border-border/50">
-                    <td className="py-1 text-foreground">{l.description || (l.acctNum ? `${l.acctNum} · ${l.accountName}` : l.accountName ?? l.accountId)}</td>
-                    <td className="py-1 text-right text-xs text-muted-foreground">{l.acctNum ? `${l.acctNum} · ${l.accountName}` : l.accountName ?? l.accountId}</td>
-                    <td className={`${numCell} w-28`}>{l.debitCents ? fmtUsd(l.debitCents) : ""}</td>
-                    <td className={`${numCell} w-28`}>{l.creditCents ? fmtUsd(l.creditCents) : ""}</td>
-                  </tr>
-                ))}
+                {ro.lines.map((l, i) => {
+                  // The account string the second cell shows. When the line has no
+                  // description the first cell already falls back to this exact string,
+                  // so blank the second cell rather than print it twice.
+                  const accountStr = l.acctNum ? `${l.acctNum} · ${l.accountName}` : l.accountName ?? l.accountId;
+                  return (
+                    <tr key={i} className="border-t border-border/50">
+                      <td className="py-1 text-foreground">{l.description || accountStr}</td>
+                      <td className="py-1 text-right text-xs text-muted-foreground">{l.description ? accountStr : ""}</td>
+                      <td className={`${numCell} w-28`}>{l.debitCents ? fmtUsd(l.debitCents) : ""}</td>
+                      <td className={`${numCell} w-28`}>{l.creditCents ? fmtUsd(l.creditCents) : ""}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -275,7 +282,7 @@ export default async function BreakdownPage({ params, searchParams }: { params: 
             key={t.key}
             href={`/approvals/${date}/breakdown?tab=${t.key}`}
             aria-current={tab === t.key ? "page" : undefined}
-            className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${tab === t.key ? "bg-primary/10 text-primary font-semibold" : "border border-border text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+            className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${tab === t.key ? "border border-transparent bg-primary/10 text-primary font-semibold" : "border border-border text-muted-foreground hover:bg-muted hover:text-foreground"}`}
           >
             {t.label}
           </Link>

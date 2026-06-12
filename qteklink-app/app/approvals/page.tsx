@@ -2,10 +2,11 @@
  * /approvals — the DAILY APPROVALS dashboard: review one business day's numbers and
  * post them to QuickBooks (up to 3 journal entries: sales, payments, card fees).
  *
- * requireQtekUser() enforces session + Entra oid + allowlist + active. The page only
- * READS; the approve+post action (a live QBO write) is the admin-only
- * ApproveDayControls. `?date=` is a shop-local YYYY-MM-DD (validated; defaults to the
- * shop-local today). Blocked items live at /approvals/review; date moves at /postings.
+ * requireQtekUser() enforces session + Entra oid + allowlist + active. Viewing the page
+ * re-snapshots the day on every request (force-dynamic), so the numbers reconcile on view;
+ * the approve+post action (the only live QBO write) is the admin-only ApproveDayControls.
+ * `?date=` is a shop-local YYYY-MM-DD (validated; defaults to the shop-local today). Blocked
+ * items live at /approvals/review; date moves at /postings.
  */
 import Link from "next/link";
 import { AlertTriangle, ArrowRight, CheckCircle2, CreditCard, Info, Percent, Receipt } from "lucide-react";
@@ -50,7 +51,7 @@ function Row({ row, date }: { row: TypeRow; date: string }) {
       <TableCell className={num}>{row.count}</TableCell>
       <TableCell className={num}>
         {attn > 0 ? (
-          <Link href={`/approvals/review?date=${date}`} className="font-medium text-amber-800 underline underline-offset-4">
+          <Link href={`/approvals/review?date=${date}`} className="font-medium text-amber-800 underline underline-offset-4 dark:text-amber-300">
             {fmtUsd(attn)}
           </Link>
         ) : (
@@ -94,7 +95,7 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
           Each day, check the numbers below (open the breakdown if you want the detail), then press{" "}
           <span className="font-medium text-foreground">Approve + post this day</span> — one button sends the whole
           day to QuickBooks at once (up to 3 journal entries: sales, payments, card fees). If anything
-          shows in <span className="font-medium text-amber-800">Needs attention</span>, fix it on the
+          shows in <span className="font-medium text-amber-800 dark:text-amber-300">Needs attention</span>, fix it on the
           fix-it list first; the button stays locked until the day is clean.
         </p>
       </section>
@@ -148,7 +149,7 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
           <div className="mt-4 flex items-center justify-between gap-3">
             <p className="text-sm text-muted-foreground">
               {snapshot.needsAttentionCount > 0 ? (
-                <Link href={`/approvals/review?date=${date}`} className="inline-flex items-center gap-1 font-medium text-amber-800 underline underline-offset-4">
+                <Link href={`/approvals/review?date=${date}`} className="inline-flex items-center gap-1 font-medium text-amber-800 underline underline-offset-4 dark:text-amber-300">
                   <AlertTriangle className="size-4" aria-hidden="true" />
                   {snapshot.needsAttentionCount} item{snapshot.needsAttentionCount === 1 ? "" : "s"} need attention — open the fix-it list
                 </Link>

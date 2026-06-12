@@ -1,11 +1,10 @@
 /**
  * §8 pure daily reconciliation roll-up. Given a business day's built SALE + PAYMENT
- * JE drafts, gate each, collect every §9 review item, and net the POSTABLE drafts'
- * lines per account — the QTL side of the daily "QTL vs Accounting Link" comparison.
+ * JE drafts, gate each and collect every §9 review item, returning the postable
+ * drafts the daily job combines into the day's category JEs.
  *
  * Pure TS (no DB): the DAL (`runDailyReconciliation`) fetches the day's drafts, calls
- * this, then persists `reviewItems` via `upsertReviewItem`. Signed net per account =
- * Σ(debit) − Σ(credit), so a balanced day nets to 0 across all accounts.
+ * this, then persists `reviewItems` via `upsertReviewItem`.
  */
 import type { RoSaleSnapshot, SaleJournalEntry } from "@/lib/sales/sale-builder";
 import type { PaymentJournalEntry } from "@/lib/payments/payment-je-builder";
@@ -28,20 +27,12 @@ export interface DayRollup {
   postablePayments: number;
   /** Drafts that need a human (== reviewItems.length). */
   reviewCount: number;
-  /** accountId → signed net cents (Dr − Cr) across POSTABLE drafts only. */
-  netByAccount: Record<string, number>;
   /** Every §9 review item the gates emitted (the daily job persists these). */
   reviewItems: UpsertReviewItemInput[];
   /** The drafts that passed the gate — the daily job combines these into the day's
    *  category JEs and enqueues them into qteklink_daily_postings. */
   postableSaleDrafts: SaleDraft[];
   postablePaymentDrafts: PaymentJournalEntry[];
-}
-
-interface PostingLine {
-  accountId: string;
-  postingType: "Debit" | "Credit";
-  amountCents: number;
 }
 
 export function rollupDay(
@@ -51,18 +42,10 @@ export function rollupDay(
   saleGateSettings: SaleGateSettings,
 ): DayRollup {
   const reviewItems: UpsertReviewItemInput[] = [];
-  const netByAccount: Record<string, number> = {};
   const postableSaleDrafts: SaleDraft[] = [];
   const postablePaymentDrafts: PaymentJournalEntry[] = [];
   let postableSales = 0;
   let postablePayments = 0;
-
-  const addLines = (lines: PostingLine[]) => {
-    for (const l of lines) {
-      const signed = l.postingType === "Debit" ? l.amountCents : -l.amountCents;
-      netByAccount[l.accountId] = (netByAccount[l.accountId] ?? 0) + signed;
-    }
-  };
 
   for (const draft of sales) {
     const g = gateSaleDraft(draft.snapshot, draft.je, saleGateSettings);
@@ -70,7 +53,6 @@ export function rollupDay(
     if (g.postable) {
       postableSales++;
       postableSaleDrafts.push(draft);
-      addLines(draft.je.lines);
     }
   }
 
@@ -85,7 +67,6 @@ export function rollupDay(
     if (g.postable) {
       postablePayments++;
       postablePaymentDrafts.push(je);
-      addLines(je.lines);
     }
   }
 
@@ -96,7 +77,6 @@ export function rollupDay(
     postableSales,
     postablePayments,
     reviewCount: reviewItems.length,
-    netByAccount,
     reviewItems,
     postableSaleDrafts,
     postablePaymentDrafts,

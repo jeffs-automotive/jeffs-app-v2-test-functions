@@ -9,9 +9,8 @@ import { z } from "zod";
 import { requireQtekUser } from "@/lib/auth";
 import { wrapQtekAction } from "@/lib/instrument-action";
 import { upsertShopSettings } from "@/lib/dal/settings";
+import { emailRx } from "@/lib/validate";
 import { qboFailure, type QboActionResult } from "./qbo/result";
-
-const emailRx = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** A comma-separated recipient list: "" clears it; every non-blank entry must be a real address. */
 const emailListField = (which: string) =>

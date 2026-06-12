@@ -13,6 +13,7 @@ import { Save } from "lucide-react";
 import { updateSettingsAction } from "@/actions/settings";
 import type { ShopSettings } from "@/lib/dal/settings";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function SettingsForm({ settings }: { settings: ShopSettings }) {
@@ -23,7 +24,6 @@ export default function SettingsForm({ settings }: { settings: ShopSettings }) {
     if (state?.ok) router.refresh();
   }, [state?.timestamp, state?.ok, router]);
 
-  const inputCls = "mt-0.5 w-full rounded-md border border-input bg-card px-2.5 py-1.5 text-sm transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
   const labelCls = "block text-xs font-medium uppercase tracking-wide text-muted-foreground";
 
   return (
@@ -47,9 +47,9 @@ export default function SettingsForm({ settings }: { settings: ShopSettings }) {
                 advisors).
               </p>
               <label className={`${labelCls} mt-2`}>Send the Date Change Alert to
-                <input name="date_change_alert_emails"
+                <Input name="date_change_alert_emails"
                   placeholder="office@yourshop.com, advisor1@yourshop.com, advisor2@yourshop.com"
-                  defaultValue={settings.dateChangeAlertEmails.join(", ")} className={inputCls} />
+                  defaultValue={settings.dateChangeAlertEmails.join(", ")} className="mt-0.5" />
               </label>
             </div>
 
@@ -63,9 +63,9 @@ export default function SettingsForm({ settings }: { settings: ShopSettings }) {
                 repair order was posted in Tekmetric don&apos;t send an email.
               </p>
               <label className={`${labelCls} mt-2`}>Send the Day Correction Alert to
-                <input name="day_correction_alert_emails"
+                <Input name="day_correction_alert_emails"
                   placeholder="office@yourshop.com, bookkeeper@yourshop.com"
-                  defaultValue={settings.dayCorrectionAlertEmails.join(", ")} className={inputCls} />
+                  defaultValue={settings.dayCorrectionAlertEmails.join(", ")} className="mt-0.5" />
               </label>
             </div>
           </div>
@@ -82,14 +82,14 @@ export default function SettingsForm({ settings }: { settings: ShopSettings }) {
         <CardContent>
           <div className="grid grid-cols-2 gap-3">
             <label className={labelCls}>Sales tax rate (basis points — 600 = 6%)
-              <input name="sales_tax_rate_bps" defaultValue={settings.salesTaxRateBps} inputMode="numeric" className={inputCls} />
+              <Input name="sales_tax_rate_bps" defaultValue={settings.salesTaxRateBps} inputMode="numeric" className="mt-0.5" />
             </label>
             <label className={labelCls}>Tire fee (cents per tire — 100 = $1.00)
-              <input name="tire_fee_cents" defaultValue={settings.tireFeeCents} inputMode="numeric" className={inputCls} />
+              <Input name="tire_fee_cents" defaultValue={settings.tireFeeCents} inputMode="numeric" className="mt-0.5" />
             </label>
           </div>
           <label className={`${labelCls} mt-3`}>Shop timezone
-            <input name="shop_timezone" defaultValue={settings.shopTimezone} className={inputCls} />
+            <Input name="shop_timezone" defaultValue={settings.shopTimezone} className="mt-0.5" />
           </label>
           <label className="mt-4 flex items-start gap-2 text-sm text-foreground">
             <input type="checkbox" name="auto_post" defaultChecked={settings.autoPost} className="mt-0.5" />
@@ -107,8 +107,8 @@ export default function SettingsForm({ settings }: { settings: ShopSettings }) {
           <Save aria-hidden="true" />
           Save settings
         </Button>
-        {state?.ok && <span className="ml-3 text-sm text-emerald-800">Saved.</span>}
-        {state?.ok === false && <span className="ml-3 text-sm text-red-700">{state.message}</span>}
+        {state?.ok && <span className="ml-3 text-sm text-emerald-800 dark:text-emerald-300">Saved.</span>}
+        {state?.ok === false && <span className="ml-3 text-sm text-red-700 dark:text-red-400">{state.message}</span>}
       </div>
     </form>
   );

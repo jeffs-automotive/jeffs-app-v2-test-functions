@@ -207,8 +207,8 @@ export default function PaymentMethods({
               <Save aria-hidden="true" />
               Save classification
             </Button>
-            {state?.ok && <span className="ml-3 text-sm text-emerald-800">Saved.</span>}
-            {state && !state.ok && <span className="ml-3 text-sm text-red-700">{state.message}</span>}
+            {state?.ok && <span className="ml-3 text-sm text-emerald-800 dark:text-emerald-300">Saved.</span>}
+            {state && !state.ok && <span className="ml-3 text-sm text-red-700 dark:text-red-400">{state.message}</span>}
           </div>
         </form>
       )}

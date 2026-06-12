@@ -1,8 +1,10 @@
 /**
  * Unit tests for the posted-day correction sweep — the AUTO-POST rule (only categories
  * with a posted prior; first-time days stay human-gated), the office-manager change
- * email (RO#/what changed/JE title), describeCorrection's diff text, and per-day error
- * isolation. All DB/QBO/notify seams mocked.
+ * email (RO#/what changed/JE title), describeCorrection's diff text, per-day error
+ * isolation, and `applyDateMoveDecision` (the date-move approve/unapprove orchestration
+ * that moved out of the action: find → flip → re-reconcile + correct both days). All
+ * DB/QBO/notify seams mocked.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -16,6 +18,9 @@ const notifyMovesMock = vi.fn();
 const sendMock = vi.fn();
 const settingsMock = vi.fn();
 const realmMock = vi.fn();
+const listMovesMock = vi.fn();
+const approveMoveMock = vi.fn();
+const unapproveMoveMock = vi.fn();
 
 function chainResolving(rows: unknown[]) {
   const q: Record<string, unknown> = {};
@@ -35,6 +40,9 @@ vi.mock("@/lib/dal/daily-poster", () => ({ postDailyPostingById: (...a: unknown[
 vi.mock("@/lib/dal/date-moves", () => ({
   detectDateMoves: (...a: unknown[]) => detectMock(...a),
   notifyDateMoves: (...a: unknown[]) => notifyMovesMock(...a),
+  listDateMoves: (...a: unknown[]) => listMovesMock(...a),
+  approveDateMove: (...a: unknown[]) => approveMoveMock(...a),
+  unapproveDateMove: (...a: unknown[]) => unapproveMoveMock(...a),
 }));
 vi.mock("@/lib/dal/notify", () => ({ sendQteklinkEmail: (...a: unknown[]) => sendMock(...a) }));
 vi.mock("@/lib/dal/daily-postings", async (importOriginal) => ({
@@ -43,7 +51,7 @@ vi.mock("@/lib/dal/daily-postings", async (importOriginal) => ({
   approveDailyPosting: (...a: unknown[]) => approveDailyMock(...a),
 }));
 
-import { applyDayCorrections, sweepPostedDays, describeCorrection } from "../posted-day-sweep";
+import { applyDayCorrections, sweepPostedDays, describeCorrection, applyDateMoveDecision } from "../posted-day-sweep";
 import type { DailyPostingRow } from "../daily-postings";
 
 const REALM = "9341455608740708";
@@ -71,6 +79,8 @@ beforeEach(() => {
   postDailyMock.mockResolvedValue({ status: "posted", postingId: "dp-x", qboJeId: "QBO-9", action: "update" });
   reconcileMock.mockResolvedValue({ realmId: REALM });
   detectMock.mockResolvedValue({ scannedRos: 0, newOrChangedMoves: [], autoResolved: 0 });
+  approveMoveMock.mockResolvedValue({ approved: true });
+  unapproveMoveMock.mockResolvedValue({ unapproved: true });
 });
 
 describe("describeCorrection", () => {
@@ -203,5 +213,55 @@ describe("sweepPostedDays", () => {
   it("no connection → an empty sweep", async () => {
     realmMock.mockResolvedValue(null);
     expect(await sweepPostedDays(7476)).toEqual({ postedDays: 0, movesDetected: 0, movesAutoResolved: 0, days: [] });
+  });
+});
+
+describe("applyDateMoveDecision", () => {
+  const MOVE = {
+    id: "mv-1", tekmetricRoId: 101, roNumber: "101",
+    originalBusinessDate: "2026-06-05", newBusinessDate: "2026-06-08",
+    originalTotalCents: null, newTotalCents: 10600, status: "pending" as const,
+    detectedAt: "x", approvedBy: null, approvedAt: null, resolvedAt: null,
+  };
+
+  beforeEach(() => {
+    // applyDayCorrections runs for real over both days → keep it a no-op (no postings).
+    listDailyMock.mockResolvedValue({ realmId: REALM, postings: [] });
+  });
+
+  it("approve: flips a PENDING move, then re-reconciles + corrects BOTH days (original then new, in order)", async () => {
+    listMovesMock.mockResolvedValue({ open: [MOVE] });
+    const r = await applyDateMoveDecision(7476, "mv-1", "approve", "chris@x.com");
+    expect(r).toEqual({ ok: true });
+    expect(approveMoveMock).toHaveBeenCalledWith(7476, "mv-1", "chris@x.com");
+    expect(unapproveMoveMock).not.toHaveBeenCalled();
+    expect(reconcileMock).toHaveBeenCalledTimes(2);
+    expect(reconcileMock.mock.calls.map((c) => c[1])).toEqual(["2026-06-05", "2026-06-08"]); // original → new
+  });
+
+  it("unapprove: requires an APPROVED move, then flips both days back", async () => {
+    listMovesMock.mockResolvedValue({ open: [{ ...MOVE, status: "approved" }] });
+    const r = await applyDateMoveDecision(7476, "mv-1", "unapprove", "chris@x.com");
+    expect(r).toEqual({ ok: true });
+    expect(unapproveMoveMock).toHaveBeenCalledWith(7476, "mv-1", "chris@x.com");
+    expect(approveMoveMock).not.toHaveBeenCalled();
+    expect(reconcileMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("not_found: the move isn't in the required state → no flip, no reconcile", async () => {
+    // approve needs pending; this move is already approved → not found for approve.
+    listMovesMock.mockResolvedValue({ open: [{ ...MOVE, status: "approved" }] });
+    const r = await applyDateMoveDecision(7476, "mv-1", "approve", "chris@x.com");
+    expect(r).toEqual({ ok: false, reason: "not_found" });
+    expect(approveMoveMock).not.toHaveBeenCalled();
+    expect(reconcileMock).not.toHaveBeenCalled();
+  });
+
+  it("not_found: the RPC reports it didn't flip (concurrent change) → treated as not_found", async () => {
+    listMovesMock.mockResolvedValue({ open: [MOVE] });
+    approveMoveMock.mockResolvedValue({ approved: false });
+    const r = await applyDateMoveDecision(7476, "mv-1", "approve", "chris@x.com");
+    expect(r).toEqual({ ok: false, reason: "not_found" });
+    expect(reconcileMock).not.toHaveBeenCalled(); // never applied the days
   });
 });

@@ -17,9 +17,19 @@ const rollupDayMock = vi.fn();
 const fromMock = vi.fn();
 
 // getDayBreakdown refreshes the payment projection FIRST (freshness contract) and
-// takes the realm from its result; then it LIVE-reconciles the viewed day.
+// takes the realm from its result; then it LIVE-reconciles the viewed day via the shared
+// reconcileDayForView preamble. The mock mirrors that preamble's terminality gate over
+// the test's own seams (listDailyMock for postings; reconcileMock for the reconcile) so
+// the called/not-called assertions exercise the real not-when-terminal behavior.
 vi.mock("@/lib/dal/payment-state", () => ({ reduceShopPaymentState: (...a: unknown[]) => reduceMock(...a) }));
-vi.mock("@/lib/dal/daily-reconcile", () => ({ runDailyReconciliation: (...a: unknown[]) => reconcileMock(...a) }));
+vi.mock("@/lib/dal/daily-reconcile", () => ({
+  runDailyReconciliation: (...a: unknown[]) => reconcileMock(...a),
+  reconcileDayForView: async (shopId: number, businessDate: string) => {
+    const { postings } = (await listDailyMock(shopId, businessDate)) as { postings: { status: string }[] };
+    const terminal = postings.length > 0 && postings.every((p) => p.status === "acknowledged" || p.status === "rejected");
+    if (!terminal) await reconcileMock(shopId, businessDate);
+  },
+}));
 vi.mock("@/lib/dal/day-drafts", () => ({ buildDayDrafts: (...a: unknown[]) => buildDayDraftsMock(...a) }));
 vi.mock("@/lib/supabase/admin", () => ({ createSupabaseAdminClient: () => ({ from: fromMock }) }));
 vi.mock("@/lib/reconcile/daily-rollup", () => ({ rollupDay: (...a: unknown[]) => rollupDayMock(...a) }));
@@ -91,7 +101,6 @@ describe("getDayBreakdown", () => {
     buildDayDraftsMock.mockResolvedValue({ tz: "America/New_York", gateSettings: { salesTaxRateBps: 600 }, sales: [s1, s2, s3], payments: [p1], extraReviewItems: [] });
     rollupDayMock.mockReturnValue({
       postableSaleDrafts: [s1, s2], postablePaymentDrafts: [p1.je],
-      netByAccount: { "120": 1500, "412": -1440, "206": -60 }, // Dr 1500 = Cr 1500
       saleCount: 3, paymentCount: 1, postableSales: 2, postablePayments: 1, reviewCount: 1, reviewItems: [],
     });
     // RO1 is in the POSTED sales JE (v1); a STAGED correction (pending v2) supersedes the
@@ -172,16 +181,18 @@ describe("getDayBreakdown", () => {
       pay("p5", 1, "Cash", null, 0, 0), // zero — appears as a row, filtered from the summary
     ];
     eventRows = [
-      { tekmetric_ro_id: 99, raw_body: { data: { repairOrderNumber: 2099 } } }, // newest wins
-      { tekmetric_ro_id: 99, raw_body: { data: { repairOrderNumber: 1099 } } },
+      { tekmetric_ro_id: 99, raw_body: { data: { repairOrderNumber: 2099, shopId: 7476 } } }, // newest wins
+      { tekmetric_ro_id: 99, raw_body: { data: { repairOrderNumber: 1099, shopId: 7476 } } },
     ];
     keytagRows = [
       { tekmetric_ro_id: 77, raw_body: { data: { repairOrderNumber: 152077, shopId: 7476 } } },
-      // a wrong-shop body must be ignored (the firehose predates the shop_id column)
+      // the body shopId is REQUIRED to match — wrong-shop AND claim-less rows are
+      // both ignored (every real Tekmetric RO payload carries shopId).
       { tekmetric_ro_id: 55, raw_body: { data: { repairOrderNumber: 999999, shopId: 1111 } } },
+      { tekmetric_ro_id: 55, raw_body: { data: { repairOrderNumber: 888888 } } },
     ];
     buildDayDraftsMock.mockResolvedValue({ tz: "America/New_York", gateSettings: {}, sales: [sameDay], payments, extraReviewItems: [] });
-    rollupDayMock.mockReturnValue({ postableSaleDrafts: [sameDay], postablePaymentDrafts: payments.map((p) => p.je), netByAccount: {}, saleCount: 1, paymentCount: 4, postableSales: 1, postablePayments: 4, reviewCount: 0, reviewItems: [] });
+    rollupDayMock.mockReturnValue({ postableSaleDrafts: [sameDay], postablePaymentDrafts: payments.map((p) => p.je), saleCount: 1, paymentCount: 4, postableSales: 1, postablePayments: 4, reviewCount: 0, reviewItems: [] });
     listDailyMock.mockResolvedValue({ realmId: REALM, postings: [] });
 
     const b = await getDayBreakdown(7476, DATE);
@@ -207,7 +218,7 @@ describe("getDayBreakdown", () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const nc: any = { input: { paymentId: "2", signedAmountCents: 400, signedProcessingFeeCents: 0, method: "Other" }, je: { paymentId: "2", repairOrderId: 2, suppressed: false, lines: [], route: "non_cash" } };
     buildDayDraftsMock.mockResolvedValue({ tz: "America/New_York", gateSettings: { salesTaxRateBps: 600 }, sales: [], payments: [dep, nc], extraReviewItems: [] });
-    rollupDayMock.mockReturnValue({ postableSaleDrafts: [], postablePaymentDrafts: [], netByAccount: {}, saleCount: 0, paymentCount: 2, postableSales: 0, postablePayments: 0, reviewCount: 0, reviewItems: [] });
+    rollupDayMock.mockReturnValue({ postableSaleDrafts: [], postablePaymentDrafts: [], saleCount: 0, paymentCount: 2, postableSales: 0, postablePayments: 0, reviewCount: 0, reviewItems: [] });
     listDailyMock.mockResolvedValue({ realmId: REALM, postings: [] });
 
     const b = await getDayBreakdown(7476, DATE);

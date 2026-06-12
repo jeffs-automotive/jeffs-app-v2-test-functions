@@ -1,3 +1,5 @@
+> **TAX SPLIT SUPERSEDED 2026-06-12 (audit):** §8c's tax-split heuristic is stale. The lump `taxes` split is **unconditional**: PTAL `[252]` = `tire_qty × $1`, and the remainder (`taxes − PTAL`) books to Sales Tax Payable `[250]`. When PTAL exceeds the charged tax, the shortfall is funded by a sales-tax **debit offset** (an owed-but-not-charged tire fee) — it is NOT the `round(subtotal×6%)+tire_qty×$1` sanity-check formula gating the split.
+
 > **POSTING GRAIN SUPERSEDED 2026-06-10:** §§ describing qteklink_ro_state, per-RO qteklink_postings rows, and per-RO desired-vs-posted corrections are historical — posting now happens at the (shop, realm, business_date, category) grain via qteklink_daily_postings (see docs/qteklink/daily-je-rework-plan.md). The mapping/intake/reducer sections remain accurate.
 
 # QTekLink — Build Plan

@@ -103,15 +103,15 @@ export default function ApproveDayControls({ date, blockedCount }: { date: strin
           </div>
         </div>
         {locked && (
-          <p className="flex flex-wrap items-center gap-1 text-sm text-amber-800">
+          <p className="flex flex-wrap items-center gap-1 text-sm text-amber-800 dark:text-amber-300">
             <Lock className="size-4 shrink-0" aria-hidden="true" />
             {blockedCount} item{blockedCount === 1 ? "" : "s"} on this day still need{blockedCount === 1 ? "s" : ""} attention.
             Fix {blockedCount === 1 ? "it" : "them"} on the{" "}
-            <Button render={<Link href={`/approvals/review?date=${date}`} />} variant="link" className="h-auto px-0 text-amber-800">fix-it list</Button>{" "}
+            <Button render={<Link href={`/approvals/review?date=${date}`} />} variant="link" className="h-auto px-0 text-amber-800 dark:text-amber-300">fix-it list</Button>{" "}
             first — nothing posts until the day is clean.
           </p>
         )}
-        {msg && <p className={`text-sm ${msg.kind === "ok" ? "text-emerald-800" : "text-red-700"}`}>{msg.text}</p>}
+        {msg && <p className={`text-sm ${msg.kind === "ok" ? "text-emerald-800 dark:text-emerald-300" : "text-red-700 dark:text-red-400"}`}>{msg.text}</p>}
       </CardContent>
 
       <Dialog open={modal !== null} onOpenChange={handleOpenChange}>

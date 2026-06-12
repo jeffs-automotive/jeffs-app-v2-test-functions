@@ -31,13 +31,13 @@ export default function RunReconcileForm() {
       </CardHeader>
       <CardContent>
         <form action={formAction} className="flex items-center gap-2">
-          <Input type="date" name="business_date" required className="w-auto" />
+          <Input type="date" name="business_date" aria-label="Day to check" required className="w-auto" />
           <Button type="submit" loading={pending} loadingText="Running…">
             <Play aria-hidden="true" />
             Run
           </Button>
         </form>
-        {state?.ok === false && <p className="mt-2 text-xs text-red-700">{state.message}</p>}
+        {state?.ok === false && <p className="mt-2 text-xs text-red-700 dark:text-red-400">{state.message}</p>}
         {state?.ok && (
           <dl className="mt-3 space-y-0.5 text-xs text-muted-foreground">
             <div>{state.data.saleCount} sales · {state.data.postableSales} postable</div>

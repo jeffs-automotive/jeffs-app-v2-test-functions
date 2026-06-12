@@ -3,9 +3,11 @@
  * `qteklink_payment_state` projection / `qteklink_mappings` rows and the pure payment
  * builder (`@/lib/payments/payment-je-builder`): `resolvePaymentMappings` +
  * `stateRowToPayment` (both pure, consumed by the shared day-draft builder) and
- * `buildShopManualPaymentJe` (the manual method-pick path, consumed by
- * `manual-payments.ts`). (The per-payment `buildShopPaymentJe` DAL was retired with
- * the per-RO/payment posting path — the daily pipeline builds whole days.)
+ * `buildShopManualPaymentJe` (the single-RO manual method-pick build — currently
+ * exercised only by its unit test; the daily pipeline reads stored manual picks through
+ * `day-drafts` rather than calling this, so it has no production caller today). (The
+ * per-payment `buildShopPaymentJe` DAL was retired with the per-RO/payment posting path
+ * — the daily pipeline builds whole days.)
  *
  * MULTI-TENANT: `shopId` is server-derived; `realmId` from the bound connection
  * (`resolveRealmForShop`). `qteklink_payment_state` / `qteklink_mappings` are

@@ -39,7 +39,7 @@ export default function RecordManualPaymentForm() {
       <CardContent>
         <form action={formAction} className="space-y-2">
           <Input name="repair_order_id" inputMode="numeric" required placeholder="Repair order id" />
-          <select name="method" value={method} onChange={(e) => setMethod(e.target.value)} className={selectCls}>
+          <select name="method" aria-label="How it was paid" value={method} onChange={(e) => setMethod(e.target.value)} className={selectCls}>
             {METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
           {method === "Other" && (
@@ -53,8 +53,8 @@ export default function RecordManualPaymentForm() {
             Record
           </Button>
         </form>
-        {state?.ok === false && <p className="mt-2 text-xs text-red-700">{state.message}</p>}
-        {state?.ok && <p className="mt-2 text-xs text-emerald-800">Recorded — it will reconcile on the next run.</p>}
+        {state?.ok === false && <p className="mt-2 text-xs text-red-700 dark:text-red-400">{state.message}</p>}
+        {state?.ok && <p className="mt-2 text-xs text-emerald-800 dark:text-emerald-300">Recorded — it will reconcile on the next run.</p>}
       </CardContent>
     </Card>
   );

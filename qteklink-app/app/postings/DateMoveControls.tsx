@@ -37,7 +37,7 @@ export function ApproveMoveButton({ id, roNumber, fromDate, toDate }: { id: stri
         <ArrowLeftRight aria-hidden="true" />
         Approve the date change
       </Button>
-      {state?.ok === false && <span className="ml-2 text-xs text-red-700">{state.message}</span>}
+      {state?.ok === false && <span className="ml-2 text-xs text-red-700 dark:text-red-400">{state.message}</span>}
       <ConfirmDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
@@ -75,7 +75,7 @@ export function UnapproveMoveButton({ id, roNumber }: { id: string; roNumber: st
         <Undo2 aria-hidden="true" />
         Undo approval
       </Button>
-      {state?.ok === false && <span className="ml-2 text-xs text-red-700">{state.message}</span>}
+      {state?.ok === false && <span className="ml-2 text-xs text-red-700 dark:text-red-400">{state.message}</span>}
       <ConfirmDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
@@ -110,7 +110,7 @@ export function RefreshQueueButton() {
           Checked. {state.data.cleared > 0 ? `${state.data.cleared} item${state.data.cleared === 1 ? "" : "s"} cleared.` : "No changes."}
         </span>
       )}
-      {state?.ok === false && <span className="ml-2 text-xs text-red-700">{state.message}</span>}
+      {state?.ok === false && <span className="ml-2 text-xs text-red-700 dark:text-red-400">{state.message}</span>}
     </form>
   );
 }

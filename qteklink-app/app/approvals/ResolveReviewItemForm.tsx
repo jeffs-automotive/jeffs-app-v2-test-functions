@@ -34,7 +34,7 @@ export default function ResolveReviewItemForm({ id }: { id: string }) {
         <Check aria-hidden="true" />
         Resolve
       </Button>
-      {state?.ok === false && <span className="text-xs text-red-700">{state.message}</span>}
+      {state?.ok === false && <span className="text-xs text-red-700 dark:text-red-400">{state.message}</span>}
     </form>
   );
 }

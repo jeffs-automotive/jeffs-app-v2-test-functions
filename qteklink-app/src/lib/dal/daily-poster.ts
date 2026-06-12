@@ -33,6 +33,7 @@ import { upsertReviewItem } from "@/lib/dal/review-items";
 import { sourceStateHash } from "@/lib/dal/postings";
 import {
   dailySourceState,
+  dailyRequestIdFor,
   findLatestPostedDaily,
   type DailyAction,
 } from "@/lib/dal/daily-postings";
@@ -183,6 +184,9 @@ export async function postDailyPostingById(
         ? { ro_ids: desired.constituents.roIds, payment_ids: desired.constituents.paymentIds }
         : {},
       p_source_state_hash: desiredHash,
+      // The requestid rotates with the content — QBO must never dedupe a re-send of
+      // CHANGED content against the old request (audit 2026-06-12).
+      p_requestid: dailyRequestIdFor(shopId, realmId, businessDate, category, row.posting_version, desiredHash),
     });
     if (refErr) throw new Error(`postDailyPostingById (refresh) failed: ${refErr.message}`);
     return { status: "stale_refreshed", postingId: row.id };

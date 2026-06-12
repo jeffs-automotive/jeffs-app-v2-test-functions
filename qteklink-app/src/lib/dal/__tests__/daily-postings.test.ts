@@ -102,10 +102,13 @@ describe("dailySourceState / dailyRequestIdFor / dailyPrivateNoteMarker", () => 
     expect(sourceStateHash(dailySourceState("sales", DATE, null))).toBe(sourceStateHash(dailySourceState("sales", DATE, null)));
   });
 
-  it("requestid is stable, day-category keyed, ≤ 50 chars (QBO cap)", () => {
-    const id = dailyRequestIdFor(7476, REALM, DATE, "sales", 1);
-    expect(id).toBe(dailyRequestIdFor(7476, REALM, DATE, "sales", 1));
-    expect(id).not.toBe(dailyRequestIdFor(7476, REALM, DATE, "sales", 2));
+  it("requestid is stable, day-category + CONTENT keyed, ≤ 50 chars (QBO cap)", () => {
+    const id = dailyRequestIdFor(7476, REALM, DATE, "sales", 1, "h-a");
+    expect(id).toBe(dailyRequestIdFor(7476, REALM, DATE, "sales", 1, "h-a")); // same content → same id (crash-safe resend)
+    expect(id).not.toBe(dailyRequestIdFor(7476, REALM, DATE, "sales", 2, "h-a")); // version keyed
+    // CHANGED content → NEW id: QBO must never dedupe a refreshed JE against the
+    // old request (the lost-response divergence window — audit 2026-06-12).
+    expect(id).not.toBe(dailyRequestIdFor(7476, REALM, DATE, "sales", 1, "h-b"));
     expect(id.length).toBeLessThanOrEqual(50);
   });
 
@@ -122,7 +125,7 @@ describe("enqueueDailyPosting — the diff matrix", () => {
     expect(r).toMatchObject({ enqueueAction: "new", action: "create", postingId: "dp-new", postingVersion: 1 });
     expect(rpcMock).toHaveBeenCalledWith("qteklink_enqueue_daily_posting", expect.objectContaining({
       p_posting_version: 1, p_action: "create", p_category: "sales",
-      p_requestid: dailyRequestIdFor(7476, REALM, DATE, "sales", 1),
+      p_requestid: dailyRequestIdFor(7476, REALM, DATE, "sales", 1, sourceStateHash(dailySourceState("sales", DATE, salesJe()))),
       p_constituents: { ro_ids: [101], payment_ids: [] },
     }));
   });

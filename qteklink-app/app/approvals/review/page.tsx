@@ -15,7 +15,7 @@ import RecordManualPaymentForm from "../RecordManualPaymentForm";
 import DateNav from "../DateNav";
 import { PageHeader, IdentityBlock } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
-import { Card, CardContent, CardTitle } from "@/components/ui/card";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -105,10 +105,12 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
             </section>
           )}
           <Card className="mt-8 shadow-xs">
-            <CardContent className="flex items-center justify-between gap-3">
+            <CardHeader>
               <CardTitle>Open review items</CardTitle>
-              <span className="text-3xl font-bold tabular-nums text-foreground">{items.length}</span>
-            </CardContent>
+              <CardAction>
+                <span className="text-3xl font-bold tabular-nums text-foreground">{items.length}</span>
+              </CardAction>
+            </CardHeader>
             <CardContent>
               {items.length === 0 ? (
                 <EmptyState icon={CheckCircle2} title="Nothing to review" subtext="Every reconciled draft is postable." />

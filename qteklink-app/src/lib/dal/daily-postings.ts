@@ -52,15 +52,23 @@ export function dailySourceState(
   };
 }
 
-/** Stable per-(day, category, version) QBO requestid: `qtl-` + 40 hex = 44 ≤ 50 chars. */
+/**
+ * Stable QBO requestid: `qtl-` + 40 hex = 44 ≤ 50 chars, keyed on the day-category
+ * identity AND the source-state hash. The hash matters: a pending row's CONTENT can
+ * be refreshed in place (enqueue diff / the poster's stale release), and QBO dedupes
+ * by requestid — re-sending CHANGED content under the old id would return the
+ * ORIGINAL response and silently diverge the books (audit 2026-06-12). Same content
+ * → same id (the crash-safe resend contract); changed content → new id.
+ */
 export function dailyRequestIdFor(
   shopId: number,
   realmId: string,
   businessDate: string,
   category: DailyCategory,
   version: number,
+  sourceHash: string,
 ): string {
-  const identity = `${shopId}:${realmId}:day:${businessDate}:${category}:v${version}`;
+  const identity = `${shopId}:${realmId}:day:${businessDate}:${category}:v${version}:${sourceHash}`;
   return `qtl-${createHash("sha256").update(identity).digest("hex").slice(0, 40)}`;
 }
 
@@ -329,7 +337,7 @@ async function callEnqueueRpc(
     p_proposed_je: proposedJe,
     p_constituents: constituents,
     p_source_state_hash: hash,
-    p_requestid: dailyRequestIdFor(shopId, realmId, businessDate, category, version),
+    p_requestid: dailyRequestIdFor(shopId, realmId, businessDate, category, version, hash),
   });
   if (error) throw new Error(`qteklink_enqueue_daily_posting failed: ${error.message}`);
   if (typeof data !== "string") {

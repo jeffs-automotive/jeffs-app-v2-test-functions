@@ -36,11 +36,6 @@ body {
 @theme inline {
   --font-heading: var(--font-sans);
   --font-sans: var(--font-sans);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
@@ -100,11 +95,6 @@ body {
   --border: oklch(0.90 0.006 70);
   --input: oklch(0.88 0.007 70);
   --ring: oklch(0.55 0.16 8);
-  --chart-1: oklch(0.42 0.18 13);
-  --chart-2: oklch(0.78 0.07 70);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
   --radius: 0.5rem;
 }
 
@@ -139,11 +129,6 @@ body {
   --border: oklch(1 0 0 / 12%);
   --input: oklch(1 0 0 / 18%);
   --ring: oklch(0.68 0.15 10);
-  --chart-1: oklch(0.68 0.15 10);
-  --chart-2: oklch(0.78 0.07 70);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
 }
 
 /*---break---

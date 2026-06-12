@@ -90,6 +90,23 @@ SELECT is(public.qteklink_remove_allowed_user(424244,
   (SELECT id FROM public.qteklink_allowed_users WHERE shop_id = 424244 AND email = 'boss@jeffsautomotive.com')),
   false, 'a BOUND row cannot be removed (deactivate instead)');
 
+-- ─── Bind guard: the same email PENDING on TWO shops fails closed ─────────
+-- (20260612160000 audit hardening: the bind target must be unambiguous ACROSS
+-- shops, not just within one — never bind a sign-in to the older row silently.)
+INSERT INTO public.qbo_connections (realm_id, shop_id, access_token_expires_at, refresh_token_expires_at)
+VALUES ('pgtap-realm-C', 424245, now() + interval '1 hour', now() + interval '100 days');
+SELECT ok(public.qteklink_add_allowed_user(424244, 'shared@jeffsautomotive.com', 'viewer', NULL, 'pgtap') IS NOT NULL, 'shared email pending on shop A');
+SELECT ok(public.qteklink_add_allowed_user(424245, 'shared@jeffsautomotive.com', 'viewer', NULL, 'pgtap') IS NOT NULL, 'same email pending on shop B (per-shop unique allows it)');
+INSERT INTO auth.users (instance_id, id, aud, role, email)
+VALUES ('00000000-0000-0000-0000-000000000000', 'bbbbbbbb-4244-4244-4244-bbbbbbbbbbbb', 'authenticated', 'authenticated', 'shared@jeffsautomotive.com');
+INSERT INTO auth.identities (id, provider_id, user_id, identity_data, provider, last_sign_in_at, created_at, updated_at)
+VALUES (gen_random_uuid(), 'oid-shared-ambiguous', 'bbbbbbbb-4244-4244-4244-bbbbbbbbbbbb',
+        jsonb_build_object('sub', 'oid-shared-ambiguous', 'email', 'shared@jeffsautomotive.com',
+                           'custom_claims', jsonb_build_object('oid', 'oid-shared-ambiguous', 'tid', 'tenant-pgtap')),
+        'azure', now(), now(), now());
+SELECT is((SELECT count(*)::int FROM public.qteklink_resolve_allowed_user('bbbbbbbb-4244-4244-4244-bbbbbbbbbbbb')), 0, 'ambiguous cross-shop email does NOT resolve (fail closed)');
+SELECT is((SELECT count(*)::int FROM public.qteklink_allowed_users WHERE lower(email) = 'shared@jeffsautomotive.com' AND entra_object_id IS NOT NULL), 0, 'NEITHER pending row was bound');
+
 -- ─── SECURITY: anon denied ────────────────────────────────────────────────
 SET ROLE anon;
 SELECT throws_ok($$ SELECT public.qteklink_add_allowed_user(424244, 'x@y.com', 'viewer', NULL, 'anon') $$, '42501', NULL, 'anon cannot EXECUTE add');

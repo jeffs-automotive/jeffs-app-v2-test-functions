@@ -73,7 +73,7 @@ export default function MappingEditor({
       </CardHeader>
       <CardContent>
       {accounts.length === 0 ? (
-        <p className="text-sm text-amber-800">
+        <p className="text-sm text-amber-800 dark:text-amber-300">
           No chart-of-accounts yet — sync it from the dashboard first.
         </p>
       ) : (
@@ -166,8 +166,8 @@ export default function MappingEditor({
               <Save aria-hidden="true" />
               {item?.mappedAccountLabel ? "Update mapping" : "Save mapping"}
             </Button>
-            {state?.ok && <span className="ml-3 text-sm text-emerald-800">Mapping saved.</span>}
-            {state && !state.ok && <span className="ml-3 text-sm text-red-700">{state.message}</span>}
+            {state?.ok && <span className="ml-3 text-sm text-emerald-800 dark:text-emerald-300">Mapping saved.</span>}
+            {state && !state.ok && <span className="ml-3 text-sm text-red-700 dark:text-red-400">{state.message}</span>}
           </div>
         </form>
       )}

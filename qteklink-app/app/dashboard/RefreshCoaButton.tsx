@@ -30,13 +30,13 @@ export default function RefreshCoaButton() {
       </form>
 
       {state?.ok && (
-        <p className="mt-3 text-sm text-emerald-800">
+        <p className="mt-3 text-sm text-emerald-800 dark:text-emerald-300">
           Synced {state.data.synced} account{state.data.synced === 1 ? "" : "s"} from
           QuickBooks.
         </p>
       )}
       {state && !state.ok && (
-        <p className="mt-3 text-sm text-red-700">
+        <p className="mt-3 text-sm text-red-700 dark:text-red-400">
           {state.reason === "reconnect_required"
             ? "QuickBooks needs to be reconnected before the chart of accounts can sync."
             : state.message}

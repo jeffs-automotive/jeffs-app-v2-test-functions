@@ -5,7 +5,8 @@
  * a business date: build + gate the day's drafts, persist a §9 review item per
  * non-postable draft, return the roll-up. Thin (the QTekLink pattern): requireQtekUser()
  * FIRST, admin gate, Zod-validate, delegate to the DAL, return a typed QboActionResult.
- * (A future cron calls runDailyReconciliation directly; this is the manual/UI trigger.)
+ * (The nightly cron — app/api/cron/daily-sync — calls runDailyReconciliation directly;
+ * this is the manual/UI trigger.)
  */
 import { z } from "zod";
 import { requireQtekUser } from "@/lib/auth";

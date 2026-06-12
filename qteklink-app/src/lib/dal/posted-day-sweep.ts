@@ -40,7 +40,7 @@ import {
   type DailyPostingRow,
 } from "@/lib/dal/daily-postings";
 import { postDailyPostingById, type QboDailyWriteClient } from "@/lib/dal/daily-poster";
-import { detectDateMoves, notifyDateMoves } from "@/lib/dal/date-moves";
+import { detectDateMoves, notifyDateMoves, listDateMoves, approveDateMove, unapproveDateMove } from "@/lib/dal/date-moves";
 import { sendQteklinkEmail } from "@/lib/dal/notify";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { fmtUsd } from "@/lib/format";
@@ -218,6 +218,51 @@ export async function applyDayCorrections(
     }
   }
   return { businessDate, correctionsPosted: posted, correctionsFailed: failed };
+}
+
+/**
+ * Apply an office-manager decision on a date-move queue item: find the move via
+ * `listDateMoves`, flip it (approve a PENDING move / unapprove an APPROVED one), then
+ * for BOTH the original and new day re-reconcile + auto-post the staged corrections so
+ * the RO moves between the two days' journal entries (or flips back on unapprove).
+ *
+ *   approve   — requires the move to be `pending`; the holds lift.
+ *   unapprove — requires the move to be `approved`; the holds re-engage.
+ *
+ * Returns `not_found` when the move isn't in the required state (or the RPC reports it
+ * didn't flip — a concurrent change). The approval/unapproval IS the consent: this
+ * touches QuickBooks.
+ *
+ * Home note: this lives HERE (posted-day-sweep) rather than in date-moves to stay
+ * cycle-safe — the sweep already imports date-moves and owns `applyDayCorrections`; the
+ * reverse import (date-moves → posted-day-sweep) would create an import cycle.
+ */
+export async function applyDateMoveDecision(
+  shopId: number,
+  id: string,
+  decision: "approve" | "unapprove",
+  actor: string,
+): Promise<{ ok: true } | { ok: false; reason: "not_found" }> {
+  const requiredStatus = decision === "approve" ? "pending" : "approved";
+
+  // Find the move (for its two dates) BEFORE flipping it.
+  const { open } = await listDateMoves(shopId);
+  const move = open.find((m) => m.id === id && m.status === requiredStatus);
+  if (!move) return { ok: false, reason: "not_found" };
+
+  const flipped =
+    decision === "approve"
+      ? (await approveDateMove(shopId, id, actor)).approved
+      : (await unapproveDateMove(shopId, id, actor)).unapproved;
+  if (!flipped) return { ok: false, reason: "not_found" };
+
+  // The decision IS the consent: re-reconcile + auto-post corrections for BOTH days
+  // (original then new) so the RO moves between the two days' journal entries.
+  for (const day of [move.originalBusinessDate, move.newBusinessDate]) {
+    await runDailyReconciliation(shopId, day);
+    await applyDayCorrections(shopId, day);
+  }
+  return { ok: true };
 }
 
 /**

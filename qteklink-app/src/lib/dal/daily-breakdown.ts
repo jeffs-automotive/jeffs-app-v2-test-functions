@@ -28,7 +28,7 @@
  */
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { reduceShopPaymentState } from "@/lib/dal/payment-state";
-import { runDailyReconciliation } from "@/lib/dal/daily-reconcile";
+import { reconcileDayForView } from "@/lib/dal/daily-reconcile";
 import { buildDayDrafts } from "@/lib/dal/day-drafts";
 import { listDailyPostingsForDay, buildDailyStatusIndex } from "@/lib/dal/daily-postings";
 import { rollupDay } from "@/lib/reconcile/daily-rollup";
@@ -42,6 +42,8 @@ interface DraftJeLine {
   postingType: "Debit" | "Credit";
   amountCents: number;
   description: string;
+  /** "tax_offset" = the sales-tax debit funding an owed-but-not-charged tire fee. */
+  part?: "tax_offset";
 }
 
 export interface BreakdownLine {
@@ -148,10 +150,11 @@ function harvestRoNumbers(rows: RoNumberEventRow[], shopId: number, out: Map<num
   for (const r of rows) {
     const ro = Number(r.tekmetric_ro_id);
     if (out.has(ro)) continue;
-    // Guard a body-level shop id when present (the keytag firehose table predates
-    // the shop_id-column convention).
-    const bodyShop = r.raw_body?.data?.shopId;
-    if (bodyShop != null && Number(bodyShop) !== shopId) continue;
+    // The keytag firehose table predates the shop_id-column convention, so the
+    // body-level shopId is REQUIRED to match (every Tekmetric RO payload carries
+    // it — verified 1,369/1,369 live events, audit 2026-06-12). A row without a
+    // matching claim is skipped: never harvest across shops.
+    if (Number(r.raw_body?.data?.shopId) !== shopId) continue;
     const n = r.raw_body?.data?.repairOrderNumber;
     if (typeof n === "string" || typeof n === "number") out.set(ro, String(n));
   }
@@ -225,11 +228,7 @@ export async function getDayBreakdown(
 
   // LIVE-ON-VIEW: re-reconcile the viewed day (stages the ledger + syncs review
   // items) unless it's fully acknowledged (Accounting Link's terminal history).
-  {
-    const { postings: existing } = await listDailyPostingsForDay(shopId, businessDate);
-    const acknowledged = existing.length > 0 && existing.every((p) => p.status === "acknowledged" || p.status === "rejected");
-    if (!acknowledged) await runDailyReconciliation(shopId, businessDate);
-  }
+  await reconcileDayForView(shopId, businessDate);
 
   const { sales, payments, gateSettings } = await buildDayDrafts(shopId, realmId, businessDate, opts);
   const rollup = rollupDay(businessDate, sales, payments.map((p) => p.je), gateSettings);
@@ -268,9 +267,11 @@ export async function getDayBreakdown(
     // day needs re-approval (the day-grain "changed since posted").
     const changedSincePosted = idx.postedSaleRos.has(ro) && idx.correctionStaged.sales;
 
+    // Exclude the tax-offset debit so the RO row ties to Tekmetric's totalSales
+    // (audit 2026-06-12 — it inflated offset ROs by the uncharged fee).
     const totalCents = status === "needsAttention"
       ? s.snapshot.totalSales
-      : lines.filter((l) => l.postingType === "Debit").reduce((a, l) => a + l.amountCents, 0);
+      : lines.filter((l) => l.postingType === "Debit" && l.part !== "tax_offset").reduce((a, l) => a + l.amountCents, 0);
 
     return {
       tekmetricRoId: ro,

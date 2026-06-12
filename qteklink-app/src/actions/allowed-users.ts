@@ -18,9 +18,8 @@ import {
   setAllowedUserRole,
   removeAllowedUser,
 } from "@/lib/dal/allowed-users";
+import { emailRx } from "@/lib/validate";
 import { qboFailure, type QboActionResult } from "./qbo/result";
-
-const emailRx = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const AddSchema = z.object({
   email: z.string().trim().toLowerCase().max(200).regex(emailRx, "Enter a valid email address."),

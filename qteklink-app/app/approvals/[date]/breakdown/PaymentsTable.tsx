@@ -62,7 +62,7 @@ function SortHeader({
         type="button"
         onClick={onClick}
         className={cn(
-          "flex w-full items-center gap-1 px-3 py-2 text-left transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+          "flex w-full items-center gap-1 px-3 py-2 text-left transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           active && "text-foreground",
         )}
       >

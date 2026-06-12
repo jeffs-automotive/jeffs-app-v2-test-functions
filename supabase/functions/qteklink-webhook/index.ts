@@ -32,14 +32,18 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { withSentryScope, Sentry } from "../_shared/sentry-edge.ts";
 import { bearersEqual } from "../_shared/scheduler-auth.ts";
+import { resolveSecretKey } from "../_shared/resolve-secret-key.ts";
 
 // test seam — lazily-initialized service-role client (see index.test.ts).
 let sb: SupabaseClient | null = null;
 function getSb(): SupabaseClient {
   if (sb === null) {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-    const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    sb = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+    // New-format secret key first — the legacy-named injected var is the fallback
+    // (this project's legacy JWT keys are revoked; audit 2026-06-12).
+    const SECRET_KEY = resolveSecretKey();
+    if (!SECRET_KEY) throw new Error("qteklink-webhook: no Supabase secret key configured");
+    sb = createClient(SUPABASE_URL, SECRET_KEY, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
   }

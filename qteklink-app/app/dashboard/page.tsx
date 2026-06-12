@@ -27,7 +27,7 @@ export default async function DashboardPage() {
   let coaStatus = "QuickBooks isn't connected for this shop yet.";
   if (coa?.realmId) {
     coaStatus = coa.lastSyncedAt
-      ? `${coa.count} account${coa.count === 1 ? "" : "s"} mirrored · last synced ${new Date(coa.lastSyncedAt).toISOString().replace("T", " ").slice(0, 16)} UTC`
+      ? `${coa.count} account${coa.count === 1 ? "" : "s"} mirrored · last synced ${new Date(coa.lastSyncedAt).toLocaleString()}`
       : "Not synced yet — click below to mirror your chart of accounts.";
   }
 

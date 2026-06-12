@@ -17,6 +17,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { withSentryScope, Sentry } from "../_shared/sentry-edge.ts";
 import { bearersEqual } from "../_shared/scheduler-auth.ts";
+import { resolveSecretKeyCandidates } from "../_shared/resolve-secret-key.ts";
 
 const FROM_EMAIL =
   Deno.env.get("QTEKLINK_FROM_EMAIL") ?? "QTekLink <alerts@jeffsautomotive.com>";
@@ -33,16 +34,20 @@ const EMAIL_RX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export async function handler(req: Request): Promise<Response> {
   if (req.method !== "POST") return json(405, { error: "Use POST" });
 
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  // Accept ANY currently-valid secret key (new-format dict/single first, the
+  // legacy-named injected var last): the Vercel caller and this function may
+  // resolve different forms of the same credential surface, and a key rotation
+  // must not break the handshake (audit 2026-06-12).
+  const keyCandidates = resolveSecretKeyCandidates();
   const resendKey = Deno.env.get("RESEND_API_KEY") ?? "";
-  if (!serviceKey || !resendKey) {
-    console.error("qteklink-email: SUPABASE_SERVICE_ROLE_KEY / RESEND_API_KEY not set");
+  if (keyCandidates.length === 0 || !resendKey) {
+    console.error("qteklink-email: Supabase secret key / RESEND_API_KEY not set");
     return json(500, { error: "Misconfigured" });
   }
 
   const auth = req.headers.get("authorization") ?? "";
   const bearer = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  if (!bearersEqual(bearer, serviceKey)) {
+  if (!keyCandidates.some((k) => bearersEqual(bearer, k))) {
     Sentry.captureMessage("qteklink-email: unauthorized call rejected", "warning");
     return json(401, { error: "Unauthorized" });
   }

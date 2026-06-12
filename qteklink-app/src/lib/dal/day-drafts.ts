@@ -2,8 +2,9 @@
  * Shared day-draft builder — the single read path that turns one shop-local business
  * day's source data (`qteklink_events` postings + `qteklink_payment_state` + manual
  * picks) into the built SALE + PAYMENT JE drafts. Used by BOTH the reconcile job
- * (`runDailyReconciliation` — gates/persists/enqueues) and the daily snapshot
- * (`getDailySnapshot` — read-only). Factoring it here guarantees the snapshot's view of
+ * (`runDailyReconciliation` — gates/persists/enqueues) and the live-on-view read models
+ * (`getDailySnapshot` / `getDayBreakdown`, which re-reconcile the viewed day first, then
+ * build these drafts to render it). Factoring it here guarantees the read models' view of
  * "postable vs blocked" can NEVER drift from what the reconcile actually enqueues.
  *
  * Fat-DAL: the JE builders + gates are pure; this is the thin DB seam. MULTI-TENANT: the

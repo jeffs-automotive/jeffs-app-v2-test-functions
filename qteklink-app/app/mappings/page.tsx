@@ -7,7 +7,7 @@
  * gate; this page resolves account names for display + flags any mapping whose
  * account has since been removed from QBO.
  */
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Inbox } from "lucide-react";
 import { requireQtekUser } from "@/lib/auth";
 import { listMappings, listMappableAccounts, type MappingRow } from "@/lib/dal/mappings";
 import { listTekmetricItems } from "@/lib/dal/tekmetric-items";
@@ -23,6 +23,7 @@ import MappingEditor from "./MappingEditor";
 import PaymentMethods from "./PaymentMethods";
 import DeactivateMappingButton from "./DeactivateMappingButton";
 import { PageHeader, IdentityBlock } from "@/components/PageHeader";
+import { EmptyState } from "@/components/EmptyState";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
@@ -52,7 +53,7 @@ export default async function MappingsPage() {
       <section className="mt-4 rounded-lg border border-border bg-muted p-4 text-sm text-muted-foreground">
         This page tells QTekLink which QuickBooks account each Tekmetric item belongs to —
         labor, parts, fees, taxes, and payment types. If something shows{" "}
-        <span className="font-medium text-amber-800">not mapped</span>, pick an account for it;
+        <span className="font-medium text-amber-800 dark:text-amber-300">not mapped</span>, pick an account for it;
         days can&apos;t post until everything on them is mapped.
       </section>
 
@@ -73,7 +74,7 @@ export default async function MappingsPage() {
                 <p className="text-xs uppercase tracking-wide text-muted-foreground">active mappings</p>
               </div>
               {staleCount > 0 && (
-                <p className="flex items-start gap-1.5 text-sm text-red-700">
+                <p className="flex items-start gap-1.5 text-sm text-red-700 dark:text-red-400">
                   <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
                   {staleCount} mapping{staleCount === 1 ? "" : "s"} point to an account
                   that&apos;s been removed or deactivated in QuickBooks — re-map below.
@@ -97,12 +98,11 @@ export default async function MappingsPage() {
             </CardHeader>
             <CardContent>
               {mappings.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No mappings yet.{" "}
-                  {isAdmin
-                    ? "Add the first one below."
-                    : "An admin needs to set these up."}
-                </p>
+                <EmptyState
+                  icon={Inbox}
+                  title="No mappings yet"
+                  subtext={isAdmin ? "Add the first one below." : "An admin needs to set these up."}
+                />
               ) : (
                 <div className="space-y-6">
                   {MAPPING_KINDS.filter((k) => byKind.has(k)).map((kind) => (
@@ -116,7 +116,7 @@ export default async function MappingsPage() {
                             <span className="flex-1">
                               <span className="font-medium text-foreground">{m.sourceKey}</span>
                               <span className="text-muted-foreground"> &rarr; </span>
-                              <span className={m.accountStale ? "text-red-700 line-through" : "text-foreground"}>
+                              <span className={m.accountStale ? "text-red-700 line-through dark:text-red-400" : "text-foreground"}>
                                 {m.accountNum ? `${m.accountNum} · ` : ""}
                                 {m.accountName ?? m.qboAccountId}
                               </span>
