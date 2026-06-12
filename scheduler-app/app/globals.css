@@ -48,6 +48,11 @@
   --color-brand-gold-400: #c79964;
   --color-brand-gold-500: #b6814a;
   --color-brand-gold-600: #94633b;
+  /* Sanctioned bronze: the ONLY gold-family value allowed to carry TEXT on a
+   * light surface (gold-300/400/500 fail AA for text). 6.45:1 on paper-100.
+   * Not used by this pass except as the documented escape hatch — future work
+   * must reach for this, never gold-300, when gold-toned text is needed. */
+  --color-brand-gold-700: #7E5226;
 
   /* ─── Heritage neutrals ────────────────────────────────────────────────── */
   /* Paper backgrounds — warm off-whites. */
@@ -59,11 +64,23 @@
   /* Ink — charcoal-leaning, never pure black. */
   --color-ink:        #2A2622;  /* primary text */
   --color-ink-secondary: #5C534A;  /* muted body + meta lines */
-  --color-ink-tertiary:  #8A7F73;  /* captions, timestamps */
+  /* Darkened 2026-06-11 (was #8A7F73 = 3.76:1, FAILED AA normal-text) to
+   * #766C61 = 4.93:1 on paper-100 / 4.56:1 on paper (#F5F1E8) — clears the
+   * 4.5:1 floor on the shipped surfaces (eyebrows, footnotes, captions,
+   * timestamps). NOTE: on paper-200 it computes 4.29:1 — do not place
+   * tertiary text on paper-200+ without darkening further. */
+  --color-ink-tertiary:  #766C61;  /* captions, timestamps (AA-safe) */
 
   /* Rule / hairline */
-  --color-rule:       #DDD3BE;  /* default thin hairline (gold-ish, not stark gray) */
+  --color-rule:       #DDD3BE;  /* default DECORATIVE thin hairline (1.43:1 — exempt) */
   --color-rule-strong: #B89E72;  /* stronger rule for section break */
+  /* Field-boundary rule (NEW 2026-06-11): editable inputs/textareas are the
+   * only boundary of a control, so WCAG 2.1 §1.4.11 wants 3:1. The decorative
+   * --color-rule (1.43:1) fails that. Implementer correction: the spec's
+   * proposed #C9BCA3 computes to only 1.80:1 (not the 3.04:1 the spec claimed
+   * — an arithmetic error in the spec). #9C8A6E is the same warm-tan family
+   * darkened to a verified 3.21:1 on paper-100, clearing the floor. */
+  --color-rule-input: #9C8A6E;
 
   /* Status — kept restrained per editorial brief; no neon greens/reds. */
   --color-status-warn-bg: #FDF3DC;
@@ -84,6 +101,37 @@
   --radius-card: 6px;    /* cards are minimally rounded — editorial-feel */
   --radius-input: 4px;
   --radius-pill: 9999px;
+
+  /* ─── Elevation (NEW 2026-06-11) ──────────────────────────────────────── */
+  /* Two-layer warm shadows tuned to ink (#2A2622) not black — lifts paper
+   * surfaces off the page without a heavy "material" drop. Decorative
+   * (non-text), so no contrast floor applies. Consumed via shadow-[var(...)]. */
+  --shadow-card: 0 1px 2px rgba(42, 38, 34, 0.04), 0 4px 12px -2px rgba(42, 38, 34, 0.06);
+  --shadow-card-hover: 0 2px 4px rgba(42, 38, 34, 0.05), 0 8px 20px -4px rgba(42, 38, 34, 0.08);
+  --shadow-pop: 0 8px 28px -6px rgba(42, 38, 34, 0.14);
+
+  /* ─── Motion (NEW 2026-06-11) ─────────────────────────────────────────── */
+  /* Names the easing the Card already hardcodes ([0.16,1,0.3,1]) so all
+   * motion shares one curve. Same value — no behavior change. */
+  --ease-editorial: cubic-bezier(0.16, 1, 0.3, 1);
+  /* Pop-in entrance for the idle toast + offline banner. Tailwind v4 maps
+   * --animate-* into an `animate-*` utility; the keyframes are defined below
+   * (@theme can't host @keyframes). Reduced-motion block neutralizes it. */
+  --animate-pop-in: pop-in 200ms var(--ease-editorial);
+}
+
+/* Keyframes for --animate-pop-in (must live outside @theme). The global
+ * prefers-reduced-motion block below collapses animation-duration to 0.01ms,
+ * so this entrance auto-flattens for reduced-motion users. */
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 :root {
@@ -131,10 +179,6 @@ h3 { font-weight: 600; }
   color: var(--color-ink-tertiary);
 }
 
-/* Decorative rule (under section title) */
-.rule-hairline {
-  border-top: 1px solid var(--color-rule);
-}
 
 .rule-gold {
   border-top: 1px solid var(--color-brand-gold-400);

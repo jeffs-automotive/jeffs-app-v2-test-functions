@@ -92,13 +92,13 @@ export function AppointmentTypeCard({
               }
               className={
                 "block w-full rounded-[var(--radius-card)] border px-5 py-4 " +
-                "text-left transition-colors duration-150 ease-out " +
+                "text-left transition-[color,background-color,border-color,box-shadow] duration-150 ease-out " +
                 "focus-visible:outline-2 focus-visible:outline-offset-2 " +
                 "focus-visible:outline-brand-burgundy-500 " +
                 (isAvailable
                   ? isPicked
                     ? "border-brand-burgundy-700 bg-brand-burgundy-50"
-                    : "border-rule bg-paper-100 hover:border-rule-strong hover:bg-paper-200"
+                    : "border-rule bg-paper-100 hover:border-rule-strong hover:bg-paper-200 hover:shadow-[var(--shadow-card-hover)]"
                   : "border-rule bg-paper-200 opacity-60 cursor-not-allowed")
               }
             >

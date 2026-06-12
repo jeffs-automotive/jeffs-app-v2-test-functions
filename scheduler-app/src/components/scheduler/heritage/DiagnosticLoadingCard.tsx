@@ -127,10 +127,27 @@ export function DiagnosticLoadingCard({ onMount }: DiagnosticLoadingCardProps) {
       </Card.Body>
 
       {error !== null && (
-        <div role="alert">
-          <Card.Footnote>
-            Error detail (for your service writer): {error}
-          </Card.Footnote>
+        <div
+          role="alert"
+          className={
+            "mt-5 rounded-[var(--radius-input)] border " +
+            "border-status-error-fg bg-status-error-bg px-4 py-3 " +
+            "text-[14px] leading-snug text-status-error-fg"
+          }
+        >
+          <p>
+            Something went wrong on our side. If this sticks, please call us at{" "}
+            <a
+              href="tel:6102536565"
+              className="font-medium text-brand-burgundy-700 underline underline-offset-2 hover:no-underline"
+            >
+              (610) 253-6565
+            </a>
+            .
+          </p>
+          <p className="mt-2 text-[12px] text-ink-tertiary">
+            Detail for your service writer: {error}
+          </p>
         </div>
       )}
     </Card>

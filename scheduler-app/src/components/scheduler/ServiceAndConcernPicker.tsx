@@ -95,15 +95,18 @@ function ServiceTile({
   const base =
     "block w-full px-4 py-3 text-left " +
     "rounded-[var(--radius-card)] " +
-    "transition-colors duration-150 ease-out " +
+    "transition-[color,background-color,border-color,box-shadow] duration-150 ease-out " +
     "focus-visible:outline-2 focus-visible:outline-offset-2 " +
     "focus-visible:outline-brand-burgundy-500 " +
     "disabled:opacity-50 disabled:cursor-not-allowed";
+  // Deselected tiles are large tappable cards — add the system hover lift so
+  // they feel pressable. Selected (burgundy fill) chips stay flat.
   const state = selected
     ? "bg-brand-burgundy-700 text-paper-100 hover:bg-brand-burgundy-800 " +
       "border border-brand-burgundy-700"
     : "bg-paper-200 text-ink hover:bg-paper-300 " +
-      "border border-rule hover:border-rule-strong";
+      "border border-rule hover:border-rule-strong " +
+      "hover:shadow-[var(--shadow-card-hover)]";
   return (
     <button
       type="button"
@@ -278,7 +281,7 @@ export function ServiceAndConcernPicker({
 
           {error && (
             <p
-              className="mt-4 text-[14px] text-status-error"
+              className="mt-4 text-[14px] text-status-error-fg"
               role="alert"
               aria-live="polite"
             >

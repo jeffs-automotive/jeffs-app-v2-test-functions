@@ -180,7 +180,7 @@ export function SummaryCard({
           </p>
         </section>
 
-        <div className="rule-hairline" aria-hidden />
+        <Card.Divider />
 
         {/* Customer + vehicle */}
         <section>
@@ -189,7 +189,7 @@ export function SummaryCard({
           <p className="mt-0.5 text-[14px] text-ink-secondary">{vehicle}</p>
         </section>
 
-        <div className="rule-hairline" aria-hidden />
+        <Card.Divider />
 
         {/* Services */}
         <section>
@@ -248,12 +248,12 @@ export function SummaryCard({
         {/* Reminders */}
         {reminders.length > 0 ? (
           <>
-            <div className="rule-hairline" aria-hidden />
+            <Card.Divider />
             <section>
               <p className="label-eyebrow mb-2">Please bring</p>
               <ul className="space-y-1 text-[14px] text-ink-secondary">
                 {reminders.map((r, i) => (
-                  // eslint-disable-next-line react/no-array-index-key
+                   
                   <li key={i}>• {r}</li>
                 ))}
               </ul>
@@ -273,9 +273,20 @@ export function SummaryCard({
                 : "border-rule bg-paper-200 text-ink-secondary")
             }
           >
-            {holdExpired
-              ? "This slot timed out. Tap edit to pick a fresh one."
-              : `Holding this slot for ${fmtCountdown(remaining)} more`}
+            {holdExpired ? (
+              "This slot timed out. Tap edit to pick a fresh one."
+            ) : (
+              <>
+                <span aria-hidden className="mr-1">
+                  ⏳
+                </span>
+                Holding this slot for{" "}
+                <span className="font-medium text-ink">
+                  {fmtCountdown(remaining)}
+                </span>{" "}
+                more
+              </>
+            )}
           </div>
         ) : null}
       </Card.Body>
@@ -308,6 +319,11 @@ export function SummaryCard({
           and we&apos;ll book it in Tekmetric instantly.
         </Card.Footnote>
       ) : null}
+
+      <Card.Footnote>
+        We&apos;ll only use your info to schedule and remind you about this
+        visit.
+      </Card.Footnote>
     </Card>
   );
 }

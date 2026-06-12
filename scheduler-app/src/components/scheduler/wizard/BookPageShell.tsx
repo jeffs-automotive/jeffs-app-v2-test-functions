@@ -69,6 +69,12 @@ export async function BookPageShell() {
           <h1 className="font-display text-[28px] leading-tight text-ink sm:text-[34px]">
             Jeff&apos;s Automotive
           </h1>
+          {/* Editorial gold flourish under the wordmark (Hagerty/Singer gold
+              rule). Decorative; gold-500 (#B6814A) clears the non-text 3:1. */}
+          <span
+            aria-hidden
+            className="mt-0.5 mb-1 block h-px w-12 bg-brand-gold-500"
+          />
           <p className="text-[14px] leading-relaxed text-ink-secondary">
             Family-owned since 1976 · AAA-approved · 3yr/36k warranty
           </p>

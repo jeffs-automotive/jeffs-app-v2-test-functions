@@ -256,8 +256,8 @@ export function IdleTimer({
       aria-describedby="idle-warn-body"
       className={
         "fixed left-1/2 top-4 z-50 w-[calc(100%-2rem)] max-w-md " +
-        "-translate-x-1/2 rounded-[var(--radius-card)] border border-rule " +
-        "bg-paper-100 px-5 py-4 shadow-lg"
+        "-translate-x-1/2 rounded-[var(--radius-card)] border border-rule-strong " +
+        "bg-paper-100 px-5 py-4 shadow-[var(--shadow-pop)] animate-pop-in"
       }
     >
       <p

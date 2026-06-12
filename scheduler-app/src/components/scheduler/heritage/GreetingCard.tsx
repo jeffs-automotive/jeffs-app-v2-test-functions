@@ -108,6 +108,25 @@ export function GreetingCard({
             I&apos;m not sure
           </Button>
         </div>
+
+        {/* Trust row — mirrors the page header's trust line so the very first
+            card reinforces it. Decorative gold dot separators; AA-safe
+            tertiary text. */}
+        <ul className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          {["Family-owned since 1976", "AAA-approved", "3yr/36k warranty"].map(
+            (badge, i) => (
+              <li key={badge} className="flex items-center gap-2">
+                {i > 0 ? (
+                  <span
+                    aria-hidden
+                    className="inline-block h-1 w-1 rounded-full bg-brand-gold-400"
+                  />
+                ) : null}
+                <span className="label-eyebrow">{badge}</span>
+              </li>
+            ),
+          )}
+        </ul>
       </Card.Body>
 
       <Card.Footnote>

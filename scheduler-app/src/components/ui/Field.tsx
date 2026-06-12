@@ -117,10 +117,13 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   { className, ...rest },
   ref,
 ) {
+  // border uses --color-rule-input (3.21:1) not the decorative --color-rule
+  // (1.43:1) — an editable field's border is its only boundary, so WCAG 2.1
+  // §1.4.11 wants the 3:1 UI-component floor.
   const base =
     "w-full bg-paper-100 px-3.5 py-2.5 text-[15px] leading-normal " +
     "text-ink placeholder:text-ink-tertiary " +
-    "rounded-[var(--radius-input)] border border-rule " +
+    "rounded-[var(--radius-input)] border border-[var(--color-rule-input)] " +
     "focus:border-brand-burgundy-500 focus:outline-none " +
     "focus:ring-2 focus:ring-brand-burgundy-200 " +
     "aria-[invalid=true]:border-status-error-fg " +
@@ -139,10 +142,11 @@ export interface TextareaProps
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
   function Textarea({ className, rows = 4, ...rest }, ref) {
+    // see Input: --color-rule-input clears the 3:1 UI-component contrast floor.
     const base =
       "w-full bg-paper-100 px-3.5 py-2.5 text-[15px] leading-normal " +
       "text-ink placeholder:text-ink-tertiary " +
-      "rounded-[var(--radius-input)] border border-rule " +
+      "rounded-[var(--radius-input)] border border-[var(--color-rule-input)] " +
       "focus:border-brand-burgundy-500 focus:outline-none " +
       "focus:ring-2 focus:ring-brand-burgundy-200 " +
       "aria-[invalid=true]:border-status-error-fg " +

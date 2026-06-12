@@ -303,7 +303,7 @@ export function CustomerInfoEditCard({
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Read-only name banner */}
           <div className="rounded-md border border-ink-tertiary/20 bg-paper-100 px-3 py-2 text-sm text-ink-secondary">
-            <span className="font-medium text-ink-primary">
+            <span className="font-medium text-ink">
               {first_name} {last_name}
             </span>
             <span className="block text-xs text-ink-tertiary">
@@ -313,7 +313,7 @@ export function CustomerInfoEditCard({
 
           {/* Phones */}
           <fieldset className="space-y-3">
-            <legend className="text-sm font-medium text-ink-primary">
+            <legend className="text-sm font-medium text-ink">
               Phone {phones.length > 1 ? "numbers" : "number"}
             </legend>
             {phones.map((p, idx) => (
@@ -385,7 +385,7 @@ export function CustomerInfoEditCard({
 
           {/* Emails */}
           <fieldset className="space-y-3">
-            <legend className="text-sm font-medium text-ink-primary">
+            <legend className="text-sm font-medium text-ink">
               Email {emails.length > 1 ? "addresses" : "address"}
             </legend>
             {emails.map((em, idx) => (
@@ -459,7 +459,7 @@ export function CustomerInfoEditCard({
 
           {/* Address */}
           <fieldset className="space-y-3">
-            <legend className="text-sm font-medium text-ink-primary">
+            <legend className="text-sm font-medium text-ink">
               Address (optional)
             </legend>
             <Field label="Street address" inputId="addr1">

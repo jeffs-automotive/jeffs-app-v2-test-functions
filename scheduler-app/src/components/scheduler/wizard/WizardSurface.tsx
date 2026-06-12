@@ -31,7 +31,7 @@
  * "doesn't advance" even though the row was correctly updated.
  */
 import * as Sentry from "@sentry/nextjs";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { AppointmentTypeCard } from "@/components/scheduler/heritage/AppointmentTypeCard";
@@ -59,6 +59,7 @@ import { TestingServiceApprovalCard } from "@/components/scheduler/heritage/Test
 import { VehiclePicker } from "@/components/scheduler/VehiclePicker";
 import { WaiterTimePicker } from "@/components/scheduler/WaiterTimePicker";
 import { WizardBackBar } from "./WizardBackBar";
+import { WizardProgress } from "./WizardProgress";
 import { resendOtpV2 } from "@/lib/scheduler/wizard/actions/resend-otp";
 import { runDiagnosticsV2 } from "@/lib/scheduler/wizard/actions/run-diagnostics";
 import { submitAppointmentTypeV2 } from "@/lib/scheduler/wizard/actions/submit-appointment-type";
@@ -118,6 +119,9 @@ export function WizardSurface({ chatId, card }: WizardSurfaceProps) {
       aria-live="polite"
       className="outline-none focus:outline-none"
     >
+      {/* Presentational 4-phase ribbon — reads card.step only, no state, no
+          actions. Honest for every branch (no numeric "of N"). */}
+      <WizardProgress step={card.step} />
       {/* key={card.step} forces remount on every step change so the bar's
           local `pending` state can't stick at true across a back navigation.
           Without the key, backing from date_pick → appointment_type (both
@@ -132,6 +136,26 @@ export function WizardSurface({ chatId, card }: WizardSurfaceProps) {
 function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
   const router = useRouter();
 
+  // Approved functional addition 2026-06-11 (decision log #2): a failed
+  // Server Action used to surface NOTHING to the customer (the spinner just
+  // stopped; logIfFailed → Sentry only). This is an ADDITIVE READ of the
+  // already-returned `result.ok === false` outcome into local client state.
+  // It does NOT modify any action body, the switch, router.refresh()
+  // semantics, or the result union — it only renders the existing failure.
+  const [submitFailed, setSubmitFailed] = useState(false);
+
+  // Clear the banner when a step transition lands (card.step changes after a
+  // successful action's router.refresh(), OR after a WizardBackBar back-nav
+  // that bypasses handleResult) — a fresh card means the prior failure is
+  // resolved. Done with the React "reset state when a prop changes during
+  // render" idiom (no effect) per react.dev — avoids a cascading-render
+  // setState-in-effect.
+  const [seenStep, setSeenStep] = useState(card.step);
+  if (seenStep !== card.step) {
+    setSeenStep(card.step);
+    setSubmitFailed(false);
+  }
+
   // Helper: log + refresh. Called after every Server Action so the page
   // re-fetches its RSC payload and advances to the next card. Server Actions
   // called from useEffect / onClick (not from <form action>) need this
@@ -143,10 +167,24 @@ function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
     result: WizardTransitionResult,
   ): void => {
     logIfFailed(actionName, chatId, result);
+    // Additive: surface a failed outcome to the customer. On success the
+    // banner is cleared by the card.step effect above once the step advances;
+    // we also clear here so an in-place success (no step change) clears it.
+    setSubmitFailed(result.ok === false);
     router.refresh();
   };
 
-  switch (card.step) {
+  return (
+    <>
+      {submitFailed ? (
+        <SubmitFailedBanner onRetry={() => setSubmitFailed(false)} />
+      ) : null}
+      {renderCard()}
+    </>
+  );
+
+  function renderCard() {
+    switch (card.step) {
     case "greeting":
       return (
         <GreetingCard
@@ -602,12 +640,53 @@ function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
         />
       );
 
-    // Every other step renders the migration placeholder. Each later phase
-    // adds its case BEFORE this default and removes the corresponding
-    // entry from the placeholder's hint list.
-    default:
-      return <NotYetMigrated step={card.step} />;
+      // Every other step renders the migration placeholder. Each later phase
+      // adds its case BEFORE this default and removes the corresponding
+      // entry from the placeholder's hint list.
+      default:
+        return <NotYetMigrated step={card.step} />;
+    }
   }
+}
+
+/**
+ * SubmitFailedBanner — presentational inline error surface for a failed
+ * step submit (approved functional read 2026-06-11). role="alert" so screen
+ * readers announce it on appearance. status-error palette (9.28:1). The
+ * customer's card is already re-enabled (the card's own `pending` cleared in
+ * its finally block when the action returned), so "try again" is just
+ * re-tapping the card's CTA; the retry link dismisses this banner.
+ */
+function SubmitFailedBanner({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div
+      role="alert"
+      className={
+        "mb-4 rounded-[var(--radius-input)] border " +
+        "border-status-error-fg bg-status-error-bg px-4 py-3 " +
+        "text-[14px] leading-snug text-status-error-fg"
+      }
+    >
+      <p>
+        Something didn&apos;t go through —{" "}
+        <button
+          type="button"
+          onClick={onRetry}
+          className="font-medium text-brand-burgundy-700 underline underline-offset-2 hover:no-underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-burgundy-500"
+        >
+          tap to try again
+        </button>
+        , or call{" "}
+        <a
+          href="tel:6102536565"
+          className="font-medium text-brand-burgundy-700 underline underline-offset-2 hover:no-underline"
+        >
+          (610) 253-6565
+        </a>
+        .
+      </p>
+    </div>
+  );
 }
 
 /**
@@ -625,7 +704,7 @@ function logIfFailed(
     level: "warning",
     extra: { chatId, error: result.error },
   });
-  // eslint-disable-next-line no-console
+   
   console.error(`[wizard] ${actionName} failed:`, result.error);
 }
 

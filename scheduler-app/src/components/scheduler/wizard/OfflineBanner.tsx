@@ -47,7 +47,7 @@ export function OfflineBanner() {
     <div
       role="alert"
       aria-live="assertive"
-      className="sticky top-0 z-20 border-b border-brand-burgundy-300 bg-brand-burgundy-50 px-4 py-2 text-center text-[13px] leading-snug text-brand-burgundy-700"
+      className="sticky top-0 z-20 animate-pop-in border-b border-brand-burgundy-300 bg-brand-burgundy-50 px-4 py-2 text-center text-[13px] leading-snug text-brand-burgundy-700"
     >
       ⚠️ You&apos;re offline. We&apos;ll save your progress — come back
       when you&apos;re connected.

@@ -38,14 +38,17 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   fullWidthOnMobile?: boolean;
 }
 
+// active:scale-[0.98] on the two solid-press variants is the consumer-booking
+// "motion is feedback" touch — a 2% press scale. The global reduced-motion
+// kill-switch in globals.css neutralizes transform transitions too.
 const VARIANT_CLASSES: Record<Variant, string> = {
   primary:
     "bg-brand-burgundy-700 text-paper-100 hover:bg-brand-burgundy-800 " +
-    "active:bg-brand-burgundy-900 disabled:bg-brand-burgundy-300 " +
+    "active:bg-brand-burgundy-900 active:scale-[0.98] disabled:bg-brand-burgundy-300 " +
     "disabled:text-paper-100",
   secondary:
     "bg-paper-100 text-brand-burgundy-700 border border-brand-burgundy-700 " +
-    "hover:bg-brand-burgundy-50 active:bg-brand-burgundy-100 " +
+    "hover:bg-brand-burgundy-50 active:bg-brand-burgundy-100 active:scale-[0.98] " +
     "disabled:border-brand-burgundy-200 disabled:text-brand-burgundy-300",
   ghost:
     "bg-transparent text-ink-secondary hover:text-ink hover:bg-paper-200 " +
@@ -75,7 +78,9 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
 ) {
   const widthClass = fullWidthOnMobile ? "w-full sm:w-auto" : "";
   const radius = "rounded-[var(--radius-input)]";
-  const transition = "transition-colors duration-150 ease-out";
+  // Transitions both color + transform so the active:scale press animates
+  // (was transition-colors). Reduced-motion neutralizes the transform.
+  const transition = "transition-[transform,background-color] duration-150 ease-out";
   const focus =
     "focus-visible:outline-2 focus-visible:outline-offset-2 " +
     "focus-visible:outline-brand-burgundy-500";

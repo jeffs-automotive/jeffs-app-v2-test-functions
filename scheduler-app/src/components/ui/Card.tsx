@@ -58,9 +58,13 @@ export function Card({
   noAnimate = false,
   ...rest
 }: CardProps) {
+  // Mobile keeps the full-bleed editorial border-y band; sm: softens to the
+  // 6px contained sheet. The two-layer warm --shadow-card lifts the card off
+  // paper (the prior 1px highlight dissolved on mobile). Presentational only.
   const base =
     "relative bg-paper-100 px-6 py-7 sm:px-8 sm:py-8 " +
-    "border-y border-rule shadow-[0_1px_0_0_rgba(0,0,0,0.02)]";
+    "border-y border-rule shadow-[var(--shadow-card)] " +
+    "sm:rounded-[var(--radius-card)]";
 
   if (noAnimate) {
     return (
@@ -75,6 +79,8 @@ export function Card({
       <m.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
+        // Same curve as --ease-editorial (0.16,1,0.3,1) — tokenized for
+        // consistency; motion/react needs the numeric array here.
         transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
         className={`${base} ${className ?? ""}`}
         {...(rest as HTMLMotionProps<"div">)}
@@ -150,9 +156,34 @@ function Footnote({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * Section-rhythm divider — a presentational separator that replaces the
+ * ad-hoc `<div className="rule-hairline">` repeated across cards so spacing
+ * is consistent card-to-card. `tone="gold"` uses the decorative gold rule
+ * (exempt from the contrast floor). role="separator" + aria-hidden so it's
+ * announced as a separator but carries no semantic content.
+ */
+function Divider({
+  tone = "rule",
+  className,
+}: {
+  tone?: "rule" | "gold";
+  className?: string;
+}) {
+  const line = tone === "gold" ? "border-brand-gold-400" : "border-rule";
+  return (
+    <div
+      role="separator"
+      aria-hidden
+      className={`my-5 border-t ${line} ${className ?? ""}`}
+    />
+  );
+}
+
 Card.Eyebrow = Eyebrow;
 Card.Title = Title;
 Card.Description = Description;
 Card.Body = Body;
 Card.Actions = Actions;
 Card.Footnote = Footnote;
+Card.Divider = Divider;

@@ -216,7 +216,7 @@ export function OtpInput({
         <div className="flex flex-wrap gap-2" role="group" aria-label="6-digit code">
           {digits.map((d, idx) => (
             <input
-              // eslint-disable-next-line react/no-array-index-key
+               
               key={idx}
               ref={(el) => {
                 inputRefs.current[idx] = el;
@@ -279,7 +279,7 @@ export function OtpInput({
           <p
             role="status"
             aria-live="polite"
-            className="mt-3 text-[13px] leading-snug text-status-warning-fg"
+            className="mt-3 text-[13px] leading-snug text-status-warn-fg"
           >
             ⚠️ One try left — if this code is wrong, we&apos;ll have someone
             help you directly.

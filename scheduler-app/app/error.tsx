@@ -65,7 +65,7 @@ export default function Error({
           <p
             style={{
               fontSize: "0.875rem",
-              color: "#6B6259",
+              color: "#766C61",
               marginBottom: "1.5rem",
             }}
           >
