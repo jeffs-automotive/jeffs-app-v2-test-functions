@@ -42,8 +42,9 @@ export default async function KeytagsPage({ searchParams }: KeytagsPageProps) {
   return (
     <AppShell email={email}>
       <PageHeader
-        title="Key Tags"
-        description="Key Tag Managemment"
+        eyebrow="Operations"
+        title="Key tags"
+        description="Key tag management"
       />
 
       <KeytagsTabs

@@ -126,6 +126,7 @@ export default async function SchedulerConfigPage() {
   return (
     <AppShell email={email}>
       <PageHeader
+        eyebrow="Configuration"
         title="Scheduler config"
         description="Edit predefined-data catalog. Two-step apply. Revert within 30 days. All 10 surfaces share Pattern S."
       />

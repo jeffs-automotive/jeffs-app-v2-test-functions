@@ -33,7 +33,7 @@ export function TagBadge({
   return (
     <span
       className={cn(
-        "inline-flex items-center justify-center rounded border font-mono font-semibold tabular-nums shadow-sm",
+        "inline-flex items-center justify-center rounded border font-mono font-semibold tabular-nums shadow-xs",
         sizeClasses,
         colorClasses,
         className,

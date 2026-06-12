@@ -15,8 +15,8 @@
 import { useActionState, useEffect, useState, startTransition } from "react";
 import { toast } from "sonner";
 import { History, RotateCcw } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import {
   Table,
   TableBody,
@@ -138,9 +138,12 @@ export function RecentUploadsList({ rows, surface, surfaceLabel }: RecentUploads
 
   if (rows.length === 0) {
     return (
-      <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border bg-muted/20 py-8 text-center">
-        <History className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
-        <p className="text-sm text-muted-foreground">No recent uploads to {surfaceLabel}.</p>
+      <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border bg-muted/40 px-6 py-12 text-center">
+        <History className="size-8 text-muted-foreground" aria-hidden="true" />
+        <p className="text-sm font-medium text-foreground">No recent uploads.</p>
+        <p className="max-w-sm text-xs text-muted-foreground">
+          No recent uploads to {surfaceLabel}. Paste or upload an .md above to make a change.
+        </p>
       </div>
     );
   }
@@ -165,24 +168,24 @@ export function RecentUploadsList({ rows, surface, surfaceLabel }: RecentUploads
             const wasReverted = row.successor_revert_id !== null;
             return (
               <TableRow key={row.id} className={isFailed ? "opacity-60" : undefined}>
-                <TableCell className="font-mono text-xs">
+                <TableCell className="font-mono text-xs tabular-nums">
                   {formatEastern(row.occurred_at)}
                 </TableCell>
                 <TableCell className="text-xs">{row.user_label ?? "—"}</TableCell>
-                <TableCell className="text-right font-mono text-xs">
+                <TableCell className="text-right font-mono text-xs tabular-nums">
                   +{row.rows_added} ~{row.rows_modified} −{row.rows_deactivated}
                 </TableCell>
                 <TableCell className="text-xs">
                   {isFailed ? (
-                    <Badge variant="destructive">failed</Badge>
+                    <StatusBadge status="error">failed</StatusBadge>
                   ) : isRevert ? (
-                    <Badge variant="outline">revert</Badge>
+                    <StatusBadge status="info">revert</StatusBadge>
                   ) : wasReverted ? (
-                    <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-900">
+                    <StatusBadge status="warning">
                       reverted by #{row.successor_revert_id}
-                    </Badge>
+                    </StatusBadge>
                   ) : (
-                    <Badge variant="outline">ok</Badge>
+                    <StatusBadge status="ok">ok</StatusBadge>
                   )}
                 </TableCell>
                 <TableCell className="text-right">

@@ -27,9 +27,9 @@ export interface AppShellProps {
 
 export function AppShell({ email, children }: AppShellProps) {
   return (
-    <div className="min-h-screen bg-muted/30">
+    <div className="min-h-screen bg-background">
       <TopNav email={email} />
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
         {children}
       </main>
       <Toaster richColors position="top-right" />
@@ -44,14 +44,25 @@ export function AppShell({ email, children }: AppShellProps) {
 export interface PageHeaderProps {
   title: string;
   description?: string;
+  /** Optional section-identity eyebrow above the title (the one place
+   *  gold-family color appears as text — uses AA-safe --bronze-text). */
+  eyebrow?: string;
   actions?: ReactNode;
 }
 
-export function PageHeader({ title, description, actions }: PageHeaderProps) {
+export function PageHeader({ title, description, eyebrow, actions }: PageHeaderProps) {
   return (
     <div className="mb-8 flex flex-col gap-4 border-b border-border pb-6 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+        {eyebrow && (
+          <div className="mb-1.5 flex items-center gap-2">
+            <span className="h-px w-8 bg-brand-gold" aria-hidden="true" />
+            <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-bronze-text dark:text-bronze-text-dark">
+              {eyebrow}
+            </span>
+          </div>
+        )}
+        <h1 className="text-[clamp(1.5rem,1.2rem+1.2vw,1.875rem)] font-semibold tracking-tight text-foreground">
           {title}
         </h1>
         {description && (

@@ -42,28 +42,31 @@ export function KeytagsTabs({
 }: KeytagsTabsProps) {
   return (
     <Tabs defaultValue={defaultValue} className="w-full">
-      <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 bg-muted/50 p-1">
-        <TabsTrigger value="live" className="gap-1.5">
+      <TabsList
+        variant="line"
+        className="flex h-auto w-full flex-wrap justify-start gap-x-1 border-b border-border"
+      >
+        <TabsTrigger value="live" className="gap-1.5 data-active:after:bg-primary">
           <List className="h-3.5 w-3.5" aria-hidden="true" />
           Live state
         </TabsTrigger>
-        <TabsTrigger value="assign-release" className="gap-1.5">
+        <TabsTrigger value="assign-release" className="gap-1.5 data-active:after:bg-primary">
           <ArrowLeftRight className="h-3.5 w-3.5" aria-hidden="true" />
           Assign / Release
         </TabsTrigger>
-        <TabsTrigger value="posted-revert" className="gap-1.5">
+        <TabsTrigger value="posted-revert" className="gap-1.5 data-active:after:bg-primary">
           <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
           Posted / Revert
         </TabsTrigger>
-        <TabsTrigger value="reconcile" className="gap-1.5">
+        <TabsTrigger value="reconcile" className="gap-1.5 data-active:after:bg-primary">
           <RefreshCcw className="h-3.5 w-3.5" aria-hidden="true" />
           Reconcile
         </TabsTrigger>
-        <TabsTrigger value="manual-reviews" className="gap-1.5">
+        <TabsTrigger value="manual-reviews" className="gap-1.5 data-active:after:bg-primary">
           <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />
           Manual reviews
         </TabsTrigger>
-        <TabsTrigger value="audit" className="gap-1.5">
+        <TabsTrigger value="audit" className="gap-1.5 data-active:after:bg-primary">
           <History className="h-3.5 w-3.5" aria-hidden="true" />
           Audit history
         </TabsTrigger>

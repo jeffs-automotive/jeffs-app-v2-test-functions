@@ -9,7 +9,7 @@
  * client-side polling for v1 — the user can reload to refresh, or use
  * the bulk reconcile tool in Phase C.6.
  */
-import { ExternalLink, Clock } from "lucide-react";
+import { ExternalLink, AlertCircle, KeyRound } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -26,6 +26,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import { formatEastern } from "@/lib/format-time";
 import {
   callKeytagTool,
@@ -108,7 +109,7 @@ export async function LiveStateTab({ actorEmail }: LiveStateTabProps) {
               </CardDescription>
             </div>
             {listResult && (
-              <Badge variant="outline" className="font-mono text-xs">
+              <Badge variant="outline" className="font-mono text-xs tabular-nums">
                 {listResult.count} / 180
               </Badge>
             )}
@@ -117,12 +118,22 @@ export async function LiveStateTab({ actorEmail }: LiveStateTabProps) {
         <CardContent>
           {listError && (
             <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
-              {listError}
+              <div className="flex items-start gap-2">
+                <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                <div>
+                  <p className="font-medium">Couldn&apos;t load assigned tags.</p>
+                  <p className="mt-0.5 text-destructive/90">{listError}</p>
+                </div>
+              </div>
             </div>
           )}
           {listResult && listResult.count === 0 && (
-            <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-              No tags currently assigned. The pool is fully available.
+            <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border bg-muted/40 px-6 py-12 text-center">
+              <KeyRound className="size-8 text-muted-foreground" aria-hidden="true" />
+              <p className="text-sm font-medium text-foreground">No tags in use.</p>
+              <p className="max-w-sm text-xs text-muted-foreground">
+                No tags currently assigned. The pool is fully available.
+              </p>
             </div>
           )}
           {listResult && listResult.count > 0 && (
@@ -150,7 +161,7 @@ export async function LiveStateTab({ actorEmail }: LiveStateTabProps) {
                             size="sm"
                           />
                         </TableCell>
-                        <TableCell className="font-mono text-sm">
+                        <TableCell className="font-mono text-sm tabular-nums">
                           #{entry.ro_number}
                         </TableCell>
                         <TableCell>
@@ -161,18 +172,14 @@ export async function LiveStateTab({ actorEmail }: LiveStateTabProps) {
                             {entry.status === "assigned" ? "WIP" : "Posted A/R"}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-xs text-muted-foreground">
+                        <TableCell className="font-mono text-xs tabular-nums text-muted-foreground">
                           {formatEastern(entry.last_activity_at)}
                         </TableCell>
                         <TableCell>
                           {staleness.isStale ? (
-                            <Badge
-                              variant="outline"
-                              className="gap-1 border-red-300 bg-red-50 text-[10px] font-medium uppercase tracking-wider text-red-700"
-                            >
-                              <Clock className="h-3 w-3" aria-hidden="true" />
+                            <StatusBadge status="warning" micro>
                               {staleness.daysOld}d
-                            </Badge>
+                            </StatusBadge>
                           ) : (
                             <span className="text-xs text-muted-foreground">—</span>
                           )}

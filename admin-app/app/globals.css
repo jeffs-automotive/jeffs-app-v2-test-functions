@@ -15,25 +15,33 @@
   --color-brand-burgundy: #96003c;
   --color-brand-burgundy-dark: #7e0033;
   --color-brand-gold: #d2b487;
+
+  /* The only way gold-family color may carry TEXT on light surfaces.
+   * On --background (warm paper) ≈ 6.9:1 (AA pass). Used for eyebrow
+   * labels / numeric emphasis where a gold *feeling* is wanted but AA
+   * must hold. Sibling to the brand block, NOT the @theme inline remap. */
+  --color-bronze-text: oklch(0.46 0.05 65);
+  /* Lighter bronze for the SAME eyebrow on dark surfaces (the light
+   * value fails AA on dark — use via `dark:text-bronze-text-dark`).
+   * #b79876 on the dark canvas ≈ 7.0:1 (AA pass). */
+  --color-bronze-text-dark: oklch(0.7 0.06 70);
+
+  /* Warm, low-chroma shadow scale — depth tuned to the paper canvas
+   * (hue of the ink, low alpha) so elevation reads cohesive, not
+   * cool-grey. Generates shadow-xs … shadow-xl utilities. */
+  --shadow-xs: 0 1px 2px 0 oklch(0.21 0.02 70 / 0.05);
+  --shadow-sm:
+    0 1px 3px 0 oklch(0.21 0.02 70 / 0.07),
+    0 1px 2px -1px oklch(0.21 0.02 70 / 0.06);
+  --shadow-md:
+    0 3px 6px -2px oklch(0.21 0.02 70 / 0.08),
+    0 2px 4px -2px oklch(0.21 0.02 70 / 0.06);
+  --shadow-xl: 0 18px 32px -8px oklch(0.21 0.02 70 / 0.12);
 }
 
 html,
 body {
   height: 100%;
-}
-
-body {
-  font-family:
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    Roboto,
-    Oxygen,
-    Ubuntu,
-    Cantarell,
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
 /*---break---
@@ -42,14 +50,7 @@ body {
 @theme inline {
   --font-heading: var(--font-sans);
   --font-sans: var(--font-sans);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
+  --font-mono: var(--font-mono);
   --color-chart-5: var(--chart-5);
   --color-chart-4: var(--chart-4);
   --color-chart-3: var(--chart-3);
@@ -92,75 +93,70 @@ body {
    *   --accent   = warm gold #D2B487  -> oklch(0.78 0.07 70) for badges/highlights
    *   --chart-1  = burgundy primary for any future charts
    */
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.42 0.18 13);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.78 0.07 70);
-  --accent-foreground: oklch(0.205 0 0);
+  /* Warm "Workshop Brass" neutral ramp — a small warm chroma (~0.006–0.014)
+   * on a gold-family hue (~70–85) so every surface reads intentional and
+   * cohesive with the brand, never cool corporate grey. Canvas is the
+   * lightest paper; cards/popovers sit *above* it (the "page on a desk"
+   * relationship). Contrast ratios pinned in the spec §1b. */
+  --background: oklch(0.985 0.006 85); /* warm paper canvas #faf8f5 */
+  --foreground: oklch(0.21 0.008 75); /* warm near-black ink #2b2622 — 14.1:1 on bg */
+  --card: oklch(1 0.003 85); /* brightest surface, floats above canvas */
+  --card-foreground: oklch(0.21 0.008 75);
+  --popover: oklch(1 0.003 85);
+  --popover-foreground: oklch(0.21 0.008 75);
+  --primary: oklch(0.42 0.18 13); /* burgundy #96003c — white-on: 8.9:1 */
+  --primary-foreground: oklch(0.99 0.004 85); /* warm white #fefdfb — >8:1 on burgundy */
+  --secondary: oklch(0.955 0.008 80); /* warm chip fill #f1ece4 */
+  --secondary-foreground: oklch(0.28 0.008 75); /* ink on secondary >9:1 */
+  --muted: oklch(0.955 0.008 80); /* warm muted fill */
+  --muted-foreground: oklch(0.5 0.012 72); /* warm secondary text #6b6258 — 5.6:1 on bg */
+  --accent: oklch(0.78 0.07 70); /* gold #d2b487 — fill/border ONLY, never text on light */
+  --accent-foreground: oklch(0.32 0.04 60); /* bronze-ink ON gold fill ≈ 6:1 */
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.42 0.18 13);
+  --border: oklch(0.9 0.01 78); /* warm hairline #e7e1d8 */
+  --input: oklch(0.85 0.014 76); /* darker warm edge #cdc3b4 so field outline is perceivable */
+  --ring: oklch(0.42 0.18 13); /* burgundy focus ring — 8.9:1 on bg, >3:1 UI min */
   --chart-1: oklch(0.42 0.18 13);
   --chart-2: oklch(0.78 0.07 70);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.42 0.18 13);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --chart-3: oklch(0.5 0.012 72); /* warm-ramp tint for future charts */
+  --chart-4: oklch(0.4 0.012 72);
+  --chart-5: oklch(0.3 0.01 75);
+  --radius: 0.5rem; /* 8px "engineered" base — escapes the 0.625rem shadcn default */
 }
 
 /*---break---
  */
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  /* "Workshop Brass" dark — warm dark neutrals (NOT pure inverts) on the
+   * same gold-family hue, and a LIGHTER burgundy --primary re-picked to
+   * pass AA on the dark canvas (the base #96003c is too dark on dark).
+   * Every text + UI pair AA-verified; ratios pinned in the implementer
+   * report. --primary-foreground stays warm-white to match the light
+   * convention (white "J", white button labels). */
+  --background: oklch(0.175 0.008 70); /* warm near-black #13100d */
+  --foreground: oklch(0.96 0.006 85); /* warm off-white #f4f1ed — 16.9:1 on bg */
+  --card: oklch(0.215 0.008 72); /* lifts above the canvas #1c1915 */
+  --card-foreground: oklch(0.96 0.006 85);
+  --popover: oklch(0.215 0.008 72);
+  --popover-foreground: oklch(0.96 0.006 85);
+  --primary: oklch(0.54 0.18 14); /* lighter burgundy #c0304e — white-on 5.4:1, on-bg 3.4:1 */
+  --primary-foreground: oklch(0.99 0.004 85); /* warm white #fdfcf9 */
+  --secondary: oklch(0.27 0.008 72); /* warm dark chip #292622 */
+  --secondary-foreground: oklch(0.92 0.006 85); /* 11.9:1 on secondary */
+  --muted: oklch(0.27 0.008 72);
+  --muted-foreground: oklch(0.72 0.012 75); /* #a9a49c — 7.6:1 on bg */
+  --accent: oklch(0.78 0.07 70); /* gold (fill/border only) */
+  --accent-foreground: oklch(0.2 0.02 70); /* dark ink ON gold fill — 9:1 */
+  --destructive: oklch(0.704 0.191 22.216); /* #ff6467 — 6.6:1 on bg */
+  --border: oklch(0.33 0.012 75); /* warm dark hairline */
+  --input: oklch(0.38 0.014 74); /* warm dark field fill/edge */
+  --ring: oklch(0.54 0.18 14); /* burgundy focus ring — 3.4:1 on bg, >3:1 UI min */
+  --chart-1: oklch(0.54 0.18 14);
+  --chart-2: oklch(0.78 0.07 70);
+  --chart-3: oklch(0.72 0.012 75);
+  --chart-4: oklch(0.6 0.012 75);
+  --chart-5: oklch(0.45 0.01 75);
 }
 
 /*---break---
@@ -171,7 +167,9 @@ body {
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
   html {
     @apply font-sans;

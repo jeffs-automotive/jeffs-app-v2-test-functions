@@ -78,8 +78,8 @@ export function ConfirmationDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 sm:mx-0">
-            <AlertTriangle className="h-5 w-5 text-amber-700" aria-hidden="true" />
+          <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full border border-amber-300 bg-amber-50 sm:mx-0">
+            <AlertTriangle className="h-5 w-5 text-amber-900" aria-hidden="true" />
           </div>
           <DialogTitle className="text-center sm:text-left">
             Confirm: {actionLabel}
@@ -107,7 +107,7 @@ export function ConfirmationDialog({
               <span>This confirmation has expired. Re-submit the form to get a fresh one.</span>
             ) : (
               <span>
-                Expires in <span className="font-mono font-medium text-foreground">{secondsLeft}s</span>
+                Expires in <span className="font-mono font-medium tabular-nums text-foreground">{secondsLeft}s</span>
               </span>
             )}
           </div>

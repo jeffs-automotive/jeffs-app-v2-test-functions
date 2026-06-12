@@ -15,8 +15,9 @@ export default async function DashboardPage() {
   return (
     <AppShell email={email}>
       <PageHeader
+        eyebrow="Internal tools"
         title="Admin dashboard"
-        description=""
+        description="Key-tag operations and scheduler configuration for Jeff's Automotive."
       />
 
       <section className="grid gap-6 sm:grid-cols-2">
@@ -62,7 +63,7 @@ function DashboardLinkCard({
   comingSoon,
 }: DashboardLinkCardProps) {
   const inner = (
-    <Card className="group relative h-full overflow-hidden transition-all hover:border-primary hover:shadow-md">
+    <Card className="group relative h-full overflow-hidden transition-all hover:shadow-md motion-safe:hover:-translate-y-0.5">
       <CardHeader className="space-y-4">
         <div className="flex items-start justify-between">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">

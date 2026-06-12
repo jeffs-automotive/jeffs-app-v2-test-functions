@@ -58,10 +58,12 @@ export interface SchedulerConfigTabsProps {
 }
 
 const Stub = ({ name }: { name: string }) => (
-  <div className="rounded-lg border border-dashed border-border bg-muted/30 p-8 text-center text-sm text-muted-foreground">
-    <CheckSquare className="mx-auto mb-2 h-6 w-6" aria-hidden="true" />
-    <p className="font-medium">{name}</p>
-    <p className="mt-1 text-xs">Coming after D.2 pilot lands. Plan §9 build order.</p>
+  <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border bg-muted/40 px-6 py-12 text-center">
+    <CheckSquare className="size-8 text-muted-foreground" aria-hidden="true" />
+    <p className="text-sm font-medium text-foreground">{name}</p>
+    <p className="max-w-sm text-xs text-muted-foreground">
+      Coming after D.2 pilot lands. Plan §9 build order.
+    </p>
   </div>
 );
 
@@ -80,11 +82,18 @@ export function SchedulerConfigTabs({
 }: SchedulerConfigTabsProps) {
   return (
     <Tabs defaultValue={defaultValue} className="w-full">
-      <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 bg-muted/50 p-1">
+      <TabsList
+        variant="line"
+        className="flex h-auto w-full flex-wrap justify-start gap-x-1 border-b border-border"
+      >
         {TABS.map((t) => {
           const Icon = t.icon;
           return (
-            <TabsTrigger key={t.value} value={t.value} className="gap-1.5">
+            <TabsTrigger
+              key={t.value}
+              value={t.value}
+              className="gap-1.5 data-active:after:bg-primary"
+            >
               <Icon className="h-3.5 w-3.5" aria-hidden="true" />
               {t.label}
             </TabsTrigger>

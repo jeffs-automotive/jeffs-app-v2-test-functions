@@ -276,7 +276,7 @@ export function CatalogEditorTab({
                 rows={12}
                 placeholder={`Paste ${surfaceLabel} MD here…`}
                 disabled={textareaLocked}
-                className="w-full rounded-md border border-border bg-background p-3 font-mono text-xs leading-relaxed disabled:cursor-not-allowed disabled:bg-muted/50 disabled:opacity-70"
+                className="w-full rounded-md border border-input bg-background p-3 font-mono text-xs leading-relaxed outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:bg-muted/50 disabled:opacity-70"
               />
               {textareaLocked && (
                 <p className="text-xs text-muted-foreground">
@@ -295,7 +295,7 @@ export function CatalogEditorTab({
                 accept=".md,.markdown,.txt,text/markdown,text/plain"
                 onChange={handleFileSelected}
                 disabled={textareaLocked}
-                className="block w-full text-xs file:mr-3 file:rounded file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-primary-foreground hover:file:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                className="block w-full text-xs file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-primary-foreground hover:file:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
               />
               <p className="text-xs text-muted-foreground">
                 Reads the file into the paste textarea above. ≤2 MB, UTF-8, .md/.markdown/.txt extension.
