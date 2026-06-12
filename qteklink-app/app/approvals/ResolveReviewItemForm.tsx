@@ -8,7 +8,10 @@
  */
 import { useActionState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { Check } from "lucide-react";
 import { resolveReviewItemAction } from "@/actions/review-items";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 export default function ResolveReviewItemForm({ id }: { id: string }) {
   const router = useRouter();
@@ -21,19 +24,16 @@ export default function ResolveReviewItemForm({ id }: { id: string }) {
   return (
     <form action={formAction} className="mt-3 flex items-center gap-2">
       <input type="hidden" name="id" value={id} />
-      <input
+      <Input
         name="resolution_note"
         maxLength={2000}
         placeholder="Resolution note (optional)"
-        className="flex-1 rounded border border-stone-300 px-2 py-1 text-sm"
+        className="flex-1"
       />
-      <button
-        type="submit"
-        disabled={pending}
-        className="shrink-0 rounded bg-[#96003C] px-3 py-1 text-xs font-medium text-white transition hover:bg-[#7a0030] disabled:opacity-60"
-      >
-        {pending ? "Resolving…" : "Resolve"}
-      </button>
+      <Button type="submit" size="sm" loading={pending} loadingText="Resolving…">
+        <Check aria-hidden="true" />
+        Resolve
+      </Button>
       {state?.ok === false && <span className="text-xs text-red-700">{state.message}</span>}
     </form>
   );

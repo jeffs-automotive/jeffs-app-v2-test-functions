@@ -10,17 +10,27 @@
  */
 import { useActionState, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { AlertTriangle, Save } from "lucide-react";
 import { mapTekmetricItemAction } from "@/actions/mappings";
 import type { PaymentMethodView } from "@/lib/dal/payment-methods";
 import type { MappableAccount } from "@/lib/dal/mappings";
 import { fmtUsd } from "@/lib/format";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 function BookingBadge({ m }: { m: PaymentMethodView }) {
   if (m.booking === "deposit_undeposited")
-    return <span className="rounded bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">→ {m.accountLabel ?? "Undeposited Funds"}</span>;
+    return <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-800">→ {m.accountLabel ?? "Undeposited Funds"}</Badge>;
   if (m.booking === "contra")
-    return <span className="rounded bg-stone-100 px-2 py-0.5 text-xs font-semibold text-stone-700">→ {m.accountLabel}</span>;
-  return <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">⚠ not classified</span>;
+    return <Badge variant="secondary">→ {m.accountLabel}</Badge>;
+  return (
+    <Badge variant="outline" className="gap-1 border-amber-200 bg-amber-50 text-amber-800">
+      <AlertTriangle aria-hidden="true" />
+      not classified
+    </Badge>
+  );
 }
 
 export default function PaymentMethods({
@@ -71,9 +81,9 @@ export default function PaymentMethods({
     acctByType.set(t, arr);
   }
 
-  const labelCls = "text-xs font-medium uppercase tracking-wide text-stone-500";
+  const labelCls = "text-xs font-medium uppercase tracking-wide text-muted-foreground";
   const fieldCls =
-    "mt-1 w-full rounded border border-stone-300 px-3 py-2 text-sm focus:border-[#96003C] focus:outline-none disabled:bg-stone-50 disabled:text-stone-400";
+    "mt-1 w-full rounded-md border border-input bg-card px-3 py-2 text-sm transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:bg-muted disabled:text-muted-foreground";
   const num = "px-3 py-2 text-right tabular-nums";
 
   const Rows = ({ rows }: { rows: PaymentMethodView[] }) => (
@@ -81,66 +91,70 @@ export default function PaymentMethods({
       {rows.map((m) => {
         const fullyVoided = m.seen === 0 && m.voidedCount > 0;
         return (
-          <tr key={`${m.code}|${m.subtype ?? ""}`} className="border-t border-stone-100">
-            <td className="px-3 py-2 font-medium text-stone-800">{m.label}</td>
-            <td className="px-3 py-2">
+          <TableRow key={`${m.code}|${m.subtype ?? ""}`}>
+            <TableCell className="px-3 py-2 font-medium text-foreground">{m.label}</TableCell>
+            <TableCell className="px-3 py-2">
               {fullyVoided ? (
-                <span className="rounded bg-stone-100 px-2 py-0.5 text-xs font-semibold text-stone-500">voided</span>
+                <Badge variant="secondary">voided</Badge>
               ) : (
                 <BookingBadge m={m} />
               )}
-            </td>
-            <td className={`${num} text-stone-500`}>
+            </TableCell>
+            <TableCell className={`${num} text-muted-foreground`}>
               {m.seen}
-              {m.voidedCount > 0 && <span className="block text-xs text-stone-400">{m.voidedCount} voided</span>}
-            </td>
-            <td className={num}>
+              {m.voidedCount > 0 && <span className="block text-xs text-muted-foreground">{m.voidedCount} voided</span>}
+            </TableCell>
+            <TableCell className={num}>
               {fmtUsd(m.amountCents)}
-              {m.voidedCount > 0 && <span className="block text-xs text-stone-400">voided {fmtUsd(m.voidedAmountCents)}</span>}
-            </td>
-          </tr>
+              {m.voidedCount > 0 && <span className="block text-xs text-muted-foreground">voided {fmtUsd(m.voidedAmountCents)}</span>}
+            </TableCell>
+          </TableRow>
         );
       })}
     </>
   );
 
   return (
-    <section className="mt-8 rounded-lg border border-stone-200 bg-white p-6">
-      <h2 className="text-lg font-semibold text-stone-900">Payment methods</h2>
-      <p className="mt-1 text-sm text-stone-600">
-        How each payment method books to QuickBooks. Card / Cash / Check / Affirm deposit to{" "}
-        <span className="font-medium">{undepositedAccountLabel ?? "Undeposited Funds"}</span> automatically.
-        Classify the &ldquo;Other&rdquo; types below as a <span className="font-medium">deposit</span> (financing
-        that pays your bank, like Synchrony &rarr; Undeposited) or a <span className="font-medium">contra</span>{" "}
-        (warranty / internal &rarr; a contra account).
-      </p>
-
-      <table className="mt-4 w-full text-sm">
-        <thead className="bg-stone-50 text-xs uppercase tracking-wide text-stone-500">
-          <tr>
-            <th className="px-3 py-2 text-left">Method</th>
-            <th className="px-3 py-2 text-left">Books to</th>
-            <th className="px-3 py-2 text-right">Seen</th>
-            <th className="px-3 py-2 text-right">Amount</th>
-          </tr>
-        </thead>
-        <tbody>
+    <Card className="mt-8 shadow-xs">
+      <CardHeader>
+        <CardTitle>Payment methods</CardTitle>
+        <p className="text-sm text-muted-foreground">
+          How each payment method books to QuickBooks. Card / Cash / Check / Affirm deposit to{" "}
+          <span className="font-medium text-foreground">{undepositedAccountLabel ?? "Undeposited Funds"}</span> automatically.
+          Classify the &ldquo;Other&rdquo; types below as a <span className="font-medium text-foreground">deposit</span> (financing
+          that pays your bank, like Synchrony &rarr; Undeposited) or a <span className="font-medium text-foreground">contra</span>{" "}
+          (warranty / internal &rarr; a contra account).
+        </p>
+      </CardHeader>
+      <CardContent>
+      <div className="overflow-hidden rounded-lg border border-border">
+      <Table>
+        <TableHeader className="bg-muted text-xs uppercase tracking-wide text-muted-foreground [&_th]:h-auto [&_th]:text-muted-foreground">
+          <TableRow className="hover:bg-transparent">
+            <TableHead className="px-3 py-2 text-left">Method</TableHead>
+            <TableHead className="px-3 py-2 text-left">Books to</TableHead>
+            <TableHead className="px-3 py-2 text-right">Seen</TableHead>
+            <TableHead className="px-3 py-2 text-right">Amount</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {firstClass.length > 0 && (
-            <tr className="bg-stone-50/60"><td colSpan={4} className="px-3 py-1 text-xs font-semibold uppercase tracking-wide text-stone-400">Deposit methods (automatic → Undeposited)</td></tr>
+            <TableRow className="bg-muted/60 hover:bg-muted/60"><TableCell colSpan={4} className="px-3 py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Deposit methods (automatic → Undeposited)</TableCell></TableRow>
           )}
           <Rows rows={firstClass} />
           {other.length > 0 && (
-            <tr className="bg-stone-50/60"><td colSpan={4} className="px-3 py-1 text-xs font-semibold uppercase tracking-wide text-stone-400">Other payment types (you classify)</td></tr>
+            <TableRow className="bg-muted/60 hover:bg-muted/60"><TableCell colSpan={4} className="px-3 py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Other payment types (you classify)</TableCell></TableRow>
           )}
           <Rows rows={other} />
           {methods.length === 0 && (
-            <tr><td colSpan={4} className="px-3 py-4 text-center text-sm text-stone-500">No payments recorded yet.</td></tr>
+            <TableRow className="hover:bg-transparent"><TableCell colSpan={4} className="px-3 py-4 text-center text-sm text-muted-foreground">No payments recorded yet.</TableCell></TableRow>
           )}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
+      </div>
 
       {canEdit && classifiable.length > 0 && (
-        <form action={formAction} className="mt-6 grid gap-4 border-t border-stone-200 pt-6 sm:grid-cols-2">
+        <form action={formAction} className="mt-6 grid gap-4 border-t border-border pt-6 sm:grid-cols-2">
           <input type="hidden" name="kind" value="noncash_payment_type" />
           <input type="hidden" name="source_key" value={selected?.subtype ?? ""} />
           <input type="hidden" name="qbo_account_id" value={submitAccount} />
@@ -161,11 +175,11 @@ export default function PaymentMethods({
           <fieldset className="sm:col-span-2" disabled={!selected}>
             <span className={labelCls}>How does it book?</span>
             <div className="mt-2 flex flex-col gap-2">
-              <label className="flex items-start gap-2 text-sm text-stone-700">
+              <label className="flex items-start gap-2 text-sm text-foreground">
                 <input type="radio" name="_route" checked={routeChoice === "deposit"} onChange={() => setRouteChoice("deposit")} className="mt-0.5" />
                 <span><span className="font-medium">Deposit</span> — financing that pays your bank (Synchrony, Affirm…). Books <span className="font-mono text-xs">Dr Undeposited / Cr A/R</span> &rarr; {undepositedAccountLabel ?? "Undeposited Funds"}; enter the financing fee in QuickBooks.</span>
               </label>
-              <label className="flex items-start gap-2 text-sm text-stone-700">
+              <label className="flex items-start gap-2 text-sm text-foreground">
                 <input type="radio" name="_route" checked={routeChoice === "contra"} onChange={() => setRouteChoice("contra")} className="mt-0.5" />
                 <span><span className="font-medium">Contra</span> — a true non-cash type (warranty / internal). Books <span className="font-mono text-xs">Dr &lt;account&gt; / Cr A/R</span> &rarr; pick the account.</span>
               </label>
@@ -189,14 +203,16 @@ export default function PaymentMethods({
           )}
 
           <div className="sm:col-span-2">
-            <button type="submit" disabled={pending || !selected || !submitAccount} className="rounded bg-[#96003C] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#7e0033] disabled:cursor-not-allowed disabled:opacity-60">
-              {pending ? "Saving…" : "Save classification"}
-            </button>
-            {state?.ok && <span className="ml-3 text-sm text-emerald-700">Saved.</span>}
+            <Button type="submit" disabled={pending || !selected || !submitAccount} loading={pending} loadingText="Saving…">
+              <Save aria-hidden="true" />
+              Save classification
+            </Button>
+            {state?.ok && <span className="ml-3 text-sm text-emerald-800">Saved.</span>}
             {state && !state.ok && <span className="ml-3 text-sm text-red-700">{state.message}</span>}
           </div>
         </form>
       )}
-    </section>
+      </CardContent>
+    </Card>
   );
 }

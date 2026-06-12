@@ -9,9 +9,12 @@
  */
 import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Save } from "lucide-react";
 import { mapTekmetricItemAction } from "@/actions/mappings";
 import type { TekmetricItem } from "@/lib/dal/tekmetric-items";
 import type { MappableAccount } from "@/lib/dal/mappings";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function MappingEditor({
   items,
@@ -55,24 +58,26 @@ export default function MappingEditor({
     acctByType.set(t, arr);
   }
 
-  const labelCls = "text-xs font-medium uppercase tracking-wide text-stone-500";
+  const labelCls = "text-xs font-medium uppercase tracking-wide text-muted-foreground";
   const fieldCls =
-    "mt-1 w-full rounded border border-stone-300 px-3 py-2 text-sm focus:border-[#96003C] focus:outline-none disabled:bg-stone-50 disabled:text-stone-400";
+    "mt-1 w-full rounded-md border border-input bg-card px-3 py-2 text-sm transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:bg-muted disabled:text-muted-foreground";
 
   return (
-    <section className="mt-8 rounded-lg border border-stone-200 bg-white p-6">
-      <h2 className="text-lg font-semibold text-stone-900">Map a Tekmetric item</h2>
-      <p className="mt-1 text-sm text-stone-600">
-        Pick a Tekmetric item, then the QuickBooks account it should post to. The item&apos;s
-        current account (if any) shows in parentheses; picking a new one replaces it.
-      </p>
-
+    <Card className="mt-8 shadow-xs">
+      <CardHeader>
+        <CardTitle>Map a Tekmetric item</CardTitle>
+        <p className="text-sm text-muted-foreground">
+          Pick a Tekmetric item, then the QuickBooks account it should post to. The item&apos;s
+          current account (if any) shows in parentheses; picking a new one replaces it.
+        </p>
+      </CardHeader>
+      <CardContent>
       {accounts.length === 0 ? (
-        <p className="mt-4 text-sm text-amber-800">
+        <p className="text-sm text-amber-800">
           No chart-of-accounts yet — sync it from the dashboard first.
         </p>
       ) : (
-        <form action={formAction} className="mt-4 grid gap-4 sm:grid-cols-2">
+        <form action={formAction} className="grid gap-4 sm:grid-cols-2">
           {/* The chosen item carries kind + sourceKey (the action derives the role). */}
           <input type="hidden" name="kind" value={item?.kind ?? ""} />
           <input type="hidden" name="source_key" value={item?.sourceKey ?? ""} />
@@ -130,7 +135,7 @@ export default function MappingEditor({
                 onChange={(e) => setPassThrough(e.target.checked)}
                 className="mt-0.5"
               />
-              <span className="text-sm text-stone-700">
+              <span className="text-sm text-foreground">
                 <span className="font-medium">Pass-through fee</span> — exclude from the
                 discount waterfall (a mandated / third-party fee is never discounted).
               </span>
@@ -146,7 +151,7 @@ export default function MappingEditor({
                 onChange={(e) => setDepositsLikeCard(e.target.checked)}
                 className="mt-0.5"
               />
-              <span className="text-sm text-stone-700">
+              <span className="text-sm text-foreground">
                 <span className="font-medium">Deposits like a card</span> — a financing type
                 (Synchrony, Affirm…) that pays the shop&apos;s bank. Books{" "}
                 <span className="font-mono text-xs">Dr Undeposited / Cr A/R</span>; map it to{" "}
@@ -157,18 +162,16 @@ export default function MappingEditor({
           )}
 
           <div className="sm:col-span-2">
-            <button
-              type="submit"
-              disabled={pending || !item}
-              className="rounded bg-[#96003C] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#7e0033] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {pending ? "Saving…" : item?.mappedAccountLabel ? "Update mapping" : "Save mapping"}
-            </button>
-            {state?.ok && <span className="ml-3 text-sm text-emerald-700">Mapping saved.</span>}
+            <Button type="submit" disabled={pending || !item} loading={pending} loadingText="Saving…">
+              <Save aria-hidden="true" />
+              {item?.mappedAccountLabel ? "Update mapping" : "Save mapping"}
+            </Button>
+            {state?.ok && <span className="ml-3 text-sm text-emerald-800">Mapping saved.</span>}
             {state && !state.ok && <span className="ml-3 text-sm text-red-700">{state.message}</span>}
           </div>
         </form>
       )}
-    </section>
+      </CardContent>
+    </Card>
   );
 }

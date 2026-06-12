@@ -9,7 +9,11 @@
  */
 import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Plus } from "lucide-react";
 import { recordManualPaymentAction } from "@/actions/payments";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const METHODS = ["Credit Card", "Cash", "Check", "Other"];
 
@@ -22,35 +26,36 @@ export default function RecordManualPaymentForm() {
     if (state?.ok) router.refresh();
   }, [state?.timestamp, state?.ok, router]);
 
-  const inputCls = "w-full rounded border border-stone-300 px-2 py-1 text-sm";
+  const selectCls = "h-8 w-full min-w-0 rounded-md border border-input bg-card px-2.5 py-1 text-sm transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
 
   return (
-    <div className="rounded-lg border border-stone-200 bg-white p-6">
-      <h2 className="text-lg font-semibold text-stone-900">Record a manual payment</h2>
-      <p className="mt-1 text-xs text-stone-500">
-        For a paid RO with no payment event — the amount comes from the RO; pick how it was paid.
-      </p>
-      <form action={formAction} className="mt-3 space-y-2">
-        <input name="repair_order_id" inputMode="numeric" required placeholder="Repair order id" className={inputCls} />
-        <select name="method" value={method} onChange={(e) => setMethod(e.target.value)} className={inputCls}>
-          {METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
-        </select>
-        {method === "Other" && (
-          <input name="other_payment_type" required placeholder="Non-cash type (e.g. Tire Protection Plan)" className={inputCls} />
-        )}
-        {method === "Credit Card" && (
-          <input name="cc_fee_cents" inputMode="numeric" placeholder="CC processing fee (cents, optional)" className={inputCls} />
-        )}
-        <button
-          type="submit"
-          disabled={pending}
-          className="rounded bg-[#96003C] px-3 py-1 text-sm font-medium text-white transition hover:bg-[#7a0030] disabled:opacity-60"
-        >
-          {pending ? "Recording…" : "Record"}
-        </button>
-      </form>
-      {state?.ok === false && <p className="mt-2 text-xs text-red-700">{state.message}</p>}
-      {state?.ok && <p className="mt-2 text-xs text-green-700">Recorded — it will reconcile on the next run.</p>}
-    </div>
+    <Card className="shadow-xs">
+      <CardHeader>
+        <CardTitle>Record a manual payment</CardTitle>
+        <p className="text-xs text-muted-foreground">
+          For a paid RO with no payment event — the amount comes from the RO; pick how it was paid.
+        </p>
+      </CardHeader>
+      <CardContent>
+        <form action={formAction} className="space-y-2">
+          <Input name="repair_order_id" inputMode="numeric" required placeholder="Repair order id" />
+          <select name="method" value={method} onChange={(e) => setMethod(e.target.value)} className={selectCls}>
+            {METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+          </select>
+          {method === "Other" && (
+            <Input name="other_payment_type" required placeholder="Non-cash type (e.g. Tire Protection Plan)" />
+          )}
+          {method === "Credit Card" && (
+            <Input name="cc_fee_cents" inputMode="numeric" placeholder="CC processing fee (cents, optional)" />
+          )}
+          <Button type="submit" loading={pending} loadingText="Recording…">
+            <Plus aria-hidden="true" />
+            Record
+          </Button>
+        </form>
+        {state?.ok === false && <p className="mt-2 text-xs text-red-700">{state.message}</p>}
+        {state?.ok && <p className="mt-2 text-xs text-emerald-800">Recorded — it will reconcile on the next run.</p>}
+      </CardContent>
+    </Card>
   );
 }

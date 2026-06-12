@@ -8,24 +8,30 @@
  * nav and required a separate "Go" click.)
  */
 import { useRouter } from "next/navigation";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { addDaysIso } from "@/lib/format";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 export default function DateNav({ date }: { date: string }) {
   const router = useRouter();
   const go = (d: string) => router.push(`/approvals?date=${d}`);
-  const arrow = "rounded border border-stone-300 px-3 py-1.5 text-sm hover:bg-stone-50";
 
   return (
     <div className="mt-6 flex items-center justify-center gap-3">
-      <button type="button" onClick={() => go(addDaysIso(date, -1))} className={arrow} aria-label="Previous day">◀</button>
-      <input
+      <Button type="button" variant="outline" size="icon" onClick={() => go(addDaysIso(date, -1))} aria-label="Previous day">
+        <ChevronLeft aria-hidden="true" />
+      </Button>
+      <Input
         type="date"
         value={date}
         onChange={(e) => { if (e.target.value) go(e.target.value); }}
-        className="rounded border border-stone-300 px-3 py-1.5 text-sm focus:border-[#96003C] focus:outline-none"
+        className="w-auto"
         aria-label="Pick a date"
       />
-      <button type="button" onClick={() => go(addDaysIso(date, 1))} className={arrow} aria-label="Next day">▶</button>
+      <Button type="button" variant="outline" size="icon" onClick={() => go(addDaysIso(date, 1))} aria-label="Next day">
+        <ChevronRight aria-hidden="true" />
+      </Button>
     </div>
   );
 }

@@ -7,6 +7,7 @@
 
 import { useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { Button } from "@/components/ui/button";
 
 export default function LoginButton() {
   const [pending, setPending] = useState(false);
@@ -43,22 +44,24 @@ export default function LoginButton() {
       {error && (
         <div
           role="alert"
-          className="mb-3 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-800"
+          className="mb-3 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700"
         >
           {error}
         </div>
       )}
-      <button
+      <Button
         type="button"
+        size="lg"
         onClick={handleSignIn}
-        disabled={pending}
-        className="flex w-full items-center justify-center gap-2 rounded bg-[#96003C] px-4 py-3 text-sm font-medium text-white shadow-sm transition hover:bg-[#7e0033] disabled:cursor-not-allowed disabled:opacity-60"
+        loading={pending}
+        loadingText="Redirecting…"
+        className="w-full"
       >
         {/* Microsoft logo — 4 colored squares per their brand guidelines */}
         <svg
           xmlns="http://www.w3.org/2000/svg"
           viewBox="0 0 21 21"
-          className="h-4 w-4"
+          className="size-4"
           aria-hidden="true"
         >
           <rect x="1" y="1" width="9" height="9" fill="#f25022" />
@@ -66,8 +69,8 @@ export default function LoginButton() {
           <rect x="1" y="11" width="9" height="9" fill="#00a4ef" />
           <rect x="11" y="11" width="9" height="9" fill="#ffb900" />
         </svg>
-        {pending ? "Redirecting…" : "Sign in with Microsoft"}
-      </button>
+        Sign in with Microsoft
+      </Button>
     </>
   );
 }

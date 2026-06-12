@@ -8,6 +8,7 @@
  */
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import ThemeToggle from "./ThemeToggle";
 
 const TABS = [
   { href: "/dashboard", label: "Home" },
@@ -22,28 +23,31 @@ export default function QtlTabs() {
   if (pathname === "/" || pathname.startsWith("/login") || pathname.startsWith("/auth")) return null;
 
   return (
-    <div className="sticky top-0 z-40 border-b border-stone-200 bg-stone-50/95 backdrop-blur">
-      <nav aria-label="Main" className="mx-auto max-w-5xl overflow-x-auto px-4 py-2">
-        <div className="mx-auto flex w-fit min-w-max rounded-lg border border-stone-200 bg-white p-1 shadow-sm">
-          {TABS.map((t) => {
-            const active = pathname === t.href || pathname.startsWith(`${t.href}/`);
-            return (
-              <Link
-                key={t.href}
-                href={t.href}
-                aria-current={active ? "page" : undefined}
-                className={`whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition sm:px-4 ${
-                  active
-                    ? "bg-[#96003C] text-white"
-                    : "text-stone-600 hover:bg-[#96003C]/5 hover:text-[#96003C]"
-                }`}
-              >
-                {t.label}
-              </Link>
-            );
-          })}
-        </div>
-      </nav>
+    <div className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur">
+      <div className="mx-auto flex max-w-5xl items-center gap-2 px-4 py-2">
+        <nav aria-label="Main" className="min-w-0 flex-1 overflow-x-auto">
+          <div className="mx-auto flex w-fit min-w-max rounded-lg border border-border bg-card p-1 shadow-xs">
+            {TABS.map((t) => {
+              const active = pathname === t.href || pathname.startsWith(`${t.href}/`);
+              return (
+                <Link
+                  key={t.href}
+                  href={t.href}
+                  aria-current={active ? "page" : undefined}
+                  className={`flex min-h-9 items-center whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors sm:px-4 ${
+                    active
+                      ? "bg-primary/10 text-primary font-semibold"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  }`}
+                >
+                  {t.label}
+                </Link>
+              );
+            })}
+          </div>
+        </nav>
+        <ThemeToggle />
+      </div>
     </div>
   );
 }

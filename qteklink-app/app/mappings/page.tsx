@@ -7,6 +7,7 @@
  * gate; this page resolves account names for display + flags any mapping whose
  * account has since been removed from QBO.
  */
+import { AlertTriangle } from "lucide-react";
 import { requireQtekUser } from "@/lib/auth";
 import { listMappings, listMappableAccounts, type MappingRow } from "@/lib/dal/mappings";
 import { listTekmetricItems } from "@/lib/dal/tekmetric-items";
@@ -21,6 +22,9 @@ import {
 import MappingEditor from "./MappingEditor";
 import PaymentMethods from "./PaymentMethods";
 import DeactivateMappingButton from "./DeactivateMappingButton";
+import { PageHeader, IdentityBlock } from "@/components/PageHeader";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 
 export default async function MappingsPage() {
   const { email, role, shopId } = await requireQtekUser();
@@ -41,28 +45,20 @@ export default async function MappingsPage() {
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-12">
-      <header className="flex items-center justify-between border-b border-stone-200 pb-4">
-        <div>
-          <h1 className="text-2xl font-bold text-[#96003C]">Account mappings</h1>
-          <p className="text-sm text-stone-600">Which QuickBooks account each Tekmetric item posts to</p>
-        </div>
-        <div className="text-right">
-          <p className="text-sm font-medium text-stone-900">{email}</p>
-          <p className="text-xs uppercase tracking-wide text-stone-500">
-            {role} &middot; shop {shopId}
-          </p>
-        </div>
-      </header>
+      <PageHeader title="Account mappings" description="Which QuickBooks account each Tekmetric item posts to">
+        <IdentityBlock email={email} role={role} shopId={shopId} />
+      </PageHeader>
 
-      <section className="mt-4 rounded-lg border border-stone-200 bg-stone-50 p-4 text-sm text-stone-700">
+      <section className="mt-4 rounded-lg border border-border bg-muted p-4 text-sm text-muted-foreground">
         This page tells QTekLink which QuickBooks account each Tekmetric item belongs to —
         labor, parts, fees, taxes, and payment types. If something shows{" "}
-        <span className="font-medium text-amber-700">not mapped</span>, pick an account for it;
+        <span className="font-medium text-amber-800">not mapped</span>, pick an account for it;
         days can&apos;t post until everything on them is mapped.
       </section>
 
       {!realmId ? (
-        <section className="mt-8 rounded-lg border border-amber-200 bg-amber-50 p-6">
+        <section className="mt-8 flex gap-3 rounded-lg border border-amber-200 bg-amber-50 p-6">
+          <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-800" aria-hidden="true" />
           <p className="text-sm text-amber-800">
             QuickBooks isn&apos;t connected for this shop yet. Connect it and sync
             the chart of accounts from the dashboard before mapping.
@@ -70,18 +66,21 @@ export default async function MappingsPage() {
         </section>
       ) : (
         <>
-          <section className="mt-8 flex items-center gap-6 rounded-lg border border-stone-200 bg-white p-6">
-            <div>
-              <p className="text-3xl font-bold text-stone-900">{mappings.length}</p>
-              <p className="text-xs uppercase tracking-wide text-stone-500">active mappings</p>
-            </div>
-            {staleCount > 0 && (
-              <p className="text-sm text-red-700">
-                {staleCount} mapping{staleCount === 1 ? "" : "s"} point to an account
-                that&apos;s been removed or deactivated in QuickBooks — re-map below.
-              </p>
-            )}
-          </section>
+          <Card className="mt-8 shadow-xs">
+            <CardContent className="flex items-center gap-6">
+              <div>
+                <p className="text-3xl font-bold tabular-nums text-foreground">{mappings.length}</p>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">active mappings</p>
+              </div>
+              {staleCount > 0 && (
+                <p className="flex items-start gap-1.5 text-sm text-red-700">
+                  <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                  {staleCount} mapping{staleCount === 1 ? "" : "s"} point to an account
+                  that&apos;s been removed or deactivated in QuickBooks — re-map below.
+                </p>
+              )}
+            </CardContent>
+          </Card>
 
           {paymentMethods && (
             <PaymentMethods
@@ -92,55 +91,55 @@ export default async function MappingsPage() {
             />
           )}
 
-          <section className="mt-8 rounded-lg border border-stone-200 bg-white p-6">
-            <h2 className="text-lg font-semibold text-stone-900">Current mappings</h2>
-            {mappings.length === 0 ? (
-              <p className="mt-2 text-sm text-stone-600">
-                No mappings yet.{" "}
-                {isAdmin
-                  ? "Add the first one below."
-                  : "An admin needs to set these up."}
-              </p>
-            ) : (
-              <div className="mt-4 space-y-6">
-                {MAPPING_KINDS.filter((k) => byKind.has(k)).map((kind) => (
-                  <div key={kind}>
-                    <h3 className="text-xs font-semibold uppercase tracking-wide text-stone-500">
-                      {KIND_LABELS[kind as MappingKind]}
-                    </h3>
-                    <ul className="mt-2 divide-y divide-stone-100">
-                      {byKind.get(kind)!.map((m) => (
-                        <li key={m.id} className="flex items-center justify-between py-2 text-sm">
-                          <span className="flex-1">
-                            <span className="font-medium text-stone-900">{m.sourceKey}</span>
-                            <span className="text-stone-400"> &rarr; </span>
-                            <span className={m.accountStale ? "text-red-700 line-through" : "text-stone-700"}>
-                              {m.accountNum ? `${m.accountNum} · ` : ""}
-                              {m.accountName ?? m.qboAccountId}
+          <Card className="mt-8 shadow-xs">
+            <CardHeader>
+              <CardTitle>Current mappings</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {mappings.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No mappings yet.{" "}
+                  {isAdmin
+                    ? "Add the first one below."
+                    : "An admin needs to set these up."}
+                </p>
+              ) : (
+                <div className="space-y-6">
+                  {MAPPING_KINDS.filter((k) => byKind.has(k)).map((kind) => (
+                    <div key={kind}>
+                      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        {KIND_LABELS[kind as MappingKind]}
+                      </h3>
+                      <ul className="mt-2 divide-y divide-border">
+                        {byKind.get(kind)!.map((m) => (
+                          <li key={m.id} className="flex items-center justify-between py-2 text-sm">
+                            <span className="flex-1">
+                              <span className="font-medium text-foreground">{m.sourceKey}</span>
+                              <span className="text-muted-foreground"> &rarr; </span>
+                              <span className={m.accountStale ? "text-red-700 line-through" : "text-foreground"}>
+                                {m.accountNum ? `${m.accountNum} · ` : ""}
+                                {m.accountName ?? m.qboAccountId}
+                              </span>
+                              {m.accountStale && (
+                                <Badge variant="destructive" className="ml-2">removed / inactive in QBO</Badge>
+                              )}
+                              {m.passThrough && (
+                                <Badge variant="secondary" className="ml-2">pass-through</Badge>
+                              )}
                             </span>
-                            {m.accountStale && (
-                              <span className="ml-2 rounded bg-red-100 px-1.5 py-0.5 text-xs text-red-700">
-                                removed / inactive in QBO
-                              </span>
-                            )}
-                            {m.passThrough && (
-                              <span className="ml-2 rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-600">
-                                pass-through
-                              </span>
-                            )}
-                          </span>
-                          <span className="mx-3 text-xs uppercase tracking-wide text-stone-400">
-                            {ROLE_LABELS[m.postingRole as PostingRole] ?? m.postingRole}
-                          </span>
-                          {isAdmin && <DeactivateMappingButton id={m.id} sourceKey={m.sourceKey} />}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
+                            <span className="mx-3 text-xs uppercase tracking-wide text-muted-foreground">
+                              {ROLE_LABELS[m.postingRole as PostingRole] ?? m.postingRole}
+                            </span>
+                            {isAdmin && <DeactivateMappingButton id={m.id} sourceKey={m.sourceKey} />}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {isAdmin && <MappingEditor items={items} accounts={accounts} />}
         </>

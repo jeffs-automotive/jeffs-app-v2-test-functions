@@ -8,6 +8,7 @@
  */
 import { useActionState, useEffect, useRef, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Trash2, UserPlus } from "lucide-react";
 import {
   addAllowedUserAction,
   setAllowedUserActiveAction,
@@ -15,8 +16,8 @@ import {
   removeAllowedUserAction,
 } from "@/actions/allowed-users";
 import type { AllowedUserView } from "@/lib/dal/allowed-users";
-
-const btn = "rounded px-2.5 py-1 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-60";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 
 const ROLE_LABEL: Record<string, string> = {
   viewer: "Viewer (read-only)",
@@ -82,16 +83,23 @@ function RowActions({ user, selfEmail }: { user: AllowedUserView; selfEmail: str
 
   return (
     <div className="mt-2 flex flex-wrap items-center gap-2">
-      <button onClick={flipRole} disabled={pending} className={`${btn} border border-stone-300 text-stone-700 hover:bg-stone-50`}>
+      <Button variant="outline" size="sm" onClick={flipRole} disabled={pending}>
         {user.role === "admin" ? "Change to Viewer" : "Make Admin"}
-      </button>
-      <button onClick={flipActive} disabled={pending} className={`${btn} border ${user.active ? "border-amber-300 text-amber-800 hover:bg-amber-50" : "border-emerald-300 text-emerald-800 hover:bg-emerald-50"}`}>
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={flipActive}
+        disabled={pending}
+        className={user.active ? "border-amber-300 text-amber-800 hover:bg-amber-50" : "border-emerald-300 text-emerald-800 hover:bg-emerald-50"}
+      >
         {user.active ? "Turn off access" : "Turn access back on"}
-      </button>
+      </Button>
       {!user.bound && (
-        <button onClick={remove} disabled={pending} className={`${btn} border border-red-200 text-red-700 hover:bg-red-50`}>
+        <Button variant="destructive" size="sm" onClick={remove} disabled={pending}>
+          <Trash2 aria-hidden="true" />
           Remove
-        </button>
+        </Button>
       )}
       {err && <span className="text-xs text-red-700">{err.message}</span>}
     </div>
@@ -110,22 +118,22 @@ export default function AllowedUsersManager({ users, selfEmail }: { users: Allow
     <div>
       <ul className="mt-4 space-y-3">
         {users.map((u) => (
-          <li key={u.id} className={`rounded-lg border p-3 ${u.active ? "border-stone-200 bg-white" : "border-stone-200 bg-stone-100"}`}>
+          <li key={u.id} className={`rounded-lg border border-border p-3 shadow-xs ${u.active ? "bg-card" : "bg-muted"}`}>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-semibold text-stone-900">{u.email}</span>
-              {u.fullName && <span className="text-sm text-stone-500">({u.fullName})</span>}
-              <span className="rounded bg-[#96003C]/10 px-2 py-0.5 text-xs font-medium text-[#96003C]">{ROLE_LABEL[u.role] ?? u.role}</span>
-              {!u.active && <span className="rounded bg-stone-200 px-2 py-0.5 text-xs font-medium text-stone-600">access off</span>}
-              {!u.bound && <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">hasn&apos;t signed in yet</span>}
+              <span className="text-sm font-semibold text-foreground">{u.email}</span>
+              {u.fullName && <span className="text-sm text-muted-foreground">({u.fullName})</span>}
+              <Badge variant="outline" className="border-primary/30 bg-primary/10 text-primary">{ROLE_LABEL[u.role] ?? u.role}</Badge>
+              {!u.active && <Badge variant="secondary">access off</Badge>}
+              {!u.bound && <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">hasn&apos;t signed in yet</Badge>}
             </div>
             <RowActions user={u} selfEmail={selfEmail} />
           </li>
         ))}
       </ul>
 
-      <form ref={formRef} action={addAction} className="mt-5 rounded-lg border border-dashed border-stone-300 p-4">
-        <p className="text-sm font-medium text-stone-900">Add someone</p>
-        <p className="mt-0.5 text-xs text-stone-500">
+      <form ref={formRef} action={addAction} className="mt-5 rounded-lg border border-dashed border-border p-4">
+        <p className="text-sm font-medium text-foreground">Add someone</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">
           Enter their work Microsoft email. They appear as &quot;hasn&apos;t signed in yet&quot; until
           their first sign-in links their Microsoft account automatically.
         </p>
@@ -135,18 +143,18 @@ export default function AllowedUsersManager({ users, selfEmail }: { users: Allow
             type="email"
             required
             placeholder="person@jeffsautomotive.com"
-            className="w-64 rounded border border-stone-300 px-2 py-1.5 text-sm"
+            className="w-64 rounded-md border border-input bg-card px-2.5 py-1.5 text-sm transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
           />
-          <select name="role" defaultValue="viewer" className="rounded border border-stone-300 px-2 py-1.5 text-sm">
+          <select name="role" defaultValue="viewer" className="rounded-md border border-input bg-card px-2.5 py-1.5 text-sm transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50">
             <option value="viewer">Viewer (read-only)</option>
             <option value="admin">Admin (can post + change settings)</option>
           </select>
-          <button type="submit" disabled={addPending}
-            className="rounded bg-[#96003C] px-3 py-1.5 text-sm font-medium text-white transition hover:bg-[#7a0030] disabled:opacity-60">
-            {addPending ? "Adding…" : "Add to the list"}
-          </button>
+          <Button type="submit" loading={addPending} loadingText="Adding…">
+            <UserPlus aria-hidden="true" />
+            Add to the list
+          </Button>
         </div>
-        {addState?.ok && <p className="mt-2 text-sm text-green-700">Added.</p>}
+        {addState?.ok && <p className="mt-2 text-sm text-emerald-800">Added.</p>}
         {addState?.ok === false && <p className="mt-2 text-sm text-red-700">{addState.message}</p>}
       </form>
     </div>

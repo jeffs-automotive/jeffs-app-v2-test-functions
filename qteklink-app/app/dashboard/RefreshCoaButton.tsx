@@ -8,7 +8,9 @@
  */
 import { useActionState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { RefreshCw } from "lucide-react";
 import { refreshCoaAction } from "@/actions/coa";
+import { Button } from "@/components/ui/button";
 
 export default function RefreshCoaButton() {
   const router = useRouter();
@@ -21,17 +23,14 @@ export default function RefreshCoaButton() {
   return (
     <div>
       <form action={formAction}>
-        <button
-          type="submit"
-          disabled={pending}
-          className="rounded bg-[#96003C] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#7e0033] disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {pending ? "Refreshing…" : "Refresh chart of accounts"}
-        </button>
+        <Button type="submit" loading={pending} loadingText="Refreshing…">
+          <RefreshCw aria-hidden="true" />
+          Refresh chart of accounts
+        </Button>
       </form>
 
       {state?.ok && (
-        <p className="mt-3 text-sm text-emerald-700">
+        <p className="mt-3 text-sm text-emerald-800">
           Synced {state.data.synced} account{state.data.synced === 1 ? "" : "s"} from
           QuickBooks.
         </p>

@@ -3,7 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import * as Sentry from "@sentry/nextjs";
+import { LogOut } from "lucide-react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { Button } from "@/components/ui/button";
 
 export default function SignOutButton() {
   const [pending, setPending] = useState(false);
@@ -23,13 +25,15 @@ export default function SignOutButton() {
   }
 
   return (
-    <button
+    <Button
       type="button"
+      variant="ghost"
       onClick={handleSignOut}
-      disabled={pending}
-      className="rounded border border-stone-300 px-3 py-1.5 text-sm font-medium text-stone-700 transition hover:bg-stone-100 disabled:opacity-60"
+      loading={pending}
+      loadingText="Signing out…"
     >
-      {pending ? "Signing out…" : "Sign out"}
-    </button>
+      <LogOut aria-hidden="true" />
+      Sign out
+    </Button>
   );
 }

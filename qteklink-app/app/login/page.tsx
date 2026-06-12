@@ -32,11 +32,11 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
     : null;
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-stone-50 px-4">
-      <div className="w-full max-w-sm space-y-6 rounded-lg border border-stone-200 bg-white p-8 shadow-sm">
+    <main className="flex min-h-screen items-center justify-center bg-background px-4">
+      <div className="w-full max-w-sm space-y-6 rounded-xl border border-border bg-card p-8 shadow-md">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-[#96003C]">QTekLink</h1>
-          <p className="mt-2 text-sm text-stone-600">
+          <h1 className="text-2xl font-bold text-primary">QTekLink</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
             Tekmetric &rarr; QuickBooks sync
           </p>
         </div>
@@ -44,7 +44,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         {errorMessage && (
           <div
             role="alert"
-            className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800"
+            className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700"
           >
             {errorMessage}
           </div>
@@ -52,7 +52,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
         <LoginButton />
 
-        <p className="text-center text-xs text-stone-500">
+        <p className="text-center text-xs text-muted-foreground">
           Restricted to authorized Jeff&apos;s Automotive staff.
         </p>
       </div>

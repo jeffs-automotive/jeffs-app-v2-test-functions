@@ -8,6 +8,7 @@
  */
 import { useEffect } from "react";
 import * as Sentry from "@sentry/nextjs";
+import { Button } from "@/components/ui/button";
 
 export default function Error({
   error,
@@ -21,18 +22,14 @@ export default function Error({
   }, [error]);
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-stone-50 px-4 text-center">
-      <h1 className="text-xl font-semibold text-stone-900">Something went wrong</h1>
-      <p className="text-sm text-stone-600">
+    <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background px-4 text-center">
+      <h1 className="text-xl font-semibold text-foreground">Something went wrong</h1>
+      <p className="text-sm text-muted-foreground">
         The error has been logged{error.digest ? ` (ref ${error.digest})` : ""}.
       </p>
-      <button
-        type="button"
-        onClick={reset}
-        className="rounded bg-[#96003C] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#7e0033]"
-      >
+      <Button type="button" onClick={reset}>
         Try again
-      </button>
+      </Button>
     </main>
   );
 }

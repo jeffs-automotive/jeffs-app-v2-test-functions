@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { Geist } from "next/font/google";
 import { cn } from "@/lib/utils";
+import Providers from "./providers";
 import QtlTabs from "./QtlTabs";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-sans" });
@@ -23,10 +24,12 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={cn("font-sans", geist.variable)}>
-      <body className="bg-stone-50 text-stone-900">
-        <QtlTabs />
-        {children}
+    <html lang="en" className={cn("font-sans", geist.variable)} suppressHydrationWarning>
+      <body className="bg-background text-foreground antialiased">
+        <Providers>
+          <QtlTabs />
+          {children}
+        </Providers>
       </body>
     </html>
   );

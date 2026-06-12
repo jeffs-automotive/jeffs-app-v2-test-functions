@@ -14,31 +14,22 @@
  * Disconnect to also tombstone the local tokens, or just reconnect.
  */
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
 
 export const dynamic = "force-dynamic";
 
 export default function QboDisconnectedPage() {
   return (
     <main className="mx-auto max-w-lg px-6 py-16 text-center">
-      <h1 className="text-2xl font-bold text-[#96003C]">QuickBooks disconnected</h1>
-      <p className="mt-3 text-sm text-stone-600">
+      <h1 className="text-2xl font-bold text-primary">QuickBooks disconnected</h1>
+      <p className="mt-3 text-sm text-muted-foreground">
         QTekLink is no longer connected to QuickBooks, so syncing is paused. Your
         chart-of-accounts mapping is kept — reconnecting the same company restores
         everything.
       </p>
-      <div className="mt-6 flex flex-wrap justify-center gap-4 text-sm">
-        <a
-          href="/qbo/connect"
-          className="rounded bg-[#96003C] px-4 py-2 font-medium text-white transition hover:bg-[#7e0033]"
-        >
-          Reconnect QuickBooks
-        </a>
-        <Link
-          href="/dashboard"
-          className="rounded border border-stone-300 px-4 py-2 font-medium text-stone-700 transition hover:bg-stone-50"
-        >
-          Back to dashboard
-        </Link>
+      <div className="mt-6 flex flex-wrap justify-center gap-4">
+        <Button render={<a href="/qbo/connect" />}>Reconnect QuickBooks</Button>
+        <Button render={<Link href="/dashboard" />} variant="outline">Back to dashboard</Button>
       </div>
     </main>
   );

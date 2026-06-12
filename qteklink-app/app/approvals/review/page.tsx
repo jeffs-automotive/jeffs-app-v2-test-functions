@@ -5,12 +5,17 @@
  * payment. The page only READS (listOpenReviewItems) — writes go through the admin forms.
  */
 import Link from "next/link";
+import { AlertCircle, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { requireQtekUser } from "@/lib/auth";
 import { listOpenReviewItems, type ReviewItemRow } from "@/lib/dal/review-items";
 import { isIsoDate } from "@/lib/format";
 import ResolveReviewItemForm from "../ResolveReviewItemForm";
 import RunReconcileForm from "../RunReconcileForm";
 import RecordManualPaymentForm from "../RecordManualPaymentForm";
+import { PageHeader, IdentityBlock } from "@/components/PageHeader";
+import { EmptyState } from "@/components/EmptyState";
+import { Card, CardContent, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 
 export const dynamic = "force-dynamic";
 
@@ -31,19 +36,26 @@ function reasonList(detail: Record<string, unknown>): string[] {
 function ReviewItemCard({ item, isAdmin }: { item: ReviewItemRow; isAdmin: boolean }) {
   const reasons = reasonList(item.detail);
   return (
-    <li className="rounded-lg border border-stone-200 bg-white p-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="rounded bg-[#96003C]/10 px-2 py-0.5 text-xs font-semibold text-[#96003C]">{KIND_LABELS[item.kind] ?? item.kind}</span>
-        <span className="text-xs uppercase tracking-wide text-stone-500">{item.subjectKind} {item.subjectRef}</span>
-        <span className="ml-auto text-xs text-stone-400">{new Date(item.createdAt).toLocaleString()}</span>
-      </div>
-      {reasons.length > 0 && (
-        <ul className="mt-2 flex flex-wrap gap-1.5">
-          {reasons.map((r) => (<li key={r} className="rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-700">{r}</li>))}
-        </ul>
-      )}
-      {item.detail.docNumber != null && <p className="mt-2 text-xs text-stone-500">{String(item.detail.docNumber)}</p>}
-      {isAdmin && <ResolveReviewItemForm id={item.id} />}
+    <li>
+      <Card className="shadow-xs border-l-2 border-l-amber-400">
+        <CardContent className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline" className="gap-1 border-amber-200 bg-amber-50 text-amber-800">
+              <AlertCircle aria-hidden="true" />
+              {KIND_LABELS[item.kind] ?? item.kind}
+            </Badge>
+            <span className="text-xs uppercase tracking-wide text-muted-foreground">{item.subjectKind} {item.subjectRef}</span>
+            <span className="ml-auto text-xs text-muted-foreground">{new Date(item.createdAt).toLocaleString()}</span>
+          </div>
+          {reasons.length > 0 && (
+            <ul className="flex flex-wrap gap-1.5">
+              {reasons.map((r) => (<li key={r}><Badge variant="secondary">{r}</Badge></li>))}
+            </ul>
+          )}
+          {item.detail.docNumber != null && <p className="text-xs text-muted-foreground">{String(item.detail.docNumber)}</p>}
+          {isAdmin && <ResolveReviewItemForm id={item.id} />}
+        </CardContent>
+      </Card>
     </li>
   );
 }
@@ -57,27 +69,24 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-12">
-      <header className="flex items-center justify-between border-b border-stone-200 pb-4">
-        <div>
-          <h1 className="text-2xl font-bold text-[#96003C]">Fix-it list</h1>
-          <p className="text-sm text-stone-600">
-            <Link href={backDate ? `/approvals?date=${backDate}` : "/approvals"} className="text-[#96003C] underline">← back to daily approvals</Link>
-          </p>
-        </div>
-        <div className="text-right">
-          <p className="text-sm font-medium text-stone-900">{email}</p>
-          <p className="text-xs uppercase tracking-wide text-stone-500">{role} · shop {shopId}</p>
-        </div>
-      </header>
+      <PageHeader
+        title="Fix-it list"
+        description={
+          <Link href={backDate ? `/approvals?date=${backDate}` : "/approvals"} className="text-primary underline underline-offset-4">← back to daily approvals</Link>
+        }
+      >
+        <IdentityBlock email={email} role={role} shopId={shopId} />
+      </PageHeader>
 
-      <section className="mt-4 rounded-lg border border-stone-200 bg-stone-50 p-4 text-sm text-stone-700">
+      <section className="mt-4 rounded-lg border border-border bg-muted p-4 text-sm text-muted-foreground">
         Items land here when QTekLink can&apos;t post something on its own — usually a payment type
         or fee that isn&apos;t matched to a QuickBooks account yet, or a payment that needs you to
         say how it was paid. Fix each item below; the day then posts normally.
       </section>
 
       {!realmId ? (
-        <section className="mt-8 rounded-lg border border-amber-200 bg-amber-50 p-6">
+        <section className="mt-8 flex gap-3 rounded-lg border border-amber-200 bg-amber-50 p-6">
+          <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-800" aria-hidden="true" />
           <p className="text-sm text-amber-800">QuickBooks isn&apos;t connected for this shop yet.</p>
         </section>
       ) : (
@@ -88,19 +97,21 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
               <RecordManualPaymentForm />
             </section>
           )}
-          <section className="mt-8 rounded-lg border border-stone-200 bg-white p-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-stone-900">Open review items</h2>
-              <span className="text-3xl font-bold text-stone-900">{items.length}</span>
-            </div>
-            {items.length === 0 ? (
-              <p className="mt-2 text-sm text-stone-600">Nothing to review — every reconciled draft is postable.</p>
-            ) : (
-              <ul className="mt-4 space-y-3">
-                {items.map((item) => (<ReviewItemCard key={item.id} item={item} isAdmin={isAdmin} />))}
-              </ul>
-            )}
-          </section>
+          <Card className="mt-8 shadow-xs">
+            <CardContent className="flex items-center justify-between gap-3">
+              <CardTitle>Open review items</CardTitle>
+              <span className="text-3xl font-bold tabular-nums text-foreground">{items.length}</span>
+            </CardContent>
+            <CardContent>
+              {items.length === 0 ? (
+                <EmptyState icon={CheckCircle2} title="Nothing to review" subtext="Every reconciled draft is postable." />
+              ) : (
+                <ul className="space-y-3">
+                  {items.map((item) => (<ReviewItemCard key={item.id} item={item} isAdmin={isAdmin} />))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
         </>
       )}
     </main>

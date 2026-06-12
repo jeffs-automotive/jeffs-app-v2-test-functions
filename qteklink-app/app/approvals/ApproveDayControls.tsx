@@ -15,8 +15,19 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { AlertTriangle, Lock, Send } from "lucide-react";
 import { approveAndPostDayAction, type ApproveDayDryRun } from "@/actions/approve-day";
 import { fmtUsd } from "@/lib/format";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 const CATEGORY_LABEL = { sales: "Sales JE", payments: "Payments JE", fees: "CC-fees JE" } as const;
 const ACTION_LABEL = { create: "", update: " — replaces the posted JE", delete: " — deletes the posted JE (day emptied)" } as const;
@@ -65,52 +76,78 @@ export default function ApproveDayControls({ date, blockedCount }: { date: strin
     });
   }
 
-  const btn = "rounded px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60";
   const locked = blockedCount > 0;
 
-  return (
-    <div className="mt-6 rounded-lg border border-stone-200 bg-white p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-stone-600">
-          One button posts the whole day — every journal entry goes to QuickBooks together.
-        </p>
-        <button disabled={pending || locked} onClick={dryRun} className={`${btn} bg-[#96003C] text-white hover:bg-[#7e0033]`}>
-          Approve + post this day ▲QBO
-        </button>
-      </div>
-      {locked && (
-        <p className="mt-3 text-sm text-amber-700">
-          🔒 {blockedCount} item{blockedCount === 1 ? "" : "s"} on this day still need{blockedCount === 1 ? "s" : ""} attention.
-          Fix {blockedCount === 1 ? "it" : "them"} on the{" "}
-          <Link href={`/approvals/review?date=${date}`} className="font-medium underline">fix-it list</Link>{" "}
-          first — nothing posts until the day is clean.
-        </p>
-      )}
-      {msg && <p className={`mt-3 text-sm ${msg.kind === "ok" ? "text-emerald-700" : "text-red-700"}`}>{msg.text}</p>}
+  // Close-guard: never let the dialog close (Esc / overlay-click / Cancel)
+  // while a dry-run-bound execute is mid-flight (admin-app's Pattern A/S idiom).
+  // Closing routes through the SAME setModal(null) that drove open/close before
+  // — the dry-run/confirm wiring + scopeHash flow are unchanged.
+  function handleOpenChange(next: boolean) {
+    if (pending && !next) return;
+    if (!next) setModal(null);
+  }
 
-      {modal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
-          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-            <h3 className="text-lg font-semibold text-stone-900">Post to QuickBooks?</h3>
-            <p className="mt-1 text-sm text-stone-600">
-              You&apos;re about to write <span className="font-semibold">{modal.summary.jeCount}</span> daily journal entr{modal.summary.jeCount === 1 ? "y" : "ies"} for <span className="font-medium">{date}</span> — the whole day at once. This is a <span className="font-semibold text-[#96003C]">live write</span> to QuickBooks.
-            </p>
-            <ul className="mt-3 space-y-1 text-sm">
+  return (
+    <Card className="mt-6 shadow-xs">
+      <CardContent className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground">
+            One button posts the whole day — every journal entry goes to QuickBooks together.
+          </p>
+          <div className="flex flex-col items-end gap-1">
+            <Button disabled={pending || locked} loading={pending} loadingText="Checking…" onClick={dryRun}>
+              <Send aria-hidden="true" />
+              Approve + post this day
+            </Button>
+            <span className="text-xs text-muted-foreground">Posts to QuickBooks</span>
+          </div>
+        </div>
+        {locked && (
+          <p className="flex flex-wrap items-center gap-1 text-sm text-amber-800">
+            <Lock className="size-4 shrink-0" aria-hidden="true" />
+            {blockedCount} item{blockedCount === 1 ? "" : "s"} on this day still need{blockedCount === 1 ? "s" : ""} attention.
+            Fix {blockedCount === 1 ? "it" : "them"} on the{" "}
+            <Button render={<Link href={`/approvals/review?date=${date}`} />} variant="link" className="h-auto px-0 text-amber-800">fix-it list</Button>{" "}
+            first — nothing posts until the day is clean.
+          </p>
+        )}
+        {msg && <p className={`text-sm ${msg.kind === "ok" ? "text-emerald-800" : "text-red-700"}`}>{msg.text}</p>}
+      </CardContent>
+
+      <Dialog open={modal !== null} onOpenChange={handleOpenChange}>
+        {modal && (
+          <DialogContent className="sm:max-w-lg shadow-lg" showCloseButton={false}>
+            <DialogHeader>
+              <div className="flex items-center gap-2">
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-amber-100">
+                  <AlertTriangle className="size-5 text-amber-800" aria-hidden="true" />
+                </div>
+                <DialogTitle>Post to QuickBooks?</DialogTitle>
+              </div>
+              <DialogDescription>
+                You&apos;re about to write <span className="font-semibold text-foreground">{modal.summary.jeCount}</span> daily journal entr{modal.summary.jeCount === 1 ? "y" : "ies"} for <span className="font-medium text-foreground">{date}</span> — the whole day at once. This is a <span className="font-semibold text-primary">live write</span> to QuickBooks.
+              </DialogDescription>
+            </DialogHeader>
+
+            <ul className="space-y-1 text-sm">
               {modal.summary.perCategory.map((c) => (
                 <li key={c.category} className="flex justify-between gap-3">
-                  <span className="text-stone-600">{categoryLine(c)}</span>
+                  <span className="text-muted-foreground">{categoryLine(c)}</span>
                   <span className="font-medium tabular-nums">{c.action === "delete" ? "—" : fmtUsd(c.cents)}</span>
                 </li>
               ))}
             </ul>
-            {modal.summary.jeCount === 0 && <p className="mt-3 text-sm text-stone-500">Nothing to post for this day.</p>}
-            <div className="mt-5 flex justify-end gap-2">
-              <button disabled={pending} onClick={() => setModal(null)} className={`${btn} border border-stone-300 text-stone-700`}>Cancel</button>
-              <button disabled={pending || modal.summary.jeCount === 0} onClick={confirmExecute} className={`${btn} bg-[#96003C] text-white`}>{pending ? "Posting…" : "Yes, post to QuickBooks"}</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+            {modal.summary.jeCount === 0 && <p className="text-sm text-muted-foreground">Nothing to post for this day.</p>}
+
+            <DialogFooter>
+              <Button type="button" variant="outline" disabled={pending} onClick={() => setModal(null)}>Cancel</Button>
+              <Button type="button" loading={pending} loadingText="Posting…" disabled={pending || modal.summary.jeCount === 0} onClick={confirmExecute}>
+                Yes, post to QuickBooks
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
+    </Card>
   );
 }

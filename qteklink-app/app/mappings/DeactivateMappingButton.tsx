@@ -8,7 +8,9 @@
  */
 import { useActionState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { Trash2 } from "lucide-react";
 import { deactivateMappingAction } from "@/actions/mappings";
+import { Button } from "@/components/ui/button";
 
 export default function DeactivateMappingButton({
   id,
@@ -27,14 +29,17 @@ export default function DeactivateMappingButton({
   return (
     <form action={formAction} className="shrink-0">
       <input type="hidden" name="id" value={id} />
-      <button
+      <Button
         type="submit"
-        disabled={pending}
+        variant="destructive"
+        size="sm"
+        loading={pending}
+        loadingText="Removing…"
         title={`Remove the ${sourceKey} mapping`}
-        className="rounded border border-stone-300 px-2 py-1 text-xs text-stone-600 transition hover:border-red-400 hover:text-red-700 disabled:opacity-60"
       >
-        {pending ? "Removing…" : "Remove"}
-      </button>
+        <Trash2 aria-hidden="true" />
+        Remove
+      </Button>
     </form>
   );
 }

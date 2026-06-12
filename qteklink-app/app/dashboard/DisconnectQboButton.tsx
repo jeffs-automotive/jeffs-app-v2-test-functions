@@ -8,7 +8,9 @@
  */
 import { useActionState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { Unplug } from "lucide-react";
 import { disconnectQboAction } from "@/actions/connection";
+import { Button } from "@/components/ui/button";
 
 export default function DisconnectQboButton() {
   const router = useRouter();
@@ -31,13 +33,16 @@ export default function DisconnectQboButton() {
         }
       }}
     >
-      <button
+      <Button
         type="submit"
-        disabled={pending}
-        className="text-sm font-medium text-red-700 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+        variant="destructive"
+        size="sm"
+        loading={pending}
+        loadingText="Disconnecting…"
       >
-        {pending ? "Disconnecting…" : "Disconnect QuickBooks"}
-      </button>
+        <Unplug aria-hidden="true" />
+        Disconnect QuickBooks
+      </Button>
       {state && !state.ok && (
         <span className="ml-2 text-xs text-red-700">{state.message}</span>
       )}
