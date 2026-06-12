@@ -8,7 +8,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AlertTriangle, CheckCircle2, History, Inbox } from "lucide-react";
 import { requireQtekUser } from "@/lib/auth";
-import { getDayBreakdown, type RoBreakdown, type PaymentBreakdown, type SummaryRow } from "@/lib/dal/daily-breakdown";
+import { getDayBreakdown, type RoBreakdown, type PaymentBreakdown, type PaymentTypeSummary, type SummaryRow } from "@/lib/dal/daily-breakdown";
 import { fmtUsd, isIsoDate } from "@/lib/format";
 import { StatusBadge } from "@/components/StatusBadge";
 import { PageHeader } from "@/components/PageHeader";
@@ -16,6 +16,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { PaymentsTable } from "./PaymentsTable";
 
 export const dynamic = "force-dynamic";
 
@@ -128,31 +129,41 @@ function RosTab({ ros }: { ros: RoBreakdown[] }) {
   );
 }
 
-function PaymentsTab({ payments }: { payments: PaymentBreakdown[] }) {
+function PaymentTypeCard({ types, paymentsTotalCents, feesTotalCents }: { types: PaymentTypeSummary[]; paymentsTotalCents: number; feesTotalCents: number }) {
+  // Adaptive: only non-zero types appear (the array is pre-filtered, biggest first).
+  // Empty → render nothing.
+  if (types.length === 0) return null;
+  return (
+    <Card className="shadow-xs">
+      <CardContent>
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Payments by type</p>
+        <dl className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {types.map((t) => (
+            <div key={t.label} className="rounded-lg border border-border bg-muted/30 p-3">
+              <dt className="truncate text-sm font-medium text-foreground" title={t.label}>{t.label}</dt>
+              <dd className="mt-1 text-lg font-bold tabular-nums text-foreground">{fmtUsd(t.amountCents)}</dd>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {t.count} {t.count === 1 ? "payment" : "payments"}
+                {t.feeCents ? <> · <span className="tabular-nums">{fmtUsd(t.feeCents)}</span> card fees</> : null}
+              </p>
+            </div>
+          ))}
+        </dl>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-x-6 gap-y-1 border-t border-border pt-3 text-sm">
+          <span className="text-muted-foreground">Total payments <span className="ml-1 font-semibold tabular-nums text-foreground">{fmtUsd(paymentsTotalCents)}</span></span>
+          <span className="text-muted-foreground">Total card fees <span className="ml-1 font-semibold tabular-nums text-foreground">{fmtUsd(feesTotalCents)}</span></span>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function PaymentsTab({ payments, paymentTypes, paymentsTotalCents, feesTotalCents }: { payments: PaymentBreakdown[]; paymentTypes: PaymentTypeSummary[]; paymentsTotalCents: number; feesTotalCents: number }) {
   if (payments.length === 0) return <EmptyState icon={Inbox} title="No payments for this day" />;
   return (
-    <div className="overflow-hidden rounded-lg border border-border shadow-xs">
-      <Table>
-        <TableHeader className="bg-muted text-xs uppercase tracking-wide text-muted-foreground [&_th]:h-auto [&_th]:text-muted-foreground">
-          <TableRow className="hover:bg-transparent">
-            <TableHead className="px-3 py-2 text-left">Payment</TableHead><TableHead className="px-3 py-2 text-left">Method</TableHead>
-            <TableHead className="px-3 py-2 text-right">Amount</TableHead><TableHead className="px-3 py-2 text-right">CC fee</TableHead>
-            <TableHead className="px-3 py-2 text-right">Net → Undeposited</TableHead><TableHead className="px-3 py-2 text-left">Status</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {payments.map((p) => (
-            <TableRow key={p.paymentId}>
-              <TableCell className="px-3 py-2 text-foreground">{p.tekmetricRoId != null ? `RO ${p.tekmetricRoId}` : p.paymentId}</TableCell>
-              <TableCell className="px-3 py-2 text-foreground">{p.method}</TableCell>
-              <TableCell className={numCell}>{fmtUsd(p.amountCents)}</TableCell>
-              <TableCell className={numCell}>{p.feeCents ? fmtUsd(p.feeCents) : ""}</TableCell>
-              <TableCell className={numCell}>{fmtUsd(p.netCents)}</TableCell>
-              <TableCell className="px-3 py-2"><StatusBadge status={p.status} /></TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+    <div className="space-y-4">
+      <PaymentTypeCard types={paymentTypes} paymentsTotalCents={paymentsTotalCents} feesTotalCents={feesTotalCents} />
+      <PaymentsTable payments={payments} />
     </div>
   );
 }
@@ -197,7 +208,7 @@ export default async function BreakdownPage({ params, searchParams }: { params: 
       <section className="mt-6">
         {tab === "summary" && <SummaryTab {...b.summary} />}
         {tab === "ros" && <RosTab ros={b.ros} />}
-        {tab === "payments" && <PaymentsTab payments={b.payments} />}
+        {tab === "payments" && <PaymentsTab payments={b.payments} paymentTypes={b.summary.paymentTypes} paymentsTotalCents={b.summary.paymentsTotalCents} feesTotalCents={b.summary.feesTotalCents} />}
       </section>
     </main>
   );

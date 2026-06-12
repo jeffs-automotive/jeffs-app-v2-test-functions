@@ -2,7 +2,9 @@
  * Unit tests for getDayBreakdown — the Summary (balanced net-by-account + names), the RO
  * tab at the DAY grain (lines are always the LIVE draft; status from the day-category
  * ledger; changedSincePosted = posted constituent + a staged correction), the
- * needs-attention unmapped surface, and the Payments two-column derivation.
+ * needs-attention unmapped surface, and the Payments derivation: RO numbers (same-day
+ * snapshot + newest-event fallback), the DISPLAY payment type (otherPaymentType over
+ * "Other"), and the adaptive non-zero paymentTypes summary.
  * DB seams + rollup/gate mocked; the real buildDailyStatusIndex is kept.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -36,26 +38,29 @@ const sale = (ro: number, num: string, lines: any[], totalSales: number, unmappe
 });
 const L = (accountId: string, postingType: "Debit" | "Credit", amountCents: number, description = "") => ({ accountId, postingType, amountCents, description });
 
-function acctChain() {
+function chainOf(rows: unknown[]) {
   const chain: Record<string, unknown> = {};
-  for (const m of ["select", "eq"]) chain[m] = vi.fn(() => chain);
-  chain.then = (onF: (v: unknown) => unknown) =>
-    Promise.resolve({
-      data: [
-        { qbo_account_id: "120", name: "Accounts Receivable", acct_num: "120" },
-        { qbo_account_id: "412", name: "Sales – Labor", acct_num: "412" },
-        { qbo_account_id: "206", name: "Sales Tax Payable", acct_num: "206" },
-      ],
-      error: null,
-    }).then(onF);
+  for (const m of ["select", "eq", "in", "order"]) chain[m] = vi.fn(() => chain);
+  chain.then = (onF: (v: unknown) => unknown) => Promise.resolve({ data: rows, error: null }).then(onF);
   return chain;
+}
+const ACCT_ROWS = [
+  { qbo_account_id: "120", name: "Accounts Receivable", acct_num: "120" },
+  { qbo_account_id: "412", name: "Sales – Labor", acct_num: "412" },
+  { qbo_account_id: "206", name: "Sales Tax Payable", acct_num: "206" },
+];
+/** newest-posting-event rows for the RO-number fallback (newest-first order). */
+let eventRows: unknown[] = [];
+function routeFrom(table: string) {
+  return table === "qteklink_events" ? chainOf(eventRows) : chainOf(ACCT_ROWS);
 }
 
 describe("getDayBreakdown", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    eventRows = [];
     resolveRealmMock.mockResolvedValue(REALM);
-    fromMock.mockReturnValue(acctChain());
+    fromMock.mockImplementation(routeFrom);
   });
 
   it("returns empty when the shop has no connection", async () => {
@@ -119,12 +124,50 @@ describe("getDayBreakdown", () => {
     expect(ro3.status).toBe("needsAttention");
     expect(ro3.unmapped).toEqual(["fee:Synchrony"]);
 
-    // Payments — two-column derivation (no payments daily row → postable → unapproved)
-    expect(b.payments).toEqual([{ paymentId: "101", tekmetricRoId: 1, method: "Credit Card", amountCents: 1200, feeCents: 35, netCents: 1165, status: "unapproved" }]);
+    // Payments — two-column derivation (no payments daily row → postable → unapproved);
+    // the RO NUMBER comes from the same-day sale snapshot (no events lookup needed).
+    expect(b.payments).toEqual([{ paymentId: "101", tekmetricRoId: 1, roNumber: "1001", method: "Credit Card", amountCents: 1200, feeCents: 35, netCents: 1165, status: "unapproved" }]);
 
     // Payments-summary card totals (abs gross + abs fee, matching the main snapshot KPIs)
     expect(b.summary.paymentsTotalCents).toBe(1200);
     expect(b.summary.feesTotalCents).toBe(35);
+    expect(b.summary.paymentTypes).toEqual([{ label: "Credit Card", count: 1, amountCents: 1200, feeCents: 35 }]);
+  });
+
+  it("payments: RO# falls back to the newest posting event; 'Other' shows its sub-type; the type summary adapts (non-zero only, biggest first)", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pay = (id: string, ro: number | null, method: string, other: string | null, cents: number, fee: number): any => ({
+      input: { paymentId: id, signedAmountCents: cents, signedProcessingFeeCents: fee, method, otherPaymentType: other },
+      je: { paymentId: id, repairOrderId: ro, suppressed: false, lines: [], route: "deposit" },
+    });
+    const sameDay = sale(1, "1001", [L("120", "Debit", 1000)], 1000);
+    const payments = [
+      pay("p1", 1, "Credit Card", null, 1200, 35), // RO# from the same-day sale snapshot
+      pay("p2", 99, "Other", "Synchrony", 12000, 0), // RO sold ANOTHER day → event fallback
+      pay("p3", 77, "Other", "Tire Protection Plan", 19550, 0), // no event found → null RO#
+      pay("p4", 1, "Cash", null, 0, 0), // zero — appears as a row, filtered from the summary
+    ];
+    eventRows = [
+      { tekmetric_ro_id: 99, raw_body: { data: { repairOrderNumber: 2099 } } }, // newest wins
+      { tekmetric_ro_id: 99, raw_body: { data: { repairOrderNumber: 1099 } } },
+    ];
+    buildDayDraftsMock.mockResolvedValue({ tz: "America/New_York", gateSettings: {}, sales: [sameDay], payments, extraReviewItems: [] });
+    rollupDayMock.mockReturnValue({ postableSaleDrafts: [sameDay], postablePaymentDrafts: payments.map((p) => p.je), netByAccount: {}, saleCount: 1, paymentCount: 4, postableSales: 1, postablePayments: 4, reviewCount: 0, reviewItems: [] });
+    listDailyMock.mockResolvedValue({ realmId: REALM, postings: [] });
+
+    const b = await getDayBreakdown(7476, DATE);
+
+    const byId = new Map(b.payments.map((p) => [p.paymentId, p]));
+    expect(byId.get("p1")).toMatchObject({ roNumber: "1001", method: "Credit Card" });
+    expect(byId.get("p2")).toMatchObject({ roNumber: "2099", method: "Synchrony" });
+    expect(byId.get("p3")).toMatchObject({ roNumber: null, method: "Tire Protection Plan" });
+
+    // Adaptive summary: biggest first, the zero-money Cash type filtered out.
+    expect(b.summary.paymentTypes).toEqual([
+      { label: "Tire Protection Plan", count: 1, amountCents: 19550, feeCents: 0 },
+      { label: "Synchrony", count: 1, amountCents: 12000, feeCents: 0 },
+      { label: "Credit Card", count: 1, amountCents: 1200, feeCents: 35 },
+    ]);
   });
 
   it("splits the payments-summary totals by booking route (deposit → Undeposited vs non-cash)", async () => {

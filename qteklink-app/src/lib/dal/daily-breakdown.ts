@@ -8,7 +8,13 @@
  *     line source) + a status resolved from the DAY-CATEGORY ledger (a constituent of
  *     the live posted sales JE is "posted") + `changedSincePosted` = the RO is in the
  *     posted JE while a staged correction supersedes it (the day needs re-approval).
- *   - Payments: two-column (payment + its CC fee + net-to-Undeposited).
+ *   - Payments: human RO numbers (same-day sale snapshots, falling back to the
+ *     newest posting event for ROs sold on other days), the DISPLAY payment type
+ *     (Tekmetric otherPaymentType — Synchrony / Tire Protection Plan / … — when the
+ *     method is Other, else the method itself), per-row amount + CC fee +
+ *     net-to-Undeposited, and `summary.paymentTypes` — the adaptive per-type
+ *     summary (count / gross / fees), NON-ZERO types only, matching the page's
+ *     abs-sum KPI convention.
  *
  * Read-only, shop+realm server-derived, integer cents, fail-closed.
  */
@@ -19,6 +25,7 @@ import { listDailyPostingsForDay, buildDailyStatusIndex } from "@/lib/dal/daily-
 import { rollupDay } from "@/lib/reconcile/daily-rollup";
 import { gatePaymentDraft } from "@/lib/reconcile/payment-gate";
 import { statusToColumn, type SnapshotColumn } from "@/lib/dal/daily-snapshot";
+import { RO_SALE_SCAN_EVENT_KINDS } from "@/lib/events/kinds";
 
 interface DraftJeLine {
   accountId: string;
@@ -48,11 +55,22 @@ export interface RoBreakdown {
 export interface PaymentBreakdown {
   paymentId: string;
   tekmetricRoId: number | null;
+  /** Human RO number (Tekmetric repairOrderNumber) — null when not resolvable. */
+  roNumber: string | null;
+  /** DISPLAY payment type: otherPaymentType (Synchrony / Tire Protection Plan / …)
+   *  when the Tekmetric method is Other, else the method (Credit Card / Cash / Check). */
   method: string;
   amountCents: number;
   feeCents: number;
   netCents: number;
   status: SnapshotColumn;
+}
+/** One adaptive payment-type summary entry — only types with non-zero money appear. */
+export interface PaymentTypeSummary {
+  label: string;
+  count: number;
+  amountCents: number;
+  feeCents: number;
 }
 export interface SummaryRow {
   accountId: string;
@@ -64,12 +82,44 @@ export interface SummaryRow {
 export interface DayBreakdown {
   realmId: string | null;
   businessDate: string;
-  summary: { rows: SummaryRow[]; totalDebitCents: number; totalCreditCents: number; balanced: boolean; paymentsTotalCents: number; feesTotalCents: number; depositToUndepositedCents: number; nonCashCents: number };
+  summary: { rows: SummaryRow[]; totalDebitCents: number; totalCreditCents: number; balanced: boolean; paymentsTotalCents: number; feesTotalCents: number; depositToUndepositedCents: number; nonCashCents: number; paymentTypes: PaymentTypeSummary[] };
   ros: RoBreakdown[];
   payments: PaymentBreakdown[];
 }
 
 interface AccountLabel { name: string | null; acctNum: string | null }
+
+/**
+ * repairOrderNumber per RO id from the NEWEST posting event — the fallback for
+ * payments whose RO was sold on a different business day (so it isn't among the
+ * day's sale snapshots). Throws on DB error (fail closed).
+ */
+async function lookupRoNumbers(
+  shopId: number,
+  realmId: string,
+  roIds: number[],
+): Promise<Map<number, string>> {
+  const out = new Map<number, string>();
+  if (roIds.length === 0) return out;
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin
+    .from("qteklink_events")
+    .select("tekmetric_ro_id, raw_body")
+    .eq("shop_id", shopId)
+    .eq("realm_id", realmId)
+    .in("event_kind", [...RO_SALE_SCAN_EVENT_KINDS])
+    .in("tekmetric_ro_id", roIds)
+    .order("tekmetric_event_at", { ascending: false, nullsFirst: false })
+    .order("received_at", { ascending: false });
+  if (error) throw new Error(`getDayBreakdown (ro numbers) failed: ${error.message}`);
+  for (const r of (data ?? []) as { tekmetric_ro_id: number | string; raw_body: { data?: { repairOrderNumber?: unknown } } | null }[]) {
+    const ro = Number(r.tekmetric_ro_id);
+    if (out.has(ro)) continue; // newest-first — first hit wins
+    const n = r.raw_body?.data?.repairOrderNumber;
+    if (typeof n === "string" || typeof n === "number") out.set(ro, String(n));
+  }
+  return out;
+}
 
 function labelLines(lines: DraftJeLine[], accts: Map<string, AccountLabel>): BreakdownLine[] {
   return lines.map((l) => ({
@@ -89,7 +139,7 @@ export async function getDayBreakdown(
 ): Promise<DayBreakdown> {
   const realmId = await resolveRealmForShop(shopId);
   if (!realmId) {
-    return { realmId: null, businessDate, summary: { rows: [], totalDebitCents: 0, totalCreditCents: 0, balanced: true, paymentsTotalCents: 0, feesTotalCents: 0, depositToUndepositedCents: 0, nonCashCents: 0 }, ros: [], payments: [] };
+    return { realmId: null, businessDate, summary: { rows: [], totalDebitCents: 0, totalCreditCents: 0, balanced: true, paymentsTotalCents: 0, feesTotalCents: 0, depositToUndepositedCents: 0, nonCashCents: 0, paymentTypes: [] }, ros: [], payments: [] };
   }
 
   const { sales, payments, gateSettings } = await buildDayDrafts(shopId, realmId, businessDate, opts);
@@ -145,6 +195,22 @@ export async function getDayBreakdown(
   });
 
   // ── Payments (two-column) ──
+  // RO numbers: the day's sale snapshots cover same-day ROs; a payment on an RO
+  // sold another day falls back to the newest posting event's repairOrderNumber.
+  const roNumberByRoId = new Map<number, string>(
+    sales.map((s) => [s.snapshot.repairOrderId, s.snapshot.repairOrderNumber]),
+  );
+  const missingRoIds = [
+    ...new Set(
+      payments
+        .map((p) => p.je.repairOrderId)
+        .filter((ro): ro is number => ro != null && !roNumberByRoId.has(ro)),
+    ),
+  ];
+  for (const [ro, num] of await lookupRoNumbers(shopId, realmId, missingRoIds)) {
+    roNumberByRoId.set(ro, num);
+  }
+
   const paymentRows: PaymentBreakdown[] = [];
   // Route-split totals for the card: a payment that books to Undeposited (deposit route =
   // card/cash/check + any financing mapped "deposits like a card") vs a true non-cash contra.
@@ -171,13 +237,32 @@ export async function getDayBreakdown(
     paymentRows.push({
       paymentId: je.paymentId,
       tekmetricRoId: ro,
-      method: p.input.method,
+      roNumber: ro != null ? (roNumberByRoId.get(ro) ?? null) : null,
+      // The DISPLAY type — "Other" payments show their real sub-type (Synchrony,
+      // Tire Protection Plan, …).
+      method: (p.input.otherPaymentType ?? "").trim() || p.input.method,
       amountCents,
       feeCents,
       netCents: amountCents - feeCents,
       status,
     });
   }
+
+  // Adaptive per-type summary (the card above the payments list): count / gross /
+  // fees per DISPLAY type, NON-ZERO types only, biggest first. Same abs-sum
+  // convention as the row amounts + the page KPIs, so the card reconciles exactly.
+  const typeAgg = new Map<string, { count: number; amountCents: number; feeCents: number }>();
+  for (const r of paymentRows) {
+    const t = typeAgg.get(r.method) ?? { count: 0, amountCents: 0, feeCents: 0 };
+    t.count++;
+    t.amountCents += r.amountCents;
+    t.feeCents += r.feeCents;
+    typeAgg.set(r.method, t);
+  }
+  const paymentTypes: PaymentTypeSummary[] = [...typeAgg.entries()]
+    .map(([label, t]) => ({ label, ...t }))
+    .filter((t) => t.amountCents !== 0 || t.feeCents !== 0)
+    .sort((a, b) => b.amountCents - a.amountCents || a.label.localeCompare(b.label));
 
   // ── Summary: the balanced postable+posted net by account (rollup.netByAccount). ──
   const summaryRows: SummaryRow[] = Object.entries(rollup.netByAccount)
@@ -200,7 +285,7 @@ export async function getDayBreakdown(
   return {
     realmId,
     businessDate,
-    summary: { rows: summaryRows, totalDebitCents, totalCreditCents, balanced: totalDebitCents === totalCreditCents, paymentsTotalCents, feesTotalCents, depositToUndepositedCents, nonCashCents },
+    summary: { rows: summaryRows, totalDebitCents, totalCreditCents, balanced: totalDebitCents === totalCreditCents, paymentsTotalCents, feesTotalCents, depositToUndepositedCents, nonCashCents, paymentTypes },
     ros,
     payments: paymentRows,
   };
