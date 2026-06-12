@@ -194,14 +194,16 @@ describe("buildSaleJournalEntry — multi-category parts + tire fee", () => {
     expect(je.balanced).toBe(true);
   });
 
-  it("caps the tire fee at the available taxes (a genuinely zero-tax tire RO books no fee)", () => {
+  it("books the fee even on a ZERO-tax tire RO — the shop owes it regardless (Chris's rule); the shortfall is a sales-tax DEBIT offset", () => {
     const je = buildSaleJournalEntry(
       snap({ partsSales: 10000, taxes: 0, totalSales: 10000,
         jobs: [job({ parts: [{ retail: 5000, quantity: 2, partType: { code: "TIRE" } }] })] }),
       M, S,
     );
-    expect(je.lines.some((l) => l.accountId === "252")).toBe(false); // min(200, 0) = 0
-    expect(je.lines.some((l) => l.accountId === "250")).toBe(false);
+    expect(cr(je, "252")).toBe(200); // 2 tires × $1, charged or not
+    const offset = je.lines.find((l) => l.accountId === "250" && l.postingType === "Debit");
+    expect(offset?.amountCents).toBe(200); // funded out of the sales-tax liability
+    expect(je.taxSplit).toEqual({ tireFeeCents: 200, salesTaxCents: -200 });
     expect(je.balanced).toBe(true);
   });
 });
@@ -269,15 +271,16 @@ describe("buildSaleJournalEntry — guards", () => {
     expect(je.balanced).toBe(false);
   });
 
-  it("a tire RO whose taxes are LESS than tire_qty×$1 books only what's there (never negative sales tax)", () => {
-    // 2 tires would cap at 200, but taxes are only 150 → PTAL 150, sales tax 0.
+  it("a tire RO whose taxes are LESS than tire_qty×$1 books the FULL fee + a debit offset for the shortfall", () => {
+    // 2 tires = $2 owed, but only 150 was charged → PTAL 200, sales tax −50 (a Dr offset).
     const je = buildSaleJournalEntry(
       snap({ partsSales: 10000, taxes: 150, totalSales: 10150,
         jobs: [job({ parts: [{ retail: 5000, quantity: 2, partType: { code: "TIRE" } }] })] }),
       M, S,
     );
-    expect(cr(je, "252")).toBe(150);
-    expect(je.lines.some((l) => l.accountId === "250")).toBe(false); // sales tax 0 → omitted
+    expect(cr(je, "252")).toBe(200);
+    const offset = je.lines.find((l) => l.accountId === "250" && l.postingType === "Debit");
+    expect(offset?.amountCents).toBe(50);
     expect(je.balanced).toBe(true);
   });
 

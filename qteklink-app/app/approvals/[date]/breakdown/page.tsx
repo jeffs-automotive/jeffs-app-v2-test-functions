@@ -8,7 +8,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AlertTriangle, CheckCircle2, History, Inbox } from "lucide-react";
 import { requireQtekUser } from "@/lib/auth";
-import { getDayBreakdown, type RoBreakdown, type PaymentBreakdown, type PaymentTypeSummary, type SummaryRow } from "@/lib/dal/daily-breakdown";
+import { getDayBreakdown, type RoBreakdown, type PaymentBreakdown, type PaymentTypeSummary, type JePreview, type SalesBreakdownSummary } from "@/lib/dal/daily-breakdown";
 import { fmtUsd, isIsoDate } from "@/lib/format";
 import { StatusBadge } from "@/components/StatusBadge";
 import { PageHeader } from "@/components/PageHeader";
@@ -38,7 +38,63 @@ function Stat({ label, cents }: { label: string; cents: number }) {
   );
 }
 
-function SummaryTab({ rows, totalDebitCents, totalCreditCents, balanced, paymentsTotalCents, feesTotalCents, depositToUndepositedCents, nonCashCents }: { rows: SummaryRow[]; totalDebitCents: number; totalCreditCents: number; balanced: boolean; paymentsTotalCents: number; feesTotalCents: number; depositToUndepositedCents: number; nonCashCents: number }) {
+// Plain-language title per journal-entry category. Sales and payments are SEPARATE
+// JEs in QuickBooks (never netted) — these label each one for the human.
+const JE_TITLE: Record<JePreview["category"], string> = {
+  sales: "Sales",
+  payments: "Payments",
+  fees: "Card fees",
+};
+
+/** What the JE's constituents are counted in (ROs for sales, payments otherwise). */
+function jeCountLabel(je: JePreview): string {
+  const noun = je.category === "sales" ? "repair order" : "payment";
+  return `${je.constituentCount} ${noun}${je.constituentCount === 1 ? "" : "s"}`;
+}
+
+/** One journal-entry preview: Account | Debit | Credit table with a per-JE
+ *  balanced/unbalanced Totals footer (the same CheckCircle2/AlertTriangle idiom). */
+function JeTable({ je }: { je: JePreview }) {
+  return (
+    <div className="overflow-hidden rounded-lg border border-border shadow-xs">
+      <div className="border-b border-border bg-muted px-3 py-2">
+        <p className="text-sm font-semibold text-foreground">
+          {JE_TITLE[je.category]} <span className="font-normal text-muted-foreground">— {je.docNumber} ({jeCountLabel(je)})</span>
+        </p>
+      </div>
+      <Table>
+        <TableHeader className="bg-muted text-xs uppercase tracking-wide text-muted-foreground [&_th]:h-auto [&_th]:text-muted-foreground">
+          <TableRow className="hover:bg-transparent"><TableHead className="px-3 py-2 text-left">Account</TableHead><TableHead className="px-3 py-2 text-right">Debit</TableHead><TableHead className="px-3 py-2 text-right">Credit</TableHead></TableRow>
+        </TableHeader>
+        <TableBody>
+          {je.rows.map((r) => (
+            <TableRow key={r.accountId}>
+              <TableCell className="px-3 py-2 text-foreground">{r.acctNum ? `${r.acctNum} · ` : ""}{r.accountName ?? r.accountId}</TableCell>
+              <TableCell className={numCell}>{r.debitCents ? fmtUsd(r.debitCents) : ""}</TableCell>
+              <TableCell className={numCell}>{r.creditCents ? fmtUsd(r.creditCents) : ""}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+        <TableFooter className="bg-transparent">
+          <TableRow className="border-t-2 border-border font-semibold hover:bg-transparent">
+            <TableCell className="flex items-center gap-1.5 px-3 py-2">
+              Totals
+              {je.balanced ? (
+                <span className="inline-flex items-center gap-1 text-emerald-800"><CheckCircle2 className="size-4" aria-hidden="true" /> balanced</span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-amber-800"><AlertTriangle className="size-4" aria-hidden="true" /> unbalanced</span>
+              )}
+            </TableCell>
+            <TableCell className={numCell}>{fmtUsd(je.totalDebitCents)}</TableCell>
+            <TableCell className={numCell}>{fmtUsd(je.totalCreditCents)}</TableCell>
+          </TableRow>
+        </TableFooter>
+      </Table>
+    </div>
+  );
+}
+
+function SummaryTab({ jes, paymentsTotalCents, feesTotalCents, depositToUndepositedCents, nonCashCents }: { jes: JePreview[]; paymentsTotalCents: number; feesTotalCents: number; depositToUndepositedCents: number; nonCashCents: number }) {
   return (
     <div className="space-y-4">
       <Card className="shadow-xs">
@@ -52,39 +108,14 @@ function SummaryTab({ rows, totalDebitCents, totalCreditCents, balanced, payment
           </dl>
         </CardContent>
       </Card>
-      <div className="overflow-hidden rounded-lg border border-border shadow-xs">
-        <p className="border-b border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
-          Proposed + posted net for the day (postable rows; items in Needs attention are excluded).
-        </p>
-        <Table>
-          <TableHeader className="bg-muted text-xs uppercase tracking-wide text-muted-foreground [&_th]:h-auto [&_th]:text-muted-foreground">
-            <TableRow className="hover:bg-transparent"><TableHead className="px-3 py-2 text-left">Account</TableHead><TableHead className="px-3 py-2 text-right">Debit</TableHead><TableHead className="px-3 py-2 text-right">Credit</TableHead></TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((r) => (
-              <TableRow key={r.accountId}>
-                <TableCell className="px-3 py-2 text-foreground">{r.acctNum ? `${r.acctNum} · ` : ""}{r.accountName ?? r.accountId}</TableCell>
-                <TableCell className={numCell}>{r.debitCents ? fmtUsd(r.debitCents) : ""}</TableCell>
-                <TableCell className={numCell}>{r.creditCents ? fmtUsd(r.creditCents) : ""}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-          <TableFooter className="bg-transparent">
-            <TableRow className="border-t-2 border-border font-semibold hover:bg-transparent">
-              <TableCell className="flex items-center gap-1.5 px-3 py-2">
-                Totals
-                {balanced ? (
-                  <span className="inline-flex items-center gap-1 text-emerald-800"><CheckCircle2 className="size-4" aria-hidden="true" /> balanced</span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 text-amber-800"><AlertTriangle className="size-4" aria-hidden="true" /> unbalanced</span>
-                )}
-              </TableCell>
-              <TableCell className={numCell}>{fmtUsd(totalDebitCents)}</TableCell>
-              <TableCell className={numCell}>{fmtUsd(totalCreditCents)}</TableCell>
-            </TableRow>
-          </TableFooter>
-        </Table>
-      </div>
+      <p className="text-xs text-muted-foreground">
+        Each journal entry is shown separately — sales and payments never mix, so Accounts Receivable reads correctly.
+      </p>
+      {jes.length === 0 ? (
+        <EmptyState icon={Inbox} title="Nothing to post yet for this day" />
+      ) : (
+        jes.map((je) => <JeTable key={je.docNumber} je={je} />)
+      )}
     </div>
   );
 }
@@ -126,6 +157,44 @@ function RosTab({ ros }: { ros: RoBreakdown[] }) {
         </details>
       ))}
     </div>
+  );
+}
+
+/** One sales bucket tile (Labor / Parts / …) — same idiom as the payment-type tiles. */
+function SalesTile({ label, cents, negative = false }: { label: string; cents: number; negative?: boolean }) {
+  return (
+    <div className="rounded-lg border border-border bg-muted/30 p-3">
+      <dt className="truncate text-sm font-medium text-foreground" title={label}>{label}</dt>
+      <dd className={`mt-1 text-lg font-bold tabular-nums ${negative ? "text-muted-foreground" : "text-foreground"}`}>
+        {negative ? `−${fmtUsd(cents)}` : fmtUsd(cents)}
+      </dd>
+    </div>
+  );
+}
+
+/** The day's sales totals by source bucket (above the RO list). Adaptive: only
+ *  non-zero buckets render; Total + RO count always show. Discounts read as a
+ *  negative so it's visually clear they reduce the total. */
+function SalesSummaryCard({ s }: { s: SalesBreakdownSummary }) {
+  return (
+    <Card className="shadow-xs">
+      <CardContent>
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Sales for this day</p>
+        <dl className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          {s.laborCents ? <SalesTile label="Labor" cents={s.laborCents} /> : null}
+          {s.partsCents ? <SalesTile label="Parts" cents={s.partsCents} /> : null}
+          {s.subletCents ? <SalesTile label="Sublet" cents={s.subletCents} /> : null}
+          {s.feesCents ? <SalesTile label="Fees" cents={s.feesCents} /> : null}
+          {s.discountCents ? <SalesTile label="Discounts" cents={s.discountCents} negative /> : null}
+          {s.salesTaxCents ? <SalesTile label="Sales tax" cents={s.salesTaxCents} /> : null}
+          {s.tireFeeCents ? <SalesTile label="Tire fee (PTAL)" cents={s.tireFeeCents} /> : null}
+        </dl>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-x-6 gap-y-1 border-t border-border pt-3 text-sm">
+          <span className="text-muted-foreground">{s.roCount} {s.roCount === 1 ? "repair order" : "repair orders"}</span>
+          <span className="text-muted-foreground">Total <span className="ml-1 text-base font-bold tabular-nums text-foreground">{fmtUsd(s.totalCents)}</span></span>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -188,7 +257,8 @@ export default async function BreakdownPage({ params, searchParams }: { params: 
 
       <section className="mt-4 rounded-lg border border-border bg-muted p-4 text-sm text-muted-foreground">
         Everything that makes up this day&apos;s numbers. <span className="font-medium text-foreground">Summary</span> shows
-        what hits each QuickBooks account; <span className="font-medium text-foreground">Repair orders</span> and{" "}
+        each QuickBooks journal entry on its own — sales and payments kept separate;{" "}
+        <span className="font-medium text-foreground">Repair orders</span> and{" "}
         <span className="font-medium text-foreground">Payments</span> list every single item with its status.
       </section>
 
@@ -207,7 +277,12 @@ export default async function BreakdownPage({ params, searchParams }: { params: 
 
       <section className="mt-6">
         {tab === "summary" && <SummaryTab {...b.summary} />}
-        {tab === "ros" && <RosTab ros={b.ros} />}
+        {tab === "ros" && (
+          <div className="space-y-4">
+            <SalesSummaryCard s={b.summary.salesBreakdown} />
+            <RosTab ros={b.ros} />
+          </div>
+        )}
         {tab === "payments" && <PaymentsTab payments={b.payments} paymentTypes={b.summary.paymentTypes} paymentsTotalCents={b.summary.paymentsTotalCents} feesTotalCents={b.summary.feesTotalCents} />}
       </section>
     </main>

@@ -10,14 +10,16 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const reduceMock = vi.fn();
+const reconcileMock = vi.fn();
 const buildDayDraftsMock = vi.fn();
 const listDailyMock = vi.fn();
 const rollupDayMock = vi.fn();
 const fromMock = vi.fn();
 
 // getDayBreakdown refreshes the payment projection FIRST (freshness contract) and
-// takes the realm from its result.
+// takes the realm from its result; then it LIVE-reconciles the viewed day.
 vi.mock("@/lib/dal/payment-state", () => ({ reduceShopPaymentState: (...a: unknown[]) => reduceMock(...a) }));
+vi.mock("@/lib/dal/daily-reconcile", () => ({ runDailyReconciliation: (...a: unknown[]) => reconcileMock(...a) }));
 vi.mock("@/lib/dal/day-drafts", () => ({ buildDayDrafts: (...a: unknown[]) => buildDayDraftsMock(...a) }));
 vi.mock("@/lib/supabase/admin", () => ({ createSupabaseAdminClient: () => ({ from: fromMock }) }));
 vi.mock("@/lib/reconcile/daily-rollup", () => ({ rollupDay: (...a: unknown[]) => rollupDayMock(...a) }));
@@ -67,14 +69,16 @@ describe("getDayBreakdown", () => {
     eventRows = [];
     keytagRows = [];
     reduceMock.mockResolvedValue({ realmId: REALM, events: 0, payments: 0 });
+    reconcileMock.mockResolvedValue({ realmId: REALM });
     fromMock.mockImplementation(routeFrom);
   });
 
   it("returns empty when the shop has no connection (and still refreshed the projection first)", async () => {
     reduceMock.mockResolvedValue({ realmId: null, events: 0, payments: 0 });
     const b = await getDayBreakdown(7476, DATE);
-    expect(b).toMatchObject({ realmId: null, ros: [], payments: [], summary: { rows: [], balanced: true } });
+    expect(b).toMatchObject({ realmId: null, ros: [], payments: [], summary: { jes: [], salesBreakdown: { roCount: 0, totalCents: 0 } } });
     expect(reduceMock).toHaveBeenCalledWith(7476);
+    expect(reconcileMock).not.toHaveBeenCalled();
   });
 
   it("builds the summary, RO detail (live-draft lines + day-grain status + changedSincePosted), and payments", async () => {
@@ -112,11 +116,22 @@ describe("getDayBreakdown", () => {
 
     const b = await getDayBreakdown(7476, DATE);
 
-    // Summary — balanced, names joined, sorted by acct_num
-    expect(b.summary.balanced).toBe(true);
-    expect(b.summary.totalDebitCents).toBe(1500);
-    expect(b.summary.rows.find((r) => r.accountId === "120")).toMatchObject({ acctNum: "120", accountName: "Accounts Receivable", debitCents: 1500, creditCents: 0 });
-    expect(b.summary.rows.find((r) => r.accountId === "412")).toMatchObject({ creditCents: 1440, debitCents: 0 });
+    // LIVE-ON-VIEW: the day was reconciled before rendering (not acknowledged).
+    expect(reconcileMock).toHaveBeenCalledWith(7476, DATE);
+
+    // Summary — ONE PREVIEW PER JE (never netted across JEs). Mock payment jes have
+    // no lines → only the sales JE previews; built by the REAL daily-JE builder.
+    expect(b.summary.jes.map((j) => j.category)).toEqual(["sales"]);
+    const salesJe = b.summary.jes[0]!;
+    expect(salesJe.docNumber).toBe(`QTL-RO-${DATE}`);
+    expect(salesJe.balanced).toBe(true);
+    expect(salesJe.totalDebitCents).toBe(1500);
+    expect(salesJe.constituentCount).toBe(2); // s1 + s2 (postable)
+    expect(salesJe.rows.find((r) => r.accountId === "120")).toMatchObject({ acctNum: "120", accountName: "Accounts Receivable", debitCents: 1500, creditCents: 0 });
+    expect(salesJe.rows.find((r) => r.accountId === "412")).toMatchObject({ creditCents: 1440, debitCents: 0 });
+
+    // The RO tab's sales-breakdown card ties to ALL RO rows (incl. needs-attention).
+    expect(b.summary.salesBreakdown).toMatchObject({ roCount: 3, totalCents: 1800 });
 
     // RO1 — in the posted daily JE → posted; staged correction → changed; LIVE draft lines
     const ro1 = b.ros.find((r) => r.tekmetricRoId === 1)!;

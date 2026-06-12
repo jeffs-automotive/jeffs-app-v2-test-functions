@@ -15,14 +15,16 @@
  * payment (fees post as their own daily JE), falling back to the parent payment's
  * column.
  *
- * FRESHNESS: the payment-state projection is refreshed FIRST (reduceShopPaymentState)
- * — it otherwise only runs in the nightly sync, so a payment webhook landing after
- * 3 AM would be invisible all day (Chris's missing-$333.79-check bug, 2026-06-12).
- * A money view is never knowingly stale; a projection failure THROWS (fail closed).
- *
- * Read-only otherwise, shop+realm server-derived, integer cents.
+ * LIVE-ON-VIEW (Chris 2026-06-12): opening the page makes the day CURRENT — the
+ * payment-state projection refreshes first (reduceShopPaymentState), then the viewed
+ * day is re-reconciled (runDailyReconciliation: stages the ledger + syncs review
+ * items) — so a webhook that landed a minute ago is already reflected. Fully-
+ * acknowledged days (Accounting Link's history) are NOT reconciled — terminal, must
+ * not grow review items. The nightly sync stays as the verification net. Failures
+ * THROW — a money view is never knowingly stale.
  */
 import { reduceShopPaymentState } from "@/lib/dal/payment-state";
+import { runDailyReconciliation } from "@/lib/dal/daily-reconcile";
 import { buildDayDrafts } from "@/lib/dal/day-drafts";
 import { listDailyPostingsForDay, buildDailyStatusIndex, type DailyStatusIndex } from "@/lib/dal/daily-postings";
 import { rollupDay } from "@/lib/reconcile/daily-rollup";
@@ -124,6 +126,14 @@ export async function getDailySnapshot(
       rows: [emptyRow("Repair Order"), emptyRow("Customer Payment"), emptyRow("Payment Fee")],
       needsAttentionCount: 0,
     };
+  }
+
+  // LIVE-ON-VIEW: re-reconcile the viewed day (stages the ledger + syncs review
+  // items) unless it's fully acknowledged (Accounting Link's terminal history).
+  {
+    const { postings: existing } = await listDailyPostingsForDay(shopId, businessDate);
+    const acknowledged = existing.length > 0 && existing.every((p) => p.status === "acknowledged" || p.status === "rejected");
+    if (!acknowledged) await runDailyReconciliation(shopId, businessDate);
   }
 
   const { sales, payments, gateSettings } = await buildDayDrafts(shopId, realmId, businessDate, opts);

@@ -10,13 +10,15 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { statusToColumn } from "../daily-snapshot";
 
 const reduceMock = vi.fn();
+const reconcileMock = vi.fn();
 const buildDayDraftsMock = vi.fn();
 const listDailyMock = vi.fn();
 const rollupDayMock = vi.fn();
 
 // getDailySnapshot refreshes the payment projection FIRST (freshness contract) and
-// takes the realm from its result.
+// takes the realm from its result; then it LIVE-reconciles the viewed day.
 vi.mock("@/lib/dal/payment-state", () => ({ reduceShopPaymentState: (...a: unknown[]) => reduceMock(...a) }));
+vi.mock("@/lib/dal/daily-reconcile", () => ({ runDailyReconciliation: (...a: unknown[]) => reconcileMock(...a) }));
 vi.mock("@/lib/dal/day-drafts", () => ({ buildDayDrafts: (...a: unknown[]) => buildDayDraftsMock(...a) }));
 vi.mock("@/lib/dal/daily-postings", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../daily-postings")>()),
@@ -78,6 +80,7 @@ describe("getDailySnapshot", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     reduceMock.mockResolvedValue({ realmId: REALM, events: 0, payments: 0 });
+    reconcileMock.mockResolvedValue({ realmId: REALM });
   });
 
   it("returns an empty snapshot when the shop has no connection", async () => {
@@ -93,6 +96,22 @@ describe("getDailySnapshot", () => {
     reduceMock.mockResolvedValue({ realmId: null, events: 0, payments: 0 });
     await getDailySnapshot(7476, DATE);
     expect(reduceMock).toHaveBeenCalledWith(7476);
+    expect(reconcileMock).not.toHaveBeenCalled(); // no connection → nothing to reconcile
+  });
+
+  it("LIVE-reconciles the viewed day — but NEVER a fully-acknowledged day (AL history is terminal)", async () => {
+    const empty = { postableSaleDrafts: [], postablePaymentDrafts: [], netByAccount: {}, saleCount: 0, paymentCount: 0, postableSales: 0, postablePayments: 0, reviewCount: 0, reviewItems: [] };
+    buildDayDraftsMock.mockResolvedValue({ sales: [], payments: [], gateSettings: {} });
+    rollupDayMock.mockReturnValue(empty);
+
+    listDailyMock.mockResolvedValue({ realmId: REALM, postings: [dayRow("sales", "pending", { roIds: [1] })] });
+    await getDailySnapshot(7476, DATE);
+    expect(reconcileMock).toHaveBeenCalledWith(7476, DATE);
+
+    reconcileMock.mockClear();
+    listDailyMock.mockResolvedValue({ realmId: REALM, postings: [dayRow("sales", "acknowledged", { roIds: [1] })] });
+    await getDailySnapshot(7476, DATE);
+    expect(reconcileMock).not.toHaveBeenCalled();
   });
 
   it("applies the day-grain §3a precedence: posted-JE constituent→Posted; staged→its column; postable→Unapproved; blocked→Needs attention(source gross); derives the Fee row from the FEES category", async () => {

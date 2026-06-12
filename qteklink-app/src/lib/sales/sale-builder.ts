@@ -15,8 +15,9 @@
  *                so the category lines sum EXACTLY to partsSales).
  *     - Fees   → by normalized name (RO fees[] + AUTHORIZED job fees[]).
  *     - Sublet → the sublet income account (subletSales).
- *   Cr tax: split the authoritative `taxes` lump → min(tire_qty×$1, taxes) → PTAL
- *     [252]; remainder → Sales Tax Payable [250].
+ *   Cr tax: split the authoritative `taxes` lump → tire_qty×$1 → PTAL [252]
+ *     (owed per tire whether charged or not); remainder → Sales Tax Payable [250]
+ *     (a shortfall posts as a Dr offset there — see the tax-split block).
  *
  * Discounts (plan §6): allocate the `discountTotal` lump LABOR → PARTS → SUBLET →
  * FEES, capped at each bucket's gross. Pass-through fees (mapping flag) are EXCLUDED
@@ -314,24 +315,19 @@ export function buildSaleJournalEntry(
     }
   }
   // ── Tax split: separate the authoritative `taxes` lump → tire fee (PTAL) + sales tax.
-  // The payload has NO per-line taxable flags and NO itemized PTA fee line — the PA
-  // $1/tire fee is bundled INTO `taxes`. Rule:
-  //   PTAL = min(tire_qty × $1, max(taxes, 0));  Sales Tax = taxes − PTAL.
-  // The earlier baseline-excess heuristic (PTAL = clamp(taxes − round(rate×base), 0, cap))
-  // systematically UNDER-detected the fee and mis-filed it as Sales Tax: the all-taxable
-  // `base` includes NON-taxable fees (hazmat, tire disposal), inflating the baseline by
-  // more than the fee on most tire-ROs, and a tax-exempt customer (A/R fleet) puts
-  // `taxes` far below the baseline, flooring PTAL to 0 entirely. Re-validated against
-  // Tekmetric's own day report 2026-06-11: 4 tire-ROs / 5 tires → $5.00 PTAL, including
-  // a tax-exempt fleet RO (153065) the old rule scored $0. (The May "27/85 tire-ROs
-  // charged it" finding was that heuristic measuring its own blind spot — Tekmetric
-  // charges the fee per tire whenever the shop's fee is configured, which it is.)
-  const tireFee = Math.min(tireQty * settings.tireFeeCentsPerTire, Math.max(ro.taxes, 0));
+  // Chris's rule (2026-06-12): PTAL = tire_qty × $1, UNCONDITIONALLY — the PA PTA fee
+  // is OWED on every tire sold whether or not it was charged on the RO. Sales Tax =
+  // taxes − PTAL; when the fee wasn't (fully) charged that goes NEGATIVE and posts as
+  // a DEBIT offset on the sales-tax account (PTA is remitted with PA sales tax, so the
+  // combined liability still ties to the taxes actually charged). Earlier heuristics
+  // (baseline-excess, then min(qty×$1, taxes)) under-stated PTAL on exempt/under-charged
+  // ROs — re-validated against Tekmetric's day report 2026-06-11 (5 tires → $5.00).
+  const tireFee = tireQty * settings.tireFeeCentsPerTire;
   const salesTax = ro.taxes - tireFee;
-  if (salesTax < 0) {
-    // Only reachable when taxes is NEGATIVE (corrupt) — PTAL is capped at max(taxes, 0)
-    // for non-negative taxes. Queue, never post a negative tax line.
-    unmapped.push(`tax_split:negative_sales_tax_${salesTax}_taxes_${ro.taxes}`);
+  let taxOffsetDebit: JeLine | null = null;
+  if (ro.taxes < 0) {
+    // Negative taxes is a corrupt payload — queue, never post a negative tax line.
+    unmapped.push(`tax_split:negative_taxes_${ro.taxes}`);
   } else {
     if (tireFee > 0) {
       if (mappings.tireFeeAccountId) credits.push({ accountId: mappings.tireFeeAccountId, postingType: "Credit", amountCents: tireFee, description: `${docNumber} — Tire fee (PTAL)` });
@@ -339,6 +335,12 @@ export function buildSaleJournalEntry(
     }
     if (salesTax > 0) {
       if (mappings.salesTaxAccountId) credits.push({ accountId: mappings.salesTaxAccountId, postingType: "Credit", amountCents: salesTax, description: `${docNumber} — Sales tax` });
+      else unmapped.push("sales_tax_payable");
+    } else if (salesTax < 0) {
+      // The fee is owed but wasn't (fully) charged on the RO: the shortfall comes out
+      // of the sales-tax liability as a DEBIT offset (PTA is remitted with PA sales
+      // tax, so the combined tax liability still equals the taxes actually charged).
+      if (mappings.salesTaxAccountId) taxOffsetDebit = { accountId: mappings.salesTaxAccountId, postingType: "Debit", amountCents: -salesTax, description: `${docNumber} — Sales tax offset (tire fee owed, not charged)` };
       else unmapped.push("sales_tax_payable");
     }
   }
@@ -352,10 +354,11 @@ export function buildSaleJournalEntry(
       unmapped.push("accounts_receivable");
     }
   }
+  if (taxOffsetDebit) debits.push(taxOffsetDebit);
 
   const lines = [...debits, ...credits];
-  const totalDebitsCents = debits.reduce((a, l) => a + l.amountCents, 0);
-  const totalCreditsCents = credits.reduce((a, l) => a + l.amountCents, 0);
+  const totalDebitsCents = lines.filter((l) => l.postingType === "Debit").reduce((a, l) => a + l.amountCents, 0);
+  const totalCreditsCents = lines.filter((l) => l.postingType === "Credit").reduce((a, l) => a + l.amountCents, 0);
 
   return {
     docNumber,

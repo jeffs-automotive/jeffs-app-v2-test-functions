@@ -1,8 +1,10 @@
 /**
  * Daily-breakdown read model (approval-dashboard upgrade §5 + daily-JE rework step 4) —
  * the drill-down the breakdown page renders in 3 tabs:
- *   - Summary: the day's net BY GL ACCOUNT (the balanced postable+posted net, account-name
- *     labeled) — "what hits QuickBooks."
+ *   - Summary: a PREVIEW OF EACH journal entry the day will post (sales / payments /
+ *     card fees — `summary.jes`), each balanced ON ITS OWN. Sales and payments are
+ *     NEVER netted together (Chris 2026-06-12: a combined net made A/R read as
+ *     sales-minus-payments — "$16k of payments isn't $16k of sales").
  *   - ROs: one row per repair order → its LIVE draft JE lines (labor / parts / fees /
  *     tax — the daily JE aggregates the credit side, so the draft is the only per-RO
  *     line source) + a status resolved from the DAY-CATEGORY ledger (a constituent of
@@ -16,18 +18,22 @@
  *     summary (count / gross / fees), NON-ZERO types only, matching the page's
  *     abs-sum KPI convention.
  *
- * FRESHNESS: the payment-state projection is refreshed FIRST (reduceShopPaymentState
- * — otherwise nightly-only, so an intraday payment webhook would be invisible until
- * tomorrow). A projection failure THROWS — a money view is never knowingly stale.
- *
- * Read-only otherwise, shop+realm server-derived, integer cents, fail-closed.
+ * LIVE-ON-VIEW (Chris 2026-06-12): opening the page makes the day CURRENT —
+ * the payment-state projection refreshes first (reduceShopPaymentState), then the
+ * viewed day is re-reconciled (runDailyReconciliation: stages the ledger + syncs
+ * review items) — so a webhook that landed a minute ago is already reflected.
+ * Fully-acknowledged days (Accounting Link's history) are NOT reconciled — they're
+ * terminal and must not grow review items. The nightly sync stays as the
+ * verification net. Failures THROW — a money view is never knowingly stale.
  */
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { reduceShopPaymentState } from "@/lib/dal/payment-state";
+import { runDailyReconciliation } from "@/lib/dal/daily-reconcile";
 import { buildDayDrafts } from "@/lib/dal/day-drafts";
 import { listDailyPostingsForDay, buildDailyStatusIndex } from "@/lib/dal/daily-postings";
 import { rollupDay } from "@/lib/reconcile/daily-rollup";
 import { gatePaymentDraft } from "@/lib/reconcile/payment-gate";
+import { buildDailyJournalEntries, type DailyJournalEntry, type DailyCategory } from "@/lib/daily/daily-je-builder";
 import { statusToColumn, type SnapshotColumn } from "@/lib/dal/daily-snapshot";
 import { RO_SALE_SCAN_EVENT_KINDS } from "@/lib/events/kinds";
 
@@ -83,13 +89,52 @@ export interface SummaryRow {
   debitCents: number;
   creditCents: number;
 }
+/** Preview of ONE daily journal entry (sales / payments / fees) — its lines
+ *  aggregated by account, balanced on its own. Sales and payments are NEVER
+ *  netted into one table (that misread A/R as sales-minus-payments). */
+export interface JePreview {
+  category: DailyCategory;
+  docNumber: string;
+  rows: SummaryRow[];
+  totalDebitCents: number;
+  totalCreditCents: number;
+  balanced: boolean;
+  /** ROs (sales) or payments (payments/fees) inside this JE. */
+  constituentCount: number;
+}
+/** The day's SALES totals by source bucket (the RO tab's summary card) — summed
+ *  over every RO shown in the tab, so the card ties to the rows. */
+export interface SalesBreakdownSummary {
+  roCount: number;
+  laborCents: number;
+  partsCents: number;
+  subletCents: number;
+  feesCents: number;
+  discountCents: number;
+  salesTaxCents: number;
+  tireFeeCents: number;
+  totalCents: number;
+}
 export interface DayBreakdown {
   realmId: string | null;
   businessDate: string;
-  summary: { rows: SummaryRow[]; totalDebitCents: number; totalCreditCents: number; balanced: boolean; paymentsTotalCents: number; feesTotalCents: number; depositToUndepositedCents: number; nonCashCents: number; paymentTypes: PaymentTypeSummary[] };
+  summary: {
+    jes: JePreview[];
+    salesBreakdown: SalesBreakdownSummary;
+    paymentsTotalCents: number;
+    feesTotalCents: number;
+    depositToUndepositedCents: number;
+    nonCashCents: number;
+    paymentTypes: PaymentTypeSummary[];
+  };
   ros: RoBreakdown[];
   payments: PaymentBreakdown[];
 }
+
+const EMPTY_SALES_BREAKDOWN: SalesBreakdownSummary = {
+  roCount: 0, laborCents: 0, partsCents: 0, subletCents: 0, feesCents: 0,
+  discountCents: 0, salesTaxCents: 0, tireFeeCents: 0, totalCents: 0,
+};
 
 interface AccountLabel { name: string | null; acctNum: string | null }
 
@@ -175,7 +220,15 @@ export async function getDayBreakdown(
   // resolves the realm — null = no QBO connection).
   const { realmId } = await reduceShopPaymentState(shopId);
   if (!realmId) {
-    return { realmId: null, businessDate, summary: { rows: [], totalDebitCents: 0, totalCreditCents: 0, balanced: true, paymentsTotalCents: 0, feesTotalCents: 0, depositToUndepositedCents: 0, nonCashCents: 0, paymentTypes: [] }, ros: [], payments: [] };
+    return { realmId: null, businessDate, summary: { jes: [], salesBreakdown: EMPTY_SALES_BREAKDOWN, paymentsTotalCents: 0, feesTotalCents: 0, depositToUndepositedCents: 0, nonCashCents: 0, paymentTypes: [] }, ros: [], payments: [] };
+  }
+
+  // LIVE-ON-VIEW: re-reconcile the viewed day (stages the ledger + syncs review
+  // items) unless it's fully acknowledged (Accounting Link's terminal history).
+  {
+    const { postings: existing } = await listDailyPostingsForDay(shopId, businessDate);
+    const acknowledged = existing.length > 0 && existing.every((p) => p.status === "acknowledged" || p.status === "rejected");
+    if (!acknowledged) await runDailyReconciliation(shopId, businessDate);
   }
 
   const { sales, payments, gateSettings } = await buildDayDrafts(shopId, realmId, businessDate, opts);
@@ -300,19 +353,52 @@ export async function getDayBreakdown(
     .filter((t) => t.amountCents !== 0 || t.feeCents !== 0)
     .sort((a, b) => b.amountCents - a.amountCents || a.label.localeCompare(b.label));
 
-  // ── Summary: the balanced postable+posted net by account (rollup.netByAccount). ──
-  const summaryRows: SummaryRow[] = Object.entries(rollup.netByAccount)
-    .filter(([, net]) => net !== 0)
-    .map(([accountId, net]) => ({
-      accountId,
-      accountName: accts.get(accountId)?.name ?? null,
-      acctNum: accts.get(accountId)?.acctNum ?? null,
-      debitCents: net > 0 ? net : 0,
-      creditCents: net < 0 ? -net : 0,
-    }))
-    .sort((a, b) => (a.acctNum ?? "").localeCompare(b.acctNum ?? "") || a.accountId.localeCompare(b.accountId));
-  const totalDebitCents = summaryRows.reduce((a, r) => a + r.debitCents, 0);
-  const totalCreditCents = summaryRows.reduce((a, r) => a + r.creditCents, 0);
+  // ── Summary: a PREVIEW PER JOURNAL ENTRY (sales / payments / fees) — each one's
+  // lines aggregated by account and balanced on its own; never netted across JEs.
+  const bundle = buildDailyJournalEntries(businessDate, rollup.postableSaleDrafts, rollup.postablePaymentDrafts);
+  const toPreview = (je: DailyJournalEntry | null): JePreview | null => {
+    if (!je) return null;
+    const byAccount = new Map<string, { debitCents: number; creditCents: number }>();
+    for (const l of je.lines) {
+      const agg = byAccount.get(l.accountId) ?? { debitCents: 0, creditCents: 0 };
+      if (l.postingType === "Debit") agg.debitCents += l.amountCents;
+      else agg.creditCents += l.amountCents;
+      byAccount.set(l.accountId, agg);
+    }
+    const rows: SummaryRow[] = [...byAccount.entries()]
+      .map(([accountId, agg]) => ({
+        accountId,
+        accountName: accts.get(accountId)?.name ?? null,
+        acctNum: accts.get(accountId)?.acctNum ?? null,
+        ...agg,
+      }))
+      .sort((a, b) => (a.acctNum ?? "").localeCompare(b.acctNum ?? "") || a.accountId.localeCompare(b.accountId));
+    return {
+      category: je.category,
+      docNumber: je.docNumber,
+      rows,
+      totalDebitCents: je.totalDebitsCents,
+      totalCreditCents: je.totalCreditsCents,
+      balanced: je.balanced,
+      constituentCount: je.category === "sales" ? je.constituents.roIds.length : je.constituents.paymentIds.length,
+    };
+  };
+  const jes = [toPreview(bundle.sales), toPreview(bundle.payments), toPreview(bundle.fees)]
+    .filter((p): p is JePreview => p !== null);
+
+  // ── The RO tab's sales-breakdown card: source-bucket totals over EVERY RO row. ──
+  const salesBreakdown = sales.reduce<SalesBreakdownSummary>((acc, s) => ({
+    roCount: acc.roCount + 1,
+    laborCents: acc.laborCents + (s.snapshot.laborSales ?? 0),
+    partsCents: acc.partsCents + (s.snapshot.partsSales ?? 0),
+    subletCents: acc.subletCents + (s.snapshot.subletSales ?? 0),
+    feesCents: acc.feesCents + (s.snapshot.feeTotal ?? 0),
+    discountCents: acc.discountCents + (s.snapshot.discountTotal ?? 0),
+    salesTaxCents: acc.salesTaxCents + (s.je.taxSplit?.salesTaxCents ?? 0),
+    tireFeeCents: acc.tireFeeCents + (s.je.taxSplit?.tireFeeCents ?? 0),
+    totalCents: acc.totalCents + (s.snapshot.totalSales ?? 0),
+  }), { ...EMPTY_SALES_BREAKDOWN });
+
   // Payments-summary totals — sum the SAME payment set as the main snapshot KPIs (abs gross +
   // abs fee), so the breakdown card matches the /approvals "Total payments" / "Total CC fees".
   const paymentsTotalCents = paymentRows.reduce((a, r) => a + r.amountCents, 0);
@@ -321,7 +407,7 @@ export async function getDayBreakdown(
   return {
     realmId,
     businessDate,
-    summary: { rows: summaryRows, totalDebitCents, totalCreditCents, balanced: totalDebitCents === totalCreditCents, paymentsTotalCents, feesTotalCents, depositToUndepositedCents, nonCashCents, paymentTypes },
+    summary: { jes, salesBreakdown, paymentsTotalCents, feesTotalCents, depositToUndepositedCents, nonCashCents, paymentTypes },
     ros,
     payments: paymentRows,
   };
