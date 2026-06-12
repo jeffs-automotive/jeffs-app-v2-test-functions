@@ -11,6 +11,7 @@ import { z } from "zod";
 import { requireQtekUser } from "@/lib/auth";
 import { wrapQtekAction } from "@/lib/instrument-action";
 import { runDailyReconciliation, type DailyReconcileSummary } from "@/lib/dal/daily-reconcile";
+import { reduceShopPaymentState } from "@/lib/dal/payment-state";
 import { qboFailure, type QboActionResult } from "./qbo/result";
 
 const RunReconcileSchema = z.object({
@@ -36,6 +37,9 @@ async function runDailyReconciliationImpl(
       return { ok: false, reason: "validation", message: parsed.error.issues[0]?.message ?? "Invalid date.", timestamp: Date.now() };
     }
 
+    // Refresh the payment projection first (otherwise nightly-only) so the manual
+    // "check the numbers again" sees payments whose webhooks landed today.
+    await reduceShopPaymentState(shopId);
     const data = await runDailyReconciliation(shopId, parsed.data.businessDate);
     return { ok: true, data, timestamp: Date.now() };
   } catch (e) {

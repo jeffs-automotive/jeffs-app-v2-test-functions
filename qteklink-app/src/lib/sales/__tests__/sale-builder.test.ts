@@ -133,10 +133,10 @@ describe("buildSaleJournalEntry — discount waterfall overflow (labor → parts
 });
 
 describe("buildSaleJournalEntry — multi-category parts + tire fee", () => {
-  it("splits parts gross + the parts-bucket discount pro-rata across categories, and books the tire fee (excess above 6%) to PTAL", () => {
+  it("splits parts gross + the parts-bucket discount pro-rata across categories, and books tire_qty×$1 to PTAL", () => {
     const je = buildSaleJournalEntry(
       snap({
-        // taxes 880 = round(6% × 8000 base) = 480 sales tax + 4 tires × $1 = 400 fee (realistic).
+        // taxes 880 = 480 sales tax + 4 tires × $1 = 400 fee (realistic).
         laborSales: 1000, partsSales: 10000, discountTotal: 3000, taxes: 880, totalSales: 8880,
         jobs: [job({
           labor: [{ rate: 1000, hours: 1 }],
@@ -152,23 +152,56 @@ describe("buildSaleJournalEntry — multi-category parts + tire fee", () => {
     // gross split 10000 by [6000,4000] = [6000,4000]; discount 2000 by [6000,4000] = [1200,800].
     expect(cr(je, "272")).toBe(4800); // PART 6000-1200
     expect(cr(je, "270")).toBe(3200); // TIRE 4000-800
-    expect(cr(je, "252")).toBe(400);  // tire fee = 880 − round(6%×8000)=480 → 400, capped at 4×$1
+    expect(cr(je, "252")).toBe(400);  // tire fee = min(4×$1, taxes) = 400
     expect(cr(je, "250")).toBe(480);  // sales tax = 880 − 400 tire fee
     expect(dr(je, "235")).toBe(8880);
     expect(je.balanced).toBe(true);
   });
 
-  it("books NO tire fee when a tire-RO's tax is plain 6% (the C5 clamp fix: 56/85 real tire-ROs charge no fee)", () => {
-    // base 10000, taxes 600 = exactly 6% — Tekmetric charged no $1/tire fee on these tires.
-    // The OLD unconditional carve-out wrongly booked 2×$1 to PTAL; the clamp books $0.
+  it("books the tire fee even when taxes ≈ 6% of the all-inclusive base (the fee hides inside the lump — the true taxable base is smaller)", () => {
+    // base 10000, taxes 600, 2 tires. The OLD baseline-excess clamp scored PTAL $0 here
+    // (taxes ≤ round(6%×base)) — but the all-inclusive base routinely overstates the
+    // TAXABLE base (non-taxable hazmat/disposal fees), eating the fee. Tekmetric charges
+    // $1/tire whenever the shop fee is configured (re-validated 2026-06-11: 5/5 tires).
     const je = buildSaleJournalEntry(
       snap({ partsSales: 10000, taxes: 600, totalSales: 10600,
         jobs: [job({ parts: [{ retail: 5000, quantity: 2, partType: { code: "TIRE" } }] })] }),
       M, S,
     );
-    expect(cr(je, "252")).toBe(0);   // NO tire fee — taxes ≤ round(6%×base)
-    expect(je.lines.some((l) => l.accountId === "252")).toBe(false);
-    expect(cr(je, "250")).toBe(600); // all tax is sales tax
+    expect(cr(je, "252")).toBe(200); // 2 tires × $1
+    expect(cr(je, "250")).toBe(400); // sales tax = 600 − 200
+    expect(je.balanced).toBe(true);
+  });
+
+  it("books the tire fee for a TAX-EXEMPT customer (RO 153065 regression: taxes far below 6% of base)", () => {
+    // A/R fleet customer: base 326709, taxes only 1634, ONE tire. The old rule's
+    // baseline (round(6%×base) = 19603) dwarfed taxes → PTAL floored to 0 and the $1
+    // was mis-filed as sales tax (Chris's "$5 in PTAL not $4" day, 2026-06-11).
+    const je = buildSaleJournalEntry(
+      snap({ laborSales: 66323, partsSales: 256703, feeTotal: 6378, discountTotal: 2695, taxes: 1634, totalSales: 328343,
+        fees: [{ name: "Shop supplies", total: 6378 }],
+        jobs: [job({
+          labor: [{ rate: 66323, hours: 1 }],
+          parts: [
+            { retail: 245004, quantity: 1, partType: { code: "PART" } },
+            { retail: 11699, quantity: 1, partType: { code: "TIRE" } },
+          ],
+        })] }),
+      M, S,
+    );
+    expect(cr(je, "252")).toBe(100);  // 1 tire × $1 — charged regardless of exemption
+    expect(cr(je, "250")).toBe(1534); // sales tax = 1634 − 100
+    expect(je.balanced).toBe(true);
+  });
+
+  it("caps the tire fee at the available taxes (a genuinely zero-tax tire RO books no fee)", () => {
+    const je = buildSaleJournalEntry(
+      snap({ partsSales: 10000, taxes: 0, totalSales: 10000,
+        jobs: [job({ parts: [{ retail: 5000, quantity: 2, partType: { code: "TIRE" } }] })] }),
+      M, S,
+    );
+    expect(je.lines.some((l) => l.accountId === "252")).toBe(false); // min(200, 0) = 0
+    expect(je.lines.some((l) => l.accountId === "250")).toBe(false);
     expect(je.balanced).toBe(true);
   });
 });
@@ -224,17 +257,28 @@ describe("buildSaleJournalEntry — guards", () => {
     expect(je.balanced).toBe(true); // 0 === 0
   });
 
-  it("flags a tax split that would go negative (corrupt: a net-negative taxable base with tax)", () => {
-    // base = 500 − 1500 = −1000 (discounts exceed sales); 1 tire; taxes 50.
-    // clamp baseline = round(6%×−1000) = −60 → tireFee = min(50−(−60), 100) = 100 > taxes
-    // → salesTax = 50 − 100 = −50 < 0 → queued (never post a negative tax line).
+  it("flags a tax split that would go negative (corrupt: NEGATIVE taxes)", () => {
+    // taxes −50 (corrupt payload): PTAL = min(100, max(−50, 0)) = 0 → salesTax = −50 < 0
+    // → queued (never post a negative tax line).
     const je = buildSaleJournalEntry(
-      snap({ laborSales: 500, discountTotal: 1500, taxes: 50, totalSales: -950,
+      snap({ laborSales: 500, taxes: -50, totalSales: 450,
         jobs: [job({ labor: [{ rate: 500, hours: 1 }], parts: [{ retail: 0, quantity: 1, partType: { code: "TIRE" } }] })] }),
       M, S,
     );
     expect(je.unmapped.some((u) => u.startsWith("tax_split:"))).toBe(true);
     expect(je.balanced).toBe(false);
+  });
+
+  it("a tire RO whose taxes are LESS than tire_qty×$1 books only what's there (never negative sales tax)", () => {
+    // 2 tires would cap at 200, but taxes are only 150 → PTAL 150, sales tax 0.
+    const je = buildSaleJournalEntry(
+      snap({ partsSales: 10000, taxes: 150, totalSales: 10150,
+        jobs: [job({ parts: [{ retail: 5000, quantity: 2, partType: { code: "TIRE" } }] })] }),
+      M, S,
+    );
+    expect(cr(je, "252")).toBe(150);
+    expect(je.lines.some((l) => l.accountId === "250")).toBe(false); // sales tax 0 → omitted
+    expect(je.balanced).toBe(true);
   });
 
   it("sums RO-level AND authorized job-level fees by normalized name", () => {

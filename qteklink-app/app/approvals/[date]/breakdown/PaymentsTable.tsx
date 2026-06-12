@@ -24,9 +24,18 @@ type SortDir = "asc" | "desc";
 
 const collator = new Intl.Collator("en-US", { numeric: true, sensitivity: "base" });
 
-/** RO# label: human RO number, else the payment id (current fallback). */
-function roLabel(p: PaymentBreakdown): string {
-  return p.roNumber != null ? `RO ${p.roNumber}` : p.paymentId;
+/** RO# cell: the human RO number, or an honest "—" when the RO predates QTekLink's
+ *  records (NEVER the payment id — it reads like a wrong RO number). */
+function RoCell({ p }: { p: PaymentBreakdown }) {
+  if (p.roNumber != null) return <>RO {p.roNumber}</>;
+  return (
+    <span
+      className="text-muted-foreground"
+      title="This repair order is older than QTekLink's records, so its RO number isn't on file."
+    >
+      —
+    </span>
+  );
 }
 
 /** Sortable column header: a button that toggles its own asc/desc and exposes aria-sort. */
@@ -120,7 +129,7 @@ export function PaymentsTable({ payments }: { payments: PaymentBreakdown[] }) {
         <TableBody>
           {rows.map((p) => (
             <TableRow key={p.paymentId}>
-              <TableCell className="px-3 py-2 font-medium text-foreground">{roLabel(p)}</TableCell>
+              <TableCell className="px-3 py-2 font-medium text-foreground"><RoCell p={p} /></TableCell>
               <TableCell className="px-3 py-2 text-foreground">{p.method}</TableCell>
               <TableCell className={numCell}>{fmtUsd(p.amountCents)}</TableCell>
               <TableCell className={cn(numCell, !p.feeCents && "text-muted-foreground")}>{p.feeCents ? fmtUsd(p.feeCents) : "—"}</TableCell>

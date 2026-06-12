@@ -9,12 +9,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { statusToColumn } from "../daily-snapshot";
 
-const resolveRealmMock = vi.fn();
+const reduceMock = vi.fn();
 const buildDayDraftsMock = vi.fn();
 const listDailyMock = vi.fn();
 const rollupDayMock = vi.fn();
 
-vi.mock("@/lib/dal/realm", () => ({ resolveRealmForShop: (...a: unknown[]) => resolveRealmMock(...a) }));
+// getDailySnapshot refreshes the payment projection FIRST (freshness contract) and
+// takes the realm from its result.
+vi.mock("@/lib/dal/payment-state", () => ({ reduceShopPaymentState: (...a: unknown[]) => reduceMock(...a) }));
 vi.mock("@/lib/dal/day-drafts", () => ({ buildDayDrafts: (...a: unknown[]) => buildDayDraftsMock(...a) }));
 vi.mock("@/lib/dal/daily-postings", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../daily-postings")>()),
@@ -75,16 +77,22 @@ describe("statusToColumn (§3a exhaustive)", () => {
 describe("getDailySnapshot", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    resolveRealmMock.mockResolvedValue(REALM);
+    reduceMock.mockResolvedValue({ realmId: REALM, events: 0, payments: 0 });
   });
 
   it("returns an empty snapshot when the shop has no connection", async () => {
-    resolveRealmMock.mockResolvedValue(null);
+    reduceMock.mockResolvedValue({ realmId: null, events: 0, payments: 0 });
     const snap = await getDailySnapshot(7476, DATE);
     expect(snap.realmId).toBeNull();
     expect(snap.rows.map((r) => r.type)).toEqual(["Repair Order", "Customer Payment", "Payment Fee"]);
     expect(snap.rows.every((r) => r.totalCents === 0 && r.count === 0)).toBe(true);
     expect(buildDayDraftsMock).not.toHaveBeenCalled();
+  });
+
+  it("refreshes the payment-state projection BEFORE building the day (the freshness contract)", async () => {
+    reduceMock.mockResolvedValue({ realmId: null, events: 0, payments: 0 });
+    await getDailySnapshot(7476, DATE);
+    expect(reduceMock).toHaveBeenCalledWith(7476);
   });
 
   it("applies the day-grain §3a precedence: posted-JE constituent→Posted; staged→its column; postable→Unapproved; blocked→Needs attention(source gross); derives the Fee row from the FEES category", async () => {

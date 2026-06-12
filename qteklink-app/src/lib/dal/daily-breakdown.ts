@@ -16,10 +16,14 @@
  *     summary (count / gross / fees), NON-ZERO types only, matching the page's
  *     abs-sum KPI convention.
  *
- * Read-only, shop+realm server-derived, integer cents, fail-closed.
+ * FRESHNESS: the payment-state projection is refreshed FIRST (reduceShopPaymentState
+ * — otherwise nightly-only, so an intraday payment webhook would be invisible until
+ * tomorrow). A projection failure THROWS — a money view is never knowingly stale.
+ *
+ * Read-only otherwise, shop+realm server-derived, integer cents, fail-closed.
  */
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { resolveRealmForShop } from "@/lib/dal/realm";
+import { reduceShopPaymentState } from "@/lib/dal/payment-state";
 import { buildDayDrafts } from "@/lib/dal/day-drafts";
 import { listDailyPostingsForDay, buildDailyStatusIndex } from "@/lib/dal/daily-postings";
 import { rollupDay } from "@/lib/reconcile/daily-rollup";
@@ -89,10 +93,33 @@ export interface DayBreakdown {
 
 interface AccountLabel { name: string | null; acctNum: string | null }
 
+interface RoNumberEventRow {
+  tekmetric_ro_id: number | string;
+  raw_body: { data?: { repairOrderNumber?: unknown; shopId?: unknown } } | null;
+}
+
+/** Harvest repairOrderNumber from event rows (newest-first; first hit per RO wins). */
+function harvestRoNumbers(rows: RoNumberEventRow[], shopId: number, out: Map<number, string>): void {
+  for (const r of rows) {
+    const ro = Number(r.tekmetric_ro_id);
+    if (out.has(ro)) continue;
+    // Guard a body-level shop id when present (the keytag firehose table predates
+    // the shop_id-column convention).
+    const bodyShop = r.raw_body?.data?.shopId;
+    if (bodyShop != null && Number(bodyShop) !== shopId) continue;
+    const n = r.raw_body?.data?.repairOrderNumber;
+    if (typeof n === "string" || typeof n === "number") out.set(ro, String(n));
+  }
+}
+
 /**
- * repairOrderNumber per RO id from the NEWEST posting event — the fallback for
- * payments whose RO was sold on a different business day (so it isn't among the
- * day's sale snapshots). Throws on DB error (fail closed).
+ * repairOrderNumber per RO id — the fallback chain for payments whose RO was sold
+ * on a different business day (so it isn't among the day's sale snapshots):
+ *   1. qteklink_events posting events (webhooks live since 2026-06-11), then
+ *   2. the keytag webhook firehose (any RO event body — capturing since 2026-05-09;
+ *      A/R checks routinely pay ROs posted weeks earlier).
+ * An RO older than BOTH captures stays unresolved → the UI shows an honest "—"
+ * (never the payment id). Throws on DB error (fail closed).
  */
 async function lookupRoNumbers(
   shopId: number,
@@ -112,11 +139,18 @@ async function lookupRoNumbers(
     .order("tekmetric_event_at", { ascending: false, nullsFirst: false })
     .order("received_at", { ascending: false });
   if (error) throw new Error(`getDayBreakdown (ro numbers) failed: ${error.message}`);
-  for (const r of (data ?? []) as { tekmetric_ro_id: number | string; raw_body: { data?: { repairOrderNumber?: unknown } } | null }[]) {
-    const ro = Number(r.tekmetric_ro_id);
-    if (out.has(ro)) continue; // newest-first — first hit wins
-    const n = r.raw_body?.data?.repairOrderNumber;
-    if (typeof n === "string" || typeof n === "number") out.set(ro, String(n));
+  harvestRoNumbers((data ?? []) as RoNumberEventRow[], shopId, out);
+
+  const missing = roIds.filter((ro) => !out.has(ro));
+  if (missing.length > 0) {
+    const { data: kd, error: ke } = await admin
+      .from("keytag_webhook_events")
+      .select("tekmetric_ro_id, raw_body")
+      .in("tekmetric_ro_id", missing)
+      .order("received_at", { ascending: false })
+      .limit(500);
+    if (ke) throw new Error(`getDayBreakdown (ro numbers, keytag fallback) failed: ${ke.message}`);
+    harvestRoNumbers((kd ?? []) as RoNumberEventRow[], shopId, out);
   }
   return out;
 }
@@ -137,7 +171,9 @@ export async function getDayBreakdown(
   businessDate: string,
   opts: { shopTimezone?: string; tireFeeCentsPerTire?: number; salesTaxRateBps?: number } = {},
 ): Promise<DayBreakdown> {
-  const realmId = await resolveRealmForShop(shopId);
+  // Refresh the payment projection so today's webhooks are visible NOW (also
+  // resolves the realm — null = no QBO connection).
+  const { realmId } = await reduceShopPaymentState(shopId);
   if (!realmId) {
     return { realmId: null, businessDate, summary: { rows: [], totalDebitCents: 0, totalCreditCents: 0, balanced: true, paymentsTotalCents: 0, feesTotalCents: 0, depositToUndepositedCents: 0, nonCashCents: 0, paymentTypes: [] }, ros: [], payments: [] };
   }

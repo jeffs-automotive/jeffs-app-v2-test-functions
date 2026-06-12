@@ -15,8 +15,8 @@
  *                so the category lines sum EXACTLY to partsSales).
  *     - Fees   → by normalized name (RO fees[] + AUTHORIZED job fees[]).
  *     - Sublet → the sublet income account (subletSales).
- *   Cr tax: split the authoritative `taxes` lump → tire_qty×$1 → PTAL [252];
- *     remainder → Sales Tax Payable [250].
+ *   Cr tax: split the authoritative `taxes` lump → min(tire_qty×$1, taxes) → PTAL
+ *     [252]; remainder → Sales Tax Payable [250].
  *
  * Discounts (plan §6): allocate the `discountTotal` lump LABOR → PARTS → SUBLET →
  * FEES, capped at each bucket's gross. Pass-through fees (mapping flag) are EXCLUDED
@@ -94,11 +94,10 @@ export interface SaleSettings {
   shopTimezone: string;
   /** Per-tire state fee in cents (PA = $1.00 = 100). */
   tireFeeCentsPerTire: number;
-  /** Sales-tax rate in basis points (PA = 6.00% = 600). Used ONLY to separate the
-   *  authoritative `taxes` lump into the per-tire fee (PTAL) vs sales tax — the payload
-   *  carries no per-line taxable flags and the $1/tire fee is bundled into `taxes`
-   *  inconsistently (validated on 685 real ROs). NOT a tax engine: it's the baseline
-   *  that isolates the tire-fee excess. Shop-specific → a future qteklink_settings row. */
+  /** Sales-tax rate in basis points (PA = 6.00% = 600). The BUILDER no longer uses it
+   *  for the tax split (PTAL = min(tire_qty×$1, taxes) unconditionally — the baseline
+   *  heuristic under-detected the fee); it remains here because the §8 reconcile gate
+   *  shares this settings shape for its too-much-tax ceiling check. */
   salesTaxRateBps: number;
 }
 
@@ -315,23 +314,23 @@ export function buildSaleJournalEntry(
     }
   }
   // ── Tax split: separate the authoritative `taxes` lump → tire fee (PTAL) + sales tax.
-  // The payload has NO per-line taxable flags AND the PA $1/tire fee is bundled INTO
-  // `taxes` — but INCONSISTENTLY (validated on 685 real ROs: only 27/85 tire-ROs
-  // actually charged it). So the tire fee is NOT tire_qty×$1 unconditionally — that
-  // over-stated PTAL / under-stated Sales Tax on the 56 no-fee tire-ROs. Instead the
-  // tire fee is the tax ABOVE the all-taxable baseline (round(rate×base)), capped at
-  // tire_qty×$1; everything else is sales tax:
-  //   PTAL = clamp(taxes − round(rate×base), 0, tire_qty×$1);  Sales Tax = taxes − PTAL.
-  // (`base` = the full pre-tax revenue; the real taxable base is ≤ this, so genuine
-  // sales tax can't exceed round(rate×base) — anything above it is the per-unit fee.)
-  const taxBaseCents = ro.laborSales + ro.partsSales + ro.subletSales + ro.feeTotal - ro.discountTotal;
-  const baselineSalesTax = Math.round((settings.salesTaxRateBps / 10000) * taxBaseCents);
-  const tireFeeCap = tireQty * settings.tireFeeCentsPerTire;
-  const tireFee = Math.max(0, Math.min(ro.taxes - baselineSalesTax, tireFeeCap));
+  // The payload has NO per-line taxable flags and NO itemized PTA fee line — the PA
+  // $1/tire fee is bundled INTO `taxes`. Rule:
+  //   PTAL = min(tire_qty × $1, max(taxes, 0));  Sales Tax = taxes − PTAL.
+  // The earlier baseline-excess heuristic (PTAL = clamp(taxes − round(rate×base), 0, cap))
+  // systematically UNDER-detected the fee and mis-filed it as Sales Tax: the all-taxable
+  // `base` includes NON-taxable fees (hazmat, tire disposal), inflating the baseline by
+  // more than the fee on most tire-ROs, and a tax-exempt customer (A/R fleet) puts
+  // `taxes` far below the baseline, flooring PTAL to 0 entirely. Re-validated against
+  // Tekmetric's own day report 2026-06-11: 4 tire-ROs / 5 tires → $5.00 PTAL, including
+  // a tax-exempt fleet RO (153065) the old rule scored $0. (The May "27/85 tire-ROs
+  // charged it" finding was that heuristic measuring its own blind spot — Tekmetric
+  // charges the fee per tire whenever the shop's fee is configured, which it is.)
+  const tireFee = Math.min(tireQty * settings.tireFeeCentsPerTire, Math.max(ro.taxes, 0));
   const salesTax = ro.taxes - tireFee;
   if (salesTax < 0) {
-    // Unreachable for a non-negative base (PTAL ≤ taxes there); a net-negative taxable
-    // base (discounts > sales) with tax present is corrupt → queue, never post.
+    // Only reachable when taxes is NEGATIVE (corrupt) — PTAL is capped at max(taxes, 0)
+    // for non-negative taxes. Queue, never post a negative tax line.
     unmapped.push(`tax_split:negative_sales_tax_${salesTax}_taxes_${ro.taxes}`);
   } else {
     if (tireFee > 0) {

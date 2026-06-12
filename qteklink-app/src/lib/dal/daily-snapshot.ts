@@ -13,9 +13,16 @@
  *
  * "Payment Fee" is a DERIVED row: a fee follows the FEES category's status for its
  * payment (fees post as their own daily JE), falling back to the parent payment's
- * column. Read-only, shop+realm server-derived, integer cents, fail-closed.
+ * column.
+ *
+ * FRESHNESS: the payment-state projection is refreshed FIRST (reduceShopPaymentState)
+ * — it otherwise only runs in the nightly sync, so a payment webhook landing after
+ * 3 AM would be invisible all day (Chris's missing-$333.79-check bug, 2026-06-12).
+ * A money view is never knowingly stale; a projection failure THROWS (fail closed).
+ *
+ * Read-only otherwise, shop+realm server-derived, integer cents.
  */
-import { resolveRealmForShop } from "@/lib/dal/realm";
+import { reduceShopPaymentState } from "@/lib/dal/payment-state";
 import { buildDayDrafts } from "@/lib/dal/day-drafts";
 import { listDailyPostingsForDay, buildDailyStatusIndex, type DailyStatusIndex } from "@/lib/dal/daily-postings";
 import { rollupDay } from "@/lib/reconcile/daily-rollup";
@@ -106,7 +113,9 @@ export async function getDailySnapshot(
   businessDate: string,
   opts: { shopTimezone?: string; tireFeeCentsPerTire?: number; salesTaxRateBps?: number } = {},
 ): Promise<DailySnapshot> {
-  const realmId = await resolveRealmForShop(shopId);
+  // Refresh the payment projection so today's webhooks are visible NOW (also
+  // resolves the realm — null = no QBO connection).
+  const { realmId } = await reduceShopPaymentState(shopId);
   if (!realmId) {
     return {
       realmId: null,

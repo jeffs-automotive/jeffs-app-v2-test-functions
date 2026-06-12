@@ -9,13 +9,15 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const resolveRealmMock = vi.fn();
+const reduceMock = vi.fn();
 const buildDayDraftsMock = vi.fn();
 const listDailyMock = vi.fn();
 const rollupDayMock = vi.fn();
 const fromMock = vi.fn();
 
-vi.mock("@/lib/dal/realm", () => ({ resolveRealmForShop: (...a: unknown[]) => resolveRealmMock(...a) }));
+// getDayBreakdown refreshes the payment projection FIRST (freshness contract) and
+// takes the realm from its result.
+vi.mock("@/lib/dal/payment-state", () => ({ reduceShopPaymentState: (...a: unknown[]) => reduceMock(...a) }));
 vi.mock("@/lib/dal/day-drafts", () => ({ buildDayDrafts: (...a: unknown[]) => buildDayDraftsMock(...a) }));
 vi.mock("@/lib/supabase/admin", () => ({ createSupabaseAdminClient: () => ({ from: fromMock }) }));
 vi.mock("@/lib/reconcile/daily-rollup", () => ({ rollupDay: (...a: unknown[]) => rollupDayMock(...a) }));
@@ -40,7 +42,7 @@ const L = (accountId: string, postingType: "Debit" | "Credit", amountCents: numb
 
 function chainOf(rows: unknown[]) {
   const chain: Record<string, unknown> = {};
-  for (const m of ["select", "eq", "in", "order"]) chain[m] = vi.fn(() => chain);
+  for (const m of ["select", "eq", "in", "order", "limit"]) chain[m] = vi.fn(() => chain);
   chain.then = (onF: (v: unknown) => unknown) => Promise.resolve({ data: rows, error: null }).then(onF);
   return chain;
 }
@@ -51,22 +53,28 @@ const ACCT_ROWS = [
 ];
 /** newest-posting-event rows for the RO-number fallback (newest-first order). */
 let eventRows: unknown[] = [];
+/** keytag firehose rows — the SECOND RO-number fallback (older ROs). */
+let keytagRows: unknown[] = [];
 function routeFrom(table: string) {
-  return table === "qteklink_events" ? chainOf(eventRows) : chainOf(ACCT_ROWS);
+  if (table === "qteklink_events") return chainOf(eventRows);
+  if (table === "keytag_webhook_events") return chainOf(keytagRows);
+  return chainOf(ACCT_ROWS);
 }
 
 describe("getDayBreakdown", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     eventRows = [];
-    resolveRealmMock.mockResolvedValue(REALM);
+    keytagRows = [];
+    reduceMock.mockResolvedValue({ realmId: REALM, events: 0, payments: 0 });
     fromMock.mockImplementation(routeFrom);
   });
 
-  it("returns empty when the shop has no connection", async () => {
-    resolveRealmMock.mockResolvedValue(null);
+  it("returns empty when the shop has no connection (and still refreshed the projection first)", async () => {
+    reduceMock.mockResolvedValue({ realmId: null, events: 0, payments: 0 });
     const b = await getDayBreakdown(7476, DATE);
     expect(b).toMatchObject({ realmId: null, ros: [], payments: [], summary: { rows: [], balanced: true } });
+    expect(reduceMock).toHaveBeenCalledWith(7476);
   });
 
   it("builds the summary, RO detail (live-draft lines + day-grain status + changedSincePosted), and payments", async () => {
@@ -144,12 +152,18 @@ describe("getDayBreakdown", () => {
     const payments = [
       pay("p1", 1, "Credit Card", null, 1200, 35), // RO# from the same-day sale snapshot
       pay("p2", 99, "Other", "Synchrony", 12000, 0), // RO sold ANOTHER day → event fallback
-      pay("p3", 77, "Other", "Tire Protection Plan", 19550, 0), // no event found → null RO#
-      pay("p4", 1, "Cash", null, 0, 0), // zero — appears as a row, filtered from the summary
+      pay("p3", 77, "Other", "Tire Protection Plan", 19550, 0), // keytag-firehose fallback
+      pay("p4", 55, "Check", null, 8357, 0), // found NOWHERE → null RO# (UI shows "—")
+      pay("p5", 1, "Cash", null, 0, 0), // zero — appears as a row, filtered from the summary
     ];
     eventRows = [
       { tekmetric_ro_id: 99, raw_body: { data: { repairOrderNumber: 2099 } } }, // newest wins
       { tekmetric_ro_id: 99, raw_body: { data: { repairOrderNumber: 1099 } } },
+    ];
+    keytagRows = [
+      { tekmetric_ro_id: 77, raw_body: { data: { repairOrderNumber: 152077, shopId: 7476 } } },
+      // a wrong-shop body must be ignored (the firehose predates the shop_id column)
+      { tekmetric_ro_id: 55, raw_body: { data: { repairOrderNumber: 999999, shopId: 1111 } } },
     ];
     buildDayDraftsMock.mockResolvedValue({ tz: "America/New_York", gateSettings: {}, sales: [sameDay], payments, extraReviewItems: [] });
     rollupDayMock.mockReturnValue({ postableSaleDrafts: [sameDay], postablePaymentDrafts: payments.map((p) => p.je), netByAccount: {}, saleCount: 1, paymentCount: 4, postableSales: 1, postablePayments: 4, reviewCount: 0, reviewItems: [] });
@@ -160,12 +174,14 @@ describe("getDayBreakdown", () => {
     const byId = new Map(b.payments.map((p) => [p.paymentId, p]));
     expect(byId.get("p1")).toMatchObject({ roNumber: "1001", method: "Credit Card" });
     expect(byId.get("p2")).toMatchObject({ roNumber: "2099", method: "Synchrony" });
-    expect(byId.get("p3")).toMatchObject({ roNumber: null, method: "Tire Protection Plan" });
+    expect(byId.get("p3")).toMatchObject({ roNumber: "152077", method: "Tire Protection Plan" });
+    expect(byId.get("p4")).toMatchObject({ roNumber: null, method: "Check" }); // wrong-shop body ignored
 
     // Adaptive summary: biggest first, the zero-money Cash type filtered out.
     expect(b.summary.paymentTypes).toEqual([
       { label: "Tire Protection Plan", count: 1, amountCents: 19550, feeCents: 0 },
       { label: "Synchrony", count: 1, amountCents: 12000, feeCents: 0 },
+      { label: "Check", count: 1, amountCents: 8357, feeCents: 0 },
       { label: "Credit Card", count: 1, amountCents: 1200, feeCents: 35 },
     ]);
   });
