@@ -5,17 +5,19 @@
  * payment. The page only READS (listOpenReviewItems) — writes go through the admin forms.
  */
 import Link from "next/link";
-import { AlertCircle, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { AlertCircle, AlertTriangle, ArrowLeft, CheckCircle2 } from "lucide-react";
 import { requireQtekUser } from "@/lib/auth";
 import { listOpenReviewItems, type ReviewItemRow } from "@/lib/dal/review-items";
 import { isIsoDate } from "@/lib/format";
 import ResolveReviewItemForm from "../ResolveReviewItemForm";
 import RunReconcileForm from "../RunReconcileForm";
 import RecordManualPaymentForm from "../RecordManualPaymentForm";
+import DateNav from "../DateNav";
 import { PageHeader, IdentityBlock } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 export const dynamic = "force-dynamic";
 
@@ -72,11 +74,16 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
       <PageHeader
         title="Fix-it list"
         description={
-          <Link href={backDate ? `/approvals?date=${backDate}` : "/approvals"} className="text-primary underline underline-offset-4">← back to daily approvals</Link>
+          <Button render={<Link href={backDate ? `/approvals?date=${backDate}` : "/approvals"} />} variant="outline" size="sm">
+            <ArrowLeft aria-hidden="true" />
+            Back to daily approvals
+          </Button>
         }
       >
         <IdentityBlock email={email} role={role} shopId={shopId} />
       </PageHeader>
+
+      {backDate && <DateNav date={backDate} hrefPrefix="/approvals/review?date=" />}
 
       <section className="mt-4 rounded-lg border border-border bg-muted p-4 text-sm text-muted-foreground">
         Items land here when QTekLink can&apos;t post something on its own — usually a payment type

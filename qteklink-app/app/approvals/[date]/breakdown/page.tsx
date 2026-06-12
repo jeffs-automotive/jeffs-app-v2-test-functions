@@ -6,7 +6,7 @@
  */
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AlertTriangle, CheckCircle2, History, Inbox } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, History, Inbox } from "lucide-react";
 import { requireQtekUser } from "@/lib/auth";
 import { getDayBreakdown, type RoBreakdown, type PaymentBreakdown, type PaymentTypeSummary, type JePreview, type SalesBreakdownSummary } from "@/lib/dal/daily-breakdown";
 import { fmtUsd, isIsoDate } from "@/lib/format";
@@ -14,8 +14,10 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import DateNav from "../../DateNav";
 import { PaymentsTable } from "./PaymentsTable";
 
 export const dynamic = "force-dynamic";
@@ -251,9 +253,14 @@ export default async function BreakdownPage({ params, searchParams }: { params: 
       <PageHeader
         title={`Day detail — ${date}`}
         description={
-          <Link href={`/approvals?date=${date}`} className="text-primary underline underline-offset-4">← back to daily approvals</Link>
+          <Button render={<Link href={`/approvals?date=${date}`} />} variant="outline" size="sm">
+            <ArrowLeft aria-hidden="true" />
+            Back to daily approvals
+          </Button>
         }
       />
+
+      <DateNav date={date} hrefPrefix="/approvals/" hrefSuffix={`/breakdown?tab=${tab}`} />
 
       <section className="mt-4 rounded-lg border border-border bg-muted p-4 text-sm text-muted-foreground">
         Everything that makes up this day&apos;s numbers. <span className="font-medium text-foreground">Summary</span> shows

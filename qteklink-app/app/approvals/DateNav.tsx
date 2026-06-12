@@ -1,11 +1,15 @@
 "use client";
 
 /**
- * DateNav — the daily-snapshot date control. A CONTROLLED date input (value={date}) so the
- * box always reflects the current day (it updates when the ◀/▶ arrows change the URL), and it
- * NAVIGATES on change (router.push) so picking a date jumps immediately — no submit button.
- * (Replaces the earlier uncontrolled defaultValue + GET-form, which didn't update on arrow
- * nav and required a separate "Go" click.)
+ * DateNav — the day-page date control (approvals + every day-detail sub-page). A
+ * CONTROLLED date input (value={date}) so the box always reflects the current day
+ * (it updates when the ◀/▶ arrows change the URL), and it NAVIGATES on change
+ * (router.push) so picking a date jumps immediately — no submit button.
+ *
+ * The destination is `${hrefPrefix}${date}${hrefSuffix}` (plain strings — a server
+ * component can pass them): the approvals default is `/approvals?date=<d>`; the
+ * breakdown page passes prefix "/approvals/" + suffix "/breakdown?tab=…"; the
+ * fix-it list passes prefix "/approvals/review?date=".
  */
 import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -13,9 +17,17 @@ import { addDaysIso } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-export default function DateNav({ date }: { date: string }) {
+export default function DateNav({
+  date,
+  hrefPrefix = "/approvals?date=",
+  hrefSuffix = "",
+}: {
+  date: string;
+  hrefPrefix?: string;
+  hrefSuffix?: string;
+}) {
   const router = useRouter();
-  const go = (d: string) => router.push(`/approvals?date=${d}`);
+  const go = (d: string) => router.push(`${hrefPrefix}${d}${hrefSuffix}`);
 
   return (
     <div className="mt-6 flex items-center justify-center gap-3">
