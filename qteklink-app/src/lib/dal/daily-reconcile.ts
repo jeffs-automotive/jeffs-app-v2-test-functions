@@ -30,6 +30,14 @@ import { rollupDay } from "@/lib/reconcile/daily-rollup";
 import { buildDayDrafts } from "@/lib/dal/day-drafts";
 import { buildDailyJournalEntries, DAILY_LINE_CAP, type DailyCategory } from "@/lib/daily/daily-je-builder";
 
+/** The day's built drafts + gate roll-up — returned (on request) so a read model can
+ *  render from the SAME build the reconcile just persisted, instead of building the
+ *  whole day twice per page view (live-page performance, Chris 2026-06-12). */
+export type DayBuild = {
+  drafts: Awaited<ReturnType<typeof buildDayDrafts>>;
+  rollup: ReturnType<typeof rollupDay>;
+};
+
 export interface DailyReconcileSummary {
   realmId: string | null;
   businessDate: string;
@@ -46,6 +54,9 @@ export interface DailyReconcileSummary {
   enqueuedPostings: number;
   /** What the diff did per category (audit / the reconcile UI). */
   dailyEnqueue: Record<DailyCategory, DailyEnqueueAction>;
+  /** Present only when opts.withBuild was set (the live-on-view read models) — NOT
+   *  serialized back through the reconcile action (it stays slim). */
+  build?: DayBuild;
 }
 
 /**
@@ -56,7 +67,7 @@ export interface DailyReconcileSummary {
 export async function runDailyReconciliation(
   shopId: number,
   businessDate: string,
-  opts: { shopTimezone?: string; tireFeeCentsPerTire?: number; salesTaxRateBps?: number } = {},
+  opts: { shopTimezone?: string; tireFeeCentsPerTire?: number; salesTaxRateBps?: number; withBuild?: boolean } = {},
 ): Promise<DailyReconcileSummary> {
   const realmId = await resolveRealmForShop(shopId);
   if (!realmId) {
@@ -67,7 +78,8 @@ export async function runDailyReconciliation(
     };
   }
 
-  const { sales, payments, extraReviewItems, gateSettings } = await buildDayDrafts(shopId, realmId, businessDate, opts);
+  const drafts = await buildDayDrafts(shopId, realmId, businessDate, opts);
+  const { sales, payments, extraReviewItems, gateSettings } = drafts;
   const rollup = rollupDay(businessDate, sales, payments.map((p) => p.je), gateSettings);
 
   // ── persist the §9 review items (the pre-build extras + the gates') ──
@@ -118,6 +130,7 @@ export async function runDailyReconciliation(
     persistedReviewItems: persisted,
     enqueuedPostings,
     dailyEnqueue,
+    ...(opts.withBuild ? { build: { drafts, rollup } } : {}),
   };
 }
 
@@ -135,13 +148,16 @@ export function isDayTerminal(postings: DailyPostingRow[]): boolean {
  * The live-on-view preamble (Chris 2026-06-12): re-reconcile the viewed day so a
  * webhook that landed a minute ago is already reflected — UNLESS the day is terminal
  * (fully acknowledged/rejected: Accounting Link's history, which must not grow review
- * items). Extracted from the verbatim block both `getDailySnapshot` and
- * `getDayBreakdown` carried. The caller has already resolved the realm. Throws on a
- * DB error (a money view is never knowingly stale).
+ * items). Returns the reconcile's OWN day build so the caller renders from the same
+ * drafts instead of building the day a second time; null = no reconcile ran (terminal
+ * day — the caller builds for display only). The caller has already resolved the
+ * realm. Throws on a DB error (a money view is never knowingly stale).
  */
-export async function reconcileDayForView(shopId: number, businessDate: string): Promise<void> {
+export async function reconcileDayForView(shopId: number, businessDate: string): Promise<DayBuild | null> {
   const { postings } = await listDailyPostingsForDay(shopId, businessDate);
-  if (!isDayTerminal(postings)) await runDailyReconciliation(shopId, businessDate);
+  if (isDayTerminal(postings)) return null;
+  const summary = await runDailyReconciliation(shopId, businessDate, { withBuild: true });
+  return summary.build ?? null;
 }
 
 // ─── Acknowledge-day orchestration (the admin "covered by Accounting Link" flow) ─

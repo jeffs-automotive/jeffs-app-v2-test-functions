@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import DateNav from "../../DateNav";
+import AutoRefresh from "@/components/AutoRefresh";
 import { PaymentsTable } from "./PaymentsTable";
 
 export const dynamic = "force-dynamic";
@@ -267,6 +268,7 @@ export default async function BreakdownPage({ params, searchParams }: { params: 
         }
       />
 
+      <AutoRefresh />
       <DateNav date={date} hrefPrefix="/approvals/" hrefSuffix={`/breakdown?tab=${tab}`} />
 
       <section className="mt-4 rounded-lg border border-border bg-muted p-4 text-sm text-muted-foreground">

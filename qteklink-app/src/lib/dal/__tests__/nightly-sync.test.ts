@@ -41,7 +41,9 @@ beforeEach(() => {
 describe("runNightlySync", () => {
   it("refreshes the payment-state projection BEFORE reconciling (payments read the projection)", async () => {
     const r = await runNightlySync(7476, { businessDate: "2026-06-06" });
-    expect(reduceMock).toHaveBeenCalledWith(7476);
+    // FULL reduce — the nightly is the verification net behind the incremental
+    // page-view reduces (it recomputes everything + re-anchors the watermark).
+    expect(reduceMock).toHaveBeenCalledWith(7476, { full: true });
     // Reduce MUST run before reconcile — else the day's payment drafts read a stale/empty projection.
     expect(Math.min(...reduceMock.mock.invocationCallOrder)).toBeLessThan(Math.min(...reconMock.mock.invocationCallOrder));
     expect(r.paymentStateReduced).toEqual({ events: 10, payments: 8 });

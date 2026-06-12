@@ -80,7 +80,9 @@ export async function runNightlySync(
   // this inner guard keeps the sale side alive WITHIN the shop.
   let paymentStateReduced: { events: number; payments: number } | null = null;
   try {
-    const reduced = await reduceShopPaymentState(shopId);
+    // FULL reduce — the nightly is the verification net behind the incremental
+    // page-view reduces (it recomputes every payment and re-anchors the watermark).
+    const reduced = await reduceShopPaymentState(shopId, { full: true });
     paymentStateReduced = { events: reduced.events, payments: reduced.payments };
   } catch (e) {
     Sentry.captureException(e, { tags: { qteklink_cron: "payment-state-reduce", shop_id: String(shopId) } });

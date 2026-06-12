@@ -16,6 +16,7 @@ import { requireQtekUser } from "@/lib/auth";
 import { listDateMoves, refreshDateMoves, type DateMoveRow } from "@/lib/dal/date-moves";
 import { fmtUsd } from "@/lib/format";
 import { ApproveMoveButton, UnapproveMoveButton, RefreshQueueButton } from "./DateMoveControls";
+import AutoRefresh from "@/components/AutoRefresh";
 import { PageHeader, IdentityBlock } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { Card, CardContent } from "@/components/ui/card";
@@ -90,6 +91,9 @@ export default async function PostingQueuePage() {
       <PageHeader title="Posting queue" description="Repair orders that moved to a different day">
         <IdentityBlock email={email} role={role} shopId={shopId} />
       </PageHeader>
+      {/* The re-scan runs per request, so the timer makes the queue self-clearing
+          while the office manager watches (60s — the scan is heavier than a day view). */}
+      <AutoRefresh intervalMs={60_000} />
 
       {rescanFailed && (
         <section className="mt-4 flex gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4">

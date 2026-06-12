@@ -19,6 +19,7 @@ import { fmtUsd, isIsoDate } from "@/lib/format";
 import ApproveDayControls from "./ApproveDayControls";
 import AcknowledgeDayButton from "./AcknowledgeDayButton";
 import DateNav from "./DateNav";
+import AutoRefresh from "@/components/AutoRefresh";
 import { PageHeader, IdentityBlock } from "@/components/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -100,6 +101,7 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
         </p>
       </section>
 
+      <AutoRefresh />
       <DateNav date={date} />
 
       {!realmId ? (

@@ -133,10 +133,19 @@ export async function getDailySnapshot(
 
   // LIVE-ON-VIEW: re-reconcile the viewed day (stages the ledger + syncs review
   // items) unless it's fully acknowledged (Accounting Link's terminal history).
-  await reconcileDayForView(shopId, businessDate);
+  // The reconcile hands back its OWN build — render from it instead of building
+  // the day a second time (live-page performance, Chris 2026-06-12). A terminal
+  // day (null — no reconcile ran) or a caller with explicit setting overrides
+  // (the build must honor them) falls back to building locally.
+  const viewBuild = await reconcileDayForView(shopId, businessDate);
+  const useShared = viewBuild != null && Object.keys(opts).length === 0;
 
-  const { sales, payments, gateSettings } = await buildDayDrafts(shopId, realmId, businessDate, opts);
-  const rollup = rollupDay(businessDate, sales, payments.map((p) => p.je), gateSettings);
+  const { sales, payments, gateSettings } = useShared
+    ? viewBuild.drafts
+    : await buildDayDrafts(shopId, realmId, businessDate, opts);
+  const rollup = useShared
+    ? viewBuild.rollup
+    : rollupDay(businessDate, sales, payments.map((p) => p.je), gateSettings);
   const { postings } = await listDailyPostingsForDay(shopId, businessDate);
   const idx = buildDailyStatusIndex(postings);
 
