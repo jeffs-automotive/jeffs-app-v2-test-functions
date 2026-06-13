@@ -34,7 +34,7 @@ test.describe("wizard happy-path", () => {
   test("returning customer books a brake_inspection", async ({ page }) => {
     test.setTimeout(180_000); // Wizard end-to-end can take 60-120s.
 
-    await page.goto("/book-v2", { waitUntil: "domcontentloaded" });
+    await page.goto("/book", { waitUntil: "domcontentloaded" });
 
     // ─── Step 1 — Greeting ───────────────────────────────────────────────
     await expect(

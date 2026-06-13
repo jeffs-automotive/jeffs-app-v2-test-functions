@@ -38,14 +38,6 @@ const SHOP_TIMEZONE = "America/New_York";
 export const SAME_DAY_CUTOFF_HOUR = 12;
 
 /**
- * Default drop-off-by hour used in customer-facing copy when the
- * appointment is NOT same-day ("drop off before 10 AM"). Future days
- * get this copy; today gets the looser "drop off as soon as you can
- * today" copy via `isSameDayLocal()`.
- */
-export const DROP_OFF_BY_HOUR_DEFAULT = 10;
-
-/**
  * Convert shop-local date+time to an ISO string with the correct
  * UTC offset for THAT specific date.
  *
@@ -99,8 +91,8 @@ export function shopLocalDate(d: Date): string {
 }
 
 /**
- * Current shop-local wall-clock hour (0-23). Used by
- * `isAfterSameDayCutoff` and any future time-of-day gating.
+ * Current shop-local wall-clock hour (0-23). Used by shop-clock's
+ * Vercel-fallback snapshot and any time-of-day gating.
  */
 export function shopLocalHourNow(): number {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -112,15 +104,6 @@ export function shopLocalHourNow(): number {
   // Intl returns "24" for midnight in some impls; normalize.
   const h = parseInt(raw, 10);
   return h >= 24 ? 0 : h;
-}
-
-/**
- * TRUE when the current shop-local time is at or past the cutoff
- * (default 12:00 PM). At this point today is no longer offered as a
- * same-day appointment option, even for drop-off.
- */
-export function isAfterSameDayCutoff(): boolean {
-  return shopLocalHourNow() >= SAME_DAY_CUTOFF_HOUR;
 }
 
 /**

@@ -70,7 +70,7 @@ export function VehiclePicker({
                   disabled={disabled || submitting}
                   aria-pressed={isPicked}
                   className={
-                    "flex w-full items-center justify-between rounded-[var(--radius-card)] " +
+                    "group flex w-full items-center justify-between rounded-[var(--radius-card)] " +
                     "border px-5 py-4 text-left text-[15px] " +
                     "transition-colors duration-150 ease-out " +
                     "focus-visible:outline-2 focus-visible:outline-offset-2 " +

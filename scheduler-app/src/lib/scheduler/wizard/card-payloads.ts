@@ -47,8 +47,6 @@ export interface PartialVerificationGatePayload {
   matched_axis: "name" | "phone";
   attempted_first_name: string | null;
   attempted_phone_last_four: string | null;
-  /** Only meaningful when matched_axis='phone'; null otherwise per PII rules. */
-  matched_first_name: string | null;
 }
 
 /** Step 3.5b — Multi-account disambiguation. Vehicle-only per PII protection. */

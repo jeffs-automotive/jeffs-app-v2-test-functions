@@ -234,7 +234,6 @@ function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
           matched_axis={card.payload.matched_axis}
           attempted_first_name={card.payload.attempted_first_name}
           attempted_phone_last_four={card.payload.attempted_phone_last_four}
-          matched_first_name={card.payload.matched_first_name}
           onSubmit={async ({ action }) => {
             const result = await submitPartialVerificationChoiceV2({
               chatId,
@@ -631,11 +630,11 @@ function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
         />
       );
 
-      // Every other step renders the migration placeholder. Each later phase
-      // adds its case BEFORE this default and removes the corresponding
-      // entry from the placeholder's hint list.
+      // Defensive fallback: every real WizardStep has an explicit case
+      // above. A step with no case (shouldn't happen) renders a neutral,
+      // customer-safe recovery surface rather than crashing.
       default:
-        return <NotYetMigrated step={card.step} />;
+        return <UnhandledStepFallback />;
     }
   }
 }
@@ -699,23 +698,22 @@ function logIfFailed(
   console.error(`[wizard] ${actionName} failed:`, result.error);
 }
 
-function NotYetMigrated({ step }: { step: string }) {
+function UnhandledStepFallback() {
   return (
     <div className="rounded-[var(--radius-card)] border border-rule bg-paper-100 p-6">
       <p className="font-display text-[17px] leading-snug text-ink">
-        Step <code className="rounded bg-paper-200 px-1.5 py-0.5">{step}</code>{" "}
-        not yet migrated to the new wizard surface.
+        Something went off-track.
       </p>
       <p className="mt-3 text-[14px] leading-relaxed text-ink-secondary">
-        This route (<code>/book-v2</code>) is the in-flight migration target.
-        Visit{" "}
+        Sorry about that — please refresh to pick up where you left off, or
+        call{" "}
         <a
-          href="/book"
+          href="tel:6102536565"
           className="font-medium text-brand-burgundy-700 hover:underline"
         >
-          /book
+          (610) 253-6565
         </a>{" "}
-        for the full live flow while phases 4-13 land.
+        and we&apos;ll get you booked.
       </p>
     </div>
   );

@@ -83,5 +83,3 @@ export const FOG_ALL_TIME = [
   { label: "All the time", value: "all_time" },
   { label: "Not sure", value: "unsure" },
 ];
-
-// 1. BRAKES

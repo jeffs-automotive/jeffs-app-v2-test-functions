@@ -175,10 +175,6 @@ vi.mock("@sentry/nextjs", () => ({
   ) => callback(),
 }));
 
-vi.mock("@/lib/scheduler/wizard/append-bubble", () => ({
-  appendBubble: vi.fn(async () => undefined),
-}));
-
 import { submitStartOverV2 } from "@/lib/scheduler/wizard/actions/submit-start-over";
 
 beforeEach(() => {

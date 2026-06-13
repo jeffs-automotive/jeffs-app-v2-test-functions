@@ -168,13 +168,10 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
 
 export interface ChipProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   selected?: boolean;
-  /** Optional leading emoji/icon — keep tiny per Chris's voice directive
-   *  ("light sprinkle of emoji"). */
-  leadingIcon?: ReactNode;
 }
 
 export const Chip = forwardRef<HTMLButtonElement, ChipProps>(function Chip(
-  { selected = false, leadingIcon, className, children, ...rest },
+  { selected = false, className, children, ...rest },
   ref,
 ) {
   const base =
@@ -197,7 +194,6 @@ export const Chip = forwardRef<HTMLButtonElement, ChipProps>(function Chip(
       className={`${base} ${state} ${className ?? ""}`}
       {...rest}
     >
-      {leadingIcon ? <span aria-hidden>{leadingIcon}</span> : null}
       {children}
     </button>
   );

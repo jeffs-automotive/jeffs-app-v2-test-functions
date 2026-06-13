@@ -13,7 +13,7 @@ import { test, expect } from "@playwright/test";
  */
 
 test.describe("wizard smoke", () => {
-  test("greeting card renders at /book-v2", async ({ page }) => {
+  test("greeting card renders at /book", async ({ page }) => {
     const errors: string[] = [];
     page.on("pageerror", (err) => {
       errors.push(err.message);
@@ -24,7 +24,7 @@ test.describe("wizard smoke", () => {
       }
     });
 
-    await page.goto("/book-v2", { waitUntil: "domcontentloaded" });
+    await page.goto("/book", { waitUntil: "domcontentloaded" });
 
     // GreetingCard renders "Hi, I'm <agent_name> 👋" with the customer-recorded
     // notice + "Have you been to our shop before?" prompt + 3 choice buttons.
@@ -50,10 +50,10 @@ test.describe("wizard smoke", () => {
   });
 
   test("error boundary not visible on load", async ({ page }) => {
-    await page.goto("/book-v2", { waitUntil: "domcontentloaded" });
-    // app/book-v2/error.tsx renders "Something went sideways." when
-    // the wizard crashes. If that string is on the page, the wizard is
-    // broken before any interaction.
+    await page.goto("/book", { waitUntil: "domcontentloaded" });
+    // app/error.tsx renders "Something went sideways." when the wizard
+    // crashes. If that string is on the page, the wizard is broken before
+    // any interaction.
     await expect(page.getByText(/Something went sideways/i)).not.toBeVisible();
   });
 });

@@ -32,8 +32,6 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   loading?: boolean;
   /** Optional leading icon — emoji or React node. Kept simple per design lock. */
   leadingIcon?: React.ReactNode;
-  /** Optional trailing icon. */
-  trailingIcon?: React.ReactNode;
   /** Pull-to-full-width on small screens. Default true (mobile-first). */
   fullWidthOnMobile?: boolean;
 }
@@ -66,7 +64,6 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     size = "md",
     loading = false,
     leadingIcon,
-    trailingIcon,
     fullWidthOnMobile = true,
     className,
     children,
@@ -89,7 +86,6 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     <span className="inline-flex items-center justify-center gap-2 leading-none">
       {leadingIcon ? <span aria-hidden>{leadingIcon}</span> : null}
       <span className={loading ? "invisible" : ""}>{children}</span>
-      {trailingIcon ? <span aria-hidden>{trailingIcon}</span> : null}
     </span>
   );
 

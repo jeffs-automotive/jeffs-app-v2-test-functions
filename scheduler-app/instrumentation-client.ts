@@ -18,13 +18,12 @@
  *   proxy rewrites BotID's challenge endpoint hides behind.
  *
  *   What's protected: every wizard route's POSTs (where Server Actions
- *   submit). The wizard renders at `/`, `/book`, and `/book-v2` per
- *   `BookPageShell.tsx`'s route comment. Every Server Action POSTs to
- *   the page that called it, so protecting all three routes covers the
- *   3 SMS-triggering actions (submit-phone-name, resend-otp,
- *   submit-multi-account-choice) AND attaches harmless tokens to the
- *   other ~24 Server Actions (which don't call checkBotId server-side
- *   so the tokens are simply ignored).
+ *   submit). The wizard renders at `/` and `/book` per `BookPageShell.tsx`.
+ *   Every Server Action POSTs to the page that called it, so protecting
+ *   both routes covers the 3 SMS-triggering actions (submit-phone-name,
+ *   resend-otp, submit-multi-account-choice) AND attaches harmless tokens
+ *   to the other ~24 Server Actions (which don't call checkBotId
+ *   server-side so the tokens are simply ignored).
  *
  *   What's NOT protected: `/api/scheduler/mark-abandoned` — that beacon
  *   has its own HMAC auth (P1.5 / SEC-8) and is fired via sendBeacon
@@ -47,7 +46,6 @@ initBotId({
   protect: [
     { path: "/", method: "POST" },
     { path: "/book", method: "POST" },
-    { path: "/book-v2", method: "POST" },
   ],
 });
 

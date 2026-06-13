@@ -46,21 +46,3 @@ const PARSED_ENV_SHOP_ID = (() => {
  * this with a session-bound resolver.
  */
 export const SHOP_ID: number = PARSED_ENV_SHOP_ID ?? 7476;
-
-/**
- * Same as `SHOP_ID` but exposed as a function for callsites that want
- * to defer resolution (e.g., test mocks that swap env vars between
- * tests). Both forms return the same value at any given moment in
- * production.
- */
-export function getSchedulerShopId(): number {
-  // Re-read env on each call to support test-time mutation. Production
-  // env vars don't change at runtime, so the cost is a single
-  // parseInt per call — negligible.
-  const raw = process.env.TEKMETRIC_SHOP_ID;
-  if (raw) {
-    const parsed = parseInt(raw, 10);
-    if (!Number.isNaN(parsed) && parsed > 0) return parsed;
-  }
-  return 7476;
-}

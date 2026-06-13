@@ -87,7 +87,6 @@ export function SecondRoutinePassCard({
                 selected={isSelected || isAlreadyPicked}
                 disabled={isAlreadyPicked || pending || disabled}
                 onClick={() => toggle(s.service_key)}
-                aria-pressed={isSelected || isAlreadyPicked}
               >
                 <span className="flex items-center gap-1.5">
                   <span>{s.display_name}</span>

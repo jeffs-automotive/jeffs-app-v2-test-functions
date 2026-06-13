@@ -477,5 +477,3 @@ export const tires: CanonicalCategory = {
     },
   ],
 };
-
-// 13. VIBRATION

@@ -8,10 +8,6 @@
  * `ensureSessionExists`, the idempotent row creator that the
  * BookPageShell calls on every request.
  *
- * Domain enums + the SessionStatus union are kept as exports because
- * downstream callers (the abandon-route, the cross-cutting actions)
- * reference these literal types.
- *
  * RLS: deny-all to public; this file uses the admin client (bypasses
  * RLS). App-level auth must enforce session/shop scoping (we hardcode
  * shop_id = 7476 Phase 1 per design §6).
@@ -25,18 +21,6 @@ import { SHOP_ID } from "@/lib/scheduler/shop-config";
 // -------- Domain enums (CHECK constraints in DB; widened in generated types) --------
 
 export type Channel = "web" | "sms";
-export type SessionStatus =
-  | "active"
-  | "idle"
-  | "ended"
-  | "escalated"
-  | "timed_out";
-export type SessionOutcome =
-  | "scheduled"
-  | "info_only"
-  | "escalation"
-  | "incomplete"
-  | "abandoned";
 
 // -------- DAL functions --------
 

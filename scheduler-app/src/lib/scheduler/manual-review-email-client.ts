@@ -134,11 +134,6 @@ function manualReviewEmailUrl(): string {
   return derivedUrl;
 }
 
-// Exported for unit testing of the URL validation logic.
-export function _manualReviewEmailUrl(): string {
-  return manualReviewEmailUrl();
-}
-
 /**
  * POST the manual-review payload to the edge function. Returns the
  * parsed response. Callers handle ok=false + log to Sentry; the wrapper

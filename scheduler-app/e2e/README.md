@@ -4,7 +4,7 @@ Two suites:
 
 | Spec | Purpose | Runs in CI? | Env requirements |
 |---|---|---|---|
-| `wizard-smoke.spec.ts` | Validates `/book-v2` loads + greeting card renders + no client errors | Yes | `PLAYWRIGHT_BASE_URL` |
+| `wizard-smoke.spec.ts` | Validates `/book` loads + greeting card renders + no client errors | Yes | `PLAYWRIGHT_BASE_URL` |
 | `wizard-happy-path.spec.ts` | Full returning-customer booking flow → brake_inspection recommendation → confirmation | Opt-in only | `PLAYWRIGHT_BASE_URL` + `PLAYWRIGHT_TEST_PHONE_E164` + Supabase OTP-bypass env on the target project |
 
 ## Running locally
@@ -69,7 +69,7 @@ The happy-path spec also self-skips if `PLAYWRIGHT_TEST_PHONE_E164` is unset.
 
 ## What the happy-path test verifies
 
-1. Wizard loads at `/book-v2`
+1. Wizard loads at `/book`
 2. Greeting card "Have you been to our shop before?" renders
 3. Returning-customer flow → phone + OTP
 4. Vehicle picker (auto-advances if 1 vehicle on file)

@@ -3,8 +3,8 @@
  * sourced from Postgres via the `scheduler_shop_now()` RPC.
  *
  * P1.6 post-validator fix (2026-05-25). Replaces the Vercel-clock-based
- * `shopLocalToday()` / `shopLocalHourNow()` / `isAfterSameDayCutoff()`
- * helpers in `wizard/shop-tz.ts` for SECURITY-CRITICAL cutoff logic
+ * `shopLocalToday()` / `shopLocalHourNow()` helpers in
+ * `wizard/shop-tz.ts` for SECURITY-CRITICAL cutoff logic
  * (availability filter + submit-date defensive re-check). The Vercel
  * helpers stay around for DISPLAY-ONLY uses (final confirmation bubble's
  * "same day?" copy switch, etc.) where a small clock drift produces
@@ -175,7 +175,7 @@ function computeVercelFallback(): ShopClockSnapshot {
 /**
  * Convenience: is the current shop-local time AT or PAST the same-day
  * cutoff (12 PM ET, per `SAME_DAY_CUTOFF_HOUR`)? Reads from the cached
- * snapshot — sharing the same clock-read as `getShopClockToday()` in
+ * snapshot — sharing the same clock-read as `getShopClock()` in
  * the same request.
  */
 export async function isAfterSameDayCutoffPg(): Promise<boolean> {

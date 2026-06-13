@@ -27,8 +27,6 @@ export interface PartialVerificationGateCardProps {
   attempted_first_name?: string | null;
   /** Last 4 of the phone they typed (for confirmation copy). */
   attempted_phone_last_four?: string | null;
-  /** First name on the partially-matched Tekmetric record (when phone hit). */
-  matched_first_name?: string | null;
   disabled?: boolean;
   onSubmit: (output: {
     action:
@@ -43,7 +41,6 @@ export function PartialVerificationGateCard({
   matched_axis,
   attempted_first_name,
   attempted_phone_last_four,
-  matched_first_name,
   disabled = false,
   onSubmit,
 }: PartialVerificationGateCardProps) {

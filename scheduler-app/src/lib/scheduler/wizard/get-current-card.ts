@@ -133,10 +133,6 @@ export async function getCurrentCard(
           attempted_first_name:
             (row.entered_first_name as string | null) ?? null,
           attempted_phone_last_four: phoneLastFour || null,
-          // PII protection (chat-design.md spec line 217): the matched
-          // customer's name is suppressed at the partial-verification gate
-          // when matched_axis='name'.
-          matched_first_name: null,
         },
       };
 

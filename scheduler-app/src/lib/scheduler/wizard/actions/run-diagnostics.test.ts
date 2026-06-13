@@ -223,13 +223,6 @@ vi.mock("@/lib/scheduler/wizard/log-error", () => ({
   logError: (...args: unknown[]) => logErrorMock(...args),
 }));
 
-// append-bubble — applyWizardTransition calls it when a jeffBubble is
-// passed. No-op in tests; we assert routing via update payload + chainCalls.
-const appendBubbleMock: Mock = vi.fn(async () => undefined);
-vi.mock("@/lib/scheduler/wizard/append-bubble", () => ({
-  appendBubble: (...args: unknown[]) => appendBubbleMock(...args),
-}));
-
 // Import the action AFTER all vi.mock calls so they take effect.
 import { runDiagnosticsV2 } from "./run-diagnostics";
 
@@ -451,7 +444,6 @@ beforeEach(() => {
   diagnoseConcernMock.mockReset();
   loadDiagnosticCatalogMock.mockReset();
   ensureConcernSummariesMock.mockClear();
-  appendBubbleMock.mockClear();
   logErrorMock.mockClear();
 
   // Default: a row with one brake-noise concern. Tests override as needed.

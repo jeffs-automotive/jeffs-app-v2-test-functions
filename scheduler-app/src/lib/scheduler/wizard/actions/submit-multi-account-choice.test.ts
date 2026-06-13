@@ -119,8 +119,6 @@ let combinedReadResult: {
   error: null,
 };
 
-let updateResult: { error: unknown } = { error: null };
-
 function makeMockClient() {
   return {
     from(table: string) {
@@ -131,21 +129,12 @@ function makeMockClient() {
           chainCalls.push(currentCall);
           return builder;
         },
-        update(payload: Record<string, unknown>) {
-          currentCall = { table, op: "update", payload, match: [] };
-          chainCalls.push(currentCall);
-          return builder;
-        },
         eq(col: string, val: unknown) {
           currentCall?.match.push({ col, val });
           return builder;
         },
         async maybeSingle() {
           return combinedReadResult;
-        },
-        async then(resolve: (v: { error: unknown }) => unknown) {
-          // update().eq() resolves as thenable
-          return resolve(updateResult);
         },
       };
       return builder;
@@ -201,7 +190,6 @@ beforeEach(() => {
     },
     error: null,
   };
-  updateResult = { error: null };
   sentryCaptureExceptionMock.mockClear();
   sentryCaptureMessageMock.mockClear();
   createSupabaseAdminClientMock.mockClear();

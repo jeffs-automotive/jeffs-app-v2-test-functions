@@ -39,8 +39,6 @@ export interface NewVehicleCardProps {
   step_label?: string;
   /** Title — defaults to "Now tell me about your ride! 🚗". */
   title?: string;
-  /** Tekmetric error from the parent's response (inline alert). */
-  server_error?: string;
   disabled?: boolean;
   onSubmit: (output: {
     year: number;
@@ -54,7 +52,6 @@ export interface NewVehicleCardProps {
 export function NewVehicleCard({
   step_label = "Add your vehicle",
   title = "Now tell me about your ride! 🚗",
-  server_error,
   disabled = false,
   onSubmit,
 }: NewVehicleCardProps) {
@@ -239,15 +236,6 @@ export function NewVehicleCard({
               />
             )}
           </Field>
-
-          {server_error ? (
-            <div
-              role="alert"
-              className="rounded-[var(--radius-card)] border border-rose-300 bg-rose-50 px-3 py-2 text-[13px] text-rose-800"
-            >
-              {server_error}
-            </div>
-          ) : null}
 
           <Button type="submit" disabled={disabled || pending} className="w-full">
             {pending ? "Adding…" : "Add vehicle"}

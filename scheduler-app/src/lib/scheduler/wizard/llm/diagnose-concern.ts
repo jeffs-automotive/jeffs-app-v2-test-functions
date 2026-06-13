@@ -339,12 +339,6 @@ const STAGE3_JSON_SCHEMA = {
 //      drift between Anthropic's constrained-decoding output and our
 //      expected shape)
 
-/** Confidence buckets the LLM self-reports per stage. Discrete enum rather
- *  than a 0-1 number because (a) Anthropic constrained-decoding handles
- *  enums cleanly, (b) discrete buckets avoid false-precision in self-report,
- *  (c) downstream branching becomes a clean switch on three values. */
-export type DiagnoseConcernConfidence = "high" | "medium" | "low";
-
 const Stage1ResponseSchema = z.object({
   matched_category_key: z.string().nullable(),
   confidence: z.enum(["high", "medium", "low"]),

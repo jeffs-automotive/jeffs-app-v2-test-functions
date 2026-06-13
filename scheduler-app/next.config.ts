@@ -100,7 +100,7 @@ function buildCSP(): string {
   const connectSrcSupabase = supabaseUrl ?? "https://*.supabase.co";
   return [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' https://va.vercel-scripts.com",
+    "script-src 'self' 'unsafe-inline'",
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: https:",
     `connect-src 'self' ${connectSrcSupabase}`,
@@ -111,7 +111,7 @@ function buildCSP(): string {
     // Without `worker-src`, CSP falls back to `script-src` which
     // doesn't include `blob:` → worker is blocked → BotID can't
     // initialize → client tokens never attach to POSTs → the FIRST
-    // submit to /, /book, /book-v2 silently fails (Vercel's edge
+    // submit to / or /book silently fails (Vercel's edge
     // BotID layer flags the missing token), the SECOND submit fires
     // because the SDK has already given up. Symptom: "first date
     // click does nothing, second click works." Including 'self' for
@@ -171,13 +171,6 @@ const nextConfig: NextConfig = {
         headers: securityHeaders,
       },
     ];
-  },
-
-  // Required for the experimental Server Actions cookie-write flow if we
-  // expand cookie usage; safe default.
-  experimental: {
-    // Place flags here as we adopt them. Keep empty by default to avoid
-    // pulling in unstable behavior.
   },
 };
 

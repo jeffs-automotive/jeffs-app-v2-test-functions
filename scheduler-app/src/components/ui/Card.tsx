@@ -43,9 +43,6 @@ import {
  */
 export type CardProps =
   & {
-    /** When true, suppresses the on-mount fade animation. Useful when
-     *  the card is part of a larger transition the parent owns. */
-    noAnimate?: boolean;
     children?: ReactNode;
     className?: string;
   }
@@ -55,7 +52,6 @@ export type CardProps =
 export function Card({
   children,
   className,
-  noAnimate = false,
   ...rest
 }: CardProps) {
   // Mobile keeps the full-bleed editorial border-y band; sm: softens to the
@@ -65,14 +61,6 @@ export function Card({
     "relative bg-paper-100 px-6 py-7 sm:px-8 sm:py-8 " +
     "border-y border-rule shadow-[var(--shadow-card)] " +
     "sm:rounded-[var(--radius-card)]";
-
-  if (noAnimate) {
-    return (
-      <div className={`${base} ${className ?? ""}`} {...rest}>
-        {children}
-      </div>
-    );
-  }
 
   return (
     <LazyMotion features={domAnimation} strict>

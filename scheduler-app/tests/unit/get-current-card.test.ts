@@ -50,7 +50,7 @@ const createSupabaseAdminClientMock: Mock = vi.fn(() => ({
           eq(_col: string, _val: unknown) {
             return {
               async maybeSingle() {
-                return { data: storedRow, error: storedRow ? null : null };
+                return { data: storedRow, error: null };
               },
             };
           },
