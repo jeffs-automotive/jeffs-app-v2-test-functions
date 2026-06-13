@@ -191,13 +191,26 @@ export async function POST(req: Request): Promise<NextResponse> {
     // last_active_at so we can defend against spurious-pagehide races
     // where the beacon fires DURING an in-flight Server Action. See the
     // "ageMs < 10_000" guard below.
-    const { data: snapshot } = await supabase
+    const { data: snapshot, error: snapshotErr } = await supabase
       .from("customer_chat_sessions")
       .select(
         "appointment_id, appointment_confirmed_at, last_active_at, current_step",
       )
       .eq("id", chatId)
       .maybeSingle();
+    if (snapshotErr) {
+      // Fail-SAFE (observability rule #9 + 2026-06-13 audit): a transient
+      // read error means we can't evaluate the post-confirm / recent-activity
+      // guards below. Running the abandon path blind could clobber a
+      // freshly-confirmed booking (flip status='timed_out' + release the
+      // hold). Bail without touching the row; the 5-min idle path + 70-min
+      // cron reaper still cover truly-abandoned sessions. Surface for triage.
+      Sentry.captureMessage("mark_abandoned_snapshot_read_failed", {
+        level: "warning",
+        extra: { chatId, error: snapshotErr.message },
+      });
+      return new NextResponse(null, { status: 204 });
+    }
     const bookingLanded =
       snapshot &&
       (typeof snapshot.appointment_id === "number" ||

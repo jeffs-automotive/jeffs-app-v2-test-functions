@@ -608,12 +608,21 @@ export async function getCurrentCard(
       const holdToken = (row.hold_token as string | null) ?? undefined;
       let holdExpiresAt: string | undefined = undefined;
       if (holdToken) {
-        const { data: hold } = await supabase
+        const { data: hold, error: holdErr } = await supabase
           .from("appointment_holds")
           .select("expires_at, released_at")
           .eq("id", holdToken)
           .maybeSingle();
-        if (hold && !hold.released_at) {
+        if (holdErr) {
+          // Fail-soft (the summary still renders without a countdown) but
+          // surface it — a swallowed read here used to drop the hold-expiry
+          // timer with no breadcrumb (observability rule #9 / 2026-06-13 audit).
+          Sentry.captureException(holdErr, {
+            tags: { surface: "get_current_card_summary_hold" },
+            level: "warning",
+            extra: { chatId },
+          });
+        } else if (hold && !hold.released_at) {
           holdExpiresAt = hold.expires_at as string;
         }
       }

@@ -21,6 +21,7 @@ import * as Sentry from "@sentry/nextjs";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { resolveServiceRoleKey } from "@/lib/supabase/resolve-keys";
+import { deriveValidatedEdgeFunctionUrl } from "@/lib/scheduler/orchestrator-url";
 
 export interface FireTranscriptDispatchResult {
   ok: boolean;
@@ -29,14 +30,27 @@ export interface FireTranscriptDispatchResult {
 }
 
 function transcriptDispatcherUrl(): string | null {
-  const orchestratorUrl = process.env.ORCHESTRATOR_URL;
-  if (!orchestratorUrl) {
+  if (!process.env.ORCHESTRATOR_URL) {
+    // Not configured (dev / pre-launch) — fail-soft silently; the caller
+    // logs no_url and the cron backstop sends the email.
     return null;
   }
-  // Same pattern as booking-direct-client.ts — swap the trailing path
-  // segment of ORCHESTRATOR_URL (e.g. /orchestrator-direct) to
-  // /transcript-dispatcher.
-  return orchestratorUrl.replace(/\/[^/]+\/?$/, "/transcript-dispatcher");
+  try {
+    // Shared P0.3 derivation + host validation (see orchestrator-url.ts) —
+    // never POST the service-role bearer to a typo'd / spilled host.
+    return deriveValidatedEdgeFunctionUrl(
+      "transcript-dispatcher",
+      (message) => new Error(message),
+    );
+  } catch (e) {
+    // Fail-soft (this dispatch is fire-and-forget) but surface the
+    // validation failure — especially a non-supabase.co host — for triage.
+    Sentry.captureMessage("fire_transcript_dispatch_url_invalid", {
+      level: "warning",
+      extra: { error: e instanceof Error ? e.message : String(e) },
+    });
+    return null;
+  }
 }
 
 export async function fireTranscriptDispatch(args: {

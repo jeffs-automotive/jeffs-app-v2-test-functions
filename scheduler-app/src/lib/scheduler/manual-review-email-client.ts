@@ -31,6 +31,7 @@
  */
 
 import { resolveServiceRoleKey } from "@/lib/supabase/resolve-keys";
+import { deriveValidatedEdgeFunctionUrl } from "@/lib/scheduler/orchestrator-url";
 
 export type SchedulerManualReviewCategory =
   "appointment_verification_mismatch";
@@ -77,61 +78,12 @@ export class ManualReviewEmailError extends Error {
   }
 }
 
-const ALLOWED_EMAIL_HOST_SUFFIX = ".supabase.co";
-
 function manualReviewEmailUrl(): string {
-  const orchestratorUrl = process.env.ORCHESTRATOR_URL;
-  if (!orchestratorUrl) {
-    throw new ManualReviewEmailError(
-      "Missing ORCHESTRATOR_URL env var — needed to derive the manual-review-email endpoint.",
-    );
-  }
-  const derivedUrl = orchestratorUrl.replace(
-    /\/[^/]+\/?$/,
-    "/scheduler-manual-review-email",
+  // Shared P0.3 derivation + host validation (see orchestrator-url.ts).
+  return deriveValidatedEdgeFunctionUrl(
+    "scheduler-manual-review-email",
+    (message, cause) => new ManualReviewEmailError(message, undefined, cause),
   );
-
-  // P0.3 Layer 1: hardcoded suffix gate.
-  let derivedHost: string;
-  try {
-    derivedHost = new URL(derivedUrl).host;
-  } catch (e) {
-    throw new ManualReviewEmailError(
-      `Invalid derived manual-review-email URL (ORCHESTRATOR_URL=${orchestratorUrl})`,
-      undefined,
-      e,
-    );
-  }
-  if (!derivedHost.endsWith(ALLOWED_EMAIL_HOST_SUFFIX)) {
-    throw new ManualReviewEmailError(
-      `Refusing to send service-role bearer: derived host '${derivedHost}' does not end with '${ALLOWED_EMAIL_HOST_SUFFIX}'. Check ORCHESTRATOR_URL env var.`,
-    );
-  }
-
-  // P0.3 Layer 2: must match the project's Supabase URL exactly.
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  if (!supabaseUrl) {
-    throw new ManualReviewEmailError(
-      "Missing NEXT_PUBLIC_SUPABASE_URL env var — required for manual-review-email host validation.",
-    );
-  }
-  let expectedHost: string;
-  try {
-    expectedHost = new URL(supabaseUrl).host;
-  } catch (e) {
-    throw new ManualReviewEmailError(
-      `Invalid NEXT_PUBLIC_SUPABASE_URL: ${supabaseUrl}`,
-      undefined,
-      e,
-    );
-  }
-  if (derivedHost !== expectedHost) {
-    throw new ManualReviewEmailError(
-      `Refusing to send service-role bearer: derived host '${derivedHost}' does not match NEXT_PUBLIC_SUPABASE_URL host '${expectedHost}'. ORCHESTRATOR_URL and NEXT_PUBLIC_SUPABASE_URL must target the same Supabase project.`,
-    );
-  }
-
-  return derivedUrl;
 }
 
 /**

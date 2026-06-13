@@ -167,7 +167,10 @@ function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
 
   return (
     <>
-      {submitFailed ? (
+      {/* Suppress the top banner on diagnostic_loading — DiagnosticLoadingCard
+          renders its own role="alert" on a diagnostics failure, so the banner
+          would be a second, duplicate error surface (2026-06-13 audit). */}
+      {submitFailed && card.step !== "diagnostic_loading" ? (
         <SubmitFailedBanner onRetry={() => setSubmitFailed(false)} />
       ) : null}
       {renderCard()}

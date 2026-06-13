@@ -11,6 +11,7 @@
  */
 
 import { resolveServiceRoleKey } from "@/lib/supabase/resolve-keys";
+import { deriveValidatedEdgeFunctionUrl } from "@/lib/scheduler/orchestrator-url";
 
 export interface Step2DirectRequest {
   session_id: string;
@@ -49,23 +50,15 @@ export class Step2DirectError extends Error {
 }
 
 /**
- * Resolve the edge function URL. Reuses the existing ORCHESTRATOR_URL
- * env var pattern — we just swap the function name in the path so we
- * don't need a new env var. ORCHESTRATOR_URL looks like
- *   https://<project>.functions.supabase.co/orchestrator-direct
- * We replace the trailing function segment with `scheduler-step2-direct`.
+ * Resolve the edge function URL from ORCHESTRATOR_URL by swapping the
+ * trailing function segment to `scheduler-step2-direct`, then validating the
+ * host before any service-role bearer is sent (shared P0.3 — see
+ * orchestrator-url.ts).
  */
 function step2DirectUrl(): string {
-  const orchestratorUrl = process.env.ORCHESTRATOR_URL;
-  if (!orchestratorUrl) {
-    throw new Step2DirectError(
-      "Missing ORCHESTRATOR_URL env var — needed to derive the step2 endpoint.",
-    );
-  }
-  // Replace the last path segment.
-  return orchestratorUrl.replace(
-    /\/[^/]+\/?$/,
-    "/scheduler-step2-direct",
+  return deriveValidatedEdgeFunctionUrl(
+    "scheduler-step2-direct",
+    (message, cause) => new Step2DirectError(message, undefined, cause),
   );
 }
 

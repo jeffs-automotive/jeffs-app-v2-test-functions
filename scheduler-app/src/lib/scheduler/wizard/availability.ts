@@ -39,6 +39,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 // drift that the original `new Date()`-everywhere pattern accumulated
 // across 4 supabase filters within one render.
 import { getShopClock } from "@/lib/scheduler/shop-clock";
+import { SHOP_ID } from "@/lib/scheduler/shop-config";
 import {
   SAME_DAY_CUTOFF_HOUR,
   shopLocalToIsoString,
@@ -97,6 +98,7 @@ export async function computeAvailableDates(
   const { data: closed, error: closedErr } = await supabase
     .from("closed_dates")
     .select("closed_date")
+    .eq("shop_id", SHOP_ID)
     .gte("closed_date", todayYmd)
     .lt("closed_date", endYmd);
   if (closedErr) {
@@ -111,7 +113,8 @@ export async function computeAvailableDates(
     .from("appointment_default_limits")
     .select(
       "day_of_week, is_closed, waiter_8am_slots, waiter_9am_slots, dropoff_total",
-    );
+    )
+    .eq("shop_id", SHOP_ID);
   if (limitsErr) {
     throw new Error(
       `appointment_default_limits query failed: ${limitsErr.message}`,
@@ -139,6 +142,7 @@ export async function computeAvailableDates(
   const { data: blocks, error: blocksErr } = await supabase
     .from("appointment_blocks")
     .select("blocked_date, blocked_type, blocked_time")
+    .eq("shop_id", SHOP_ID)
     .gte("blocked_date", todayYmd)
     .lt("blocked_date", endYmd);
   if (blocksErr) {
@@ -176,6 +180,7 @@ export async function computeAvailableDates(
   const { data: holds, error: holdsErr } = await supabase
     .from("appointment_holds")
     .select("scheduled_date, scheduled_time, appointment_type")
+    .eq("shop_id", SHOP_ID)
     .gte("scheduled_date", todayYmd)
     .lt("scheduled_date", endYmd)
     .is("released_at", null)
@@ -212,6 +217,7 @@ export async function computeAvailableDates(
   const { data: appts, error: apptsErr } = await supabase
     .from("appointments")
     .select("start_time, appointment_type, appointment_status")
+    .eq("shop_id", SHOP_ID)
     .gte("start_time", startIsoTz)
     .lt("start_time", endIsoTz)
     .is("deleted_at", null);

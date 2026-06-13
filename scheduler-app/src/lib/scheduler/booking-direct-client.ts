@@ -16,6 +16,7 @@
  */
 
 import { resolveServiceRoleKey } from "@/lib/supabase/resolve-keys";
+import { deriveValidatedEdgeFunctionUrl } from "@/lib/scheduler/orchestrator-url";
 
 export type BookingDirectOp =
   | "list_waiter_times"
@@ -290,8 +291,6 @@ export class BookingDirectError extends Error {
  * spillover from a copy of another project's env file) silently sent
  * the SUPABASE_SERVICE_ROLE_KEY as a Bearer to an arbitrary host.
  */
-const ALLOWED_BOOKING_DIRECT_HOST_SUFFIX = ".supabase.co";
-
 // Exported for unit testing of the URL validation logic. Production
 // code calls this internally via `call()`. Underscore prefix marks
 // the test-only nature.
@@ -300,59 +299,11 @@ export function _bookingDirectUrl(): string {
 }
 
 function bookingDirectUrl(): string {
-  const orchestratorUrl = process.env.ORCHESTRATOR_URL;
-  if (!orchestratorUrl) {
-    throw new BookingDirectError(
-      "Missing ORCHESTRATOR_URL env var — needed to derive the booking endpoint.",
-    );
-  }
-  const derivedUrl = orchestratorUrl.replace(
-    /\/[^/]+\/?$/,
-    "/scheduler-booking-direct",
+  // Shared P0.3 derivation + host validation (see orchestrator-url.ts).
+  return deriveValidatedEdgeFunctionUrl(
+    "scheduler-booking-direct",
+    (message, cause) => new BookingDirectError(message, undefined, cause),
   );
-
-  // P0.3 Layer 1: hardcoded suffix gate.
-  let derivedHost: string;
-  try {
-    derivedHost = new URL(derivedUrl).host;
-  } catch (e) {
-    throw new BookingDirectError(
-      `Invalid derived booking-direct URL (ORCHESTRATOR_URL=${orchestratorUrl})`,
-      undefined,
-      e,
-    );
-  }
-  if (!derivedHost.endsWith(ALLOWED_BOOKING_DIRECT_HOST_SUFFIX)) {
-    // NEVER send service_role to a non-supabase.co host. Hard fail.
-    throw new BookingDirectError(
-      `Refusing to send service-role bearer: derived host '${derivedHost}' does not end with '${ALLOWED_BOOKING_DIRECT_HOST_SUFFIX}'. Check ORCHESTRATOR_URL env var.`,
-    );
-  }
-
-  // P0.3 Layer 2: must match the project's Supabase URL exactly.
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  if (!supabaseUrl) {
-    throw new BookingDirectError(
-      "Missing NEXT_PUBLIC_SUPABASE_URL env var — required for booking-direct host validation.",
-    );
-  }
-  let expectedHost: string;
-  try {
-    expectedHost = new URL(supabaseUrl).host;
-  } catch (e) {
-    throw new BookingDirectError(
-      `Invalid NEXT_PUBLIC_SUPABASE_URL: ${supabaseUrl}`,
-      undefined,
-      e,
-    );
-  }
-  if (derivedHost !== expectedHost) {
-    throw new BookingDirectError(
-      `Refusing to send service-role bearer: derived host '${derivedHost}' does not match NEXT_PUBLIC_SUPABASE_URL host '${expectedHost}'. ORCHESTRATOR_URL and NEXT_PUBLIC_SUPABASE_URL must target the same Supabase project.`,
-    );
-  }
-
-  return derivedUrl;
 }
 
 async function call(req: BookingDirectRequest): Promise<BookingDirectResponse> {

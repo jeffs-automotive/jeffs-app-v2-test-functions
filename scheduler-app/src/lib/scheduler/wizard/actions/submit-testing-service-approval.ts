@@ -48,7 +48,7 @@ async function submitTestingServiceApprovalV2Impl(
     const supabase = createSupabaseAdminClient();
     const { data: row, error: rowErr } = await supabase
       .from("customer_chat_sessions")
-      .select("recommended_testing_services")
+      .select("recommended_testing_services, approved_testing_services")
       .eq("id", chatId)
       .maybeSingle();
     if (rowErr || !row) {
@@ -91,18 +91,36 @@ async function submitTestingServiceApprovalV2Impl(
       return { ok: false, error: "approved_declined_overlap" };
     }
 
-    const approvedDedup = Array.from(approvedSet);
     const declinedDedup = Array.from(declinedSet);
 
+    // Merge — do NOT overwrite. The customer may have explicitly picked
+    // testing services back at Step 7.1 (submit-service-and-concern-picker
+    // writes them to approved_testing_services); those picks are independent
+    // of the diagnostic LLM's recommendations surfaced at this step. Union
+    // the existing picks with the newly-approved recommendations, then drop
+    // anything the customer declined here (most-recent action wins). Writing
+    // only the 7.5 approvals would silently lose the 7.1 picks.
+    const existingApproved = new Set<string>();
+    const existingRaw = (row as Record<string, unknown>)
+      .approved_testing_services;
+    if (Array.isArray(existingRaw)) {
+      for (const k of existingRaw) {
+        if (typeof k === "string") existingApproved.add(k);
+      }
+    }
+    const finalApproved = Array.from(
+      new Set([...existingApproved, ...approvedSet]),
+    ).filter((k) => !declinedSet.has(k));
+
     const jeffBubble =
-      approvedDedup.length > 0
+      finalApproved.length > 0
         ? "Locked in those tests. Want to add any routine services before we schedule? 🛠️"
         : "Got it — no testing services this visit. Want to add any routine services before we schedule? 🛠️";
 
     return applyWizardTransition({
       chatId,
       updates: {
-        approved_testing_services: approvedDedup,
+        approved_testing_services: finalApproved,
         declined_testing_services: declinedDedup,
       },
       nextStep: "second_routine_pass",

@@ -266,9 +266,7 @@ export async function buildSummaryCardPayload(args: {
   const type: "waiter" | "dropoff" =
     row.appointment_type === "waiter" ? "waiter" : "dropoff";
   const apptDate = (row.appointment_date as string | null) ?? "";
-  const apptTime =
-    (row.appointment_time as string | null) ??
-    (type === "dropoff" ? "08:00:00" : "08:00:00");
+  const apptTime = (row.appointment_time as string | null) ?? "08:00:00";
   // R6 pattern-extension 2026-05-16: previously hardcoded -04:00 (EDT)
   // here too. Replaced with shopLocalToIsoString which probes the
   // correct offset per-date (returns -04:00 in EDT, -05:00 in EST).

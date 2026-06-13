@@ -10,6 +10,7 @@
  * via ORCHESTRATOR_URL → swap the trailing path segment.
  */
 import { resolveServiceRoleKey } from "@/lib/supabase/resolve-keys";
+import { deriveValidatedEdgeFunctionUrl } from "@/lib/scheduler/orchestrator-url";
 
 // ─── Op shapes ──────────────────────────────────────────────────────────────
 
@@ -77,13 +78,12 @@ export class OtpDirectError extends Error {
 // ─── URL resolution ─────────────────────────────────────────────────────────
 
 function otpDirectUrl(): string {
-  const orchestratorUrl = process.env.ORCHESTRATOR_URL;
-  if (!orchestratorUrl) {
-    throw new OtpDirectError(
-      "Missing ORCHESTRATOR_URL env var — needed to derive the scheduler-otp-direct endpoint.",
-    );
-  }
-  return orchestratorUrl.replace(/\/[^/]+\/?$/, "/scheduler-otp-direct");
+  // Shared P0.3 derivation + host validation (see orchestrator-url.ts) —
+  // never POST the service-role bearer to a typo'd / spilled host.
+  return deriveValidatedEdgeFunctionUrl(
+    "scheduler-otp-direct",
+    (message, cause) => new OtpDirectError(message, undefined, cause),
+  );
 }
 
 // ─── Core fetch helper ──────────────────────────────────────────────────────

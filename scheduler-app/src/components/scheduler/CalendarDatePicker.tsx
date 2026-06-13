@@ -137,6 +137,14 @@ export function CalendarDatePicker({
   const canNavBack =
     viewYear > minViewYear ||
     (viewYear === minViewYear && viewMonth > minViewMonth);
+  // Symmetric forward cap: don't let the customer page past the month that
+  // contains the 365-day booking horizon (every cell beyond it is disabled
+  // anyway — this just stops the confusing scroll into all-greyed months).
+  const maxViewMonth = rangeEndDate.getMonth();
+  const maxViewYear = rangeEndDate.getFullYear();
+  const canNavForward =
+    viewYear < maxViewYear ||
+    (viewYear === maxViewYear && viewMonth < maxViewMonth);
 
   return (
     <Card aria-labelledby="calendar-heading">
@@ -173,7 +181,7 @@ export function CalendarDatePicker({
           <button
             type="button"
             onClick={() => nav(1)}
-            disabled={disabled || submitting}
+            disabled={!canNavForward || disabled || submitting}
             aria-label="Next month"
             className={
               "rounded-[var(--radius-input)] px-2 py-1 text-ink-secondary " +
