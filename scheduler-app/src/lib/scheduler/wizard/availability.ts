@@ -1,10 +1,8 @@
 /**
  * Deterministic slot-availability helper for the V2 wizard.
  *
- * Phase 10 (2026-05-15): extracted from session-actions.ts so both the legacy
- * /book chat AND the new /book-v2 wizard can use the same capacity math.
- * Phase 16 deletes session-actions.ts entirely; this helper survives that
- * cleanup as the canonical source.
+ * Phase 10 (2026-05-15): extracted from session-actions.ts into a shared
+ * helper. It is now the canonical capacity-math source for the wizard.
  *
  * Applies the full 5-layer availability stack per chat-design.md §9 + the
  * Phase 1 schema migration spec:

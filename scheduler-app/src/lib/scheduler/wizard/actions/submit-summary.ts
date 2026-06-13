@@ -27,8 +27,7 @@
  *
  * 2. EDIT path (`confirmed: false`, with optional `edit_target`)
  *    - Increment summary_edit_attempts; at >=3 the next edit escalates
- *      (per chat-design §10.1.5 + the off-by-one fix in legacy
- *      session-actions.ts:2208)
+ *      (per chat-design §10.1.5)
  *    - Route to the appropriate step:
  *        'date' or 'datetime' → date_pick
  *        'vehicle'            → vehicle_pick
@@ -303,7 +302,7 @@ async function handleConfirmPath(chatId: string): Promise<WizardTransitionResult
   // `released_at = now()` as the claim signal. Validator 2 caught the
   // downside: between CAS-claim and Tekmetric POST success (1-5 sec POST
   // window), the slot APPEARS released to availability scans
-  // (`scheduler-app/src/lib/scheduler/wizard/availability.ts:128-137`
+  // (`scheduler-app/src/lib/scheduler/wizard/availability.ts`
   // filters `.is("released_at", null)` — released slots look FREE).
   // A second customer could see the slot, create their own hold,
   // confirm, and double-book with the in-flight session.

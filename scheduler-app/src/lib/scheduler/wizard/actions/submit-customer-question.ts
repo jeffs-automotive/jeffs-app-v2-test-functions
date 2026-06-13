@@ -21,14 +21,14 @@
  *   3. Returns a WizardTransitionResult so WizardSurface re-renders into
  *      the completed card.
  *
- * Phase 1 policy (chat-design.md §10.4): the chat does NOT attempt to
- * answer questions in-chat. Every question is forwarded via the
- * transcript email (rendered alongside the customer note + appointment
- * details). Phase 2+ may add Q&A.
+ * Phase 1 policy (chat-design.md §10.4): we do NOT attempt to answer
+ * questions in-app. Every question is forwarded via the transcript email
+ * (rendered alongside the customer note + appointment details). Phase 2+
+ * may add Q&A.
  *
- * Outcome / status convention follows legacy session-actions.ts (line
- * 2685-2690): we set status='ended' + outcome='scheduled' here so the
- * row matches what the transcript dispatcher + audit tooling expect.
+ * Outcome / status convention: we set status='ended' + outcome='scheduled'
+ * here so the row matches what the transcript dispatcher + audit tooling
+ * expect.
  */
 import * as Sentry from "@sentry/nextjs";
 import { z } from "zod";

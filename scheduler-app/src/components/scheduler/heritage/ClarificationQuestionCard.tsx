@@ -17,12 +17,12 @@ import { Button, Card, Chip } from "@/components/ui";
  *     when tapped. A Continue button submits the selected set. Or "I'm not
  *     sure" to skip.
  *
- * The chat agent surfaces these one at a time per Chris's design directive
- * 2026-05-13 — never a wall of questions. After each answer, the
- * orchestrator decides whether to ask another question, propose testing
+ * The wizard surfaces these one at a time per Chris's design directive
+ * 2026-05-13 — never a wall of questions. After each answer, the diagnostic
+ * routing decides whether to ask another question, propose testing
  * services, or advance to Step 8.
  *
- * Output to the AI SDK:
+ * Emits to the submit-clarification-answer action:
  *   - Single-select: `{ question_id, answer: "<option_value>" | "skipped" }`
  *   - Multi-select:  `{ question_id, answer: ["<v1>", "<v2>"] | "skipped" }`
  *

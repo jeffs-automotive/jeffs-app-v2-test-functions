@@ -12,20 +12,18 @@ import { WizardSurface } from "@/components/scheduler/wizard/WizardSurface";
  * (offline banner, idle timer, page footer with Start Over + Talk to
  * a person).
  *
- * Three routes consume this shell after the Phase 15 cutover:
+ * Two routes render this shell after the Phase 15 cutover:
  *   - /            — canonical scheduler URL on the
  *                    appointments.jeffsautomotive.com subdomain
  *   - /book        — branded link for advisors
- *   - /book-v2     — redirected to /book; this shell is the only
- *                    surface that should exist after Phase 16 cleanup
  *
  * Server Component on purpose — cookie hydration + the row read for
  * getCurrentCard happen on every request. `force-dynamic` is set on
  * each consuming route (Next.js doesn't propagate that flag through
  * imports — has to be declared at the route level).
  *
- * Header + footer copy match the prior /book + / + /book-v2 pages so
- * the cutover is visually identical to customers on the prior surface.
+ * Header + footer copy match the pre-cutover pages so the cutover is
+ * visually identical to customers on the prior surface.
  */
 export async function BookPageShell() {
   const { chatId } = await hydrateSession();

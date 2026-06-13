@@ -10,8 +10,8 @@ import { Button, Card } from "@/components/ui";
  *
  * Per chat-design.md 2026-05-13: Phase 1 is a WIZARD augmented by chat —
  * Step 1 is a CARD with explicit choices, NOT a free-form text prompt.
- * The customer taps one of three buttons; we send back the bucketed answer
- * (`returning` | `new` | `unsure`) to the chat agent.
+ * The customer taps one of three buttons; we send the bucketed answer
+ * (`returning` | `new` | `unsure`) to the submitGreetingV2 action.
  *
  * Disclosure (conversation-is-recorded) is rendered inside the card so the
  * customer sees it before submitting their first choice.

@@ -5,11 +5,11 @@ import { useMemo, useState } from "react";
 import { Card } from "@/components/ui";
 
 /**
- * CalendarDatePicker rendering tool component (Heritage Editorial refactor 2026-05-13).
+ * CalendarDatePicker component (Heritage Editorial refactor 2026-05-13).
  *
- * Per appointments_design.md §7.5:
- * - Input: { available_dates, type, initial_focus_date?, range_end? }
- * - Output: { selected_date: string }
+ * Contract:
+ * - Props: { available_dates, type, initial_focus_date?, range_end? }
+ * - Emits: { selected_date: string }
  *
  * Phase 1 calendar UI: simple month grid (current + nav). 365-day booking
  * horizon per design lock. Heritage-styled month nav + gold-rule grid
@@ -204,7 +204,7 @@ export function CalendarDatePicker({
           {grid.map((d, idx) => {
             if (!d) {
               return (
-                // eslint-disable-next-line react/no-array-index-key
+                 
                 <div key={`pad-${idx}`} role="gridcell" aria-hidden="true" />
               );
             }

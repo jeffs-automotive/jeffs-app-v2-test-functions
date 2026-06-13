@@ -106,8 +106,7 @@ async function submitNewCustomerInfoV2Impl(
     // /customers is NOT idempotent. If this Server Action gets retried
     // (double-tap, browser retry on transient error, React Server Action
     // re-fire) AFTER a prior successful POST, customer_id is already on
-    // the row. Skip the second POST and just advance — the prior write
-    // already populated the row's edited_* + verified_* columns too.
+    // the row. Skip the second POST and just advance to the vehicle step.
     if (typeof row.customer_id === "number") {
       return applyWizardTransition({
         chatId,

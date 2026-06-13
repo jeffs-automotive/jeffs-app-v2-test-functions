@@ -29,9 +29,8 @@ import { Button, Card, Field, Textarea } from "@/components/ui";
  *      `edit_attempts === 1` triggers the "last try" hint so the customer
  *      knows the next Edit will send their original note as-is.
  *
- * Backward compat: input-mode props (`initial_text`, `disabled`,
- * `onSubmit`) are unchanged from the Phase 12 shape so the legacy
- * /book route's Chat.tsx callsite continues to compile.
+ * The input-mode props (`initial_text`, `disabled`, `onSubmit`) retain
+ * their original Phase 12 shape.
  */
 
 export interface CustomerNotesCardProps {

@@ -9,7 +9,7 @@ import { test, expect } from "@playwright/test";
  * test that should run on every deploy.
  *
  * Companion: `wizard-happy-path.spec.ts` exercises a full booking flow
- * end-to-end, gated on `SCHEDULER_TEST_PHONE_E164` env-bypass.
+ * end-to-end, gated on the `PLAYWRIGHT_TEST_PHONE_E164` env var.
  */
 
 test.describe("wizard smoke", () => {

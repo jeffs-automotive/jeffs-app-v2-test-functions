@@ -1,26 +1,17 @@
 "use client";
 
 /**
- * WizardSurface — client-side step dispatcher for the new server-state-
- * driven wizard at /book-v2.
+ * WizardSurface — client-side step dispatcher for the server-state-driven
+ * wizard (rendered at / and /book).
  *
  * Per chat-design.md "Architecture amendment — 2026-05-14": the page's
  * Server Component reads customer_chat_sessions via getCurrentCard and
  * passes the WizardCard down. This component switches on card.step and
- * renders the matching card.
- *
- * Phase 3 (this file's first version): wires only step='greeting'. All
- * other steps fall through to <NotYetMigrated/>, which directs the
- * customer back to the live /book route during the migration window.
- *
- * Phases 4-13 each add their step's case as the corresponding migration
- * lands. Phase 14 wires the always-visible footer (Start Over + Talk to
- * a Person) at the page level, not here.
+ * renders the matching card. The always-visible footer (Start Over + Talk
+ * to a Person) is wired at the page level (WizardCrossCutting), not here.
  *
  * Error surface: card submits await the Server Action; failures log to
- * Sentry (inside the action) + console here. Toast / FormMessage / retry
- * affordances are added per-step starting in phase 4; phase 14 unifies
- * the cross-cutting error states.
+ * Sentry (inside the action) + surface a SubmitFailedBanner here.
  *
  * Refresh after action (Phase 9c hotfix 2026-05-16): Server Actions
  * called outside a <form action> context — e.g. button onClick or

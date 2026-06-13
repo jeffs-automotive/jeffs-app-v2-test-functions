@@ -5,12 +5,12 @@
  * visible page-footer affordances (Start Over + Talk to a person), the
  * idle / abandon timer, and the offline banner.
  *
- * Sits in /book-v2/page.tsx beside WizardSurface. Pure presentation +
+ * Mounted by BookPageShell beside WizardSurface. Pure presentation +
  * Server Action wiring; no row state.
  *
- * Skips the cross-cutting footer + idle timer when the wizard is on a
- * terminal step (escalated, completed, abandoned) — Start Over still
- * works at terminals (it's just the IdleTimer that's silenced).
+ * The footer (Start Over + Talk to a person) and offline banner render on
+ * every step. The IdleTimer is disabled on terminal steps (escalated,
+ * completed, abandoned) — Start Over still works there.
  */
 import { useRouter } from "next/navigation";
 import { useState } from "react";

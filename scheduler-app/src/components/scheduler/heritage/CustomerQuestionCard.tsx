@@ -5,10 +5,10 @@ import { useState } from "react";
 import { Button, Card, Field, Textarea } from "@/components/ui";
 
 /**
- * Step 10.3 — Customer question (optional).
+ * Step 10.4 — Customer question (optional).
  *
  * Optional free-form question the customer wants the service team to follow
- * up on. The chat agent NEVER answers it — it's logged and the advisor
+ * up on. It is never answered in-app — it's logged and the advisor
  * follows up by phone or text per chat-design.md.
  */
 

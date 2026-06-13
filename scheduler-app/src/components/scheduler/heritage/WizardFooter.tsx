@@ -14,18 +14,18 @@ import { Button } from "@/components/ui";
  * 2-tap confirmation (the design lock specifies "Are you sure?" because
  * accidental taps would destroy in-flight data).
  *
- * The footer dispatches semantic events that the parent / chat agent picks
- * up via the AI SDK addToolResult or a sendMessage with a synthetic intent.
+ * The footer calls the onStartOver / onEscalate callbacks the parent
+ * provides.
  */
 
 export interface WizardFooterProps {
   /** Called when the customer confirms "start over". Restart wipes session
-   *  state and sends an intent_type='session_restarted' message. */
+   *  state and returns the wizard to the greeting. */
   onStartOver: () => void | Promise<void>;
-  /** Called when the customer confirms "talk to a person". Triggers
-   *  intent_type='escalation_triggered' + shows shop phone in the chat. */
+  /** Called when the customer confirms "talk to a person". Escalates the
+   *  session and surfaces the shop phone. */
   onEscalate: () => void | Promise<void>;
-  /** Disabled while the orchestrator is mid-action (no double-fire). */
+  /** Disabled while an action is in flight (no double-fire). */
   disabled?: boolean;
 }
 

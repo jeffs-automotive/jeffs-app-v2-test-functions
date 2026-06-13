@@ -11,11 +11,11 @@ import {
 import { Button, Card } from "@/components/ui";
 
 /**
- * OtpInput rendering tool component (Heritage Editorial refactor 2026-05-13).
+ * OtpInput component (Heritage Editorial refactor 2026-05-13).
  *
- * Per appointments_design.md §7.5 + chat-design.md §Step 3 lines 645-658:
- * - Input: { phone_last_four: string, ttl_seconds: number, attempts_remaining?: number }
- * - Output: { code: string } or { action: "resend" }
+ * Per chat-design.md §Step 3 lines 645-658:
+ * - Props: { phone_last_four: string, ttl_seconds: number, attempts_remaining?: number }
+ * - Emits: { code: string } or { action: "resend" }
  *
  * Phase 1 OTP parameters: 6-digit numeric, 5-min TTL, max 3 attempts per
  * session (chat-design.md line 652-658), 30-second resend cooldown

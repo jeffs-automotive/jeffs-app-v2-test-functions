@@ -8,9 +8,8 @@
  * current_step to 'phone_name', appends a Jeff-voice transition bubble, and
  * revalidates the wizard page (via applyWizardTransition).
  *
- * Replaces the legacy submitGreeting in session-actions.ts. The legacy
- * action stays live for /book (the AI-SDK-driven surface) during the
- * migration; phase 16 deletes it.
+ * This is the server-state-driven greeting action used by every scheduler
+ * route (/ and /book).
  */
 import * as Sentry from "@sentry/nextjs";
 import { z } from "zod";
@@ -86,9 +85,7 @@ export const submitGreetingV2 = wrapAction(
 
 /**
  * Bubble copy per chat-design.md §4a Jeff voice — warm + light emoji.
- * Phase 14 may consolidate all bubble copy into a shared module; for now,
- * inline keeps the V2 Server Actions self-contained without depending on
- * the legacy bubble-templates.ts which is destined for deletion in phase 16.
+ * Inlined to keep each V2 Server Action self-contained.
  */
 function greetingBubble(bucket: GreetingBucket): string {
   switch (bucket) {

@@ -206,7 +206,7 @@ export function IdleTimer({
     //   1. (HERE) Skip the beacon when event.persisted is true — bfcache
     //      transitions are NOT real abandons.
     //   2. (mark-abandoned route) Refuse to release a hold when
-    //      last_active_at is < 5 seconds old — the user is mid-action.
+    //      last_active_at is < 10 seconds old — the user is mid-action.
     //   3. (applyWizardTransition) Write status='active' explicitly so a
     //      racing mark-abandoned that already flipped status='timed_out'
     //      gets corrected on the next wizard step.

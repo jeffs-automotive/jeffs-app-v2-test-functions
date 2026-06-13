@@ -4,10 +4,10 @@
  * Per chat-design.md locked architecture decision #1: the
  * `customer_chat_sessions` row is the source of truth for ALL data the
  * customer enters. Each Server Action writes the matching columns and
- * advances `current_step`. The chat agent (and orchestrator) read from
+ * advances `current_step`. The wizard (and orchestrator) read from
  * the row — they NEVER parse customer-entered data out of message text.
  *
- * The wizard step enum here mirrors the 23-state list documented in the
+ * The wizard step enum here mirrors the 25-state list documented in the
  * customer_chat_sessions.current_step column comment (Chunk 1 migration
  * 20260513000000_scheduler_phase1_wizard_columns.sql).
  */

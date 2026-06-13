@@ -16,12 +16,12 @@ import { Button, Card } from "@/components/ui";
  *   - Pre-appointment reminders (state inspection paperwork etc.)
  *   - Hold countdown (10-min TTL per design lock 2026-05-13)
  *
- * Edit-from-summary: 2-edit cap enforced by the orchestrator + wizard machine.
- * This card just exposes [Edit something] which signals the chat agent.
+ * Edit-from-summary: 2-edit cap enforced by the submit-summary action.
+ * This card just exposes [Edit something], which submits a non-confirm.
  *
- * Confirmation button is disabled when the hold has expired; the chat agent
- * displays hold_expired directive separately and the orchestrator returns
- * a refresh.
+ * Confirmation button is disabled when the hold has expired; if a confirm
+ * slips through, the submit-summary action detects the expired hold and
+ * bounces the customer back to pick a new date.
  */
 
 interface SummaryService {
@@ -59,7 +59,7 @@ export interface SummaryCardProps {
   disabled?: boolean;
   onSubmit: (output: {
     confirmed: boolean;
-    /** When confirmed=false + edit_target set, the chat agent asks what to edit. */
+    /** When confirmed=false + edit_target set, the submit-summary action routes to the matching edit step. */
     edit_target?: "date" | "vehicle" | "services" | "other";
   }) => void | Promise<void>;
 }

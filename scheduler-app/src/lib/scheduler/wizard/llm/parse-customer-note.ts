@@ -3,7 +3,7 @@
  *
  * Per chat-design.md §Step 10.3 (lines 2667-2714) + the 2026-05-16
  * amendment §10.3-10.5: when a customer's post-confirm note is ≤150 chars
- * the chat agent parses + trims + rewrites it as a clean, advisor-
+ * this rewriter parses + trims + rewrites it as a clean, advisor-
  * readable instruction that preserves the customer's meaning + voice.
  * The customer then approves or rejects.
  *

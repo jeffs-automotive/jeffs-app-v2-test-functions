@@ -3,7 +3,7 @@
  *
  * The routine-service chips don't change often (a Service Dept admin
  * tweaks them rarely via upsert_routine_service). Cache for 5 minutes
- * to avoid a DB round-trip on every chat turn.
+ * to avoid a DB round-trip on every wizard render.
  *
  * Reset on:
  *   - 5-minute TTL
@@ -16,7 +16,7 @@ import { SHOP_ID } from "@/lib/scheduler/shop-config";
 export interface RoutineServiceChip {
   service_key: string;
   display_name: string;
-  /** Used when the orchestrator builds the Tekmetric appointment title. */
+  /** Used when building the Tekmetric appointment title. */
   abbreviation: string;
 }
 
@@ -30,8 +30,8 @@ const TTL_MS = 5 * 60_000;
 let cache: CacheEntry | null = null;
 
 /**
- * Returns the active routine_services rows (chip list) for the chat agent's
- * show_service_and_concern_picker tool input.
+ * Returns the active routine_services rows (chip list) that the
+ * service_concern_picker card renders as selectable chips.
  */
 export async function getRoutineServicesForChips(): Promise<
   RoutineServiceChip[]

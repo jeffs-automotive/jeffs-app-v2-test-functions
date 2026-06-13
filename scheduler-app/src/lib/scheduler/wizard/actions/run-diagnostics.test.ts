@@ -15,7 +15,7 @@
  *   6. Persists via applyWizardTransition (single RPC on
  *      customer_chat_sessions) + fires ensureConcernSummaries when pending
  *      is empty.
- *   7. Sentry breadcrumbs per concern + an aggregate captureMessage.
+ *   7. Sentry breadcrumbs per concern + an aggregate Sentry.logger.info.
  *
  * Plan 04 Phase 1A (2026-05-24): applyWizardTransition now routes through
  * `supabase.rpc('apply_wizard_transition', { p_chat_id, p_payload, ... })`
@@ -851,7 +851,7 @@ describe("runDiagnosticsV2 — observability + persistence shape", () => {
     expect(revalidatePathMock).toHaveBeenCalledWith("/", "page");
   });
 
-  it("fires per-concern Sentry breadcrumbs + an aggregate captureMessage at the expected checkpoints", async () => {
+  it("fires per-concern Sentry breadcrumbs + an aggregate Sentry.logger.info at the expected checkpoints", async () => {
     storedRow = {
       ...storedRow!,
       explanation_required_items: [

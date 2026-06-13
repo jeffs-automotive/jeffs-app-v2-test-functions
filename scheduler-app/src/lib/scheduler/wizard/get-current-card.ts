@@ -3,31 +3,13 @@
  * WizardCard the page should render.
  *
  * Per chat-design.md "Architecture amendment — 2026-05-14": this is the
- * single source of truth for "which card and what props" — replaces the
- * AI-SDK-driven last-assistant-message-with-incomplete-tool-call logic.
+ * single source of truth for "which card and what props". The row's
+ * current_step + columns fully determine the card; nothing is parsed out
+ * of message text.
  *
- * Per-step payload builders live inline as switch cases. Each migration
- * phase fills in the case for its step:
- *   - Phase 3: greeting
- *   - Phase 4: phone_name
- *   - Phase 5: otp_pending, partial_verification_gate,
- *              multi_account_disambiguation, no_match_choose_path
- *   - Phase 6: customer_info_edit, new_customer_info
- *   - Phase 7: vehicle_pick, new_vehicle_form
- *   - Phase 8: service_concern_picker
- *   - Phase 9: concern_explanation, diagnostic_loading,
- *              clarification_question, testing_service_approval
- *   - Phase 10: second_routine_pass, appointment_type
- *   - Phase 11: date_pick, waiter_time_pick
- *   - Phase 12: summary
- *   - Phase 13: customer_notes, customer_question, completed
- *   - Phase 14: escalated, abandoned
- *
- * Phase 2 lands the scaffold + the trivial cases. Cases marked
- * `TODO(phase_NN)` return defensively-shaped placeholder payloads built
- * directly from row columns — they're correct enough for the WizardSurface
- * placeholder rendering during migration and become the basis the next
- * phase builds on.
+ * Per-step payload builders live inline as switch cases — one case per
+ * WizardStep. Each builds a defensively-shaped payload directly from the
+ * row's columns.
  */
 import * as Sentry from "@sentry/nextjs";
 
@@ -185,9 +167,9 @@ export async function getCurrentCard(
       };
 
     case "customer_info_edit":
-      // TODO(phase_06): lookupCustomerByPhone via Tekmetric when phones/
-      // emails/address not yet stashed on edited_*. Phase 2 placeholder
-      // reads what's on the row (empty for fresh sessions).
+      // The OTP edge function performs the Tekmetric profile lookup and
+      // stashes the customer's phones/emails/address on the row's edited_*
+      // columns before this card renders; read them straight off the row.
       return {
         step: "customer_info_edit",
         payload: {
@@ -787,10 +769,10 @@ export async function getCurrentCard(
 }
 
 // ─── Row-column parsers ─────────────────────────────────────────────────────
-// edited_phones / edited_emails / edited_address are JSONB on the row. Phase 1
-// writers (session-actions.ts) write the shapes documented in chat-design.md
-// §5 + §11 + §12. These parsers defensively coerce — fallback to safe defaults
-// when the JSONB shape isn't what we expect.
+// edited_phones / edited_emails / edited_address are JSONB on the row. The
+// submit-* actions write the shapes documented in chat-design.md §5 + §11 +
+// §12. These parsers defensively coerce — fallback to safe defaults when the
+// JSONB shape isn't what we expect.
 
 /**
  * Parse edited_phones JSONB into the typed array CustomerInfoEditCard +

@@ -35,7 +35,7 @@ const YEAR_OPTIONS = (() => {
 const PLATE_REGEX = /^[A-Z0-9-]{1,15}$/;
 
 export interface NewVehicleCardProps {
-  /** Eyebrow label — defaults to "Step 5 · Add your vehicle". */
+  /** Eyebrow label — defaults to "Add your vehicle". */
   step_label?: string;
   /** Title — defaults to "Now tell me about your ride! 🚗". */
   title?: string;

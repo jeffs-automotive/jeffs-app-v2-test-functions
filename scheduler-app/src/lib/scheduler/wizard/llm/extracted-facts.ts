@@ -14,7 +14,7 @@
  *
  * The slots below cover the universe of what's asked across all 729 active
  * diagnostic questions (14 concern categories, 105 subcategories) as of
- * 2026-05-21. They are deliberately coarse (~28 slots): too few would miss
+ * 2026-05-21. They are deliberately coarse (29 slots): too few would miss
  * questions, too many would overload extraction.
  *
  * CRITICAL RULE — only extract what was LITERALLY stated

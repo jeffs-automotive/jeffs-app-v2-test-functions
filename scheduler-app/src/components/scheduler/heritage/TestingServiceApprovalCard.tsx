@@ -46,8 +46,8 @@ export function TestingServiceApprovalCard({
   disabled = false,
   onSubmit,
 }: TestingServiceApprovalCardProps) {
-  // Pre-select all by default — Chris's design lock has the chat agent
-  // recommending these affirmatively, so the friction-free path is "yes."
+  // Pre-select all by default — Chris's design lock recommends these
+  // affirmatively, so the friction-free path is "yes."
   const [picked, setPicked] = useState<Set<string>>(
     () => new Set(services.map((s) => s.service_key)),
   );

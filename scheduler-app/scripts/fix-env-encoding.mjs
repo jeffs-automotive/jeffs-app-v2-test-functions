@@ -61,7 +61,7 @@ if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe) {
   }
 }
 
-// Trim trailing BOM if any leaked through, normalize line endings.
+// Trim leading BOM if any leaked through, normalize line endings.
 text = text.replace(/^﻿/, "").replace(/\r\n/g, "\n");
 
 writeFileSync(target, text, { encoding: "utf8" });

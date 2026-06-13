@@ -41,8 +41,7 @@ export type RateLimitOutcome =
 /**
  * SHA-256-hash the phone to 16 hex chars (64-bit prefix) for use as the
  * rate-limit key — raw E.164 phones never leave the app for the bucket
- * store (PII minimization). Pure; exported for tests + so callers that
- * pull the phone off a row can reuse the same scheme.
+ * store (PII minimization). Pure; exported for tests.
  */
 export function hashPhone(phoneE164: string): string {
   return createHash("sha256").update(phoneE164).digest("hex").slice(0, 16);

@@ -7,8 +7,7 @@
  * empirically fragile (2026-05-13 testing); this path does the same
  * Tekmetric lookup + Telnyx send_otp in plain TypeScript with no LLM.
  *
- * Same auth pattern as orchestrator-client.ts (Pattern A bearer +
- * apikey). 30s timeout matches the prior client's headroom.
+ * Pattern A bearer + apikey auth (service-role key). 30s request timeout.
  */
 
 import { resolveServiceRoleKey } from "@/lib/supabase/resolve-keys";

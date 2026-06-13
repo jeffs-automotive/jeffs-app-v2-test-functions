@@ -12,7 +12,7 @@
  * scheduler-booking-direct edge function — no LLM hop.
  *
  * Same auth pattern as scheduler-step2-direct (Pattern A bearer +
- * apikey). 30s timeout matches the prior client's headroom.
+ * apikey). 45s request timeout (headroom over the prior 30s client).
  */
 
 import { resolveServiceRoleKey } from "@/lib/supabase/resolve-keys";

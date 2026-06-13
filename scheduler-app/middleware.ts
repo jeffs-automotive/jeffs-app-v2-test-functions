@@ -3,9 +3,9 @@
  *
  * Per chat-design.md §C (Resume) lines 2952-2995: the scheduler MUST resume
  * via an HttpOnly cookie that survives device clears + private-tab boundaries
- * + the SMS-channel re-discovery flow. Phase 1's localStorage-only flow
- * (current ChatBootstrap) breaks as soon as the customer clears their
- * browser cache or hops to a new device for the same session.
+ * + the SMS-channel re-discovery flow. A localStorage-only flow would break
+ * as soon as the customer clears their browser cache or hops to a new device
+ * for the same session.
  *
  * What this middleware does:
  *   1. On EVERY page navigation under /, /book (and any future scheduler
@@ -16,15 +16,15 @@
  *        - Secure: prod-only    (we still need the cookie locally)
  *        - Path: '/'            (visible to all scheduler routes)
  *        - Max-Age: 30 days     (long enough for a customer to return)
- *   3. The page Server Component (app/page.tsx, app/book/page.tsx) reads
- *      the cookie via next/headers, then calls loadChat(cookieValue) to
- *      pre-hydrate initialMessages + the wizard's current_step.
+ *   3. The page Server Component (app/page.tsx, app/book/page.tsx) reads the
+ *      cookie via next/headers, then BookPageShell → hydrateSession hydrates
+ *      the wizard's current_step from the customer_chat_sessions row.
  *
  * What this middleware does NOT do:
- *   - Validate the UUID against any DB row. The /api/chat route handler
- *     upserts the customer_chat_sessions row on first request; the cookie
- *     value can be ANY uuid v4 and the DB lookup will either find an
- *     existing session or create one.
+ *   - Validate the UUID against any DB row. hydrateSession's
+ *     ensureSessionExists upserts the customer_chat_sessions row on first
+ *     load; the cookie value can be ANY uuid v4 and the DB lookup will
+ *     either find an existing session or create one.
  *   - Issue a cross-device-resume token (phone-keyed). That's Phase 2 per
  *     chat-design.md line 413.
  *   - Trigger middleware on API routes (matcher excludes /api/*).
@@ -77,8 +77,9 @@ export function middleware(req: NextRequest) {
 
 /**
  * Match the scheduler page routes only. Exclude:
- *   - /api/*  (route handlers manage their own cookies; chat-id is read
- *              from the request body, not the cookie, by /api/chat)
+ *   - /api/*  (route handlers manage their own auth; /api/scheduler/
+ *              mark-abandoned reads chat_id from the request body + HMAC,
+ *              not the cookie)
  *   - /_next  (Next.js internal)
  *   - /favicon.ico, /robots.txt, image / static assets
  *   - /monitoring (Sentry tunnel route configured in next.config.ts)

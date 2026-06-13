@@ -265,9 +265,9 @@ async function submitPhoneNameV2Impl(
     // Step 5: branch-specific row updates.
     const branchUpdates: Record<string, unknown> = {};
 
-    // 'send_otp_first' implies OTP was sent successfully — stamp otp_sent_at
-    // on the row in case the edge function didn't (it does, per the
-    // function's source, but mirroring here is cheap insurance).
+    // 'send_otp_first' implies OTP was sent successfully — reset the OTP
+    // attempt counter on the row so the fresh code starts from a clean slate
+    // (the edge function remains the source of truth for otp_sent_at).
     if (step2Result.directive === "send_otp_first") {
       branchUpdates.otp_attempts = 0;
     }

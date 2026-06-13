@@ -16,22 +16,27 @@
  *   - For branchy steps (vehicle_pick can come from customer_info_edit
  *     OR new_customer_info), we read the row to pick the right predecessor.
  *
- * Per chat-design.md the "Back" button is NOT shown on:
+ * The "Back" button is NOT shown on:
  *   - greeting           — nothing to go back to
  *   - otp_pending        — back would re-trigger an SMS send; use "Try a
  *                          different number" affordance instead (which
  *                          isn't a back, it's a phone re-entry flow)
  *   - diagnostic_loading — transient state; the LLM is mid-run
- *   - summary            — back is the per-section "Edit" buttons already
- *                          on the SummaryCard
+ *   - customer_notes / customer_question — post-confirm; the appointment
+ *                          is already booked
  *   - completed / escalated / abandoned — terminal states
  *
  * Cards that DO get a Back button are the major branch points:
  *   phone_name, partial_verification_gate, no_match_choose_path,
  *   multi_account_disambiguation, customer_info_edit, new_customer_info,
  *   vehicle_pick, new_vehicle_form, service_concern_picker,
- *   concern_explanation, clarification_question, second_routine_pass,
- *   appointment_type, date_pick, waiter_time_pick.
+ *   concern_explanation, clarification_question, testing_service_approval,
+ *   second_routine_pass, appointment_type, date_pick, waiter_time_pick,
+ *   summary (back → date_pick; the per-section "Edit" buttons on the
+ *   SummaryCard remain the preferred deep-jump).
+ *
+ * This list mirrors STEPS_WITH_BACK in WizardBackBar.tsx and the non-null
+ * keys of backTargetFor below — keep all three in sync.
  */
 import * as Sentry from "@sentry/nextjs";
 import { z } from "zod";

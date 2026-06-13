@@ -5,11 +5,11 @@ import { useState } from "react";
 import { Card } from "@/components/ui";
 
 /**
- * WaiterTimePicker rendering tool component (Heritage Editorial refactor 2026-05-13).
+ * WaiterTimePicker component (Heritage Editorial refactor 2026-05-13).
  *
- * Per appointments_design.md §7.5:
- * - Input: { date: string, available_times: string[] }   // '08:00' or '09:00' or both
- * - Output: { selected_time: string }
+ * Contract:
+ * - Props: { date: string, available_times: string[] }   // '08:00' or '09:00' or both
+ * - Emits: { selected_time: string }
  *
  * Used only for the WAITER appointment type (drop-offs skip time selection).
  * Phase 1 only has 8 AM + 9 AM but the component accepts any subset.

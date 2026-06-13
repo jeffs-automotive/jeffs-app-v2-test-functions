@@ -1388,6 +1388,832 @@ export type Database = {
         }
         Relationships: []
       }
+      qbo_accounts: {
+        Row: {
+          account_sub_type: string | null
+          account_type: string | null
+          acct_num: string | null
+          active: boolean
+          classification: string | null
+          created_at: string
+          deleted_at: string | null
+          fully_qualified_name: string | null
+          id: string
+          name: string
+          qbo_account_id: string
+          realm_id: string
+          shop_id: number
+          synced_at: string
+          updated_at: string
+        }
+        Insert: {
+          account_sub_type?: string | null
+          account_type?: string | null
+          acct_num?: string | null
+          active?: boolean
+          classification?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          fully_qualified_name?: string | null
+          id?: string
+          name: string
+          qbo_account_id: string
+          realm_id: string
+          shop_id: number
+          synced_at?: string
+          updated_at?: string
+        }
+        Update: {
+          account_sub_type?: string | null
+          account_type?: string | null
+          acct_num?: string | null
+          active?: boolean
+          classification?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          fully_qualified_name?: string | null
+          id?: string
+          name?: string
+          qbo_account_id?: string
+          realm_id?: string
+          shop_id?: number
+          synced_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qbo_accounts_connection_fk"
+            columns: ["shop_id", "realm_id"]
+            isOneToOne: false
+            referencedRelation: "qbo_connections"
+            referencedColumns: ["shop_id", "realm_id"]
+          },
+        ]
+      }
+      qbo_coa_sync_state: {
+        Row: {
+          account_count: number
+          last_synced_at: string
+          realm_id: string
+          shop_id: number
+        }
+        Insert: {
+          account_count?: number
+          last_synced_at?: string
+          realm_id: string
+          shop_id: number
+        }
+        Update: {
+          account_count?: number
+          last_synced_at?: string
+          realm_id?: string
+          shop_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qbo_coa_sync_state_connection_fk"
+            columns: ["shop_id", "realm_id"]
+            isOneToOne: true
+            referencedRelation: "qbo_connections"
+            referencedColumns: ["shop_id", "realm_id"]
+          },
+        ]
+      }
+      qbo_connections: {
+        Row: {
+          access_token_expires_at: string
+          environment: string
+          realm_id: string
+          refresh_token_expires_at: string
+          shop_id: number | null
+          updated_at: string
+        }
+        Insert: {
+          access_token_expires_at: string
+          environment?: string
+          realm_id: string
+          refresh_token_expires_at: string
+          shop_id?: number | null
+          updated_at?: string
+        }
+        Update: {
+          access_token_expires_at?: string
+          environment?: string
+          realm_id?: string
+          refresh_token_expires_at?: string
+          shop_id?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      qteklink_allowed_users: {
+        Row: {
+          active: boolean
+          created_at: string
+          created_by: string | null
+          email: string
+          entra_object_id: string | null
+          entra_tenant_id: string | null
+          full_name: string | null
+          id: string
+          role: string
+          shop_id: number
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          created_by?: string | null
+          email: string
+          entra_object_id?: string | null
+          entra_tenant_id?: string | null
+          full_name?: string | null
+          id?: string
+          role?: string
+          shop_id: number
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          created_by?: string | null
+          email?: string
+          entra_object_id?: string | null
+          entra_tenant_id?: string | null
+          full_name?: string | null
+          id?: string
+          role?: string
+          shop_id?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      qteklink_daily_postings: {
+        Row: {
+          action: string
+          approved_at: string | null
+          approved_by: string | null
+          business_date: string
+          category: string
+          constituents: Json
+          created_at: string
+          id: string
+          lease_until: string | null
+          posting_version: number
+          proposed_je: Json
+          qbo_je_id: string | null
+          qbo_response: Json | null
+          qbo_sync_token: string | null
+          realm_id: string
+          rejected_at: string | null
+          rejected_by: string | null
+          requestid: string
+          shop_id: number
+          source_state_hash: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          action?: string
+          approved_at?: string | null
+          approved_by?: string | null
+          business_date: string
+          category: string
+          constituents?: Json
+          created_at?: string
+          id?: string
+          lease_until?: string | null
+          posting_version?: number
+          proposed_je: Json
+          qbo_je_id?: string | null
+          qbo_response?: Json | null
+          qbo_sync_token?: string | null
+          realm_id: string
+          rejected_at?: string | null
+          rejected_by?: string | null
+          requestid: string
+          shop_id: number
+          source_state_hash: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          action?: string
+          approved_at?: string | null
+          approved_by?: string | null
+          business_date?: string
+          category?: string
+          constituents?: Json
+          created_at?: string
+          id?: string
+          lease_until?: string | null
+          posting_version?: number
+          proposed_je?: Json
+          qbo_je_id?: string | null
+          qbo_response?: Json | null
+          qbo_sync_token?: string | null
+          realm_id?: string
+          rejected_at?: string | null
+          rejected_by?: string | null
+          requestid?: string
+          shop_id?: number
+          source_state_hash?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qteklink_daily_postings_conn_fk"
+            columns: ["shop_id", "realm_id"]
+            isOneToOne: false
+            referencedRelation: "qbo_connections"
+            referencedColumns: ["shop_id", "realm_id"]
+          },
+        ]
+      }
+      qteklink_events: {
+        Row: {
+          event_hash: string | null
+          event_kind: string
+          event_text: string | null
+          event_time_raw: string | null
+          id: string
+          payment_id: number | null
+          raw_body: Json
+          raw_headers: Json | null
+          raw_query_string: string | null
+          realm_id: string
+          received_at: string
+          shop_id: number
+          source_id: string | null
+          tekmetric_event_at: string | null
+          tekmetric_ro_id: number | null
+        }
+        Insert: {
+          event_hash?: string | null
+          event_kind: string
+          event_text?: string | null
+          event_time_raw?: string | null
+          id?: string
+          payment_id?: number | null
+          raw_body: Json
+          raw_headers?: Json | null
+          raw_query_string?: string | null
+          realm_id: string
+          received_at?: string
+          shop_id: number
+          source_id?: string | null
+          tekmetric_event_at?: string | null
+          tekmetric_ro_id?: number | null
+        }
+        Update: {
+          event_hash?: string | null
+          event_kind?: string
+          event_text?: string | null
+          event_time_raw?: string | null
+          id?: string
+          payment_id?: number | null
+          raw_body?: Json
+          raw_headers?: Json | null
+          raw_query_string?: string | null
+          realm_id?: string
+          received_at?: string
+          shop_id?: number
+          source_id?: string | null
+          tekmetric_event_at?: string | null
+          tekmetric_ro_id?: number | null
+        }
+        Relationships: []
+      }
+      qteklink_manual_payments: {
+        Row: {
+          amount_cents: number
+          cc_fee_cents: number
+          created_at: string
+          created_by: string
+          id: string
+          method: string
+          other_payment_type: string | null
+          payment_date: string
+          realm_id: string
+          repair_order_id: number
+          shop_id: number
+          updated_at: string
+        }
+        Insert: {
+          amount_cents: number
+          cc_fee_cents?: number
+          created_at?: string
+          created_by: string
+          id?: string
+          method: string
+          other_payment_type?: string | null
+          payment_date: string
+          realm_id: string
+          repair_order_id: number
+          shop_id: number
+          updated_at?: string
+        }
+        Update: {
+          amount_cents?: number
+          cc_fee_cents?: number
+          created_at?: string
+          created_by?: string
+          id?: string
+          method?: string
+          other_payment_type?: string | null
+          payment_date?: string
+          realm_id?: string
+          repair_order_id?: number
+          shop_id?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qteklink_manual_payments_conn_fk"
+            columns: ["shop_id", "realm_id"]
+            isOneToOne: false
+            referencedRelation: "qbo_connections"
+            referencedColumns: ["shop_id", "realm_id"]
+          },
+        ]
+      }
+      qteklink_mappings: {
+        Row: {
+          active: boolean
+          created_at: string
+          effective_from: string
+          id: string
+          kind: string
+          pass_through: boolean
+          posting_role: string
+          qbo_account_id: string
+          realm_id: string
+          shop_id: number
+          source_id: string | null
+          source_key: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          effective_from?: string
+          id?: string
+          kind: string
+          pass_through?: boolean
+          posting_role: string
+          qbo_account_id: string
+          realm_id: string
+          shop_id: number
+          source_id?: string | null
+          source_key: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          effective_from?: string
+          id?: string
+          kind?: string
+          pass_through?: boolean
+          posting_role?: string
+          qbo_account_id?: string
+          realm_id?: string
+          shop_id?: number
+          source_id?: string | null
+          source_key?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qteklink_mappings_account_fk"
+            columns: ["shop_id", "realm_id", "qbo_account_id"]
+            isOneToOne: false
+            referencedRelation: "qbo_accounts"
+            referencedColumns: ["shop_id", "realm_id", "qbo_account_id"]
+          },
+        ]
+      }
+      qteklink_payment_state: {
+        Row: {
+          created_at: string
+          id: string
+          is_refund: boolean
+          latest_event_at: string | null
+          other_payment_type: string | null
+          payment_date: string | null
+          payment_id: number
+          payment_type: string | null
+          realm_id: string
+          reduced_from_event_ids: string[]
+          repair_order_id: number | null
+          shop_id: number
+          signed_amount_cents: number
+          signed_processing_fee_cents: number
+          status: string
+          updated_at: string
+          voided_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_refund?: boolean
+          latest_event_at?: string | null
+          other_payment_type?: string | null
+          payment_date?: string | null
+          payment_id: number
+          payment_type?: string | null
+          realm_id: string
+          reduced_from_event_ids?: string[]
+          repair_order_id?: number | null
+          shop_id: number
+          signed_amount_cents: number
+          signed_processing_fee_cents?: number
+          status: string
+          updated_at?: string
+          voided_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_refund?: boolean
+          latest_event_at?: string | null
+          other_payment_type?: string | null
+          payment_date?: string | null
+          payment_id?: number
+          payment_type?: string | null
+          realm_id?: string
+          reduced_from_event_ids?: string[]
+          repair_order_id?: number | null
+          shop_id?: number
+          signed_amount_cents?: number
+          signed_processing_fee_cents?: number
+          status?: string
+          updated_at?: string
+          voided_at?: string | null
+        }
+        Relationships: []
+      }
+      qteklink_postings: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          batch_date: string
+          created_at: string
+          id: string
+          kind: string
+          lease_until: string | null
+          payment_id: number | null
+          posting_version: number
+          proposed_je: Json
+          qbo_je_id: string | null
+          qbo_response: Json | null
+          realm_id: string
+          recon_status: string
+          requestid: string
+          shop_id: number
+          source_state_hash: string
+          status: string
+          tekmetric_ro_id: number
+          txn_date: string
+          updated_at: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          batch_date: string
+          created_at?: string
+          id?: string
+          kind: string
+          lease_until?: string | null
+          payment_id?: number | null
+          posting_version?: number
+          proposed_je: Json
+          qbo_je_id?: string | null
+          qbo_response?: Json | null
+          realm_id: string
+          recon_status?: string
+          requestid: string
+          shop_id: number
+          source_state_hash: string
+          status?: string
+          tekmetric_ro_id: number
+          txn_date: string
+          updated_at?: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          batch_date?: string
+          created_at?: string
+          id?: string
+          kind?: string
+          lease_until?: string | null
+          payment_id?: number | null
+          posting_version?: number
+          proposed_je?: Json
+          qbo_je_id?: string | null
+          qbo_response?: Json | null
+          realm_id?: string
+          recon_status?: string
+          requestid?: string
+          shop_id?: number
+          source_state_hash?: string
+          status?: string
+          tekmetric_ro_id?: number
+          txn_date?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qteklink_postings_conn_fk"
+            columns: ["shop_id", "realm_id"]
+            isOneToOne: false
+            referencedRelation: "qbo_connections"
+            referencedColumns: ["shop_id", "realm_id"]
+          },
+        ]
+      }
+      qteklink_projection_state: {
+        Row: {
+          last_reduced_received_at: string
+          realm_id: string
+          shop_id: number
+          updated_at: string
+        }
+        Insert: {
+          last_reduced_received_at: string
+          realm_id: string
+          shop_id: number
+          updated_at?: string
+        }
+        Update: {
+          last_reduced_received_at?: string
+          realm_id?: string
+          shop_id?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qteklink_projection_state_conn_fk"
+            columns: ["shop_id", "realm_id"]
+            isOneToOne: true
+            referencedRelation: "qbo_connections"
+            referencedColumns: ["shop_id", "realm_id"]
+          },
+        ]
+      }
+      qteklink_review_items: {
+        Row: {
+          created_at: string
+          detail: Json
+          id: string
+          kind: string
+          realm_id: string
+          resolution: Json | null
+          resolved_at: string | null
+          resolved_by: string | null
+          shop_id: number
+          status: string
+          subject_kind: string
+          subject_ref: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          detail?: Json
+          id?: string
+          kind: string
+          realm_id: string
+          resolution?: Json | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          shop_id: number
+          status?: string
+          subject_kind: string
+          subject_ref: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          detail?: Json
+          id?: string
+          kind?: string
+          realm_id?: string
+          resolution?: Json | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          shop_id?: number
+          status?: string
+          subject_kind?: string
+          subject_ref?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qteklink_review_items_conn_fk"
+            columns: ["shop_id", "realm_id"]
+            isOneToOne: false
+            referencedRelation: "qbo_connections"
+            referencedColumns: ["shop_id", "realm_id"]
+          },
+        ]
+      }
+      qteklink_ro_date_moves: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          created_at: string
+          detected_at: string
+          id: string
+          new_business_date: string
+          new_total_cents: number | null
+          original_business_date: string
+          original_total_cents: number | null
+          realm_id: string
+          resolved_at: string | null
+          ro_number: string | null
+          shop_id: number
+          status: string
+          tekmetric_ro_id: number
+          updated_at: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          detected_at?: string
+          id?: string
+          new_business_date: string
+          new_total_cents?: number | null
+          original_business_date: string
+          original_total_cents?: number | null
+          realm_id: string
+          resolved_at?: string | null
+          ro_number?: string | null
+          shop_id: number
+          status?: string
+          tekmetric_ro_id: number
+          updated_at?: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          detected_at?: string
+          id?: string
+          new_business_date?: string
+          new_total_cents?: number | null
+          original_business_date?: string
+          original_total_cents?: number | null
+          realm_id?: string
+          resolved_at?: string | null
+          ro_number?: string | null
+          shop_id?: number
+          status?: string
+          tekmetric_ro_id?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qteklink_date_moves_conn_fk"
+            columns: ["shop_id", "realm_id"]
+            isOneToOne: false
+            referencedRelation: "qbo_connections"
+            referencedColumns: ["shop_id", "realm_id"]
+          },
+        ]
+      }
+      qteklink_ro_state: {
+        Row: {
+          created_at: string
+          id: string
+          last_posted_date: string | null
+          last_total_cents: number | null
+          realm_id: string
+          ro_number: string | null
+          sale_qbo_je_id: string | null
+          sale_qbo_sync_token: string | null
+          shop_id: number
+          source_snapshot_hash: string | null
+          status: string
+          tekmetric_ro_id: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_posted_date?: string | null
+          last_total_cents?: number | null
+          realm_id: string
+          ro_number?: string | null
+          sale_qbo_je_id?: string | null
+          sale_qbo_sync_token?: string | null
+          shop_id: number
+          source_snapshot_hash?: string | null
+          status?: string
+          tekmetric_ro_id: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_posted_date?: string | null
+          last_total_cents?: number | null
+          realm_id?: string
+          ro_number?: string | null
+          sale_qbo_je_id?: string | null
+          sale_qbo_sync_token?: string | null
+          shop_id?: number
+          source_snapshot_hash?: string | null
+          status?: string
+          tekmetric_ro_id?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qteklink_ro_state_conn_fk"
+            columns: ["shop_id", "realm_id"]
+            isOneToOne: false
+            referencedRelation: "qbo_connections"
+            referencedColumns: ["shop_id", "realm_id"]
+          },
+        ]
+      }
+      qteklink_settings: {
+        Row: {
+          advisor_emails: string | null
+          auto_post: boolean
+          created_at: string
+          date_change_alert_emails: string | null
+          day_correction_alert_emails: string | null
+          office_manager_email: string | null
+          realm_id: string
+          sales_tax_rate_bps: number
+          settle_window_minutes: number
+          shop_id: number
+          shop_timezone: string
+          tire_fee_cents: number
+          updated_at: string
+        }
+        Insert: {
+          advisor_emails?: string | null
+          auto_post?: boolean
+          created_at?: string
+          date_change_alert_emails?: string | null
+          day_correction_alert_emails?: string | null
+          office_manager_email?: string | null
+          realm_id: string
+          sales_tax_rate_bps?: number
+          settle_window_minutes?: number
+          shop_id: number
+          shop_timezone?: string
+          tire_fee_cents?: number
+          updated_at?: string
+        }
+        Update: {
+          advisor_emails?: string | null
+          auto_post?: boolean
+          created_at?: string
+          date_change_alert_emails?: string | null
+          day_correction_alert_emails?: string | null
+          office_manager_email?: string | null
+          realm_id?: string
+          sales_tax_rate_bps?: number
+          settle_window_minutes?: number
+          shop_id?: number
+          shop_timezone?: string
+          tire_fee_cents?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qteklink_settings_conn_fk"
+            columns: ["shop_id", "realm_id"]
+            isOneToOne: true
+            referencedRelation: "qbo_connections"
+            referencedColumns: ["shop_id", "realm_id"]
+          },
+        ]
+      }
+      rate_limit_buckets: {
+        Row: {
+          id: number
+          key: string
+          occurred_at: string
+        }
+        Insert: {
+          id?: never
+          key: string
+          occurred_at?: string
+        }
+        Update: {
+          id?: never
+          key?: string
+          occurred_at?: string
+        }
+        Relationships: []
+      }
       routine_services: {
         Row: {
           abbreviation: string
@@ -2128,6 +2954,13 @@ export type Database = {
         Args: { p_shop_id: number; p_snapshot: Json }
         Returns: string
       }
+      check_and_increment_rate_limit: {
+        Args: { p_key: string; p_max: number; p_window_seconds: number }
+        Returns: {
+          allowed: boolean
+          retry_after_seconds: number
+        }[]
+      }
       check_manual_review_lockout: {
         Args: { p_user_label: string }
         Returns: boolean
@@ -2328,6 +3161,471 @@ export type Database = {
           user_label: string
         }[]
       }
+      qbo_accounts_sync: {
+        Args: { p_accounts: Json; p_realm_id: string; p_shop_id: number }
+        Returns: number
+      }
+      qbo_disconnect: { Args: { p_realm_id: string }; Returns: boolean }
+      qbo_get_connection: {
+        Args: { p_realm_id?: string }
+        Returns: {
+          access_token: string
+          access_token_expires_at: string
+          environment: string
+          realm_id: string
+          refresh_token: string
+          refresh_token_expires_at: string
+        }[]
+      }
+      qbo_persist_tokens: {
+        Args: {
+          p_access_token: string
+          p_access_token_expires_at: string
+          p_realm_id: string
+          p_refresh_token: string
+          p_refresh_token_expires_at: string
+        }
+        Returns: undefined
+      }
+      qbo_resolve_realm_for_shop: {
+        Args: { p_shop_id: number }
+        Returns: string
+      }
+      qteklink_acknowledge_daily_posting: {
+        Args: {
+          p_acknowledged_by: string
+          p_id: string
+          p_realm_id: string
+          p_shop_id: number
+        }
+        Returns: boolean
+      }
+      qteklink_add_allowed_user: {
+        Args: {
+          p_added_by: string
+          p_email: string
+          p_full_name: string
+          p_role: string
+          p_shop_id: number
+        }
+        Returns: string
+      }
+      qteklink_advance_projection_watermark: {
+        Args: { p_realm_id: string; p_shop_id: number; p_watermark: string }
+        Returns: string
+      }
+      qteklink_approve_daily_posting: {
+        Args: {
+          p_approved_by: string
+          p_id: string
+          p_realm_id: string
+          p_shop_id: number
+        }
+        Returns: boolean
+      }
+      qteklink_approve_date_move: {
+        Args: {
+          p_approved_by: string
+          p_id: string
+          p_realm_id: string
+          p_shop_id: number
+        }
+        Returns: boolean
+      }
+      qteklink_approve_posting: {
+        Args: {
+          p_approved_by: string
+          p_id: string
+          p_realm_id: string
+          p_shop_id: number
+        }
+        Returns: boolean
+      }
+      qteklink_claim_daily_posting_by_id: {
+        Args: {
+          p_id: string
+          p_lease_seconds: number
+          p_realm_id: string
+          p_shop_id: number
+        }
+        Returns: {
+          action: string
+          approved_at: string | null
+          approved_by: string | null
+          business_date: string
+          category: string
+          constituents: Json
+          created_at: string
+          id: string
+          lease_until: string | null
+          posting_version: number
+          proposed_je: Json
+          qbo_je_id: string | null
+          qbo_response: Json | null
+          qbo_sync_token: string | null
+          realm_id: string
+          rejected_at: string | null
+          rejected_by: string | null
+          requestid: string
+          shop_id: number
+          source_state_hash: string
+          status: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "qteklink_daily_postings"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      qteklink_claim_posting: {
+        Args: { p_lease_seconds: number; p_realm_id: string; p_shop_id: number }
+        Returns: {
+          approved_at: string | null
+          approved_by: string | null
+          batch_date: string
+          created_at: string
+          id: string
+          kind: string
+          lease_until: string | null
+          payment_id: number | null
+          posting_version: number
+          proposed_je: Json
+          qbo_je_id: string | null
+          qbo_response: Json | null
+          realm_id: string
+          recon_status: string
+          requestid: string
+          shop_id: number
+          source_state_hash: string
+          status: string
+          tekmetric_ro_id: number
+          txn_date: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "qteklink_postings"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      qteklink_claim_posting_by_id: {
+        Args: {
+          p_id: string
+          p_lease_seconds: number
+          p_realm_id: string
+          p_shop_id: number
+        }
+        Returns: {
+          approved_at: string | null
+          approved_by: string | null
+          batch_date: string
+          created_at: string
+          id: string
+          kind: string
+          lease_until: string | null
+          payment_id: number | null
+          posting_version: number
+          proposed_je: Json
+          qbo_je_id: string | null
+          qbo_response: Json | null
+          realm_id: string
+          recon_status: string
+          requestid: string
+          shop_id: number
+          source_state_hash: string
+          status: string
+          tekmetric_ro_id: number
+          txn_date: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "qteklink_postings"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      qteklink_deactivate_mapping: {
+        Args: { p_id: string; p_realm_id: string; p_shop_id: number }
+        Returns: boolean
+      }
+      qteklink_discover_tekmetric_items: {
+        Args: { p_realm_id: string; p_shop_id: number }
+        Returns: {
+          kind: string
+          seen: number
+          source_key: string
+        }[]
+      }
+      qteklink_enqueue_daily_posting: {
+        Args: {
+          p_action: string
+          p_business_date: string
+          p_category: string
+          p_constituents: Json
+          p_posting_version: number
+          p_proposed_je: Json
+          p_realm_id: string
+          p_requestid: string
+          p_shop_id: number
+          p_source_state_hash: string
+        }
+        Returns: string
+      }
+      qteklink_enqueue_posting: {
+        Args: {
+          p_batch_date: string
+          p_kind: string
+          p_payment_id: number
+          p_posting_version: number
+          p_proposed_je: Json
+          p_realm_id: string
+          p_recon_status: string
+          p_requestid: string
+          p_shop_id: number
+          p_source_state_hash: string
+          p_tekmetric_ro_id: number
+          p_txn_date: string
+        }
+        Returns: string
+      }
+      qteklink_get_allowed_user: {
+        Args: { p_object_id: string }
+        Returns: {
+          active: boolean
+          email: string
+          entra_object_id: string
+          full_name: string
+          id: string
+          role: string
+          shop_id: number
+        }[]
+      }
+      qteklink_kind_accepts_role: {
+        Args: { p_kind: string; p_role: string }
+        Returns: boolean
+      }
+      qteklink_mark_daily_failed: {
+        Args: {
+          p_id: string
+          p_qbo_response: Json
+          p_realm_id: string
+          p_retryable: boolean
+          p_shop_id: number
+        }
+        Returns: boolean
+      }
+      qteklink_mark_daily_posted: {
+        Args: {
+          p_id: string
+          p_qbo_je_id: string
+          p_qbo_response: Json
+          p_qbo_sync_token: string
+          p_realm_id: string
+          p_shop_id: number
+        }
+        Returns: boolean
+      }
+      qteklink_mark_failed: {
+        Args: {
+          p_id: string
+          p_qbo_response: Json
+          p_realm_id: string
+          p_retryable: boolean
+          p_shop_id: number
+        }
+        Returns: boolean
+      }
+      qteklink_mark_posted: {
+        Args: {
+          p_id: string
+          p_qbo_je_id: string
+          p_qbo_response: Json
+          p_realm_id: string
+          p_shop_id: number
+        }
+        Returns: boolean
+      }
+      qteklink_record_manual_payment: {
+        Args: {
+          p_amount_cents: number
+          p_cc_fee_cents: number
+          p_created_by: string
+          p_method: string
+          p_other_payment_type: string
+          p_payment_date: string
+          p_realm_id: string
+          p_repair_order_id: number
+          p_shop_id: number
+        }
+        Returns: string
+      }
+      qteklink_refresh_daily_posting: {
+        Args: {
+          p_action: string
+          p_constituents: Json
+          p_id: string
+          p_proposed_je: Json
+          p_realm_id: string
+          p_requestid?: string
+          p_shop_id: number
+          p_source_state_hash: string
+        }
+        Returns: boolean
+      }
+      qteklink_reject_daily_posting: {
+        Args: {
+          p_id: string
+          p_realm_id: string
+          p_rejected_by: string
+          p_shop_id: number
+        }
+        Returns: boolean
+      }
+      qteklink_reject_posting: {
+        Args: {
+          p_id: string
+          p_realm_id: string
+          p_rejected_by: string
+          p_shop_id: number
+        }
+        Returns: boolean
+      }
+      qteklink_remove_allowed_user: {
+        Args: { p_id: string; p_shop_id: number }
+        Returns: boolean
+      }
+      qteklink_requeue_expired_daily_leases: {
+        Args: { p_realm_id: string; p_shop_id: number }
+        Returns: number
+      }
+      qteklink_requeue_expired_leases: {
+        Args: { p_realm_id: string; p_shop_id: number }
+        Returns: number
+      }
+      qteklink_resolve_allowed_user: {
+        Args: { p_user_id: string }
+        Returns: {
+          active: boolean
+          email: string
+          entra_object_id: string
+          full_name: string
+          id: string
+          role: string
+          shop_id: number
+        }[]
+      }
+      qteklink_resolve_date_move: {
+        Args: { p_id: string; p_realm_id: string; p_shop_id: number }
+        Returns: boolean
+      }
+      qteklink_resolve_review_item: {
+        Args: {
+          p_id: string
+          p_realm_id: string
+          p_resolution: Json
+          p_resolved_by: string
+          p_shop_id: number
+        }
+        Returns: boolean
+      }
+      qteklink_role_accepts_type: {
+        Args: { p_account_type: string; p_role: string }
+        Returns: boolean
+      }
+      qteklink_set_allowed_user_active: {
+        Args: { p_active: boolean; p_id: string; p_shop_id: number }
+        Returns: boolean
+      }
+      qteklink_set_allowed_user_role: {
+        Args: { p_id: string; p_role: string; p_shop_id: number }
+        Returns: boolean
+      }
+      qteklink_set_mapping: {
+        Args: {
+          p_kind: string
+          p_pass_through?: boolean
+          p_posting_role: string
+          p_qbo_account_id: string
+          p_realm_id: string
+          p_shop_id: number
+          p_source_id: string
+          p_source_key: string
+        }
+        Returns: string
+      }
+      qteklink_unapprove_date_move: {
+        Args: {
+          p_id: string
+          p_realm_id: string
+          p_shop_id: number
+          p_unapproved_by: string
+        }
+        Returns: boolean
+      }
+      qteklink_upsert_date_move: {
+        Args: {
+          p_new_business_date: string
+          p_new_total_cents: number
+          p_original_business_date: string
+          p_original_total_cents: number
+          p_realm_id: string
+          p_ro_number: string
+          p_shop_id: number
+          p_tekmetric_ro_id: number
+        }
+        Returns: {
+          changed: boolean
+          id: string
+        }[]
+      }
+      qteklink_upsert_payment_state: {
+        Args: { p_realm_id: string; p_shop_id: number; p_states: Json }
+        Returns: number
+      }
+      qteklink_upsert_review_item: {
+        Args: {
+          p_detail: Json
+          p_kind: string
+          p_realm_id: string
+          p_shop_id: number
+          p_subject_kind: string
+          p_subject_ref: string
+        }
+        Returns: string
+      }
+      qteklink_upsert_ro_state: {
+        Args: {
+          p_last_posted_date: string
+          p_last_total_cents: number
+          p_realm_id: string
+          p_ro_number: string
+          p_sale_qbo_je_id: string
+          p_sale_qbo_sync_token: string
+          p_shop_id: number
+          p_source_snapshot_hash: string
+          p_status: string
+          p_tekmetric_ro_id: number
+        }
+        Returns: string
+      }
+      qteklink_upsert_settings: {
+        Args: {
+          p_auto_post: boolean
+          p_date_change_alert_emails?: string
+          p_day_correction_alert_emails?: string
+          p_realm_id: string
+          p_sales_tax_rate_bps: number
+          p_settle_window_minutes: number
+          p_shop_id: number
+          p_shop_timezone: string
+          p_tire_fee_cents: number
+        }
+        Returns: undefined
+      }
       record_keytag_patched: {
         Args: { p_error?: string; p_ro_id: number; p_success: boolean }
         Returns: undefined
@@ -2514,6 +3812,7 @@ export type Database = {
         Returns: undefined
       }
       run_keytag_daily_report_with_checkin: { Args: never; Returns: undefined }
+      run_rate_limit_buckets_prune: { Args: never; Returns: undefined }
       run_scheduler_appointments_sync_with_checkin: {
         Args: never
         Returns: undefined

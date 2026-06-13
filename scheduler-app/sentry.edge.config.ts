@@ -2,10 +2,10 @@
  * Sentry edge-runtime init.
  *
  * Auto-loaded by instrumentation.ts when NEXT_RUNTIME === 'edge'. The
- * scheduler-app's main route handler (`app/api/chat/route.ts`) is pinned to
- * Node runtime via `export const runtime = 'nodejs'` because the AI SDK +
- * Sentry on Edge is non-trivial. But middleware (if added later for cookie
- * resume per F14) defaults to edge runtime and needs Sentry coverage too.
+ * scheduler-app's API route (`app/api/scheduler/mark-abandoned/route.ts`) is
+ * pinned to Node runtime via `export const runtime = 'nodejs'`. middleware.ts
+ * (cookie resume per F14) defaults to the edge runtime and needs Sentry
+ * coverage too.
  *
  * Edge runtime is V8-isolate-based — no Node modules, no fs, no
  * opossum-style circuit breakers. The Sentry SDK has a slimmer edge build

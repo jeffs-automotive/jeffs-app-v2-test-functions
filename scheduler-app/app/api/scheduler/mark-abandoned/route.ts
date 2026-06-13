@@ -33,7 +33,7 @@
  * in a query param, and verifies in O(1) without a DB round-trip.
  *
  * Graceful degradation: when SCHEDULER_BEACON_HMAC_SECRET is unset
- * (local dev / pre-launch), the route's verifyBeaconSig returns
+ * (local dev / pre-launch), the route's verifyBeaconPayloadSig returns
  * "skipped" and falls back to the prior auth=NONE posture. A
  * one-time Sentry warning is emitted; strict mode
  * (SCHEDULER_REQUIRE_RATE_LIMIT=true) bumps it to error.
@@ -80,7 +80,7 @@ const beaconInputSchema = z.object({
   // P1.5 (2026-05-25): HMAC sig over chat_id. Base64url-encoded
   // SHA-256 digest = exactly 43 chars. When SCHEDULER_BEACON_HMAC_SECRET
   // is unset (dev / pre-launch), the field is absent and the
-  // verifyBeaconSig helper returns "skipped" (fail-OPEN preserves
+  // verifyBeaconPayloadSig helper returns "skipped" (fail-OPEN preserves
   // the prior auth=NONE posture). Bounded to 43 chars to defeat any
   // attempt to smuggle a long string through the validator.
   sig: z.string().max(43).nullable().optional(),
@@ -190,7 +190,7 @@ export async function POST(req: Request): Promise<NextResponse> {
     // 2026-05-23 BUG FIX (date-picker stuck-on-first-click): also pull
     // last_active_at so we can defend against spurious-pagehide races
     // where the beacon fires DURING an in-flight Server Action. See the
-    // "ageMs < 5_000" guard below.
+    // "ageMs < 10_000" guard below.
     const { data: snapshot } = await supabase
       .from("customer_chat_sessions")
       .select(

@@ -1,7 +1,7 @@
 /**
  * WizardProgress — the 4-phase booking ribbon.
  *
- * PURELY PRESENTATIONAL (added 2026-06-11). The /book-v2 flow is *branched*
+ * PURELY PRESENTATIONAL (added 2026-06-11). The wizard flow is *branched*
  * server-state — returning vs new customer, partial-verification gates,
  * multi-account disambiguation, variable-length concern/clarification queues.
  * A numeric "Step 4 of 11" would be a LIE on most paths and computing the

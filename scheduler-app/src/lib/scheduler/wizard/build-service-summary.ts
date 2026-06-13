@@ -79,16 +79,16 @@ function fmtPrice(cents: number | null | undefined): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
-/** Sanitize a single description fragment so it's safe to comma-join:
- *  collapses whitespace, drops trailing/leading punctuation that would
- *  collide with the comma separator. Preserves periods at sentence
+/** Sanitize a single description fragment so it joins cleanly into the
+ *  newline-separated summary: collapses whitespace and drops a trailing
+ *  comma that would dangle at a line end. Preserves periods at sentence
  *  ends (so the customer-summary paragraph stays readable). */
 function cleanFragment(s: string): string {
   return s
     .replace(/\s+/g, " ")
     .trim()
-    // strip trailing commas (we add our own as the separator) but keep
-    // periods, which the LLM uses to end summary sentences.
+    // strip a trailing comma so a fragment doesn't dangle at a line end;
+    // keep periods, which the LLM uses to end summary sentences.
     .replace(/[,]+$/g, "")
     .trim();
 }
@@ -140,8 +140,8 @@ export async function buildServiceSummary(args: {
     const body = ex.summary ?? ex.explanation_text ?? "";
     const trimmed = cleanFragment(body);
     if (trimmed.length > 0) {
-      // Always end with a period so comma-separator + period reads well
-      // in Tekmetric ("..., Customer states there is a thumping noise.").
+      // Always end with a period so each concern reads as a complete
+      // sentence on its own line in Tekmetric.
       const withPeriod = /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
       fragments.push(withPeriod);
     }

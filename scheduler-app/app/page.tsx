@@ -1,10 +1,9 @@
 /**
  * Landing page for appointments.jeffsautomotive.com.
  *
- * Phase 15 cutover (2026-05-16): swapped from the legacy AI-SDK-driven
- * ChatBootstrap to the server-state-driven BookPageShell (same surface
- * as /book + /book-v2). Per chat-design.md "Architecture amendment —
- * 2026-05-14" + the migration plan in scheduler-refactor-state.json.
+ * Phase 15 cutover (2026-05-16): the customer-facing wizard moved to the
+ * server-state-driven BookPageShell (the same surface served at /book).
+ * Per chat-design.md "Architecture amendment — 2026-05-14".
  *
  * Per chat-design.md 2026-05-13 visual lock: Heritage Editorial layout
  * (paper background, Poppins-700 title, label-eyebrow tagline, gold-rule

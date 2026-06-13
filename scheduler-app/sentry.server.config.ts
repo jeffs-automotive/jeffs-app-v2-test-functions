@@ -4,7 +4,7 @@
  * Auto-loaded by instrumentation.ts when NEXT_RUNTIME === 'nodejs'. Covers:
  *   - Server Actions (when wrapped with withServerActionInstrumentation)
  *   - Server Components (via onRequestError)
- *   - Route handlers (app/api/chat/route.ts auto-instrumented)
+ *   - Route handlers (app/api/scheduler/mark-abandoned/route.ts auto-instrumented)
  *
  * DSN comes from SENTRY_DSN. NEXT_PUBLIC_SENTRY_DSN is the client equivalent
  * and lives in instrumentation-client.ts. If neither is set, Sentry no-ops

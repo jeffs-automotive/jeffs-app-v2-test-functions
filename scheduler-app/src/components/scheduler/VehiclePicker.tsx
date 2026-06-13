@@ -5,15 +5,14 @@ import { useState } from "react";
 import { Card } from "@/components/ui";
 
 /**
- * VehiclePicker rendering tool component (Heritage Editorial refactor 2026-05-13).
+ * VehiclePicker component (Heritage Editorial refactor 2026-05-13).
  *
- * Per appointments_design.md §7.5:
- * - Input: { vehicles: Array<{id, label}>, allow_add_new: boolean }
- * - Output: { vehicle_id: string | 'new' }
+ * Contract:
+ * - Props: { vehicles: Array<{id, label}>, allow_add_new: boolean }
+ * - Emits: { vehicle_id: string | 'new' }
  *
  * If the customer picks "Add new vehicle", we emit `vehicle_id: 'new'` and
- * the orchestrator's next directive renders show_new_customer_form (vehicle
- * subset).
+ * the wizard advances to the new_vehicle_form card.
  */
 
 export interface VehicleOption {

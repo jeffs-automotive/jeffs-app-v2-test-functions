@@ -29,8 +29,8 @@
  * ----------------------
  * - answered:   all gating facts present → SKIP the question, the customer
  *               already told us.
- * - ambiguous:  partial coverage → the orchestrator decides whether to ask
- *               a clarifying follow-up or treat the partial as enough.
+ * - ambiguous:  partial coverage → the diagnostic routing decides whether to
+ *               ask a clarifying follow-up or treat the partial as enough.
  * - unanswered: no coverage → ASK it. This is also where questions with NO
  *               fact-gating configured (empty `required_facts: []`) land,
  *               because absence of a fact-mapping means we have no basis

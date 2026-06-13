@@ -5,17 +5,15 @@ import { useState } from "react";
 import { Button, Card } from "@/components/ui";
 
 /**
- * EscalationCard rendering tool component (Heritage Editorial refactor 2026-05-13).
+ * EscalationCard component (Heritage Editorial refactor 2026-05-13).
  *
- * Per appointments_design.md §10:
- * - Input: { reason: string, shop_phone: string }
- * - Output: { acknowledged: boolean }
+ * Contract:
+ * - Props: { reason: string, shop_phone: string }
+ * - Emits: { acknowledged: boolean }
  *
- * Shown when the chat agent escalates per §10 triggers (manager keyword,
- * hostile sentiment, identity unverifiable after 2 tries, tool failure
- * after retry, refund/dispute/warranty/complaint, etc.).
- *
- * On SMS the chat agent emits plain text instead of this card.
+ * Shown when the wizard escalates (manager keyword, hostile sentiment,
+ * identity unverifiable after 2 tries, tool failure after retry,
+ * refund/dispute/warranty/complaint, etc.).
  */
 
 export interface EscalationCardProps {

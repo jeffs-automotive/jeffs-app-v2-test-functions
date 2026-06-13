@@ -14,8 +14,8 @@
  *      string is stable for callers to switch on).
  *   4. On any other RPC error → Sentry.captureException + returns
  *      { ok: false, error: <message> }.
- *   5. On success → revalidates ALL 3 paths ('/', '/book', '/book-v2') and
- *      returns { ok: true, next_step }.
+ *   5. On success → revalidateTag(session tag) + revalidatePath('/', 'page')
+ *      (Phase 5B single-tag + single-path) and returns { ok: true, next_step }.
  *
  * Mocking pattern mirrors actions/run-diagnostics.test.ts: vi.mock for
  * @sentry/nextjs + next/cache + @/lib/supabase/admin. Then we import
