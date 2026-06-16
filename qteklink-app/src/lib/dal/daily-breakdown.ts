@@ -36,7 +36,7 @@ import { rollupDay } from "@/lib/reconcile/daily-rollup";
 import { gatePaymentDraft } from "@/lib/reconcile/payment-gate";
 import { buildDailyJournalEntries, type DailyJournalEntry, type DailyCategory } from "@/lib/daily/daily-je-builder";
 import { statusToColumn, type SnapshotColumn } from "@/lib/dal/daily-snapshot";
-import { RO_SALE_SCAN_EVENT_KINDS } from "@/lib/events/kinds";
+import { lookupRoMeta } from "@/lib/dal/ro-lookup";
 
 interface DraftJeLine {
   accountId: string;
@@ -145,69 +145,6 @@ const EMPTY_SALES_BREAKDOWN: SalesBreakdownSummary = {
 
 interface AccountLabel { name: string | null; acctNum: string | null }
 
-interface RoNumberEventRow {
-  tekmetric_ro_id: number | string;
-  raw_body: { data?: { repairOrderNumber?: unknown; shopId?: unknown } } | null;
-}
-
-/** Harvest repairOrderNumber from event rows (newest-first; first hit per RO wins). */
-function harvestRoNumbers(rows: RoNumberEventRow[], shopId: number, out: Map<number, string>): void {
-  for (const r of rows) {
-    const ro = Number(r.tekmetric_ro_id);
-    if (out.has(ro)) continue;
-    // The keytag firehose table predates the shop_id-column convention, so the
-    // body-level shopId is REQUIRED to match (every Tekmetric RO payload carries
-    // it — verified 1,369/1,369 live events, audit 2026-06-12). A row without a
-    // matching claim is skipped: never harvest across shops.
-    if (Number(r.raw_body?.data?.shopId) !== shopId) continue;
-    const n = r.raw_body?.data?.repairOrderNumber;
-    if (typeof n === "string" || typeof n === "number") out.set(ro, String(n));
-  }
-}
-
-/**
- * repairOrderNumber per RO id — the fallback chain for payments whose RO was sold
- * on a different business day (so it isn't among the day's sale snapshots):
- *   1. qteklink_events posting events (webhooks live since 2026-06-11), then
- *   2. the keytag webhook firehose (any RO event body — capturing since 2026-05-09;
- *      A/R checks routinely pay ROs posted weeks earlier).
- * An RO older than BOTH captures stays unresolved → the UI shows an honest "—"
- * (never the payment id). Throws on DB error (fail closed).
- */
-async function lookupRoNumbers(
-  shopId: number,
-  realmId: string,
-  roIds: number[],
-): Promise<Map<number, string>> {
-  const out = new Map<number, string>();
-  if (roIds.length === 0) return out;
-  const admin = createSupabaseAdminClient();
-  const { data, error } = await admin
-    .from("qteklink_events")
-    .select("tekmetric_ro_id, raw_body")
-    .eq("shop_id", shopId)
-    .eq("realm_id", realmId)
-    .in("event_kind", [...RO_SALE_SCAN_EVENT_KINDS])
-    .in("tekmetric_ro_id", roIds)
-    .order("tekmetric_event_at", { ascending: false, nullsFirst: false })
-    .order("received_at", { ascending: false });
-  if (error) throw new Error(`getDayBreakdown (ro numbers) failed: ${error.message}`);
-  harvestRoNumbers((data ?? []) as RoNumberEventRow[], shopId, out);
-
-  const missing = roIds.filter((ro) => !out.has(ro));
-  if (missing.length > 0) {
-    const { data: kd, error: ke } = await admin
-      .from("keytag_webhook_events")
-      .select("tekmetric_ro_id, raw_body")
-      .in("tekmetric_ro_id", missing)
-      .order("received_at", { ascending: false })
-      .limit(500);
-    if (ke) throw new Error(`getDayBreakdown (ro numbers, keytag fallback) failed: ${ke.message}`);
-    harvestRoNumbers((kd ?? []) as RoNumberEventRow[], shopId, out);
-  }
-  return out;
-}
-
 function labelLines(lines: DraftJeLine[], accts: Map<string, AccountLabel>): BreakdownLine[] {
   return lines.map((l) => ({
     accountId: l.accountId,
@@ -310,8 +247,8 @@ export async function getDayBreakdown(
         .filter((ro): ro is number => ro != null && !roNumberByRoId.has(ro)),
     ),
   ];
-  for (const [ro, num] of await lookupRoNumbers(shopId, realmId, missingRoIds)) {
-    roNumberByRoId.set(ro, num);
+  for (const [ro, meta] of await lookupRoMeta(shopId, realmId, missingRoIds)) {
+    if (meta.repairOrderNumber != null) roNumberByRoId.set(ro, meta.repairOrderNumber);
   }
 
   const paymentRows: PaymentBreakdown[] = [];

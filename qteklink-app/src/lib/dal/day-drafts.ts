@@ -25,6 +25,8 @@ import {
 } from "@/lib/payments/payment-je-builder";
 import type { SaleDraft } from "@/lib/reconcile/daily-rollup";
 import type { SaleGateSettings } from "@/lib/reconcile/sale-gate";
+import { lookupRoMeta } from "@/lib/dal/ro-lookup";
+import { resolveCustomerNames } from "@/lib/dal/customers";
 
 /** A built payment draft + the normalized input it came from (gross/fee/status, which
  *  the JE itself only carries embedded in its lines). */
@@ -148,7 +150,9 @@ export async function buildDayDrafts(
   }
 
   // ── PAYMENTS: real (payment_state) + manual picks, both for this local day ──
-  const payments: DayPaymentDraft[] = [];
+  // Collect the normalized inputs first; enrich each with the human RO# + customer name
+  // (the line-description fields), THEN build the JEs — the builder reads those fields.
+  const paymentInputs: PaymentForBuild[] = [];
 
   const { data: psRows, error: psErr } = await admin
     .from("qteklink_payment_state")
@@ -158,8 +162,7 @@ export async function buildDayDrafts(
   if (psErr) throw new Error(`buildDayDrafts (payment_state) failed: ${psErr.message}`);
   for (const row of (psRows ?? []) as PaymentStateRow[]) {
     if (!row.payment_date || toShopLocalDate(row.payment_date, tz) !== businessDate) continue;
-    const input = stateRowToPayment(row);
-    payments.push({ input, je: buildPaymentJournalEntry(input, paymentMappings, paymentSettings) });
+    paymentInputs.push(stateRowToPayment(row));
   }
 
   // Manual method-picks for the day.
@@ -189,13 +192,32 @@ export async function buildDayDrafts(
       });
       continue;
     }
-    const input: PaymentForBuild = {
+    paymentInputs.push({
       paymentId: mp.id, repairOrderId: mp.repairOrderId, method: mp.method, otherPaymentType: mp.otherPaymentType,
       signedAmountCents: mp.amountCents, signedProcessingFeeCents: mp.ccFeeCents, paymentDate: mp.paymentDate,
       status: "succeeded", isRefund: false, manual: true,
-    };
-    payments.push({ input, je: buildPaymentJournalEntry(input, paymentMappings, paymentSettings) });
+    });
   }
+
+  // ── Enrich the line-description fields: human RO# + customer name ──
+  // The webhook payload carries only customerId, so resolve customerId per RO from the
+  // event ledger, then customerId -> name from the cache (best-effort fetch of missing
+  // ids). The build reads cached names only, so the description + source-state hash stay
+  // deterministic; a failed name lookup just omits the customer (retried next build).
+  const payRoIds = [...new Set(paymentInputs.map((p) => p.repairOrderId).filter((ro): ro is number => ro != null))];
+  const roMeta = await lookupRoMeta(shopId, realmId, payRoIds);
+  const customerIds = [...new Set([...roMeta.values()].map((m) => m.customerId).filter((c): c is number => c != null))];
+  const customerNames = await resolveCustomerNames(shopId, customerIds);
+  for (const input of paymentInputs) {
+    const meta = input.repairOrderId != null ? roMeta.get(input.repairOrderId) : undefined;
+    input.repairOrderNumber = meta?.repairOrderNumber ?? null;
+    input.customerName = meta?.customerId != null ? (customerNames.get(meta.customerId) ?? null) : null;
+  }
+
+  const payments: DayPaymentDraft[] = paymentInputs.map((input) => ({
+    input,
+    je: buildPaymentJournalEntry(input, paymentMappings, paymentSettings),
+  }));
 
   return { tz, gateSettings, sales, payments, extraReviewItems };
 }

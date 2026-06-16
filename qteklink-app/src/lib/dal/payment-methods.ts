@@ -20,16 +20,7 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { resolveRealmForShop } from "@/lib/dal/realm";
 import { listMappings, type MappingRow } from "@/lib/dal/mappings";
-
-/** Friendly labels for the Tekmetric first-class payment-type codes. */
-const FIRST_CLASS_LABELS: Record<string, string> = {
-  CC: "Credit Card",
-  CASH: "Cash",
-  CHK: "Check",
-  DEBIT: "Debit",
-  AFFIRM: "Affirm",
-  KLARNA: "Klarna",
-};
+import { PAYMENT_TYPE_LABELS } from "@/lib/payments/payment-type-label";
 
 export type Booking = "deposit_undeposited" | "contra" | "unmapped";
 
@@ -99,7 +90,7 @@ export function buildPaymentMethodsView(
     if (!isOther) {
       const code = (a.paymentType ?? "").trim();
       out.push({
-        label: FIRST_CLASS_LABELS[code.toUpperCase()] ?? (code || "(unknown)"),
+        label: PAYMENT_TYPE_LABELS[code.toUpperCase()] ?? (code || "(unknown)"),
         code,
         subtype: null,
         seen: a.seen,

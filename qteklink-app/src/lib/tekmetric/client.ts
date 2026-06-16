@@ -83,3 +83,44 @@ export async function listPostedRepairOrders(
   }
   return out;
 }
+
+export interface TekmetricCustomerName {
+  firstName: string | null;
+  lastName: string | null;
+}
+
+/**
+ * Fetch ONE customer's name from Tekmetric (`GET /customers/{id}?shop=`). Returns
+ * `{firstName,lastName}` on 200, `null` on 404 (deleted/unknown — the caller falls back to
+ * a synthetic label). Throws on any other HTTP/auth error (transient — the caller retries
+ * on the next build). Mirrors the keytag Deno flow (`_shared/tools/keytag-extras.ts`).
+ */
+export async function getCustomerById(
+  shopId: number,
+  customerId: number,
+  deps: TekmetricDeps = {},
+): Promise<TekmetricCustomerName | null> {
+  const fetchImpl = deps.fetchImpl ?? fetch;
+  const token = deps.token ?? (await getAccessToken(fetchImpl));
+  const url = `${TEKMETRIC_API_BASE}/customers/${customerId}?shop=${shopId}`;
+  const res = await fetchImpl(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`tekmetric getCustomerById ${customerId} failed: HTTP ${res.status}`);
+  const json = (await res.json()) as { firstName?: string | null; lastName?: string | null };
+  return { firstName: json.firstName ?? null, lastName: json.lastName ?? null };
+}
+
+/**
+ * Build a display name from a Tekmetric customer. People store first+last; COMMERCIAL
+ * customers store the company in `firstName` (lastName blank). Both blank → `Customer #<id>`
+ * (honest, never empty). Mirrors `_shared/tools/keytag-extras.ts` customerDisplayName.
+ */
+export function customerDisplayName(
+  c: { firstName?: string | null; lastName?: string | null } | null,
+  customerId: number,
+): string {
+  const first = (c?.firstName ?? "").trim();
+  const last = (c?.lastName ?? "").trim();
+  const name = [first, last].filter(Boolean).join(" ").trim();
+  return name || `Customer #${customerId}`;
+}

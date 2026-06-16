@@ -225,3 +225,50 @@ describe("buildPaymentJournalEntry — manual method-pick", () => {
     expect(sum(undeposited, "Debit") - sum(undeposited, "Credit")).toBe(18900 - 481);
   });
 });
+
+describe("buildPaymentJournalEntry — line descriptions (Type · RO# · Customer)", () => {
+  it("uses the friendly type + human RO number + customer name when resolved (CC code → Credit Card)", () => {
+    const je = buildPaymentJournalEntry(
+      pay({ method: "CC", repairOrderNumber: "153330", customerName: "John Smith", signedProcessingFeeCents: 0 }),
+      M, S,
+    );
+    expect(je.lines.length).toBeGreaterThan(0);
+    expect(je.lines.every((l) => l.description === "Credit Card · RO 153330 · John Smith")).toBe(true);
+  });
+
+  it("card-fee lines carry the same identity + ' — card fee' (gross lines do not)", () => {
+    const je = buildPaymentJournalEntry(
+      pay({ method: "CC", repairOrderNumber: "153330", customerName: "John Smith" }), // default fee 573
+      M, S,
+    );
+    const gross = je.lines.filter((l) => l.part === "gross");
+    const fee = je.lines.filter((l) => l.part === "fee");
+    expect(gross.every((l) => l.description === "Credit Card · RO 153330 · John Smith")).toBe(true);
+    expect(fee.every((l) => l.description === "Credit Card · RO 153330 · John Smith — card fee")).toBe(true);
+  });
+
+  it("falls back to the RO id when the human number is unresolved, and drops the customer when uncached", () => {
+    const je = buildPaymentJournalEntry(
+      pay({ method: "CHK", repairOrderId: 328577176, repairOrderNumber: null, customerName: null, signedAmountCents: 2400, signedProcessingFeeCents: 0 }),
+      M, S,
+    );
+    expect(je.lines.every((l) => l.description === "Check · RO 328577176")).toBe(true);
+  });
+
+  it("a refund appends ' (refund)' to the description", () => {
+    const je = buildPaymentJournalEntry(
+      pay({ method: "CC", repairOrderNumber: "153330", customerName: "John Smith", signedAmountCents: -1062, signedProcessingFeeCents: 0, isRefund: true }),
+      M, S,
+    );
+    expect(je.lines.every((l) => l.description === "Credit Card · RO 153330 · John Smith (refund)")).toBe(true);
+  });
+
+  it("Other shows its sub-type as the payment type (Synchrony)", () => {
+    const MD: ResolvedPaymentMappings = { ...M, depositLikeAccountsByType: { Synchrony: "366" } };
+    const je = buildPaymentJournalEntry(
+      pay({ method: "Other", otherPaymentType: "Synchrony", repairOrderNumber: "153331", customerName: "Carmax", signedAmountCents: 12000, signedProcessingFeeCents: 0 }),
+      MD, S,
+    );
+    expect(je.lines.every((l) => l.description === "Synchrony · RO 153331 · Carmax")).toBe(true);
+  });
+});

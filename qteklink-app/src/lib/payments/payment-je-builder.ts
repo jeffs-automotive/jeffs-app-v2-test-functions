@@ -28,6 +28,7 @@
  * never posted half-built (`balanced` is false unless every line is mapped and Σdr=Σcr).
  */
 import { toShopLocalDate } from "@/lib/sales/sale-builder";
+import { paymentTypeLabel } from "./payment-type-label";
 
 /** Normalized payment to post — from the C4 projection OR a manual method-pick. */
 export interface PaymentForBuild {
@@ -38,6 +39,12 @@ export interface PaymentForBuild {
   method: string;
   /** Tekmetric `otherPaymentType.name` — the non-cash sub-type when `method` is Other/OTH. */
   otherPaymentType: string | null;
+  /** Human RO number (Tekmetric repairOrderNumber) for the line description — resolved by
+   *  the DB seam; null when unresolved (the description falls back to the RO id). */
+  repairOrderNumber?: string | null;
+  /** Customer display name (resolved from Tekmetric) for the line description — null when
+   *  not cached yet (the description simply drops the customer). */
+  customerName?: string | null;
   /** Signed integer cents: a payment is POSITIVE, a refund NEGATIVE. */
   signedAmountCents: number;
   /** CC processing fee (Tekmetric `applicationFee`), integer cents (0 for non-card). */
@@ -151,10 +158,21 @@ export function buildPaymentJournalEntry(
 
   const inflow = p.signedAmountCents > 0; // payment (true) vs refund (false)
   const fee = Math.abs(p.signedProcessingFeeCents);
-  const desc =
-    `${docNumber}` +
-    (p.repairOrderId != null ? ` — RO ${p.repairOrderId}` : "") +
-    (p.isRefund ? " (refund)" : "");
+  // Human-readable line description: "<Type> · RO <#> · <Customer>" (+ " (refund)").
+  // Drives the QBO JE line so the office can identify check vs credit-card lines when
+  // reconciling the bank deposit. Falls back to the RO id when the human number is
+  // unresolved; drops the customer when its name isn't cached. `baseDesc` (no refund
+  // suffix) also labels the card-fee lines.
+  const roLabel = p.repairOrderNumber?.trim()
+    ? `RO ${p.repairOrderNumber.trim()}`
+    : p.repairOrderId != null
+      ? `RO ${p.repairOrderId}`
+      : null;
+  const customer = (p.customerName ?? "").trim() || null;
+  const baseDesc = [paymentTypeLabel(p.method, p.otherPaymentType), roLabel, customer]
+    .filter((s): s is string => Boolean(s))
+    .join(" · ");
+  const desc = baseDesc + (p.isRefund ? " (refund)" : "");
 
   const lines: PaymentJeLine[] = [];
   const unmapped: string[] = [];
@@ -203,8 +221,8 @@ export function buildPaymentJournalEntry(
   } else if (fee > 0) {
     if (!m.ccFeeAccountId) unmapped.push("cc_fee");
     if (m.ccFeeAccountId && m.undepositedAccountId) {
-      lines.push({ accountId: m.ccFeeAccountId, postingType: "Debit", amountCents: fee, description: `${docNumber} — CC fee`, part: "fee" });
-      lines.push({ accountId: m.undepositedAccountId, postingType: "Credit", amountCents: fee, description: `${docNumber} — CC fee`, part: "fee" });
+      lines.push({ accountId: m.ccFeeAccountId, postingType: "Debit", amountCents: fee, description: `${baseDesc} — card fee`, part: "fee" });
+      lines.push({ accountId: m.undepositedAccountId, postingType: "Credit", amountCents: fee, description: `${baseDesc} — card fee`, part: "fee" });
     }
   }
   return finalize(p, docNumber, txnDate, "deposit", lines, unmapped);
