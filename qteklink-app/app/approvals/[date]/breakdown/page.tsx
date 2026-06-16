@@ -10,7 +10,7 @@ import { notFound } from "next/navigation";
 import { AlertTriangle, ArrowLeft, CheckCircle2, History, Inbox } from "lucide-react";
 import { requireQtekUser } from "@/lib/auth";
 import { getDayBreakdown, type RoBreakdown, type PaymentBreakdown, type PaymentTypeSummary, type JePreview, type SalesBreakdownSummary } from "@/lib/dal/daily-breakdown";
-import { fmtUsd, isIsoDate } from "@/lib/format";
+import { fmtUsd, fmtUsdSigned, isIsoDate } from "@/lib/format";
 import { StatusBadge } from "@/components/StatusBadge";
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
@@ -37,7 +37,7 @@ function Stat({ label, cents }: { label: string; cents: number }) {
   return (
     <div>
       <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="mt-0.5 text-lg font-bold tabular-nums text-foreground">{fmtUsd(cents)}</dd>
+      <dd className="mt-0.5 text-lg font-bold tabular-nums text-foreground">{fmtUsdSigned(cents)}</dd>
     </div>
   );
 }
@@ -220,7 +220,7 @@ function PaymentTypeCard({ types, paymentsTotalCents, feesTotalCents }: { types:
           {types.map((t) => (
             <div key={t.label} className="rounded-lg border border-border bg-muted/30 p-3">
               <dt className="truncate text-sm font-medium text-foreground" title={t.label}>{t.label}</dt>
-              <dd className="mt-1 text-lg font-bold tabular-nums text-foreground">{fmtUsd(t.amountCents)}</dd>
+              <dd className="mt-1 text-lg font-bold tabular-nums text-foreground">{fmtUsdSigned(t.amountCents)}</dd>
               <p className="mt-1 text-xs text-muted-foreground">
                 {t.count} {t.count === 1 ? "payment" : "payments"}
                 {t.feeCents ? <> · <span className="tabular-nums">{fmtUsd(t.feeCents)}</span> card fees</> : null}
@@ -229,7 +229,7 @@ function PaymentTypeCard({ types, paymentsTotalCents, feesTotalCents }: { types:
           ))}
         </dl>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-x-6 gap-y-1 border-t border-border pt-3 text-sm">
-          <span className="text-muted-foreground">Total payments <span className="ml-1 font-semibold tabular-nums text-foreground">{fmtUsd(paymentsTotalCents)}</span></span>
+          <span className="text-muted-foreground">Total payments <span className="ml-1 font-semibold tabular-nums text-foreground">{fmtUsdSigned(paymentsTotalCents)}</span></span>
           <span className="text-muted-foreground">Total card fees <span className="ml-1 font-semibold tabular-nums text-foreground">{fmtUsd(feesTotalCents)}</span></span>
         </div>
       </CardContent>

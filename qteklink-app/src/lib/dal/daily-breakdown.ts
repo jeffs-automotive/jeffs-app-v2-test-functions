@@ -16,7 +16,8 @@
  *     method is Other, else the method itself), per-row amount + CC fee +
  *     net-to-Undeposited, and `summary.paymentTypes` — the adaptive per-type
  *     summary (count / gross / fees), NON-ZERO types only, matching the page's
- *     abs-sum KPI convention.
+ *     signed-net KPI convention (a refund is negative, so it subtracts from the row,
+ *     the per-type card, and every total).
  *
  * LIVE-ON-VIEW (Chris 2026-06-12): opening the page makes the day CURRENT —
  * the payment-state projection refreshes first (reduceShopPaymentState), then the
@@ -72,10 +73,14 @@ export interface PaymentBreakdown {
   /** DISPLAY payment type: otherPaymentType (Synchrony / Tire Protection Plan / …)
    *  when the Tekmetric method is Other, else the method (Credit Card / Cash / Check). */
   method: string;
+  /** SIGNED gross — a refund is NEGATIVE so the row + every total nets it out. */
   amountCents: number;
   feeCents: number;
+  /** SIGNED net to Undeposited (amountCents − feeCents) — negative for a refund. */
   netCents: number;
   status: SnapshotColumn;
+  /** This payment is a refund (money out) — drives the row's "refund" marker. */
+  isRefund: boolean;
 }
 /** One adaptive payment-type summary entry — only types with non-zero money appear. */
 export interface PaymentTypeSummary {
@@ -326,10 +331,13 @@ export async function getDayBreakdown(
         : postablePaymentIds.has(je.paymentId)
           ? "unapproved"
           : "needsAttention";
-    const amountCents = Math.abs(p.input.signedAmountCents);
+    // SIGNED gross (a refund is negative) so the row, the per-type card, and every total
+    // SUBTRACT a refund instead of abs-adding it. Fee stays a magnitude (a refund has none).
+    const amountCents = p.input.signedAmountCents;
     const feeCents = Math.abs(p.input.signedProcessingFeeCents);
     // je.route reflects the MAPPING (financing flagged "deposits like a card" → "deposit";
-    // a true contra type → "non_cash"). Net to Undeposited is the deposit route minus its fee.
+    // a true contra type → "non_cash"). Net to Undeposited is the deposit route minus its fee;
+    // a refund's signed (negative) amount correctly reduces it, matching the QBO JE.
     if (je.route === "deposit") depositToUndepositedCents += amountCents - feeCents;
     else if (je.route === "non_cash") nonCashCents += amountCents;
     paymentRows.push({
@@ -343,12 +351,14 @@ export async function getDayBreakdown(
       feeCents,
       netCents: amountCents - feeCents,
       status,
+      isRefund: p.input.isRefund ?? false,
     });
   }
 
-  // Adaptive per-type summary (the card above the payments list): count / gross /
-  // fees per DISPLAY type, NON-ZERO types only, biggest first. Same abs-sum
-  // convention as the row amounts + the page KPIs, so the card reconciles exactly.
+  // Adaptive per-type summary (the card above the payments list): count / signed-net
+  // gross / fees per DISPLAY type, NON-ZERO types only, biggest first. Same signed
+  // convention as the row amounts + the page KPIs, so the card reconciles exactly (a
+  // refund nets its type down; a type that nets to exactly zero drops out).
   const typeAgg = new Map<string, { count: number; amountCents: number; feeCents: number }>();
   for (const r of paymentRows) {
     const t = typeAgg.get(r.method) ?? { count: 0, amountCents: 0, feeCents: 0 };
@@ -408,8 +418,9 @@ export async function getDayBreakdown(
     totalCents: acc.totalCents + (s.snapshot.totalSales ?? 0),
   }), { ...EMPTY_SALES_BREAKDOWN });
 
-  // Payments-summary totals — sum the SAME payment set as the main snapshot KPIs (abs gross +
-  // abs fee), so the breakdown card matches the /approvals "Total payments" / "Total CC fees".
+  // Payments-summary totals — sum the SAME payment set as the main snapshot KPIs (signed-net
+  // gross + abs fee), so the breakdown card matches the /approvals "Total payments" / "Total CC
+  // fees" and a refund subtracts from both.
   const paymentsTotalCents = paymentRows.reduce((a, r) => a + r.amountCents, 0);
   const feesTotalCents = paymentRows.reduce((a, r) => a + r.feeCents, 0);
 

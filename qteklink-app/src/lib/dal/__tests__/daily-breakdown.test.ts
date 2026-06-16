@@ -158,9 +158,9 @@ describe("getDayBreakdown", () => {
 
     // Payments — two-column derivation (no payments daily row → postable → unapproved);
     // the RO NUMBER comes from the same-day sale snapshot (no events lookup needed).
-    expect(b.payments).toEqual([{ paymentId: "101", tekmetricRoId: 1, roNumber: "1001", method: "Credit Card", amountCents: 1200, feeCents: 35, netCents: 1165, status: "unapproved" }]);
+    expect(b.payments).toEqual([{ paymentId: "101", tekmetricRoId: 1, roNumber: "1001", method: "Credit Card", amountCents: 1200, feeCents: 35, netCents: 1165, status: "unapproved", isRefund: false }]);
 
-    // Payments-summary card totals (abs gross + abs fee, matching the main snapshot KPIs)
+    // Payments-summary card totals (SIGNED-net gross + abs fee, matching the main snapshot KPIs)
     expect(b.summary.paymentsTotalCents).toBe(1200);
     expect(b.summary.feesTotalCents).toBe(35);
     expect(b.summary.paymentTypes).toEqual([{ label: "Credit Card", count: 1, amountCents: 1200, feeCents: 35 }]);
@@ -226,5 +226,44 @@ describe("getDayBreakdown", () => {
     expect(b.summary.feesTotalCents).toBe(30);
     expect(b.summary.depositToUndepositedCents).toBe(970); // 1000 − 30 fee (deposit route only)
     expect(b.summary.nonCashCents).toBe(400); // non-cash contra — excluded from Undeposited
+  });
+
+  it("a REFUND nets the Total payments card + the per-type summary down (signed gross), and the row reads negative", async () => {
+    // A payment + its refund, SAME display type, same day (mirrors live payment 60216784 = -1062).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pay: any = { input: { paymentId: "201", signedAmountCents: 10000, signedProcessingFeeCents: 0, method: "Credit Card", otherPaymentType: null }, je: { paymentId: "201", repairOrderId: 1, suppressed: false, lines: [], route: "deposit" } };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const refund: any = { input: { paymentId: "202", signedAmountCents: -1062, signedProcessingFeeCents: 0, method: "Credit Card", otherPaymentType: null, isRefund: true }, je: { paymentId: "202", repairOrderId: 1, suppressed: false, lines: [], route: "deposit" } };
+    buildDayDraftsMock.mockResolvedValue({ tz: "America/New_York", gateSettings: {}, sales: [], payments: [pay, refund], extraReviewItems: [] });
+    rollupDayMock.mockReturnValue({ postableSaleDrafts: [], postablePaymentDrafts: [pay.je, refund.je], saleCount: 0, paymentCount: 2, postableSales: 0, postablePayments: 2, reviewCount: 0, reviewItems: [] });
+    listDailyMock.mockResolvedValue({ realmId: REALM, postings: [] });
+
+    const b = await getDayBreakdown(7476, DATE);
+
+    // The total NETS the refund: 10000 + (−1062) = 8938 (the bug gave 11062).
+    expect(b.summary.paymentsTotalCents).toBe(8938);
+    // Per-type card: one Credit Card type, both rows counted, amount NET.
+    expect(b.summary.paymentTypes).toEqual([{ label: "Credit Card", count: 2, amountCents: 8938, feeCents: 0 }]);
+
+    const byId = new Map(b.payments.map((p) => [p.paymentId, p]));
+    expect(byId.get("201")).toMatchObject({ amountCents: 10000, netCents: 10000, isRefund: false });
+    // The refund row is SIGNED negative and flagged so the UI can mark it.
+    expect(byId.get("202")).toMatchObject({ amountCents: -1062, netCents: -1062, isRefund: true });
+  });
+
+  it("a deposit-route refund REDUCES depositToUndepositedCents (signed net, never abs-added)", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const dep: any = { input: { paymentId: "1", signedAmountCents: 1000, signedProcessingFeeCents: 30, method: "Credit Card" }, je: { paymentId: "1", repairOrderId: 1, suppressed: false, lines: [], route: "deposit" } };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ref: any = { input: { paymentId: "2", signedAmountCents: -1000, signedProcessingFeeCents: 0, method: "Credit Card", isRefund: true }, je: { paymentId: "2", repairOrderId: 1, suppressed: false, lines: [], route: "deposit" } };
+    buildDayDraftsMock.mockResolvedValue({ tz: "America/New_York", gateSettings: {}, sales: [], payments: [dep, ref], extraReviewItems: [] });
+    rollupDayMock.mockReturnValue({ postableSaleDrafts: [], postablePaymentDrafts: [dep.je, ref.je], saleCount: 0, paymentCount: 2, postableSales: 0, postablePayments: 2, reviewCount: 0, reviewItems: [] });
+    listDailyMock.mockResolvedValue({ realmId: REALM, postings: [] });
+
+    const b = await getDayBreakdown(7476, DATE);
+    expect(b.summary.paymentsTotalCents).toBe(0); // 1000 + (−1000)
+    // 970 from the payment (1000 − 30 fee) then + (−1000) of the refund = −30.
+    expect(b.summary.depositToUndepositedCents).toBe(-30);
+    expect(b.summary.nonCashCents).toBe(0);
   });
 });

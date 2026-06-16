@@ -14,7 +14,7 @@ import { AlertTriangle, Save } from "lucide-react";
 import { mapTekmetricItemAction } from "@/actions/mappings";
 import type { PaymentMethodView } from "@/lib/dal/payment-methods";
 import type { MappableAccount } from "@/lib/dal/mappings";
-import { fmtUsd } from "@/lib/format";
+import { fmtUsd, fmtUsdSigned } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -105,7 +105,7 @@ export default function PaymentMethods({
               {m.voidedCount > 0 && <span className="block text-xs text-muted-foreground">{m.voidedCount} voided</span>}
             </TableCell>
             <TableCell className={num}>
-              {fmtUsd(m.amountCents)}
+              {fmtUsdSigned(m.amountCents)}
               {m.voidedCount > 0 && <span className="block text-xs text-muted-foreground">voided {fmtUsd(m.voidedAmountCents)}</span>}
             </TableCell>
           </TableRow>

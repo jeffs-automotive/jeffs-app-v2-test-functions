@@ -15,7 +15,7 @@ import { getDailySnapshot, type TypeRow } from "@/lib/dal/daily-snapshot";
 import { listDailyPostingsForDay } from "@/lib/dal/daily-postings";
 import { getShopSettings } from "@/lib/dal/settings";
 import { toShopLocalDate } from "@/lib/sales/sale-builder";
-import { fmtUsd, isIsoDate } from "@/lib/format";
+import { fmtUsdSigned, isIsoDate } from "@/lib/format";
 import ApproveDayControls from "./ApproveDayControls";
 import AcknowledgeDayButton from "./AcknowledgeDayButton";
 import DateNav from "./DateNav";
@@ -36,7 +36,7 @@ function Kpi({ label, cents, icon: Icon }: { label: string; cents: number; icon:
           <Icon className="size-4" aria-hidden={true} />
           {label}
         </p>
-        <p className="mt-1 text-2xl font-bold tabular-nums text-foreground">{fmtUsd(cents)}</p>
+        <p className="mt-1 text-2xl font-bold tabular-nums text-foreground">{fmtUsdSigned(cents)}</p>
       </CardContent>
     </Card>
   );
@@ -53,16 +53,16 @@ function Row({ row, date }: { row: TypeRow; date: string }) {
       <TableCell className={num}>
         {attn > 0 ? (
           <Link href={`/approvals/review?date=${date}`} className="font-medium text-amber-800 underline underline-offset-4 dark:text-amber-300">
-            {fmtUsd(attn)}
+            {fmtUsdSigned(attn)}
           </Link>
         ) : (
-          <span className="text-muted-foreground">{fmtUsd(attn)}</span>
+          <span className="text-muted-foreground">{fmtUsdSigned(attn)}</span>
         )}
       </TableCell>
-      <TableCell className={num}>{fmtUsd(row.unapprovedCents)}</TableCell>
-      <TableCell className={num}>{fmtUsd(row.inProgressCents)}</TableCell>
-      <TableCell className={num}>{fmtUsd(row.postedCents)}</TableCell>
-      <TableCell className={`${num} font-semibold`}>{fmtUsd(row.totalCents)}</TableCell>
+      <TableCell className={num}>{fmtUsdSigned(row.unapprovedCents)}</TableCell>
+      <TableCell className={num}>{fmtUsdSigned(row.inProgressCents)}</TableCell>
+      <TableCell className={num}>{fmtUsdSigned(row.postedCents)}</TableCell>
+      <TableCell className={`${num} font-semibold`}>{fmtUsdSigned(row.totalCents)}</TableCell>
     </TableRow>
   );
 }

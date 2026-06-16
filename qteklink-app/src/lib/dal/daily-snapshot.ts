@@ -177,12 +177,18 @@ export async function getDailySnapshot(
     if (je.suppressed && g.reviewItems.length === 0) continue;
 
     const col = resolveColumn(idx, "payment", je.paymentId, postablePaymentIds.has(je.paymentId));
-    const gross = Math.abs(p.input.signedAmountCents);
+    // SIGNED, not abs: a refund (negative signed_amount_cents) must SUBTRACT from the day's
+    // net payments — it nets within its own status column, so the "Total payments" KPI ties to
+    // the real money collected. Voids never reach here (the suppressed/zero skip above keeps
+    // their positive face value out of the totals), so dropping abs only affects refunds.
+    const gross = p.input.signedAmountCents;
     addToColumn(payRow, col, gross);
     if (col === "needsAttention") needsAttentionCount += 1;
 
     // Derived fee — fees post as their OWN daily JE: use the fees category's status for
-    // this payment when present, else follow the parent payment's column.
+    // this payment when present, else follow the parent payment's column. Kept as a
+    // magnitude: a refund carries no fee (its applicationFee is null/0, and a refund-with-fee
+    // is flagged unsupported by the JE builder), so "Total CC fees" stays a positive sum.
     const fee = Math.abs(p.input.signedProcessingFeeCents);
     if (fee > 0) {
       const feeCol: SnapshotColumn = idx.postedFeePaymentIds.has(je.paymentId)

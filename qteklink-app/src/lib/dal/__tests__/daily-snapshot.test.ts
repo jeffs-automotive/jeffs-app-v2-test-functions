@@ -178,4 +178,34 @@ describe("getDailySnapshot", () => {
     const snap = await getDailySnapshot(7476, DATE);
     expect(snap.rows[0]).toMatchObject({ count: 2, postedCents: 1000, unapprovedCents: 900, needsAttentionCents: 0 });
   });
+
+  it("a REFUND subtracts from the Customer Payment total / paymentsCents KPI (signed, never abs-added)", async () => {
+    // A real payment + a separate refund on the SAME day (mirrors live payment 60216784 = -1062
+    // on 2026-06-15). Both postable, no daily-postings rows → both land in the Unapproved column.
+    const p1 = pay("201", 5, 10000, 0); // +$100.00 payment
+    const p2 = pay("202", 5, -1062, 0); // −$10.62 refund (signed negative)
+
+    buildDayDraftsMock.mockResolvedValue({ tz: "America/New_York", gateSettings: {}, sales: [], payments: [p1, p2], extraReviewItems: [] });
+    rollupDayMock.mockReturnValue({ postableSaleDrafts: [], postablePaymentDrafts: [p1.je, p2.je], saleCount: 0, paymentCount: 2, postableSales: 0, postablePayments: 2, reviewCount: 0, reviewItems: [] });
+    listDailyMock.mockResolvedValue({ realmId: REALM, postings: [] });
+
+    const snap = await getDailySnapshot(7476, DATE);
+    const payRow = snap.rows[1];
+    // 10000 + (−1062) = 8938 — the refund NETS DOWN, it does not add (the bug gave 11062).
+    expect(payRow).toMatchObject({ count: 2, unapprovedCents: 8938, totalCents: 8938 });
+    expect(snap.kpis.paymentsCents).toBe(8938);
+  });
+
+  it("a same-day full refund of a same-day payment nets the Customer Payment total to zero", async () => {
+    const p1 = pay("301", 6, 2513, 0); // +$25.13 payment
+    const p2 = pay("302", 6, -2513, 0); // −$25.13 full refund
+
+    buildDayDraftsMock.mockResolvedValue({ tz: "America/New_York", gateSettings: {}, sales: [], payments: [p1, p2], extraReviewItems: [] });
+    rollupDayMock.mockReturnValue({ postableSaleDrafts: [], postablePaymentDrafts: [p1.je, p2.je], saleCount: 0, paymentCount: 2, postableSales: 0, postablePayments: 2, reviewCount: 0, reviewItems: [] });
+    listDailyMock.mockResolvedValue({ realmId: REALM, postings: [] });
+
+    const snap = await getDailySnapshot(7476, DATE);
+    expect(snap.rows[1]).toMatchObject({ count: 2, totalCents: 0 });
+    expect(snap.kpis.paymentsCents).toBe(0);
+  });
 });

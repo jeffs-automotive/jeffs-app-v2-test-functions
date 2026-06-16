@@ -13,6 +13,14 @@ export function fmtUsd(cents: number): string {
   return `$${fmtCents(cents)}`;
 }
 
+/** Negative-aware money: a non-negative value renders exactly like `fmtUsd`; a negative
+ *  renders as a leading unicode minus then the dollar amount ("−$10.62"), matching the
+ *  SalesTile / discount idiom — never `fmtUsd`'s raw "$-10.62". Used wherever a refund can
+ *  net a payment total/row negative. */
+export function fmtUsdSigned(cents: number): string {
+  return cents < 0 ? `−${fmtUsd(Math.abs(cents))}` : fmtUsd(cents);
+}
+
 /** A strict ISO shop-local date — `YYYY-MM-DD` that is also a real calendar date. */
 export function isIsoDate(s: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;

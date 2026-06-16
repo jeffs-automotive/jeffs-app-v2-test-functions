@@ -12,7 +12,7 @@
 import { useMemo, useState } from "react";
 import { ArrowUpDown, ChevronDown, ChevronUp } from "lucide-react";
 import type { PaymentBreakdown } from "@/lib/dal/daily-breakdown";
-import { fmtUsd } from "@/lib/format";
+import { fmtUsd, fmtUsdSigned } from "@/lib/format";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
@@ -130,10 +130,17 @@ export function PaymentsTable({ payments }: { payments: PaymentBreakdown[] }) {
           {rows.map((p) => (
             <TableRow key={p.paymentId}>
               <TableCell className="px-3 py-2 font-medium text-foreground"><RoCell p={p} /></TableCell>
-              <TableCell className="px-3 py-2 text-foreground">{p.method}</TableCell>
-              <TableCell className={numCell}>{fmtUsd(p.amountCents)}</TableCell>
+              <TableCell className="px-3 py-2 text-foreground">
+                {p.method}
+                {p.isRefund && (
+                  <span className="ml-2 inline-flex items-center rounded-full border border-border bg-muted px-1.5 py-0.5 align-middle text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    refund
+                  </span>
+                )}
+              </TableCell>
+              <TableCell className={cn(numCell, p.isRefund && "text-muted-foreground")}>{fmtUsdSigned(p.amountCents)}</TableCell>
               <TableCell className={cn(numCell, !p.feeCents && "text-muted-foreground")}>{p.feeCents ? fmtUsd(p.feeCents) : "—"}</TableCell>
-              <TableCell className={numCell}>{fmtUsd(p.netCents)}</TableCell>
+              <TableCell className={cn(numCell, p.isRefund && "text-muted-foreground")}>{fmtUsdSigned(p.netCents)}</TableCell>
               <TableCell className="px-3 py-2"><StatusBadge status={p.status} /></TableCell>
             </TableRow>
           ))}

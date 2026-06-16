@@ -134,6 +134,46 @@ export function buildPaymentMethodsView(
   );
 }
 
+/** One `qteklink_payment_state` row the methods view folds (PostgREST may hand a bigint
+ *  back as a string, so the amount is `number | string`). */
+export interface PaymentStateMethodRow {
+  payment_type: string | null;
+  other_payment_type: string | null;
+  /** SIGNED cents — a refund is negative. */
+  signed_amount_cents: number | string;
+  status: string | null;
+}
+
+/**
+ * PURE: fold payment-state rows into per-(payment_type, other_payment_type) tallies. The
+ * ACTIVE (non-voided) amount is SIGNED — a refund (negative `signed_amount_cents`) NETS the
+ * method's lifetime total DOWN, so "Amount" reflects net money taken (consistent with the
+ * daily KPIs). A VOIDED payment is tallied separately and KEEPS its positive face value (a
+ * void is not a refund — it never posted; the magnitude is what was reversed). An
+ * unsafe-integer amount contributes 0 (fail closed) but still counts toward seen/voided.
+ */
+export function aggregatePaymentMethodStates(rows: PaymentStateMethodRow[]): MethodAgg[] {
+  const aggMap = new Map<string, MethodAgg>();
+  for (const r of rows) {
+    const key = `${r.payment_type ?? ""}|${r.other_payment_type ?? ""}`;
+    const raw = typeof r.signed_amount_cents === "number" ? r.signed_amount_cents : Number(r.signed_amount_cents);
+    const safe = Number.isSafeInteger(raw) ? raw : 0;
+    let cur = aggMap.get(key);
+    if (!cur) {
+      cur = { paymentType: r.payment_type, subtype: r.other_payment_type, seen: 0, amountCents: 0, voidedCount: 0, voidedAmountCents: 0 };
+      aggMap.set(key, cur);
+    }
+    if (r.status === "voided") {
+      cur.voidedCount += 1;
+      cur.voidedAmountCents += Math.abs(safe); // a void keeps its positive face value
+    } else {
+      cur.seen += 1;
+      cur.amountCents += safe; // SIGNED — a refund nets the lifetime total down
+    }
+  }
+  return [...aggMap.values()];
+}
+
 function accountLabelOf(m: MappingRow): string {
   return m.accountName ? (m.accountNum ? `${m.accountNum} · ${m.accountName}` : m.accountName) : m.qboAccountId;
 }
@@ -154,26 +194,10 @@ export async function listPaymentMethods(shopId: number): Promise<PaymentMethods
     .eq("realm_id", realmId);
   if (error) throw new Error(`listPaymentMethods (state) failed: ${error.message}`);
 
-  // Aggregate distinct (payment_type, other_payment_type). A VOIDED payment is still shown, but
-  // tallied SEPARATELY — it stays out of the active count/amount because it never posts.
-  const aggMap = new Map<string, MethodAgg>();
-  for (const r of (stateData ?? []) as { payment_type: string | null; other_payment_type: string | null; signed_amount_cents: number | string; status: string | null }[]) {
-    const key = `${r.payment_type ?? ""}|${r.other_payment_type ?? ""}`;
-    const raw = typeof r.signed_amount_cents === "number" ? r.signed_amount_cents : Number(r.signed_amount_cents);
-    const amt = Number.isSafeInteger(raw) ? Math.abs(raw) : 0;
-    let cur = aggMap.get(key);
-    if (!cur) {
-      cur = { paymentType: r.payment_type, subtype: r.other_payment_type, seen: 0, amountCents: 0, voidedCount: 0, voidedAmountCents: 0 };
-      aggMap.set(key, cur);
-    }
-    if (r.status === "voided") {
-      cur.voidedCount += 1;
-      cur.voidedAmountCents += amt;
-    } else {
-      cur.seen += 1;
-      cur.amountCents += amt;
-    }
-  }
+  // Aggregate distinct (payment_type, other_payment_type): the active amount nets refunds
+  // (signed), while a VOIDED payment is shown but tallied SEPARATELY at its positive face
+  // value — it never posts. (Pure + unit-tested in aggregatePaymentMethodStates.)
+  const aggs = aggregatePaymentMethodStates((stateData ?? []) as PaymentStateMethodRow[]);
 
   const { mappings } = await listMappings(shopId);
   const noncash: NoncashMap[] = mappings
@@ -186,6 +210,6 @@ export async function listPaymentMethods(shopId: number): Promise<PaymentMethods
     realmId,
     undepositedAccountLabel,
     undepositedAccountId: undeposited?.qboAccountId ?? null,
-    methods: buildPaymentMethodsView([...aggMap.values()], noncash, undepositedAccountLabel),
+    methods: buildPaymentMethodsView(aggs, noncash, undepositedAccountLabel),
   };
 }
