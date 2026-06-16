@@ -240,10 +240,13 @@ export async function handler(req: Request): Promise<Response> {
     ...ids,
   };
 
-  // Idempotency at the DB level (audit B5 — migration 20260522191500).
-  // event_hash is a GENERATED ALWAYS column derived from
-  // (event_kind, entity_id, status_id, raw_body.data.updatedDate) — see
-  // migration.
+  // Idempotency at the DB level (audit B5 — migration 20260522191500,
+  // changed to a whole-body hash in 20260616160000).
+  // event_hash is a GENERATED ALWAYS column = sha256(raw_body::text). The
+  // original synthetic (event_kind, entity_id, status_id, data.updatedDate)
+  // hash collapsed genuinely-distinct events (e.g. two payments on one RO,
+  // where ro_id won the entity coalesce and payment_id was excluded) and
+  // dropped the 2nd as a false "duplicate" — see the migration.
   //
   // We use plain INSERT + catch unique-violation (23505) instead of
   // .upsert({onConflict, ignoreDuplicates}). PostgREST's onConflict cannot
