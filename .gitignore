@@ -59,6 +59,11 @@ desktop.ini
 .claude/work/ai-review-*.md
 .claude/work/feature-archive/
 
+# Per-worktree feature marker (multi-project worktree system). Lives at the
+# worktree root, OUTSIDE the shared .claude symlink, so each worktree tracks its
+# own phase independently. Local-session state — never commit.
+.feature/
+
 # Playwright MCP per-conversation debug captures (console + page snapshots)
 .playwright-mcp/
 
