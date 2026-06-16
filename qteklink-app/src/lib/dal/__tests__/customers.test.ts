@@ -9,20 +9,22 @@ const fromMock = vi.fn();
 const rpcMock = vi.fn();
 const getCustomerByIdMock = vi.fn();
 const captureMock = vi.fn();
+const roMetaMock = vi.fn();
 
 vi.mock("@/lib/supabase/admin", () => ({ createSupabaseAdminClient: () => ({ from: fromMock, rpc: rpcMock }) }));
 vi.mock("@/lib/tekmetric/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/tekmetric/client")>()),
   getCustomerById: (...a: unknown[]) => getCustomerByIdMock(...a),
 }));
+vi.mock("@/lib/dal/ro-lookup", () => ({ lookupRoMeta: (...a: unknown[]) => roMetaMock(...a) }));
 vi.mock("@sentry/nextjs", () => ({ captureException: (...a: unknown[]) => captureMock(...a) }));
 
-import { resolveCustomerNames, getCachedCustomerNames } from "../customers";
+import { resolveCustomerNames, getCachedCustomerNames, warmCustomerNamesForRecentDays } from "../customers";
 
 /** A thenable PostgREST-style select chain that resolves to { data, error }. */
 function selectChain(rows: unknown[]) {
   const chain: Record<string, unknown> = {};
-  for (const m of ["select", "eq", "in"]) chain[m] = vi.fn(() => chain);
+  for (const m of ["select", "eq", "in", "gte", "not"]) chain[m] = vi.fn(() => chain);
   chain.then = (onF: (v: unknown) => unknown) => Promise.resolve({ data: rows, error: null }).then(onF);
   return chain;
 }
@@ -88,5 +90,41 @@ describe("resolveCustomerNames", () => {
     expect(m.get(2)).toBe("Bob Jones");
     expect(getCustomerByIdMock).not.toHaveBeenCalled();
     expect(rpcMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("warmCustomerNamesForRecentDays (nightly cron)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    rpcMock.mockResolvedValue({ data: 0, error: null });
+    roMetaMock.mockResolvedValue(new Map());
+  });
+
+  it("collects recent payment ROs, resolves their customers via Tekmetric, caches them", async () => {
+    fromMock.mockImplementation((table: string) =>
+      table === "qteklink_payment_state"
+        ? selectChain([{ repair_order_id: 100 }, { repair_order_id: 200 }, { repair_order_id: 100 }]) // dupe RO
+        : selectChain([]), // qteklink_customers cache empty → all fetched
+    );
+    roMetaMock.mockResolvedValue(new Map([
+      [100, { repairOrderNumber: "1001", customerId: 1 }],
+      [200, { repairOrderNumber: "1002", customerId: 2 }],
+    ]));
+    getCustomerByIdMock.mockImplementation(async (_s: number, id: number) => ({ firstName: `C${id}`, lastName: "X" }));
+
+    const r = await warmCustomerNamesForRecentDays(7476, "realm", { asOfIso: "2026-06-16T00:00:00Z" });
+
+    expect(roMetaMock).toHaveBeenCalledWith(7476, "realm", [100, 200]); // deduped RO ids
+    expect(getCustomerByIdMock).toHaveBeenCalledTimes(2);
+    expect(rpcMock).toHaveBeenCalledTimes(1); // names upserted to the cache
+    expect(r.customers).toBe(2);
+  });
+
+  it("no recent payment ROs → no RO lookup, no fetch", async () => {
+    fromMock.mockImplementation(() => selectChain([]));
+    const r = await warmCustomerNamesForRecentDays(7476, "realm", { asOfIso: "2026-06-16T00:00:00Z" });
+    expect(roMetaMock).not.toHaveBeenCalled();
+    expect(getCustomerByIdMock).not.toHaveBeenCalled();
+    expect(r.customers).toBe(0);
   });
 });

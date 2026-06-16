@@ -24,6 +24,7 @@ import { getShopSettings } from "@/lib/dal/settings";
 import { planApproveDay, executeApproveDay } from "@/lib/dal/approve-post-day";
 import { runSafetyNet, type SafetyNetResult } from "@/lib/dal/safety-net";
 import { sweepPostedDays, type SweepResult } from "@/lib/dal/posted-day-sweep";
+import { warmCustomerNamesForRecentDays } from "@/lib/dal/customers";
 import type { QboDailyWriteClient } from "@/lib/dal/daily-poster";
 import { toShopLocalDate } from "@/lib/sales/sale-builder";
 import { addDaysIso } from "@/lib/format";
@@ -40,6 +41,9 @@ export interface NightlyShopResult {
   /** The C4 payment-state projection refresh (events read / payments upserted), or null if it
    *  errored — isolated so a corrupt payment event can't block the SALE reconcile. */
   paymentStateReduced: { events: number; payments: number } | null;
+  /** Tekmetric customer names resolved into the cache for the JE-line descriptions (recent
+   *  window), or null if it errored — isolated (a name lookup never blocks posting). */
+  customersWarmed: number | null;
   /** The posted-day correction sweep (date moves + auto-posted corrections), or null
    *  when it errored — isolated (see Sentry). */
   sweep: SweepResult | null;
@@ -100,10 +104,23 @@ export async function runNightlySync(
     autoPosted: 0,
     autoPostFailed: 0,
     paymentStateReduced,
+    customersWarmed: null,
     sweep: null,
     safetyNet: null,
   };
   if (!recon.realmId) return result; // no connection → reconcile is a no-op; nothing to post
+
+  // 2b. Warm the Tekmetric customer-name cache for a recent window so the JE-line build
+  // (getCachedCustomerNames) reads names from the cache — the view/post path NEVER calls
+  // Tekmetric (posting is always >= 1 day out, so the nightly cron warms first). Runs BEFORE
+  // the auto-post + sweep so those see the names. ISOLATED: a name-fetch problem must not
+  // discard the reconcile/auto-post result (the description just omits the customer until the
+  // next warm).
+  try {
+    result.customersWarmed = (await warmCustomerNamesForRecentDays(shopId, recon.realmId)).customers;
+  } catch (e) {
+    Sentry.captureException(e, { tags: { qteklink_cron: "warm-customer-names", shop_id: String(shopId) } });
+  }
 
   // 3. AUTO-POST only when the shop opted in. Reuses the SAME guarded path as the dashboard
   // (plan → execute, hash-bound), so the cron can't post a different set than it computed.

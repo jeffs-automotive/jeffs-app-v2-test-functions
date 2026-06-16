@@ -26,7 +26,7 @@ import {
 import type { SaleDraft } from "@/lib/reconcile/daily-rollup";
 import type { SaleGateSettings } from "@/lib/reconcile/sale-gate";
 import { lookupRoMeta } from "@/lib/dal/ro-lookup";
-import { resolveCustomerNames } from "@/lib/dal/customers";
+import { getCachedCustomerNames } from "@/lib/dal/customers";
 
 /** A built payment draft + the normalized input it came from (gross/fee/status, which
  *  the JE itself only carries embedded in its lines). */
@@ -200,14 +200,16 @@ export async function buildDayDrafts(
   }
 
   // ── Enrich the line-description fields: human RO# + customer name ──
-  // The webhook payload carries only customerId, so resolve customerId per RO from the
-  // event ledger, then customerId -> name from the cache (best-effort fetch of missing
-  // ids). The build reads cached names only, so the description + source-state hash stay
-  // deterministic; a failed name lookup just omits the customer (retried next build).
+  // The webhook payload carries only customerId, so resolve customerId per RO from the event
+  // ledger, then read the name from the cache ONLY (getCachedCustomerNames). The build NEVER
+  // calls Tekmetric — the nightly cron (warmCustomerNamesForRecentDays) pre-fetches names
+  // overnight, so the view/post path is fast + deterministic (posting is always >= 1 day out,
+  // so names are cached by the time the office manager posts). An un-warmed customer is simply
+  // omitted from the description until the next nightly warm.
   const payRoIds = [...new Set(paymentInputs.map((p) => p.repairOrderId).filter((ro): ro is number => ro != null))];
   const roMeta = await lookupRoMeta(shopId, realmId, payRoIds);
   const customerIds = [...new Set([...roMeta.values()].map((m) => m.customerId).filter((c): c is number => c != null))];
-  const customerNames = await resolveCustomerNames(shopId, customerIds);
+  const customerNames = await getCachedCustomerNames(shopId, customerIds);
   for (const input of paymentInputs) {
     const meta = input.repairOrderId != null ? roMeta.get(input.repairOrderId) : undefined;
     input.repairOrderNumber = meta?.repairOrderNumber ?? null;

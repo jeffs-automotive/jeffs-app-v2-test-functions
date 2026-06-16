@@ -98,9 +98,21 @@ fallback, body shopId must match — same multi-tenant guard as today). daily-br
 In `buildDayDrafts`, after building the payment rows:
 1. Collect distinct payment RO ids.
 2. `lookupRoMeta(roIds)` → `{repairOrderNumber, customerId}` per RO.
-3. `ensureCustomerNames(distinct customerIds)` then `getCachedCustomerNames(...)`.
+3. **`getCachedCustomerNames(distinct customerIds)` — CACHE-ONLY read; the build NEVER calls
+   Tekmetric** (Chris 2026-06-16: the office manager posts at least one day out, so the cron
+   warms names overnight; the view/post path must stay fast + deterministic). An un-warmed
+   customer is simply omitted until the next nightly warm.
 4. For each payment set `input.repairOrderNumber = meta.repairOrderNumber` and
    `input.customerName = names.get(meta.customerId) ?? null`.
+
+### E.2 Nightly warming (the cron) — where the Tekmetric fetch lives
+
+`warmCustomerNamesForRecentDays(shopId, realmId, {days=14})` (in `customers.ts`) queries the
+recent payment ROs (`qteklink_payment_state`), `lookupRoMeta` → customerIds, then
+`resolveCustomerNames` (fetch missing + upsert). Wired into `runNightlySync` (the
+`/api/cron/daily-sync` Vercel cron) as an isolated step AFTER the reconcile and BEFORE the
+auto-post + posted-day sweep, so both see the warm names. Only MISSING ids are fetched
+(near-zero after the first run); resilient + Sentry-captured; never blocks posting.
 
 `PaymentForBuild` gains `repairOrderNumber?: string | null` and `customerName?: string | null`.
 Manual method-picks set both null (no RO/customer link) — they already carry `repairOrderId`.
@@ -124,10 +136,12 @@ desc  = parts.filter(Boolean).join(" · ") + (isRefund ? " (refund)" : "")
 
 ### G. Determinism / hash churn (the money-safety bit)
 
-- The description (incl. customer name) is in `source_state_hash`. `buildDayDrafts` ensures+reads the
-  cache **within the same call** (ensure is awaited before the build reads), so a single build is
-  self-consistent; once a name is cached it is stable → the hash is stable across the reconcile,
-  approve, and poster-recheck builds. Amounts NEVER depend on the name.
+- The description (incl. customer name) is in `source_state_hash`. `buildDayDrafts` reads the cache
+  **only** (no network) — so every build (reconcile, approve, poster-recheck, live-on-view) is a pure
+  deterministic DB read. The **nightly cron** warms the cache; once a name is cached it is stable → the
+  hash is stable. Amounts NEVER depend on the name. (When the nightly warm first adds a name to a
+  posted day, that day's hash changes once → it shows "changed since posted" for re-approval — the
+  intended correction path; thereafter stable.)
 - For **6/15 + 6/13**: after deploy + cache warm, the days show "changed since posted"; Chris clicks
   **Approve + post this day** → UPDATE in place of the payments (+ fees) JE. Sales JE descriptions are
   unchanged → sales category is a no-op (skip).
@@ -139,7 +153,9 @@ desc  = parts.filter(Boolean).join(" · ") + (isRefund ? " (refund)" : "")
 
 - `supabase/migrations/<ts>_qteklink_customers.sql` (cache table + RLS + upsert RPC) — **gated**.
 - `qteklink-app/src/lib/tekmetric/client.ts` — `getCustomerById` + `customerDisplayName`.
-- `qteklink-app/src/lib/dal/customers.ts` (new) — `getCachedCustomerNames`, `ensureCustomerNames`.
+- `qteklink-app/src/lib/dal/customers.ts` (new) — `getCachedCustomerNames` (cache-only, used by the
+  build), `resolveCustomerNames` (fetch+cache), `warmCustomerNamesForRecentDays` (the nightly entry).
+- `qteklink-app/src/lib/dal/nightly-sync.ts` — call `warmCustomerNamesForRecentDays` (isolated step).
 - `qteklink-app/src/lib/dal/daily-breakdown.ts` — extract/`lookupRoMeta`.
 - `qteklink-app/src/lib/dal/day-drafts.ts` — enrichment.
 - `qteklink-app/src/lib/payments/payment-je-builder.ts` — description format + `PaymentForBuild` fields.
@@ -164,8 +180,11 @@ desc  = parts.filter(Boolean).join(" · ") + (isRefund ? " (refund)" : "")
 - `npm run typecheck` + `vitest` + `npm run build` + **`/code-review`** gate (touches the live posting
   path — fail-closed). Optionally `/feature-cross-verify` on the plan.
 - Deploy: `supabase db push` (migration) → `git push origin main` (Vercel app). MCP deploys denied.
-- Warm the cache for 6/15 + 6/13 (view the days, or a one-off backfill), confirm both show "changed
-  since posted", then **Chris re-approves each day** (the live QBO UPDATE is his gated action).
+- The **nightly cron** warms the cache (14-day window covers 6/15 + 6/13). After the next nightly run,
+  both days show "changed since posted" (the cache-only build now reflects the names); then **Chris
+  re-approves each day** (the live QBO UPDATE is his gated action). To correct them immediately without
+  waiting for the cron, trigger the cron once (`GET /api/cron/daily-sync` with the `CRON_SECRET`), which
+  runs the same warming — viewing alone no longer warms (the build is cache-only by design).
 
 ## Out of scope
 

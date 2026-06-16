@@ -15,6 +15,7 @@
 import * as Sentry from "@sentry/nextjs";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getCustomerById, customerDisplayName } from "@/lib/tekmetric/client";
+import { lookupRoMeta } from "@/lib/dal/ro-lookup";
 
 /** Sanitize to a deduped list of safe positive customer ids. */
 function cleanIds(ids: number[]): number[] {
@@ -81,4 +82,44 @@ export async function resolveCustomerNames(shopId: number, ids: number[]): Promi
     if (error) throw new Error(`qteklink_upsert_customers failed: ${error.message}`);
   }
   return names;
+}
+
+/**
+ * NIGHTLY cache-warming (called by the daily-sync cron). Resolve + cache the customer name
+ * for every payment in a recent window so the day's JE-line build reads names from the cache
+ * (getCachedCustomerNames) — the view/post path NEVER calls Tekmetric. Posting is always
+ * >= 1 day out, so the cron has all night to warm the cache before the office manager posts.
+ * Only MISSING ids are fetched (near-zero after the first run). Resilient (resolveCustomerNames
+ * Sentry-captures + skips a per-customer failure). Throws only on a DB error.
+ */
+export async function warmCustomerNamesForRecentDays(
+  shopId: number,
+  realmId: string,
+  opts: { days?: number; asOfIso?: string } = {},
+): Promise<{ customers: number }> {
+  const days = opts.days ?? 14;
+  const asOfMs = opts.asOfIso ? Date.parse(opts.asOfIso) : Date.now();
+  const startIso = new Date(asOfMs - days * 86_400_000).toISOString();
+
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin
+    .from("qteklink_payment_state")
+    .select("repair_order_id")
+    .eq("shop_id", shopId)
+    .eq("realm_id", realmId)
+    .gte("payment_date", startIso)
+    .not("repair_order_id", "is", null);
+  if (error) throw new Error(`warmCustomerNamesForRecentDays (payment_state) failed: ${error.message}`);
+
+  const roIds = [...new Set(
+    ((data ?? []) as { repair_order_id: number | string }[])
+      .map((r) => Number(r.repair_order_id))
+      .filter((n) => Number.isSafeInteger(n)),
+  )];
+  if (roIds.length === 0) return { customers: 0 };
+
+  const roMeta = await lookupRoMeta(shopId, realmId, roIds);
+  const customerIds = [...new Set([...roMeta.values()].map((m) => m.customerId).filter((c): c is number => c != null))];
+  const names = await resolveCustomerNames(shopId, customerIds);
+  return { customers: names.size };
 }
