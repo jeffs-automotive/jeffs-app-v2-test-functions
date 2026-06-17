@@ -290,34 +290,41 @@ export async function detectDateMoves(shopId: number, realmId: string, tz: strin
   return { scannedRos: roToDay.size, newOrChangedMoves, autoResolved };
 }
 
-/** Send the DATE CHANGE ALERT (recipients from /settings) for new/changed moves. */
+/** Send the DATE CHANGE ALERT (recipients from /settings) for new/changed moves — ONE
+ *  consolidated email per run listing EVERY moved RO, not one email per RO (Chris's spec). */
 export async function notifyDateMoves(shopId: number, moves: DateMoveRow[]): Promise<void> {
   if (moves.length === 0) return;
   const { settings } = await getShopSettings(shopId);
   const to = settings.dateChangeAlertEmails;
+
+  const header = moves.length === 1
+    ? `A repair order was unposted in Tekmetric and posted again on a DIFFERENT day. The original day's journal entry is already in QuickBooks.`
+    : `${moves.length} repair orders were unposted in Tekmetric and posted again on DIFFERENT days. The original days' journal entries are already in QuickBooks.`;
+
+  const lines = [header, ``];
   for (const m of moves) {
     const ro = m.roNumber ?? String(m.tekmetricRoId);
-    const lines = [
-      `Repair order ${ro} was unposted in Tekmetric and posted again on a DIFFERENT day.`,
-      ``,
-      `  Originally posted on: ${m.originalBusinessDate} (this day's journal entry is already in QuickBooks)`,
-      `  Now posted on:        ${m.newBusinessDate}`,
-    ];
-    if (m.newTotalCents != null) lines.push(`  Current total:        $${(m.newTotalCents / 100).toFixed(2)}`);
     lines.push(
-      ``,
-      `Nothing has changed in QuickBooks yet. Open the QTekLink Posting queue to decide:`,
-      `  - APPROVE the date change (QTekLink will move the repair order between the two`,
-      `    days' journal entries), or`,
-      `  - have a service advisor re-post the repair order on the ORIGINAL day in`,
-      `    Tekmetric — the queue clears the item on its own the next time it checks.`,
+      `  - RO ${ro}`,
+      `      Originally posted on: ${m.originalBusinessDate}`,
+      `      Now posted on:        ${m.newBusinessDate}`,
     );
-    await sendQteklinkEmail({
-      to,
-      subject: `QTekLink Date Change Alert: RO ${ro} moved from ${m.originalBusinessDate} to ${m.newBusinessDate}`,
-      text: lines.join("\n"),
-    });
+    if (m.newTotalCents != null) lines.push(`      Current total:        $${(m.newTotalCents / 100).toFixed(2)}`);
+    lines.push(``);
   }
+  lines.push(
+    `Nothing has changed in QuickBooks yet. Open the QTekLink Posting queue to decide for each:`,
+    `  - APPROVE the date change (QTekLink moves the repair order between the two days'`,
+    `    journal entries), or`,
+    `  - have a service advisor re-post the repair order on the ORIGINAL day in Tekmetric`,
+    `    — the queue clears the item on its own the next time it checks.`,
+  );
+
+  const subject = moves.length === 1
+    ? `QTekLink Date Change Alert: RO ${moves[0]!.roNumber ?? String(moves[0]!.tekmetricRoId)} moved from ${moves[0]!.originalBusinessDate} to ${moves[0]!.newBusinessDate}`
+    : `QTekLink Date Change Alert: ${moves.length} repair orders changed dates`;
+
+  await sendQteklinkEmail({ to, subject, text: lines.join("\n") });
 }
 
 /**

@@ -139,6 +139,23 @@ describe("notifyDateMoves", () => {
     expect(arg.text).toContain("Now posted on:        2026-06-09");
   });
 
+  it("consolidates MULTIPLE moves into ONE email (count subject, every RO listed)", async () => {
+    const moveB: DateMoveRow = {
+      id: "mv-2", tekmetricRoId: 102, roNumber: "152420",
+      originalBusinessDate: "2026-06-05", newBusinessDate: "2026-06-08",
+      originalTotalCents: null, newTotalCents: 12800, status: "pending",
+      detectedAt: "2026-06-10T01:00:00Z", approvedBy: null, approvedAt: null, resolvedAt: null,
+    };
+    await notifyDateMoves(7476, [move, moveB]);
+    expect(sendMock).toHaveBeenCalledTimes(1); // ONE email for all moves, not one per RO
+    const arg = sendMock.mock.calls[0]![0] as { subject: string; text: string };
+    expect(arg.subject).toContain("2 repair orders changed dates");
+    expect(arg.text).toContain("RO 152419");
+    expect(arg.text).toContain("RO 152420");
+    expect(arg.text).toContain("Now posted on:        2026-06-09");
+    expect(arg.text).toContain("Now posted on:        2026-06-08");
+  });
+
   it("no moves → no email", async () => {
     await notifyDateMoves(7476, []);
     expect(sendMock).not.toHaveBeenCalled();

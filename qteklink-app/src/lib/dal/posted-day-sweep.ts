@@ -40,6 +40,7 @@ import {
   type DailyPostingRow,
 } from "@/lib/dal/daily-postings";
 import { postDailyPostingById, type QboDailyWriteClient } from "@/lib/dal/daily-poster";
+import type { DailyCategory } from "@/lib/daily/daily-je-builder";
 import { detectDateMoves, notifyDateMoves, listDateMoves, approveDateMove, unapproveDateMove } from "@/lib/dal/date-moves";
 import { sendQteklinkEmail } from "@/lib/dal/notify";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -77,9 +78,60 @@ async function listPostedDays(shopId: number, realmId: string): Promise<string[]
   return [...new Set(((data ?? []) as { business_date: string }[]).map((r) => r.business_date))].sort();
 }
 
-function describeIds(label: string, ids: (string | number)[]): string | null {
-  if (ids.length === 0) return null;
-  return `  ${label}: ${ids.join(", ")}`;
+/** How a posted JE category changed between its prior posted version and the correction. */
+export type ChangeKind = "deleted" | "membership" | "amounts" | "descriptions-only" | "no-change";
+
+/** One category's line in the consolidated per-day correction email. */
+export interface CategoryOutcome {
+  category: DailyCategory;
+  changed: boolean;
+  changeKind: ChangeKind;
+  docNumber: string | null;
+  priorTotalCents: number | null;
+  nextTotalCents: number | null;
+  added: string[];
+  removed: string[];
+  /** Sales-only: the change was made on the SAME shop-local day the RO posted (an advisor
+   *  fixing a mistake during the business day) — suppressable per Chris's rule. */
+  sameDayChurn: boolean;
+}
+
+const CATEGORY_ORDER: DailyCategory[] = ["sales", "payments", "fees"];
+const CATEGORY_LABEL: Record<DailyCategory, string> = { sales: "Sales", payments: "Payments", fees: "Card fees" };
+/** The constituent noun per category (sales = repair orders; payments + fees are per-payment). */
+const CONSTITUENT_NOUN: Record<DailyCategory, string> = { sales: "repair orders", payments: "payments", fees: "payments" };
+
+/** account|type|amount signature of a JE's lines, IGNORING description — lets us tell a
+ *  descriptions-only correction (line TEXT changed, accounts/amounts identical) from a real
+ *  amounts/accounts change. */
+function lineSignature(lines: DailyPostingRow["lines"]): string {
+  return lines.map((l) => `${l.accountId}|${l.postingType}|${l.amountCents}`).join("\n");
+}
+
+/**
+ * Classify what changed between a posted prior JE and its posted correction:
+ *   deleted          — the category emptied (the JE was removed).
+ *   membership       — repair orders / payments were added or removed.
+ *   descriptions-only— same constituents + same total + identical account/amount lines, only
+ *                      the line DESCRIPTIONS differ (e.g. the JE-line-description feature).
+ *   amounts          — same constituents, but the amounts/accounts (and total) changed.
+ */
+export function classifyChange(
+  prior: DailyPostingRow,
+  next: DailyPostingRow,
+): { changeKind: ChangeKind; added: string[]; removed: string[] } {
+  if (next.action === "delete") return { changeKind: "deleted", added: [], removed: [] };
+  const priorIds = (next.category === "sales" ? prior.constituents.roIds : prior.constituents.paymentIds).map(String);
+  const nextIds = (next.category === "sales" ? next.constituents.roIds : next.constituents.paymentIds).map(String);
+  const priorSet = new Set(priorIds);
+  const nextSet = new Set(nextIds);
+  const added = nextIds.filter((id) => !priorSet.has(id));
+  const removed = priorIds.filter((id) => !nextSet.has(id));
+  if (added.length || removed.length) return { changeKind: "membership", added, removed };
+  // Same constituents: descriptions-only (same total + same account/amount lines) vs amounts.
+  const descriptionsOnly =
+    prior.totalCents === next.totalCents && lineSignature(prior.lines) === lineSignature(next.lines);
+  return { changeKind: descriptionsOnly ? "descriptions-only" : "amounts", added: [], removed: [] };
 }
 
 /**
@@ -112,39 +164,51 @@ async function latestRoChangeDay(
   return toShopLocalDate(r.tekmetric_event_at ?? r.received_at, tz);
 }
 
-/** Plain-language "what changed" for one applied correction (prior posted vs new). */
-export function describeCorrection(prior: DailyPostingRow, next: DailyPostingRow): { subject: string; text: string } {
-  const kindLabel = next.category === "sales" ? "repair orders" : "payments";
-  const priorIds = next.category === "sales" ? prior.constituents.roIds : prior.constituents.paymentIds;
-  const nextIds = next.category === "sales" ? next.constituents.roIds : next.constituents.paymentIds;
-  const priorSet = new Set(priorIds.map(String));
-  const nextSet = new Set(nextIds.map(String));
-  const added = nextIds.map(String).filter((id) => !priorSet.has(id));
-  const removed = priorIds.map(String).filter((id) => !nextSet.has(id));
-
-  const lines = [
-    `A day that was already posted to QuickBooks has changed, and QTekLink updated the journal entry to match Tekmetric.`,
+/**
+ * The ONE consolidated Day Correction email for a day (Chris's spec): lists EVERY JE
+ * category that has a posted entry, HIGHLIGHTS what changed (and how), and shows the
+ * unchanged ones as context — so the office manager gets a single email per day, not one
+ * per journal entry. The caller only sends it when at least one category changed.
+ */
+export function describeDayCorrections(
+  businessDate: string,
+  outcomes: CategoryOutcome[],
+): { subject: string; text: string } {
+  const lines: string[] = [
+    `Some journal entries for a day already posted to QuickBooks have changed, and QTekLink updated them to match Tekmetric.`,
     ``,
-    `  Journal entry: ${next.docNumber ?? prior.docNumber ?? `${next.businessDate} (${next.category})`}`,
-    `  Day:           ${next.businessDate}`,
-    next.action === "delete"
-      ? `  Change:        the journal entry was DELETED (nothing left to post for this day)`
-      : `  New total:     ${fmtUsd(next.totalCents ?? 0)} (was ${fmtUsd(prior.totalCents ?? 0)})`,
+    `  Day: ${businessDate}`,
+    ``,
   ];
-  const addedLine = describeIds(`Added ${kindLabel}`, added);
-  const removedLine = describeIds(`Removed ${kindLabel}`, removed);
-  if (addedLine) lines.push(addedLine);
-  if (removedLine) lines.push(removedLine);
-  if (!addedLine && !removedLine && next.action !== "delete") {
-    lines.push(`  Changed:       amounts only (the same ${kindLabel}, different totals)`);
+  for (const o of outcomes) {
+    const label = CATEGORY_LABEL[o.category];
+    const noun = CONSTITUENT_NOUN[o.category];
+    const doc = o.docNumber ? `  (${o.docNumber})` : "";
+    if (o.changed) {
+      lines.push(`  >> ${label} — CHANGED${doc}`);
+      if (o.changeKind === "deleted") {
+        lines.push(`     The journal entry was DELETED (nothing left to post for this day).`);
+      } else if (o.changeKind === "membership") {
+        lines.push(`     New total: ${fmtUsd(o.nextTotalCents ?? 0)} (was ${fmtUsd(o.priorTotalCents ?? 0)})`);
+        if (o.added.length) lines.push(`     Added ${noun}: ${o.added.join(", ")}`);
+        if (o.removed.length) lines.push(`     Removed ${noun}: ${o.removed.join(", ")}`);
+      } else if (o.changeKind === "descriptions-only") {
+        lines.push(`     Wording only: the line descriptions were updated. The ${noun} and the total (${fmtUsd(o.nextTotalCents ?? 0)}) are unchanged.`);
+      } else {
+        lines.push(`     New total: ${fmtUsd(o.nextTotalCents ?? 0)} (was ${fmtUsd(o.priorTotalCents ?? 0)}) — the same ${noun}, with updated amounts.`);
+      }
+    } else {
+      lines.push(`     ${label} — no change${doc}`);
+      if (o.nextTotalCents != null) lines.push(`     Total: ${fmtUsd(o.nextTotalCents)}`);
+    }
+    lines.push(``);
   }
   lines.push(
-    ``,
-    `Please double-check the entry in QuickBooks. If something looks wrong, open the`,
+    `Please double-check these entries in QuickBooks. If something looks wrong, open the`,
     `day on the QTekLink Daily approvals page to see the full breakdown.`,
   );
   return {
-    subject: `QTekLink Day Correction Alert: ${next.docNumber ?? next.businessDate} was updated in QuickBooks`,
+    subject: `QTekLink Day Correction Alert: ${businessDate} journal entries updated in QuickBooks`,
     text: lines.join("\n"),
   };
 }
@@ -169,17 +233,34 @@ export async function applyDayCorrections(
 
   let posted = 0;
   let failed = 0;
-  for (const category of ["sales", "payments", "fees"] as const) {
+  // Collect a per-category outcome (changed or not) so the day sends ONE consolidated email
+  // listing all three JE entries (Chris's spec), instead of one email per category.
+  const outcomes: CategoryOutcome[] = [];
+  let postedCorrections = 0;
+  let churnSuppressable = 0;
+
+  for (const category of CATEGORY_ORDER) {
     const mine = postings.filter((p) => p.category === category);
-    const pending = mine.filter((p) => p.status === "pending").sort((a, b) => b.postingVersion - a.postingVersion)[0];
     const prior = mine.filter((p) => p.status === "posted").sort((a, b) => b.postingVersion - a.postingVersion)[0];
-    if (!pending || !prior) continue; // no staged correction, or never posted (human gate)
+    if (!prior) continue; // never posted (first-time human gate) — no QBO JE to report on
+
+    const pending = mine.filter((p) => p.status === "pending").sort((a, b) => b.postingVersion - a.postingVersion)[0];
+
+    // A category with a posted prior but no applied correction is unchanged CONTEXT in the email.
+    const pushNoChange = () =>
+      outcomes.push({
+        category, changed: false, changeKind: "no-change", docNumber: prior.docNumber,
+        priorTotalCents: prior.totalCents, nextTotalCents: prior.totalCents, added: [], removed: [], sameDayChurn: false,
+      });
+
+    if (!pending) { pushNoChange(); continue; } // no staged correction → unchanged
 
     try {
       await approveDailyPosting(shopId, pending.id, "system (auto-correction)");
       const outcome = await postDailyPostingById(shopId, pending.id, deps);
       if (outcome.status === "posted") {
         posted++;
+        postedCorrections++;
         // Same-day churn check (sales only — the rule is about repair orders). A
         // lookup failure fails OPEN: better a spurious alert than a silent one.
         let sameDayChurn = false;
@@ -194,28 +275,44 @@ export async function applyDayCorrections(
             });
           }
         }
-        if (sameDayChurn) {
-          console.log(JSON.stringify({
-            level: "info", surface: "posted-day-sweep", shop_id: shopId,
-            msg: "correction posted; Day Correction Alert suppressed (same-day churn)",
-            business_date: businessDate, category, posting_id: pending.id,
-          }));
-        } else {
-          const { subject, text } = describeCorrection(prior, pending);
-          await sendQteklinkEmail({ to: correctionTo, subject, text });
-        }
+        if (sameDayChurn) churnSuppressable++;
+        const { changeKind, added, removed } = classifyChange(prior, pending);
+        outcomes.push({
+          category, changed: true, changeKind, docNumber: pending.docNumber ?? prior.docNumber,
+          priorTotalCents: prior.totalCents, nextTotalCents: pending.totalCents, added, removed, sameDayChurn,
+        });
       } else if (outcome.status === "stale_refreshed") {
-        // the day moved again mid-flight — the next sweep pass picks it up.
+        // the day moved again mid-flight — the next sweep pass picks it up; unchanged this run.
+        pushNoChange();
       } else {
         failed++;
+        pushNoChange(); // the live QBO JE is still the prior — show it as unchanged context
       }
     } catch (e) {
       failed++;
+      pushNoChange();
       Sentry.captureException(e, {
         tags: { qteklink_cron: "posted-day-sweep", shop_id: String(shopId) },
         extra: { businessDate, category, postingId: pending.id },
       });
     }
+  }
+
+  // ONE email per day. Suppress the WHOLE day only when EVERY posted correction was same-day
+  // churn (an advisor fixing a mistake during the business day — post quietly); a single
+  // later-day change OR any non-sales correction forces the alert, and the email lists ALL
+  // categories so nothing is hidden when we do send.
+  const anyChanged = outcomes.some((o) => o.changed);
+  const suppressWholeDay = postedCorrections > 0 && churnSuppressable === postedCorrections;
+  if (anyChanged && !suppressWholeDay) {
+    const { subject, text } = describeDayCorrections(businessDate, outcomes);
+    await sendQteklinkEmail({ to: correctionTo, subject, text });
+  } else if (anyChanged && suppressWholeDay) {
+    console.log(JSON.stringify({
+      level: "info", surface: "posted-day-sweep", shop_id: shopId,
+      msg: "day correction posted; Day Correction Alert suppressed (same-day churn)",
+      business_date: businessDate,
+    }));
   }
   return { businessDate, correctionsPosted: posted, correctionsFailed: failed };
 }

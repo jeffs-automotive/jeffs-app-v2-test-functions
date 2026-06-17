@@ -51,7 +51,7 @@ vi.mock("@/lib/dal/daily-postings", async (importOriginal) => ({
   approveDailyPosting: (...a: unknown[]) => approveDailyMock(...a),
 }));
 
-import { applyDayCorrections, sweepPostedDays, describeCorrection, applyDateMoveDecision } from "../posted-day-sweep";
+import { applyDayCorrections, sweepPostedDays, classifyChange, describeDayCorrections, applyDateMoveDecision } from "../posted-day-sweep";
 import type { DailyPostingRow } from "../daily-postings";
 
 const REALM = "9341455608740708";
@@ -83,23 +83,58 @@ beforeEach(() => {
   unapproveMoveMock.mockResolvedValue({ unapproved: true });
 });
 
-describe("describeCorrection", () => {
-  it("names the JE, the added/removed ROs and the old → new totals", () => {
-    const prior = row({ status: "posted", postingVersion: 1, totalCents: 100000, constituents: { roIds: [101, 102], paymentIds: [] } });
-    const next = row({ status: "pending", postingVersion: 2, action: "update", totalCents: 80000, constituents: { roIds: [101, 103], paymentIds: [] } });
-    const { subject, text } = describeCorrection(prior, next);
+describe("classifyChange", () => {
+  it("membership: added + removed repair orders", () => {
+    const prior = row({ status: "posted", constituents: { roIds: [101, 102], paymentIds: [] } });
+    const next = row({ status: "pending", action: "update", constituents: { roIds: [101, 103], paymentIds: [] } });
+    expect(classifyChange(prior, next)).toEqual({ changeKind: "membership", added: ["103"], removed: ["102"] });
+  });
+
+  it("descriptions-only: same constituents + total + account/amount lines, only the descriptions differ", () => {
+    const L = (description: string) => [{ accountId: "366", postingType: "Debit" as const, amountCents: 1000, description }];
+    const prior = row({ status: "posted", category: "payments", totalCents: 1000, constituents: { roIds: [], paymentIds: ["1"] }, lines: L("PAY 1 — RO 2") });
+    const next = row({ status: "pending", action: "update", category: "payments", totalCents: 1000, constituents: { roIds: [], paymentIds: ["1"] }, lines: L("Check · RO 2 · Carmax") });
+    expect(classifyChange(prior, next).changeKind).toBe("descriptions-only");
+  });
+
+  it("amounts: same constituents but the total/lines moved", () => {
+    const prior = row({ status: "posted", totalCents: 1000, constituents: { roIds: [101], paymentIds: [] }, lines: [{ accountId: "120", postingType: "Debit", amountCents: 1000, description: "x" }] });
+    const next = row({ status: "pending", action: "update", totalCents: 1200, constituents: { roIds: [101], paymentIds: [] }, lines: [{ accountId: "120", postingType: "Debit", amountCents: 1200, description: "x" }] });
+    expect(classifyChange(prior, next).changeKind).toBe("amounts");
+  });
+
+  it("deleted: the correction removed the JE", () => {
+    const prior = row({ status: "posted", category: "fees", constituents: { roIds: [], paymentIds: ["1"] } });
+    const next = row({ status: "pending", action: "delete", category: "fees" });
+    expect(classifyChange(prior, next).changeKind).toBe("deleted");
+  });
+});
+
+describe("describeDayCorrections", () => {
+  it("ONE email lists all categories, highlights changes, and words a descriptions-only change correctly", () => {
+    const { subject, text } = describeDayCorrections(DATE, [
+      { category: "sales", changed: true, changeKind: "membership", docNumber: `QTL-RO-${DATE}`, priorTotalCents: 100000, nextTotalCents: 80000, added: ["103"], removed: ["102"], sameDayChurn: false },
+      { category: "payments", changed: true, changeKind: "descriptions-only", docNumber: `QTL-PAY-${DATE}`, priorTotalCents: 125000, nextTotalCents: 125000, added: [], removed: [], sameDayChurn: false },
+      { category: "fees", changed: false, changeKind: "no-change", docNumber: `QTL-FEE-${DATE}`, priorTotalCents: 4500, nextTotalCents: 4500, added: [], removed: [], sameDayChurn: false },
+    ]);
     expect(subject).toContain("Day Correction Alert");
-    expect(subject).toContain(`QTL-RO-${DATE}`);
-    expect(text).toContain("Journal entry: QTL-RO-2026-06-08");
-    expect(text).toContain("New total:     $800.00 (was $1,000.00)");
+    expect(subject).toContain(DATE);
+    expect(text).toContain("Sales — CHANGED");
+    expect(text).toContain("New total: $800.00 (was $1,000.00)");
     expect(text).toContain("Added repair orders: 103");
     expect(text).toContain("Removed repair orders: 102");
+    expect(text).toContain("Payments — CHANGED");
+    // the bug fix: a wording-only change must NOT be reported as an amounts/totals change.
+    expect(text).toContain("Wording only: the line descriptions were updated. The payments and the total ($1,250.00) are unchanged.");
+    expect(text).not.toContain("different totals");
+    expect(text).toContain("Card fees — no change");
   });
 
   it("a DELETE correction says the entry was deleted", () => {
-    const prior = row({ status: "posted", totalCents: 5000, constituents: { roIds: [], paymentIds: ["1"] }, category: "fees" });
-    const next = row({ status: "pending", postingVersion: 2, action: "delete", totalCents: null, constituents: { roIds: [], paymentIds: [] }, category: "fees" });
-    expect(describeCorrection(prior, next).text).toContain("DELETED");
+    const { text } = describeDayCorrections(DATE, [
+      { category: "fees", changed: true, changeKind: "deleted", docNumber: `QTL-FEE-${DATE}`, priorTotalCents: 5000, nextTotalCents: null, added: [], removed: [], sameDayChurn: false },
+    ]);
+    expect(text).toContain("DELETED");
   });
 });
 
@@ -177,6 +212,62 @@ describe("applyDayCorrections", () => {
     postDailyMock.mockResolvedValue({ status: "failed", postingId: "v2", reason: "qbo_error" });
     const r = await applyDayCorrections(7476, DATE);
     expect(r).toEqual({ businessDate: DATE, correctionsPosted: 0, correctionsFailed: 1 });
+    expect(sendMock).not.toHaveBeenCalled();
+  });
+
+  it("consolidates a multi-category day into ONE email listing all three JE entries", async () => {
+    listDailyMock.mockResolvedValue({
+      realmId: REALM,
+      postings: [
+        // sales: a membership change (RO 102 removed)
+        row({ id: "s1", category: "sales", status: "posted", postingVersion: 1, totalCents: 100000, constituents: { roIds: [101, 102], paymentIds: [] }, qboJeId: "QBO-1" }),
+        row({ id: "s2", category: "sales", status: "pending", postingVersion: 2, action: "update", totalCents: 80000, constituents: { roIds: [101], paymentIds: [] } }),
+        // payments: descriptions-only (same payment + total + account/amount; only the line text changed)
+        row({ id: "p1", category: "payments", status: "posted", postingVersion: 1, docNumber: `QTL-PAY-${DATE}`, totalCents: 125000, constituents: { roIds: [], paymentIds: ["1"] }, lines: [{ accountId: "366", postingType: "Debit", amountCents: 125000, description: "PAY 1 — RO 2" }], qboJeId: "QBO-2" }),
+        row({ id: "p2", category: "payments", status: "pending", postingVersion: 2, action: "update", docNumber: `QTL-PAY-${DATE}`, totalCents: 125000, constituents: { roIds: [], paymentIds: ["1"] }, lines: [{ accountId: "366", postingType: "Debit", amountCents: 125000, description: "Check · RO 2 · Carmax" }] }),
+        // fees: a posted entry with NO staged correction → unchanged context
+        row({ id: "f1", category: "fees", status: "posted", postingVersion: 1, docNumber: `QTL-FEE-${DATE}`, totalCents: 4500, constituents: { roIds: [], paymentIds: ["1"] }, qboJeId: "QBO-3" }),
+      ],
+    });
+    fromResults.push([{ tekmetric_event_at: "2026-06-11T14:00:00Z", received_at: "2026-06-11T14:00:01Z" }]); // sales: later day → not churn
+    const r = await applyDayCorrections(7476, DATE);
+    expect(r).toEqual({ businessDate: DATE, correctionsPosted: 2, correctionsFailed: 0 });
+    expect(sendMock).toHaveBeenCalledTimes(1); // ONE email for the whole day, not one per category
+    const email = sendMock.mock.calls[0]![0] as { subject: string; text: string };
+    expect(email.text).toContain("Removed repair orders: 102"); // sales
+    expect(email.text).toContain("Wording only: the line descriptions were updated."); // payments
+    expect(email.text).toContain("Card fees — no change"); // fees context
+  });
+
+  it("sends the day alert when a non-churn change accompanies a same-day sales churn (whole-day suppression only when ALL churn)", async () => {
+    listDailyMock.mockResolvedValue({
+      realmId: REALM,
+      postings: [
+        row({ id: "s1", category: "sales", status: "posted", postingVersion: 1, totalCents: 100000, constituents: { roIds: [101], paymentIds: [] }, qboJeId: "QBO-1" }),
+        row({ id: "s2", category: "sales", status: "pending", postingVersion: 2, action: "update", totalCents: 110000, constituents: { roIds: [101], paymentIds: [] } }),
+        row({ id: "p1", category: "payments", status: "posted", postingVersion: 1, docNumber: `QTL-PAY-${DATE}`, totalCents: 5000, constituents: { roIds: [], paymentIds: ["1"] }, lines: [{ accountId: "366", postingType: "Debit", amountCents: 5000, description: "a" }], qboJeId: "QBO-2" }),
+        row({ id: "p2", category: "payments", status: "pending", postingVersion: 2, action: "update", docNumber: `QTL-PAY-${DATE}`, totalCents: 6000, constituents: { roIds: [], paymentIds: ["1"] }, lines: [{ accountId: "366", postingType: "Debit", amountCents: 6000, description: "a" }] }),
+      ],
+    });
+    fromResults.push([{ tekmetric_event_at: "2026-06-08T21:00:00Z", received_at: "2026-06-08T21:00:01Z" }]); // sales: SAME shop-local day → churn
+    const r = await applyDayCorrections(7476, DATE);
+    expect(r.correctionsPosted).toBe(2);
+    expect(sendMock).toHaveBeenCalledTimes(1); // payments change forces ONE day email listing both
+    const email = sendMock.mock.calls[0]![0] as { text: string };
+    expect(email.text).toContain("Sales — CHANGED");
+    expect(email.text).toContain("Payments — CHANGED");
+  });
+
+  it("a day with posted entries but NO staged corrections sends no email", async () => {
+    listDailyMock.mockResolvedValue({
+      realmId: REALM,
+      postings: [
+        row({ id: "s1", category: "sales", status: "posted", postingVersion: 1, qboJeId: "QBO-1", constituents: { roIds: [101], paymentIds: [] } }),
+        row({ id: "f1", category: "fees", status: "posted", postingVersion: 1, qboJeId: "QBO-3", constituents: { roIds: [], paymentIds: ["1"] } }),
+      ],
+    });
+    const r = await applyDayCorrections(7476, DATE);
+    expect(r).toEqual({ businessDate: DATE, correctionsPosted: 0, correctionsFailed: 0 });
     expect(sendMock).not.toHaveBeenCalled();
   });
 });
