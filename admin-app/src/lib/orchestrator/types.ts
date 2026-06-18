@@ -393,6 +393,89 @@ export interface GetKeytagAuditHistoryResult {
   message: string;
 }
 
+// ─── Tool 11: listManualReviews ─────────────────────────────────────────
+// Mirrors `_shared/tools/manual-review-list.ts`.
+
+export interface ListManualReviewsArgs {
+  only_open?: boolean;
+  search?: string;
+  limit?: number;
+}
+
+export interface ManualReviewListItem {
+  code: string;
+  category: ManualReviewCategory;
+  issue_summary: string;
+  ro_id: number | null;
+  ro_number: number | null;
+  tag_color: TagColor | null;
+  tag_number: number | null;
+  options: ManualReviewOption[];
+  context: ManualReviewContext;
+  issued_at: string;
+  resolved_at: string | null;
+  resolved_choice: string | null;
+  resolved_by_user_label: string | null;
+}
+
+export interface ListManualReviewsResult {
+  ok: true;
+  count: number;
+  open_count: number;
+  results: ManualReviewListItem[];
+}
+
+// ─── Tool 12: getKeytagDashboard ────────────────────────────────────────
+// Mirrors `_shared/tools/keytag-dashboard-tool.ts` + `keytag-dashboard-data.ts`.
+
+export type GetKeytagDashboardArgs = Record<string, never>;
+
+export interface DashboardStaleTag {
+  tag_color: TagColor;
+  tag_number: number;
+  ro_id: number;
+  ro_number: number;
+  customer_name: string;
+  days_stale: number;
+  ro_url: string;
+  category: "wip" | "ar";
+}
+
+export interface DashboardRoWithoutTag {
+  arn_code: string;
+  ro_id: number | null;
+  ro_number: number | null;
+  ro_url: string;
+  status_label: string;
+  prior_tag_color: TagColor | null;
+  prior_tag_number: number | null;
+  released_at: string | null;
+  released_source: string | null;
+  days_open: number;
+}
+
+export interface KeytagGridTile {
+  tag_color: TagColor;
+  tag_number: number;
+  in_use: boolean;
+  status: string;
+  ro_number: number | null;
+}
+
+export interface KeytagDashboardResult {
+  ok: true;
+  generated_at: string;
+  counts: {
+    in_use: number;
+    available: number;
+    stale: number;
+    total: number;
+  };
+  stale: DashboardStaleTag[];
+  ros_without_tags: DashboardRoWithoutTag[];
+  grid: KeytagGridTile[];
+}
+
 // ─── Tool-name to arg/return mapping (typed dispatch) ───────────────────
 
 export interface KeytagToolMap {
@@ -429,6 +512,14 @@ export interface KeytagToolMap {
   getKeytagAuditHistory: {
     args: GetKeytagAuditHistoryArgs;
     result: GetKeytagAuditHistoryResult;
+  };
+  listManualReviews: {
+    args: ListManualReviewsArgs;
+    result: ListManualReviewsResult;
+  };
+  getKeytagDashboard: {
+    args: GetKeytagDashboardArgs;
+    result: KeytagDashboardResult;
   };
 }
 

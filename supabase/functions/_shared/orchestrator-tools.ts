@@ -38,6 +38,8 @@ import {
   lookupManualReviewTool,
   resolveManualReviewTool,
 } from "./tools/manual-review-tools.ts";
+import { listManualReviewsTool } from "./tools/manual-review-list.ts";
+import { getKeytagDashboardTool } from "./tools/keytag-dashboard-tool.ts";
 
 // ─── Tool-call recorder (writes to public.tool_calls) ────────────────────────
 
@@ -572,6 +574,69 @@ export function getOrchestratorTools(args: {
         });
         try {
           const result = await getKeytagAuditHistory(sb, filters);
+          await recorder.recordEnd({ toolCallId: callId, output: result });
+          return result;
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          await recorder.recordEnd({ toolCallId: callId, error: msg });
+          throw e;
+        }
+      },
+    }),
+
+    listManualReviews: tool({
+      description:
+        "Lists keytag manual-review work items — the open (and optionally resolved) reviews the system " +
+        "surfaced. Use for 'show the open key-tag reviews', 'what reviews are pending', 'any unresolved " +
+        "key tag issues'. Returns each review's code, category, key tag, RO#, one-line summary, options, " +
+        "and resolution state. Optional `search` filters by review code, key tag (e.g. 'R5'), or RO#. " +
+        "`only_open` defaults to true. This is the browse companion to lookupManualReview (which needs an " +
+        "exact code).",
+      inputSchema: z.object({
+        only_open: z.boolean().optional().describe(
+          "Return only unresolved reviews. Default true.",
+        ),
+        search: z.string().optional().describe(
+          "Free-text filter over review code, key tag, and RO#.",
+        ),
+        limit: z.number().int().min(1).max(1000).optional().describe(
+          "Maximum rows to return. Default 200.",
+        ),
+      }),
+      execute: async ({ only_open, search, limit }) => {
+        const callId = await recorder.recordStart({
+          toolName: "listManualReviews",
+          input: { only_open, search, limit },
+          stepNumber: 0,
+        });
+        try {
+          const result = await listManualReviewsTool(sb, { only_open, search, limit });
+          await recorder.recordEnd({ toolCallId: callId, output: result });
+          return result;
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          await recorder.recordEnd({ toolCallId: callId, error: msg });
+          throw e;
+        }
+      },
+    }),
+
+    getKeytagDashboard: tool({
+      description:
+        "Returns the live keytag pool snapshot — the same data as the morning daily report: counts " +
+        "(in use / available / stale), the stale-tag list (with customer names + RO links), the A/R " +
+        "repair-orders-without-key-tags list, and the full 180-tag grid (R1-R90, Y1-Y90 with in-use " +
+        "state). Use for 'how many tags are in use', 'show the key tag board', 'what does the pool look " +
+        "like right now'. Resolves customer names from Tekmetric so it takes a couple of seconds.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        const callId = await recorder.recordStart({
+          toolName: "getKeytagDashboard",
+          input: {},
+          stepNumber: 0,
+        });
+        try {
+          const result = await getKeytagDashboardTool(sb, shopId);
           await recorder.recordEnd({ toolCallId: callId, output: result });
           return result;
         } catch (e) {
