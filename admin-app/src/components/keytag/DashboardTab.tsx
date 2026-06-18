@@ -3,13 +3,14 @@
  *
  * Renders the SAME pool snapshot the 7 AM keytag-daily-report email shows —
  * counts, stale tags, A/R repair-orders-without-key-tags, and the full 180-tag
- * grid — but in the admin-app's light UI. Data comes from the cached
- * getKeytagDashboard tool (60s TTL); the DashboardPoller refreshes it every
- * minute. Same section order as the email so the two read identically.
+ * grid — but in the admin-app's light "Workshop Brass" UI. Data comes from the
+ * cached getKeytagDashboard tool (60s TTL); the DashboardPoller refreshes it
+ * every minute. Same section order as the email so the two read identically.
  */
-import { AlertCircle, ExternalLink, KeyRound, CheckCircle2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, ExternalLink } from "lucide-react";
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -24,6 +25,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import { getCachedDashboard } from "@/lib/keytag/dashboard-cache";
 import { OrchestratorClientError } from "@/lib/orchestrator/client";
 import type {
@@ -72,8 +74,14 @@ export async function DashboardTab({ actorEmail }: DashboardTabProps) {
     .filter((t) => t.tag_color === "yellow")
     .sort((a, b) => a.tag_number - b.tag_number);
 
+  // A presentational lookup of which in-use tiles are ALSO stale (>3 days),
+  // derived from the stale[] list the snapshot already carries. Used only to
+  // layer a redundant "at-risk" ring on the matching grid cell — no data
+  // change, the staleness itself comes straight from the tool result.
+  const staleKeys = new Set(data.stale.map((s) => `${s.tag_color}-${s.tag_number}`));
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" aria-busy={false}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
           The live key tag board — the same snapshot as the morning report.
@@ -85,8 +93,8 @@ export async function DashboardTab({ actorEmail }: DashboardTabProps) {
       <StaleSection stale={data.stale} />
       <NoTagSection rows={data.ros_without_tags} />
 
-      <TagGrid title="Red tags (R1–R90)" tiles={reds} />
-      <TagGrid title="Yellow tags (Y1–Y90)" tiles={yellows} />
+      <TagGrid title="Red tags (R1–R90)" tiles={reds} staleKeys={staleKeys} />
+      <TagGrid title="Yellow tags (Y1–Y90)" tiles={yellows} staleKeys={staleKeys} />
 
       <Legend />
     </div>
@@ -96,24 +104,41 @@ export async function DashboardTab({ actorEmail }: DashboardTabProps) {
 // ─── Stat cards ──────────────────────────────────────────────────────────────
 
 function StatCards({ counts }: { counts: KeytagDashboardResult["counts"] }) {
-  const cards = [
-    { label: "In Use", value: counts.in_use },
-    { label: "Available", value: counts.available },
-    { label: "Stale (>3 days)", value: counts.stale },
-  ];
   return (
-    <div className="grid grid-cols-3 gap-3">
-      {cards.map((c) => (
-        <Card key={c.label}>
-          <CardContent className="flex flex-col items-center gap-1 py-6 text-center">
-            <span className="text-3xl font-bold tabular-nums text-primary">{c.value}</span>
-            <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
-              {c.label}
-            </span>
-          </CardContent>
-        </Card>
-      ))}
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <StatCard label="In use" value={counts.in_use} />
+      <StatCard label="Available" value={counts.available} />
+      <StatCard label="Stale (>3 days)" value={counts.stale} stale />
     </div>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  stale = false,
+}: {
+  label: string;
+  value: number;
+  stale?: boolean;
+}) {
+  const flagged = stale && value > 0;
+  return (
+    <Card>
+      <CardContent className="flex flex-col items-center gap-1.5 py-6 text-center">
+        <span className="text-3xl font-semibold leading-none tracking-tight tabular-nums text-foreground">
+          {value}
+        </span>
+        <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+          {label}
+        </span>
+        {flagged && (
+          <StatusBadge status="warning" micro className="mt-1">
+            Needs review
+          </StatusBadge>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -125,22 +150,32 @@ function StaleSection({ stale }: { stale: DashboardStaleTag[] }) {
       <CardHeader>
         <CardTitle className="text-base">Stale tags</CardTitle>
         <CardDescription>
-          In-use tags (WIP or A/R) with no Tekmetric activity in more than 3 days.
+          In-use tags whose Tekmetric RO has had no activity in more than 3 days.
         </CardDescription>
+        {stale.length > 0 && (
+          <CardAction>
+            <Badge variant="outline" className="font-mono text-xs tabular-nums">
+              {stale.length}
+            </Badge>
+          </CardAction>
+        )}
       </CardHeader>
       <CardContent>
         {stale.length === 0 ? (
-          <EmptyRow icon="ok" text="No stale tags." />
+          <EmptyState
+            title="No stale tags"
+            subtitle="Every in-use tag has recent activity."
+          />
         ) : (
           <div className="overflow-hidden rounded-lg border border-border">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-20">Tag</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead className="w-24">Status</TableHead>
                   <TableHead>Customer</TableHead>
-                  <TableHead>RO #</TableHead>
-                  <TableHead className="text-right">Stale</TableHead>
+                  <TableHead className="w-28">RO #</TableHead>
+                  <TableHead className="w-28 text-right">Stale</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -151,18 +186,27 @@ function StaleSection({ stale }: { stale: DashboardStaleTag[] }) {
                     </TableCell>
                     <TableCell>
                       <Badge
-                        variant="outline"
+                        variant={s.category === "wip" ? "secondary" : "outline"}
                         className="text-[10px] font-normal uppercase tracking-wider"
                       >
                         {s.category === "wip" ? "WIP" : "A/R"}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-sm">{s.customer_name}</TableCell>
+                    <TableCell>
+                      <span
+                        className="block max-w-[18ch] truncate text-sm text-foreground"
+                        title={s.customer_name}
+                      >
+                        {s.customer_name}
+                      </span>
+                    </TableCell>
                     <TableCell>
                       <RoLink url={s.ro_url} roNumber={s.ro_number} />
                     </TableCell>
-                    <TableCell className="text-right font-mono text-xs tabular-nums text-muted-foreground">
-                      {s.days_stale}d
+                    <TableCell className="text-right">
+                      <StatusBadge status="warning" micro>
+                        {s.days_stale}d
+                      </StatusBadge>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -181,23 +225,34 @@ function NoTagSection({ rows }: { rows: DashboardRoWithoutTag[] }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Repair Orders Without Key Tags</CardTitle>
+        <CardTitle className="text-base">Repair orders without key tags</CardTitle>
         <CardDescription>
-          A/R repair orders with no key tag tracked. Manually-released tags are filtered out.
+          A/R repair orders with no key tag tracked. Auto-released or never-tagged orders worth a
+          look.
         </CardDescription>
+        {rows.length > 0 && (
+          <CardAction>
+            <Badge variant="outline" className="font-mono text-xs tabular-nums">
+              {rows.length}
+            </Badge>
+          </CardAction>
+        )}
       </CardHeader>
       <CardContent>
         {rows.length === 0 ? (
-          <EmptyRow icon="ok" text="No repair orders without key tags." />
+          <EmptyState
+            title="No untracked repair orders"
+            subtitle="Every A/R order has a tag we can account for."
+          />
         ) : (
           <div className="overflow-hidden rounded-lg border border-border">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>RO #</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Key Tag</TableHead>
-                  <TableHead className="text-right">Released</TableHead>
+                  <TableHead className="w-28">RO #</TableHead>
+                  <TableHead className="w-24">Status</TableHead>
+                  <TableHead>Key tag</TableHead>
+                  <TableHead className="w-32 text-right">Released</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -222,10 +277,10 @@ function NoTagSection({ rows }: { rows: DashboardRoWithoutTag[] }) {
                           size="sm"
                         />
                       ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
+                        <span className="text-sm text-muted-foreground">—</span>
                       )}
                     </TableCell>
-                    <TableCell className="text-right text-xs text-muted-foreground">
+                    <TableCell className="text-right font-mono text-xs tabular-nums text-muted-foreground">
                       {r.released_at
                         ? new Date(r.released_at).toLocaleDateString("en-US", {
                             month: "short",
@@ -248,7 +303,28 @@ function NoTagSection({ rows }: { rows: DashboardRoWithoutTag[] }) {
 
 // ─── 180-tag grid ────────────────────────────────────────────────────────────
 
-function TagGrid({ title, tiles }: { title: string; tiles: KeytagGridTile[] }) {
+const GRID_CELL_BASE =
+  "flex h-7 items-center justify-center rounded-[--radius-sm] border font-mono text-[11px] font-semibold tabular-nums";
+
+function gridCellClasses(inUse: boolean, stale = false): string {
+  const state = inUse
+    ? "border-red-200 bg-[--color-grid-inuse-fill] text-[--color-grid-inuse-ink]"
+    : "border-emerald-200 bg-[--color-grid-available-fill] text-[--color-grid-available-ink]";
+  const ring = stale
+    ? " ring-2 ring-[--color-grid-stale-ring] ring-offset-1 ring-offset-card"
+    : "";
+  return `${GRID_CELL_BASE} ${state}${ring}`;
+}
+
+function TagGrid({
+  title,
+  tiles,
+  staleKeys,
+}: {
+  title: string;
+  tiles: KeytagGridTile[];
+  staleKeys: Set<string>;
+}) {
   return (
     <Card>
       <CardHeader>
@@ -258,17 +334,19 @@ function TagGrid({ title, tiles }: { title: string; tiles: KeytagGridTile[] }) {
         <div className="grid grid-cols-10 gap-1.5 sm:grid-cols-[repeat(15,minmax(0,1fr))]">
           {tiles.map((t) => {
             const label = (t.tag_color === "red" ? "R" : "Y") + t.tag_number;
-            const aria = `${label} ${t.in_use ? `in use${t.ro_number ? `, RO #${t.ro_number}` : ""}` : "available"}`;
+            const isStale =
+              t.in_use && staleKeys.has(`${t.tag_color}-${t.tag_number}`);
+            const aria = `${label} — ${
+              t.in_use
+                ? `in use${t.ro_number ? `, RO #${t.ro_number}` : ""}${isStale ? " — stale" : ""}`
+                : "available"
+            }`;
             return (
               <div
                 key={`${t.tag_color}-${t.tag_number}`}
                 title={aria}
                 aria-label={aria}
-                className={`rounded-md px-1 py-1.5 text-center font-mono text-xs font-semibold tabular-nums ring-1 ring-inset ${
-                  t.in_use
-                    ? "bg-red-50 text-red-800 ring-red-200"
-                    : "bg-green-50 text-green-800 ring-green-200"
-                }`}
+                className={gridCellClasses(t.in_use, isStale)}
               >
                 {label}
               </div>
@@ -282,15 +360,31 @@ function TagGrid({ title, tiles }: { title: string; tiles: KeytagGridTile[] }) {
 
 function Legend() {
   return (
-    <div className="flex items-center gap-4 text-xs text-muted-foreground">
-      <span className="inline-flex items-center gap-1.5">
-        <span className="inline-block size-3 rounded-sm bg-green-50 ring-1 ring-inset ring-green-200" />
-        available
-      </span>
-      <span className="inline-flex items-center gap-1.5">
-        <span className="inline-block size-3 rounded-sm bg-red-50 ring-1 ring-inset ring-red-200" />
-        in use
-      </span>
+    <div className="space-y-3 text-xs text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="inline-flex items-center gap-1.5">
+          <span className={`${gridCellClasses(false)} px-1.5`} aria-hidden="true">
+            R4
+          </span>
+          available
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className={`${gridCellClasses(true)} px-1.5`} aria-hidden="true">
+            R4
+          </span>
+          in use
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className={`${gridCellClasses(true, true)} px-1.5`} aria-hidden="true">
+            R4
+          </span>
+          stale &gt; 3 days
+        </span>
+      </div>
+      <p className="max-w-prose leading-relaxed">
+        A tag releases automatically when its RO is posted-paid or its A/R balance is paid. A stale
+        ring means the keys may already be gone — release it from the keytag tools.
+      </p>
     </div>
   );
 }
@@ -298,7 +392,7 @@ function Legend() {
 // ─── Small shared bits ───────────────────────────────────────────────────────
 
 function RoLink({ url, roNumber }: { url: string; roNumber: number | null }) {
-  if (roNumber === null) return <span className="text-xs text-muted-foreground">—</span>;
+  if (roNumber === null) return <span className="text-sm text-muted-foreground">—</span>;
   if (!url) return <span className="font-mono text-sm tabular-nums">#{roNumber}</span>;
   return (
     <a
@@ -313,15 +407,12 @@ function RoLink({ url, roNumber }: { url: string; roNumber: number | null }) {
   );
 }
 
-function EmptyRow({ icon, text }: { icon: "ok"; text: string }) {
+function EmptyState({ title, subtitle }: { title: string; subtitle: string }) {
   return (
-    <div className="flex items-center gap-2 rounded-lg border border-dashed border-border bg-muted/30 px-4 py-6 text-sm text-muted-foreground">
-      {icon === "ok" ? (
-        <CheckCircle2 className="size-4 text-green-600" aria-hidden="true" />
-      ) : (
-        <KeyRound className="size-4" aria-hidden="true" />
-      )}
-      {text}
+    <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border bg-muted/40 px-6 py-12 text-center">
+      <CheckCircle2 className="size-8 text-emerald-600" aria-hidden="true" />
+      <p className="text-sm font-medium text-foreground">{title}</p>
+      <p className="max-w-sm text-xs text-muted-foreground">{subtitle}</p>
     </div>
   );
 }

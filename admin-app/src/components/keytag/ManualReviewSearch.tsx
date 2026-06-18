@@ -8,13 +8,19 @@
  * `show_completed`; drops any `review` deep-link param (that was a one-time
  * landing from an email).
  *
- * Functional wiring only — visual polish applied later per the design spec.
+ * Visual parity with AuditHistoryFilters: a search field with an inset icon
+ * and a quiet inline pending spinner, a labelled completed-toggle checkbox,
+ * and a Reset button. The sr-only field label + the toggle's accessible name
+ * are preserved.
  */
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { Loader2, Search } from "lucide-react";
+import { Loader2, RotateCcw, Search } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+
+const LIST_REGION_ID = "manual-review-list";
 
 export function ManualReviewSearch() {
   const router = useRouter();
@@ -46,6 +52,14 @@ export function ManualReviewSearch() {
     push(q, e.target.checked);
   }
 
+  function reset() {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setQ("");
+    startTransition(() => {
+      router.push("/keytags?tab=manual-reviews");
+    });
+  }
+
   useEffect(() => {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -56,7 +70,7 @@ export function ManualReviewSearch() {
     <div className="flex flex-wrap items-center gap-4">
       <div className="relative min-w-[220px] flex-1">
         <Search
-          className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+          className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
           aria-hidden="true"
         />
         <Label htmlFor="review-search" className="sr-only">
@@ -68,24 +82,42 @@ export function ManualReviewSearch() {
           value={q}
           onChange={onSearchChange}
           autoComplete="off"
-          placeholder="Search by code, key tag (e.g. R5), or RO#…"
-          className="pl-9"
+          placeholder="Code, key tag (R4 / Y12), or RO#…"
+          aria-controls={LIST_REGION_ID}
+          className="pl-8 pr-9"
         />
+        {isPending && (
+          <Loader2
+            className="absolute right-2.5 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground motion-reduce:animate-none"
+            aria-hidden="true"
+          />
+        )}
       </div>
 
-      <label className="flex select-none items-center gap-2 text-sm text-muted-foreground">
+      <div className="flex items-center gap-2">
         <input
+          id="show-completed"
           type="checkbox"
           checked={showCompleted}
           onChange={onToggle}
+          aria-controls={LIST_REGION_ID}
           className="size-4 rounded border-input accent-primary"
         />
-        Show completed
-      </label>
+        <Label htmlFor="show-completed" className="text-sm text-muted-foreground">
+          Show completed
+        </Label>
+      </div>
 
-      {isPending && (
-        <Loader2 className="size-4 animate-spin text-muted-foreground" aria-hidden="true" />
-      )}
+      <Button
+        type="button"
+        variant="outline"
+        onClick={reset}
+        disabled={isPending}
+        className="gap-1.5"
+      >
+        <RotateCcw className="h-4 w-4" aria-hidden="true" />
+        Reset
+      </Button>
     </div>
   );
 }

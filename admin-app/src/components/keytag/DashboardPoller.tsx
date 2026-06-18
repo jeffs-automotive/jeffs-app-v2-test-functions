@@ -8,7 +8,11 @@
  * so the refresh reads the cached snapshot unless the 60s TTL has elapsed — no
  * page flash, no full re-pull every tick. Also exposes a manual refresh.
  *
- * Reduced-motion is respected by the spinner (Tailwind `motion-reduce`).
+ * Calm-poll affordance (design spec §5): a quiet status dot (solid emerald →
+ * amber pulse while refreshing), an "Updated HH:MM · auto-refreshes every
+ * minute" line, and a ghost manual-refresh button. No overlay, no page-blank —
+ * the last good data stays on screen and React swaps it in place. Reduced
+ * motion is respected via Tailwind `motion-reduce`.
  */
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -42,14 +46,27 @@ export function DashboardPoller({ generatedAt }: { generatedAt: string }) {
   }, [router]);
 
   return (
-    <div className="flex items-center gap-3 text-xs text-muted-foreground">
-      <span aria-live="polite">
-        {stamp ? `Updated ${stamp} ET` : "Live"}
-        {isPending ? " · refreshing…" : " · auto-refreshes every minute"}
+    <div
+      className="flex items-center gap-3 text-xs text-muted-foreground"
+      aria-busy={isPending}
+    >
+      <span className="inline-flex items-center gap-2">
+        <span
+          aria-hidden="true"
+          className={`inline-block size-2 rounded-full ${
+            isPending
+              ? "bg-amber-400 motion-safe:animate-pulse"
+              : "bg-emerald-500"
+          }`}
+        />
+        <span aria-live="polite">
+          {stamp ? `Updated ${stamp} ET` : "Live"}
+          {isPending ? " · refreshing…" : " · auto-refreshes every minute"}
+        </span>
       </span>
       <Button
         type="button"
-        variant="outline"
+        variant="ghost"
         size="sm"
         onClick={() => startTransition(() => router.refresh())}
         disabled={isPending}

@@ -77,16 +77,15 @@ export async function ManualReviewsTab({
     }
   }
 
+  const count = items.length;
+
   return (
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Manual reviews</CardTitle>
+          <CardTitle className="text-base">Find a review</CardTitle>
           <CardDescription>
-            {result
-              ? `${result.open_count} open ${result.open_count === 1 ? "review" : "reviews"}`
-              : "Anomalies the system surfaced for a human decision"}
-            {" — click a row to see the issue and resolve it."}
+            Search by review code, key tag, or RO#. Toggle to include completed reviews.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -95,7 +94,21 @@ export async function ManualReviewsTab({
       </Card>
 
       <Card>
-        <CardContent className="pt-6">
+        <CardHeader>
+          <CardTitle className="text-base">
+            Manual reviews
+            {result && (
+              <span className="ml-2 text-xs font-normal text-muted-foreground">
+                ({showCompleted ? `${count} total` : `${result.open_count} open`})
+              </span>
+            )}
+          </CardTitle>
+          <CardDescription>
+            Anomalies the system surfaced for a human decision — click a row to see the issue and
+            resolve it.
+          </CardDescription>
+        </CardHeader>
+        <CardContent id="manual-review-list">
           {error ? (
             <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
               <div className="flex items-start gap-2">
@@ -107,7 +120,12 @@ export async function ManualReviewsTab({
               </div>
             </div>
           ) : (
-            <ManualReviewList items={items} deepLinkCode={reviewCode} />
+            <ManualReviewList
+              items={items}
+              deepLinkCode={reviewCode}
+              hasQuery={q.trim().length > 0}
+              showCompleted={showCompleted}
+            />
           )}
         </CardContent>
       </Card>

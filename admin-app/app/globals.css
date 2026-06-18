@@ -26,6 +26,24 @@
    * #b79876 on the dark canvas ≈ 7.0:1 (AA pass). */
   --color-bronze-text-dark: oklch(0.7 0.06 70);
 
+  /* Keytag-grid status tokens — the available/in-use/stale semantic for the
+   * 180-tag dashboard grid (and its legend). Named (not raw Tailwind classes)
+   * because this is the one surface where the available/in-use semantic is
+   * load-bearing across 180 cells and must describe the SAME state as the
+   * morning email; tokenizing lets the email + UI retune together later.
+   * Siblings to the brand block above, NOT part of the @theme inline remap.
+   *
+   * The semantic ALWAYS rides on the tag-label TEXT color (AA), never tint-
+   * fill alone (each cell carries aria-label too — WCAG 1.4.1 use-of-color):
+   *   available-ink #166534 on available-fill #f0fdf4 ≈ 6.81:1 (AA text)
+   *   inuse-ink     #991b1b on inuse-fill     #fef2f2 ≈ 7.60:1 (AA text)
+   *   stale-ring    #dc2626 vs both fills > 3:1 (AA non-text UI) */
+  --color-grid-available-fill: oklch(0.97 0.03 150); /* green-50 #f0fdf4 */
+  --color-grid-available-ink: oklch(0.43 0.12 152); /* green-800 #166534 — 6.81:1 on fill */
+  --color-grid-inuse-fill: oklch(0.96 0.02 25); /* red-50 #fef2f2 */
+  --color-grid-inuse-ink: oklch(0.44 0.16 27); /* red-800 #991b1b — 7.60:1 on fill */
+  --color-grid-stale-ring: oklch(0.55 0.2 27); /* red-600 #dc2626 — >3:1 UI */
+
   /* Warm, low-chroma shadow scale — depth tuned to the paper canvas
    * (hue of the ink, low alpha) so elevation reads cohesive, not
    * cool-grey. Generates shadow-xs … shadow-xl utilities. */
