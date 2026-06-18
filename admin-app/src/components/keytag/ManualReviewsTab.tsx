@@ -1,6 +1,14 @@
 /**
- * ManualReviewsTab — Server Component shell that wraps the
- * client LookupManualReviewForm.
+ * ManualReviewsTab — Server Component.
+ *
+ * Lists keytag manual reviews (open by default; completed when toggled) with
+ * a search bar (code / key tag / RO#) and expandable rows. Reads filters from
+ * the URL (?q=, ?show_completed=, ?review=) and fetches via the
+ * listManualReviews orchestrator tool.
+ *
+ * Deep-link: an email's ?review=CODE link always lands — if that review isn't
+ * in the current (e.g. open-only) result set, we fetch it specifically and
+ * surface it at the top so the link never dead-ends.
  */
 import { AlertCircle } from "lucide-react";
 import {
@@ -10,30 +18,97 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { LookupManualReviewForm } from "./LookupManualReviewForm";
+import {
+  callKeytagTool,
+  OrchestratorClientError,
+} from "@/lib/orchestrator/client";
+import type { ManualReviewListItem } from "@/lib/orchestrator/types";
+import { ManualReviewSearch } from "./ManualReviewSearch";
+import { ManualReviewList } from "./ManualReviewList";
 
-export function ManualReviewsTab() {
+export interface ManualReviewsTabProps {
+  actorEmail: string;
+  searchParams: Record<string, string | string[] | undefined>;
+}
+
+export async function ManualReviewsTab({
+  actorEmail,
+  searchParams,
+}: ManualReviewsTabProps) {
+  const showCompleted =
+    searchParams.show_completed === "1" || searchParams.show_completed === "true";
+  const q = typeof searchParams.q === "string" ? searchParams.q : "";
+  const reviewCode =
+    typeof searchParams.review === "string"
+      ? searchParams.review.trim().toUpperCase()
+      : null;
+
+  let result: Awaited<ReturnType<typeof callKeytagTool<"listManualReviews">>> | null =
+    null;
+  let error: string | null = null;
+  try {
+    result = await callKeytagTool(
+      "listManualReviews",
+      { only_open: !showCompleted, search: q || undefined, limit: 200 },
+      actorEmail,
+    );
+  } catch (e) {
+    error =
+      e instanceof OrchestratorClientError
+        ? e.message
+        : `Unexpected error: ${e instanceof Error ? e.message : String(e)}`;
+  }
+
+  let items: ManualReviewListItem[] = result?.results ?? [];
+
+  // Deep-link: make sure the email-linked review is present even if it's
+  // resolved or filtered out by the current search/toggle.
+  if (reviewCode && !items.some((r) => r.code === reviewCode)) {
+    try {
+      const one = await callKeytagTool(
+        "listManualReviews",
+        { only_open: false, search: reviewCode, limit: 5 },
+        actorEmail,
+      );
+      const match = one.results.find((r) => r.code === reviewCode);
+      if (match) items = [match, ...items];
+    } catch {
+      // best-effort — the link still loads the list, just without the prepend
+    }
+  }
+
   return (
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <div className="flex items-start gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-amber-100 text-amber-700">
-              <AlertCircle className="h-4 w-4" aria-hidden="true" />
-            </div>
-            <div className="flex-1">
-              <CardTitle className="text-base">Look up a manual review</CardTitle>
-              <CardDescription>
-                Paste the 6-character code from the email (e.g.{" "}
-                <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">ORP-4XKZ9P</code>)
-                to see the situation + advisor choices. The code is single-use
-                pre-approval; rate-limited to 3 failed lookups per hour per actor.
-              </CardDescription>
-            </div>
-          </div>
+          <CardTitle className="text-base">Manual reviews</CardTitle>
+          <CardDescription>
+            {result
+              ? `${result.open_count} open ${result.open_count === 1 ? "review" : "reviews"}`
+              : "Anomalies the system surfaced for a human decision"}
+            {" — click a row to see the issue and resolve it."}
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <LookupManualReviewForm />
+          <ManualReviewSearch />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="pt-6">
+          {error ? (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                <div>
+                  <p className="font-medium">Couldn&apos;t load manual reviews.</p>
+                  <p className="mt-0.5 text-destructive/90">{error}</p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <ManualReviewList items={items} deepLinkCode={reviewCode} />
+          )}
         </CardContent>
       </Card>
     </div>

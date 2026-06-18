@@ -53,7 +53,7 @@ export default async function KeytagsPage({ searchParams }: KeytagsPageProps) {
         assignRelease={<AssignReleaseTab />}
         postedRevert={<PostedRevertTab />}
         reconcile={<ReconcileTab />}
-        manualReviews={<ManualReviewsTab />}
+        manualReviews={<ManualReviewsTab actorEmail={email} searchParams={params} />}
         auditHistory={<AuditHistoryTab actorEmail={email} searchParams={params} />}
       />
     </AppShell>
