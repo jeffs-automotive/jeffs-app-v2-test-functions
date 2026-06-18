@@ -81,7 +81,7 @@ export async function DashboardTab({ actorEmail }: DashboardTabProps) {
   const staleKeys = new Set(data.stale.map((s) => `${s.tag_color}-${s.tag_number}`));
 
   return (
-    <div className="space-y-6" aria-busy={false}>
+    <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
           The live key tag board — the same snapshot as the morning report.
@@ -303,15 +303,19 @@ function NoTagSection({ rows }: { rows: DashboardRoWithoutTag[] }) {
 
 // ─── 180-tag grid ────────────────────────────────────────────────────────────
 
+// Tailwind v4 references CSS-var tokens with the parens form `bg-(--token)` —
+// the v3 bare-bracket `bg-[--token]` shorthand was removed in v4 and is
+// silently dropped (which would leave the grid unstyled). The fill/ink tokens
+// carry the available/in-use semantic on the LABEL TEXT (AA: 6.81:1 / 7.60:1).
 const GRID_CELL_BASE =
-  "flex h-7 items-center justify-center rounded-[--radius-sm] border font-mono text-[11px] font-semibold tabular-nums";
+  "flex h-7 items-center justify-center rounded-(--radius-sm) border font-mono text-[11px] font-semibold tabular-nums";
 
 function gridCellClasses(inUse: boolean, stale = false): string {
   const state = inUse
-    ? "border-red-200 bg-[--color-grid-inuse-fill] text-[--color-grid-inuse-ink]"
-    : "border-emerald-200 bg-[--color-grid-available-fill] text-[--color-grid-available-ink]";
+    ? "border-red-200 bg-(--color-grid-inuse-fill) text-(--color-grid-inuse-ink)"
+    : "border-emerald-200 bg-(--color-grid-available-fill) text-(--color-grid-available-ink)";
   const ring = stale
-    ? " ring-2 ring-[--color-grid-stale-ring] ring-offset-1 ring-offset-card"
+    ? " ring-2 ring-(--color-grid-stale-ring) ring-offset-1 ring-offset-card"
     : "";
   return `${GRID_CELL_BASE} ${state}${ring}`;
 }

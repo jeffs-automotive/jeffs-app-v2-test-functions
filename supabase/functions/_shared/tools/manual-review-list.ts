@@ -168,14 +168,27 @@ export async function listManualReviewsTool(
   }
 
   // Total unresolved (ignores search + only_open) — a stable headline badge.
-  const { count: openCount } = await sb
+  const { count: openCount, error: openCountErr } = await sb
     .from("keytag_manual_reviews")
     .select("*", { count: "exact", head: true })
     .is("resolved_at", null);
+  if (openCountErr) {
+    // Don't fail the whole list for a badge count; log + fall back below.
+    console.error(
+      JSON.stringify({
+        level: "warning",
+        msg: "list_manual_reviews_open_count_failed",
+        detail: openCountErr.message,
+      }),
+    );
+  }
 
   return {
     ok: true,
     count: items.length,
+    // Fall back to counting unresolved rows in the current result set when the
+    // dedicated count failed (only accurate when not filtered, but better than
+    // a hard error for a headline badge).
     open_count: openCount ?? items.filter((i) => !i.resolved_at).length,
     results: items,
   };
