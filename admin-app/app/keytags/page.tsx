@@ -15,6 +15,7 @@
 import { requireAdmin } from "@/lib/auth";
 import { AppShell, PageHeader } from "@/components/shell/AppShell";
 import { KeytagsTabs } from "@/components/keytag/KeytagsTabs";
+import { DashboardTab } from "@/components/keytag/DashboardTab";
 import { LiveStateTab } from "@/components/keytag/LiveStateTab";
 import { AuditHistoryTab } from "@/components/keytag/AuditHistoryTab";
 import { ManualReviewsTab } from "@/components/keytag/ManualReviewsTab";
@@ -33,11 +34,17 @@ export default async function KeytagsPage({ searchParams }: KeytagsPageProps) {
   const params = await searchParams;
   const defaultTab =
     typeof params.tab === "string" &&
-    ["live", "assign-release", "posted-revert", "reconcile", "manual-reviews", "audit"].includes(
-      params.tab,
-    )
+    [
+      "dashboard",
+      "live",
+      "assign-release",
+      "posted-revert",
+      "reconcile",
+      "manual-reviews",
+      "audit",
+    ].includes(params.tab)
       ? params.tab
-      : "live";
+      : "dashboard";
 
   return (
     <AppShell email={email}>
@@ -49,6 +56,7 @@ export default async function KeytagsPage({ searchParams }: KeytagsPageProps) {
 
       <KeytagsTabs
         defaultValue={defaultTab}
+        dashboard={<DashboardTab actorEmail={email} />}
         live={<LiveStateTab actorEmail={email} />}
         assignRelease={<AssignReleaseTab />}
         postedRevert={<PostedRevertTab />}

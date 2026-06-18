@@ -16,6 +16,7 @@ import {
   ArrowLeftRight,
   CheckCircle2,
   History,
+  LayoutDashboard,
   List,
   RefreshCcw,
 } from "lucide-react";
@@ -23,6 +24,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export interface KeytagsTabsProps {
   defaultValue?: string;
+  dashboard: ReactNode;
   live: ReactNode;
   assignRelease: ReactNode;
   postedRevert: ReactNode;
@@ -32,7 +34,8 @@ export interface KeytagsTabsProps {
 }
 
 export function KeytagsTabs({
-  defaultValue = "live",
+  defaultValue = "dashboard",
+  dashboard,
   live,
   assignRelease,
   postedRevert,
@@ -46,6 +49,10 @@ export function KeytagsTabs({
         variant="line"
         className="flex h-auto w-full flex-wrap justify-start gap-x-1 border-b border-border"
       >
+        <TabsTrigger value="dashboard" className="gap-1.5 data-active:after:bg-primary">
+          <LayoutDashboard className="h-3.5 w-3.5" aria-hidden="true" />
+          Dashboard
+        </TabsTrigger>
         <TabsTrigger value="live" className="gap-1.5 data-active:after:bg-primary">
           <List className="h-3.5 w-3.5" aria-hidden="true" />
           Live state
@@ -72,6 +79,9 @@ export function KeytagsTabs({
         </TabsTrigger>
       </TabsList>
 
+      <TabsContent value="dashboard" className="mt-6">
+        {dashboard}
+      </TabsContent>
       <TabsContent value="live" className="mt-6">
         {live}
       </TabsContent>
