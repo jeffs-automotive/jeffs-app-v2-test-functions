@@ -307,11 +307,14 @@ export async function notifyDateMoves(shopId: number, moves: DateMoveRow[]): Pro
     ? `A repair order was unposted in Tekmetric and posted again on a DIFFERENT day. The original day's journal entry is already in QuickBooks.`
     : `${moves.length} repair orders were unposted in Tekmetric and posted again on DIFFERENT days. The original days' journal entries are already in QuickBooks.`;
 
+  // NEVER show the DB id in an employee email (Chris's rule) — RO# only; an unknown number
+  // shows a placeholder, not the tekmetric id.
+  const roLabel = (m: DateMoveRow): string => (m.roNumber ? `RO ${m.roNumber}` : "RO (number unavailable)");
+
   const lines = [header, ``];
   for (const m of moves) {
-    const ro = m.roNumber ?? String(m.tekmetricRoId);
     lines.push(
-      `  - RO ${ro}`,
+      `  - ${roLabel(m)}`,
       `      Originally posted on: ${m.originalBusinessDate}`,
       `      Now posted on:        ${m.newBusinessDate}`,
     );
@@ -327,7 +330,7 @@ export async function notifyDateMoves(shopId: number, moves: DateMoveRow[]): Pro
   );
 
   const subject = moves.length === 1
-    ? `QTekLink Date Change Alert: RO ${moves[0]!.roNumber ?? String(moves[0]!.tekmetricRoId)} moved from ${moves[0]!.originalBusinessDate} to ${moves[0]!.newBusinessDate}`
+    ? `QTekLink Date Change Alert: ${roLabel(moves[0]!)} moved from ${moves[0]!.originalBusinessDate} to ${moves[0]!.newBusinessDate}`
     : `QTekLink Date Change Alert: ${moves.length} repair orders changed dates`;
 
   await sendQteklinkEmail({ to, subject, text: lines.join("\n") });

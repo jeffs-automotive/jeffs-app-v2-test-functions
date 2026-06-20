@@ -21,6 +21,7 @@ const realmMock = vi.fn();
 const listMovesMock = vi.fn();
 const approveMoveMock = vi.fn();
 const unapproveMoveMock = vi.fn();
+const roMetaMock = vi.fn();
 
 function chainResolving(rows: unknown[]) {
   const q: Record<string, unknown> = {};
@@ -45,13 +46,14 @@ vi.mock("@/lib/dal/date-moves", () => ({
   unapproveDateMove: (...a: unknown[]) => unapproveMoveMock(...a),
 }));
 vi.mock("@/lib/dal/notify", () => ({ sendQteklinkEmail: (...a: unknown[]) => sendMock(...a) }));
+vi.mock("@/lib/dal/ro-lookup", () => ({ lookupRoMeta: (...a: unknown[]) => roMetaMock(...a) }));
 vi.mock("@/lib/dal/daily-postings", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../daily-postings")>()),
   listDailyPostingsForDay: (...a: unknown[]) => listDailyMock(...a),
   approveDailyPosting: (...a: unknown[]) => approveDailyMock(...a),
 }));
 
-import { applyDayCorrections, sweepPostedDays, classifyChange, describeDayCorrections, applyDateMoveDecision } from "../posted-day-sweep";
+import { applyDayCorrections, sweepPostedDays, classifyChange, describeDayCorrections, resolveConstituentLabels, applyDateMoveDecision, type CategoryOutcome } from "../posted-day-sweep";
 import type { DailyPostingRow } from "../daily-postings";
 
 const REALM = "9341455608740708";
@@ -81,6 +83,7 @@ beforeEach(() => {
   detectMock.mockResolvedValue({ scannedRos: 0, newOrChangedMoves: [], autoResolved: 0 });
   approveMoveMock.mockResolvedValue({ approved: true });
   unapproveMoveMock.mockResolvedValue({ unapproved: true });
+  roMetaMock.mockResolvedValue(new Map()); // default: no RO# resolution (tests that need it set it)
 });
 
 describe("classifyChange", () => {
@@ -112,8 +115,9 @@ describe("classifyChange", () => {
 
 describe("describeDayCorrections", () => {
   it("ONE email lists all categories, highlights changes, and words a descriptions-only change correctly", () => {
+    // added/removed are already resolved to human RO labels (resolveConstituentLabels) — never raw ids.
     const { subject, text } = describeDayCorrections(DATE, [
-      { category: "sales", changed: true, changeKind: "membership", docNumber: `QTL-RO-${DATE}`, priorTotalCents: 100000, nextTotalCents: 80000, added: ["103"], removed: ["102"], sameDayChurn: false },
+      { category: "sales", changed: true, changeKind: "membership", docNumber: `QTL-RO-${DATE}`, priorTotalCents: 100000, nextTotalCents: 80000, added: ["RO 1103"], removed: ["RO 1102"], sameDayChurn: false },
       { category: "payments", changed: true, changeKind: "descriptions-only", docNumber: `QTL-PAY-${DATE}`, priorTotalCents: 125000, nextTotalCents: 125000, added: [], removed: [], sameDayChurn: false },
       { category: "fees", changed: false, changeKind: "no-change", docNumber: `QTL-FEE-${DATE}`, priorTotalCents: 4500, nextTotalCents: 4500, added: [], removed: [], sameDayChurn: false },
     ]);
@@ -121,8 +125,9 @@ describe("describeDayCorrections", () => {
     expect(subject).toContain(DATE);
     expect(text).toContain("Sales — CHANGED");
     expect(text).toContain("New total: $800.00 (was $1,000.00)");
-    expect(text).toContain("Added repair orders: 103");
-    expect(text).toContain("Removed repair orders: 102");
+    expect(text).toContain("Added: RO 1103");
+    expect(text).toContain("Removed: RO 1102");
+    expect(text).not.toMatch(/\b336946898\b|Removed repair orders: \d/); // never a raw DB id
     expect(text).toContain("Payments — CHANGED");
     // the bug fix: a wording-only change must NOT be reported as an amounts/totals change.
     expect(text).toContain("Wording only: the line descriptions were updated. The payments and the total ($1,250.00) are unchanged.");
@@ -138,6 +143,37 @@ describe("describeDayCorrections", () => {
   });
 });
 
+describe("resolveConstituentLabels (ids → RO#, never a DB id in employee email)", () => {
+  const outcome = (over: Partial<CategoryOutcome>): CategoryOutcome => ({
+    category: "sales", changed: true, changeKind: "membership", docNumber: null,
+    priorTotalCents: 0, nextTotalCents: 0, added: [], removed: [], sameDayChurn: false, ...over,
+  });
+
+  it("resolves a sales RO id AND a payment id (via its RO) to human RO#s", async () => {
+    fromResults.push([{ payment_id: 60216784, repair_order_id: 337732285 }]); // payment_state: payment → RO
+    roMetaMock.mockResolvedValue(new Map([
+      [102, { repairOrderNumber: "1102" }],
+      [337732285, { repairOrderNumber: "153211" }],
+    ]));
+    const outcomes = [
+      outcome({ category: "sales", removed: ["102"] }),
+      outcome({ category: "payments", added: ["60216784"] }),
+    ];
+    await resolveConstituentLabels(7476, REALM, outcomes);
+    expect(outcomes[0]!.removed).toEqual(["RO 1102"]); // sales RO id → RO#
+    expect(outcomes[1]!.added).toEqual(["RO 153211"]); // payment id → its RO → RO#
+    expect(roMetaMock).toHaveBeenCalledWith(7476, REALM, expect.arrayContaining([102, 337732285]));
+  });
+
+  it("an unresolvable id becomes 'RO (number unavailable)', never the raw id", async () => {
+    roMetaMock.mockResolvedValue(new Map()); // nothing resolves
+    const outcomes = [outcome({ category: "sales", removed: ["999"] })];
+    await resolveConstituentLabels(7476, REALM, outcomes);
+    expect(outcomes[0]!.removed).toEqual(["RO (number unavailable)"]);
+    expect(outcomes[0]!.removed[0]).not.toContain("999");
+  });
+});
+
 describe("applyDayCorrections", () => {
   it("a change made on a LATER day: auto-approves + posts the correction and sends the Day Correction Alert", async () => {
     listDailyMock.mockResolvedValue({
@@ -149,6 +185,7 @@ describe("applyDayCorrections", () => {
     });
     // newest RO event: June 11 — days AFTER the June 8 business day → email.
     fromResults.push([{ tekmetric_event_at: "2026-06-11T14:00:00Z", received_at: "2026-06-11T14:00:01Z" }]);
+    roMetaMock.mockResolvedValue(new Map([[102, { repairOrderNumber: "1102" }]])); // RO id 102 → RO# 1102
     const r = await applyDayCorrections(7476, DATE);
     expect(r).toEqual({ businessDate: DATE, correctionsPosted: 1, correctionsFailed: 0 });
     expect(approveDailyMock).toHaveBeenCalledWith(7476, "v2", "system (auto-correction)");
@@ -156,7 +193,8 @@ describe("applyDayCorrections", () => {
     expect(sendMock).toHaveBeenCalledTimes(1);
     const email = sendMock.mock.calls[0]![0] as { to: string[]; subject: string; text: string };
     expect(email.to).toEqual(["om@shop.com"]);
-    expect(email.text).toContain("Removed repair orders: 102");
+    expect(email.text).toContain("Removed: RO 1102"); // human RO#, never the DB id (102)
+    expect(email.text).not.toContain("Removed: 102");
   });
 
   it("SAME-DAY Tekmetric churn (Chris's rule): the correction still posts but NO email goes out", async () => {
@@ -230,11 +268,12 @@ describe("applyDayCorrections", () => {
       ],
     });
     fromResults.push([{ tekmetric_event_at: "2026-06-11T14:00:00Z", received_at: "2026-06-11T14:00:01Z" }]); // sales: later day → not churn
+    roMetaMock.mockResolvedValue(new Map([[102, { repairOrderNumber: "1102" }]])); // RO id 102 → RO# 1102
     const r = await applyDayCorrections(7476, DATE);
     expect(r).toEqual({ businessDate: DATE, correctionsPosted: 2, correctionsFailed: 0 });
     expect(sendMock).toHaveBeenCalledTimes(1); // ONE email for the whole day, not one per category
     const email = sendMock.mock.calls[0]![0] as { subject: string; text: string };
-    expect(email.text).toContain("Removed repair orders: 102"); // sales
+    expect(email.text).toContain("Removed: RO 1102"); // sales — human RO#, not the DB id
     expect(email.text).toContain("Wording only: the line descriptions were updated."); // payments
     expect(email.text).toContain("Card fees — no change"); // fees context
   });

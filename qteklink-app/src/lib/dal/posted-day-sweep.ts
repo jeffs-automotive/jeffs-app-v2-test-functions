@@ -40,6 +40,7 @@ import {
   type DailyPostingRow,
 } from "@/lib/dal/daily-postings";
 import { postDailyPostingById, type QboDailyWriteClient } from "@/lib/dal/daily-poster";
+import { lookupRoMeta } from "@/lib/dal/ro-lookup";
 import type { DailyCategory } from "@/lib/daily/daily-je-builder";
 import { detectDateMoves, notifyDateMoves, listDateMoves, approveDateMove, unapproveDateMove } from "@/lib/dal/date-moves";
 import { sendQteklinkEmail } from "@/lib/dal/notify";
@@ -165,10 +166,70 @@ async function latestRoChangeDay(
 }
 
 /**
+ * Replace each outcome's added/removed CONSTITUENT IDS with human RO numbers, IN PLACE — a DB
+ * id must NEVER appear in an employee email (Chris's rule: RO# / customer / vehicle only, ids
+ * are DB-only). Sales constituents are RO ids; payment/fee constituents are payment ids
+ * (resolved through their RO). Best-effort: an unresolvable id renders "RO (number unavailable)"
+ * rather than leaking the id. Throws only on a DB error.
+ */
+export async function resolveConstituentLabels(
+  shopId: number,
+  realmId: string | null,
+  outcomes: CategoryOutcome[],
+): Promise<void> {
+  const saleRoIds = new Set<number>();
+  const paymentIds = new Set<string>();
+  for (const o of outcomes) {
+    for (const id of [...o.added, ...o.removed]) {
+      if (o.category === "sales") {
+        const n = Number(id);
+        if (Number.isSafeInteger(n)) saleRoIds.add(n);
+      } else {
+        paymentIds.add(id);
+      }
+    }
+  }
+  if (!realmId || (saleRoIds.size === 0 && paymentIds.size === 0)) return;
+
+  // payment id → its RO id (the payment-state projection).
+  const paymentToRo = new Map<string, number>();
+  if (paymentIds.size > 0) {
+    const admin = createSupabaseAdminClient();
+    const { data, error } = await admin
+      .from("qteklink_payment_state")
+      .select("payment_id, repair_order_id")
+      .eq("shop_id", shopId)
+      .eq("realm_id", realmId)
+      .in("payment_id", [...paymentIds].map(Number).filter((n) => Number.isSafeInteger(n)));
+    if (error) throw new Error(`resolveConstituentLabels (payment_state) failed: ${error.message}`);
+    for (const r of (data ?? []) as { payment_id: number | string; repair_order_id: number | string | null }[]) {
+      const ro = Number(r.repair_order_id);
+      if (Number.isSafeInteger(ro)) paymentToRo.set(String(r.payment_id), ro);
+    }
+  }
+
+  const roIds = [...new Set([...saleRoIds, ...paymentToRo.values()])];
+  const roMeta = roIds.length > 0 ? await lookupRoMeta(shopId, realmId, roIds) : new Map<number, { repairOrderNumber: string | null }>();
+  const labelForRo = (ro: number | undefined): string => {
+    const num = ro != null ? roMeta.get(ro)?.repairOrderNumber : null;
+    return num ? `RO ${num}` : "RO (number unavailable)";
+  };
+  for (const o of outcomes) {
+    const toLabel = (id: string): string =>
+      o.category === "sales" ? labelForRo(Number(id)) : labelForRo(paymentToRo.get(id));
+    o.added = o.added.map(toLabel);
+    o.removed = o.removed.map(toLabel);
+  }
+}
+
+/**
  * The ONE consolidated Day Correction email for a day (Chris's spec): lists EVERY JE
  * category that has a posted entry, HIGHLIGHTS what changed (and how), and shows the
  * unchanged ones as context — so the office manager gets a single email per day, not one
  * per journal entry. The caller only sends it when at least one category changed.
+ *
+ * NOTE: the added/removed values must already be human RO labels (resolveConstituentLabels) —
+ * this function never renders a raw DB id.
  */
 export function describeDayCorrections(
   businessDate: string,
@@ -190,8 +251,8 @@ export function describeDayCorrections(
         lines.push(`     The journal entry was DELETED (nothing left to post for this day).`);
       } else if (o.changeKind === "membership") {
         lines.push(`     New total: ${fmtUsd(o.nextTotalCents ?? 0)} (was ${fmtUsd(o.priorTotalCents ?? 0)})`);
-        if (o.added.length) lines.push(`     Added ${noun}: ${o.added.join(", ")}`);
-        if (o.removed.length) lines.push(`     Removed ${noun}: ${o.removed.join(", ")}`);
+        if (o.added.length) lines.push(`     Added: ${o.added.join(", ")}`);
+        if (o.removed.length) lines.push(`     Removed: ${o.removed.join(", ")}`);
       } else if (o.changeKind === "descriptions-only") {
         lines.push(`     Wording only: the line descriptions were updated. The ${noun} and the total (${fmtUsd(o.nextTotalCents ?? 0)}) are unchanged.`);
       } else {
@@ -305,6 +366,7 @@ export async function applyDayCorrections(
   const anyChanged = outcomes.some((o) => o.changed);
   const suppressWholeDay = postedCorrections > 0 && churnSuppressable === postedCorrections;
   if (anyChanged && !suppressWholeDay) {
+    await resolveConstituentLabels(shopId, realmId, outcomes); // ids → RO# (never a DB id in email)
     const { subject, text } = describeDayCorrections(businessDate, outcomes);
     await sendQteklinkEmail({ to: correctionTo, subject, text });
   } else if (anyChanged && suppressWholeDay) {
