@@ -5,6 +5,6 @@
   "installCommand": "npm install",
   "outputDirectory": ".next",
   "crons": [
-    { "path": "/api/cron/daily-sync", "schedule": "22 10 * * *" }
+    { "path": "/api/cron/daily-sync", "schedule": "0 7 * * *" }
   ]
 }
