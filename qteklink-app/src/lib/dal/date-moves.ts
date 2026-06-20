@@ -27,6 +27,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { resolveRealmForShop } from "@/lib/dal/realm";
 import { QboClientError } from "@/lib/qbo/errors";
 import { RO_SALE_SCAN_EVENT_KINDS, RO_UNPOST_EVENT_KIND } from "@/lib/events/kinds";
+import { sortByReceivedAtDesc } from "@/lib/events/ordering";
 import { toShopLocalDate } from "@/lib/sales/sale-builder";
 import { sendQteklinkEmail } from "@/lib/dal/notify";
 import { getShopSettings } from "@/lib/dal/settings";
@@ -210,10 +211,15 @@ export async function detectDateMoves(shopId: number, realmId: string, tz: strin
       .eq("realm_id", realmId)
       .in("event_kind", [...RO_SALE_SCAN_EVENT_KINDS])
       .in("tekmetric_ro_id", chunk)
-      .order("tekmetric_event_at", { ascending: false, nullsFirst: false })
       .order("received_at", { ascending: false });
     if (evErr) throw new Error(`detectDateMoves (events) failed: ${evErr.message}`);
-    for (const r of (evRows ?? []) as { tekmetric_ro_id: number | string; event_kind: string; raw_body: { data?: Record<string, unknown> } | null }[]) {
+    // Newest per RO by RECEIVED time, not business time — Tekmetric backdates unpost/repost
+    // events, so the latest observed event is the RO's true current state (must agree with
+    // buildDayDrafts, or the move detector and the reconcile disagree on where the RO is now).
+    const ordered = sortByReceivedAtDesc(
+      (evRows ?? []) as { tekmetric_ro_id: number | string; event_kind: string; raw_body: { data?: Record<string, unknown> } | null; received_at: string }[],
+    );
+    for (const r of ordered) {
       const ro = Number(r.tekmetric_ro_id);
       if (latestByRo.has(ro)) continue;
       const d = r.raw_body?.data ?? {};

@@ -104,7 +104,9 @@ export async function recordManualPayment(
     .eq("realm_id", realmId)
     .eq("tekmetric_ro_id", input.repairOrderId)
     .in("event_kind", [...RO_SALE_SCAN_EVENT_KINDS])
-    .order("tekmetric_event_at", { ascending: false, nullsFirst: false })
+    // Newest by RECEIVED time, not business time: Tekmetric backdates unpost/repost events, so
+    // the latest observed event is the RO's true current state (a corrective repost must not be
+    // shadowed by a backdated unpost — RO 153211 incident).
     .order("received_at", { ascending: false })
     .limit(1);
   if (evErr) throw new Error(`recordManualPayment (RO snapshot) failed: ${evErr.message}`);

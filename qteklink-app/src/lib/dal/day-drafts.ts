@@ -13,6 +13,7 @@
  */
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { RO_SALE_SCAN_EVENT_KINDS, RO_UNPOST_EVENT_KIND } from "@/lib/events/kinds";
+import { sortByReceivedAtDesc } from "@/lib/events/ordering";
 import { listPendingDateMoves } from "@/lib/dal/date-moves";
 import { parseSnapshot, resolveMappings, type MappingRow } from "@/lib/dal/sale-je";
 import { resolvePaymentMappings, stateRowToPayment, type PaymentStateRow } from "@/lib/dal/payment-je";
@@ -114,15 +115,19 @@ export async function buildDayDrafts(
     .eq("shop_id", shopId).eq("realm_id", realmId)
     .in("event_kind", [...RO_SALE_SCAN_EVENT_KINDS])
     .gte("tekmetric_event_at", startIso).lt("tekmetric_event_at", endIso)
-    .order("tekmetric_event_at", { ascending: false, nullsFirst: false })
     .order("received_at", { ascending: false });
   if (evErr) throw new Error(`buildDayDrafts (events) failed: ${evErr.message}`);
 
   const extraReviewItems: UpsertReviewItemInput[] = [];
-  // ro_id → newest event (ordered desc → first wins). Keeping the kind lets the unpost
-  // reversal shadow an older posting event.
+  // ro_id → newest event per RO. Order by RECEIVED time, NOT business time: Tekmetric backdates
+  // unpost/repost events (a corrective repost can carry an EARLIER postedDate than the unpost it
+  // fixes — RO 153211 incident 2026-06-19), so the latest OBSERVED event is the RO's true current
+  // state. The window above still buckets by business date; this only orders WITHIN the window.
   const latestByRo = new Map<string, { kind: string; data: unknown }>();
-  for (const r of (evRows ?? []) as { tekmetric_ro_id: number | string | null; event_kind: string; raw_body: { data?: unknown } | null }[]) {
+  const ordered = sortByReceivedAtDesc(
+    (evRows ?? []) as { tekmetric_ro_id: number | string | null; event_kind: string; raw_body: { data?: unknown } | null; received_at: string }[],
+  );
+  for (const r of ordered) {
     const roKey = String(r.tekmetric_ro_id ?? "");
     if (!roKey || latestByRo.has(roKey)) continue;
     const roNum = Number(roKey);

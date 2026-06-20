@@ -37,9 +37,10 @@ const TZ = "America/New_York";
 const postedSales = (date: string, roIds: number[]) => ({
   business_date: date, posting_version: 1, action: "create", constituents: { ro_ids: roIds },
 });
-/** A sale-scan event row (newest-first ordering is the mock array order). */
-const ev = (ro: number, kind: string, postedDate: string | null, num = String(ro)) => ({
-  tekmetric_ro_id: ro, event_kind: kind,
+/** A sale-scan event row. Ordering is now by `received_at` (defaulted; pass it to exercise
+ *  the backdated-unpost case). */
+const ev = (ro: number, kind: string, postedDate: string | null, num = String(ro), received_at = "2026-06-10T00:00:00Z") => ({
+  tekmetric_ro_id: ro, event_kind: kind, received_at,
   raw_body: { data: { id: ro, repairOrderNumber: num, postedDate, totalSales: 5000 } },
 });
 
@@ -99,6 +100,27 @@ describe("detectDateMoves", () => {
     expect(rpcMock).toHaveBeenCalledWith("qteklink_resolve_date_move", expect.objectContaining({ p_id: "mv-1" }));
     expect(r.autoResolved).toBe(1);
     expect(r.newOrChangedMoves).toHaveLength(0);
+  });
+
+  it("a corrective repost (received last) is NOT shadowed by a backdated unpost → auto-resolves the open move (RO 153211)", async () => {
+    fromResults.push([postedSales("2026-06-15", [336946898])]);
+    // Tekmetric backdated the unpost AHEAD of the corrective repost; provided in that (wrong)
+    // business-time order. received-time ordering must still pick the repost (back on 6/15).
+    fromResults.push([
+      ev(336946898, "ro_unposted", "2026-06-15T20:43:58Z", "153211", "2026-06-19T20:38:34Z"),
+      ev(336946898, "ro_posted", "2026-06-15T20:38:50Z", "153211", "2026-06-19T20:39:17Z"), // received LAST
+    ]);
+    fromResults.push([{
+      id: "mv-1", tekmetric_ro_id: 336946898, ro_number: "153211", original_business_date: "2026-06-15",
+      new_business_date: "2026-06-16", original_total_cents: null, new_total_cents: 5000,
+      status: "pending", detected_at: "2026-06-19T00:00:00Z", approved_by: null, approved_at: null, resolved_at: null,
+    }]);
+    const r = await detectDateMoves(7476, REALM, TZ);
+    // With business-time ordering this saw the backdated unpost and left the move open; now it
+    // sees the repost (back on its original day) and auto-resolves.
+    expect(rpcMock).toHaveBeenCalledWith("qteklink_resolve_date_move", expect.objectContaining({ p_id: "mv-1" }));
+    expect(r.autoResolved).toBe(1);
+    expect(rpcMock).not.toHaveBeenCalledWith("qteklink_upsert_date_move", expect.anything());
   });
 
   it("an UNPOSTED (not re-posted) RO is NOT a move — the correction sweep owns removals", async () => {
