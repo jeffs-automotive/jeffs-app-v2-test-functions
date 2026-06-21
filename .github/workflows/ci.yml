@@ -137,6 +137,28 @@ jobs:
       - name: Vitest
         run: cd admin-app && npm run test
 
+  qteklink-app:
+    name: QTekLink-app (typecheck + lint + vitest)
+    runs-on: ubuntu-latest
+    # Separate Next.js app with its own lockfile. Hermetic: the Vitest unit + *.contract.test.ts
+    # suites mock Supabase / fetch and import the shared `test-kit/` fixtures (committed at the
+    # repo root, so they're checked out here with no cross-repo token), so no secrets/network.
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: 'qteklink-app/package-lock.json'
+      - name: Install
+        run: cd qteklink-app && npm ci
+      - name: Typecheck
+        run: cd qteklink-app && npm run typecheck
+      - name: Lint
+        run: cd qteklink-app && npm run lint
+      - name: Vitest
+        run: cd qteklink-app && npm run test
+
   playwright-smoke:
     name: Playwright smoke
     runs-on: ubuntu-latest

@@ -40,9 +40,9 @@ export default defineConfig({
     alias: {
       "@": path.resolve(__dirname, "./src"),
       "@/app": path.resolve(__dirname, "./app"),
-      // Shared QBO/Tekmetric integration test fixtures — committed in the dotfiles repo,
-      // directory-symlinked into the app repo at ../.agents/test-kit (see .agents/test-kit/README.md).
-      "@testkit": path.resolve(__dirname, "../.agents/test-kit"),
+      // Shared QBO/Tekmetric integration test fixtures, committed at the app-repo root so all
+      // apps + the Deno edge fns share it and CI can reach it (see ../test-kit/README.md).
+      "@testkit": path.resolve(__dirname, "../test-kit"),
     },
   },
 });
