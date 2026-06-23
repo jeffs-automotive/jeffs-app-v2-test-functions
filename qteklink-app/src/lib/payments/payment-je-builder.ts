@@ -211,10 +211,11 @@ export function buildPaymentJournalEntry(
   // history is exactly this — the $281.15 Flexicon check). Whether labeled "store credit" or
   // "customer deposit" the accounting is identical (cash received, liability up).
   if (p.repairOrderId == null) {
-    // Its OWN description: an issuance has no RO/customer, so it reads "Store Credit Issued ·
-    // <payer>" (payer = the only human identifier on the unattached check), not the generic
-    // "<Type> · RO · Customer".
-    const issueDesc = ["Store Credit Issued", (p.payerName ?? "").trim() || null]
+    // Its OWN description: an issuance has no RO/customer, so it mirrors a normal payment
+    // line ("<Type> · RO · Customer") but puts "Store Credit" where the RO would go and uses
+    // the payer as the name → "<Type> · Store Credit · <payer>" (e.g. "Check · Store Credit ·
+    // Flexicon"). Includes the real tender so the office sees it's a check (Chris 2026-06-23).
+    const issueDesc = [paymentTypeLabel(p.method, p.otherPaymentType), "Store Credit", (p.payerName ?? "").trim() || null]
       .filter((s): s is string => Boolean(s))
       .join(" · ") + (p.isRefund ? " (refund)" : "");
     if (!m.undepositedAccountId) unmapped.push("undeposited_funds");

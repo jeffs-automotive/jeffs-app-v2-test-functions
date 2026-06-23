@@ -193,15 +193,16 @@ describe("buildPaymentJournalEntry — store credit (Flexicon, live 6/22-6/23)",
     expect(je.balanced).toBe(false);
   });
 
-  it("labels: redemption 'Store Credit · RO# · Customer'; issuance 'Store Credit Issued · <payer>' (no RO/customer)", () => {
+  it("labels: redemption 'Store Credit · RO# · Customer'; issuance '<Type> · Store Credit · <payer>' (Type included)", () => {
     const r = buildPaymentJournalEntry(redeem({ repairOrderNumber: "152805", customerName: "Flexicon" }), M, S);
     expect(r.lines.every((l) => l.description === "Store Credit · RO 152805 · Flexicon")).toBe(true);
+    // issuance (CHK) → "Check · Store Credit · <payer>" — like a normal check line, with the tender + payer.
     const i = buildPaymentJournalEntry(issue({ payerName: "Flexicon" }), M, S);
-    expect(i.lines.every((l) => l.description === "Store Credit Issued · Flexicon")).toBe(true);
+    expect(i.lines.every((l) => l.description === "Check · Store Credit · Flexicon")).toBe(true);
     const noPayer = buildPaymentJournalEntry(issue(), M, S);
-    expect(noPayer.lines.every((l) => l.description === "Store Credit Issued")).toBe(true);
+    expect(noPayer.lines.every((l) => l.description === "Check · Store Credit")).toBe(true);
     const refundPayout = buildPaymentJournalEntry(issue({ payerName: "Flexicon", signedAmountCents: -28115, isRefund: true }), M, S);
-    expect(refundPayout.lines.every((l) => l.description === "Store Credit Issued · Flexicon (refund)")).toBe(true);
+    expect(refundPayout.lines.every((l) => l.description === "Check · Store Credit · Flexicon (refund)")).toBe(true);
   });
 });
 
