@@ -46,6 +46,7 @@ const FIXED_ITEMS: { kind: string; sourceKey: string; label: string; group: stri
   { kind: "system", sourceKey: "accounts_receivable", label: "Accounts receivable", group: "Cash & A/R" },
   { kind: "system", sourceKey: "undeposited_funds", label: "Undeposited funds", group: "Cash & A/R" },
   { kind: "system", sourceKey: "cc_fee", label: "Credit-card fee", group: "Cash & A/R" },
+  { kind: "system", sourceKey: "store_credit", label: "Store credit (Customer Store Credit liability)", group: "Cash & A/R" },
 ];
 
 const DISCOVERED_GROUP: Record<string, string> = {

@@ -93,6 +93,7 @@ const PAY_M: ResolvedPaymentMappings = {
   ccFeeAccountId: "309",
   noncashAccountsByType: { "Tire Protection Plan": "6834" },
   depositLikeAccountsByType: { Synchrony: "366" },
+  storeCreditAccountId: null,
 };
 
 function payment(over: Partial<PaymentForBuild>): PaymentJournalEntry {

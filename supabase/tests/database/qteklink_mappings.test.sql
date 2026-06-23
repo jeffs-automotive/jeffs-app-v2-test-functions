@@ -43,6 +43,11 @@ SELECT ok(NOT public.qteklink_kind_accepts_role('labor','cc_fee'), 'kind: labor 
 SELECT ok(public.qteklink_kind_accepts_role('tax','sales_tax_payable'), 'kind: tax accepts sales_tax_payable');
 SELECT ok(NOT public.qteklink_kind_accepts_role('tax','income'), 'kind: tax rejects income');
 SELECT ok(public.qteklink_kind_accepts_role('system','cc_fee'), 'kind: system accepts cc_fee');
+SELECT ok(public.qteklink_role_accepts_type('store_credit','Other Current Liability'), 'role: store_credit accepts Other Current Liability');
+SELECT ok(NOT public.qteklink_role_accepts_type('store_credit','Expense'), 'role: store_credit rejects Expense');
+SELECT ok(NOT public.qteklink_role_accepts_type('store_credit','Other Current Asset'), 'role: store_credit rejects Other Current Asset (it is a liability, not Undeposited)');
+SELECT ok(public.qteklink_role_accepts_type('store_credit', NULL::text) IS FALSE, 'role matrix is NULL-safe: store_credit vs NULL type -> FALSE');
+SELECT ok(public.qteklink_kind_accepts_role('system','store_credit'), 'kind: system accepts store_credit');
 
 -- ─── Seed connections + COA (active, inactive, soft-deleted) ────────────
 INSERT INTO public.qbo_connections (realm_id, shop_id, access_token_expires_at, refresh_token_expires_at)
@@ -59,12 +64,14 @@ VALUES
   (7476,'realm-A','309','Bank/CC Fees','Expense',true,NULL),
   (7476,'realm-A','400','Inactive Income','Income',false,NULL),       -- INACTIVE
   (7476,'realm-A','999','Removed Income','Income',true,now()),        -- soft-deleted
+  (7476,'realm-A','260','Customer Store Credit','Other Current Liability',true,NULL), -- the store_credit target
   (7477,'realm-B','275','Sales - Labor (shop B)','Income',true,NULL);
 
 -- ─── Happy paths ────────────────────────────────────────────────────────
 SELECT isnt(public.qteklink_set_mapping(7476,'realm-A','labor','Labor',NULL,'275','income'), NULL, 'labor->275 ok');
 SELECT isnt(public.qteklink_set_mapping(7476,'realm-A','system','cc_fee',NULL,'309','cc_fee'), NULL, 'system cc_fee->309 ok');
 SELECT isnt(public.qteklink_set_mapping(7476,'realm-A','system','accounts_receivable',NULL,'235','accounts_receivable'), NULL, 'system accounts_receivable -> 235 (Other Current Asset, acct# 120) ok');
+SELECT isnt(public.qteklink_set_mapping(7476,'realm-A','system','store_credit',NULL,'260','store_credit'), NULL, 'system store_credit -> 260 (Other Current Liability) ok');
 
 -- ─── pass_through (C5): fee-only flag, excluded from the discount waterfall ──
 SELECT isnt(public.qteklink_set_mapping(7476,'realm-A','fee','State Communication Fee',NULL,'276','income',true), NULL, 'pass-through fee mapping ok');
@@ -82,6 +89,7 @@ SELECT throws_ok($$ SELECT public.qteklink_set_mapping(7476,'realm-A','system','
 SELECT throws_ok($$ SELECT public.qteklink_set_mapping(7476,'realm-A','system','cc_fee',NULL,'309','accounts_receivable') $$, 'P0001', NULL, 'system role must equal source_key (RPC)');
 SELECT throws_ok($$ SELECT public.qteklink_set_mapping(7476,'realm-A','system','accounts_receivable',NULL,'236','accounts_receivable') $$, 'P0001', NULL, 'A/R role REJECTS a true Accounts-Receivable-TYPE account (236) — bulk A/R must be Other Current Asset');
 SELECT throws_ok($$ SELECT public.qteklink_set_mapping(7476,'realm-A','system','undeposited_funds',NULL,'237','undeposited_funds') $$, 'P0001', NULL, 'NULL account_type is unmappable for any role (NULL-safe role<->type gate)');
+SELECT throws_ok($$ SELECT public.qteklink_set_mapping(7476,'realm-A','system','store_credit',NULL,'235','store_credit') $$, 'P0001', NULL, 'store_credit role REJECTS a non-liability account (235 is Other Current Asset)');
 -- the rejected attempts left the original labor->275 untouched
 SELECT is((SELECT qbo_account_id FROM public.qteklink_mappings WHERE shop_id=7476 AND realm_id='realm-A' AND kind='labor' AND source_key='Labor' AND active), '275', 'labor->275 unchanged after rejections');
 

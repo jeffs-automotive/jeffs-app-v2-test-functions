@@ -89,12 +89,14 @@ export function resolvePaymentMappings(rows: MappingRow[]): ResolvedPaymentMappi
     ccFeeAccountId: null,
     noncashAccountsByType: {},
     depositLikeAccountsByType: {},
+    storeCreditAccountId: null,
   };
   for (const r of rows) {
     if (r.kind === "system") {
       if (r.source_key === "undeposited_funds") m.undepositedAccountId = r.qbo_account_id;
       else if (r.source_key === "accounts_receivable") m.arAccountId = r.qbo_account_id;
       else if (r.source_key === "cc_fee") m.ccFeeAccountId = r.qbo_account_id;
+      else if (r.source_key === "store_credit") m.storeCreditAccountId = r.qbo_account_id;
     } else if (r.kind === "noncash_payment_type") {
       // role 'undeposited_funds' = financing that deposits like a card (Synchrony/Affirm);
       // 'noncash_contra' = a true contra (warranty / internal).

@@ -104,7 +104,15 @@ describe("resolvePaymentMappings", () => {
       ccFeeAccountId: "309",
       noncashAccountsByType: { "Tire Protection Plan": "6834" },
       depositLikeAccountsByType: {},
+      storeCreditAccountId: null,
     });
+  });
+
+  it("maps the system/store_credit account → storeCreditAccountId", () => {
+    const m = resolvePaymentMappings([
+      { kind: "system", source_key: "store_credit", qbo_account_id: "260", posting_role: "store_credit" },
+    ]);
+    expect(m.storeCreditAccountId).toBe("260");
   });
 
   it("splits a non-cash type by role: undeposited_funds → deposit-like, else → contra", () => {

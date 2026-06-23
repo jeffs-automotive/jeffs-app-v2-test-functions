@@ -13,6 +13,7 @@ export const PAYMENT_TYPE_LABELS: Record<string, string> = {
   DEBIT: "Debit",
   AFFIRM: "Affirm",
   KLARNA: "Klarna",
+  STORE_CREDIT: "Store Credit",
 };
 
 /** The display payment type: Other/OTH → its sub-type (else "Other"); else the mapped

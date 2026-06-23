@@ -28,6 +28,7 @@ export const POSTING_ROLES = [
   "undeposited_funds",
   "cc_fee",
   "noncash_contra",
+  "store_credit",
 ] as const;
 export type PostingRole = (typeof POSTING_ROLES)[number];
 
@@ -50,6 +51,7 @@ export const ROLE_LABELS: Record<PostingRole, string> = {
   undeposited_funds: "Undeposited funds",
   cc_fee: "Credit-card fee",
   noncash_contra: "Non-cash contra",
+  store_credit: "Store credit (liability)",
 };
 
 /**
@@ -79,6 +81,7 @@ export function derivePostingRole(kind: string, sourceKey: string): PostingRole 
       if (k === "accounts_receivable") return "accounts_receivable";
       if (k === "undeposited_funds") return "undeposited_funds";
       if (k === "cc_fee") return "cc_fee";
+      if (k === "store_credit") return "store_credit";
       return null;
     }
     default:

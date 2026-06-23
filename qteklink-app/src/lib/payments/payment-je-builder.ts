@@ -72,6 +72,10 @@ export interface ResolvedPaymentMappings {
    *  undeposited_funds — financing like Synchrony/Affirm) → the deposit account id
    *  (Undeposited Funds or a clearing Other-Current-Asset). Routes Dr <acct> / Cr A/R. */
   depositLikeAccountsByType: Record<string, string>;
+  /** system/store_credit (role store_credit) → the Customer Store Credit
+   *  Other-Current-Liability account id. Holds an unattached payment's balance: issuance
+   *  CREDITS it (Dr Undeposited), redemption (a STORE_CREDIT payment) DEBITS it (Cr A/R). */
+  storeCreditAccountId: string | null;
 }
 
 export interface PaymentSettings {
@@ -112,6 +116,10 @@ export interface PaymentJournalEntry {
 /** Methods that route to the NON-CASH path (matched case-insensitively against
  *  the Tekmetric paymentType name "Other" and its code "OTH"). */
 const NONCASH_METHODS = new Set(["other", "oth"]);
+
+/** Tekmetric paymentType.code for a store-credit REDEMPTION (drawing down a customer's
+ *  store-credit balance to pay an RO). Matched case-insensitively. */
+const STORE_CREDIT_METHOD = "STORE_CREDIT";
 
 function suppressed(
   p: PaymentForBuild,
@@ -176,6 +184,37 @@ export function buildPaymentJournalEntry(
 
   const lines: PaymentJeLine[] = [];
   const unmapped: string[] = [];
+
+  // STORE-CREDIT REDEMPTION: a STORE_CREDIT-type payment draws down the customer's
+  // store-credit liability to pay an RO — NO cash, NO fee. Dr <store credit liability> /
+  // Cr A/R (flipped for a refund). Routes 'non_cash' (no Undeposited movement). Must be
+  // checked BEFORE the issuance branch (a redemption always carries an RO).
+  if (p.method.trim().toUpperCase() === STORE_CREDIT_METHOD) {
+    if (!m.storeCreditAccountId) unmapped.push("store_credit");
+    if (!m.arAccountId) unmapped.push("accounts_receivable");
+    if (m.storeCreditAccountId && m.arAccountId) {
+      lines.push({ accountId: m.storeCreditAccountId, postingType: inflow ? "Debit" : "Credit", amountCents: amt, description: desc, part: "gross" });
+      lines.push({ accountId: m.arAccountId, postingType: inflow ? "Credit" : "Debit", amountCents: amt, description: desc, part: "gross" });
+    }
+    return finalize(p, docNumber, txnDate, "non_cash", lines, unmapped);
+  }
+
+  // STORE-CREDIT ISSUANCE: a real-tender payment with NO repair order is an UNATTACHED
+  // payment (an overpayment / customer deposit) that becomes store credit — money in, a
+  // liability we now owe. Dr Undeposited / Cr <store credit liability> (flipped for a
+  // payout/refund). No RO, no fee. Tekmetric emits no explicit "store credit issued" event;
+  // the null repairOrderId IS the signal (verified: the only null-RO payment in shop 7476's
+  // history is exactly this — the $281.15 Flexicon check). Whether labeled "store credit" or
+  // "customer deposit" the accounting is identical (cash received, liability up).
+  if (p.repairOrderId == null) {
+    if (!m.undepositedAccountId) unmapped.push("undeposited_funds");
+    if (!m.storeCreditAccountId) unmapped.push("store_credit");
+    if (m.undepositedAccountId && m.storeCreditAccountId) {
+      lines.push({ accountId: m.undepositedAccountId, postingType: inflow ? "Debit" : "Credit", amountCents: amt, description: desc, part: "gross" });
+      lines.push({ accountId: m.storeCreditAccountId, postingType: inflow ? "Credit" : "Debit", amountCents: amt, description: desc, part: "gross" });
+    }
+    return finalize(p, docNumber, txnDate, "deposit", lines, unmapped);
+  }
 
   if (NONCASH_METHODS.has(p.method.trim().toLowerCase())) {
     const key = (p.otherPaymentType ?? "").trim();

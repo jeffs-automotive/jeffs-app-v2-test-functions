@@ -20,7 +20,7 @@ const SM: ResolvedMappings = {
 };
 const SS: SaleSettings = { shopTimezone: "America/New_York", tireFeeCentsPerTire: 100, salesTaxRateBps: 600 };
 const G: SaleGateSettings = { salesTaxRateBps: 600 };
-const PM: ResolvedPaymentMappings = { undepositedAccountId: "366", arAccountId: "235", ccFeeAccountId: "309", noncashAccountsByType: {}, depositLikeAccountsByType: {} };
+const PM: ResolvedPaymentMappings = { undepositedAccountId: "366", arAccountId: "235", ccFeeAccountId: "309", noncashAccountsByType: {}, depositLikeAccountsByType: {}, storeCreditAccountId: null };
 const PS: PaymentSettings = { shopTimezone: "America/New_York" };
 
 function snap(over: Partial<RoSaleSnapshot>): RoSaleSnapshot {

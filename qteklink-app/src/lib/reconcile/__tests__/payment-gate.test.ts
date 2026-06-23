@@ -18,6 +18,7 @@ const M: ResolvedPaymentMappings = {
   ccFeeAccountId: "309",
   noncashAccountsByType: { "Tire Protection Plan": "1150040010" },
   depositLikeAccountsByType: {},
+  storeCreditAccountId: null,
 };
 const S: PaymentSettings = { shopTimezone: "America/New_York" };
 

@@ -17,6 +17,7 @@ const M: ResolvedPaymentMappings = {
   ccFeeAccountId: "309",
   noncashAccountsByType: { "Tire Protection Plan": "6834", "Shop Vehicle": "6101" },
   depositLikeAccountsByType: {},
+  storeCreditAccountId: "260", // Customer Store Credit (Other Current Liability)
 };
 const S: PaymentSettings = { shopTimezone: "America/New_York" };
 
@@ -134,6 +135,69 @@ describe("buildPaymentJournalEntry — non-cash route", () => {
     expect(je.unmapped).toContain("noncash:Synchrony");
     expect(je.balanced).toBe(false);
     expect(je.lines).toHaveLength(0);
+  });
+});
+
+describe("buildPaymentJournalEntry — store credit (Flexicon, live 6/22-6/23)", () => {
+  // Redemption: a STORE_CREDIT-type payment on an RO. Real numbers: $147.15 on RO 326180629.
+  const redeem = (over: Partial<PaymentForBuild> = {}): PaymentForBuild =>
+    pay({ paymentId: "60822951", repairOrderId: 326180629, method: "STORE_CREDIT", signedAmountCents: 14715, signedProcessingFeeCents: 0, ...over });
+  // Issuance: an UNATTACHED real check (no RO). Real numbers: $281.15, repairOrderId null.
+  const issue = (over: Partial<PaymentForBuild> = {}): PaymentForBuild =>
+    pay({ paymentId: "60746251", repairOrderId: null, method: "CHK", signedAmountCents: 28115, signedProcessingFeeCents: 0, ...over });
+
+  it("REDEMPTION: Dr Store-Credit liability / Cr A/R — no Undeposited, no fee, route non_cash", () => {
+    const je = buildPaymentJournalEntry(redeem(), M, S);
+    expect(je.route).toBe("non_cash");
+    expect(je.balanced).toBe(true);
+    expect(je.lines).toHaveLength(2);
+    expect(je.lines).toContainEqual(expect.objectContaining({ accountId: "260", postingType: "Debit", amountCents: 14715, part: "gross" }));
+    expect(je.lines).toContainEqual(expect.objectContaining({ accountId: "235", postingType: "Credit", amountCents: 14715 }));
+    expect(je.lines.some((l) => l.accountId === "366")).toBe(false); // never touches Undeposited
+  });
+
+  it("REDEMPTION refund flips: Dr A/R / Cr Store-Credit liability", () => {
+    const je = buildPaymentJournalEntry(redeem({ signedAmountCents: -14715, isRefund: true }), M, S);
+    expect(je.balanced).toBe(true);
+    expect(je.lines).toContainEqual(expect.objectContaining({ accountId: "235", postingType: "Debit", amountCents: 14715 }));
+    expect(je.lines).toContainEqual(expect.objectContaining({ accountId: "260", postingType: "Credit", amountCents: 14715 }));
+  });
+
+  it("REDEMPTION with no store-credit mapping → unmapped (resolution queue), never mis-posted", () => {
+    const je = buildPaymentJournalEntry(redeem(), { ...M, storeCreditAccountId: null }, S);
+    expect(je.unmapped).toContain("store_credit");
+    expect(je.balanced).toBe(false);
+    expect(je.lines).toHaveLength(0);
+  });
+
+  it("ISSUANCE (unattached check, no RO): Dr Undeposited / Cr Store-Credit liability, route deposit", () => {
+    const je = buildPaymentJournalEntry(issue(), M, S);
+    expect(je.route).toBe("deposit");
+    expect(je.balanced).toBe(true);
+    expect(je.lines).toHaveLength(2);
+    expect(je.lines).toContainEqual(expect.objectContaining({ accountId: "366", postingType: "Debit", amountCents: 28115, part: "gross" }));
+    expect(je.lines).toContainEqual(expect.objectContaining({ accountId: "260", postingType: "Credit", amountCents: 28115 }));
+    expect(je.lines.some((l) => l.accountId === "235")).toBe(false); // no A/R — there's no sale
+  });
+
+  it("ISSUANCE refund/payout flips: Dr Store-Credit liability / Cr Undeposited", () => {
+    const je = buildPaymentJournalEntry(issue({ signedAmountCents: -28115, isRefund: true }), M, S);
+    expect(je.balanced).toBe(true);
+    expect(je.lines).toContainEqual(expect.objectContaining({ accountId: "260", postingType: "Debit", amountCents: 28115 }));
+    expect(je.lines).toContainEqual(expect.objectContaining({ accountId: "366", postingType: "Credit", amountCents: 28115 }));
+  });
+
+  it("ISSUANCE with no store-credit mapping → unmapped (resolution queue)", () => {
+    const je = buildPaymentJournalEntry(issue(), { ...M, storeCreditAccountId: null }, S);
+    expect(je.unmapped).toContain("store_credit");
+    expect(je.balanced).toBe(false);
+  });
+
+  it("labels: redemption shows 'Store Credit · RO# · Customer'; issuance shows 'Check' (no RO)", () => {
+    const r = buildPaymentJournalEntry(redeem({ repairOrderNumber: "152805", customerName: "Flexicon" }), M, S);
+    expect(r.lines.every((l) => l.description === "Store Credit · RO 152805 · Flexicon")).toBe(true);
+    const i = buildPaymentJournalEntry(issue(), M, S);
+    expect(i.lines.every((l) => l.description === "Check")).toBe(true);
   });
 });
 
