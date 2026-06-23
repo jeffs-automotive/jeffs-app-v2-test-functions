@@ -64,6 +64,8 @@ export interface WipKeyTagEntry {
   tag_number: number;
   status: "assigned" | "posted_ar";
   customer_id: number | null;
+  /** Denormalized customer display name (captured at assign); null when unresolved. */
+  customer_name: string | null;
   vehicle_id: number | null;
   ro_url: string;
   last_activity_at: string | null;
@@ -74,6 +76,33 @@ export interface WipKeyTagsResult {
   count: number;
   shop_id: number;
   results: WipKeyTagEntry[];
+}
+
+// ─── Live board state (tagged in-use + untagged-needs-a-tag) ─────────────
+// The untagged rows are sourced from OPEN manual reviews of the
+// "needs a tag" categories (work_approved_drift / ar_regression =
+// WIP-needs-tag; ar_no_prior_tag = A/R-without-tag) — reconciled data, NOT
+// raw webhook-lifecycle inference (which surfaces paid-out ROs).
+
+export interface UntaggedBoardRow {
+  ro_id: number | null;
+  ro_number: number | null;
+  /** The open review's category — drives the "why untagged" label. */
+  category: ManualReviewCategory;
+  /** The open review code (e.g. DRF-4XKZ9P) — links to the Manual Reviews tab. */
+  review_code: string;
+  /** Plain-English reason the RO has no tag. */
+  why: string;
+  /** Compact status label (WIP | A/R). */
+  status_label: string;
+  issued_at: string;
+  ro_url: string | null;
+}
+
+export interface BoardState {
+  generated_at: string;
+  tagged: WipKeyTagEntry[];
+  untagged: UntaggedBoardRow[];
 }
 
 // ─── Tool 2: whoIsOnTag ─────────────────────────────────────────────────

@@ -103,6 +103,8 @@ export interface WipKeyTagsResult {
     tag_number: number;
     status: "assigned" | "posted_ar";
     customer_id: number | null;
+    /** Denormalized Tekmetric customer display name (captured at assign). Null when unresolved. */
+    customer_name: string | null;
     vehicle_id: number | null;
     ro_url: string;
     last_activity_at: string | null;
@@ -129,7 +131,7 @@ export async function listWipKeyTags(
   const { data, error } = await sb
     .from("keytags")
     .select(
-      "tag_color, tag_number, status, ro_id, ro_number, customer_id, vehicle_id, last_activity_at",
+      "tag_color, tag_number, status, ro_id, ro_number, customer_id, customer_name, vehicle_id, last_activity_at",
     )
     .in("status", ["assigned", "posted_ar"])
     .order("tag_color")
@@ -146,6 +148,7 @@ export async function listWipKeyTags(
       tag_number: r.tag_number as number,
       status: r.status as "assigned" | "posted_ar",
       customer_id: (r.customer_id as number | null) ?? null,
+      customer_name: (r.customer_name as string | null) ?? null,
       vehicle_id: (r.vehicle_id as number | null) ?? null,
       ro_url: buildTekmetricRoUrl({ roId: r.ro_id as number, shopId }),
       last_activity_at: (r.last_activity_at as string | null) ?? null,
