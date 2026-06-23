@@ -336,6 +336,21 @@ async function markProcessed(
   detail: unknown,
   errorMessage?: string,
 ): Promise<void> {
+  // We deliberately return HTTP 200 to Tekmetric on internal failures (so it
+  // doesn't retry-storm) and record the failure here. But a DB row alone is a
+  // silent failure operationally — also surface every error result in Sentry so
+  // it's visible (observability.md rules 5/7/14). The function is wrapped in
+  // withSentryScope at Deno.serve, so this lands in the per-request scope.
+  if (result === "error") {
+    Sentry.captureMessage(
+      `keytag-tekmetric-webhook handled error: ${errorMessage ?? "unknown"}`,
+      {
+        level: "error",
+        tags: { webhook: "keytag-tekmetric-webhook" },
+        extra: { event_id: eventId, detail, error_message: errorMessage ?? null },
+      },
+    );
+  }
   await sb
     .from("keytag_webhook_events")
     .update({
@@ -450,6 +465,9 @@ export async function handler(req: Request): Promise<Response> {
     });
   } catch (e) {
     console.error("Failed to log webhook", e);
+    Sentry.captureException(e, {
+      tags: { webhook: "keytag-tekmetric-webhook", stage: "log_event" },
+    });
     return new Response(JSON.stringify({ ok: false, logged: false }), { status: 200 });
   }
 
@@ -1073,10 +1091,15 @@ export async function handler(req: Request): Promise<Response> {
     // ── Branch 2b: ro_posted (status 5 = POSTED_PAID, 6 = POSTED_AR) ─────
     if (eventKind === "ro_posted") {
       if (statusId === TEKMETRIC_RO_STATUS.POSTED_PAID) {
-        const { data: releasedRows } = await sb.rpc("release_keytag_for_ro", {
+        const { data: releasedRows, error: releaseErr } = await sb.rpc("release_keytag_for_ro", {
           p_ro_id: roId,
           p_reason: "posted_paid",
         });
+        if (releaseErr) {
+          // Don't mislabel a failed release as "no tag held" — record + surface it.
+          await markProcessed(eventId, "error", { stage: "posted_paid_release" }, releaseErr.message);
+          return new Response(JSON.stringify({ ok: false, error: releaseErr.message }), { status: 200 });
+        }
         const released = Array.isArray(releasedRows) ? releasedRows[0] : releasedRows;
         if (released) {
           await sb.rpc("log_keytag_audit", {
@@ -1115,11 +1138,15 @@ export async function handler(req: Request): Promise<Response> {
         // NULL means the RPC defaults to now() (legacy single-arg behavior).
         const postedDate =
           (data.postedDate as string | undefined) ?? null;
-        const { data: postedRows } = await sb.rpc("mark_keytag_posted", {
+        const { data: postedRows, error: postedErr } = await sb.rpc("mark_keytag_posted", {
           p_ro_id: roId,
           p_posted_at: postedDate,
           p_last_activity_at: postedDate ?? webhookUpdatedDate,
         });
+        if (postedErr) {
+          await markProcessed(eventId, "error", { stage: "posted_ar_mark_posted" }, postedErr.message);
+          return new Response(JSON.stringify({ ok: false, error: postedErr.message }), { status: 200 });
+        }
         const posted = Array.isArray(postedRows) ? postedRows[0] : postedRows;
         if (posted) {
           await sb.rpc("log_keytag_audit", {
@@ -1237,10 +1264,14 @@ export async function handler(req: Request): Promise<Response> {
         );
       }
 
-      const { data: releasedRows } = await sb.rpc("release_keytag_for_ro", {
+      const { data: releasedRows, error: payReleaseErr } = await sb.rpc("release_keytag_for_ro", {
         p_ro_id: roId,
         p_reason: "payment_webhook",
       });
+      if (payReleaseErr) {
+        await markProcessed(eventId, "error", { stage: "payment_made_release" }, payReleaseErr.message);
+        return new Response(JSON.stringify({ ok: false, error: payReleaseErr.message }), { status: 200 });
+      }
       const released = Array.isArray(releasedRows) ? releasedRows[0] : releasedRows;
       if (released) {
         await sb.rpc("log_keytag_audit", {
@@ -1281,9 +1312,18 @@ export async function handler(req: Request): Promise<Response> {
     return new Response(JSON.stringify({ ok: true, action: "noop" }), { status: 200 });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
+    // Capture the full exception (stack) in addition to the markProcessed row +
+    // the captureMessage it emits — this is the unhandled-failure path.
+    Sentry.captureException(e, {
+      tags: { webhook: "keytag-tekmetric-webhook", stage: "unhandled" },
+    });
     await markProcessed(eventId, "error", { stage: "unhandled" }, msg);
     return new Response(JSON.stringify({ ok: false, error: msg }), { status: 200 });
   }
 }
 
-Deno.serve(handler);
+// Wrap each request in a per-request Sentry isolation scope (the Deno SDK does
+// NOT isolate requests on a warm instance — breadcrumbs/tags would leak across
+// tenants without this; observability.md rule 7). Mirrors keytag-daily-report /
+// keytag-bulk-reconcile.
+Deno.serve((req) => withSentryScope(req, "keytag-tekmetric-webhook", () => handler(req)));
