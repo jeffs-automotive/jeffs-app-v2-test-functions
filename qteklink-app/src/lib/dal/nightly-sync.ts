@@ -25,6 +25,7 @@ import { planApproveDay, executeApproveDay } from "@/lib/dal/approve-post-day";
 import { runSafetyNet, type SafetyNetResult } from "@/lib/dal/safety-net";
 import { sweepPostedDays, type SweepResult } from "@/lib/dal/posted-day-sweep";
 import { warmCustomerNamesForRecentDays } from "@/lib/dal/customers";
+import { warmRoNumbers } from "@/lib/dal/ro-numbers";
 import type { QboDailyWriteClient } from "@/lib/dal/daily-poster";
 import { toShopLocalDate } from "@/lib/sales/sale-builder";
 import { addDaysIso } from "@/lib/format";
@@ -44,6 +45,10 @@ export interface NightlyShopResult {
   /** Tekmetric customer names resolved into the cache for the JE-line descriptions (recent
    *  window), or null if it errored — isolated (a name lookup never blocks posting). */
   customersWarmed: number | null;
+  /** Tekmetric RO numbers resolved into the qteklink_ros cache so fleet/A-R check payments
+   *  resolve their RO# on the Payments tab, or null if it errored — isolated (never blocks
+   *  posting; the row just shows "—" until the next warm). */
+  roNumbersWarmed: number | null;
   /** The posted-day correction sweep (date moves + auto-posted corrections), or null
    *  when it errored — isolated (see Sentry). */
   sweep: SweepResult | null;
@@ -105,6 +110,7 @@ export async function runNightlySync(
     autoPostFailed: 0,
     paymentStateReduced,
     customersWarmed: null,
+    roNumbersWarmed: null,
     sweep: null,
     safetyNet: null,
   };
@@ -120,6 +126,17 @@ export async function runNightlySync(
     result.customersWarmed = (await warmCustomerNamesForRecentDays(shopId, recon.realmId)).customers;
   } catch (e) {
     Sentry.captureException(e, { tags: { qteklink_cron: "warm-customer-names", shop_id: String(shopId) } });
+  }
+
+  // 2c. Warm the Tekmetric RO-number cache (qteklink_ros) so fleet/A-R check payments — whose
+  // "Payment made by X" webhook carries no RO object and whose sale predates our event capture —
+  // resolve their RO# on the Payments tab instead of showing "—". CACHE-ONLY on the view/post
+  // path; this nightly fetch is the ONLY Tekmetric call. ISOLATED: a fetch problem never blocks
+  // the reconcile/auto-post (the row just shows "—" until the next warm).
+  try {
+    result.roNumbersWarmed = (await warmRoNumbers(shopId, recon.realmId)).ros;
+  } catch (e) {
+    Sentry.captureException(e, { tags: { qteklink_cron: "warm-ro-numbers", shop_id: String(shopId) } });
   }
 
   // 3. AUTO-POST only when the shop opted in. Reuses the SAME guarded path as the dashboard

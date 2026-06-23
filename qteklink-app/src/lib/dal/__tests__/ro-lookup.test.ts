@@ -19,9 +19,11 @@ function chainOf(rows: unknown[]) {
 
 let eventRows: unknown[] = [];
 let keytagRows: unknown[] = [];
+let roCacheRows: unknown[] = [];
 function routeFrom(table: string) {
   if (table === "qteklink_events") return chainOf(eventRows);
   if (table === "keytag_webhook_events") return chainOf(keytagRows);
+  if (table === "qteklink_ros") return chainOf(roCacheRows);
   return chainOf([]);
 }
 
@@ -30,6 +32,7 @@ describe("lookupRoMeta", () => {
     vi.clearAllMocks();
     eventRows = [];
     keytagRows = [];
+    roCacheRows = [];
     fromMock.mockImplementation(routeFrom);
   });
 
@@ -54,5 +57,19 @@ describe("lookupRoMeta", () => {
     const m = await lookupRoMeta(7476, "realm", []);
     expect(m.size).toBe(0);
     expect(fromMock).not.toHaveBeenCalled();
+  });
+
+  it("FINAL fallback: fills repairOrderNumber from the qteklink_ros cache when both event sources miss (fleet/A-R check)", async () => {
+    // Neither qteklink_events nor the keytag firehose carry the number for this fleet RO.
+    roCacheRows = [{ tekmetric_ro_id: 300, repair_order_number: "152777" }];
+    const m = await lookupRoMeta(7476, "realm", [300]);
+    expect(m.get(300)).toEqual({ repairOrderNumber: "152777", customerId: null });
+  });
+
+  it("the cache NEVER overrides a repairOrderNumber already found in the event ledgers", async () => {
+    eventRows = [{ tekmetric_ro_id: 100, raw_body: { data: { repairOrderNumber: 153330, customerId: 44695835, shopId: 7476 } } }];
+    roCacheRows = [{ tekmetric_ro_id: 100, repair_order_number: "999999" }]; // stale/other — must not win
+    const m = await lookupRoMeta(7476, "realm", [100]);
+    expect(m.get(100)).toEqual({ repairOrderNumber: "153330", customerId: 44695835 });
   });
 });

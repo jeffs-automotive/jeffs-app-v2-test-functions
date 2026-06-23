@@ -111,6 +111,32 @@ export async function getCustomerById(
 }
 
 /**
+ * Fetch ONE repair order's human number from Tekmetric (`GET /repair-orders/{id}?shop=`).
+ * Returns the `repairOrderNumber` string on 200 (coerced — Tekmetric may serialize it as a
+ * number), `null` on 404 (deleted/unknown) OR when the response carries no number. Throws on
+ * any other HTTP/auth error (transient — the caller retries next warm). Used to close the
+ * fleet/A-R check-payment RO# gap (the number is absent from our event ledgers), cached in
+ * qteklink_ros. Mirrors getCustomerById.
+ */
+export async function getRepairOrderNumberById(
+  shopId: number,
+  repairOrderId: number,
+  deps: TekmetricDeps = {},
+): Promise<string | null> {
+  const fetchImpl = deps.fetchImpl ?? fetch;
+  const token = deps.token ?? (await getAccessToken(fetchImpl));
+  const url = `${TEKMETRIC_API_BASE}/repair-orders/${repairOrderId}?shop=${shopId}`;
+  const res = await fetchImpl(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`tekmetric getRepairOrderNumberById ${repairOrderId} failed: HTTP ${res.status}`);
+  const json = (await res.json()) as { repairOrderNumber?: string | number | null };
+  const n = json.repairOrderNumber;
+  if (typeof n === "number") return String(n);
+  const s = (n ?? "").trim();
+  return s || null;
+}
+
+/**
  * Build a display name from a Tekmetric customer. People store first+last; COMMERCIAL
  * customers store the company in `firstName` (lastName blank). Both blank → `Customer #<id>`
  * (honest, never empty). Mirrors `_shared/tools/keytag-extras.ts` customerDisplayName.

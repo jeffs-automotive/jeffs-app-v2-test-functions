@@ -12,6 +12,7 @@
  */
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { RO_SALE_SCAN_EVENT_KINDS } from "@/lib/events/kinds";
+import { getCachedRoNumbers } from "@/lib/dal/ro-numbers";
 
 export interface RoMeta {
   repairOrderNumber: string | null;
@@ -85,6 +86,22 @@ export async function lookupRoMeta(
       .limit(500);
     if (ke) throw new Error(`lookupRoMeta (keytag fallback) failed: ${ke.message}`);
     harvest((kd ?? []) as RoEventRow[], shopId, out);
+  }
+
+  // FINAL fallback: the qteklink_ros cache (Tekmetric-resolved RO numbers, warmed nightly off
+  // the view/post path). CACHE-ONLY here → deterministic. Closes the fleet/A-R check-payment gap
+  // where the repairOrderNumber is in NEITHER event ledger ("Payment made by Carmax", …). Fills
+  // ONLY the repairOrderNumber field — the cache has no customerId (a later source still wins it).
+  const stillMissingNumber = unique.filter((ro) => out.get(ro)?.repairOrderNumber == null);
+  if (stillMissingNumber.length > 0) {
+    const cachedNumbers = await getCachedRoNumbers(shopId, stillMissingNumber);
+    for (const [ro, num] of cachedNumbers) {
+      const cur = out.get(ro) ?? { repairOrderNumber: null, customerId: null };
+      if (cur.repairOrderNumber == null) {
+        cur.repairOrderNumber = num;
+        out.set(ro, cur);
+      }
+    }
   }
   return out;
 }

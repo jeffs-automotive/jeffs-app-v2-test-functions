@@ -15,11 +15,13 @@ const safetyNetMock = vi.fn();
 const sweepMock = vi.fn();
 const reduceMock = vi.fn();
 const warmMock = vi.fn();
+const warmRoMock = vi.fn();
 
 vi.mock("@/lib/dal/daily-reconcile", () => ({ runDailyReconciliation: (...a: unknown[]) => reconMock(...a) }));
 vi.mock("@/lib/dal/settings", () => ({ getShopSettings: (...a: unknown[]) => settingsMock(...a) }));
 vi.mock("@/lib/dal/payment-state", () => ({ reduceShopPaymentState: (...a: unknown[]) => reduceMock(...a) }));
 vi.mock("@/lib/dal/customers", () => ({ warmCustomerNamesForRecentDays: (...a: unknown[]) => warmMock(...a) }));
+vi.mock("@/lib/dal/ro-numbers", () => ({ warmRoNumbers: (...a: unknown[]) => warmRoMock(...a) }));
 vi.mock("@/lib/dal/approve-post-day", () => ({
   planApproveDay: (...a: unknown[]) => planMock(...a),
   executeApproveDay: (...a: unknown[]) => executeMock(...a),
@@ -39,6 +41,7 @@ beforeEach(() => {
   safetyNetMock.mockResolvedValue({ tekmetricChecked: 3, tekmetricGaps: 0, qboChecked: 2, qboGaps: 0 });
   reduceMock.mockResolvedValue({ realmId: REALM, events: 10, payments: 8 });
   warmMock.mockResolvedValue({ customers: 4 });
+  warmRoMock.mockResolvedValue({ ros: 3 });
 });
 
 describe("runNightlySync", () => {
@@ -119,6 +122,17 @@ describe("runNightlySync", () => {
     const r2 = await runNightlySync(7476, { businessDate: "2026-06-06" });
     expect(r2.customersWarmed).toBeNull(); // captured to Sentry, not thrown
     expect(r2.enqueued).toBe(5); // reconcile/sweep result preserved
+  });
+
+  it("warms the RO-number cache (nightly) so fleet/A-R check payments resolve their RO#; an error is NON-FATAL", async () => {
+    const r = await runNightlySync(7476, { businessDate: "2026-06-06" });
+    expect(warmRoMock).toHaveBeenCalledWith(7476, REALM);
+    expect(r.roNumbersWarmed).toBe(3);
+
+    warmRoMock.mockRejectedValueOnce(new Error("tekmetric down"));
+    const r2 = await runNightlySync(7476, { businessDate: "2026-06-06" });
+    expect(r2.roNumbersWarmed).toBeNull(); // captured to Sentry, not thrown
+    expect(r2.enqueued).toBe(5); // reconcile result preserved
   });
 });
 
