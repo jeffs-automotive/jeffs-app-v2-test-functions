@@ -62,6 +62,7 @@ import { checkSchedulerBearer, unauthorizedResponse } from "../_shared/scheduler
 import { logEdgeError } from "../_shared/log-edge-error.ts";
 import { withSentryScope, Sentry } from "../_shared/sentry-edge.ts";
 import { issueManualReview } from "../_shared/manual-review.ts";
+import { backfillCustomerNames } from "../_shared/keytag-customer-name.ts";
 import { SHOP_ID, PATCH_DELAY_MS, sb } from "./config.ts";
 import { type ReconcileResult, type OrphanReleaseDetail, type ReconcileSummary } from "./types.ts";
 import { fetchAllByStatus, sleep } from "./tekmetric-fetchers.ts";
@@ -146,6 +147,26 @@ Deno.serve((req: Request) => withSentryScope(req, "keytag-bulk-reconcile", async
       // Pace the GETs the same way we pace PATCHes — Tekmetric prod is
       // 600 req/min, our delay keeps us safely under.
       await sleep(PATCH_DELAY_MS);
+    }
+
+    // ── CUSTOMER-NAME BACKFILL / SELF-HEAL ───────────────────────────────
+    // Fill keytags.customer_name for any in-use tag still missing it (the
+    // existing backlog on first run, plus any assign-time miss thereafter:
+    // a failed Tekmetric fetch, or the manual-review assign sites that don't
+    // carry a customerId). Best-effort, dedup'd + paced, never fails the run,
+    // skipped on dry_run.
+    if (!dryRun) {
+      const bf = await backfillCustomerNames(sb, SHOP_ID, { delayMs: PATCH_DELAY_MS });
+      if (bf.filled > 0) {
+        console.log(
+          JSON.stringify({
+            level: "info",
+            msg: "keytag_customer_names_backfilled",
+            scanned: bf.scanned,
+            filled: bf.filled,
+          }),
+        );
+      }
     }
 
     // ── LEGACY ORPHAN EMAIL ──────────────────────────────────────────────

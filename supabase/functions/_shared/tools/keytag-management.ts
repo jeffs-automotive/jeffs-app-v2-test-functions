@@ -32,6 +32,7 @@ import {
   type TekmetricRepairOrder,
 } from "./repair-orders.ts";
 import { getTekmetricAccessToken } from "../tekmetric-client.ts";
+import { resolveCustomerName } from "../keytag-customer-name.ts";
 import {
   type ConfirmationRequiredResult,
   confirmationRequiredResponse,
@@ -282,13 +283,31 @@ export async function assignKeytagToRo(
     p_error: patchResult.error ?? null,
   });
 
-  // 4. Stamp the keytag row with who-did-it + write the audit-log entry
-  if (userLabel) {
-    await sb
+  // 4. Stamp the keytag row with who-did-it + the customer name, then write the
+  // audit-log entry. customer_name is best-effort (one Tekmetric /customers/{id}
+  // GET) and MUST NOT fail/block the assign — resolve to null on any failure.
+  // Key the UPDATE on ro_id (the unambiguous just-assigned row) rather than the
+  // tag number, for race-safety. This is a genuinely-new assignment (force/auto
+  // both just reserved the tag), so the fetch is never wasted on a re-assign.
+  const customerName = await resolveCustomerName(sb, shopId, ro.customerId);
+  const stamp: Record<string, unknown> = {};
+  if (userLabel) stamp.changed_by_user_label = userLabel;
+  if (customerName !== null) stamp.customer_name = customerName;
+  if (Object.keys(stamp).length > 0) {
+    const { error: stampErr } = await sb
       .from("keytags")
-      .update({ changed_by_user_label: userLabel })
-      .eq("tag_color", assignedColor)
-      .eq("tag_number", assignedNumber);
+      .update(stamp)
+      .eq("ro_id", ro.id);
+    if (stampErr) {
+      console.error(
+        JSON.stringify({
+          level: "warning",
+          msg: "keytag_assign_stamp_failed",
+          ro_id: ro.id,
+          detail: stampErr.message,
+        }),
+      );
+    }
   }
   await sb.rpc("log_keytag_audit", {
     p_tag_color: assignedColor,

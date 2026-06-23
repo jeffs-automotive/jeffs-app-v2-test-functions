@@ -59,6 +59,7 @@ import {
 } from "../_shared/tekmetric.ts";
 import { getRepairOrderById } from "../_shared/tools/repair-orders.ts";
 import { formatKeytag } from "../_shared/keytag-format.ts";
+import { resolveCustomerName } from "../_shared/keytag-customer-name.ts";
 import {
   issueManualReview,
   type ManualReviewOption,
@@ -928,6 +929,28 @@ export async function handler(req: Request): Promise<Response> {
         p_tekmetric_patch_ok: patchResult.ok,
         p_tekmetric_patch_error: patchResult.error ?? null,
       });
+
+      // Capture the customer name on the keytag row (best-effort, OFF the PATCH
+      // critical path — the keyTag is already written to Tekmetric above). One
+      // /customers/{id} GET; null on any failure; keyed on ro_id. Never let it
+      // fail the webhook — the nightly reconcile backfills any miss.
+      const assignedCustomerName = await resolveCustomerName(sb, SHOP_ID, ro.customerId);
+      if (assignedCustomerName !== null) {
+        const { error: nameErr } = await sb
+          .from("keytags")
+          .update({ customer_name: assignedCustomerName })
+          .eq("ro_id", roId);
+        if (nameErr) {
+          console.error(
+            JSON.stringify({
+              level: "warning",
+              msg: "keytag_customer_name_update_failed",
+              ro_id: roId,
+              detail: nameErr.message,
+            }),
+          );
+        }
+      }
 
       await markProcessed(eventId, "assigned", {
         tag_color: tagColor,
