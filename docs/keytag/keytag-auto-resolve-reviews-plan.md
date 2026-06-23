@@ -93,13 +93,20 @@ attempts guards are built for advisors and would pollute `keytag_manual_review_a
 
 **C. Steady-state hooks (so the backlog never rebuilds).** Call the helper right after each **terminal
 release** succeeds — these are the exact sites that produced the §0 reasons, so the hook is additive and
-fires on the authoritative event (no inference):
-- `keytag-tekmetric-webhook` — after `release_keytag_for_ro` succeeds in the `ro_posted` POSTED_PAID branch
-  and the `payment_made` A/R-paid branch.
-- the orchestrator release tools (`orchestrator_manual_release` / `..._ar_confirmed`) — after the release RPC.
-- `keytag-bulk-reconcile` — backstop, in the forward pass, for any RO that closed without a webhook.
-- **ORP exception:** only auto-close an ORP on a posted-paid/payment *confirmation*, never on the orphan
-  release that raised it.
+fires on the authoritative event (no inference). BUILT:
+- `keytag-tekmetric-webhook` — after the `ro_posted` POSTED_PAID release **and** the `payment_made` A/R-paid
+  release (the payment hook also closes a tag-less ARN once its A/R is paid).
+- the orchestrator release tool `releaseKeytagFromRo` (`orchestrator_manual_release` / `..._ar_confirmed`,
+  `source=claude_desktop`) — the dominant historical stranding path (51 of 70).
+- **ORP guardrail honored structurally:** the helper is NEVER called from the reverse-pass orphan-release
+  (`reverse-reconcile.ts`) that BIRTHS an ORP — so an orphan review is never auto-closed by the very release
+  it questions. A later posted-paid/payment webhook closes it once the RO actually confirms closed.
+
+**Deferred (conscious, not omitted):** a `keytag-bulk-reconcile` sweep for an RO that closes with *neither*
+a webhook *nor* an advisor release. All 70 observed strandings came through the three hooks above, and the
+reverse pass already releases such a tag (as an orphan, for human review); a reconcile sweep would need
+ORP-guardrail-aware filtering for marginal gain, so it's left for later if a no-webhook/no-advisor close
+ever strands a non-ORP review.
 
 ## 5. Open questions for Chris
 

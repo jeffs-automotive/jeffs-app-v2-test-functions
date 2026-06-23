@@ -60,6 +60,7 @@ import {
 import { getRepairOrderById } from "../_shared/tools/repair-orders.ts";
 import { formatKeytag } from "../_shared/keytag-format.ts";
 import { resolveCustomerName } from "../_shared/keytag-customer-name.ts";
+import { autoResolveReviewsForRo } from "../_shared/keytag-auto-resolve.ts";
 import {
   issueManualReview,
   type ManualReviewOption,
@@ -1122,6 +1123,9 @@ export async function handler(req: Request): Promise<Response> {
             ? { tag_color: released.tag_color, tag_number: released.tag_number, reason: "posted_paid" }
             : { reason: "posted_paid_no_tag_held" },
         );
+        // The RO terminally closed (posted-paid) — every open review for it is
+        // now moot (keys left the shop), even if no tag was held. Best-effort.
+        await autoResolveReviewsForRo(sb, roId, "ro_posted_paid", "webhook");
         return new Response(
           JSON.stringify({
             ok: true,
@@ -1294,6 +1298,9 @@ export async function handler(req: Request): Promise<Response> {
           ? { tag_color: released.tag_color, tag_number: released.tag_number, reason: "payment_webhook", payment_id: paymentId }
           : { reason: "payment_webhook_no_tag_held", payment_id: paymentId },
       );
+      // A/R balance paid in full — the RO left A/R and closed, so every open
+      // review for it is moot (keys gone). Best-effort.
+      await autoResolveReviewsForRo(sb, roId, "payment_made", "webhook");
       return new Response(
         JSON.stringify({
           ok: true,

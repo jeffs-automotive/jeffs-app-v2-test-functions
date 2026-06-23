@@ -27,6 +27,7 @@ import {
   formatKeytag,
   type TagColor,
 } from "../keytag-format.ts";
+import { autoResolveReviewsForRo } from "../keytag-auto-resolve.ts";
 import {
   getRepairOrderByNumber,
   type TekmetricRepairOrder,
@@ -531,6 +532,11 @@ export async function releaseKeytagFromRo(
     p_tekmetric_patch_ok: patchResult.ok,
     p_tekmetric_patch_error: patchResult.error ?? null,
   });
+
+  // The advisor released this RO's keys — any open review for it is now moot
+  // (this is the dominant path by which the review backlog used to strand).
+  // Best-effort; the release already committed.
+  await autoResolveReviewsForRo(sb, roId, "manual_release", "claude_desktop");
 
   return {
     ok: true,
