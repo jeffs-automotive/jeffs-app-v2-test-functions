@@ -75,7 +75,11 @@ export function LiveBoardPoller({
         />
         <span aria-live="polite">
           {stamp ? `Updated ${stamp} ET` : "Live"}
-          {failed ? " · refresh failed" : isPending ? " · refreshing…" : " · auto-refreshes"}
+          {failed
+            ? " · couldn't refresh"
+            : isPending
+              ? " · refreshing…"
+              : " · auto-refreshes"}
         </span>
       </span>
       <Button

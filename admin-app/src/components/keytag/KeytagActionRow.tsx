@@ -41,11 +41,19 @@ export interface RowActionProps {
   onPendingChange?: (busy: boolean) => void;
 }
 
+export interface ReleaseRowActionProps extends RowActionProps {
+  /** The tag label (e.g. "R4") — woven into the button's accessible name so a
+   *  screen-reader user navigating row-by-row by button hears which tag/RO each
+   *  "Release" acts on. Visible label stays "Release". */
+  tagLabel?: string;
+}
+
 export function ReleaseRowAction({
   roNumber,
   onResolved,
   onPendingChange,
-}: RowActionProps) {
+  tagLabel,
+}: ReleaseRowActionProps) {
   const [state, dispatch, isPending] = useActionState(releaseKeytagAction, releaseInitial);
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -90,15 +98,25 @@ export function ReleaseRowAction({
     <>
       <form action={dispatch} className="inline">
         <input type="hidden" name="ro_number" value={roNumber} />
+        {/* Soft-destructive ghost: the `text-destructive` ink on the `/10` fill
+         *  is only 3.98:1 — below AA for this small label. Darken the LABEL to
+         *  text-red-800 (≈7.6:1 on the tint, the same AA ink the in-use grid
+         *  token uses) while keeping the icon at the destructive hue (icon is a
+         *  UI component → 3:1 suffices). Affordance unchanged (labeled button). */}
         <Button
           type="submit"
           variant="destructive"
           size="sm"
           loading={isPending}
           loadingText="Releasing…"
-          className="gap-1.5"
+          aria-label={
+            tagLabel
+              ? `Release tag ${tagLabel} from RO #${roNumber}`
+              : `Release tag from RO #${roNumber}`
+          }
+          className="gap-1.5 text-red-800 hover:text-red-800"
         >
-          <Eraser className="h-3.5 w-3.5" aria-hidden="true" />
+          <Eraser className="h-3.5 w-3.5 text-destructive" aria-hidden="true" />
           Release
         </Button>
       </form>
@@ -152,13 +170,18 @@ export function AssignRowAction({
   return (
     <form action={dispatch} className="inline">
       <input type="hidden" name="ro_number" value={roNumber} />
+      {/* Burgundy ghost (not solid): one of many in a column — a solid-burgundy
+       *  column would shout. Ghost keeps the column calm; the burgundy text +
+       *  KeyRound carry the "primary action" read. Burgundy on the /10 hover
+       *  fill is 7.40:1 (AA pass). */}
       <Button
         type="submit"
         variant="ghost"
         size="sm"
         loading={isPending}
         loadingText="Assigning…"
-        className="gap-1.5 text-primary"
+        aria-label={`Assign a tag to RO #${roNumber}`}
+        className="gap-1.5 text-primary hover:bg-primary/10 hover:text-primary"
       >
         <KeyRound className="h-3.5 w-3.5" aria-hidden="true" />
         Assign

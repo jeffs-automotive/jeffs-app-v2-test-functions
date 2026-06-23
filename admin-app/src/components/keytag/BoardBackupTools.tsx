@@ -24,10 +24,10 @@ export function BoardBackupTools() {
   return (
     <Card className="border-dashed bg-muted/20">
       <CardHeader>
-        <CardTitle className="text-base">Manual tools</CardTitle>
+        <CardTitle className="text-base text-muted-foreground">Manual tools</CardTitle>
         <CardDescription>
-          Use these when the RO you need isn&apos;t on the board above, or to
-          force a specific tag.
+          Fallback for ROs not on the board above, or to force a specific tag.
+          Most work happens on the rows above.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
