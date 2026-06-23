@@ -45,6 +45,10 @@ export interface PaymentForBuild {
   /** Customer display name (resolved from Tekmetric) for the line description — null when
    *  not cached yet (the description simply drops the customer). */
   customerName?: string | null;
+  /** Payer name (Tekmetric `payerName`) for a store-credit ISSUANCE line — an unattached
+   *  payment has no RO/customer, so the payer is the only human identifier. Null when not an
+   *  issuance / not resolved (the description then reads just "Store Credit Issued"). */
+  payerName?: string | null;
   /** Signed integer cents: a payment is POSITIVE, a refund NEGATIVE. */
   signedAmountCents: number;
   /** CC processing fee (Tekmetric `applicationFee`), integer cents (0 for non-card). */
@@ -207,11 +211,17 @@ export function buildPaymentJournalEntry(
   // history is exactly this — the $281.15 Flexicon check). Whether labeled "store credit" or
   // "customer deposit" the accounting is identical (cash received, liability up).
   if (p.repairOrderId == null) {
+    // Its OWN description: an issuance has no RO/customer, so it reads "Store Credit Issued ·
+    // <payer>" (payer = the only human identifier on the unattached check), not the generic
+    // "<Type> · RO · Customer".
+    const issueDesc = ["Store Credit Issued", (p.payerName ?? "").trim() || null]
+      .filter((s): s is string => Boolean(s))
+      .join(" · ") + (p.isRefund ? " (refund)" : "");
     if (!m.undepositedAccountId) unmapped.push("undeposited_funds");
     if (!m.storeCreditAccountId) unmapped.push("store_credit");
     if (m.undepositedAccountId && m.storeCreditAccountId) {
-      lines.push({ accountId: m.undepositedAccountId, postingType: inflow ? "Debit" : "Credit", amountCents: amt, description: desc, part: "gross" });
-      lines.push({ accountId: m.storeCreditAccountId, postingType: inflow ? "Credit" : "Debit", amountCents: amt, description: desc, part: "gross" });
+      lines.push({ accountId: m.undepositedAccountId, postingType: inflow ? "Debit" : "Credit", amountCents: amt, description: issueDesc, part: "gross" });
+      lines.push({ accountId: m.storeCreditAccountId, postingType: inflow ? "Credit" : "Debit", amountCents: amt, description: issueDesc, part: "gross" });
     }
     return finalize(p, docNumber, txnDate, "deposit", lines, unmapped);
   }

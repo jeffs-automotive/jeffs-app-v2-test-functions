@@ -221,6 +221,33 @@ export async function buildDayDrafts(
     input.customerName = meta?.customerId != null ? (customerNames.get(meta.customerId) ?? null) : null;
   }
 
+  // ── Payer name for store-credit ISSUANCE lines (unattached payment: no RO/customer) ──
+  // The issuance description reads "Store Credit Issued · <payer>"; payerName is on the
+  // payment event (not the projection), read here from the ledger (deterministic — no API).
+  const issuancePaymentIds = paymentInputs
+    .filter((p) => p.repairOrderId == null)
+    .map((p) => Number(p.paymentId))
+    .filter((n) => Number.isSafeInteger(n));
+  if (issuancePaymentIds.length > 0) {
+    const { data: payerRows, error: payerErr } = await admin
+      .from("qteklink_events")
+      .select("payment_id, raw_body")
+      .eq("shop_id", shopId).eq("realm_id", realmId)
+      .in("payment_id", issuancePaymentIds);
+    if (payerErr) throw new Error(`buildDayDrafts (payer names) failed: ${payerErr.message}`);
+    const payerById = new Map<number, string>();
+    for (const r of (payerRows ?? []) as { payment_id: number | string; raw_body: { data?: { payerName?: unknown } } | null }[]) {
+      const pid = Number(r.payment_id);
+      const pn = r.raw_body?.data?.payerName;
+      if (Number.isSafeInteger(pid) && typeof pn === "string" && pn.trim() && !payerById.has(pid)) {
+        payerById.set(pid, pn.trim());
+      }
+    }
+    for (const input of paymentInputs) {
+      if (input.repairOrderId == null) input.payerName = payerById.get(Number(input.paymentId)) ?? null;
+    }
+  }
+
   const payments: DayPaymentDraft[] = paymentInputs.map((input) => ({
     input,
     je: buildPaymentJournalEntry(input, paymentMappings, paymentSettings),
