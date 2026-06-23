@@ -13,7 +13,6 @@
 import type { ReactNode } from "react";
 import {
   AlertCircle,
-  ArrowLeftRight,
   CheckCircle2,
   History,
   LayoutDashboard,
@@ -26,7 +25,6 @@ export interface KeytagsTabsProps {
   defaultValue?: string;
   dashboard: ReactNode;
   live: ReactNode;
-  assignRelease: ReactNode;
   postedRevert: ReactNode;
   reconcile: ReactNode;
   manualReviews: ReactNode;
@@ -37,7 +35,6 @@ export function KeytagsTabs({
   defaultValue = "dashboard",
   dashboard,
   live,
-  assignRelease,
   postedRevert,
   reconcile,
   manualReviews,
@@ -55,11 +52,7 @@ export function KeytagsTabs({
         </TabsTrigger>
         <TabsTrigger value="live" className="gap-1.5 data-active:after:bg-primary">
           <List className="h-3.5 w-3.5" aria-hidden="true" />
-          Live state
-        </TabsTrigger>
-        <TabsTrigger value="assign-release" className="gap-1.5 data-active:after:bg-primary">
-          <ArrowLeftRight className="h-3.5 w-3.5" aria-hidden="true" />
-          Assign / Release
+          Board
         </TabsTrigger>
         <TabsTrigger value="posted-revert" className="gap-1.5 data-active:after:bg-primary">
           <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
@@ -84,9 +77,6 @@ export function KeytagsTabs({
       </TabsContent>
       <TabsContent value="live" className="mt-6">
         {live}
-      </TabsContent>
-      <TabsContent value="assign-release" className="mt-6">
-        {assignRelease}
       </TabsContent>
       <TabsContent value="posted-revert" className="mt-6">
         {postedRevert}

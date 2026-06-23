@@ -16,10 +16,9 @@ import { requireAdmin } from "@/lib/auth";
 import { AppShell, PageHeader } from "@/components/shell/AppShell";
 import { KeytagsTabs } from "@/components/keytag/KeytagsTabs";
 import { DashboardTab } from "@/components/keytag/DashboardTab";
-import { LiveStateTab } from "@/components/keytag/LiveStateTab";
+import { LiveBoardTab } from "@/components/keytag/LiveBoardTab";
 import { AuditHistoryTab } from "@/components/keytag/AuditHistoryTab";
 import { ManualReviewsTab } from "@/components/keytag/ManualReviewsTab";
-import { AssignReleaseTab } from "@/components/keytag/AssignReleaseTab";
 import { PostedRevertTab } from "@/components/keytag/PostedRevertTab";
 import { ReconcileTab } from "@/components/keytag/ReconcileTab";
 
@@ -37,7 +36,6 @@ export default async function KeytagsPage({ searchParams }: KeytagsPageProps) {
     [
       "dashboard",
       "live",
-      "assign-release",
       "posted-revert",
       "reconcile",
       "manual-reviews",
@@ -57,8 +55,7 @@ export default async function KeytagsPage({ searchParams }: KeytagsPageProps) {
       <KeytagsTabs
         defaultValue={defaultTab}
         dashboard={<DashboardTab actorEmail={email} />}
-        live={<LiveStateTab actorEmail={email} />}
-        assignRelease={<AssignReleaseTab />}
+        live={<LiveBoardTab actorEmail={email} />}
         postedRevert={<PostedRevertTab />}
         reconcile={<ReconcileTab />}
         manualReviews={<ManualReviewsTab actorEmail={email} searchParams={params} />}
