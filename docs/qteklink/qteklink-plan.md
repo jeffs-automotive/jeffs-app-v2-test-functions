@@ -2,6 +2,8 @@
 
 > **POSTING GRAIN SUPERSEDED 2026-06-10:** §§ describing qteklink_ro_state, per-RO qteklink_postings rows, and per-RO desired-vs-posted corrections are historical — posting now happens at the (shop, realm, business_date, category) grain via qteklink_daily_postings (see docs/qteklink/daily-je-rework-plan.md). The mapping/intake/reducer sections remain accurate.
 
+> **CORRECTION / DEPOSIT MODEL (2026-06-24, post-ship):** the §8 posting lifecycle below is FIRST-TIME posting. Posted-day CORRECTIONS (a later Tekmetric change to an already-posted day) AUTO-POST nightly via the posted-day sweep regardless of `auto_post` (which gates first-time posting only) — no manual re-approval. EXCEPTION: once a day's Undeposited Funds are deposited in QBO, its **payments/fees** JEs are LOCKED (QBO 6540 → kind `deposit_locked` → `qbo_deposit_locked` review item, non-retryable, never re-hammered); the **sales JE never locks** (no Undeposited line) so RO/sales edits always flow through. Canonical: `docs/qteklink/payments-fixes-findings.md` "## SHIPPED — final state" + the `qteklink-payments-fixes` memory.
+
 # QTekLink — Build Plan
 
 > Feature: `qteklink` · Phase: **plan** · **v6 (2026-06-04 — build-ready; tax design finalized)**

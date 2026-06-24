@@ -1,5 +1,13 @@
 # QTekLink — JE line descriptions: payment type · RO# · customer (2026-06-16)
 
+> **BEHAVIOR UPDATE (2026-06-24):** the "Chris re-approves" / "click to re-approve" steps below for
+> already-posted days are SUPERSEDED — posted-day CORRECTIONS now AUTO-POST nightly via the posted-day
+> sweep regardless of `auto_post` (which gates first-time posting only); no manual re-approval. EXCEPTION:
+> once a day's Undeposited Funds are deposited in QBO, its payments/fees JEs are LOCKED (QBO error 6540 →
+> kind `deposit_locked` → a `qbo_deposit_locked` review item) until the deposit is unlinked in QBO; the
+> sales JE never locks. Canonical: the `qteklink-payments-fixes` memory + `payments-fixes-findings.md`
+> "## SHIPPED — final state".
+
 > Feature: `qteklink-je-line-descriptions`. Each payment line (and per-payment card-fee line) in
 > the daily QBO journal entries should carry **payment type · human RO# · customer name** so the
 > office can identify check vs credit-card lines when doing the bank deposit in QuickBooks

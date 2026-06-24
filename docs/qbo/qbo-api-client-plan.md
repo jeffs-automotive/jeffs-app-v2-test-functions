@@ -227,8 +227,10 @@ wording above:
    Class/Department/Budget. (Supersedes the §Tier-graceful "no dedicated code is confirmed" caveat.)
 3. **(nice) Fault `Error[].code` is a STRING, not an integer** (`"003001"` has a leading zero) — type
    it `string`, compare with `===` against string literals
-   (`"6000"`,`"610"`,`"100"`,`"120"`,`"003001"`,`"5010"`,`"5030"`,`"6190"`). (Supersedes "branch on
-   the numeric code".)
+   (`"6000"`,`"610"`,`"100"`,`"120"`,`"003001"`,`"5010"`,`"5030"`,`"6190"`,`"6540"`). (Supersedes "branch on
+   the numeric code".) **SHIPPED 2026-06-24:** `"6540"` ("Deposited Transaction cannot be changed") → kind
+   `deposit_locked` (its own kind), non-retryable → a `qbo_deposit_locked` review item — see `qbo/errors.ts`
+   + `docs/qteklink/payments-fixes-findings.md`.
 4. **(nice) `intuit_tid` header name CONFIRMED** = `intuit_tid` (lowercase underscore) — Intuit PHP
    `CoreConstants::INTUIT_TID` + .NET `FaultHandler`. Keep the first-smoke full-header dump as
    verification, not discovery. (Resolves an open-question #2 unknown.)
