@@ -6,6 +6,34 @@
 
 ---
 
+## SHIPPED — final state (2026-06-24) — supersedes the planning detail below
+
+Both workstreams shipped + deployed to the test env (commits `906309c` → `039f8db` on `main`). Canonical
+current-state record: the `qteklink-payments-fixes` memory. The sections further down are the ORIGINAL
+PLANNING snapshot (kept for history) — where they differ from this list, **this list is authoritative**:
+
+- **Task 1 — RO# cache:** `qteklink_ros` cache (migration `20260623200000`) + nightly warm; `lookupRoMeta`
+  reads it cache-only. VERIFIED live: 130/130 CHK ROs resolve (all 81 fleet checks, e.g. Carmax).
+- **Task 2 — store-credit account:** a NEW QBO **Other Current Liability "Customer Store Credit"**
+  (`qbo_account_id 1150040053`), mapped as a `system` role **`store_credit`** (role == source_key, cc_fee
+  precedent). The **"Over/Short" account discussed in the planning notes below was NOT used** — Chris chose
+  the OCL account. Adding the role required widening SIX DB gates; missing the `qteklink_mappings_role_valid`
+  CHECK caused a live mapping failure, fixed in `20260623220000`.
+- **JE routing:** issuance (unattached real-tender, no RO) `Dr Undeposited / Cr Customer Store Credit`;
+  redemption (`STORE_CREDIT` type) `Dr Customer Store Credit / Cr A/R` (refunds flip).
+- **JE line descriptions (final):** issuance = **`Check · Store Credit · <payer>`** (NOT the
+  "Store Credit Issued · …" interim wording); redemption = `Store Credit · RO# · Customer`.
+  Reference (DocNumber) = `QTL-PAY-<date>`.
+- **QBO 6540 deposit-lock:** classified as kind `deposit_locked` → `qbo_deposit_locked` review item with a
+  clear "already deposited — unlink the deposit, then re-approve" message; non-retryable, never re-hammered.
+  Only payments/fees JEs can 6540-lock (they touch Undeposited); the **sales JE never locks** so RO changes
+  always update.
+- **Posted-day auto-correction:** a Tekmetric change to an already-posted day auto-syncs to QBO via the
+  nightly posted-day sweep **regardless of `auto_post`** (only the first-ever post of a never-posted day is
+  human-gated). So RO/sales edits flow to QuickBooks automatically.
+
+---
+
 ## Task 1 — CHK payments showing "—" instead of the RO# : ROOT CAUSE CONFIRMED
 
 ### What the data says

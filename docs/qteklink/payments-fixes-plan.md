@@ -1,5 +1,11 @@
 # QTekLink payments-fixes — implementation plan
 
+> **STATUS: SHIPPED (2026-06-24).** This is the PRE-BUILD design — what actually shipped (final wording,
+> the Customer Store Credit OCL account, the 6540 deposit-lock handling, the posted-day auto-correction
+> model) is recorded in `payments-fixes-findings.md` → "## SHIPPED — final state", which is authoritative
+> where it differs from this plan (e.g. the account is an OCL "Customer Store Credit", not the Over/Short
+> placeholder explored here).
+>
 > Design artifact derived from `payments-fixes-findings.md` (live-data investigation, 2026-06-23) +
 > Chris's decisions. **Not yet cross-verified** — the worktree session should run `/feature-plan` →
 > `/feature-cross-verify` (Gemini+GPT) + the `quickbooks-compliance` agent on the Task 2 accounting before
