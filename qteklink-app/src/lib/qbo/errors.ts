@@ -19,6 +19,7 @@ export type QboClientErrorKind =
   | "auth"
   | "throttle"
   | "conflict"
+  | "deposit_locked"
   | "not_available"
   | "reconnect_required"
   | "network"
@@ -66,6 +67,11 @@ const CODE_TO_KIND: Readonly<Record<string, QboClientErrorKind>> = {
   "5010": "conflict", // Stale Object (SyncToken conflict) — NOT auto-retried
   "5030": "not_available", // feature not included in the company's tier
   "6190": "not_available", // invalid / read-only company status
+  "6540": "deposit_locked", // "Deposited Transaction cannot be changed" — the JE's Undeposited
+  //                           lines were swept into a QBO deposit; QBO blocks ANY update (full
+  //                           OR sparse) until it's unlinked from the deposit. Only the payments
+  //                           + fees daily JEs can hit this (they touch Undeposited Funds); the
+  //                           sales JE never does. NOT retryable — surfaces a distinct review item.
 };
 
 function faultTypeToKind(type: string): QboClientErrorKind {

@@ -258,6 +258,27 @@ describe("postDailyPostingById", () => {
     }));
   });
 
+  it("6540 'Deposited Transaction cannot be changed' on an UPDATE → deposit_locked review item, no retry, no duplicate JE", async () => {
+    setup({ claim: claimRow({ action: "update", posting_version: 2 }) });
+    fromResults.push([postedDbRow()]); // the live (already-deposited) JE we try to update
+    const client: QboDailyWriteClient = {
+      create: vi.fn().mockRejectedValue(
+        new QboClientError("QBO ValidationFault (6540): Deposited Transaction cannot be changed", { kind: "deposit_locked", code: "6540" }),
+      ),
+      deleteEntity: vi.fn(),
+    };
+    const r = await postDailyPostingById(7476, "dp-1", { client, rebuild: rebuilds.same });
+    expect(r).toMatchObject({ status: "failed" });
+    // a DISTINCT deposit-locked review item (not the generic qbo_error), day-subject
+    expect(rpcMock).toHaveBeenCalledWith("qteklink_upsert_review_item", expect.objectContaining({
+      p_kind: "qbo_deposit_locked", p_subject_kind: "day", p_subject_ref: `${DATE}:sales`,
+    }));
+    // NOT retryable — the diff's failed+unchanged-hash 'skip' then keeps the nightly sweep from re-hammering QBO
+    expect(rpcMock).toHaveBeenCalledWith("qteklink_mark_daily_failed", expect.objectContaining({ p_retryable: false }));
+    // attempted exactly ONCE — never a fallback create that would DUPLICATE the JE
+    expect(client.create).toHaveBeenCalledTimes(1);
+  });
+
   it("no QBO id in the response → retry, never mark posted without proof", async () => {
     setup({ claim: claimRow() });
     const client: QboDailyWriteClient = { create: vi.fn().mockResolvedValue({}), deleteEntity: vi.fn() };

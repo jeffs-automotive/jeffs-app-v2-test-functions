@@ -28,6 +28,13 @@ const KIND_LABELS: Record<string, string> = {
   payment_corrupt: "Corrupt payment amount",
   snapshot_unparseable: "Unparseable RO snapshot",
   manual_payment_conflict: "Manual pick conflicts with a real payment",
+  qbo_deposit_locked: "Already deposited in QuickBooks — can't be changed",
+};
+
+/** Actionable guidance shown under specific review kinds. */
+const KIND_HELP: Record<string, string> = {
+  qbo_deposit_locked:
+    "This day's payment/fee entries were swept into a deposit in QuickBooks, so QuickBooks locks them — the update can't be pushed. To apply the change, open the deposit in QuickBooks and unlink (or delete) it, then re-approve this day. Or leave it as-is; the change stays recorded in QTekLink. (Repair-order/sales changes are never affected — they post automatically.)",
 };
 
 function reasonList(detail: Record<string, unknown>): string[] {
@@ -55,6 +62,7 @@ function ReviewItemCard({ item, isAdmin }: { item: ReviewItemRow; isAdmin: boole
             </ul>
           )}
           {item.detail.docNumber != null && <p className="text-xs text-muted-foreground">{String(item.detail.docNumber)}</p>}
+          {KIND_HELP[item.kind] && <p className="text-sm text-muted-foreground">{KIND_HELP[item.kind]}</p>}
           {isAdmin && <ResolveReviewItemForm id={item.id} />}
         </CardContent>
       </Card>

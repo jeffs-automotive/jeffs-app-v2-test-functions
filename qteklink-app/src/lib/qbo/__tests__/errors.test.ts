@@ -40,6 +40,7 @@ describe("parseFault — fault code → kind (compliance-folded map)", () => {
     ["5010", "conflict"],
     ["5030", "not_available"],
     ["6190", "not_available"],
+    ["6540", "deposit_locked"], // "Deposited Transaction cannot be changed" — its own kind
   ];
   for (const [code, kind] of cases) {
     it(`maps fault code "${code}" → ${kind}`, () => {

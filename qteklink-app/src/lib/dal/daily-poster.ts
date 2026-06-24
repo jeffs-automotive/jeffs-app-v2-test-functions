@@ -85,6 +85,11 @@ export function classifyPostError(e: unknown): { retry: boolean; reviewKind: str
   if (e instanceof QboClientError) {
     if (e.kind === "throttle" || e.kind === "network") return { retry: true, reviewKind: null };
     if (e.kind === "reconnect_required" || e.kind === "auth") return { retry: false, reviewKind: "reconnect_required" };
+    // 6540 "Deposited Transaction cannot be changed": the day's Undeposited was swept into a QBO
+    // deposit, so QBO blocks the update. NOT retryable — distinct review item so the office knows
+    // to unlink it from the deposit (a generic qbo_error would read as a mystery rejection). The
+    // failed version + unchanged hash makes the diff 'skip' next sweep, so it never re-hammers QBO.
+    if (e.kind === "deposit_locked") return { retry: false, reviewKind: "qbo_deposit_locked" };
     if (e.kind === "validation" && /entity/i.test(`${e.message} ${e.detail ?? ""}`)) {
       return { retry: false, reviewKind: "ar_entity_rejected" };
     }
