@@ -56,6 +56,10 @@ export interface BuildRegistryArgs {
   shopId: number;
   /** OAuth-bound user_label for audit attribution on write tools. */
   userLabel: string;
+  /** Channel that originated this session → keytag_audit_log.source on write tools.
+   *  'admin_app' for the dashboard (SERVICE_ROLE + X-Actor-Email), 'claude_desktop' for
+   *  the OAuth/Claude-Desktop branch. */
+  source: "admin_app" | "claude_desktop";
   /** OAuth-bound client_id (DCR registration ID) for audit attribution
    *  on admin write tools (scheduler_admin_audit_log). */
   oauthClientId: string;
@@ -99,7 +103,7 @@ const NOOP_RECORDER: ToolCallRecorder = {
  *         (e.g., missing audit info when admin tools are requested).
  */
 export function buildMcpToolRegistry(args: BuildRegistryArgs): Record<string, McpToolDef> {
-  const { sb, shopId, userLabel, oauthClientId, supabaseUrl, serviceRoleKey } = args;
+  const { sb, shopId, userLabel, source, oauthClientId, supabaseUrl, serviceRoleKey } = args;
 
   // (a) Keytag + listWipKeyTags + manual-review + audit-history tools
   const orchestratorTools = getOrchestratorTools({
@@ -107,6 +111,7 @@ export function buildMcpToolRegistry(args: BuildRegistryArgs): Record<string, Mc
     shopId,
     recorder: NOOP_RECORDER,
     userLabel,
+    source,
     supabaseUrl,
     serviceRoleKey,
   });

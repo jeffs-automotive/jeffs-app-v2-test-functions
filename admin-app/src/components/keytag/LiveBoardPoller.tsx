@@ -10,7 +10,7 @@
  *
  * Calm-poll affordance modeled on DashboardPoller; visual polish applied later.
  */
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getBoardStateAction } from "@/actions/keytag/board-state";
@@ -21,13 +21,27 @@ const POLL_MS = 15_000;
 export function LiveBoardPoller({
   generatedAt,
   onState,
+  busy = false,
 }: {
   generatedAt: string;
   onState: (s: BoardState) => void;
+  /**
+   * True while a board row has a release/assign in flight. The 15s auto-tick is
+   * skipped while busy so a poll Server Action can't serialize ahead of the
+   * user's mutation (Next.js dispatches Server Actions one-at-a-time per
+   * client). Manual Refresh is unaffected. (2026-06-24 board-release-fix.)
+   */
+  busy?: boolean;
 }) {
   const [isPending, startTransition] = useTransition();
   const [stamp, setStamp] = useState("");
   const [failed, setFailed] = useState(false);
+  // Mirror `busy` into a ref so the once-created interval reads the latest value
+  // without re-creating the timer on every busy toggle.
+  const busyRef = useRef(busy);
+  useEffect(() => {
+    busyRef.current = busy;
+  }, [busy]);
 
   useEffect(() => {
     setStamp(
@@ -52,7 +66,11 @@ export function LiveBoardPoller({
   }
 
   useEffect(() => {
-    const id = setInterval(poll, POLL_MS);
+    const id = setInterval(() => {
+      // Skip the auto-tick while a row action is in flight (see `busy` above).
+      if (busyRef.current) return;
+      poll();
+    }, POLL_MS);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

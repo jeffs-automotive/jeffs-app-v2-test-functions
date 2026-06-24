@@ -87,9 +87,17 @@ export interface WipKeyTagsResult {
 export interface UntaggedBoardRow {
   ro_id: number | null;
   ro_number: number | null;
-  /** The open review's category — drives the "why untagged" label. */
-  category: ManualReviewCategory;
-  /** The open review code (e.g. DRF-4XKZ9P) — links to the Manual Reviews tab. */
+  /**
+   * Where this row came from:
+   *  - "review": an OPEN manual review of a "needs a tag" category.
+   *  - "released_wip": a tag released while the RO was still in WIP (derived from
+   *    keytag_audit_log) — kept on the board so the keys can be re-tagged in place.
+   */
+  kind: "review" | "released_wip";
+  /** The open review's category — drives the "why untagged" label. null for released_wip. */
+  category: ManualReviewCategory | null;
+  /** Review code (e.g. DRF-4XKZ9P) links to the Manual Reviews tab. For released_wip rows
+   *  this is a synthetic key ("rw-<ro_number>") used only for React keys + de-duplication. */
   review_code: string;
   /** Plain-English reason the RO has no tag. */
   why: string;
@@ -97,12 +105,46 @@ export interface UntaggedBoardRow {
   status_label: string;
   issued_at: string;
   ro_url: string | null;
+  /** released_wip only: the tag that was released (e.g. "R75"), shown in the Review column. */
+  released_tag?: string;
 }
 
 export interface BoardState {
   generated_at: string;
   tagged: WipKeyTagEntry[];
   untagged: UntaggedBoardRow[];
+}
+
+// ─── Tool: released-while-WIP ROs that still need a tag (board source) ────
+// Derived from keytag_audit_log: the RO's tag was released while still in WIP
+// (prior_status='assigned'), it currently has no tag, and the release happened
+// within the recency window. Keeps a just-released WIP RO on the board so the
+// advisor can re-tag it in place instead of it vanishing.
+
+export interface ListReleasedWipNeedingTagArgs {
+  /** Look-back window in days. Defaults server-side (see the tool). */
+  window_days?: number;
+}
+
+export interface ReleasedWipNeedingTagEntry {
+  ro_id: number;
+  ro_number: number;
+  /** The tag that was released (e.g. "R75"). */
+  released_tag: string;
+  released_color: TagColor;
+  released_number: number;
+  /** When the tag was released (audit occurred_at). */
+  released_at: string;
+  /** Who released it (audit user_label), if known. */
+  released_by: string | null;
+  ro_url: string;
+}
+
+export interface ReleasedWipNeedingTagResult {
+  ok: true;
+  count: number;
+  window_days: number;
+  results: ReleasedWipNeedingTagEntry[];
 }
 
 // ─── Tool 2: whoIsOnTag ─────────────────────────────────────────────────
@@ -509,6 +551,10 @@ export interface KeytagDashboardResult {
 
 export interface KeytagToolMap {
   listWipKeyTags: { args: ListWipKeyTagsArgs; result: WipKeyTagsResult };
+  listReleasedWipNeedingTag: {
+    args: ListReleasedWipNeedingTagArgs;
+    result: ReleasedWipNeedingTagResult;
+  };
   whoIsOnTag: { args: WhoIsOnTagArgs; result: WhoIsOnTagResult };
   assignKeytagToRo: {
     args: AssignKeytagToRoArgs;

@@ -19,7 +19,7 @@
 
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 
-export type AutoResolveSource = "webhook" | "cron" | "claude_desktop";
+export type AutoResolveSource = "webhook" | "cron" | "claude_desktop" | "admin_app";
 
 /**
  * Close all open manual reviews for `roId` as moot. Returns the number closed

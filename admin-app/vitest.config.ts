@@ -42,6 +42,9 @@ export default defineConfig({
     alias: {
       "@": path.resolve(__dirname, "./src"),
       "@/app": path.resolve(__dirname, "./app"),
+      // `server-only` throws in client bundles; under Vitest (node) stub it to a
+      // no-op so server-only modules (e.g. lib/keytag/load-board-state) are testable.
+      "server-only": path.resolve(__dirname, "./tests/stubs/server-only.ts"),
     },
   },
 });

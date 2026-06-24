@@ -1,16 +1,23 @@
 "use client";
 
 /**
- * KeytagsTabs — client wrapper around shadcn Tabs that lets us nest
+ * KeytagsTabs — client wrapper around the Tabs primitive that lets us nest
  * Server Component tab content via children props.
  *
- * Why pass content as props rather than rendering inline: the Tabs
- * component is a Client Component (browser-state for active tab), but
- * each tab's content can/should be a Server Component (data fetching
- * + auth gate at the page level). Passing as props preserves the
- * RSC tree boundary.
+ * The active tab is URL-synced (?tab=) so a reload keeps the user on their
+ * current tab instead of resetting to Dashboard (2026-06-24 board-release-fix).
+ * On a tab click we persist the value with window.history.replaceState — NOT
+ * router.replace — so switching tabs never re-runs the six tab Server
+ * Components on this force-dynamic page (replaceState updates the URL + stays
+ * in sync with the Next router without a navigation, and keeps the back button
+ * clean). The first paint is seeded from `defaultValue` (which the page already
+ * computed from ?tab=), so client + server agree (no hydration mismatch).
+ *
+ * Why pass content as props rather than rendering inline: each tab's content
+ * can/should be a Server Component (data fetching + auth gate at the page
+ * level). Passing as props preserves the RSC tree boundary.
  */
-import type { ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
   AlertCircle,
   CheckCircle2,
@@ -20,6 +27,15 @@ import {
   RefreshCcw,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+const TAB_VALUES = [
+  "dashboard",
+  "live",
+  "posted-revert",
+  "reconcile",
+  "manual-reviews",
+  "audit",
+] as const;
 
 export interface KeytagsTabsProps {
   defaultValue?: string;
@@ -40,8 +56,39 @@ export function KeytagsTabs({
   manualReviews,
   auditHistory,
 }: KeytagsTabsProps) {
+  // Seed from the server-computed defaultValue (the page validated ?tab= →
+  // defaultValue), so the first client paint matches the server. Controlled
+  // thereafter so a tab change persists into the URL.
+  const [value, setValue] = useState(defaultValue);
+
+  // Follow the server-computed tab on client navigations that change ?tab=
+  // (the audit / manual-review filter forms router.push their own tab). A plain
+  // tab click updates the URL via replaceState below — NOT a Next navigation —
+  // so defaultValue is unchanged and this effect doesn't fight the click.
+  useEffect(() => {
+    setValue(defaultValue);
+  }, [defaultValue]);
+
+  const handleValueChange = useCallback((next: string) => {
+    if (!(TAB_VALUES as readonly string[]).includes(next)) return;
+    setValue(next);
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      params.set("tab", next);
+      window.history.replaceState(
+        null,
+        "",
+        `${window.location.pathname}?${params.toString()}`,
+      );
+    }
+  }, []);
+
   return (
-    <Tabs defaultValue={defaultValue} className="w-full">
+    <Tabs
+      value={value}
+      onValueChange={(next) => handleValueChange(next as string)}
+      className="w-full"
+    >
       <TabsList
         variant="line"
         className="flex h-auto w-full flex-wrap justify-start gap-x-1 border-b border-border"

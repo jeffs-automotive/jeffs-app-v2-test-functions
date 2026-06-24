@@ -7,7 +7,6 @@
  * default — let the orchestrator decide).
  */
 import { z } from "zod";
-import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
 import { wrapAdminAction } from "@/lib/instrument-action";
 import {
@@ -79,7 +78,12 @@ async function releaseKeytagImpl(
       };
     }
     if (data.ok) {
-      revalidatePath("/keytags");
+      // No revalidatePath("/keytags") here. The board updates optimistically
+      // (BoardClient.onResolved splices the released row out) and reconverges
+      // via the 15s LiveBoardPoller. Revalidating this force-dynamic, six-tab
+      // page re-rendered every tab inside the action response, so
+      // useActionState's isPending stayed true for the whole RSC re-render —
+      // the post-success "continually loads" spin (2026-06-24 board-release-fix).
       return { kind: "success", data };
     }
     return { kind: "tool_error", data };
