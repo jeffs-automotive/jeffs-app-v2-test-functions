@@ -598,7 +598,7 @@ export function getOrchestratorTools(args: {
           .optional()
           .describe("Filter by mutation type."),
         source: z
-          .enum(["claude_desktop", "webhook", "cron", "manual_sql"])
+          .enum(["claude_desktop", "webhook", "cron", "manual_sql", "admin_app"])
           .optional()
           .describe("Filter by how the mutation happened."),
         limit: z.number().int().min(1).max(200).optional().describe(

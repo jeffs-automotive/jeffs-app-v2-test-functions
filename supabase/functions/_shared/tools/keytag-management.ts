@@ -317,7 +317,7 @@ export async function assignKeytagToRo(
       );
     }
   }
-  await sb.rpc("log_keytag_audit", {
+  const { error: assignAuditErr } = await sb.rpc("log_keytag_audit", {
     p_tag_color: assignedColor,
     p_tag_number: assignedNumber,
     p_action: autoAssigned ? "assigned" : "force_assigned",
@@ -333,6 +333,20 @@ export async function assignKeytagToRo(
     p_tekmetric_patch_ok: patchResult.ok,
     p_tekmetric_patch_error: patchResult.error ?? null,
   });
+  // Best-effort audit (the tag + Tekmetric PATCH already committed) — but don't
+  // swallow the error silently (observability rule 9). Surface it for triage.
+  if (assignAuditErr) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        msg: "log_keytag_audit_failed",
+        action: autoAssigned ? "assigned" : "force_assigned",
+        ro_number: ro.repairOrderNumber,
+        source: auditSource,
+        detail: assignAuditErr.message,
+      }),
+    );
+  }
 
   return {
     ok: true,
@@ -530,7 +544,7 @@ export async function releaseKeytagFromRo(
   const tagNumber = released.tag_number as number;
 
   // 4. Audit log entry for the release
-  await sb.rpc("log_keytag_audit", {
+  const { error: releaseAuditErr } = await sb.rpc("log_keytag_audit", {
     p_tag_color: tagColor,
     p_tag_number: tagNumber,
     p_action: "released",
@@ -546,6 +560,20 @@ export async function releaseKeytagFromRo(
     p_tekmetric_patch_ok: patchResult.ok,
     p_tekmetric_patch_error: patchResult.error ?? null,
   });
+  // Best-effort audit (the release already committed) — surface failures
+  // instead of swallowing them (observability rule 9).
+  if (releaseAuditErr) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        msg: "log_keytag_audit_failed",
+        action: "released",
+        ro_number: roNumber,
+        source: auditSource,
+        detail: releaseAuditErr.message,
+      }),
+    );
+  }
 
   // The advisor released this RO's keys — any open review for it is now moot
   // (this is the dominant path by which the review backlog used to strand).

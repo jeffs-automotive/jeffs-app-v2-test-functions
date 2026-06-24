@@ -22,7 +22,8 @@ function wire(opts: {
   releasedWip?: unknown[];
 }) {
   const { tags = [], reviews = [], releasedWip = [] } = opts;
-  mockTool.mockImplementation((name: string) => {
+  // Cast the impl to the real tool type — the test returns loose per-tool shapes.
+  mockTool.mockImplementation(((name: string) => {
     if (name === "listWipKeyTags") {
       return Promise.resolve({ ok: true, count: tags.length, shop_id: 7476, results: tags });
     }
@@ -32,9 +33,8 @@ function wire(opts: {
     if (name === "listReleasedWipNeedingTag") {
       return Promise.resolve({ ok: true, count: releasedWip.length, window_days: 3, results: releasedWip });
     }
-    return Promise.resolve({});
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  }) as unknown as typeof mockTool;
+    return Promise.resolve({ ok: true });
+  }) as unknown as typeof callKeytagTool);
 }
 
 const review = (ro: number) => ({
@@ -74,7 +74,7 @@ describe("loadBoardState — untagged source merge + de-dup", () => {
     const state = await loadBoardState("chris@jeffsautomotive.com");
     const for100 = state.untagged.filter((r) => r.ro_number === 100);
     expect(for100).toHaveLength(1);
-    expect(for100[0].kind).toBe("review");
+    expect(for100[0]?.kind).toBe("review");
     // 200 (no review) still appears as released_wip
     expect(state.untagged.find((r) => r.ro_number === 200)?.kind).toBe("released_wip");
   });
