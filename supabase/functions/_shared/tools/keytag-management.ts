@@ -118,9 +118,16 @@ export async function assignKeytagToRo(
     userLabel?: string;
     /** Two-step confirmation token (returned by a prior call). Required for force-assign overrides. */
     confirmationToken?: string;
+    /**
+     * Channel that originated this mutation → keytag_audit_log.source. 'admin_app' for the
+     * dashboard (SERVICE_ROLE + X-Actor-Email branch), 'claude_desktop' for the OAuth/Claude
+     * Desktop branch. Defaults to 'claude_desktop' for back-compat with existing callers.
+     */
+    source?: "admin_app" | "claude_desktop";
   },
 ): Promise<AssignKeytagResult> {
-  const { roNumber, color, tagNumber, userLabel, confirmationToken } = args;
+  const { roNumber, color, tagNumber, userLabel, confirmationToken, source } = args;
+  const auditSource = source ?? "claude_desktop";
   const specific = color !== undefined && tagNumber !== undefined;
 
   // 1. Look up the RO
@@ -310,11 +317,11 @@ export async function assignKeytagToRo(
       );
     }
   }
-  await sb.rpc("log_keytag_audit", {
+  const { error: assignAuditErr } = await sb.rpc("log_keytag_audit", {
     p_tag_color: assignedColor,
     p_tag_number: assignedNumber,
     p_action: autoAssigned ? "assigned" : "force_assigned",
-    p_source: "claude_desktop",
+    p_source: auditSource,
     p_ro_id: ro.id,
     p_ro_number: ro.repairOrderNumber,
     p_prior_status: "available",
@@ -326,6 +333,20 @@ export async function assignKeytagToRo(
     p_tekmetric_patch_ok: patchResult.ok,
     p_tekmetric_patch_error: patchResult.error ?? null,
   });
+  // Best-effort audit (the tag + Tekmetric PATCH already committed) — but don't
+  // swallow the error silently (observability rule 9). Surface it for triage.
+  if (assignAuditErr) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        msg: "log_keytag_audit_failed",
+        action: autoAssigned ? "assigned" : "force_assigned",
+        ro_number: ro.repairOrderNumber,
+        source: auditSource,
+        detail: assignAuditErr.message,
+      }),
+    );
+  }
 
   return {
     ok: true,
@@ -390,9 +411,16 @@ export async function releaseKeytagFromRo(
     userLabel?: string;
     /** Two-step confirmation token (returned by a prior call). Required for A/R-status releases. */
     confirmationToken?: string;
+    /**
+     * Channel that originated this mutation → keytag_audit_log.source. 'admin_app' for the
+     * dashboard, 'claude_desktop' for the OAuth/Claude-Desktop branch. Defaults to
+     * 'claude_desktop' for back-compat with existing callers.
+     */
+    source?: "admin_app" | "claude_desktop";
   },
 ): Promise<ReleaseKeytagResult> {
-  const { roNumber, userLabel, confirmationToken } = args;
+  const { roNumber, userLabel, confirmationToken, source } = args;
+  const auditSource = source ?? "claude_desktop";
 
   // 1. Find the RO id + current tag status. We try our keytags table first
   //    (fast, avoids a Tekmetric GET for the common case where we know about
@@ -516,11 +544,11 @@ export async function releaseKeytagFromRo(
   const tagNumber = released.tag_number as number;
 
   // 4. Audit log entry for the release
-  await sb.rpc("log_keytag_audit", {
+  const { error: releaseAuditErr } = await sb.rpc("log_keytag_audit", {
     p_tag_color: tagColor,
     p_tag_number: tagNumber,
     p_action: "released",
-    p_source: "claude_desktop",
+    p_source: auditSource,
     p_ro_id: roId,
     p_ro_number: roNumber,
     p_prior_status: dbTagStatus,
@@ -532,11 +560,25 @@ export async function releaseKeytagFromRo(
     p_tekmetric_patch_ok: patchResult.ok,
     p_tekmetric_patch_error: patchResult.error ?? null,
   });
+  // Best-effort audit (the release already committed) — surface failures
+  // instead of swallowing them (observability rule 9).
+  if (releaseAuditErr) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        msg: "log_keytag_audit_failed",
+        action: "released",
+        ro_number: roNumber,
+        source: auditSource,
+        detail: releaseAuditErr.message,
+      }),
+    );
+  }
 
   // The advisor released this RO's keys — any open review for it is now moot
   // (this is the dominant path by which the review backlog used to strand).
   // Best-effort; the release already committed.
-  await autoResolveReviewsForRo(sb, roId, "manual_release", "claude_desktop");
+  await autoResolveReviewsForRo(sb, roId, "manual_release", auditSource);
 
   return {
     ok: true,

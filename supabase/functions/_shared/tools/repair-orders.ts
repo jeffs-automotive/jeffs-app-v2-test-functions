@@ -254,3 +254,97 @@ export async function findRoByKeyTag(
     last_activity_at: (data.last_activity_at as string | null) ?? null,
   };
 }
+
+// ─── Tool 3: released-while-WIP ROs that still need a tag ────────────────────
+
+export interface ReleasedWipNeedingTagResult {
+  ok: true;
+  count: number;
+  window_days: number;
+  results: Array<{
+    ro_id: number;
+    ro_number: number;
+    /** The tag that was released, wire format (e.g. "R75"). */
+    released_tag: string;
+    released_color: "red" | "yellow";
+    released_number: number;
+    /** When the tag was released (keytag_audit_log.occurred_at). */
+    released_at: string;
+    /** Who released it (audit user_label), if known. */
+    released_by: string | null;
+    ro_url: string;
+  }>;
+}
+
+/** Default look-back window for released-from-WIP events. Bounds staleness: a tag
+ *  released from a WIP RO that was actually completed (not re-tagged) drops off the
+ *  board after this many days even without a Tekmetric status check. Tunable. */
+export const DEFAULT_RELEASED_WIP_WINDOW_DAYS = 3;
+
+/**
+ * Lists repair orders whose key tag was RELEASED while the RO was still in WIP
+ * (keytag_audit_log.action='released' AND prior_status='assigned') within the
+ * recency window, and that currently have NO tag (not re-tagged, not in A/R).
+ *
+ * Powers the admin board's "keep released-but-still-WIP ROs visible" behavior so
+ * an advisor who releases a tag (keys went home) can re-tag the RO in place
+ * instead of it vanishing from the board (2026-06-24 board-release-fix).
+ *
+ * Pure DB read (audit log + keytags) — no Tekmetric. "Still WIP" is approximated
+ * by the release-from-assigned signal + the window; the nightly reconcile is the
+ * backstop that turns genuinely-stale ones into manual reviews. A/R-status
+ * releases (prior_status='posted_ar') are intentionally excluded — terminal.
+ */
+export async function listReleasedWipNeedingTag(
+  sb: SupabaseClient,
+  shopId: number,
+  windowDays: number = DEFAULT_RELEASED_WIP_WINDOW_DAYS,
+): Promise<ReleasedWipNeedingTagResult> {
+  const cutoff = new Date(Date.now() - windowDays * 86_400_000).toISOString();
+
+  // 1. Recent releases from WIP, newest first.
+  const { data: events, error: evErr } = await sb
+    .from("keytag_audit_log")
+    .select("ro_id, ro_number, tag_color, tag_number, occurred_at, user_label")
+    .eq("action", "released")
+    .eq("prior_status", "assigned")
+    .gte("occurred_at", cutoff)
+    .not("ro_id", "is", null)
+    .order("occurred_at", { ascending: false });
+  if (evErr) throw new Error(`keytag_audit_log query failed: ${evErr.message}`);
+
+  // 2. ROs that currently hold a tag (re-tagged since, or never released) → exclude.
+  const { data: tagged, error: tagErr } = await sb
+    .from("keytags")
+    .select("ro_number")
+    .in("status", ["assigned", "posted_ar"])
+    .not("ro_number", "is", null);
+  if (tagErr) throw new Error(`keytags query failed: ${tagErr.message}`);
+  const taggedRos = new Set((tagged ?? []).map((t) => t.ro_number as number));
+
+  // 3. De-dupe by RO (keep the most recent release), drop ROs that have a tag now.
+  const seen = new Set<number>();
+  const results: ReleasedWipNeedingTagResult["results"] = [];
+  for (const e of events ?? []) {
+    const roNumber = e.ro_number as number | null;
+    const roId = e.ro_id as number | null;
+    if (roNumber === null || roId === null) continue;
+    if (seen.has(roNumber)) continue; // an older release for the same RO
+    seen.add(roNumber);
+    if (taggedRos.has(roNumber)) continue; // already has a tag again
+    const color = e.tag_color as "red" | "yellow";
+    const number = e.tag_number as number;
+    results.push({
+      ro_id: roId,
+      ro_number: roNumber,
+      released_tag: `${color === "red" ? "R" : "Y"}${number}`,
+      released_color: color,
+      released_number: number,
+      released_at: e.occurred_at as string,
+      released_by: (e.user_label as string | null) ?? null,
+      ro_url: buildTekmetricRoUrl({ roId, shopId }),
+    });
+  }
+
+  return { ok: true, count: results.length, window_days: windowDays, results };
+}

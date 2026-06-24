@@ -25,7 +25,7 @@ import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { tool } from "npm:ai@^5";
 import { z } from "npm:zod@^4";
 
-import { listWipKeyTags } from "./tools/repair-orders.ts";
+import { listWipKeyTags, listReleasedWipNeedingTag } from "./tools/repair-orders.ts";
 import { assignKeytagToRo, releaseKeytagFromRo } from "./tools/keytag-management.ts";
 import {
   whoIsOnTag,
@@ -116,6 +116,12 @@ export function getOrchestratorTools(args: {
    */
   userLabel?: string;
   /**
+   * Channel that originated this session → keytag_audit_log.source on write tools.
+   * 'admin_app' for the dashboard (SERVICE_ROLE + X-Actor-Email), 'claude_desktop' for
+   * the OAuth/Claude-Desktop branch. Defaults to 'claude_desktop'.
+   */
+  source?: "admin_app" | "claude_desktop";
+  /**
    * Project URL + service-role key required by tools that invoke other
    * Supabase Edge Functions (e.g. runBulkReconcile calls keytag-bulk-reconcile
    * via HTTPS with the same service-role bearer the cron uses).
@@ -123,7 +129,7 @@ export function getOrchestratorTools(args: {
   supabaseUrl: string;
   serviceRoleKey: string;
 }) {
-  const { sb, shopId, recorder, userLabel, supabaseUrl, serviceRoleKey } = args;
+  const { sb, shopId, recorder, userLabel, source, supabaseUrl, serviceRoleKey } = args;
 
   return {
     listWipKeyTags: tool({
@@ -143,6 +149,37 @@ export function getOrchestratorTools(args: {
         });
         try {
           const result = await listWipKeyTags(sb, shopId);
+          await recorder.recordEnd({ toolCallId: callId, output: result });
+          return result;
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          await recorder.recordEnd({ toolCallId: callId, error: msg });
+          throw e;
+        }
+      },
+    }),
+
+    listReleasedWipNeedingTag: tool({
+      description:
+        "Returns repair orders whose key tag was RELEASED while the RO was still in WIP and that " +
+        "currently have NO tag — a tag came off (keys went home) but the job is still open, so it " +
+        "likely needs a new tag. Derived from the keytag audit log within a recent window (default " +
+        "3 days). Powers the admin board's 'keep a just-released WIP RO visible so it can be re-tagged " +
+        "in place' behavior. Each result has the RO number, the tag that was released, when, by whom, " +
+        "and a Tekmetric link. A/R-status releases are excluded (terminal).",
+      inputSchema: z.object({
+        window_days: z.number().int().min(1).max(30).optional().describe(
+          "Look-back window in days for released-from-WIP events. Default 3.",
+        ),
+      }),
+      execute: async ({ window_days }) => {
+        const callId = await recorder.recordStart({
+          toolName: "listReleasedWipNeedingTag",
+          input: { window_days },
+          stepNumber: 0,
+        });
+        try {
+          const result = await listReleasedWipNeedingTag(sb, shopId, window_days);
           await recorder.recordEnd({ toolCallId: callId, output: result });
           return result;
         } catch (e) {
@@ -232,6 +269,7 @@ export function getOrchestratorTools(args: {
             color,
             tagNumber: tag_number,
             userLabel,
+            source,
             confirmationToken: confirmation_token,
           });
           await recorder.recordEnd({ toolCallId: callId, output: result });
@@ -278,6 +316,7 @@ export function getOrchestratorTools(args: {
           const result = await releaseKeytagFromRo(sb, shopId, {
             roNumber: ro_number,
             userLabel,
+            source,
             confirmationToken: confirmation_token,
           });
           await recorder.recordEnd({ toolCallId: callId, output: result });
@@ -559,7 +598,7 @@ export function getOrchestratorTools(args: {
           .optional()
           .describe("Filter by mutation type."),
         source: z
-          .enum(["claude_desktop", "webhook", "cron", "manual_sql"])
+          .enum(["claude_desktop", "webhook", "cron", "manual_sql", "admin_app"])
           .optional()
           .describe("Filter by how the mutation happened."),
         limit: z.number().int().min(1).max(200).optional().describe(

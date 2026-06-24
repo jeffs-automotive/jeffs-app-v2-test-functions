@@ -127,7 +127,7 @@ export function BoardClient({ initial }: { initial: BoardState }) {
             {tagged.length} / 180
           </Badge>
         </div>
-        <LiveBoardPoller generatedAt={generatedAt} onState={onState} />
+        <LiveBoardPoller generatedAt={generatedAt} onState={onState} busy={busyRows.size > 0} />
       </div>
 
       {/* ── Tagged (in use) ─────────────────────────────────────────────── */}
@@ -271,15 +271,26 @@ export function BoardClient({ initial }: { initial: BoardState }) {
                     return (
                       <TableRow key={r.review_code} aria-busy={busy}>
                         <DataCell busy={busy} className="font-mono text-sm tabular-nums">
-                          {r.ro_number !== null ? (
+                          {r.ro_number === null ? (
+                            <span className="text-muted-foreground">—</span>
+                          ) : r.kind === "review" ? (
                             <a
                               href={`/keytags?tab=manual-reviews&review=${encodeURIComponent(r.review_code)}`}
                               className="text-primary hover:underline"
                             >
                               #{r.ro_number}
                             </a>
+                          ) : r.ro_url ? (
+                            <a
+                              href={r.ro_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-primary hover:underline"
+                            >
+                              #{r.ro_number}
+                            </a>
                           ) : (
-                            <span className="text-muted-foreground">—</span>
+                            <span>#{r.ro_number}</span>
                           )}
                         </DataCell>
                         <DataCell busy={busy}>
@@ -299,12 +310,21 @@ export function BoardClient({ initial }: { initial: BoardState }) {
                           </span>
                         </DataCell>
                         <DataCell busy={busy}>
-                          <a
-                            href={`/keytags?tab=manual-reviews&review=${encodeURIComponent(r.review_code)}`}
-                            className="font-mono text-xs font-semibold text-primary hover:underline"
-                          >
-                            {r.review_code}
-                          </a>
+                          {r.kind === "review" ? (
+                            <a
+                              href={`/keytags?tab=manual-reviews&review=${encodeURIComponent(r.review_code)}`}
+                              className="font-mono text-xs font-semibold text-primary hover:underline"
+                            >
+                              {r.review_code}
+                            </a>
+                          ) : (
+                            <Badge
+                              variant="outline"
+                              className="font-mono text-[10px] font-normal uppercase tracking-wider"
+                            >
+                              was {r.released_tag}
+                            </Badge>
+                          )}
                         </DataCell>
                         <DataCell
                           busy={busy}

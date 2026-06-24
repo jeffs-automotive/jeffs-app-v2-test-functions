@@ -180,6 +180,10 @@ interface AuthOk {
   userLabel: string;
   scope: string;
   clientId: string;
+  /** Channel of this authenticated call → keytag_audit_log.source on write tools.
+   *  'admin_app' for the SERVICE_ROLE + X-Actor-Email branch (the dashboard),
+   *  'claude_desktop' for the OAuth branch (Claude Desktop). */
+  source: "admin_app" | "claude_desktop";
 }
 interface AuthErr {
   ok: false;
@@ -327,6 +331,7 @@ async function authenticateRequest(req: Request): Promise<AuthOk | AuthErr> {
       userLabel: actorEmail.toLowerCase(),
       scope: ADMIN_APP_SCOPE,
       clientId: ADMIN_APP_CLIENT_ID,
+      source: "admin_app",
     };
   }
 
@@ -400,6 +405,7 @@ async function authenticateRequest(req: Request): Promise<AuthOk | AuthErr> {
     userLabel: row.user_label as string,
     scope: row.scope as string,
     clientId: row.client_id as string,
+    source: "claude_desktop",
   };
 }
 
@@ -470,11 +476,16 @@ function handleInitialize(): unknown {
  * description and outputSchema are optional but we always emit
  * description.
  */
-function handleToolsList(userLabel: string, clientId: string): unknown {
+function handleToolsList(
+  userLabel: string,
+  clientId: string,
+  source: "admin_app" | "claude_desktop",
+): unknown {
   const registry = buildMcpToolRegistry({
     sb,
     shopId: SHOP_ID,
     userLabel,
+    source,
     oauthClientId: clientId,
     supabaseUrl: SUPABASE_URL,
     serviceRoleKey: SERVICE_ROLE_KEY,
@@ -515,6 +526,7 @@ async function handleToolsCall(
   params: unknown,
   userLabel: string,
   clientId: string,
+  source: "admin_app" | "claude_desktop",
 ): Promise<unknown> {
   if (!params || typeof params !== "object") {
     throw new RpcInvalidParams("tools/call: params must be an object with name + arguments");
@@ -532,6 +544,7 @@ async function handleToolsCall(
     sb,
     shopId: SHOP_ID,
     userLabel,
+    source,
     oauthClientId: clientId,
     supabaseUrl: SUPABASE_URL,
     serviceRoleKey: SERVICE_ROLE_KEY,
@@ -658,11 +671,11 @@ Deno.serve((req) => withSentryScope(req, "orchestrator-mcp", async () => {
         return jsonRpcResponse({
           jsonrpc: "2.0",
           id,
-          result: handleToolsList(auth.userLabel, auth.clientId),
+          result: handleToolsList(auth.userLabel, auth.clientId, auth.source),
         });
 
       case "tools/call": {
-        const result = await handleToolsCall(rpcReq.params, auth.userLabel, auth.clientId);
+        const result = await handleToolsCall(rpcReq.params, auth.userLabel, auth.clientId, auth.source);
         return jsonRpcResponse({ jsonrpc: "2.0", id, result });
       }
 
