@@ -30,6 +30,7 @@ import {
   type ReleaseKeytagState,
 } from "@/actions/keytag/release-keytag";
 import { ConfirmationDialog } from "./ConfirmationDialog";
+import { useReportMutation } from "./board-mutation-store";
 
 const assignInitial: AssignKeytagState = { kind: "idle" };
 const releaseInitial: ReleaseKeytagState = { kind: "idle" };
@@ -56,6 +57,8 @@ export function ReleaseRowAction({
 }: ReleaseRowActionProps) {
   const [state, dispatch, isPending] = useActionState(releaseKeytagAction, releaseInitial);
   const [dialogOpen, setDialogOpen] = useState(false);
+  // Pause the board pollers while this row's mutation is in flight (spin fix).
+  useReportMutation(isPending);
 
   useEffect(() => {
     if (state.kind === "needs_confirmation") setDialogOpen(true);
@@ -143,6 +146,8 @@ export function AssignRowAction({
   onPendingChange,
 }: RowActionProps) {
   const [state, dispatch, isPending] = useActionState(assignKeytagAction, assignInitial);
+  // Pause the board pollers while this row's mutation is in flight (spin fix).
+  useReportMutation(isPending);
 
   useEffect(() => {
     if (state.kind === "success") {

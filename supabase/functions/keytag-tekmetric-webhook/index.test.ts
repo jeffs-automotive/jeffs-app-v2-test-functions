@@ -201,22 +201,33 @@ Deno.test({
 
     await withMockedFetch(
       (url, init) => {
-        // First fetch: GET /repair-orders/:id (defensive verify) → WIP
-        if (init?.method === "GET" || !init?.method) {
+        const method = init?.method ?? "GET";
+        // PATCH /repair-orders/:id → success
+        if (method === "PATCH") {
+          return Promise.resolve(jsonResponse({ ok: true }, 200));
+        }
+        // GET /customers/:id → best-effort customer-name capture (commit
+        // 09a7b34), OFF the PATCH critical path. Defensive: resolveCustomerName
+        // swallows any failure, so the assign still succeeds regardless.
+        if (url.includes("/customers/")) {
           return Promise.resolve(jsonResponse({
-            id: 152448,
-            repairOrderNumber: 1480,
-            shopId: FAKE_SHOP_ID,
-            customerId: 1001,
-            vehicleId: 2002,
-            serviceWriterId: 50,
-            technicianId: 70,
-            updatedDate: "2026-05-22T12:00:00Z",
-            repairOrderStatus: { id: 2, code: "WIP", name: "Work In Progress" },
+            id: 1001,
+            firstName: "Test",
+            lastName: "Customer",
           }));
         }
-        // Second fetch: PATCH /repair-orders/:id → success
-        return Promise.resolve(jsonResponse({ ok: true }, 200));
+        // GET /repair-orders/:id (defensive verify) → WIP
+        return Promise.resolve(jsonResponse({
+          id: 152448,
+          repairOrderNumber: 1480,
+          shopId: FAKE_SHOP_ID,
+          customerId: 1001,
+          vehicleId: 2002,
+          serviceWriterId: 50,
+          technicianId: 70,
+          updatedDate: "2026-05-22T12:00:00Z",
+          repairOrderStatus: { id: 2, code: "WIP", name: "Work In Progress" },
+        }));
       },
       async (scope) => {
         const res = await handler(
@@ -236,9 +247,12 @@ Deno.test({
         assertEquals(assignArgs.p_ro_id, 152448);
         assertEquals(assignArgs.p_ro_number, 1480);
 
-        // Two fetch calls: GET then PATCH
-        assertEquals(scope.calls.length, 2);
+        // Three fetch calls: GET repair-order (defensive verify), PATCH (write
+        // the tag), then GET customer (best-effort name capture — commit
+        // 09a7b34, off the critical path).
+        assertEquals(scope.calls.length, 3);
         assertEquals(scope.calls[1].init?.method, "PATCH");
+        assertEquals(scope.calls[2].url.includes("/customers/"), true);
       },
     );
   },
