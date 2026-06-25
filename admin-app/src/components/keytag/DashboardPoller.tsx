@@ -14,11 +14,10 @@
  * the last good data stays on screen and React swaps it in place. Reduced
  * motion is respected via Tailwind `motion-reduce`.
  */
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useIsMutating } from "./board-mutation-store";
 
 const POLL_MS = 60_000;
 
@@ -28,15 +27,6 @@ export function DashboardPoller({ generatedAt }: { generatedAt: string }) {
   // Render the snapshot time only after mount to avoid an SSR/CSR locale
   // mismatch (toLocaleTimeString differs by environment).
   const [stamp, setStamp] = useState<string>("");
-  // Pause the 60s router.refresh while a board mutation is in flight so the full
-  // force-dynamic RSC re-render can't co-batch with the user's action — defense
-  // in depth for the spin if both tab panels are ever mounted at once
-  // (2026-06-24 board-residual-fixes).
-  const isMutating = useIsMutating();
-  const mutatingRef = useRef(isMutating);
-  useEffect(() => {
-    mutatingRef.current = isMutating;
-  }, [isMutating]);
 
   useEffect(() => {
     setStamp(
@@ -50,7 +40,6 @@ export function DashboardPoller({ generatedAt }: { generatedAt: string }) {
 
   useEffect(() => {
     const id = setInterval(() => {
-      if (mutatingRef.current) return;
       startTransition(() => router.refresh());
     }, POLL_MS);
     return () => clearInterval(id);
