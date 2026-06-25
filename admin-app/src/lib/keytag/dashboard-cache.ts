@@ -4,11 +4,11 @@ import "server-only";
  * Cached keytag dashboard snapshot.
  *
  * The snapshot (counts / stale tags with customer names / A-R-without-tags /
- * 180-tag grid) is expensive to build — the customer-name resolution inside it
- * hits Tekmetric serially. So we wrap the `getKeytagDashboard` call in
- * `unstable_cache` with a 60s TTL: a viewer reloading the page or the 60s
- * `router.refresh()` poll reads the cached snapshot instead of re-pulling
- * everything each time.
+ * 180-tag grid) is now a PURE DB read (customer names come from the denormalized
+ * `keytags.customer_name`, not a Tekmetric walk — see `keytag-dashboard-data.ts`,
+ * fixed 2026-06-25 when that 45s walk turned out to be the board's "spin" root).
+ * We still wrap it in `unstable_cache` (60s TTL) to dedupe concurrent renders,
+ * and the timeout is now a tight 10s seatbelt instead of 45s.
  *
  * `actorEmail` is passed for the orchestrator's X-Actor-Email auth/audit
  * header. Note `unstable_cache` folds function arguments into the cache key, so
@@ -26,7 +26,7 @@ export const DASHBOARD_CACHE_TAG = "keytag-dashboard";
 const cachedDashboard = unstable_cache(
   async (actorEmail: string): Promise<KeytagDashboardResult> => {
     return await callKeytagTool("getKeytagDashboard", {}, actorEmail, {
-      timeoutMs: 45_000,
+      timeoutMs: 10_000,
     });
   },
   ["keytag-dashboard-snapshot"],

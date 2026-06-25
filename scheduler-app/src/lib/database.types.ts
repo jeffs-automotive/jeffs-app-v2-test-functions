@@ -1040,6 +1040,7 @@ export type Database = {
           assigned_at: string | null
           changed_by_user_label: string | null
           customer_id: number | null
+          customer_name: string | null
           last_activity_at: string | null
           last_patch_at: string | null
           last_patch_error: string | null
@@ -1060,6 +1061,7 @@ export type Database = {
           assigned_at?: string | null
           changed_by_user_label?: string | null
           customer_id?: number | null
+          customer_name?: string | null
           last_activity_at?: string | null
           last_patch_at?: string | null
           last_patch_error?: string | null
@@ -1080,6 +1082,7 @@ export type Database = {
           assigned_at?: string | null
           changed_by_user_label?: string | null
           customer_id?: number | null
+          customer_name?: string | null
           last_activity_at?: string | null
           last_patch_at?: string | null
           last_patch_error?: string | null

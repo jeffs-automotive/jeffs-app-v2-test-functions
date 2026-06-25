@@ -40,6 +40,11 @@ export function DashboardPoller({ generatedAt }: { generatedAt: string }) {
 
   useEffect(() => {
     const id = setInterval(() => {
+      // Don't re-render the page while the tab is backgrounded — no point
+      // hammering the orchestrator once a minute for a screen nobody's watching.
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+        return;
+      }
       startTransition(() => router.refresh());
     }, POLL_MS);
     return () => clearInterval(id);
