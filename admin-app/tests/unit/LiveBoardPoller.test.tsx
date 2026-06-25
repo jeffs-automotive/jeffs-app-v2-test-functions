@@ -1,20 +1,22 @@
 /**
- * LiveBoardPoller — the 15s auto-tick must PAUSE while ANY board mutation is in
- * flight, so a poll Server Action can't co-batch / serialize with the user's
- * release/assign and pin its useActionState isPending (the post-success "keeps
- * spinning" bug). The signal is the module-level boardMutationStore, fed by
- * every mutation source (per-row buttons + the bottom manual forms) — this test
- * drives that real store directly. Manual Refresh is unaffected (an explicit
- * user click; not covered here). 2026-06-24 board-residual-fixes.
+ * LiveBoardPoller — must NOT auto-poll. This is the regression guard for the
+ * 2026-06-25 board-spin-fix: the old 15s getBoardStateAction auto-tick was a
+ * recurring SERVER ACTION that co-batched with the user's release/assign
+ * Actions (React batches concurrent Actions; isPending stays true "until all
+ * Actions complete") and pinned their spinner forever. The board now refreshes
+ * only on the user's own action, a manual Refresh click, or a page reload.
+ *
+ * Test 1 proves no timer ever fires getBoardStateAction; test 2 proves the
+ * manual Refresh button still polls once.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, act } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, act } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 vi.mock("@/actions/keytag/board-state", () => ({ getBoardStateAction: vi.fn() }));
 
 import { getBoardStateAction } from "@/actions/keytag/board-state";
 import { LiveBoardPoller } from "@/components/keytag/LiveBoardPoller";
-import { boardMutationStore } from "@/components/keytag/board-mutation-store";
 
 const mockGet = vi.mocked(getBoardStateAction);
 const STAMP = new Date(0).toISOString();
@@ -23,33 +25,31 @@ const okState = {
   data: { generated_at: STAMP, tagged: [], untagged: [] },
 };
 
-describe("LiveBoardPoller — pause while a mutation is in flight (poll-contention fix)", () => {
+describe("LiveBoardPoller — manual refresh only (no auto-poll)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.useFakeTimers();
     mockGet.mockResolvedValue(okState);
   });
-  afterEach(() => {
-    vi.useRealTimers();
-    // Drain any leftover hold so the module-level store can't leak across tests.
-    while (boardMutationStore.isMutating()) boardMutationStore.end();
+
+  it("does NOT auto-poll on a timer (the spin-fix regression guard)", async () => {
+    vi.useFakeTimers();
+    try {
+      render(<LiveBoardPoller generatedAt={STAMP} onState={() => {}} />);
+      await act(async () => {
+        // Four+ of the OLD 15s intervals — nothing should fire.
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      expect(mockGet).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
-  it("skips the 15s auto-tick while a mutation is in flight", async () => {
-    boardMutationStore.begin(); // a release/assign is in flight
-    render(<LiveBoardPoller generatedAt={STAMP} onState={() => {}} />);
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(16_000);
-    });
-    expect(mockGet).not.toHaveBeenCalled();
-    boardMutationStore.end();
-  });
-
-  it("polls on the auto-tick when no mutation is in flight", async () => {
-    render(<LiveBoardPoller generatedAt={STAMP} onState={() => {}} />);
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(16_000);
-    });
-    expect(mockGet).toHaveBeenCalled();
+  it("polls exactly once when the user clicks Refresh", async () => {
+    const user = userEvent.setup();
+    const onState = vi.fn();
+    render(<LiveBoardPoller generatedAt={STAMP} onState={onState} />);
+    await user.click(screen.getByRole("button", { name: /refresh/i }));
+    expect(mockGet).toHaveBeenCalledTimes(1);
   });
 });

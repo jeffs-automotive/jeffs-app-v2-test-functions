@@ -15,15 +15,12 @@ import {
   type ReleaseKeytagState,
 } from "@/actions/keytag/release-keytag";
 import { ConfirmationDialog } from "./ConfirmationDialog";
-import { useReportMutation } from "./board-mutation-store";
 
 const initial: ReleaseKeytagState = { kind: "idle" };
 
 export function ReleaseKeytagForm() {
   const [state, dispatch, isPending] = useActionState(releaseKeytagAction, initial);
   const [dialogOpen, setDialogOpen] = useState(false);
-  // Pause the board pollers while this mutation is in flight (spin fix).
-  useReportMutation(isPending);
 
   useEffect(() => {
     if (state.kind === "needs_confirmation") setDialogOpen(true);

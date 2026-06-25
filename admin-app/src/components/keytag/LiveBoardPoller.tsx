@@ -1,23 +1,27 @@
 "use client";
 
 /**
- * LiveBoardPoller — keeps the Live board fresh by polling our DB (~15s).
+ * LiveBoardPoller — a manual "Refresh" control + last-updated stamp for the Live
+ * board. (Name kept for import stability; it no longer auto-polls.)
  *
- * Unlike the Dashboard's router.refresh, this calls getBoardStateAction (two
- * cheap DB reads, no Tekmetric) and hands the fresh state up to BoardClient,
- * which merges it (preserving any in-flight row). Re-reading the whole small
- * set each tick keeps it authoritative even for out-of-band releases.
- *
- * Calm-poll affordance modeled on DashboardPoller; visual polish applied later.
+ * IMPORTANT (2026-06-25 board-spin-fix — PROVEN root cause): this used to
+ * auto-poll every 15s by calling getBoardStateAction (a SERVER ACTION) on a
+ * timer. That recurring Server Action co-batched / serialized with the user's
+ * release/assign Server Actions: React batches concurrent Actions and keeps
+ * isPending true "until all Actions complete and the final state is shown to the
+ * user" (react.dev), and Next.js 15 "dispatches and awaits them one at a time"
+ * (nextjs.org). So a Release/Assign button spun forever while the 15s poll kept
+ * re-entering the batch. The board now refreshes only on (a) the user's own
+ * action (BoardClient.onResolved splices the row optimistically), (b) this
+ * user-initiated Refresh (a single, solitary Action — can't co-batch with a
+ * click), or (c) a page reload — exactly how the pre-merge Assign/Release tab
+ * worked. No background Server Action lives next to the mutation forms anymore.
  */
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getBoardStateAction } from "@/actions/keytag/board-state";
-import { useIsMutating } from "./board-mutation-store";
 import type { BoardState } from "@/lib/orchestrator/types";
-
-const POLL_MS = 15_000;
 
 export function LiveBoardPoller({
   generatedAt,
@@ -29,16 +33,6 @@ export function LiveBoardPoller({
   const [isPending, startTransition] = useTransition();
   const [stamp, setStamp] = useState("");
   const [failed, setFailed] = useState(false);
-  // Skip the 15s auto-tick while ANY board mutation (a per-row button OR a bottom
-  // manual form) is in flight, so the user's release/assign never co-batches /
-  // serializes with a poll transition and pins the button's isPending — the
-  // post-success "keeps spinning" bug (2026-06-24 board-residual-fixes). Mirror
-  // into a ref so the once-created interval reads the latest value.
-  const isMutating = useIsMutating();
-  const mutatingRef = useRef(isMutating);
-  useEffect(() => {
-    mutatingRef.current = isMutating;
-  }, [isMutating]);
 
   useEffect(() => {
     setStamp(
@@ -50,7 +44,10 @@ export function LiveBoardPoller({
     );
   }, [generatedAt]);
 
-  function poll() {
+  // User-initiated refresh ONLY — never on a timer (see file header). A solitary
+  // user-clicked Action can't co-batch with a release/assign the way the old 15s
+  // auto-poll did, so it never pins the mutation buttons' isPending.
+  function refresh() {
     startTransition(async () => {
       const res = await getBoardStateAction();
       if (res.kind === "ok") {
@@ -61,16 +58,6 @@ export function LiveBoardPoller({
       }
     });
   }
-
-  useEffect(() => {
-    const id = setInterval(() => {
-      // Skip the auto-tick while a mutation is in flight (see isMutating above).
-      if (mutatingRef.current) return;
-      poll();
-    }, POLL_MS);
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   return (
     <div
@@ -94,14 +81,14 @@ export function LiveBoardPoller({
             ? " · couldn't refresh"
             : isPending
               ? " · refreshing…"
-              : " · auto-refreshes"}
+              : " · Refresh to update"}
         </span>
       </span>
       <Button
         type="button"
         variant="ghost"
         size="sm"
-        onClick={poll}
+        onClick={refresh}
         disabled={isPending}
         className="gap-1.5"
       >

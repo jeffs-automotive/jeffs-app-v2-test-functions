@@ -16,15 +16,12 @@ import {
 } from "@/actions/keytag/assign-keytag";
 import { ConfirmationDialog } from "./ConfirmationDialog";
 import { TagBadge } from "./TagBadge";
-import { useReportMutation } from "./board-mutation-store";
 
 const initial: AssignKeytagState = { kind: "idle" };
 
 export function AssignKeytagForm() {
   const [state, dispatch, isPending] = useActionState(assignKeytagAction, initial);
   const [dialogOpen, setDialogOpen] = useState(false);
-  // Pause the board pollers while this mutation is in flight (spin fix).
-  useReportMutation(isPending);
 
   // Open dialog when state transitions to needs_confirmation
   useEffect(() => {
