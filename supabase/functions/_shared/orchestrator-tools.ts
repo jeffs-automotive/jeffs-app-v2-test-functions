@@ -25,7 +25,7 @@ import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { tool } from "npm:ai@^5";
 import { z } from "npm:zod@^4";
 
-import { listWipKeyTags, listReleasedWipNeedingTag } from "./tools/repair-orders.ts";
+import { listWipKeyTags } from "./tools/repair-orders.ts";
 import { assignKeytagToRo, releaseKeytagFromRo } from "./tools/keytag-management.ts";
 import {
   whoIsOnTag,
@@ -149,37 +149,6 @@ export function getOrchestratorTools(args: {
         });
         try {
           const result = await listWipKeyTags(sb, shopId);
-          await recorder.recordEnd({ toolCallId: callId, output: result });
-          return result;
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
-          await recorder.recordEnd({ toolCallId: callId, error: msg });
-          throw e;
-        }
-      },
-    }),
-
-    listReleasedWipNeedingTag: tool({
-      description:
-        "Returns repair orders whose key tag was RELEASED while the RO was still in WIP and that " +
-        "currently have NO tag — a tag came off (keys went home) but the job is still open, so it " +
-        "likely needs a new tag. Derived from the keytag audit log within a recent window (default " +
-        "3 days). Powers the admin board's 'keep a just-released WIP RO visible so it can be re-tagged " +
-        "in place' behavior. Each result has the RO number, the tag that was released, when, by whom, " +
-        "and a Tekmetric link. A/R-status releases are excluded (terminal).",
-      inputSchema: z.object({
-        window_days: z.number().int().min(1).max(30).optional().describe(
-          "Look-back window in days for released-from-WIP events. Default 3.",
-        ),
-      }),
-      execute: async ({ window_days }) => {
-        const callId = await recorder.recordStart({
-          toolName: "listReleasedWipNeedingTag",
-          input: { window_days },
-          stepNumber: 0,
-        });
-        try {
-          const result = await listReleasedWipNeedingTag(sb, shopId, window_days);
           await recorder.recordEnd({ toolCallId: callId, output: result });
           return result;
         } catch (e) {

@@ -14,6 +14,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getBoardStateAction } from "@/actions/keytag/board-state";
+import { useIsMutating } from "./board-mutation-store";
 import type { BoardState } from "@/lib/orchestrator/types";
 
 const POLL_MS = 15_000;
@@ -21,27 +22,23 @@ const POLL_MS = 15_000;
 export function LiveBoardPoller({
   generatedAt,
   onState,
-  busy = false,
 }: {
   generatedAt: string;
   onState: (s: BoardState) => void;
-  /**
-   * True while a board row has a release/assign in flight. The 15s auto-tick is
-   * skipped while busy so a poll Server Action can't serialize ahead of the
-   * user's mutation (Next.js dispatches Server Actions one-at-a-time per
-   * client). Manual Refresh is unaffected. (2026-06-24 board-release-fix.)
-   */
-  busy?: boolean;
 }) {
   const [isPending, startTransition] = useTransition();
   const [stamp, setStamp] = useState("");
   const [failed, setFailed] = useState(false);
-  // Mirror `busy` into a ref so the once-created interval reads the latest value
-  // without re-creating the timer on every busy toggle.
-  const busyRef = useRef(busy);
+  // Skip the 15s auto-tick while ANY board mutation (a per-row button OR a bottom
+  // manual form) is in flight, so the user's release/assign never co-batches /
+  // serializes with a poll transition and pins the button's isPending — the
+  // post-success "keeps spinning" bug (2026-06-24 board-residual-fixes). Mirror
+  // into a ref so the once-created interval reads the latest value.
+  const isMutating = useIsMutating();
+  const mutatingRef = useRef(isMutating);
   useEffect(() => {
-    busyRef.current = busy;
-  }, [busy]);
+    mutatingRef.current = isMutating;
+  }, [isMutating]);
 
   useEffect(() => {
     setStamp(
@@ -67,8 +64,8 @@ export function LiveBoardPoller({
 
   useEffect(() => {
     const id = setInterval(() => {
-      // Skip the auto-tick while a row action is in flight (see `busy` above).
-      if (busyRef.current) return;
+      // Skip the auto-tick while a mutation is in flight (see isMutating above).
+      if (mutatingRef.current) return;
       poll();
     }, POLL_MS);
     return () => clearInterval(id);
