@@ -2,22 +2,20 @@
 
 /**
  * LiveBoardPoller — a manual "Refresh" control + last-updated stamp for the Live
- * board. (Name kept for import stability; it no longer auto-polls.)
+ * board. (Name kept for import stability; it does NOT auto-poll.)
  *
- * IMPORTANT (2026-06-25 board-spin-fix — PROVEN root cause): this used to
- * auto-poll every 15s by calling getBoardStateAction (a SERVER ACTION) on a
- * timer. That recurring Server Action co-batched / serialized with the user's
- * release/assign Server Actions: React batches concurrent Actions and keeps
- * isPending true "until all Actions complete and the final state is shown to the
- * user" (react.dev), and Next.js 15 "dispatches and awaits them one at a time"
- * (nextjs.org). So a Release/Assign button spun forever while the 15s poll kept
- * re-entering the batch. The board now refreshes only on (a) the user's own
- * action (BoardClient.onResolved splices the row optimistically), (b) this
- * user-initiated Refresh (a single, solitary Action — can't co-batch with a
- * click), or (c) a page reload — exactly how the pre-merge Assign/Release tab
- * worked. No background Server Action lives next to the mutation forms anymore.
+ * History:
+ *  - It used to auto-poll every 15s via a Server Action, which co-batched with
+ *    the user's release/assign Actions (PR#4 removed that auto-tick).
+ *  - 2026-06-25: ALSO fix a real client bug here — the refresh ran
+ *    getBoardStateAction inside `startTransition` and called setState AFTER the
+ *    `await` without re-wrapping. Per react.dev, "state updates after an `await`
+ *    inside `startTransition` are not marked as Transitions," which can leave
+ *    `isPending` stuck (the lone-Refresh spinner that never cleared). A single
+ *    awaited refresh needs no transition semantics — a plain `loading` flag is
+ *    correct and cannot get pinned.
  */
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getBoardStateAction } from "@/actions/keytag/board-state";
@@ -30,7 +28,7 @@ export function LiveBoardPoller({
   generatedAt: string;
   onState: (s: BoardState) => void;
 }) {
-  const [isPending, startTransition] = useTransition();
+  const [loading, setLoading] = useState(false);
   const [stamp, setStamp] = useState("");
   const [failed, setFailed] = useState(false);
 
@@ -44,25 +42,33 @@ export function LiveBoardPoller({
     );
   }, [generatedAt]);
 
-  // User-initiated refresh ONLY — never on a timer (see file header). A solitary
-  // user-clicked Action can't co-batch with a release/assign the way the old 15s
-  // auto-poll did, so it never pins the mutation buttons' isPending.
+  // User-initiated refresh ONLY — never on a timer. Plain async + a `loading`
+  // flag (NOT useTransition): a single awaited Server Action needs no transition
+  // semantics, and a loading flag can't be left pending by the post-await
+  // setState footgun (react.dev/reference/react/useTransition).
   function refresh() {
-    startTransition(async () => {
-      const res = await getBoardStateAction();
-      if (res.kind === "ok") {
-        setFailed(false);
-        onState(res.data);
-      } else {
+    setLoading(true);
+    void (async () => {
+      try {
+        const res = await getBoardStateAction();
+        if (res.kind === "ok") {
+          setFailed(false);
+          onState(res.data);
+        } else {
+          setFailed(true);
+        }
+      } catch {
         setFailed(true);
+      } finally {
+        setLoading(false);
       }
-    });
+    })();
   }
 
   return (
     <div
       className="flex items-center gap-3 text-xs text-muted-foreground"
-      aria-busy={isPending}
+      aria-busy={loading}
     >
       <span className="inline-flex items-center gap-2">
         <span
@@ -70,7 +76,7 @@ export function LiveBoardPoller({
           className={`inline-block size-2 rounded-full ${
             failed
               ? "bg-red-500"
-              : isPending
+              : loading
                 ? "bg-amber-400 motion-safe:animate-pulse"
                 : "bg-emerald-500"
           }`}
@@ -79,7 +85,7 @@ export function LiveBoardPoller({
           {stamp ? `Updated ${stamp} ET` : "Live"}
           {failed
             ? " · couldn't refresh"
-            : isPending
+            : loading
               ? " · refreshing…"
               : " · Refresh to update"}
         </span>
@@ -89,11 +95,11 @@ export function LiveBoardPoller({
         variant="ghost"
         size="sm"
         onClick={refresh}
-        disabled={isPending}
+        disabled={loading}
         className="gap-1.5"
       >
         <RefreshCw
-          className={`h-3.5 w-3.5 ${isPending ? "animate-spin motion-reduce:animate-none" : ""}`}
+          className={`h-3.5 w-3.5 ${loading ? "animate-spin motion-reduce:animate-none" : ""}`}
           aria-hidden="true"
         />
         Refresh

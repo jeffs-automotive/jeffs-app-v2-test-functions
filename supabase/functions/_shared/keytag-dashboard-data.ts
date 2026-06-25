@@ -12,12 +12,14 @@
 // customer names), the "A/R repair orders without key tags" rows, and the raw
 // 180-tag list for the grid.
 //
-// The expensive part is customer-name resolution: a serial, rate-limited walk
-// of Tekmetric `/customers/{id}`. The dashboard caches this snapshot (60s) so
-// each poll is cheap — see admin-app `src/lib/keytag/dashboard-cache.ts`.
+// Customer names come straight from the denormalized `keytags.customer_name`
+// column (captured at assign-time + backfilled nightly by keytag-bulk-reconcile)
+// — a PURE DB read, NO per-customer Tekmetric walk. (2026-06-25: the old serial,
+// rate-limited Tekmetric `/customers/{id}` resolution could exceed 45s and was
+// the ROOT of the admin board's "spin" — the /keytags page render blocked on it
+// on every Server Action re-render. The names are the same value either way.)
 
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
-import { tekmetricGetJson } from "./tekmetric-client.ts";
 import { buildTekmetricRoUrl } from "./tekmetric.ts";
 
 /**
@@ -37,6 +39,7 @@ export interface KeytagRow {
   ro_id: number | null;
   ro_number: number | null;
   customer_id: number | null;
+  customer_name: string | null;
   assigned_at: string | null;
   posted_at: string | null;
   last_activity_at: string | null;
@@ -103,14 +106,18 @@ export interface KeytagDashboardData {
   generatedAt: string;
 }
 
-// ─── Customer-name resolution (Tekmetric) ────────────────────────────────────
+// ─── Customer display-name helper ────────────────────────────────────────────
 
 /**
- * Coalesces a customer payload into a single display string. Priority:
+ * Coalesces a Tekmetric customer payload into a single display string. Priority:
  *   1. firstName + lastName  (covers people + businesses where the company
  *      name is in firstName, e.g. "Carmax", "Nazareth Key", "Flexicon")
  *   2. contactFirstName + contactLastName  (rare fallback)
  * Returns null if no usable name could be extracted.
+ *
+ * Still exported + used by the assign-time `resolveCustomerName` path
+ * (keytag-customer-name.ts) that POPULATES `keytags.customer_name`. The
+ * dashboard no longer calls Tekmetric itself — it reads that stored name.
  */
 export function customerDisplayName(c: TekmetricCustomerSubset): string | null {
   const first = (c.firstName ?? "").trim();
@@ -120,59 +127,6 @@ export function customerDisplayName(c: TekmetricCustomerSubset): string | null {
   const cLast = (c.contactLastName ?? "").trim();
   if (cFirst || cLast) return `${cFirst} ${cLast}`.trim();
   return null;
-}
-
-/**
- * Builds a Map<customerId, displayName> for every unique customer_id. Dedupes
- * (Carmax often appears 7+ times in a single run) and serializes with a small
- * inter-request delay so we stay well under Tekmetric's rate limit.
- */
-async function buildCustomerNameMap(
-  sb: SupabaseClient,
-  shopId: number,
-  customerIds: number[],
-): Promise<Map<number, string>> {
-  const map = new Map<number, string>();
-  const unique = Array.from(new Set(customerIds.filter((id) => id !== null)));
-  const DELAY_MS = 125; // ~8/sec, well under Tekmetric prod's 10/sec
-  for (const id of unique) {
-    try {
-      const cust = await tekmetricGetJson<TekmetricCustomerSubset>(
-        sb,
-        `/customers/${id}`,
-        { shop: shopId },
-      );
-      const name = cust ? customerDisplayName(cust) : null;
-      if (name) map.set(id, name);
-    } catch {
-      // 4xx / 5xx / network — leave unmapped; caller renders "Unknown"
-    }
-    if (DELAY_MS > 0) {
-      await new Promise((r) => setTimeout(r, DELAY_MS));
-    }
-  }
-  return map;
-}
-
-/**
- * Fallback for rows where customer_id is null in our keytags table — pull the
- * inline customer off the RO endpoint.
- */
-async function fetchNameViaRo(
-  sb: SupabaseClient,
-  shopId: number,
-  roId: number,
-): Promise<string | null> {
-  try {
-    const ro = await tekmetricGetJson<TekmetricRepairOrderSubset>(
-      sb,
-      `/repair-orders/${roId}`,
-      { shop: shopId },
-    );
-    return ro?.customer ? customerDisplayName(ro.customer) : null;
-  } catch {
-    return null;
-  }
 }
 
 // ─── "Repair Orders Without Key Tags" data fetch ─────────────────────────────
@@ -331,7 +285,7 @@ export async function buildKeytagDashboardData(
   const { data: rows, error } = await sb
     .from("keytags")
     .select(
-      "tag_color, tag_number, status, ro_id, ro_number, customer_id, assigned_at, posted_at, last_activity_at",
+      "tag_color, tag_number, status, ro_id, ro_number, customer_id, customer_name, assigned_at, posted_at, last_activity_at",
     )
     .order("tag_color")
     .order("tag_number");
@@ -363,21 +317,11 @@ export async function buildKeytagDashboardData(
     return aTime - bTime;
   });
 
-  // Resolve customer names: dedupe + serial fetch (rate-limit safe).
-  const uniqueCustomerIds = staleRaw
-    .map((t) => t.customer_id)
-    .filter((id): id is number => id !== null);
-  const nameMap = await buildCustomerNameMap(sb, shopId, uniqueCustomerIds);
-
+  // Customer names come straight from the denormalized keytags.customer_name
+  // (captured at assign + backfilled nightly) — pure DB read, no Tekmetric walk.
   const staleDetails: StaleTagDetail[] = [];
   for (const t of staleRaw) {
-    let customerName: string | null = null;
-    if (t.customer_id !== null) {
-      customerName = nameMap.get(t.customer_id) ?? null;
-    }
-    if (!customerName && t.ro_id !== null) {
-      customerName = await fetchNameViaRo(sb, shopId, t.ro_id);
-    }
+    const customerName = t.customer_name?.trim() || null;
     const daysStale = t.last_activity_at
       ? Math.floor(
           (Date.now() - new Date(t.last_activity_at).getTime()) /
