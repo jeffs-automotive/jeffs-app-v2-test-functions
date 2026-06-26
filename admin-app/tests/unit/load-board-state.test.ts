@@ -13,32 +13,25 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // `server-only` is aliased to a no-op stub in vitest.config.ts (test alias).
-// Phase 2: loadBoardState now reads DIRECT IN-PROCESS via the read DAL
-// (getWipKeyTags / getManualReviews), not the orchestrator client — so we mock
-// the read DAL at the module boundary. The same board-state output is asserted.
-vi.mock("@/lib/keytag/read-dal", () => ({
-  getWipKeyTags: vi.fn(),
-  getManualReviews: vi.fn(),
-}));
+vi.mock("@/lib/orchestrator/client", () => ({ callKeytagTool: vi.fn() }));
 
-import { getWipKeyTags, getManualReviews } from "@/lib/keytag/read-dal";
+import { callKeytagTool } from "@/lib/orchestrator/client";
 import { loadBoardState } from "@/lib/keytag/load-board-state";
 
-const mockWipKeyTags = vi.mocked(getWipKeyTags);
-const mockManualReviews = vi.mocked(getManualReviews);
+const mockTool = vi.mocked(callKeytagTool);
 
 function wire(opts: { tags?: unknown[]; reviews?: unknown[] }) {
   const { tags = [], reviews = [] } = opts;
-  // The test returns loose per-call shapes — cast to the real DAL return types.
-  mockWipKeyTags.mockResolvedValue({
-    ok: true,
-    count: tags.length,
-    shop_id: 7476,
-    results: tags,
-  } as unknown as Awaited<ReturnType<typeof getWipKeyTags>>);
-  mockManualReviews.mockResolvedValue({
-    results: reviews,
-  } as unknown as Awaited<ReturnType<typeof getManualReviews>>);
+  // Cast the impl to the real tool type — the test returns loose per-tool shapes.
+  mockTool.mockImplementation(((name: string) => {
+    if (name === "listWipKeyTags") {
+      return Promise.resolve({ ok: true, count: tags.length, shop_id: 7476, results: tags });
+    }
+    if (name === "listManualReviews") {
+      return Promise.resolve({ results: reviews });
+    }
+    return Promise.resolve({ ok: true });
+  }) as unknown as typeof callKeytagTool);
 }
 
 const review = (ro: number, over: Record<string, unknown> = {}) => ({
@@ -95,17 +88,5 @@ describe("loadBoardState — untagged list from open reviews", () => {
     const state = await loadBoardState("chris@jeffsautomotive.com");
     expect(state.tagged).toHaveLength(1);
     expect(state.tagged[0]?.ro_number).toBe(5);
-  });
-
-  it("reads only-open reviews (limit 200) and takes no per-actor arg on the DB reads", async () => {
-    wire({ reviews: [review(100)] });
-    await loadBoardState("chris@jeffsautomotive.com");
-    // The direct in-process reads resolve shop_id server-side — no actorEmail
-    // is threaded into either read (Phase 2 contract).
-    expect(mockWipKeyTags).toHaveBeenCalledWith();
-    expect(mockManualReviews).toHaveBeenCalledWith({
-      only_open: true,
-      limit: 200,
-    });
   });
 });
