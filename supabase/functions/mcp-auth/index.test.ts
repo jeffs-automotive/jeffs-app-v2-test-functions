@@ -29,9 +29,8 @@ import {
 Deno.env.set("SUPABASE_URL", "https://test.supabase.co");
 Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", "test-service-role");
 
-const { handleRefreshTokenGrant, _setSupabaseClientForTesting } = await import(
-  "./index.ts"
-);
+const { handleRefreshTokenGrant, handleRegister, _setSupabaseClientForTesting } =
+  await import("./index.ts");
 
 const CLIENT_ID = "mcp_testclient000000000000";
 const OTHER_CLIENT_ID = "mcp_attacker0000000000000";
@@ -209,4 +208,91 @@ Deno.test("refresh grant — missing refresh_token → 400 invalid_request", asy
   const body = await res.json();
   assertEquals(body.error, "invalid_request");
   assert(sb.callsForRpc("oauth_consume_refresh_token").length === 0);
+});
+
+// ─── /register bootstrap-secret gate (RFC 7591 DCR) ─────────────────────────
+//
+// FAIL-CLOSED: closing the open dynamic-client-registration front door.
+//   1. env unset    → 403 access_denied (registration disabled), no client minted
+//   2. wrong secret → 403 access_denied (requires a bootstrap secret), no client minted
+//   3. correct secret → registration proceeds (oauth_clients insert runs, 201)
+// The secret is presented in the X-DCR-Bootstrap-Secret header.
+
+const DCR_ENV = "MCP_DCR_BOOTSTRAP_SECRET";
+const DCR_HEADER = "X-DCR-Bootstrap-Secret";
+const DCR_SECRET = "s3cret-bootstrap-value-0000000000";
+
+function registerReq(secretHeader?: string): Request {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (secretHeader !== undefined) headers[DCR_HEADER] = secretHeader;
+  return new Request("http://localhost/register", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      client_name: "Test Client",
+      redirect_uris: ["https://example.com/cb"],
+      token_endpoint_auth_method: "none",
+    }),
+  });
+}
+
+Deno.test("register gate — env UNSET → 403 access_denied, no client minted", async () => {
+  Deno.env.delete(DCR_ENV);
+  const sb = createMockSupabaseClient();
+  sb.onTable("oauth_clients", { data: null, error: null });
+  _setSupabaseClientForTesting(sb);
+
+  // Even WITH a header, an unset env means registration is disabled.
+  const res = await handleRegister(registerReq("anything"));
+  assertEquals(res.status, 403);
+  const body = await res.json();
+  assertEquals(body.error, "access_denied");
+  assertEquals(body.error_description, "dynamic client registration is disabled");
+  // Fail-closed: no client row inserted.
+  assertEquals(sb.callsForTable("oauth_clients").length, 0);
+});
+
+Deno.test("register gate — env SET + WRONG secret → 403 access_denied, no client minted", async () => {
+  Deno.env.set(DCR_ENV, DCR_SECRET);
+  try {
+    const sb = createMockSupabaseClient();
+    sb.onTable("oauth_clients", { data: null, error: null });
+    _setSupabaseClientForTesting(sb);
+
+    const res = await handleRegister(registerReq("not-the-secret"));
+    assertEquals(res.status, 403);
+    const body = await res.json();
+    assertEquals(body.error, "access_denied");
+    assertEquals(body.error_description, "dynamic client registration requires a bootstrap secret");
+    assertEquals(sb.callsForTable("oauth_clients").length, 0);
+
+    // Absent header (env still set) is also rejected.
+    const resNoHeader = await handleRegister(registerReq());
+    assertEquals(resNoHeader.status, 403);
+    assertEquals((await resNoHeader.json()).error, "access_denied");
+    assertEquals(sb.callsForTable("oauth_clients").length, 0);
+  } finally {
+    Deno.env.delete(DCR_ENV);
+  }
+});
+
+Deno.test("register gate — env SET + CORRECT secret → registration proceeds (201)", async () => {
+  Deno.env.set(DCR_ENV, DCR_SECRET);
+  try {
+    const sb = createMockSupabaseClient();
+    // Insert succeeds → handler returns the registration response.
+    sb.onTable("oauth_clients", { data: null, error: null });
+    _setSupabaseClientForTesting(sb);
+
+    const res = await handleRegister(registerReq(DCR_SECRET));
+    assertEquals(res.status, 201);
+    const body = await res.json();
+    assertEquals(typeof body.client_id, "string");
+    assertEquals(typeof body.client_secret === "undefined", true); // auth_method "none" → no secret
+    assertEquals(body.client_name, "Test Client");
+    // Past the gate: the client row WAS inserted.
+    assertEquals(sb.callsForTable("oauth_clients").length, 1);
+  } finally {
+    Deno.env.delete(DCR_ENV);
+  }
 });

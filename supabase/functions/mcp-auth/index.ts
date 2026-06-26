@@ -36,8 +36,26 @@ import {
   verifyPkce,
 } from "../_shared/oauth.ts";
 import { Sentry, withSentryScope } from "../_shared/sentry-edge.ts";
+import { bearersEqual } from "../_shared/scheduler-auth.ts";
 
 const FUNCTION_NAME = "mcp-auth";
+
+// Env-gated bootstrap secret for Dynamic Client Registration (RFC 7591).
+//
+// FAIL-CLOSED: the /register endpoint self-registers an OAuth client which then
+// auto-approves on /authorize → a working access token bound to orchestrator-mcp.
+// Left open, ANY unauthenticated caller can mint a client + drive the MCP tools
+// as an anonymous actor. To close that front door:
+//   - If MCP_DCR_BOOTSTRAP_SECRET is UNSET → /register is DISABLED (403).
+//   - If it is SET → callers MUST present it in the `X-DCR-Bootstrap-Secret`
+//     header (constant-time compare via bearersEqual). Mismatch/absent → 403.
+// Deploying with the env unset immediately closes the hole; Chris sets the
+// secret via `supabase secrets set MCP_DCR_BOOTSTRAP_SECRET=...` ONLY if/when he
+// needs to register a new client. This gates ONLY /register — /token, /authorize,
+// refresh, and already-registered clients (+ their refresh tokens) are untouched.
+const DCR_BOOTSTRAP_SECRET_ENV = "MCP_DCR_BOOTSTRAP_SECRET";
+/** Header a /register caller presents the bootstrap secret in. */
+const DCR_BOOTSTRAP_HEADER = "X-DCR-Bootstrap-Secret";
 
 // test seam — see index.test.ts. `sb` is lazily initialized via a Proxy so
 // tests can swap the underlying client via _setSupabaseClientForTesting()
@@ -145,7 +163,49 @@ interface DcrRequestBody {
   token_endpoint_auth_method?: string;
 }
 
-async function handleRegister(req: Request): Promise<Response> {
+/**
+ * Rejects a /register call, logs it (so probing is visible), and returns the
+ * OAuth-style 403. `description` distinguishes "disabled" (env unset) from
+ * "requires a bootstrap secret" (env set, secret wrong/absent).
+ */
+function rejectRegistration(description: string, reason: string): Response {
+  Sentry.captureMessage("OAuth /register rejected — bootstrap gate", {
+    level: "warning",
+    tags: { oauth_event: "register_rejected" },
+    extra: { reason },
+  });
+  return oauthError("access_denied", description, 403);
+}
+
+/**
+ * FAIL-CLOSED bootstrap-secret gate for Dynamic Client Registration. Returns a
+ * 403 Response to short-circuit on rejection, or null to let registration
+ * proceed. See the DCR_BOOTSTRAP_SECRET_ENV comment block above for the policy.
+ */
+function checkDcrBootstrap(req: Request): Response | null {
+  const configured = Deno.env.get(DCR_BOOTSTRAP_SECRET_ENV);
+  // Env unset (or empty) → registration is disabled. This is the default and
+  // closes the hole the moment this ships without any secret being set.
+  if (!configured) {
+    return rejectRegistration("dynamic client registration is disabled", "env_unset");
+  }
+  const presented = req.headers.get(DCR_BOOTSTRAP_HEADER) ?? "";
+  // Constant-time compare (bearersEqual) — never `===`, which can leak per-byte
+  // timing on the secret.
+  if (!presented || !bearersEqual(presented, configured)) {
+    return rejectRegistration(
+      "dynamic client registration requires a bootstrap secret",
+      presented ? "secret_mismatch" : "secret_absent",
+    );
+  }
+  return null;
+}
+
+export async function handleRegister(req: Request): Promise<Response> {
+  // FAIL-CLOSED gate — must run BEFORE any client is minted.
+  const gate = checkDcrBootstrap(req);
+  if (gate) return gate;
+
   let body: DcrRequestBody;
   try {
     body = await req.json();
