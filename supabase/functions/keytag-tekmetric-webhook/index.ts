@@ -352,7 +352,7 @@ async function markProcessed(
       },
     );
   }
-  await sb
+  const { error: markErr } = await sb
     .from("keytag_webhook_events")
     .update({
       processed_at: new Date().toISOString(),
@@ -361,6 +361,20 @@ async function markProcessed(
       error_message: errorMessage ?? null,
     })
     .eq("id", eventId);
+  if (markErr) {
+    // M3 fix: markProcessed is the outcome-of-record writer. A swallowed failure
+    // here leaves processed_at NULL — a handled event looks unprocessed forever
+    // with no signal. Surface it (structured) without failing the response.
+    console.error(
+      JSON.stringify({
+        level: "error",
+        msg: "markProcessed_update_failed",
+        event_id: eventId,
+        result,
+        detail: markErr.message,
+      }),
+    );
+  }
 }
 
 // ─── Main entry ─────────────────────────────────────────────────────────────
@@ -691,13 +705,51 @@ export async function handler(req: Request): Promise<Response> {
         });
       }
       if (roNumberForHistory !== null && roIdSafe && roNumberSafe) {
-        const { data: priorHistoryRows } = await sb
+        const { data: priorHistoryRows, error: priorHistErr } = await sb
           .from("keytag_audit_log")
           .select("id, action, occurred_at, tag_color, tag_number, reason")
           .or(`ro_id.eq.${roId},ro_number.eq.${roNumberForHistory}`)
           .neq("action", "manual_review_issued")
           .order("occurred_at", { ascending: false })
           .limit(3);
+        if (priorHistErr) {
+          // H3 fix — FAIL CLOSED. We can't read prior history, so we can't rule
+          // out drift; auto-assigning (the old fall-through) would risk a SECOND
+          // physical tag on an RO that already had one — the exact drift L1 stops.
+          // Issue a drift review for a human to confirm instead of auto-assigning.
+          Sentry.captureMessage(
+            "keytag webhook: prior-history read failed — failing closed to a drift review",
+            "warning",
+          );
+          const issued = await issueManualReview({
+            sb,
+            category: "work_approved_drift",
+            context: {
+              ro_id: roId,
+              ro_number: roNumberForHistory,
+              prior_history_read_error: priorHistErr.message,
+            },
+            options: driftOptions(roNumberForHistory, "the previous tag"),
+            issueSummary:
+              `RO #${roNumberForHistory} is back in WIP, but we couldn't read its key-tag history (DB read error) to rule out a prior tag. Please confirm before tagging.`,
+            auditSource: "webhook",
+          });
+          await markProcessed(eventId, "manual_review_issued_history_read_error", {
+            ro_id: roId,
+            ro_number: roNumberForHistory,
+            code: issued.code,
+          });
+          return new Response(
+            JSON.stringify({
+              ok: true,
+              action: "manual_review_issued",
+              reason: "prior_history_read_error",
+              code: issued.code,
+              ro_id: roId,
+            }),
+            { status: 200 },
+          );
+        }
         const priorHistory = priorHistoryRows?.[0];
         if (priorHistory) {
           // De-dup: if an unresolved DRF/REG already exists for this RO, skip
@@ -934,7 +986,7 @@ export async function handler(req: Request): Promise<Response> {
       }
 
       // Audit-log entry (closes the gap — webhook assignments are now logged too)
-      await sb.rpc("log_keytag_audit", {
+      const { error: assignAuditErr } = await sb.rpc("log_keytag_audit", {
         p_tag_color: tagColor,
         p_tag_number: tagNumber,
         p_action: "assigned",
@@ -948,6 +1000,19 @@ export async function handler(req: Request): Promise<Response> {
         p_tekmetric_patch_ok: patchResult.ok,
         p_tekmetric_patch_error: patchResult.error ?? null,
       });
+      if (assignAuditErr) {
+        // M3 fix: a dropped 'assigned' audit row is exactly the signal the L1
+        // anti-drift gate reads on the next work_approved — losing it re-opens the
+        // double-assign. Surface it (structured) without failing the committed assign.
+        console.error(
+          JSON.stringify({
+            level: "error",
+            msg: "log_keytag_audit_assigned_failed",
+            ro_number: ro.repairOrderNumber,
+            detail: assignAuditErr.message,
+          }),
+        );
+      }
 
       // Capture the customer name on the keytag row (best-effort, OFF the PATCH
       // critical path — the keyTag is already written to Tekmetric above). One

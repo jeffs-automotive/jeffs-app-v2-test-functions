@@ -431,11 +431,24 @@ export async function releaseKeytagFromRo(
   let dbTagNumber: number | null = null;
   let dbTagStatus: "assigned" | "posted_ar" | "available" | null = null;
 
-  const { data: dbRow } = await sb
+  const { data: dbRow, error: dbErr } = await sb
     .from("keytags")
     .select("ro_id, tag_color, tag_number, status")
     .eq("ro_number", roNumber)
     .maybeSingle();
+  if (dbErr) {
+    // H2 fix — FAIL CLOSED. The old code dropped this error and fell through with
+    // dbTagStatus=null → requiresConfirmation=false → an A/R-locked (posted_ar)
+    // tag would be released with NO two-step confirmation (and L4 permits it,
+    // since release_keytag_for_ro sets the GUC). An unreadable status must never
+    // become an unconfirmed A/R release — abort and let the caller retry.
+    return {
+      ok: false,
+      error_code: "rpc_error",
+      message: `Couldn't read the key tag status for RO #${roNumber} (${dbErr.message}). Aborting rather than risk an unconfirmed A/R release — please retry.`,
+      ro_number: roNumber,
+    };
+  }
   if (dbRow?.ro_id) {
     roId = dbRow.ro_id as number;
     dbTagColor = dbRow.tag_color as TagColor;
