@@ -3,15 +3,17 @@ import "server-only";
 /**
  * loadBoardState — the Live board's data (tagged in-use + untagged-needs-a-tag),
  * shared by the LiveBoardTab Server Component (initial render) and the
- * getBoardState poll action. Two cheap DB reads via the orchestrator, no
- * Tekmetric. Throws on transport failure — callers handle (server component →
+ * getBoardState poll action. Two cheap DB reads DIRECT IN-PROCESS via the
+ * @jeffs/keytag-core read DAL (Phase 2 of the keytag orchestrator-removal plan,
+ * docs/keytag/orchestrator-removal-plan.md §10) — no orchestrator-mcp HTTP hop,
+ * no Tekmetric. Throws on read failure — callers handle (server component →
  * error card; action → { kind: 'error' }).
  *
  * Untagged source = open manual reviews of the "needs a tag" categories
  * (work_approved_drift / ar_regression = WIP-needs-tag; ar_no_prior_tag =
  * A/R-without-tag). Reconciled data — NOT raw webhook-lifecycle inference.
  */
-import { callKeytagTool } from "@/lib/orchestrator/client";
+import { getWipKeyTags, getManualReviews } from "@/lib/keytag/read-dal";
 import type {
   BoardState,
   ManualReviewCategory,
@@ -49,10 +51,17 @@ export function untaggedWhy(cat: ManualReviewCategory): {
   }
 }
 
-export async function loadBoardState(actorEmail: string): Promise<BoardState> {
+export async function loadBoardState(
+  // The direct in-process reads resolve shop_id server-side and carry no
+  // per-actor header, so actorEmail is no longer used by the read. It's kept in
+  // the signature so the two callers (board-state action + LiveBoardTab) are
+  // unchanged; dropping it is a separate Phase-3 cleanup (`_` prefix satisfies
+  // the repo's no-unused-vars argsIgnorePattern).
+  _actorEmail: string,
+): Promise<BoardState> {
   const [tags, reviews] = await Promise.all([
-    callKeytagTool("listWipKeyTags", {}, actorEmail),
-    callKeytagTool("listManualReviews", { only_open: true, limit: 200 }, actorEmail),
+    getWipKeyTags(),
+    getManualReviews({ only_open: true, limit: 200 }),
   ]);
 
   const untagged: UntaggedBoardRow[] = reviews.results

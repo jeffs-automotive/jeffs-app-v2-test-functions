@@ -25,11 +25,54 @@ import "server-only";
  */
 import {
   getKeytagDashboardTool,
+  listWipKeyTags,
+  listManualReviewsTool,
+  getKeytagAuditHistory,
   type KeytagDashboardResult as CoreDashboardResult,
+  type WipKeyTagsResult as CoreWipKeyTagsResult,
+  type ListManualReviewsResult as CoreManualReviewsResult,
+  type ListManualReviewsArgs as CoreManualReviewsArgs,
+  type GetKeytagAuditHistoryResult as CoreAuditHistoryResult,
 } from "@jeffs/keytag-core";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { resolveAdminShopId } from "@/lib/scheduler/shop-id";
-import type { KeytagDashboardResult } from "@/lib/orchestrator/types";
+import type {
+  KeytagDashboardResult,
+  WipKeyTagsResult,
+  ListManualReviewsResult,
+  ListManualReviewsArgs,
+  GetKeytagAuditHistoryResult,
+  GetKeytagAuditHistoryArgs,
+} from "@/lib/orchestrator/types";
+
+/**
+ * Shared 10s seatbelt — the same Promise.race backstop getDashboard uses,
+ * lifted into a helper so the three Phase-2 board/tab reads carry the EXACT
+ * same timeout/throw contract. A pure DB read finishes in well under a second;
+ * the timeout exists so a hung connection surfaces the caller's error card
+ * rather than wedging the render. NEVER swallow to empty results — the
+ * loaders/tabs catch the throw and render the error card (observability.md).
+ *
+ * @throws the `<label> timed out after 10s` error if `read` doesn't settle
+ *   first, OR re-throws whatever DB error `read` rejects with.
+ */
+async function withReadSeatbelt<T>(
+  label: string,
+  read: Promise<T>,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`${label} timed out after 10s`)),
+      DASHBOARD_READ_TIMEOUT_MS,
+    );
+  });
+  try {
+    return await Promise.race([read, timeout]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
 
 /**
  * The 10s seatbelt, carried over verbatim from the prior orchestrator call
@@ -77,4 +120,78 @@ export async function getDashboard(): Promise<KeytagDashboardResult> {
   } finally {
     if (timer !== undefined) clearTimeout(timer);
   }
+}
+
+/**
+ * List every in-use keytag (WIP `assigned` + A/R `posted_ar`) directly from
+ * Postgres — the `tagged` half of the Live board (Phase 2). Mirrors
+ * getDashboard: service-role client + server-resolved shop_id + the shared
+ * 10s seatbelt. Pure DB read; no Tekmetric, no orchestrator hop.
+ *
+ * @throws on the 10s timeout OR any underlying DB error (listWipKeyTags throws
+ *   on a failed keytags query) — loadBoardState's catch renders the error card.
+ *   We never swallow to an empty board (no silent failures — observability.md).
+ */
+export async function getWipKeyTags(): Promise<WipKeyTagsResult> {
+  const sb = createSupabaseAdminClient();
+  const shopId = resolveAdminShopId();
+  const result: CoreWipKeyTagsResult = await withReadSeatbelt(
+    "keytag WIP-keytags read",
+    listWipKeyTags(sb, shopId),
+  );
+  // CoreWipKeyTagsResult is field-identical to the admin-app WipKeyTagsResult
+  // (same ok/count/shop_id/results<WipKeyTagEntry> shape); one well-scoped cast
+  // bridges the two nominal declarations, matching the getDashboard boundary.
+  return result as WipKeyTagsResult;
+}
+
+/**
+ * List keytag manual reviews directly from Postgres (Phase 2) — the data the
+ * board's untagged list + the Manual Reviews tab read. Mirrors getDashboard:
+ * service-role client + the shared 10s seatbelt. Pure DB read; the shop is
+ * single-tenant so the package's review query is shop-global (matches the
+ * orchestrator tool it replaces).
+ *
+ * @throws on the 10s timeout OR any underlying DB error — callers render their
+ *   error card. We never swallow to empty results (observability.md).
+ */
+export async function getManualReviews(
+  args: ListManualReviewsArgs,
+): Promise<ListManualReviewsResult> {
+  const sb = createSupabaseAdminClient();
+  // The admin-app ListManualReviewsArgs is structurally the package's
+  // CoreManualReviewsArgs ({ only_open?, search?, limit? }).
+  const result: CoreManualReviewsResult = await withReadSeatbelt(
+    "keytag manual-reviews read",
+    listManualReviewsTool(sb, args as CoreManualReviewsArgs),
+  );
+  // The package's ManualReviewCategory is a subset of the admin-app union
+  // (admin adds the forward-compat `appointment_verification_mismatch`), so the
+  // result widens cleanly; one boundary cast bridges the nominal declarations,
+  // matching the getDashboard pattern.
+  return result as ListManualReviewsResult;
+}
+
+/**
+ * Read the keytag audit log directly from Postgres (Phase 2) — the Audit
+ * History tab's data. Mirrors getDashboard: service-role client + the shared
+ * 10s seatbelt. Pure DB read; no orchestrator hop.
+ *
+ * @throws on the 10s timeout OR any underlying DB error — the tab renders its
+ *   error card. We never swallow to empty results (observability.md).
+ */
+export async function getAuditHistory(
+  args: GetKeytagAuditHistoryArgs,
+): Promise<GetKeytagAuditHistoryResult> {
+  const sb = createSupabaseAdminClient();
+  // The admin-app GetKeytagAuditHistoryArgs (action/source as unions) is
+  // structurally assignable to the package's looser arg type (string fields).
+  const result: CoreAuditHistoryResult = await withReadSeatbelt(
+    "keytag audit-history read",
+    getKeytagAuditHistory(sb, args),
+  );
+  // Field-identical results except the package types `filters` concretely while
+  // the admin-app type is `Record<string, unknown>`; one boundary cast bridges
+  // the two, matching the getDashboard pattern.
+  return result as GetKeytagAuditHistoryResult;
 }

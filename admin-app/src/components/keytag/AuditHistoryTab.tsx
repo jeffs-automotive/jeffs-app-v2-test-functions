@@ -21,10 +21,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import {
-  callKeytagTool,
-  OrchestratorClientError,
-} from "@/lib/orchestrator/client";
+import { OrchestratorClientError } from "@/lib/orchestrator/client";
+import { getAuditHistory } from "@/lib/keytag/read-dal";
 import { formatEastern } from "@/lib/format-time";
 import type {
   GetKeytagAuditHistoryArgs,
@@ -91,15 +89,18 @@ const ACTION_LABEL: Record<string, { label: string; className: string }> = {
 };
 
 export async function AuditHistoryTab({
-  actorEmail,
+  // Kept on the props contract (page passes actorEmail) but unused by the
+  // direct in-process read, which resolves shop_id server-side; `_` prefix
+  // satisfies no-unused-vars. Dropping the prop is a Phase-3 cleanup.
+  actorEmail: _actorEmail,
   searchParams,
 }: AuditHistoryTabProps) {
   const filters = parseFilters(searchParams);
 
-  let result: Awaited<ReturnType<typeof callKeytagTool<"getKeytagAuditHistory">>> | null = null;
+  let result: Awaited<ReturnType<typeof getAuditHistory>> | null = null;
   let error: string | null = null;
   try {
-    result = await callKeytagTool("getKeytagAuditHistory", filters, actorEmail);
+    result = await getAuditHistory(filters);
   } catch (e) {
     error =
       e instanceof OrchestratorClientError
