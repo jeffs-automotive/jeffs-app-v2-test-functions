@@ -14,6 +14,18 @@ import { TEKMETRIC_API_BASE, VAULT_NAMES } from "./tekmetric.ts";
 
 let cachedToken: string | null = null;
 
+/**
+ * Default per-request timeout (ms) for every Tekmetric fetch. A slow/hung
+ * Tekmetric API must NOT hang the whole caller chain — without this the
+ * orchestrator/edge handler would block until the platform's own (much
+ * longer) hard timeout, which is what contributed to the keytag UI hangs.
+ *
+ * Mirrors the admin-app orchestrator client's `signal: AbortSignal.timeout(ms)`
+ * pattern (admin-app/src/lib/orchestrator/client.ts). Overridable per-call
+ * via FetchOptions.timeoutMs.
+ */
+const DEFAULT_TEKMETRIC_TIMEOUT_MS = 15_000;
+
 /** Fetches the Tekmetric access token from Vault, caching it for this instance. */
 export async function getTekmetricAccessToken(sb: SupabaseClient): Promise<string> {
   if (cachedToken) return cachedToken;
@@ -51,6 +63,12 @@ interface FetchOptions {
   method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
   body?: unknown;
   query?: Record<string, string | number | boolean | undefined | null>;
+  /**
+   * Per-request timeout in ms. Defaults to DEFAULT_TEKMETRIC_TIMEOUT_MS.
+   * On timeout the underlying fetch rejects (AbortError) — surfaced as a
+   * clean error by the caller's existing error handling, never a silent hang.
+   */
+  timeoutMs?: number;
 }
 
 /**
@@ -80,6 +98,12 @@ function buildUrl(
  * credentials while a warm Edge Function instance holds the prior token.
  * Single retry — if the fresh fetch ALSO 401s, return the response so
  * the caller's error path runs (token genuinely invalid, not stale).
+ *
+ * Timeout (L2): every fetch carries `signal: AbortSignal.timeout(timeoutMs)`
+ * (default DEFAULT_TEKMETRIC_TIMEOUT_MS). A slow/hung Tekmetric API rejects
+ * the fetch (AbortError) instead of hanging the caller chain. A FRESH signal
+ * is minted per fetch attempt — the retry must not inherit an already-fired
+ * abort from the first attempt.
  */
 export async function tekmetricFetch(
   sb: SupabaseClient,
@@ -87,6 +111,7 @@ export async function tekmetricFetch(
   options: FetchOptions = {},
 ): Promise<Response> {
   const url = buildUrl(path, options.query);
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TEKMETRIC_TIMEOUT_MS;
   const buildInit = (token: string): RequestInit => {
     const init: RequestInit = {
       method: options.method ?? "GET",
@@ -94,6 +119,9 @@ export async function tekmetricFetch(
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
+      // Fresh per-attempt deadline. Minted inside buildInit (called once per
+      // fetch) so the 401-retry gets its own un-fired timeout signal.
+      signal: AbortSignal.timeout(timeoutMs),
     };
     if (options.body !== undefined) {
       init.body = JSON.stringify(options.body);

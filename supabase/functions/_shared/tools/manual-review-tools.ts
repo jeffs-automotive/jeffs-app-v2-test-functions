@@ -659,7 +659,7 @@ async function forceAssignAndPatch(
     details: { tag: describeKeytag(color, tagNumber), ro_number: ctx.ro_number, patch_ok: patch.ok, audit_log_id: auditId },
     message: patch.ok
       ? `Assigned ${describeKeytag(color, tagNumber)} to RO #${ctx.ro_number} and wrote it to Tekmetric.`
-      : `Assigned ${describeKeytag(color, tagNumber)} in our system, but Tekmetric refused the write (${patch.error}). The system has issued a fresh PAF review.`,
+      : `Assigned ${describeKeytag(color, tagNumber)} in our system, but Tekmetric refused the write (${patch.error}). The tag is saved here; the Tekmetric Key Tag field for RO #${ctx.ro_number} stays blank for now. Re-run this resolution to retry the Tekmetric write, or accept it unsynced.`,
   };
 }
 
@@ -730,7 +730,7 @@ async function roundRobinAssignAndPatch(
     details: { tag: describeKeytag(color, tagNumber), ro_number: ctx.ro_number, patch_ok: patch.ok, audit_log_id: auditId },
     message: patch.ok
       ? `Picked ${describeKeytag(color, tagNumber)} for RO #${ctx.ro_number} (round-robin) and wrote it to Tekmetric. Put ${describeKeytag(color, tagNumber)} on the keys.`
-      : `Picked ${describeKeytag(color, tagNumber)} for RO #${ctx.ro_number} but Tekmetric refused our write (${patch.error}). A fresh PAF review has been issued.`,
+      : `Picked ${describeKeytag(color, tagNumber)} for RO #${ctx.ro_number} (round-robin) but Tekmetric refused our write (${patch.error}). The tag is saved here and is on the keys; the Tekmetric Key Tag field for RO #${ctx.ro_number} stays blank for now. Re-run this resolution to retry the Tekmetric write, or accept it unsynced.`,
   };
 }
 

@@ -589,6 +589,13 @@ async function handleToolsCall(
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error(`tools/call ${name} crashed:`, msg);
+    // M6: this catch turns a tool crash into an isError:true MCP result (HTTP
+    // 200), so the exception never propagates out to withSentryScope — without
+    // an explicit capture the failure is invisible. Report it; do NOT change
+    // the response shape/status.
+    Sentry.captureException(e, {
+      tags: { fn: "orchestrator-mcp", mcp_method: "tools/call", tool: name },
+    });
     return {
       content: [
         {
@@ -692,10 +699,19 @@ Deno.serve((req) => withSentryScope(req, "orchestrator-mcp", async () => {
         );
     }
   } catch (e) {
+    // RpcInvalidParams / RpcMethodNotFound are client protocol errors (bad
+    // args / unknown method), NOT orchestrator failures — return them without
+    // a Sentry capture to avoid noise.
     if (e instanceof RpcInvalidParams) return jsonRpcError(id, RPC_ERR.INVALID_PARAMS, e.message);
     if (e instanceof RpcMethodNotFound) return jsonRpcError(id, RPC_ERR.METHOD_NOT_FOUND, e.message);
     const msg = e instanceof Error ? e.message : String(e);
     console.error("orchestrator-mcp internal error:", msg);
+    // M6: this catch converts a genuine internal failure into a JSON-RPC
+    // INTERNAL error response (HTTP 200), so it never reaches withSentryScope's
+    // captureException. Report it explicitly; the response/status is unchanged.
+    Sentry.captureException(e, {
+      tags: { fn: "orchestrator-mcp", mcp_method: rpcReq.method },
+    });
     return jsonRpcError(id, RPC_ERR.INTERNAL, "Internal server error", { message: msg });
   }
 }));
