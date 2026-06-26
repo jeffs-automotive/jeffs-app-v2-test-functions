@@ -39,11 +39,43 @@ import { Sentry, withSentryScope } from "../_shared/sentry-edge.ts";
 
 const FUNCTION_NAME = "mcp-auth";
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const sb = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
-  auth: { persistSession: false, autoRefreshToken: false },
+// test seam — see index.test.ts. `sb` is lazily initialized via a Proxy so
+// tests can swap the underlying client via _setSupabaseClientForTesting()
+// WITHOUT triggering createClient() (which needs SUPABASE_URL /
+// SUPABASE_SERVICE_ROLE_KEY at module load). In production the first property
+// access constructs the real service-role client. Mirrors the established
+// seam in keytag-tekmetric-webhook/index.ts.
+// deno-lint-ignore no-explicit-any
+let _sbImpl: any = null;
+
+// deno-lint-ignore no-explicit-any
+function _getSbImpl(): any {
+  if (_sbImpl === null) {
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+    const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    _sbImpl = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+  }
+  return _sbImpl;
+}
+
+// deno-lint-ignore no-explicit-any
+const sb = new Proxy({} as any, {
+  get(_target, prop, _receiver): unknown {
+    const impl = _getSbImpl();
+    const val = impl[prop];
+    return typeof val === "function" ? val.bind(impl) : val;
+  },
 });
+
+/**
+ * Test-only: replace the module-level Supabase client with a mock. Setting any
+ * non-null value bypasses lazy-init in _getSbImpl(). Production never calls this.
+ */
+export function _setSupabaseClientForTesting(client: unknown): void {
+  _sbImpl = client;
+}
 
 // ─── Response helpers ───────────────────────────────────────────────────────
 
@@ -324,55 +356,51 @@ async function handleAuthorizeGet(req: Request): Promise<Response> {
 
 /**
  * Atomically inserts an access_token + refresh_token pair bound to the same
- * identity. Called from BOTH grant types — authorization_code (initial) and
- * refresh_token (rotation). Returns the OAuth-spec response body to send to
- * the client, or an error Response on DB failure.
+ * identity and token FAMILY. Called from BOTH grant types — authorization_code
+ * (initial issue, fresh familyId) and refresh_token (rotation, inherited
+ * familyId). Returns the OAuth-spec response body to send to the client, or an
+ * error Response on DB failure.
+ *
+ * L4: the two rows are inserted by a single SECURITY DEFINER RPC
+ * (`oauth_issue_token_pair`) so they commit in one transaction. The previous
+ * implementation did two sequential `.insert()` calls — a partial-failure
+ * window where the access row could persist without its refresh row.
  */
 async function issueTokenPair(args: {
   clientId: string;
   userLabel: string;
   scope: string;
   resource: string | null;
+  familyId: string; // fresh uuid on initial issue, inherited on rotation
   parentRefreshTokenHash: string | null; // null on initial issue, set on rotation
 }): Promise<
   | { ok: true; body: Record<string, unknown> }
   | { ok: false; response: Response }
 > {
-  const { clientId, userLabel, scope, resource, parentRefreshTokenHash } = args;
+  const { clientId, userLabel, scope, resource, familyId, parentRefreshTokenHash } = args;
 
   const accessToken = randomToken(32);
   const accessTokenHash = await sha256Base64Url(accessToken);
-  const accessExpiresAt = new Date(Date.now() + ACCESS_TOKEN_TTL_SEC * 1000).toISOString();
 
   const refreshToken = randomToken(48);
   const refreshTokenHash = await sha256Base64Url(refreshToken);
-  const refreshExpiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_SEC * 1000).toISOString();
 
-  const { error: accessErr } = await sb.from("oauth_access_tokens").insert({
-    token_hash: accessTokenHash,
-    client_id: clientId,
-    user_label: userLabel,
-    scope,
-    resource,
-    expires_at: accessExpiresAt,
+  // Single transaction: both rows commit together or not at all (L4).
+  const { error: issueErr } = await sb.rpc("oauth_issue_token_pair", {
+    p_access_token_hash: accessTokenHash,
+    p_refresh_token_hash: refreshTokenHash,
+    p_client_id: clientId,
+    p_user_label: userLabel,
+    p_scope: scope,
+    p_resource: resource,
+    p_family_id: familyId,
+    p_parent_token_hash: parentRefreshTokenHash,
+    p_access_ttl_seconds: ACCESS_TOKEN_TTL_SEC,
+    p_refresh_ttl_seconds: REFRESH_TOKEN_TTL_SEC,
   });
-  if (accessErr) {
-    console.error("oauth_access_tokens insert failed:", accessErr.message);
-    return { ok: false, response: oauthError("server_error", accessErr.message, 500) };
-  }
-
-  const { error: refreshErr } = await sb.from("oauth_refresh_tokens").insert({
-    token_hash: refreshTokenHash,
-    client_id: clientId,
-    user_label: userLabel,
-    scope,
-    resource,
-    parent_token_hash: parentRefreshTokenHash,
-    expires_at: refreshExpiresAt,
-  });
-  if (refreshErr) {
-    console.error("oauth_refresh_tokens insert failed:", refreshErr.message);
-    return { ok: false, response: oauthError("server_error", refreshErr.message, 500) };
+  if (issueErr) {
+    console.error("oauth_issue_token_pair RPC failed:", issueErr.message);
+    return { ok: false, response: oauthError("server_error", issueErr.message, 500) };
   }
 
   return {
@@ -570,12 +598,16 @@ async function handleToken(req: Request): Promise<Response> {
   if (markErr) return oauthError("server_error", markErr.message, 500);
   if (!marked) return oauthError("invalid_grant", "Authorization code already used (race)");
 
-  // Issue an access + refresh token pair bound to this consent.
+  // Issue an access + refresh token pair bound to this consent. A fresh
+  // authorization grant starts a NEW token family — every rotation descended
+  // from this consent inherits this familyId, so the whole chain can be
+  // revoked together if a stolen refresh token is ever replayed (M7).
   const issued = await issueTokenPair({
     clientId: clientIdAuth,
     userLabel: codeRow.user_label,
     scope: codeRow.scope,
     resource: codeRow.resource,
+    familyId: crypto.randomUUID(),
     parentRefreshTokenHash: null,
   });
   if (!issued.ok) return issued.response;
@@ -589,7 +621,7 @@ async function handleToken(req: Request): Promise<Response> {
 // pair. Rotation is mandatory per OAuth 2.1 §6.1 — the old refresh token
 // is dead the moment it's accepted, so a stolen replay returns invalid_grant.
 
-async function handleRefreshTokenGrant(
+export async function handleRefreshTokenGrant(
   req: Request,
   params: URLSearchParams,
 ): Promise<Response> {
@@ -602,9 +634,15 @@ async function handleRefreshTokenGrant(
   if (!clientAuth.ok) return clientAuth.response;
   const clientIdAuth = clientAuth.clientId;
 
-  // Atomically validate + revoke the presented token, returning the bound
-  // identity. The RPC's WHERE clause checks expired + revoked in one shot,
-  // so a stolen-token replay can't succeed.
+  // Atomically rotate the presented token AND classify the outcome. The RPC
+  // returns a `status` discriminator:
+  //   'rotated' → token was active, is now consumed (happy path)
+  //   'reuse'   → an ALREADY-revoked token was replayed → THEFT signal
+  //               (RFC 6819 §5.2.2.3 / OAuth 2.1 §6.1): two parties hold this
+  //               token. Revoke the ENTIRE family (all access + refresh
+  //               tokens descended from the same authorization grant) and
+  //               return invalid_grant.
+  //   'invalid' → unknown / expired token → plain invalid_grant.
   const refreshTokenHash = await sha256Base64Url(refreshToken);
   const { data: consumeRows, error: consumeErr } = await sb.rpc(
     "oauth_consume_refresh_token",
@@ -615,9 +653,69 @@ async function handleRefreshTokenGrant(
     return oauthError("server_error", consumeErr.message, 500);
   }
   const consumed = Array.isArray(consumeRows) ? consumeRows[0] : consumeRows;
-  if (!consumed) {
+  // The RPC always returns exactly one row with a status. A missing row means
+  // the RPC shape is wrong — fail closed.
+  if (!consumed || typeof consumed.status !== "string") {
+    console.error("oauth_consume_refresh_token returned no status row");
+    return oauthError("server_error", "refresh token consume returned no status", 500);
+  }
+
+  if (consumed.status === "reuse") {
+    // Reuse detection: a refresh token that was already rotated/revoked has
+    // been presented again. Revoke the whole family — the legitimate holder's
+    // current tokens included, because we cannot tell attacker from victim and
+    // the safe action is to force a re-consent.
+    //
+    // Gate the family sweep on the consumed token's client_id matching the
+    // authenticated client. Anyone replaying a refresh token already holds its
+    // raw value, so this is not a confidentiality boundary — but it stops a
+    // caller authenticated as client X from triggering revocation of an
+    // unrelated client Y's family (a cross-client DoS) by replaying a token
+    // they somehow obtained. Either way the presented (revoked) token does not
+    // succeed; we just scope the blast radius of the family sweep.
+    const tokenClientId = (consumed.client_id as string | null) ?? null;
+    const familyId = tokenClientId === clientIdAuth
+      ? ((consumed.family_id as string | null) ?? null)
+      : null;
+    let revokeSummary: unknown = null;
+    if (familyId) {
+      const { data: revokeRows, error: revokeErr } = await sb.rpc(
+        "oauth_revoke_token_family",
+        { p_family_id: familyId },
+      );
+      if (revokeErr) {
+        // Log but still return invalid_grant — the presented token is already
+        // revoked (the consume RPC saw it as such), so the replay does not
+        // succeed regardless of whether the family sweep landed.
+        console.error("oauth_revoke_token_family RPC failed:", revokeErr.message);
+      } else {
+        revokeSummary = Array.isArray(revokeRows) ? revokeRows[0] : revokeRows;
+      }
+    }
+    Sentry.captureMessage("OAuth refresh-token REUSE detected — family revoked", {
+      level: "warning",
+      tags: {
+        oauth_event: "refresh_token_reuse",
+        client_id: (consumed.client_id as string | null) ?? clientIdAuth,
+      },
+      extra: {
+        family_id: familyId,
+        revoked: revokeSummary,
+        // Don't log the raw token; the hash is enough to correlate in DB.
+        presented_token_hash_prefix: refreshTokenHash.slice(0, 12),
+      },
+    });
+    return oauthError(
+      "invalid_grant",
+      "Refresh token has already been used — the token family has been revoked. Re-authorize to continue.",
+    );
+  }
+
+  if (consumed.status !== "rotated") {
+    // 'invalid' (unknown / expired) — nothing to revoke.
     return oauthError("invalid_grant", "Refresh token is unknown, expired, or revoked");
   }
+
   if (consumed.client_id !== clientIdAuth) {
     return oauthError("invalid_grant", "Refresh token was issued to a different client");
   }
@@ -668,11 +766,15 @@ async function handleRefreshTokenGrant(
     }
   }
 
+  // Rotation stays in the SAME token family as the consumed token, so a later
+  // reuse anywhere in the chain revokes this descendant too (M7).
+  const familyId = consumed.family_id as string;
   const issued = await issueTokenPair({
     clientId: clientIdAuth,
     userLabel: consumed.user_label as string,
     scope: newScope,
     resource: refreshResource,
+    familyId,
     parentRefreshTokenHash: refreshTokenHash,
   });
   if (!issued.ok) return issued.response;
