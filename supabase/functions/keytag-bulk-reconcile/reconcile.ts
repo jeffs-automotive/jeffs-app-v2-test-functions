@@ -105,13 +105,18 @@ export async function reconcileOne(
             } else if (
               relRows &&
               relRows.length > 0 &&
-              (relRows[0] as { source: string | null }).source ===
-                "claude_desktop"
+              // H4 fix: recognize BOTH human-release surfaces. Pre 2026-06-24
+              // every manual release was 'claude_desktop'; the admin-app /keytags
+              // dashboard now stamps 'admin_app'. Without this, dashboard-released
+              // A/R tags get a fresh ARN re-issued every night.
+              ["claude_desktop", "admin_app"].includes(
+                (relRows[0] as { source: string | null }).source ?? "",
+              )
             ) {
               return {
                 ...base,
                 action: "noop",
-                detail: "skipped: prior manual release in audit log",
+                detail: "skipped: prior manual human release in audit log",
               };
             }
           }
@@ -396,7 +401,7 @@ export async function reconcileOne(
         p_tag_color: color,
         p_tag_number: number,
         p_action: "assigned",
-        p_source: "reconcile",
+        p_source: "cron",
         p_ro_id: ro.id,
         p_ro_number: ro.repairOrderNumber,
         p_prior_status: "available",
@@ -462,7 +467,7 @@ export async function reconcileOne(
         p_tag_color: existing.tag_color,
         p_tag_number: existing.tag_number,
         p_action: "reverted",
-        p_source: "reconcile",
+        p_source: "cron",
         p_ro_id: ro.id,
         p_ro_number: ro.repairOrderNumber,
         p_prior_status: "posted_ar",
@@ -497,7 +502,7 @@ export async function reconcileOne(
         p_tag_color: existing.tag_color,
         p_tag_number: existing.tag_number,
         p_action: "marked_posted",
-        p_source: "reconcile",
+        p_source: "cron",
         p_ro_id: ro.id,
         p_ro_number: ro.repairOrderNumber,
         p_prior_status: "assigned",

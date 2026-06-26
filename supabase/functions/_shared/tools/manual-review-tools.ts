@@ -399,8 +399,12 @@ async function dispatchDrift(
   }
   if (choice === "no_tag") {
     const auditId = await writeAuditLog(sb, {
-      tagColor: "red",
-      tagNumber: 0,
+      // M2 fix: a tag-less DRF/REG resolution has no real tag. (red,0) violated
+      // the keytag_audit_log tag-consistency CHECK (number must be 1-90) → the
+      // INSERT silently failed and the resolution lost its audit row. null/null
+      // matches the ARN no_tag branch (the nullable-tag columns permit it).
+      tagColor: null,
+      tagNumber: null,
       action: "manual_review_resolved",
       source: "claude_desktop",
       roId: ctx.ro_id ?? null,
@@ -705,7 +709,20 @@ async function writeAuditLog(sb: SupabaseClient, args: AuditLogArgs): Promise<nu
     .select("id")
     .single();
   if (error || !data) {
-    console.error("writeAuditLog failed:", error?.message);
+    // Structured so an audit-write failure (e.g. a future CHECK-constraint
+    // mismatch like the M2 (red,0) bug) is findable in the edge logs instead of
+    // buried. The resolution itself already committed; we never throw here.
+    console.error(
+      JSON.stringify({
+        level: "error",
+        msg: "writeAuditLog_failed",
+        action: args.action,
+        source: args.source,
+        ro_number: args.roNumber,
+        manual_review_code: args.manualReviewCode,
+        detail: error?.message ?? "insert returned no row",
+      }),
+    );
     return null;
   }
   await attachResolutionAuditLog(sb, args.reviewId, data.id as number);

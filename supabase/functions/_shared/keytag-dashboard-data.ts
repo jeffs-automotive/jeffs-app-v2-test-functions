@@ -245,9 +245,12 @@ async function fetchRosWithoutKeytags(
       : nowMs;
     const daysOpen = Math.floor((nowMs - issuedAtMs) / (24 * 60 * 60_000));
 
-    // Skip rows whose most-recent release was manual (claude_desktop) — the
-    // advisor explicitly released the tag and doesn't need a reminder.
-    if (releasedSource === "claude_desktop") {
+    // Skip rows whose most-recent release was a manual HUMAN release — the
+    // advisor explicitly released the tag and doesn't need a reminder. Both
+    // operator surfaces count: 'claude_desktop' (Claude Desktop) and 'admin_app'
+    // (the /keytags dashboard, post the 2026-06-24 provenance split). H4 fix —
+    // without admin_app, dashboard-released A/R tags reappear as false rows.
+    if (releasedSource === "claude_desktop" || releasedSource === "admin_app") {
       continue;
     }
 
