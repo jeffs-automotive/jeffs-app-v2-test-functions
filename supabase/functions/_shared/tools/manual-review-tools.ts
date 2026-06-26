@@ -18,6 +18,8 @@ import {
   type TagColor,
 } from "../keytag-format.ts";
 import { tekmetricFetch } from "../tekmetric-client.ts";
+import { getRepairOrderById, type TekmetricRepairOrder } from "./repair-orders.ts";
+import { stampKeytagCustomerName } from "../keytag-customer-name.ts";
 import {
   attachResolutionAuditLog,
   lookupManualReview as lookupRpc,
@@ -266,7 +268,7 @@ async function dispatchOrphan(
 // ── ARN: A/R RO with no prior tag ──────────────────────────────────────────
 async function dispatchArn(
   sb: SupabaseClient,
-  _shopId: number,
+  shopId: number,
   res: ResolvedRecord,
   ctx: { ro_id?: number; ro_number?: number },
   resolverLabel: string,
@@ -286,14 +288,17 @@ async function dispatchArn(
         message: "track_tag requires color + tag_number.",
       };
     }
-    // Force-assign in DB only (no Tekmetric PATCH — A/R blocks it)
+    // Best-effort RO fetch → real customer/vehicle ids + customer_name stamp so
+    // the A/R board row isn't blank. Falls back to null ids on fetch failure;
+    // never blocks the DB-only force-assign. (No Tekmetric PATCH — A/R blocks it.)
+    const ro = await fetchRoForReassign(sb, shopId, ctx.ro_id, ctx.ro_number);
     const { data: assignData, error: assignErr } = await sb.rpc("force_assign_keytag", {
       p_ro_id: ctx.ro_id,
       p_ro_number: ctx.ro_number,
       p_tag_color: color,
       p_tag_number: tagNumber,
-      p_customer_id: null,
-      p_vehicle_id: null,
+      p_customer_id: ro?.customerId ?? null,
+      p_vehicle_id: ro?.vehicleId ?? null,
       p_advisor_id: null,
       p_technician_id: null,
     });
@@ -313,6 +318,10 @@ async function dispatchArn(
         failure_reason: row.error_code,
         message: `Could not record ${describeKeytag(color, tagNumber)}: ${row.error_code}`,
       };
+    }
+    // Stamp customer_name off the critical path (errors swallowed inside).
+    if (ro && ctx.ro_id !== undefined) {
+      await stampKeytagCustomerName(sb, shopId, ctx.ro_id, ro.customerId);
     }
     // Immediately mark it posted_ar (the RO is in A/R) so the staleness clock is right
     await sb.rpc("mark_keytag_posted", {
@@ -527,6 +536,52 @@ async function dispatchPatchFail(
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
+/**
+ * Best-effort fetch of the Tekmetric RO so the manual-review reassign helpers can
+ * pass the real customer_id/vehicle_id into the assign RPCs (which restores the
+ * column the nightly backfill needs) and stamp customer_name onto the board row.
+ *
+ * Returns the RO on success, or null on any fetch failure — in which case the
+ * caller falls back to null ids (the prior behavior). The miss is surfaced as a
+ * structured console.error so a Tekmetric hiccup that drops the name is findable
+ * in the edge logs rather than silent. NEVER throws — a Tekmetric outage must not
+ * block resolving a manual review.
+ */
+async function fetchRoForReassign(
+  sb: SupabaseClient,
+  shopId: number,
+  roId: number | undefined,
+  roNumber: number | undefined,
+): Promise<TekmetricRepairOrder | null> {
+  if (roId === undefined || roId === null) return null;
+  try {
+    const ro = await getRepairOrderById(sb, shopId, roId);
+    if (!ro) {
+      console.error(
+        JSON.stringify({
+          level: "error",
+          msg: "manual_review_reassign_ro_fetch_failed",
+          ro_id: roId,
+          ro_number: roNumber ?? null,
+          detail: "RO not found in Tekmetric",
+        }),
+      );
+    }
+    return ro;
+  } catch (e) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        msg: "manual_review_reassign_ro_fetch_failed",
+        ro_id: roId,
+        ro_number: roNumber ?? null,
+        detail: e instanceof Error ? e.message : String(e),
+      }),
+    );
+    return null;
+  }
+}
+
 async function forceAssignAndPatch(
   sb: SupabaseClient,
   shopId: number,
@@ -540,13 +595,18 @@ async function forceAssignAndPatch(
 ): Promise<ResolveManualReviewToolResult> {
   const code = res.code;
   const wire = formatKeytag(color, tagNumber);
+  // Best-effort RO fetch → real customer/vehicle ids (restores the column the
+  // nightly backfill needs) + customer_name stamp so the board row isn't blank.
+  // On fetch failure we fall back to null ids (prior behavior); the miss is
+  // logged inside fetchRoForReassign. Never blocks the re-tag.
+  const ro = await fetchRoForReassign(sb, shopId, ctx.ro_id, ctx.ro_number);
   const { data, error } = await sb.rpc("force_assign_keytag", {
     p_ro_id: ctx.ro_id,
     p_ro_number: ctx.ro_number,
     p_tag_color: color,
     p_tag_number: tagNumber,
-    p_customer_id: null,
-    p_vehicle_id: null,
+    p_customer_id: ro?.customerId ?? null,
+    p_vehicle_id: ro?.vehicleId ?? null,
     p_advisor_id: null,
     p_technician_id: null,
   });
@@ -566,6 +626,10 @@ async function forceAssignAndPatch(
       failure_reason: row.error_code,
       message: `Could not assign ${describeKeytag(color, tagNumber)}: ${row.error_code}`,
     };
+  }
+  // Stamp customer_name off the critical path (errors swallowed inside).
+  if (ro && ctx.ro_id !== undefined) {
+    await stampKeytagCustomerName(sb, shopId, ctx.ro_id, ro.customerId);
   }
   const patch = await patchTekmetricKeytag(sb, shopId, ctx.ro_id!, wire);
   await sb.rpc("record_keytag_patched", {
@@ -608,11 +672,14 @@ async function roundRobinAssignAndPatch(
   auditSource: "admin_app" | "claude_desktop",
 ): Promise<ResolveManualReviewToolResult> {
   const code = res.code;
+  // Best-effort RO fetch → real customer/vehicle ids + customer_name stamp (see
+  // forceAssignAndPatch). Falls back to null ids on fetch failure; never blocks.
+  const ro = await fetchRoForReassign(sb, shopId, ctx.ro_id, ctx.ro_number);
   const { data, error } = await sb.rpc("assign_next_keytag", {
     p_ro_id: ctx.ro_id,
     p_ro_number: ctx.ro_number,
-    p_customer_id: null,
-    p_vehicle_id: null,
+    p_customer_id: ro?.customerId ?? null,
+    p_vehicle_id: ro?.vehicleId ?? null,
     p_advisor_id: null,
     p_technician_id: null,
   });
@@ -631,6 +698,10 @@ async function roundRobinAssignAndPatch(
   const color = row.tag_color as TagColor;
   const tagNumber = row.tag_number as number;
   const wire = formatKeytag(color, tagNumber);
+  // Stamp customer_name off the critical path (errors swallowed inside).
+  if (ro && ctx.ro_id !== undefined) {
+    await stampKeytagCustomerName(sb, shopId, ctx.ro_id, ro.customerId);
+  }
   const patch = await patchTekmetricKeytag(sb, shopId, ctx.ro_id!, wire);
   await sb.rpc("record_keytag_patched", {
     p_ro_id: ctx.ro_id,

@@ -38,6 +38,42 @@ export async function resolveCustomerName(
 }
 
 /**
+ * Stamp `customer_name` onto the just-(re)tagged keytag row, keyed on `ro_id`.
+ * Mirrors the best-effort stamp in keytag-management.ts (assignKeytagToRo): one
+ * Tekmetric `/customers/{id}` GET via resolveCustomerName, then an UPDATE keyed
+ * on the unambiguous ro_id. STRICTLY best-effort — resolves to a no-op on a null
+ * name or any UPDATE error (logged, never thrown). MUST NOT block or fail the
+ * re-tag (a Tekmetric hiccup must not strand a manual-review resolution).
+ *
+ * Used by the manual-review reassign helpers (force_assign / round-robin /
+ * track_tag) so they land on the board with a populated customer_name instead of
+ * blank — the one assign surface that historically forked away from this stamp.
+ */
+export async function stampKeytagCustomerName(
+  sb: SupabaseClient,
+  shopId: number,
+  roId: number,
+  customerId: number | null | undefined,
+): Promise<void> {
+  const name = await resolveCustomerName(sb, shopId, customerId);
+  if (name === null) return;
+  const { error } = await sb
+    .from("keytags")
+    .update({ customer_name: name })
+    .eq("ro_id", roId);
+  if (error) {
+    console.error(
+      JSON.stringify({
+        level: "warning",
+        msg: "stamp_keytag_customer_name_failed",
+        ro_id: roId,
+        detail: error.message,
+      }),
+    );
+  }
+}
+
+/**
  * Fill `customer_name` for every in-use keytag that's still missing it but has
  * a `customer_id`. Serves BOTH the one-time backfill of the existing in-use
  * tags AND steady-state self-heal of any assign-time miss (failed Tekmetric
