@@ -13,25 +13,26 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // `server-only` is aliased to a no-op stub in vitest.config.ts (test alias).
-vi.mock("@/lib/orchestrator/client", () => ({ callKeytagTool: vi.fn() }));
+// loadBoardState now reads directly via the keytag read-DAL (getWipKeyTags +
+// getManualReviews), not the orchestrator client — mock the DAL.
+vi.mock("@/lib/keytag/read-dal", () => ({
+  getWipKeyTags: vi.fn(),
+  getManualReviews: vi.fn(),
+}));
 
-import { callKeytagTool } from "@/lib/orchestrator/client";
+import { getWipKeyTags, getManualReviews } from "@/lib/keytag/read-dal";
 import { loadBoardState } from "@/lib/keytag/load-board-state";
 
-const mockTool = vi.mocked(callKeytagTool);
+const mockWip = vi.mocked(getWipKeyTags);
+const mockReviews = vi.mocked(getManualReviews);
 
 function wire(opts: { tags?: unknown[]; reviews?: unknown[] }) {
   const { tags = [], reviews = [] } = opts;
-  // Cast the impl to the real tool type — the test returns loose per-tool shapes.
-  mockTool.mockImplementation(((name: string) => {
-    if (name === "listWipKeyTags") {
-      return Promise.resolve({ ok: true, count: tags.length, shop_id: 7476, results: tags });
-    }
-    if (name === "listManualReviews") {
-      return Promise.resolve({ results: reviews });
-    }
-    return Promise.resolve({ ok: true });
-  }) as unknown as typeof callKeytagTool);
+  // Cast the impls to the real return types — the test returns loose shapes.
+  mockWip.mockResolvedValue(
+    { ok: true, count: tags.length, shop_id: 7476, results: tags } as never,
+  );
+  mockReviews.mockResolvedValue({ results: reviews } as never);
 }
 
 const review = (ro: number, over: Record<string, unknown> = {}) => ({

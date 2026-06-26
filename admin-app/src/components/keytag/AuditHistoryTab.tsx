@@ -21,13 +21,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import {
-  callKeytagTool,
-  OrchestratorClientError,
-} from "@/lib/orchestrator/client";
+import { getAuditHistory } from "@/lib/keytag/read-dal";
 import { formatEastern } from "@/lib/format-time";
 import type {
   GetKeytagAuditHistoryArgs,
+  GetKeytagAuditHistoryResult,
   TagColor,
 } from "@/lib/orchestrator/types";
 import { TagBadge } from "./TagBadge";
@@ -96,15 +94,12 @@ export async function AuditHistoryTab({
 }: AuditHistoryTabProps) {
   const filters = parseFilters(searchParams);
 
-  let result: Awaited<ReturnType<typeof callKeytagTool<"getKeytagAuditHistory">>> | null = null;
+  let result: GetKeytagAuditHistoryResult | null = null;
   let error: string | null = null;
   try {
-    result = await callKeytagTool("getKeytagAuditHistory", filters, actorEmail);
+    result = await getAuditHistory(filters);
   } catch (e) {
-    error =
-      e instanceof OrchestratorClientError
-        ? e.message
-        : `Unexpected error: ${e instanceof Error ? e.message : String(e)}`;
+    error = `Unexpected error: ${e instanceof Error ? e.message : String(e)}`;
   }
 
   return (

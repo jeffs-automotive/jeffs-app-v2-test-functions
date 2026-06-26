@@ -18,11 +18,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  callKeytagTool,
-  OrchestratorClientError,
-} from "@/lib/orchestrator/client";
-import type { ManualReviewListItem } from "@/lib/orchestrator/types";
+import { getManualReviews } from "@/lib/keytag/read-dal";
+import type {
+  ListManualReviewsResult,
+  ManualReviewListItem,
+} from "@/lib/orchestrator/types";
 import { ManualReviewSearch } from "./ManualReviewSearch";
 import { ManualReviewList } from "./ManualReviewList";
 
@@ -43,20 +43,16 @@ export async function ManualReviewsTab({
       ? searchParams.review.trim().toUpperCase()
       : null;
 
-  let result: Awaited<ReturnType<typeof callKeytagTool<"listManualReviews">>> | null =
-    null;
+  let result: ListManualReviewsResult | null = null;
   let error: string | null = null;
   try {
-    result = await callKeytagTool(
-      "listManualReviews",
-      { only_open: !showCompleted, search: q || undefined, limit: 200 },
-      actorEmail,
-    );
+    result = await getManualReviews({
+      only_open: !showCompleted,
+      search: q || undefined,
+      limit: 200,
+    });
   } catch (e) {
-    error =
-      e instanceof OrchestratorClientError
-        ? e.message
-        : `Unexpected error: ${e instanceof Error ? e.message : String(e)}`;
+    error = `Unexpected error: ${e instanceof Error ? e.message : String(e)}`;
   }
 
   let items: ManualReviewListItem[] = result?.results ?? [];
@@ -65,11 +61,11 @@ export async function ManualReviewsTab({
   // resolved or filtered out by the current search/toggle.
   if (reviewCode && !items.some((r) => r.code === reviewCode)) {
     try {
-      const one = await callKeytagTool(
-        "listManualReviews",
-        { only_open: false, search: reviewCode, limit: 5 },
-        actorEmail,
-      );
+      const one = await getManualReviews({
+        only_open: false,
+        search: reviewCode,
+        limit: 5,
+      });
       const match = one.results.find((r) => r.code === reviewCode);
       if (match) items = [match, ...items];
     } catch {

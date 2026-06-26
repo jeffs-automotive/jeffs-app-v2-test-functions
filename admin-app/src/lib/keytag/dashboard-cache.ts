@@ -10,24 +10,26 @@ import "server-only";
  * We still wrap it in `unstable_cache` (60s TTL) to dedupe concurrent renders,
  * and the timeout is now a tight 10s seatbelt instead of 45s.
  *
- * `actorEmail` is passed for the orchestrator's X-Actor-Email auth/audit
- * header. Note `unstable_cache` folds function arguments into the cache key, so
- * this is effectively a per-advisor cache (each advisor shares their own 60s
- * snapshot). That's fine — the data is read-only and shop-global, and the few
- * advisors on at once means at most a handful of Tekmetric pulls per minute.
+ * The snapshot now reads DIRECTLY in-process via the keytag read-DAL
+ * (`getDashboard()` → service-role client + server-resolved shop_id), dropping
+ * the orchestrator-mcp HTTP hop. `actorEmail` is kept in the signature (and
+ * folded into the `unstable_cache` key, so this is effectively a per-advisor
+ * 60s snapshot) for call-site compatibility; the data is read-only + shop-global.
  */
 import { unstable_cache } from "next/cache";
-import { callKeytagTool } from "@/lib/orchestrator/client";
+import { getDashboard } from "@/lib/keytag/read-dal";
 import type { KeytagDashboardResult } from "@/lib/orchestrator/types";
 
 export const DASHBOARD_TTL_SECONDS = 60;
 export const DASHBOARD_CACHE_TAG = "keytag-dashboard";
 
 const cachedDashboard = unstable_cache(
-  async (actorEmail: string): Promise<KeytagDashboardResult> => {
-    return await callKeytagTool("getKeytagDashboard", {}, actorEmail, {
-      timeoutMs: 10_000,
-    });
+  // `actorEmail` is folded into the cache key (per-advisor 60s snapshot) but the
+  // direct read no longer needs it for transport — shop_id is resolved
+  // server-side inside getDashboard(), and its own 10s seatbelt replaces the
+  // old per-call timeoutMs.
+  async (_actorEmail: string): Promise<KeytagDashboardResult> => {
+    return await getDashboard();
   },
   ["keytag-dashboard-snapshot"],
   { revalidate: DASHBOARD_TTL_SECONDS, tags: [DASHBOARD_CACHE_TAG] },

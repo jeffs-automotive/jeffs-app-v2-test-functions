@@ -3,15 +3,19 @@ import "server-only";
 /**
  * loadBoardState — the Live board's data (tagged in-use + untagged-needs-a-tag),
  * shared by the LiveBoardTab Server Component (initial render) and the
- * getBoardState poll action. Two cheap DB reads via the orchestrator, no
- * Tekmetric. Throws on transport failure — callers handle (server component →
- * error card; action → { kind: 'error' }).
+ * getBoardState poll action. Two cheap DB reads DIRECTLY in-process via the
+ * keytag read-DAL (no orchestrator hop, no Tekmetric). Throws on read failure
+ * (the read-DAL's 10s seatbelt) — callers handle (server component → error
+ * card; action → { kind: 'error' }).
+ *
+ * `actorEmail` is kept in the signature for call-site compatibility; the direct
+ * reads resolve shop_id server-side and no longer need it for transport.
  *
  * Untagged source = open manual reviews of the "needs a tag" categories
  * (work_approved_drift / ar_regression = WIP-needs-tag; ar_no_prior_tag =
  * A/R-without-tag). Reconciled data — NOT raw webhook-lifecycle inference.
  */
-import { callKeytagTool } from "@/lib/orchestrator/client";
+import { getWipKeyTags, getManualReviews } from "@/lib/keytag/read-dal";
 import type {
   BoardState,
   ManualReviewCategory,
@@ -51,8 +55,8 @@ export function untaggedWhy(cat: ManualReviewCategory): {
 
 export async function loadBoardState(actorEmail: string): Promise<BoardState> {
   const [tags, reviews] = await Promise.all([
-    callKeytagTool("listWipKeyTags", {}, actorEmail),
-    callKeytagTool("listManualReviews", { only_open: true, limit: 200 }, actorEmail),
+    getWipKeyTags(),
+    getManualReviews({ only_open: true, limit: 200 }),
   ]);
 
   const untagged: UntaggedBoardRow[] = reviews.results
