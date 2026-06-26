@@ -3,8 +3,17 @@
 /**
  * MarkKeytagPostedForm — flip a WIP tag to posted-A/R.
  * Pattern A confirmation always.
+ *
+ * SPIN FIX (2026-06-26): runs the Server Action IMPERATIVELY with a plain
+ * `loading` flag instead of `useActionState`. useActionState ties `isPending` to
+ * the React transition that applies the post-action RSC re-render; on the
+ * force-dynamic six-tab /keytags page that re-render re-suspends the other tabs'
+ * Suspense boundaries and the transition WAITS for them, pinning the spinner long
+ * after the (fast) mark-posted already succeeded server-side. An imperative await
+ * resolves on the action's RETURN, decoupled from the re-render — so the spinner
+ * clears immediately. Same pattern as LiveBoardPoller / KeytagActionRow.
  */
-import { useActionState, useEffect, useState, startTransition } from "react";
+import { useCallback, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { CheckCircle2, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -21,30 +30,46 @@ import { TagBadge } from "./TagBadge";
 const initial: MarkKeytagPostedState = { kind: "idle" };
 
 export function MarkKeytagPostedForm() {
-  const [state, dispatch, isPending] = useActionState(markKeytagPostedAction, initial);
+  const [state, setState] = useState<MarkKeytagPostedState>(initial);
+  const [loading, setLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  useEffect(() => {
-    if (state.kind === "needs_confirmation") setDialogOpen(true);
-  }, [state]);
-
-  useEffect(() => {
-    if (state.kind === "success") {
-      toast.success(`Marked ${state.data.tag_label} as posted A/R`, {
-        description: `RO #${state.data.ro_number} at ${formatEastern(state.data.posted_at)}`,
+  const run = useCallback(async (fd: FormData) => {
+    setLoading(true);
+    try {
+      // Imperative await — resolves on the action's RETURN, not the route
+      // re-render commit (see the file header). The action ignores prevState.
+      const result = await markKeytagPostedAction(initial, fd);
+      setState(result);
+      if (result.kind === "needs_confirmation") {
+        setDialogOpen(true);
+      } else if (result.kind === "success") {
+        toast.success(`Marked ${result.data.tag_label} as posted A/R`, {
+          description: `RO #${result.data.ro_number} at ${formatEastern(result.data.posted_at)}`,
+        });
+        setDialogOpen(false);
+      } else if (result.kind === "tool_error") {
+        toast.error(`Couldn't mark posted: ${result.data.message}`);
+        // Terminal failure — close dialog (Gemini cross-verify 2026-05-25).
+        setDialogOpen(false);
+      } else if (result.kind === "transport_error") {
+        toast.error("Transport error", { description: result.message });
+        setDialogOpen(false);
+      }
+    } catch (e) {
+      toast.error("Couldn't mark posted", {
+        description: e instanceof Error ? e.message : String(e),
       });
       setDialogOpen(false);
+    } finally {
+      setLoading(false);
     }
-    if (state.kind === "tool_error") {
-      toast.error(`Couldn't mark posted: ${state.data.message}`);
-      // Terminal failure — close dialog (Gemini cross-verify 2026-05-25).
-      setDialogOpen(false);
-    }
-    if (state.kind === "transport_error") {
-      toast.error("Transport error", { description: state.message });
-      setDialogOpen(false);
-    }
-  }, [state]);
+  }, []);
+
+  function onSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    void run(new FormData(e.currentTarget));
+  }
 
   function handleConfirm() {
     if (state.kind !== "needs_confirmation") return;
@@ -52,16 +77,12 @@ export function MarkKeytagPostedForm() {
     fd.set("ro_number", String(state.args.ro_number));
     if (state.args.posted_at) fd.set("posted_at", state.args.posted_at);
     fd.set("confirmation_token", state.confirmation.token_id);
-    // startTransition wrap required for programmatic useActionState
-    // dispatch (GPT cross-verify 2026-05-25).
-    startTransition(() => {
-      dispatch(fd);
-    });
+    void run(fd);
   }
 
   return (
     <div className="space-y-4">
-      <form action={dispatch} className="flex flex-wrap items-end gap-3">
+      <form onSubmit={onSubmit} className="flex flex-wrap items-end gap-3">
         <div className="flex-1 space-y-1">
           <Label htmlFor="post-ro" className="text-xs uppercase tracking-wider text-muted-foreground">
             RO #
@@ -77,7 +98,7 @@ export function MarkKeytagPostedForm() {
         </div>
         <Button
           type="submit"
-          loading={isPending}
+          loading={loading}
           loadingText="Posting…"
           className="gap-1.5"
         >
@@ -94,9 +115,9 @@ export function MarkKeytagPostedForm() {
         <p className="text-sm text-destructive">{state.message}</p>
       )}
 
-      {/* Gate on !isPending so stale success doesn't show during a
+      {/* Gate on !loading so stale success doesn't show during a
           follow-up submit. (Cross-verify 2026-05-25.) */}
-      {!isPending && state.kind === "success" && (
+      {!loading && state.kind === "success" && (
         <div className="flex items-center gap-3 rounded-lg border border-green-200 bg-green-50 p-3 text-sm">
           <TagBadge color={state.data.tag_color} number={state.data.tag_number} size="sm" />
           <span className="flex-1">
@@ -122,7 +143,7 @@ export function MarkKeytagPostedForm() {
           expiresAt={state.confirmation.expires_at}
           actionLabel="Mark posted"
           variant="default"
-          isPending={isPending}
+          isPending={loading}
           onConfirm={handleConfirm}
         />
       )}

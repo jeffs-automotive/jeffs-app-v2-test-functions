@@ -2,9 +2,18 @@
 
 /**
  * WhoIsOnTagForm — pick a color + tag number, see who has it.
- * Client component using useActionState to display result inline.
+ * Client component that displays the lookup result inline.
+ *
+ * SPIN FIX (2026-06-26): runs the Server Action IMPERATIVELY with a plain
+ * `loading` flag instead of `useActionState`. useActionState ties `isPending` to
+ * the React transition that applies the post-action RSC re-render; on the
+ * force-dynamic six-tab /keytags page that re-render re-suspends the other tabs'
+ * Suspense boundaries and the transition WAITS for them, pinning the spinner long
+ * after this (fast) read already returned. An imperative await resolves on the
+ * action's RETURN, decoupled from the re-render — so the spinner clears
+ * immediately. Same pattern as LiveBoardPoller / KeytagActionRow.
  */
-import { useActionState } from "react";
+import { useCallback, useState, type FormEvent } from "react";
 import { ExternalLink, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -19,14 +28,34 @@ import { TagBadge } from "./TagBadge";
 const initialState: WhoIsOnTagState = { kind: "idle" };
 
 export function WhoIsOnTagForm() {
-  const [state, formAction, isPending] = useActionState(
-    whoIsOnTagAction,
-    initialState,
-  );
+  const [state, setState] = useState<WhoIsOnTagState>(initialState);
+  const [loading, setLoading] = useState(false);
+
+  const run = useCallback(async (fd: FormData) => {
+    setLoading(true);
+    try {
+      // Imperative await — resolves on the action's RETURN, not the route
+      // re-render commit (see the file header). The action ignores prevState.
+      const result = await whoIsOnTagAction(initialState, fd);
+      setState(result);
+    } catch (e) {
+      setState({
+        kind: "error",
+        message: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  function onSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    void run(new FormData(e.currentTarget));
+  }
 
   return (
     <div className="space-y-4">
-      <form action={formAction} className="flex flex-wrap items-end gap-3">
+      <form onSubmit={onSubmit} className="flex flex-wrap items-end gap-3">
         <div className="space-y-1.5">
           <Label htmlFor="who-color" className="text-xs uppercase tracking-wider text-muted-foreground">
             Color
@@ -58,7 +87,7 @@ export function WhoIsOnTagForm() {
         </div>
         <Button
           type="submit"
-          loading={isPending}
+          loading={loading}
           loadingText="Looking up…"
           className="gap-1.5"
         >

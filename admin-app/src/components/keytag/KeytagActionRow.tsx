@@ -3,9 +3,9 @@
 /**
  * Per-row keytag actions for the Live board.
  *
- * Each rendered row instantiates its OWN action component (own useActionState +
- * own dialogOpen + own ConfirmationDialog) — N rows can't share one action
- * state, so this mirrors the standalone-form pattern per row.
+ * Each rendered row instantiates its OWN action component (own state + own
+ * dialogOpen + own ConfirmationDialog) — N rows can't share one action state,
+ * so this mirrors the standalone-form pattern per row.
  *
  *   - ReleaseRowAction (tagged rows): release the RO's tag. A/R-status releases
  *     return needs_confirmation → this row's ConfirmationDialog (destructive).
@@ -14,10 +14,22 @@
  *
  * `onResolved(roNumber)` lets the parent BoardClient splice the row out
  * optimistically; `onPendingChange` lets it freeze the row (so an incoming poll
- * can't mutate a row mid-action). Functional wiring — visual polish applied
- * later per the design spec.
+ * can't mutate a row mid-action).
+ *
+ * SPIN FIX (2026-06-26): these used `useActionState`, whose `isPending` is tied
+ * to the React TRANSITION that applies the post-action RSC re-render. /keytags is
+ * `force-dynamic` and renders all six tabs; every Server Action re-renders the
+ * whole route, re-running + RE-SUSPENDING the five Suspense-wrapped tabs, and a
+ * transition WAITS for those boundaries before it completes — so the button
+ * spinner stayed pinned long after the (fast, ≤1s — confirmed in the edge logs)
+ * mutation already succeeded server-side. We now run the action IMPERATIVELY and
+ * track a plain `loading` flag: an awaited Server Action resolves on its RETURN,
+ * decoupled from the re-render commit, so the spinner clears immediately. This is
+ * the exact pattern LiveBoardPoller already uses for the same reason. The board
+ * updates optimistically via onResolved, so no route re-render is needed for
+ * correctness (the 15s poller reconverges).
  */
-import { useActionState, useEffect, useState, startTransition } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { Eraser, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -54,49 +66,69 @@ export function ReleaseRowAction({
   onPendingChange,
   tagLabel,
 }: ReleaseRowActionProps) {
-  const [state, dispatch, isPending] = useActionState(releaseKeytagAction, releaseInitial);
+  const [state, setState] = useState<ReleaseKeytagState>(releaseInitial);
+  const [loading, setLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  useEffect(() => {
-    if (state.kind === "needs_confirmation") setDialogOpen(true);
-  }, [state]);
+  const run = useCallback(
+    async (fd: FormData) => {
+      setLoading(true);
+      try {
+        // Imperative await — resolves on the action's RETURN, NOT the route
+        // re-render commit (see the file header). The action ignores prevState.
+        const result = await releaseKeytagAction(releaseInitial, fd);
+        setState(result);
+        if (result.kind === "needs_confirmation") {
+          setDialogOpen(true);
+        } else if (result.kind === "success") {
+          toast.success(`Released tag from RO #${roNumber}`, {
+            description: result.data.released_tag
+              ? `Was ${result.data.released_tag.label}.`
+              : result.data.message,
+          });
+          setDialogOpen(false);
+          onResolved(roNumber);
+        } else if (result.kind === "tool_error") {
+          toast.error(`Couldn't release: ${result.data.message}`);
+          setDialogOpen(false);
+        } else if (result.kind === "transport_error") {
+          toast.error("Transport error", { description: result.message });
+          setDialogOpen(false);
+        } else if (result.kind === "validation_error") {
+          toast.error(result.message);
+        }
+      } catch (e) {
+        toast.error("Couldn't release", {
+          description: e instanceof Error ? e.message : String(e),
+        });
+        setDialogOpen(false);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [roNumber, onResolved],
+  );
 
   useEffect(() => {
-    if (state.kind === "success") {
-      toast.success(`Released tag from RO #${roNumber}`, {
-        description: state.data.released_tag
-          ? `Was ${state.data.released_tag.label}.`
-          : state.data.message,
-      });
-      setDialogOpen(false);
-      onResolved(roNumber);
-    }
-    if (state.kind === "tool_error") {
-      toast.error(`Couldn't release: ${state.data.message}`);
-      setDialogOpen(false);
-    }
-    if (state.kind === "transport_error") {
-      toast.error("Transport error", { description: state.message });
-      setDialogOpen(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state]);
+    onPendingChange?.(loading || dialogOpen);
+  }, [loading, dialogOpen, onPendingChange]);
 
-  useEffect(() => {
-    onPendingChange?.(isPending || dialogOpen);
-  }, [isPending, dialogOpen, onPendingChange]);
+  function onSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    void run(new FormData(e.currentTarget));
+  }
 
   function handleConfirm() {
     if (state.kind !== "needs_confirmation") return;
     const fd = new FormData();
     fd.set("ro_number", String(roNumber));
     fd.set("confirmation_token", state.confirmation.token_id);
-    startTransition(() => dispatch(fd));
+    void run(fd);
   }
 
   return (
     <>
-      <form action={dispatch} className="inline">
+      <form onSubmit={onSubmit} className="inline">
         <input type="hidden" name="ro_number" value={roNumber} />
         {/* Soft-destructive ghost: the `text-destructive` ink on the `/10` fill
          *  is only 3.98:1 — below AA for this small label. Darken the LABEL to
@@ -107,7 +139,7 @@ export function ReleaseRowAction({
           type="submit"
           variant="destructive"
           size="sm"
-          loading={isPending}
+          loading={loading}
           loadingText="Releasing…"
           aria-label={
             tagLabel
@@ -129,7 +161,7 @@ export function ReleaseRowAction({
           expiresAt={state.confirmation.expires_at}
           actionLabel="Release tag"
           variant="destructive"
-          isPending={isPending}
+          isPending={loading}
           onConfirm={handleConfirm}
         />
       )}
@@ -142,33 +174,52 @@ export function AssignRowAction({
   onResolved,
   onPendingChange,
 }: RowActionProps) {
-  const [state, dispatch, isPending] = useActionState(assignKeytagAction, assignInitial);
+  const [loading, setLoading] = useState(false);
+
+  const run = useCallback(
+    async (fd: FormData) => {
+      setLoading(true);
+      try {
+        // Imperative await — see ReleaseRowAction / the file header.
+        const result = await assignKeytagAction(assignInitial, fd);
+        if (result.kind === "success") {
+          toast.success(`Assigned ${result.data.tag.label} to RO #${roNumber}`, {
+            description: result.data.tekmetric_patched
+              ? "Tekmetric synced."
+              : `Tekmetric sync failed: ${result.data.tekmetric_patch_error ?? "unknown"}`,
+          });
+          onResolved(roNumber);
+        } else if (result.kind === "tool_error") {
+          toast.error(`Couldn't assign: ${result.data.message}`);
+        } else if (result.kind === "transport_error") {
+          toast.error("Transport error", { description: result.message });
+        } else if (result.kind === "validation_error") {
+          toast.error(result.message);
+        }
+        // Auto-assign (ro_number only) never returns needs_confirmation.
+      } catch (e) {
+        toast.error("Couldn't assign", {
+          description: e instanceof Error ? e.message : String(e),
+        });
+      } finally {
+        setLoading(false);
+      }
+    },
+    [roNumber, onResolved],
+  );
 
   useEffect(() => {
-    if (state.kind === "success") {
-      toast.success(`Assigned ${state.data.tag.label} to RO #${roNumber}`, {
-        description: state.data.tekmetric_patched
-          ? "Tekmetric synced."
-          : `Tekmetric sync failed: ${state.data.tekmetric_patch_error ?? "unknown"}`,
-      });
-      onResolved(roNumber);
-    }
-    if (state.kind === "tool_error") {
-      toast.error(`Couldn't assign: ${state.data.message}`);
-    }
-    if (state.kind === "transport_error") {
-      toast.error("Transport error", { description: state.message });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state]);
+    onPendingChange?.(loading);
+  }, [loading, onPendingChange]);
 
-  useEffect(() => {
-    onPendingChange?.(isPending);
-  }, [isPending, onPendingChange]);
+  function onSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    void run(new FormData(e.currentTarget));
+  }
 
   // Auto round-robin: ro_number only (no color/tag#) → never needs_confirmation.
   return (
-    <form action={dispatch} className="inline">
+    <form onSubmit={onSubmit} className="inline">
       <input type="hidden" name="ro_number" value={roNumber} />
       {/* Burgundy ghost (not solid): one of many in a column — a solid-burgundy
        *  column would shout. Ghost keeps the column calm; the burgundy text +
@@ -178,7 +229,7 @@ export function AssignRowAction({
         type="submit"
         variant="ghost"
         size="sm"
-        loading={isPending}
+        loading={loading}
         loadingText="Assigning…"
         aria-label={`Assign a tag to RO #${roNumber}`}
         className="gap-1.5 text-primary hover:bg-primary/10 hover:text-primary"

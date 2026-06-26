@@ -6,8 +6,17 @@
  * Renders inside the lookup form's result panel ONLY when the review is
  * unresolved. Each option is a button; clicking opens a small inline form
  * that asks for tag color/number if `needs_tag_input`, then submits.
+ *
+ * SPIN FIX (2026-06-26): runs the Server Action IMPERATIVELY with a plain
+ * `loading` flag instead of `useActionState`. useActionState ties `isPending` to
+ * the React transition that applies the post-action RSC re-render; on the
+ * force-dynamic six-tab /keytags page that re-render re-suspends the other tabs'
+ * Suspense boundaries and the transition WAITS for them, pinning the spinner long
+ * after the (fast) resolve already succeeded server-side. An imperative await
+ * resolves on the action's RETURN, decoupled from the re-render — so the spinner
+ * clears immediately. Same pattern as LiveBoardPoller / KeytagActionRow.
  */
-import { useActionState, useEffect, useState } from "react";
+import { useCallback, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -36,24 +45,44 @@ export function ResolveManualReviewForm({
   options,
   onResolved,
 }: ResolveManualReviewFormProps) {
-  const [state, dispatch, isPending] = useActionState(resolveManualReviewAction, initial);
+  const [state, setState] = useState<ResolveManualReviewState>(initial);
+  const [loading, setLoading] = useState(false);
   const [selectedChoice, setSelectedChoice] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (state.kind === "success") {
-      toast.success("Review resolved", {
-        description: `${state.data.action_taken} (${state.data.message})`,
-      });
-      onResolved?.(state.data.code);
-      setSelectedChoice(null);
-    }
-    if (state.kind === "tool_error") {
-      toast.error("Resolution failed", { description: state.data.message });
-    }
-    if (state.kind === "transport_error") {
-      toast.error("Transport error", { description: state.message });
-    }
-  }, [state, onResolved]);
+  const run = useCallback(
+    async (fd: FormData) => {
+      setLoading(true);
+      try {
+        // Imperative await — resolves on the action's RETURN, not the route
+        // re-render commit (see the file header). The action ignores prevState.
+        const result = await resolveManualReviewAction(initial, fd);
+        setState(result);
+        if (result.kind === "success") {
+          toast.success("Review resolved", {
+            description: `${result.data.action_taken} (${result.data.message})`,
+          });
+          onResolved?.(result.data.code);
+          setSelectedChoice(null);
+        } else if (result.kind === "tool_error") {
+          toast.error("Resolution failed", { description: result.data.message });
+        } else if (result.kind === "transport_error") {
+          toast.error("Transport error", { description: result.message });
+        }
+      } catch (e) {
+        toast.error("Resolution failed", {
+          description: e instanceof Error ? e.message : String(e),
+        });
+      } finally {
+        setLoading(false);
+      }
+    },
+    [onResolved],
+  );
+
+  function onSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    void run(new FormData(e.currentTarget));
+  }
 
   const selected = options.find((o) => o.key === selectedChoice) ?? null;
 
@@ -71,7 +100,7 @@ export function ResolveManualReviewForm({
               type="button"
               key={opt.key}
               onClick={() => setSelectedChoice(opt.key)}
-              disabled={isPending}
+              disabled={loading}
               className={`rounded-md border p-3 text-left text-sm transition-colors ${
                 isSelected
                   ? "border-primary bg-primary/5"
@@ -86,7 +115,7 @@ export function ResolveManualReviewForm({
       </div>
 
       {selected && (
-        <form action={dispatch} className="space-y-3 rounded-md border border-primary/30 bg-primary/5 p-4">
+        <form onSubmit={onSubmit} className="space-y-3 rounded-md border border-primary/30 bg-primary/5 p-4">
           <input type="hidden" name="code" value={code} />
           <input type="hidden" name="choice" value={selected.key} />
 
@@ -150,14 +179,14 @@ export function ResolveManualReviewForm({
               variant="outline"
               size="sm"
               onClick={() => setSelectedChoice(null)}
-              disabled={isPending}
+              disabled={loading}
             >
               Cancel
             </Button>
             <Button
               type="submit"
               size="sm"
-              loading={isPending}
+              loading={loading}
               loadingText="Resolving…"
               className="gap-1.5"
             >

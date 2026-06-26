@@ -3,8 +3,17 @@
 /**
  * AssignKeytagForm — auto-assign OR force-assign a tag to an RO.
  * Force-assign triggers Pattern A confirmation dialog.
+ *
+ * SPIN FIX (2026-06-26): runs the Server Action IMPERATIVELY with a plain
+ * `loading` flag instead of `useActionState`. useActionState ties `isPending` to
+ * the React transition that applies the post-action RSC re-render; on the
+ * force-dynamic six-tab /keytags page that re-render re-suspends the other tabs'
+ * Suspense boundaries and the transition WAITS for them, pinning the spinner long
+ * after the (fast) assign already succeeded server-side. An imperative await
+ * resolves on the action's RETURN, decoupled from the re-render — so the spinner
+ * clears immediately. Same pattern as LiveBoardPoller / KeytagActionRow.
  */
-import { useActionState, useEffect, useState, startTransition } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import * as Sentry from "@sentry/nextjs";
 import { toast } from "sonner";
 import { ExternalLink, KeyRound } from "lucide-react";
@@ -21,54 +30,55 @@ import { TagBadge } from "./TagBadge";
 const initial: AssignKeytagState = { kind: "idle" };
 
 export function AssignKeytagForm() {
-  const [state, dispatch, isPending] = useActionState(assignKeytagAction, initial);
+  const [state, setState] = useState<AssignKeytagState>(initial);
+  const [loading, setLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  // Open dialog when state transitions to needs_confirmation
-  useEffect(() => {
-    if (state.kind === "needs_confirmation") setDialogOpen(true);
-  }, [state]);
+  const run = useCallback(async (fd: FormData) => {
+    setLoading(true);
+    try {
+      // Imperative await — resolves on the action's RETURN, not the route
+      // re-render commit (see the file header). The action ignores prevState.
+      const result = await assignKeytagAction(initial, fd);
+      setState(result);
+      if (result.kind === "needs_confirmation") {
+        setDialogOpen(true);
+      } else if (result.kind === "success") {
+        toast.success(
+          `Assigned ${result.data.tag.label} to RO #${result.data.ro_number}`,
+          {
+            description: result.data.tekmetric_patched
+              ? "Tekmetric synced."
+              : `Tekmetric sync failed: ${result.data.tekmetric_patch_error ?? "unknown"}`,
+          },
+        );
+        setDialogOpen(false);
+      } else if (result.kind === "tool_error") {
+        toast.error(`Couldn't assign: ${result.data.message}`);
+        // Terminal failure — close the dialog so the user isn't stuck on a stale
+        // confirmation prompt. They can retry by re-submitting the form.
+        setDialogOpen(false);
+      } else if (result.kind === "transport_error") {
+        toast.error("Transport error", { description: result.message });
+        setDialogOpen(false);
+      }
+    } catch (e) {
+      toast.error("Couldn't assign", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+      setDialogOpen(false);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  // Surface success/failure as toasts
-  useEffect(() => {
-    if (state.kind === "success") {
-      toast.success(
-        `Assigned ${state.data.tag.label} to RO #${state.data.ro_number}`,
-        {
-          description: state.data.tekmetric_patched
-            ? "Tekmetric synced."
-            : `Tekmetric sync failed: ${state.data.tekmetric_patch_error ?? "unknown"}`,
-        },
-      );
-      setDialogOpen(false);
-    }
-    if (state.kind === "tool_error") {
-      toast.error(`Couldn't assign: ${state.data.message}`);
-      // Terminal failure — close the dialog so the user isn't stuck on
-      // a stale confirmation prompt. They can retry by re-submitting
-      // the form. (Gemini cross-verify 2026-05-25.)
-      setDialogOpen(false);
-    }
-    if (state.kind === "transport_error") {
-      toast.error("Transport error", { description: state.message });
-      setDialogOpen(false);
-    }
-  }, [state]);
+  function onSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    void run(new FormData(e.currentTarget));
+  }
 
   function handleConfirm() {
-    if (state.kind !== "needs_confirmation") {
-      // TEMP diagnostic (B1): the user clicked Confirm but this component's
-      // useActionState was no longer in needs_confirmation — i.e. the form was
-      // remounted/reset by an action re-render before Confirm fired. This is the
-      // smoking gun for the orphaned-token bug. Remove once root cause confirmed.
-      Sentry.captureMessage("keytag_assign_confirm_clicked_state_lost", {
-        level: "warning",
-        tags: { keytag_flow: "assign", keytag_step: "confirm_clicked_state_lost" },
-        extra: { state_kind: state.kind },
-      });
-      return;
-    }
-    // TEMP diagnostic (B1): Confirm clicked with a live token; about to re-dispatch.
+    if (state.kind !== "needs_confirmation") return;
     Sentry.captureMessage("keytag_assign_confirm_clicked", {
       level: "info",
       tags: { keytag_flow: "assign", keytag_step: "confirm_clicked" },
@@ -77,21 +87,20 @@ export function AssignKeytagForm() {
     const fd = new FormData();
     fd.set("ro_number", String(state.args.ro_number));
     if (state.args.color) fd.set("color", state.args.color);
-    if (state.args.tag_number != null) fd.set("tag_number", String(state.args.tag_number));
+    if (state.args.tag_number != null)
+      fd.set("tag_number", String(state.args.tag_number));
     fd.set("confirmation_token", state.confirmation.token_id);
-    // Programmatic dispatch needs startTransition wrap or isPending may
-    // not flip reliably + React warns. (GPT cross-verify 2026-05-25.)
-    startTransition(() => {
-      dispatch(fd);
-    });
+    void run(fd);
   }
 
-  const errorMsg =
-    state.kind === "validation_error" ? state.message : null;
+  const errorMsg = state.kind === "validation_error" ? state.message : null;
 
   return (
     <div className="space-y-4">
-      <form action={dispatch} className="grid gap-3 sm:grid-cols-[1fr_auto_auto_auto]">
+      <form
+        onSubmit={onSubmit}
+        className="grid gap-3 sm:grid-cols-[1fr_auto_auto_auto]"
+      >
         <div className="space-y-1">
           <Label htmlFor="assign-ro" className="text-xs uppercase tracking-wider text-muted-foreground">
             RO #
@@ -137,7 +146,7 @@ export function AssignKeytagForm() {
         <div className="flex items-end">
           <Button
             type="submit"
-            loading={isPending}
+            loading={loading}
             loadingText="Assigning…"
             className="gap-1.5"
           >
@@ -155,8 +164,8 @@ export function AssignKeytagForm() {
 
       {/* Hide stale success card while a follow-up submit is pending,
           otherwise the old "Assigned to RO …" lingers next to an
-          "Assigning…" button. (Cross-verify 2026-05-25.) */}
-      {!isPending && state.kind === "success" && (
+          "Assigning…" button. */}
+      {!loading && state.kind === "success" && (
         <div className="flex items-center gap-3 rounded-lg border border-green-200 bg-green-50 p-3 text-sm">
           <TagBadge color={state.data.tag.color} number={state.data.tag.number} size="sm" />
           <span className="flex-1">
@@ -183,7 +192,7 @@ export function AssignKeytagForm() {
           expiresAt={state.confirmation.expires_at}
           actionLabel="Assign tag"
           variant="default"
-          isPending={isPending}
+          isPending={loading}
           onConfirm={handleConfirm}
         />
       )}

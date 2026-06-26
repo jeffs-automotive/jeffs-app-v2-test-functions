@@ -5,8 +5,18 @@
  *
  * Confirmation: a soft UI gate (Dialog with summary) rather than Pattern A
  * tokens. dry_run mode is a safe-by-default toggle; flip it off to apply.
+ *
+ * SPIN FIX (2026-06-26): runs the Server Action IMPERATIVELY with a plain
+ * `loading` flag instead of `useActionState`. useActionState ties `isPending` to
+ * the React transition that applies the post-action RSC re-render; on the
+ * force-dynamic six-tab /keytags page that re-render re-suspends the other tabs'
+ * Suspense boundaries and the transition WAITS for them, pinning the spinner long
+ * after the orchestrator already returned. An imperative await resolves on the
+ * action's RETURN, decoupled from the re-render — so the spinner reflects the
+ * real (~60s) reconcile duration and then clears. Same pattern as LiveBoardPoller
+ * / KeytagActionRow.
  */
-import { useActionState, useEffect, useState, startTransition } from "react";
+import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import {
   RefreshCcw,
@@ -40,7 +50,8 @@ import {
 const initial: RunBulkReconcileState = { kind: "idle" };
 
 export function ReconcileTab() {
-  const [state, dispatch, isPending] = useActionState(runBulkReconcileAction, initial);
+  const [state, setState] = useState<RunBulkReconcileState>(initial);
+  const [loading, setLoading] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [dryRun, setDryRun] = useState(true);
   // Snapshot the mode chosen at dispatch time so the running copy doesn't
@@ -48,48 +59,56 @@ export function ReconcileTab() {
   // plan §4c (GPT cross-verify finding 2026-05-25).
   const [runningMode, setRunningMode] = useState<"dry-run" | "real" | null>(null);
 
-  useEffect(() => {
-    if (state.kind === "success") {
-      toast.success("Reconcile complete", {
-        description: `${state.data.tekmetric_wip_count} WIP + ${state.data.tekmetric_ar_count} A/R checked in ${state.data.duration_ms}ms`,
+  const run = useCallback(async (fd: FormData) => {
+    setLoading(true);
+    try {
+      // Imperative await — resolves on the action's RETURN, not the route
+      // re-render commit (see the file header). The action ignores prevState.
+      const result = await runBulkReconcileAction(initial, fd);
+      setState(result);
+      if (result.kind === "success") {
+        toast.success("Reconcile complete", {
+          description: `${result.data.tekmetric_wip_count} WIP + ${result.data.tekmetric_ar_count} A/R checked in ${result.data.duration_ms}ms`,
+        });
+        setConfirmOpen(false);
+        setRunningMode(null);
+      } else if (result.kind === "transport_error") {
+        toast.error("Reconcile failed", { description: result.message });
+        setRunningMode(null);
+        // Close the dialog on terminal error too — symmetric with success
+        // path. (Gemini cross-verify 2026-05-25.)
+        setConfirmOpen(false);
+      } else if (result.kind === "validation_error") {
+        // Defensive: form validators should catch this, but if it slips
+        // through (e.g., manual tampering), still surface + reset.
+        // (Both models flagged the missing case 2026-05-25.)
+        toast.error("Reconcile validation error", { description: result.message });
+        setRunningMode(null);
+        setConfirmOpen(false);
+      }
+    } catch (e) {
+      toast.error("Reconcile failed", {
+        description: e instanceof Error ? e.message : String(e),
       });
-      setConfirmOpen(false);
-      setRunningMode(null);
-    }
-    if (state.kind === "transport_error") {
-      toast.error("Reconcile failed", { description: state.message });
-      setRunningMode(null);
-      // Close the dialog on terminal error too — symmetric with success
-      // path. (Gemini cross-verify 2026-05-25.)
-      setConfirmOpen(false);
-    }
-    if (state.kind === "validation_error") {
-      // Defensive: form validators should catch this, but if it slips
-      // through (e.g., manual tampering), still surface + reset.
-      // (Both models flagged the missing case 2026-05-25.)
-      toast.error("Reconcile validation error", { description: state.message });
       setRunningMode(null);
       setConfirmOpen(false);
+    } finally {
+      setLoading(false);
     }
-  }, [state]);
+  }, []);
 
   function handleRun() {
     setRunningMode(dryRun ? "dry-run" : "real");
     const fd = new FormData();
     if (dryRun) fd.set("dry_run", "true");
-    // startTransition wrap required for programmatic useActionState
-    // dispatch — otherwise isPending may not flip reliably + React
-    // warns. (GPT cross-verify 2026-05-25.)
-    startTransition(() => {
-      dispatch(fd);
-    });
+    void run(fd);
   }
 
   // Guard dialog close while pending — refuse Escape / outside-click
   // while the orchestrator is still working. Per loading-spinners plan
   // §4c (GPT cross-verify finding).
   function handleDialogOpenChange(next: boolean) {
-    if (isPending && !next) return;
+    if (loading && !next) return;
     setConfirmOpen(next);
   }
 
@@ -135,7 +154,7 @@ export function ReconcileTab() {
           <Button
             type="button"
             onClick={() => setConfirmOpen(true)}
-            loading={isPending}
+            loading={loading}
             loadingText="Running…"
             className="gap-1.5"
           >
@@ -147,13 +166,13 @@ export function ReconcileTab() {
 
       {/* Hide stale success card while the next run is in flight. Per
           loading-spinners plan §4b (both models flagged the stale-state bug). */}
-      {!isPending && state.kind === "success" && <ReconcileResultCard data={state.data} />}
+      {!loading && state.kind === "success" && <ReconcileResultCard data={state.data} />}
 
       <Dialog open={confirmOpen} onOpenChange={handleDialogOpenChange}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 sm:mx-0">
-              {isPending ? (
+              {loading ? (
                 <Loader2
                   className="h-5 w-5 text-amber-700 motion-safe:animate-spin"
                   aria-hidden="true"
@@ -163,12 +182,12 @@ export function ReconcileTab() {
               )}
             </div>
             <DialogTitle>
-              {isPending
+              {loading
                 ? `Running ${runningMode === "dry-run" ? "dry-run" : "reconcile"}…`
                 : `Run ${dryRun ? "dry-run " : ""}reconcile?`}
             </DialogTitle>
             <DialogDescription>
-              {isPending
+              {loading
                 ? "Typically takes 5–30 seconds. Pulling RO data from Tekmetric + computing diffs against the keytag pool."
                 : dryRun
                   ? "Dry-run: previews actions without making changes."
@@ -180,7 +199,7 @@ export function ReconcileTab() {
               the action buttons would be hidden behind this modal during
               the 5–30s wait. Per loading-spinners plan §4a (GPT
               cross-verify finding 2026-05-25). */}
-          {isPending && (
+          {loading && (
             <div
               role="status"
               aria-live="polite"
@@ -202,7 +221,7 @@ export function ReconcileTab() {
               type="button"
               variant="outline"
               onClick={() => setConfirmOpen(false)}
-              disabled={isPending}
+              disabled={loading}
             >
               Cancel
             </Button>
@@ -210,7 +229,7 @@ export function ReconcileTab() {
               type="button"
               variant={dryRun ? "default" : "destructive"}
               onClick={handleRun}
-              loading={isPending}
+              loading={loading}
               loadingText="Running…"
             >
               {dryRun ? "Run dry-run" : "Run for real"}
