@@ -19,9 +19,9 @@ export type BoardStateResult =
   | { kind: "error"; message: string };
 
 async function getBoardStateImpl(): Promise<BoardStateResult> {
-  const { email } = await requireAdmin();
+  await requireAdmin();
   try {
-    const data = await loadBoardState(email);
+    const data = await loadBoardState();
     return { kind: "ok", data };
   } catch (e) {
     return {

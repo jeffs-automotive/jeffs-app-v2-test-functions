@@ -27,12 +27,10 @@ import { ManualReviewSearch } from "./ManualReviewSearch";
 import { ManualReviewList } from "./ManualReviewList";
 
 export interface ManualReviewsTabProps {
-  actorEmail: string;
   searchParams: Record<string, string | string[] | undefined>;
 }
 
 export async function ManualReviewsTab({
-  actorEmail,
   searchParams,
 }: ManualReviewsTabProps) {
   const showCompleted =

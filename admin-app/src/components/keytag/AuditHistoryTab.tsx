@@ -32,7 +32,6 @@ import { TagBadge } from "./TagBadge";
 import { AuditHistoryFilters } from "./AuditHistoryFilters";
 
 export interface AuditHistoryTabProps {
-  actorEmail: string;
   /** URL search params dict (already-resolved by the page) */
   searchParams: Record<string, string | string[] | undefined>;
 }
@@ -89,7 +88,6 @@ const ACTION_LABEL: Record<string, { label: string; className: string }> = {
 };
 
 export async function AuditHistoryTab({
-  actorEmail,
   searchParams,
 }: AuditHistoryTabProps) {
   const filters = parseFilters(searchParams);

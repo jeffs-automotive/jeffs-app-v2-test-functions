@@ -37,15 +37,11 @@ import type {
 import { TagBadge } from "./TagBadge";
 import { DashboardPoller } from "./DashboardPoller";
 
-export interface DashboardTabProps {
-  actorEmail: string;
-}
-
-export async function DashboardTab({ actorEmail }: DashboardTabProps) {
+export async function DashboardTab() {
   let data: KeytagDashboardResult | null = null;
   let error: string | null = null;
   try {
-    data = await getCachedDashboard(actorEmail);
+    data = await getCachedDashboard();
   } catch (e) {
     error =
       e instanceof OrchestratorClientError

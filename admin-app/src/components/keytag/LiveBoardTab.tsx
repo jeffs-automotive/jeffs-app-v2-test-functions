@@ -13,15 +13,11 @@ import type { BoardState } from "@/lib/orchestrator/types";
 import { BoardClient } from "./BoardClient";
 import { BoardBackupTools } from "./BoardBackupTools";
 
-export interface LiveBoardTabProps {
-  actorEmail: string;
-}
-
-export async function LiveBoardTab({ actorEmail }: LiveBoardTabProps) {
+export async function LiveBoardTab() {
   let initial: BoardState | null = null;
   let error: string | null = null;
   try {
-    initial = await loadBoardState(actorEmail);
+    initial = await loadBoardState();
   } catch (e) {
     error =
       e instanceof OrchestratorClientError

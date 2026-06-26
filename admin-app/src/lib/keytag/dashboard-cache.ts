@@ -12,9 +12,9 @@ import "server-only";
  *
  * The snapshot now reads DIRECTLY in-process via the keytag read-DAL
  * (`getDashboard()` → service-role client + server-resolved shop_id), dropping
- * the orchestrator-mcp HTTP hop. `actorEmail` is kept in the signature (and
- * folded into the `unstable_cache` key, so this is effectively a per-advisor
- * 60s snapshot) for call-site compatibility; the data is read-only + shop-global.
+ * the orchestrator-mcp HTTP hop. The data is read-only + shop-global, so the
+ * cache key carries no per-advisor identity — one shared 60s snapshot across all
+ * advisors (shop_id is resolved server-side inside getDashboard()).
  */
 import { unstable_cache } from "next/cache";
 import { getDashboard } from "@/lib/keytag/read-dal";
@@ -24,19 +24,15 @@ export const DASHBOARD_TTL_SECONDS = 60;
 export const DASHBOARD_CACHE_TAG = "keytag-dashboard";
 
 const cachedDashboard = unstable_cache(
-  // `actorEmail` is folded into the cache key (per-advisor 60s snapshot) but the
-  // direct read no longer needs it for transport — shop_id is resolved
-  // server-side inside getDashboard(), and its own 10s seatbelt replaces the
-  // old per-call timeoutMs.
-  async (_actorEmail: string): Promise<KeytagDashboardResult> => {
+  // Shop-global snapshot — getDashboard() resolves shop_id server-side and its
+  // own 10s seatbelt replaces the old per-call timeoutMs.
+  async (): Promise<KeytagDashboardResult> => {
     return await getDashboard();
   },
   ["keytag-dashboard-snapshot"],
   { revalidate: DASHBOARD_TTL_SECONDS, tags: [DASHBOARD_CACHE_TAG] },
 );
 
-export function getCachedDashboard(
-  actorEmail: string,
-): Promise<KeytagDashboardResult> {
-  return cachedDashboard(actorEmail);
+export function getCachedDashboard(): Promise<KeytagDashboardResult> {
+  return cachedDashboard();
 }

@@ -8,8 +8,8 @@ import "server-only";
  * (the read-DAL's 10s seatbelt) — callers handle (server component → error
  * card; action → { kind: 'error' }).
  *
- * `actorEmail` is kept in the signature for call-site compatibility; the direct
- * reads resolve shop_id server-side and no longer need it for transport.
+ * The direct reads resolve shop_id server-side, so no per-actor identity is
+ * threaded in here.
  *
  * Untagged source = open manual reviews of the "needs a tag" categories
  * (work_approved_drift / ar_regression = WIP-needs-tag; ar_no_prior_tag =
@@ -53,7 +53,7 @@ export function untaggedWhy(cat: ManualReviewCategory): {
   }
 }
 
-export async function loadBoardState(actorEmail: string): Promise<BoardState> {
+export async function loadBoardState(): Promise<BoardState> {
   const [tags, reviews] = await Promise.all([
     getWipKeyTags(),
     getManualReviews({ only_open: true, limit: 200 }),

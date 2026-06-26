@@ -81,10 +81,10 @@ export default async function KeytagsPage({ searchParams }: KeytagsPageProps) {
         defaultValue={defaultTab}
         dashboard={
           <Suspense fallback={<TabLoading />}>
-            <DashboardTab actorEmail={email} />
+            <DashboardTab />
           </Suspense>
         }
-        live={<LiveBoardTab actorEmail={email} />}
+        live={<LiveBoardTab />}
         postedRevert={
           <Suspense fallback={<TabLoading />}>
             <PostedRevertTab />
@@ -97,12 +97,12 @@ export default async function KeytagsPage({ searchParams }: KeytagsPageProps) {
         }
         manualReviews={
           <Suspense fallback={<TabLoading />}>
-            <ManualReviewsTab actorEmail={email} searchParams={params} />
+            <ManualReviewsTab searchParams={params} />
           </Suspense>
         }
         auditHistory={
           <Suspense fallback={<TabLoading />}>
-            <AuditHistoryTab actorEmail={email} searchParams={params} />
+            <AuditHistoryTab searchParams={params} />
           </Suspense>
         }
       />

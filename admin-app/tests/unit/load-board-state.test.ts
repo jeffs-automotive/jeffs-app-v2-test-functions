@@ -50,7 +50,7 @@ describe("loadBoardState — untagged list from open reviews", () => {
 
   it("surfaces an open 'needs a tag' review as an untagged row keyed by its code", async () => {
     wire({ reviews: [review(100)] });
-    const state = await loadBoardState("chris@jeffsautomotive.com");
+    const state = await loadBoardState();
     const row = state.untagged.find((r) => r.ro_number === 100);
     expect(row).toBeDefined();
     expect(row!.review_code).toBe("REG-100");
@@ -59,7 +59,7 @@ describe("loadBoardState — untagged list from open reviews", () => {
 
   it("excludes resolved reviews", async () => {
     wire({ reviews: [review(100, { resolved_at: "2026-06-24T16:00:00Z" })] });
-    const state = await loadBoardState("chris@jeffsautomotive.com");
+    const state = await loadBoardState();
     expect(state.untagged.find((r) => r.ro_number === 100)).toBeUndefined();
   });
 
@@ -67,7 +67,7 @@ describe("loadBoardState — untagged list from open reviews", () => {
     // Any category outside UNTAGGED_CATEGORIES (work_approved_drift /
     // ar_regression / ar_no_prior_tag) must not appear on the board.
     wire({ reviews: [review(100, { category: "duplicate_active_tag" })] });
-    const state = await loadBoardState("chris@jeffsautomotive.com");
+    const state = await loadBoardState();
     expect(state.untagged.find((r) => r.ro_number === 100)).toBeUndefined();
   });
 
@@ -86,7 +86,7 @@ describe("loadBoardState — untagged list from open reviews", () => {
       last_activity_at: null,
     };
     wire({ tags: [tag] });
-    const state = await loadBoardState("chris@jeffsautomotive.com");
+    const state = await loadBoardState();
     expect(state.tagged).toHaveLength(1);
     expect(state.tagged[0]?.ro_number).toBe(5);
   });

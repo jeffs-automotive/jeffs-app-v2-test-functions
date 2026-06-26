@@ -327,10 +327,6 @@ export type ManualReviewCategory =
   // Forward-compat for AVM (appointment verification mismatch) — added P1.7
   | "appointment_verification_mismatch";
 
-export interface LookupManualReviewArgs {
-  code: string; // PFX-XXXXXX format
-}
-
 export type LookupManualReviewResult =
   | {
       ok: true;
@@ -529,10 +525,6 @@ export interface KeytagToolMap {
   runBulkReconcile: {
     args: RunBulkReconcileArgs;
     result: RunBulkReconcileResult;
-  };
-  lookupManualReview: {
-    args: LookupManualReviewArgs;
-    result: LookupManualReviewResult;
   };
   resolveManualReview: {
     args: ResolveManualReviewArgs;
