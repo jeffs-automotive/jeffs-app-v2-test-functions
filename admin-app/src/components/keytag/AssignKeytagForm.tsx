@@ -5,6 +5,7 @@
  * Force-assign triggers Pattern A confirmation dialog.
  */
 import { useActionState, useEffect, useState, startTransition } from "react";
+import * as Sentry from "@sentry/nextjs";
 import { toast } from "sonner";
 import { ExternalLink, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -55,7 +56,24 @@ export function AssignKeytagForm() {
   }, [state]);
 
   function handleConfirm() {
-    if (state.kind !== "needs_confirmation") return;
+    if (state.kind !== "needs_confirmation") {
+      // TEMP diagnostic (B1): the user clicked Confirm but this component's
+      // useActionState was no longer in needs_confirmation — i.e. the form was
+      // remounted/reset by an action re-render before Confirm fired. This is the
+      // smoking gun for the orphaned-token bug. Remove once root cause confirmed.
+      Sentry.captureMessage("keytag_assign_confirm_clicked_state_lost", {
+        level: "warning",
+        tags: { keytag_flow: "assign", keytag_step: "confirm_clicked_state_lost" },
+        extra: { state_kind: state.kind },
+      });
+      return;
+    }
+    // TEMP diagnostic (B1): Confirm clicked with a live token; about to re-dispatch.
+    Sentry.captureMessage("keytag_assign_confirm_clicked", {
+      level: "info",
+      tags: { keytag_flow: "assign", keytag_step: "confirm_clicked" },
+      extra: { ro_number: state.args.ro_number },
+    });
     const fd = new FormData();
     fd.set("ro_number", String(state.args.ro_number));
     if (state.args.color) fd.set("color", state.args.color);

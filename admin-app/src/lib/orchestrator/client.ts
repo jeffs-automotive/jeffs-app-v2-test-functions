@@ -60,6 +60,14 @@ export class OrchestratorClientError extends Error {
  * derived host fails either of the two host-validation gates.
  */
 function buildOrchestratorUrl(): string {
+  // E2E-only (KEYTAG_E2E_MOCK=1 — never set in dev/prod): route orchestrator calls
+  // to a local deterministic mock route so a real-browser Playwright test can drive
+  // the Pattern-A confirmation flow without touching real Tekmetric/keytag data.
+  // Returns BEFORE the Supabase-host validation below (the mock is localhost).
+  if (process.env.KEYTAG_E2E_MOCK === "1") {
+    const base = process.env.KEYTAG_E2E_MOCK_BASE_URL ?? "http://localhost:3001";
+    return `${base}/api/e2e-mock/orchestrator-mcp`;
+  }
   const supabaseUrl = resolveSupabaseUrl();
   if (!supabaseUrl) {
     throw new OrchestratorClientError(

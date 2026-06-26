@@ -6,8 +6,9 @@ import { ConfirmationDialog } from "@/components/keytag/ConfirmationDialog";
 /**
  * ConfirmationDialog is the Pattern A second-step gate (pattern-a-two-step-confirmation):
  * it shows the orchestrator's scope_summary so the actor sees the EXACT mutation before
- * confirming, and it must refuse a confirm once the 5-minute token has expired. These RTL
- * tests pin that behavior (it's the UI half of the keytag confirmation security model).
+ * confirming. It shows an advisory expiry countdown, but a fast client clock must NOT
+ * dead-disable Confirm (L1) — the server's atomic consume is the real expiry gate. These
+ * RTL tests pin that behavior (it's the UI half of the keytag confirmation security model).
  */
 const iso = (secondsFromNow: number) => new Date(Date.now() + secondsFromNow * 1000).toISOString();
 
@@ -46,10 +47,18 @@ describe("ConfirmationDialog (Pattern A second-step gate)", () => {
     expect(props.onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  it("disables Confirm + shows the expired notice once the token has expired", async () => {
-    render(<ConfirmationDialog {...baseProps()} expiresAt={iso(-10)} />);
+  it("shows the expired notice but keeps Confirm CLICKABLE (L1: server gates expiry, not the client clock)", async () => {
+    const props = baseProps();
+    render(<ConfirmationDialog {...props} expiresAt={iso(-10)} />);
+    // The advisory notice still renders…
     expect(await screen.findByText(/has expired/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /confirm release tag/i })).toBeDisabled();
+    // …but Confirm is NOT disabled. A fast client clock would otherwise dead-disable
+    // it even when the server-side token is still valid (the L1 bug). The server's
+    // atomic consume rejects a truly-expired token → a re-submit toast.
+    const confirm = screen.getByRole("button", { name: /confirm release tag/i });
+    expect(confirm).toBeEnabled();
+    await userEvent.click(confirm);
+    expect(props.onConfirm).toHaveBeenCalledTimes(1);
   });
 
   it("disables Cancel while the Pattern A round-trip is pending", async () => {

@@ -122,13 +122,16 @@ export function ConfirmationDialog({
           >
             Cancel
           </Button>
+          {/* Confirm is NOT disabled on the client-clock countdown (L1): a fast
+              client clock would dead-disable it even when the server-side token is
+              still valid. The server's atomic consume is the real expiry gate — a
+              truly-expired token returns confirmation_failed → a re-submit toast. */}
           <Button
             type="button"
             variant={variant === "destructive" ? "destructive" : "default"}
             onClick={onConfirm}
             loading={isPending}
             loadingText="Applying…"
-            disabled={expired}
             className="gap-1.5"
           >
             <CheckCircle2 className="h-4 w-4" aria-hidden="true" />

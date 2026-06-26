@@ -75,11 +75,23 @@ export default defineConfig({
     process.env.PLAYWRIGHT_BASE_URL || process.env.CI
       ? undefined
       : {
-          command: "npm run dev",
+          // PLAYWRIGHT_PROD=1 runs the PRODUCTION server (next start) so Server-Action
+          // route re-renders behave like prod — `next dev` does NOT re-render the
+          // force-dynamic route on a value-returning action, so B1 only reproduces
+          // under prod. Requires a prior `npm run build`. Otherwise: dev server.
+          command:
+            process.env.PLAYWRIGHT_PROD === "1"
+              ? "npm run start -- -p 3001"
+              : "npm run dev",
           url: "http://localhost:3001",
           timeout: 120_000,
-          reuseExistingServer: true,
+          // Fresh server each run so the KEYTAG_E2E_MOCK env below is guaranteed
+          // active (a reused non-mock dev server would silently skip the stub).
+          reuseExistingServer: false,
           stdout: "pipe",
           stderr: "pipe",
+          // E2E-only: turns on the MSW-SSR orchestrator stub (instrumentation.ts).
+          // Harmless to the auth-gate / dashboard specs (they don't call the orchestrator).
+          env: { ...process.env, KEYTAG_E2E_MOCK: "1" } as Record<string, string>,
         },
 });

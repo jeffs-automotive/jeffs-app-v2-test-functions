@@ -11,6 +11,7 @@
  *     second call with token applies)
  */
 import { z } from "zod";
+import * as Sentry from "@sentry/nextjs";
 import { requireAdmin } from "@/lib/auth";
 import { wrapAdminAction } from "@/lib/instrument-action";
 import {
@@ -83,11 +84,37 @@ async function assignKeytagImpl(
     };
   }
 
+  // TEMP diagnostic (B1, keytag-audit-fixes): force-assign confirmations are
+  // orphaned in prod (tokens issued, never consumed) but the bug won't reproduce
+  // locally. These info-level Sentry messages locate WHERE the flow breaks on the
+  // next real attempt — pair with the client 'keytag_assign_confirm_clicked'
+  // (AssignKeytagForm). Remove once the root cause is confirmed.
+  const isConfirmCall = parsed.data.confirmation_token !== undefined;
+
   try {
+    if (isConfirmCall) {
+      // The 2nd (consume) call reached the server. If we see 'confirm_clicked'
+      // (client) but NOT this, the dispatch died before reaching the server
+      // (form unmount). If we see this + a 'tool_error' result, consume rejected.
+      Sentry.captureMessage("keytag_assign_confirm_received", {
+        level: "info",
+        tags: { keytag_flow: "assign", keytag_step: "confirm_received" },
+        extra: { ro_number: parsed.data.ro_number },
+      });
+    }
+
     const data = await callKeytagTool("assignKeytagToRo", parsed.data, email);
 
     if (isConfirmationRequired(data)) {
       // Pattern A first-call return
+      Sentry.captureMessage("keytag_assign_needs_confirmation", {
+        level: "info",
+        tags: { keytag_flow: "assign", keytag_step: "needs_confirmation" },
+        extra: {
+          ro_number: parsed.data.ro_number,
+          token_id: data.confirmation.token_id,
+        },
+      });
       const { confirmation_token: _ignore, ...args } = parsed.data;
       return {
         kind: "needs_confirmation",
@@ -97,6 +124,17 @@ async function assignKeytagImpl(
       };
     }
     if (data.ok) {
+      if (isConfirmCall) {
+        Sentry.captureMessage("keytag_assign_confirm_result", {
+          level: "info",
+          tags: {
+            keytag_flow: "assign",
+            keytag_step: "confirm_result",
+            keytag_result: "success",
+          },
+          extra: { ro_number: parsed.data.ro_number },
+        });
+      }
       // No revalidatePath("/keytags") here. The board updates optimistically
       // (BoardClient.onResolved splices the assigned row out) and reconverges
       // via the 15s LiveBoardPoller. Revalidating this force-dynamic, six-tab
@@ -105,8 +143,30 @@ async function assignKeytagImpl(
       // the post-success "continually loads" spin (2026-06-24 board-release-fix).
       return { kind: "success", data };
     }
+    if (isConfirmCall) {
+      Sentry.captureMessage("keytag_assign_confirm_result", {
+        level: "warning",
+        tags: {
+          keytag_flow: "assign",
+          keytag_step: "confirm_result",
+          keytag_result: "tool_error",
+        },
+        extra: { ro_number: parsed.data.ro_number, error_code: data.error_code },
+      });
+    }
     return { kind: "tool_error", data };
   } catch (e) {
+    if (isConfirmCall) {
+      Sentry.captureMessage("keytag_assign_confirm_result", {
+        level: "warning",
+        tags: {
+          keytag_flow: "assign",
+          keytag_step: "confirm_result",
+          keytag_result: "transport_error",
+        },
+        extra: { ro_number: parsed.data.ro_number },
+      });
+    }
     return {
       kind: "transport_error",
       message:

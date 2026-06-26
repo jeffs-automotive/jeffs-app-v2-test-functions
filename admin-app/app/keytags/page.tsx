@@ -7,13 +7,18 @@
  * force-dynamic so search-param-driven audit filters re-fetch on every
  * navigation.
  *
- * IMPORTANT (2026-06-25 board-spin fix): each tab is wrapped in its own
- * <Suspense> boundary. A Server Action re-renders this whole route tree (Flight),
- * and without Suspense a slow tab's data fetch (historically DashboardTab's
- * dashboard call) blocked the entire action response → the board buttons "spun"
- * for the duration. Per-tab Suspense lets the action's re-render stream the
- * shell immediately and resolve each tab independently, so one slow tab can
- * never pin a mutation's isPending.
+ * Tabs are wrapped in per-tab <Suspense> so a slow tab's data fetch can't block
+ * the whole action re-render (the 2026-06-25 board-spin fix) — EXCEPT the Live
+ * tab. Every Server Action re-renders this force-dynamic route (Flight); a
+ * Suspense fallback on the Live tab unmounts its subtree, and that tab hosts the
+ * Pattern-A confirmation forms (force-assign / release / per-row). Unmounting
+ * resets their useActionState + destroys the open ConfirmationDialog and its
+ * already-issued token before the user can Confirm — the B1 regression
+ * (force-assign tokens issued but never consumed, 2026-06-24+). So the Live tab
+ * renders DIRECTLY (reconcile-in-place keeps the form state alive); its reads are
+ * fast DB lookups, so the brief in-place re-render is fine. The other tabs either
+ * don't suspend (PostedRevert is sync) or host no Pattern-A dialog, so their
+ * Suspense is harmless. See docs/keytag/keytag-audit-fixes-plan.md (B1).
  */
 import { Suspense } from "react";
 import { requireAdmin } from "@/lib/auth";
@@ -79,11 +84,7 @@ export default async function KeytagsPage({ searchParams }: KeytagsPageProps) {
             <DashboardTab actorEmail={email} />
           </Suspense>
         }
-        live={
-          <Suspense fallback={<TabLoading />}>
-            <LiveBoardTab actorEmail={email} />
-          </Suspense>
-        }
+        live={<LiveBoardTab actorEmail={email} />}
         postedRevert={
           <Suspense fallback={<TabLoading />}>
             <PostedRevertTab />
