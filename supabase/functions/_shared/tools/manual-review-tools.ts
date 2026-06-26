@@ -66,10 +66,17 @@ export async function resolveManualReviewTool(
     color?: TagColor;
     tagNumber?: number;
     notes?: string;
+    /**
+     * Channel that originated this resolution → keytag_audit_log.source. 'admin_app' for the
+     * dashboard, 'claude_desktop' for the OAuth/Claude-Desktop branch. Defaults to
+     * 'claude_desktop' for back-compat with existing callers.
+     */
+    source?: "admin_app" | "claude_desktop";
   },
 ): Promise<ResolveManualReviewToolResult> {
   const { sb: _, ...rest } = args as unknown as { sb?: SupabaseClient };
   void _;
+  const auditSource = args.source ?? "claude_desktop";
 
   const resolution = await resolveRpc({
     sb,
@@ -94,7 +101,7 @@ export async function resolveManualReviewTool(
   //   - Writes an audit-log entry referencing the code
   //   - Attaches the audit-log id back to the review row
   try {
-    const dispatched = await dispatchResolution(sb, shopId, resolution, args.userLabel);
+    const dispatched = await dispatchResolution(sb, shopId, resolution, args.userLabel, auditSource);
     return dispatched;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -125,6 +132,7 @@ async function dispatchResolution(
   shopId: number,
   res: ResolvedRecord,
   resolverLabel: string,
+  auditSource: "admin_app" | "claude_desktop",
 ): Promise<ResolveManualReviewToolResult> {
   const ctx = res.context as {
     ro_id?: number;
@@ -146,7 +154,7 @@ async function dispatchResolution(
       tagColor: (ctx.tag_color as TagColor | null | undefined) ?? null,
       tagNumber: (ctx.tag_number as number | null | undefined) ?? null,
       action: "manual_review_resolved",
-      source: "claude_desktop",
+      source: auditSource,
       roId: (ctx.ro_id as number | undefined) ?? null,
       roNumber: (ctx.ro_number as number | undefined) ?? null,
       userLabel: resolverLabel,
@@ -167,14 +175,14 @@ async function dispatchResolution(
   // ── Category-specific dispatch ──
   switch (cat) {
     case "orphan_release":
-      return await dispatchOrphan(sb, shopId, res, ctx, resolverLabel);
+      return await dispatchOrphan(sb, shopId, res, ctx, resolverLabel, auditSource);
     case "ar_no_prior_tag":
-      return await dispatchArn(sb, shopId, res, ctx, resolverLabel);
+      return await dispatchArn(sb, shopId, res, ctx, resolverLabel, auditSource);
     case "work_approved_drift":
     case "ar_regression":
-      return await dispatchDrift(sb, shopId, res, ctx, resolverLabel);
+      return await dispatchDrift(sb, shopId, res, ctx, resolverLabel, auditSource);
     case "tekmetric_patch_fail":
-      return await dispatchPatchFail(sb, shopId, res, ctx, resolverLabel);
+      return await dispatchPatchFail(sb, shopId, res, ctx, resolverLabel, auditSource);
   }
 }
 
@@ -185,6 +193,7 @@ async function dispatchOrphan(
   res: ResolvedRecord,
   ctx: { ro_id?: number; ro_number?: number; tag_color?: TagColor; tag_number?: number },
   resolverLabel: string,
+  auditSource: "admin_app" | "claude_desktop",
 ): Promise<ResolveManualReviewToolResult> {
   const tagColor = ctx.tag_color as TagColor;
   const tagNumber = ctx.tag_number as number;
@@ -209,7 +218,7 @@ async function dispatchOrphan(
       tagColor,
       tagNumber,
       action: "released",
-      source: "claude_desktop",
+      source: auditSource,
       roId: ctx.ro_id ?? null,
       roNumber: ctx.ro_number ?? null,
       userLabel: resolverLabel,
@@ -233,7 +242,7 @@ async function dispatchOrphan(
       tagColor,
       tagNumber,
       action: "manual_review_resolved",
-      source: "claude_desktop",
+      source: auditSource,
       roId: ctx.ro_id ?? null,
       roNumber: ctx.ro_number ?? null,
       userLabel: resolverLabel,
@@ -261,6 +270,7 @@ async function dispatchArn(
   res: ResolvedRecord,
   ctx: { ro_id?: number; ro_number?: number },
   resolverLabel: string,
+  auditSource: "admin_app" | "claude_desktop",
 ): Promise<ResolveManualReviewToolResult> {
   const code = res.code;
   const choice = res.chosen_option.key;
@@ -314,7 +324,7 @@ async function dispatchArn(
       tagColor: color,
       tagNumber,
       action: "force_assigned",
-      source: "claude_desktop",
+      source: auditSource,
       roId: ctx.ro_id ?? null,
       roNumber: ctx.ro_number ?? null,
       userLabel: resolverLabel,
@@ -337,7 +347,7 @@ async function dispatchArn(
       tagColor: null, // no real tag involved (policy decision)
       tagNumber: null,
       action: "manual_review_resolved",
-      source: "claude_desktop",
+      source: auditSource,
       roId: ctx.ro_id ?? null,
       roNumber: ctx.ro_number ?? null,
       userLabel: resolverLabel,
@@ -365,6 +375,7 @@ async function dispatchDrift(
   res: ResolvedRecord,
   ctx: { ro_id?: number; ro_number?: number; tag_color?: TagColor; tag_number?: number },
   resolverLabel: string,
+  auditSource: "admin_app" | "claude_desktop",
 ): Promise<ResolveManualReviewToolResult> {
   const code = res.code;
   const choice = res.chosen_option.key;
@@ -379,7 +390,7 @@ async function dispatchDrift(
     if (!priorColor || !priorNumber) {
       return unknownChoice(code, cat, choice, "no prior tag in context");
     }
-    return await forceAssignAndPatch(sb, shopId, res, ctx, priorColor, priorNumber, "use_prior_tag", resolverLabel);
+    return await forceAssignAndPatch(sb, shopId, res, ctx, priorColor, priorNumber, "use_prior_tag", resolverLabel, auditSource);
   }
   if (choice === "use_different_tag") {
     const color = res.color;
@@ -392,10 +403,10 @@ async function dispatchDrift(
         message: "use_different_tag requires color + tag_number.",
       };
     }
-    return await forceAssignAndPatch(sb, shopId, res, ctx, color, tagNumber, "use_different_tag", resolverLabel);
+    return await forceAssignAndPatch(sb, shopId, res, ctx, color, tagNumber, "use_different_tag", resolverLabel, auditSource);
   }
   if (choice === "assign_new") {
-    return await roundRobinAssignAndPatch(sb, shopId, res, ctx, resolverLabel);
+    return await roundRobinAssignAndPatch(sb, shopId, res, ctx, resolverLabel, auditSource);
   }
   if (choice === "no_tag") {
     const auditId = await writeAuditLog(sb, {
@@ -406,7 +417,7 @@ async function dispatchDrift(
       tagColor: null,
       tagNumber: null,
       action: "manual_review_resolved",
-      source: "claude_desktop",
+      source: auditSource,
       roId: ctx.ro_id ?? null,
       roNumber: ctx.ro_number ?? null,
       userLabel: resolverLabel,
@@ -433,6 +444,7 @@ async function dispatchPatchFail(
   res: ResolvedRecord,
   ctx: { ro_id?: number; ro_number?: number; tag_color?: TagColor; tag_number?: number },
   resolverLabel: string,
+  auditSource: "admin_app" | "claude_desktop",
 ): Promise<ResolveManualReviewToolResult> {
   const code = res.code;
   const choice = res.chosen_option.key;
@@ -451,7 +463,7 @@ async function dispatchPatchFail(
       tagColor,
       tagNumber,
       action: "manual_review_resolved",
-      source: "claude_desktop",
+      source: auditSource,
       roId: ctx.ro_id ?? null,
       roNumber: ctx.ro_number ?? null,
       userLabel: resolverLabel,
@@ -484,7 +496,7 @@ async function dispatchPatchFail(
       p_ro_id: ctx.ro_id,
       p_reason: `manual_review_${code}_release_and_redo`,
     });
-    return await roundRobinAssignAndPatch(sb, shopId, res, ctx, resolverLabel);
+    return await roundRobinAssignAndPatch(sb, shopId, res, ctx, resolverLabel, auditSource);
   }
 
   if (choice === "accept_unsynced") {
@@ -492,7 +504,7 @@ async function dispatchPatchFail(
       tagColor,
       tagNumber,
       action: "manual_review_resolved",
-      source: "claude_desktop",
+      source: auditSource,
       roId: ctx.ro_id ?? null,
       roNumber: ctx.ro_number ?? null,
       userLabel: resolverLabel,
@@ -524,6 +536,7 @@ async function forceAssignAndPatch(
   tagNumber: number,
   reasonSuffix: string,
   resolverLabel: string,
+  auditSource: "admin_app" | "claude_desktop",
 ): Promise<ResolveManualReviewToolResult> {
   const code = res.code;
   const wire = formatKeytag(color, tagNumber);
@@ -564,10 +577,10 @@ async function forceAssignAndPatch(
     tagColor: color,
     tagNumber,
     action: "force_assigned",
-    source: "claude_desktop",
+    source: auditSource,
     roId: ctx.ro_id ?? null,
     roNumber: ctx.ro_number ?? null,
-    userLabel: null,
+    userLabel: resolverLabel,
     reason: `manual_review_${code}_${reasonSuffix}`,
     manualReviewCode: code,
     reviewId: res.review_id,
@@ -592,6 +605,7 @@ async function roundRobinAssignAndPatch(
   res: ResolvedRecord,
   ctx: { ro_id?: number; ro_number?: number },
   resolverLabel: string,
+  auditSource: "admin_app" | "claude_desktop",
 ): Promise<ResolveManualReviewToolResult> {
   const code = res.code;
   const { data, error } = await sb.rpc("assign_next_keytag", {
@@ -627,10 +641,10 @@ async function roundRobinAssignAndPatch(
     tagColor: color,
     tagNumber,
     action: "assigned",
-    source: "claude_desktop",
+    source: auditSource,
     roId: ctx.ro_id ?? null,
     roNumber: ctx.ro_number ?? null,
-    userLabel: null,
+    userLabel: resolverLabel,
     reason: `manual_review_${code}_assign_new`,
     manualReviewCode: code,
     reviewId: res.review_id,

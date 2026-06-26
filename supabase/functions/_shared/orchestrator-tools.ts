@@ -330,6 +330,7 @@ export function getOrchestratorTools(args: {
           const result = await revertKeytagToAssigned(sb, {
             roNumber: ro_number,
             userLabel,
+            source,
             confirmationToken: confirmation_token,
           });
           await recorder.recordEnd({ toolCallId: callId, output: result });
@@ -377,6 +378,7 @@ export function getOrchestratorTools(args: {
             roNumber: ro_number,
             postedAt: posted_at,
             userLabel,
+            source,
             confirmationToken: confirmation_token,
           });
           await recorder.recordEnd({ toolCallId: callId, output: result });
@@ -510,6 +512,7 @@ export function getOrchestratorTools(args: {
             color,
             tagNumber: tag_number,
             notes,
+            source,
           });
           await recorder.recordEnd({ toolCallId: callId, output: result });
           return result;

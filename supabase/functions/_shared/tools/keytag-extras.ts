@@ -11,7 +11,9 @@
 //   - getKeytagAuditHistory: query keytag_audit_log with filters; default 24h
 //
 // All write paths emit a row to keytag_audit_log via log_keytag_audit, with
-// source='claude_desktop' and the OAuth user_label of the advisor.
+// the OAuth user_label of the advisor and a source tag: 'admin_app' for the
+// dashboard (SERVICE_ROLE + X-Actor-Email branch) or 'claude_desktop' for the
+// OAuth/Claude-Desktop branch (the default for back-compat).
 
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import {
@@ -272,9 +274,20 @@ export type RevertKeytagResult =
  */
 export async function revertKeytagToAssigned(
   sb: SupabaseClient,
-  args: { roNumber: number; userLabel?: string; confirmationToken?: string },
+  args: {
+    roNumber: number;
+    userLabel?: string;
+    confirmationToken?: string;
+    /**
+     * Channel that originated this mutation → keytag_audit_log.source. 'admin_app' for the
+     * dashboard, 'claude_desktop' for the OAuth/Claude-Desktop branch. Defaults to
+     * 'claude_desktop' for back-compat with existing callers.
+     */
+    source?: "admin_app" | "claude_desktop";
+  },
 ): Promise<RevertKeytagResult> {
-  const { roNumber, userLabel, confirmationToken } = args;
+  const { roNumber, userLabel, confirmationToken, source } = args;
+  const auditSource = source ?? "claude_desktop";
 
   // Look up the RO id from our keytags table (no Tekmetric round-trip needed)
   const { data: dbRow } = await sb
@@ -370,7 +383,7 @@ export async function revertKeytagToAssigned(
     p_tag_color: tagColor,
     p_tag_number: tagNumber,
     p_action: "reverted",
-    p_source: "claude_desktop",
+    p_source: auditSource,
     p_ro_id: roId,
     p_ro_number: roNumber,
     p_prior_status: priorStatus,
@@ -429,9 +442,21 @@ export type MarkKeytagPostedResult =
  */
 export async function markKeytagPosted(
   sb: SupabaseClient,
-  args: { roNumber: number; postedAt?: string; userLabel?: string; confirmationToken?: string },
+  args: {
+    roNumber: number;
+    postedAt?: string;
+    userLabel?: string;
+    confirmationToken?: string;
+    /**
+     * Channel that originated this mutation → keytag_audit_log.source. 'admin_app' for the
+     * dashboard, 'claude_desktop' for the OAuth/Claude-Desktop branch. Defaults to
+     * 'claude_desktop' for back-compat with existing callers.
+     */
+    source?: "admin_app" | "claude_desktop";
+  },
 ): Promise<MarkKeytagPostedResult> {
-  const { roNumber, postedAt, userLabel, confirmationToken } = args;
+  const { roNumber, postedAt, userLabel, confirmationToken, source } = args;
+  const auditSource = source ?? "claude_desktop";
   const effectivePostedAt = postedAt ?? new Date().toISOString();
 
   const { data: dbRow } = await sb
@@ -524,7 +549,7 @@ export async function markKeytagPosted(
     p_tag_color: tagColor,
     p_tag_number: tagNumber,
     p_action: "marked_posted",
-    p_source: "claude_desktop",
+    p_source: auditSource,
     p_ro_id: roId,
     p_ro_number: roNumber,
     p_prior_status: priorStatus,
