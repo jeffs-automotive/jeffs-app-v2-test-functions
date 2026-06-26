@@ -25,6 +25,13 @@ import { withSentryConfig } from "@sentry/nextjs";
 const nextConfig: NextConfig = {
   reactStrictMode: true,
 
+  // Phase 0 build-seam spike (keytag orchestrator-removal): the shared
+  // @jeffs/keytag-core read package ships raw .ts sources with `.ts`-extension
+  // relative imports (Deno needs them). transpilePackages tells Next/Turbopack
+  // (and the webpack build) to transpile + resolve those sources rather than
+  // expecting pre-built JS. See docs/keytag/orchestrator-removal-plan.md §6.
+  transpilePackages: ["@jeffs/keytag-core"],
+
   // Same image / asset config as scheduler-app for consistency.
   images: {
     remotePatterns: [],

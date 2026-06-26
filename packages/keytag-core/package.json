@@ -1,0 +1,21 @@
+{
+  "name": "@jeffs/keytag-core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Shared keytag READ slice — one TS source consumed by the Node/Next admin-app (transpilePackages) and the Deno edge runtime (deno.json import map). Read-only; mutations stay on the gateway. Phase 0 build-seam spike per docs/keytag/orchestrator-removal-plan.md.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "files": [
+    "src"
+  ],
+  "peerDependencies": {
+    "@supabase/supabase-js": "^2"
+  }
+}
