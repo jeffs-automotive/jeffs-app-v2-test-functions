@@ -440,7 +440,10 @@ entrypoint = "./functions/keytag-tekmetric-webhook/index.ts"
 
 [functions.tekmetric-list-wip-keytags]
 enabled = true
-verify_jwt = true
+# H5 fix (2026-06-26): verify_jwt=true accepted the publishable anon key (a
+# signature-valid Supabase JWT) — any browser could read the whole WIP/A-R pool.
+# Now gated by an in-handler service-role bearer check (operator-only, like bootstrap).
+verify_jwt = false
 import_map = "./functions/tekmetric-list-wip-keytags/deno.json"
 # Uncomment to specify a custom file path to the entrypoint.
 # Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
@@ -451,7 +454,10 @@ entrypoint = "./functions/tekmetric-list-wip-keytags/index.ts"
 
 [functions.tekmetric-find-ro-by-keytag]
 enabled = true
-verify_jwt = true
+# H5 fix (2026-06-26): verify_jwt=true accepted the publishable anon key — any
+# browser could enumerate any tag → RO/customer/vehicle. Now gated by an in-handler
+# service-role bearer check (operator-only, like bootstrap).
+verify_jwt = false
 import_map = "./functions/tekmetric-find-ro-by-keytag/deno.json"
 # Uncomment to specify a custom file path to the entrypoint.
 # Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
@@ -491,7 +497,10 @@ entrypoint = "./functions/mcp-auth/index.ts"
 
 [functions.keytag-seed-from-tekmetric]
 enabled = true
-verify_jwt = true
+# H5 fix (2026-06-26): verify_jwt=true accepted the publishable anon key — any
+# browser could invoke this WRITE (flips available tags to assigned/posted_ar).
+# Now gated by an in-handler service-role bearer check (operator-only, like bootstrap).
+verify_jwt = false
 import_map = "./functions/keytag-seed-from-tekmetric/deno.json"
 # Uncomment to specify a custom file path to the entrypoint.
 # Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx

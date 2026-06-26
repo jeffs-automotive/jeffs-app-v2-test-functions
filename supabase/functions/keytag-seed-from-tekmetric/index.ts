@@ -14,9 +14,11 @@
 // Idempotency: only seeds rows where keytags.status = 'available'. Already-
 // assigned tags are left alone — re-running is safe and additive.
 //
-// Auth: relies on Supabase JWT verification at the edge gateway (verify_jwt
-// = true). Caller passes anon or service_role JWT in Authorization header.
-// The function uses its own service_role client internally for DB writes.
+// Auth (H5 fix, 2026-06-26): operator-only via a service-role/secret bearer
+// (checkSchedulerBearer). Previously verify_jwt=true accepted the publishable anon
+// key, so ANY browser could invoke this WRITE — it flips available tags to
+// assigned/posted_ar from possibly-stale Tekmetric keytag fields. The function
+// uses its own service_role client internally for DB writes.
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -31,6 +33,10 @@ import {
 } from "../_shared/tekmetric-client.ts";
 import { parseKeytag } from "../_shared/keytag-format.ts";
 import { withSentryScope } from "../_shared/sentry-edge.ts";
+import {
+  checkSchedulerBearer,
+  unauthorizedResponse,
+} from "../_shared/scheduler-auth.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -106,7 +112,13 @@ async function fetchAllRosByStatus(statusId: number): Promise<TekmetricRepairOrd
 }
 
 // PLAN-02 Phase 1 — per-request Sentry isolation scope + flush before response.
-Deno.serve((req) => withSentryScope(req, "keytag-seed-from-tekmetric", async () => {
+// Exported for the auth-gate unit test; wired to Deno.serve below.
+export const handler = (req: Request) => withSentryScope(req, "keytag-seed-from-tekmetric", async () => {
+  // H5: operator-only bearer gate (the first handler statement). An anon-key bearer
+  // doesn't match the service-role/secret key → 401 before any Tekmetric read or DB write.
+  const auth = checkSchedulerBearer(req, "keytag-seed-from-tekmetric");
+  if (!auth.ok) return unauthorizedResponse(auth);
+
   if (req.method !== "POST" && req.method !== "GET") {
     return new Response(
       JSON.stringify({ ok: false, error: "Use POST or GET" }),
@@ -296,4 +308,6 @@ Deno.serve((req) => withSentryScope(req, "keytag-seed-from-tekmetric", async () 
     status: 200,
     headers: { "Content-Type": "application/json" },
   });
-}));
+});
+
+Deno.serve(handler);

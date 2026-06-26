@@ -11,18 +11,14 @@
 // defaults to RED for backward compatibility (per `parseKeytag` in
 // _shared/keytag-format.ts).
 //
+// Auth (H5 fix, 2026-06-26): operator-only via a service-role/secret bearer
+// (checkSchedulerBearer). Previously verify_jwt=true accepted the publishable anon
+// key, so any browser could enumerate any tag → RO/customer/vehicle. Mirrors
+// tekmetric-bootstrap's B1/B2 hardening.
+//
 // Returns:
 //   - found:     { ok, found: true,  tag, tag_color, tag_number, ro_number, ro_id, ro_url, customer_id, vehicle_id, status, ... }
 //   - not found: { ok, found: false, tag, tag_color, tag_number, message }
-//
-// History: prior to 2026-05-11 this wrapper took a bare numeric `key_tag` and
-// the underlying findRoByKeyTag treated it as a single-color search. The
-// underlying function changed to require (color, number) when Tekmetric
-// adopted R/Y tag prefixes. The wrapper compiled-but-broken in production
-// for ~2 weeks (no caller relied on it because orchestrator-mcp v0.3.0
-// dispatches the underlying function directly without HTTP). This rewrite
-// (PLAN-02 Phase 1 follow-up) restores the wrapper as a working
-// diagnostic endpoint that accepts both new and legacy inputs.
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -30,6 +26,10 @@ import { findRoByKeyTag } from "../_shared/tools/repair-orders.ts";
 import { ENV_NAMES } from "../_shared/tekmetric.ts";
 import { parseKeytag } from "../_shared/keytag-format.ts";
 import { withSentryScope } from "../_shared/sentry-edge.ts";
+import {
+  checkSchedulerBearer,
+  unauthorizedResponse,
+} from "../_shared/scheduler-auth.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -78,9 +78,14 @@ async function readKeytag(
   return null;
 }
 
-// PLAN-02 Phase 1 — per-request Sentry isolation scope + flush before response.
-Deno.serve((req) =>
+// Exported for the auth-gate unit test; wired to Deno.serve below.
+export const handler = (req: Request) =>
   withSentryScope(req, "tekmetric-find-ro-by-keytag", async () => {
+    // H5: operator-only bearer gate (the first handler statement). An anon-key
+    // bearer doesn't match the service-role/secret key → 401 before any lookup.
+    const auth = checkSchedulerBearer(req, "tekmetric-find-ro-by-keytag");
+    if (!auth.ok) return unauthorizedResponse(auth);
+
     if (req.method !== "GET" && req.method !== "POST") {
       return new Response(
         JSON.stringify({
@@ -118,5 +123,6 @@ Deno.serve((req) =>
         { status: 500, headers: { "Content-Type": "application/json" } },
       );
     }
-  }),
-);
+  });
+
+Deno.serve(handler);
