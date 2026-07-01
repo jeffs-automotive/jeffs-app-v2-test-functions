@@ -258,6 +258,13 @@ function scrubEvent(event: any): any {
     if (typeof event.request.query_string === "string") {
       event.request.query_string = scrubString(event.request.query_string);
     }
+    // Latent-gap close (2026-07-01 security re-verify): request.url is only
+    // populated by the RequestData integration (disabled via
+    // defaultIntegrations:false today) — scrub it anyway so re-enabling
+    // integrations can never silently leak a ?token= secret.
+    if (typeof event.request.url === "string") {
+      event.request.url = scrubString(event.request.url);
+    }
   }
   return event;
 }
