@@ -93,7 +93,10 @@ export async function listTekmetricItems(
       token: `${kind}|${sourceKey}`,
       kind,
       sourceKey,
-      postingRole: derivePostingRole(kind, sourceKey) ?? "income",
+      // Prefer the STORED role for a mapped item (a fee mapped to an expense account
+      // is fee_expense, which derivePostingRole can't tell from (kind, sourceKey));
+      // fall back to the derived default for an unmapped item.
+      postingRole: m?.postingRole ?? derivePostingRole(kind, sourceKey) ?? "income",
       label,
       group,
       mappedAccountLabel: m ? accountLabel(m) : null,

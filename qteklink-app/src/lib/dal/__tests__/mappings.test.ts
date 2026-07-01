@@ -17,6 +17,7 @@ vi.mock("@/lib/supabase/admin", () => ({
 import {
   listMappings,
   listMappableAccounts,
+  getMappableAccountType,
   setMapping,
   deactivateMapping,
 } from "../mappings";
@@ -111,6 +112,32 @@ describe("listMappableAccounts", () => {
     routeRealm(null);
     expect(await listMappableAccounts(7476)).toEqual([]);
     expect(fromMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("getMappableAccountType", () => {
+  it("returns the account_type for an account in the bound realm", async () => {
+    fromMock.mockReturnValue(chainResolving({ data: [{ account_type: "Expense" }], error: null }));
+    const t = await getMappableAccountType(7476, "1150040015");
+    expect(rpcMock).toHaveBeenCalledWith("qbo_resolve_realm_for_shop", { p_shop_id: 7476 });
+    expect(fromMock).toHaveBeenCalledWith("qbo_accounts");
+    expect(t).toBe("Expense");
+  });
+
+  it("returns null when the account isn't in the COA mirror", async () => {
+    fromMock.mockReturnValue(chainResolving({ data: [], error: null }));
+    expect(await getMappableAccountType(7476, "nope")).toBeNull();
+  });
+
+  it("returns null when the shop has no connection (no query)", async () => {
+    routeRealm(null);
+    expect(await getMappableAccountType(7476, "275")).toBeNull();
+    expect(fromMock).not.toHaveBeenCalled();
+  });
+
+  it("FAILS CLOSED on a DB error", async () => {
+    fromMock.mockReturnValue(chainResolving({ data: null, error: { message: "boom" } }));
+    await expect(getMappableAccountType(7476, "275")).rejects.toThrow(/getMappableAccountType failed/);
   });
 });
 

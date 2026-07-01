@@ -11,11 +11,13 @@ import { QboClientError } from "@/lib/qbo/errors";
 const requireQtekUserMock = vi.fn();
 const setMappingMock = vi.fn();
 const deactivateMappingMock = vi.fn();
+const getMappableAccountTypeMock = vi.fn();
 
 vi.mock("@/lib/auth", () => ({ requireQtekUser: () => requireQtekUserMock() }));
 vi.mock("@/lib/dal/mappings", () => ({
   setMapping: (...a: unknown[]) => setMappingMock(...a),
   deactivateMapping: (...a: unknown[]) => deactivateMappingMock(...a),
+  getMappableAccountType: (...a: unknown[]) => getMappableAccountTypeMock(...a),
 }));
 vi.mock("@/lib/instrument-action", () => ({
   wrapQtekAction: (_name: string, inner: (...a: unknown[]) => unknown) => inner,
@@ -34,6 +36,7 @@ beforeEach(() => {
   requireQtekUserMock.mockResolvedValue({ shopId: 7476, role: "admin", email: "a@b.com", userId: "u", objectId: "o" });
   setMappingMock.mockResolvedValue({ id: "new-uuid" });
   deactivateMappingMock.mockResolvedValue({ deactivated: true });
+  getMappableAccountTypeMock.mockResolvedValue("Income"); // fees default to an income account unless a test overrides
 });
 
 describe("mapTekmetricItemAction (the picker — the only mapping-set surface)", () => {
@@ -56,6 +59,30 @@ describe("mapTekmetricItemAction (the picker — the only mapping-set surface)",
     );
     expect(setMappingMock).toHaveBeenCalledWith(7476, expect.objectContaining({ kind: "fee", passThrough: true }));
     expect(r).toMatchObject({ ok: true });
+  });
+
+  it("a fee mapped to an INCOME account derives role income (revenue)", async () => {
+    getMappableAccountTypeMock.mockResolvedValue("Income");
+    const r = await mapTekmetricItemAction(null, fd({ kind: "fee", source_key: "Shop supplies", qbo_account_id: "273" }));
+    expect(getMappableAccountTypeMock).toHaveBeenCalledWith(7476, "273");
+    expect(setMappingMock).toHaveBeenCalledWith(7476, expect.objectContaining({ kind: "fee", postingRole: "income" }));
+    expect(r).toMatchObject({ ok: true });
+  });
+
+  it("a fee mapped to an EXPENSE account derives role fee_expense (contra-expense offset)", async () => {
+    getMappableAccountTypeMock.mockResolvedValue("Expense");
+    const r = await mapTekmetricItemAction(null, fd({ kind: "fee", source_key: "Gas", qbo_account_id: "1150040015" }));
+    expect(getMappableAccountTypeMock).toHaveBeenCalledWith(7476, "1150040015");
+    expect(setMappingMock).toHaveBeenCalledWith(7476, expect.objectContaining({ kind: "fee", sourceKey: "Gas", postingRole: "fee_expense" }));
+    expect(r).toMatchObject({ ok: true });
+  });
+
+  it("rejects a fee mapped to a non-income/expense account (e.g. a Bank) with NO DAL write", async () => {
+    getMappableAccountTypeMock.mockResolvedValue("Bank");
+    const r = await mapTekmetricItemAction(null, fd({ kind: "fee", source_key: "Gas", qbo_account_id: "35" }));
+    expect(r).toMatchObject({ ok: false, reason: "validation" });
+    if (!r.ok) expect(r.message).toMatch(/income account|expense account/i);
+    expect(setMappingMock).not.toHaveBeenCalled();
   });
 
   it("rejects pass-through on a NON-fee kind (no DAL call)", async () => {

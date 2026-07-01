@@ -48,6 +48,13 @@ SELECT ok(NOT public.qteklink_role_accepts_type('store_credit','Expense'), 'role
 SELECT ok(NOT public.qteklink_role_accepts_type('store_credit','Other Current Asset'), 'role: store_credit rejects Other Current Asset (it is a liability, not Undeposited)');
 SELECT ok(public.qteklink_role_accepts_type('store_credit', NULL::text) IS FALSE, 'role matrix is NULL-safe: store_credit vs NULL type -> FALSE');
 SELECT ok(public.qteklink_kind_accepts_role('system','store_credit'), 'kind: system accepts store_credit');
+SELECT ok(public.qteklink_role_accepts_type('fee_expense','Expense'), 'role: fee_expense accepts Expense');
+SELECT ok(public.qteklink_role_accepts_type('fee_expense','Other Expense'), 'role: fee_expense accepts Other Expense');
+SELECT ok(NOT public.qteklink_role_accepts_type('fee_expense','Income'), 'role: fee_expense rejects Income (an expense-offset fee must credit an expense account)');
+SELECT ok(public.qteklink_role_accepts_type('fee_expense', NULL::text) IS FALSE, 'role matrix is NULL-safe: fee_expense vs NULL type -> FALSE');
+SELECT ok(public.qteklink_kind_accepts_role('fee','income'), 'kind: fee accepts income');
+SELECT ok(public.qteklink_kind_accepts_role('fee','fee_expense'), 'kind: fee accepts fee_expense (an expense-offset fee)');
+SELECT ok(NOT public.qteklink_kind_accepts_role('labor','fee_expense'), 'kind: labor rejects fee_expense (only a fee may be expense-offset)');
 
 -- ─── Seed connections + COA (active, inactive, soft-deleted) ────────────
 INSERT INTO public.qbo_connections (realm_id, shop_id, access_token_expires_at, refresh_token_expires_at)
@@ -78,6 +85,18 @@ SELECT isnt(public.qteklink_set_mapping(7476,'realm-A','fee','State Communicatio
 SELECT is((SELECT pass_through FROM public.qteklink_mappings WHERE shop_id=7476 AND realm_id='realm-A' AND kind='fee' AND source_key='State Communication Fee' AND active), true, 'pass_through stored true on the fee mapping');
 SELECT throws_ok($$ SELECT public.qteklink_set_mapping(7476,'realm-A','labor','Labor2',NULL,'275','income',true) $$, 'P0001', NULL, 'RPC guard: pass_through rejected on a non-fee kind');
 SELECT throws_ok($$ INSERT INTO public.qteklink_mappings (shop_id,realm_id,kind,source_key,qbo_account_id,posting_role,pass_through,active) VALUES (7476,'realm-A','labor','LX','275','income',true,true) $$, '23514', NULL, 'CHECK: pass_through rejected on a non-fee direct insert');
+
+-- ─── fee_expense (a fee may credit an Expense account = contra-expense offset) ──
+-- The SUCCESSFUL Gas->309 insert PROVES role_valid admits fee_expense (the gate the
+-- store-credit rollout forgot -> a fee_expense insert would raise 23514 if it were missing).
+SELECT isnt(public.qteklink_set_mapping(7476,'realm-A','fee','Gas',NULL,'309','fee_expense'), NULL, 'fee Gas -> 309 (Expense) role fee_expense ok');
+SELECT is((SELECT posting_role FROM public.qteklink_mappings WHERE shop_id=7476 AND realm_id='realm-A' AND kind='fee' AND source_key='Gas' AND active), 'fee_expense', 'fee_expense role stored on the Gas mapping');
+SELECT isnt(public.qteklink_set_mapping(7476,'realm-A','fee','ShopSupplies',NULL,'275','income'), NULL, 'fee -> Income account role income still ok (fees are dual-role)');
+SELECT throws_ok($$ SELECT public.qteklink_set_mapping(7476,'realm-A','fee','GasBad',NULL,'275','fee_expense') $$, 'P0001', NULL, 'fee_expense REJECTS an Income account (275) — trigger role<->type');
+SELECT throws_ok($$ SELECT public.qteklink_set_mapping(7476,'realm-A','fee','GasBad2',NULL,'309','income') $$, 'P0001', NULL, 'income still REJECTS an Expense account (309) for a fee — trigger role<->type');
+SELECT throws_ok($$ SELECT public.qteklink_set_mapping(7476,'realm-A','labor','LaborExp',NULL,'309','fee_expense') $$, 'P0001', NULL, 'kind<->role: a non-fee kind cannot use fee_expense (RPC)');
+SELECT throws_ok($$ INSERT INTO public.qteklink_mappings (shop_id,realm_id,kind,source_key,qbo_account_id,posting_role,active) VALUES (7476,'realm-A','labor','LaborExpDirect','309','fee_expense',true) $$, '23514', NULL, 'kind<->role CHECK blocks a non-fee kind + fee_expense on direct insert (trigger passes: fee_expense accepts Expense)');
+SELECT lives_ok($$ INSERT INTO public.qteklink_mappings (shop_id,realm_id,kind,source_key,qbo_account_id,posting_role,active) VALUES (7476,'realm-A','fee','DirectGas','309','fee_expense',true) $$, 'direct insert of a fee_expense mapping to an Expense account passes all CHECKs + the trigger');
 
 -- ─── Rejections (RPC + trigger) ─────────────────────────────────────────
 SELECT throws_ok($$ SELECT public.qteklink_set_mapping(7476,'realm-A','labor','L1',NULL,'309','income') $$, 'P0001', NULL, 'role<->type: income rejects an Expense account (trigger)');

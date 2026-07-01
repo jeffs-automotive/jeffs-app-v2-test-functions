@@ -223,6 +223,39 @@ describe("buildSaleJournalEntry — pass-through fee excluded from the waterfall
   });
 });
 
+describe("buildSaleJournalEntry — a fee mapped to an EXPENSE account (contra-expense offset)", () => {
+  // '6102' stands in for the shop's Gas/Tolls/Carwash EXPENSE account. resolveMappings
+  // buckets a fee by kind (not posting_role), so the builder CREDITS whatever account the
+  // fee maps to; a credit to an expense account nets it down (offset). No builder change —
+  // the fee_expense role only gates which account TYPE the mapping may target.
+  const withGas: ResolvedMappings = {
+    ...M,
+    feeAccountsByName: { ...M.feeAccountsByName, gas: { accountId: "6102", passThrough: false } },
+  };
+
+  it("CREDITS the expense account exactly like an income fee (the builder is account-type-agnostic)", () => {
+    const je = buildSaleJournalEntry(
+      snap({ feeTotal: 400, totalSales: 400, fees: [{ name: "Gas", total: 400 }] }),
+      withGas, S,
+    );
+    expect(cr(je, "6102")).toBe(400); // fee CREDITED to the expense account (offsets it)
+    expect(je.lines.find((l) => l.accountId === "6102")?.postingType).toBe("Credit");
+    expect(dr(je, "235")).toBe(400);  // A/R debit balances it
+    expect(je.unmapped).toEqual([]);
+    expect(je.balanced).toBe(true);
+  });
+
+  it("still applies the discount waterfall to a non-pass-through expense-offset fee (Chris: allow discounts)", () => {
+    const je = buildSaleJournalEntry(
+      snap({ feeTotal: 400, discountTotal: 100, totalSales: 300, fees: [{ name: "Gas", total: 400 }] }),
+      withGas, S,
+    );
+    expect(cr(je, "6102")).toBe(300); // 400 − 100 discount (the fee is discountable)
+    expect(je.discountAllocation["6102"]).toBe(100);
+    expect(je.balanced).toBe(true);
+  });
+});
+
 describe("buildSaleJournalEntry — guards", () => {
   it("ignores DECLINED (authorized=false) jobs", () => {
     const je = buildSaleJournalEntry(

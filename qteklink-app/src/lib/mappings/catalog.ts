@@ -29,6 +29,7 @@ export const POSTING_ROLES = [
   "cc_fee",
   "noncash_contra",
   "store_credit",
+  "fee_expense",
 ] as const;
 export type PostingRole = (typeof POSTING_ROLES)[number];
 
@@ -52,6 +53,7 @@ export const ROLE_LABELS: Record<PostingRole, string> = {
   cc_fee: "Credit-card fee",
   noncash_contra: "Non-cash contra",
   store_credit: "Store credit (liability)",
+  fee_expense: "Fee → expense (offset)",
 };
 
 /**
@@ -87,4 +89,21 @@ export function derivePostingRole(kind: string, sourceKey: string): PostingRole 
     default:
       return null;
   }
+}
+
+/**
+ * A FEE's posting role follows the QBO type of the account the admin picks — a fee
+ * can be booked as revenue OR as a contra-expense offset (Chris, 2026-07-01):
+ *   - Income / Other Income   → `income`      (credit as revenue, the default)
+ *   - Expense / Other Expense → `fee_expense` (credit to OFFSET that expense)
+ *   - anything else           → null          (unmappable — the action rejects it)
+ * Mirrors the DB gate `qteklink_role_accepts_type` (income vs fee_expense). Pure —
+ * the account TYPE is resolved server-side from the COA (never a client value), so
+ * this only maps a trusted type to the role; the DB trigger re-validates on write.
+ */
+export function feePostingRoleForAccountType(accountType: string | null): PostingRole | null {
+  const t = (accountType ?? "").trim();
+  if (t === "Income" || t === "Other Income") return "income";
+  if (t === "Expense" || t === "Other Expense") return "fee_expense";
+  return null;
 }

@@ -177,6 +177,36 @@ export async function listMappableAccounts(
 }
 
 /**
+ * The QBO `account_type` for one account in the shop's BOUND realm — the mapping
+ * action uses it to derive a fee's posting role (income vs fee_expense) from the
+ * chosen account's type, SERVER-SIDE (never a client value). Returns null when the
+ * shop has no connection or the account isn't in the COA mirror. Throws on any DB
+ * error (fail-closed — a missing/unreadable type must never be treated as mappable;
+ * the BEFORE-write trigger re-validates role<->type regardless).
+ */
+export async function getMappableAccountType(
+  shopId: number,
+  qboAccountId: string,
+): Promise<string | null> {
+  const realmId = await resolveRealmForShop(shopId);
+  if (!realmId) return null;
+
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin
+    .from("qbo_accounts")
+    .select("account_type")
+    .eq("shop_id", shopId)
+    .eq("realm_id", realmId)
+    .eq("qbo_account_id", qboAccountId)
+    .limit(1);
+  if (error) throw new Error(`getMappableAccountType failed: ${error.message}`);
+
+  const rows = (data ?? []) as { account_type: string | null }[];
+  const type = rows[0]?.account_type ?? null;
+  return typeof type === "string" && type.length > 0 ? type : null;
+}
+
+/**
  * Upsert one active mapping. Fails closed when the shop has no connection.
  * Role<->account-type compat + account-is-live are enforced inside
  * `qteklink_set_mapping` (it RAISEs P0001 on violation — surfaced as a

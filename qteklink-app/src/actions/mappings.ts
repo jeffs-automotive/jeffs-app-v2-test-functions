@@ -12,8 +12,8 @@
 import { z } from "zod";
 import { requireQtekUser } from "@/lib/auth";
 import { wrapQtekAction } from "@/lib/instrument-action";
-import { setMapping, deactivateMapping } from "@/lib/dal/mappings";
-import { MAPPING_KINDS, derivePostingRole } from "@/lib/mappings/catalog";
+import { setMapping, deactivateMapping, getMappableAccountType } from "@/lib/dal/mappings";
+import { MAPPING_KINDS, derivePostingRole, feePostingRoleForAccountType } from "@/lib/mappings/catalog";
 import { qboFailure, type QboActionResult } from "./qbo/result";
 
 type SetMappingState = QboActionResult<{ id: string }>;
@@ -100,13 +100,31 @@ async function mapTekmetricItemImpl(
       return { ok: false, reason: "validation", message: parsed.error.issues[0]?.message ?? "Invalid mapping input.", timestamp: Date.now() };
     }
 
-    // Derive the role server-side; a (kind, sourceKey) with no valid role isn't mappable.
-    // A financing non-cash type flagged "deposits like a card" books through the DEPOSIT
-    // path (role undeposited_funds) instead of a contra.
-    const postingRole =
-      parsed.data.depositsLikeCard && parsed.data.kind === "noncash_payment_type"
-        ? "undeposited_funds"
-        : derivePostingRole(parsed.data.kind, parsed.data.sourceKey);
+    // Derive the role SERVER-SIDE (never trust a client-supplied role):
+    //  - fee: follows the CHOSEN account's QBO type — an Income account books the fee
+    //    as revenue (income); an Expense account credits it as a contra-expense offset
+    //    (fee_expense). The type is read from the COA server-side; any other type is
+    //    not mappable for a fee.
+    //  - non-cash "deposits like a card": the financing/deposit path (undeposited_funds).
+    //  - everything else: derived from (kind, sourceKey).
+    let postingRole: string | null;
+    if (parsed.data.kind === "fee") {
+      const accountType = await getMappableAccountType(shopId, parsed.data.qboAccountId);
+      postingRole = feePostingRoleForAccountType(accountType);
+      if (!postingRole) {
+        return {
+          ok: false,
+          reason: "validation",
+          message:
+            "A fee can post to an income account (booked as revenue) or an expense account (which it offsets). Pick an income or expense account.",
+          timestamp: Date.now(),
+        };
+      }
+    } else if (parsed.data.depositsLikeCard && parsed.data.kind === "noncash_payment_type") {
+      postingRole = "undeposited_funds";
+    } else {
+      postingRole = derivePostingRole(parsed.data.kind, parsed.data.sourceKey);
+    }
     if (!postingRole) {
       return { ok: false, reason: "validation", message: "That item can't be mapped (unknown posting role).", timestamp: Date.now() };
     }
