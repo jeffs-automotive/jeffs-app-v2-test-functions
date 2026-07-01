@@ -190,13 +190,25 @@ const PII_KEY_BLOCKLIST = new Set([
 const EMAIL_RE = /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g;
 const PHONE_E164_RE = /\+1\d{6}(\d{4})/g;
 const OTP_NEAR_KEY_RE = /("(?:code|otp_code|otp)")\s*:\s*"\d{6}"/gi;
+// Webhook receivers authenticate via `?token=<secret>` (Tekmetric/Telnyx can't
+// send custom headers), so any URL/query_string that reaches a Sentry event
+// carries a LIVE auth secret. Strip secret-bearing query params wherever they
+// appear in a string (full URL or bare query_string). 2026-07-01 security-review
+// blocker on telnyx-webhook; applies to every ?token= receiver.
+const SECRET_QUERY_RE = /(^|[?&])((?:token|secret|apikey|api_key)=)[^&\s"']+/gi;
 
 function scrubString(s: string): string {
   if (typeof s !== "string" || s.length === 0) return s;
   return s
     .replace(EMAIL_RE, "[email]")
     .replace(PHONE_E164_RE, "+1******$1")
-    .replace(OTP_NEAR_KEY_RE, '$1:"[REDACTED]"');
+    .replace(OTP_NEAR_KEY_RE, '$1:"[REDACTED]"')
+    .replace(SECRET_QUERY_RE, "$1$2[REDACTED]");
+}
+
+// Exported for tests only — asserts the secret-param scrubbing contract.
+export function _scrubStringForTesting(s: string): string {
+  return scrubString(s);
 }
 
 function scrubValue(value: unknown): unknown {

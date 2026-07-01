@@ -153,6 +153,14 @@ function safeQueryString(url: URL): string | null {
   const s = params.toString();
   return s.length ? s : null;
 }
+// Token-stripped URL for diagnostic surfaces (Sentry context). The raw req.url
+// carries the LIVE ?token= secret — it must never reach an event payload
+// (2026-07-01 security-review blocker; belt-and-braces with sentry-edge's
+// SECRET_QUERY_RE scrubber).
+export function redactedRequestUrl(url: URL): string {
+  const qs = safeQueryString(url);
+  return `${url.origin}${url.pathname}${qs ? `?${qs}` : ""}`;
+}
 
 // ─── Entrypoint (exported test seam) ─────────────────────────────────────────
 export async function handler(req: Request): Promise<Response> {
@@ -173,7 +181,7 @@ export async function handler(req: Request): Promise<Response> {
       scope.setContext("request", {
         ip: req.headers.get("x-real-ip") ?? req.headers.get("cf-connecting-ip") ?? "unknown",
         user_agent: req.headers.get("user-agent") ?? "unknown",
-        url: req.url,
+        url: redactedRequestUrl(url),
         method: req.method,
       });
       Sentry.captureMessage("Telnyx webhook token check failed", "warning");

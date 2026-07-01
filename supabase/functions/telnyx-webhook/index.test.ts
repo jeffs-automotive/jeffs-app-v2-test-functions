@@ -16,11 +16,13 @@
 
 import { assert, assertEquals } from "jsr:@std/assert@1";
 import { createMockSupabaseClient, setEnv, unsetEnv } from "../_shared/test-helpers.ts";
+import { _scrubStringForTesting } from "../_shared/sentry-edge.ts";
 import {
   _setSupabaseClientForTesting,
   extractTelnyxEvent,
   handler,
   isAlertEvent,
+  redactedRequestUrl,
   verifyTelnyxSignature,
 } from "./index.ts";
 
@@ -252,6 +254,29 @@ Deno.test("key configured but headers absent → accepted on token, stored unver
   assertEquals(insertedRow(sb).signature_verified, false);
   unsetEnv("TELNYX_PUBLIC_KEY");
   unsetEnv("TELNYX_WEBHOOK_TOKEN");
+});
+
+// ─── secret-leak regression (2026-07-01 security-review blocker) ────────────
+Deno.test("redactedRequestUrl strips ?token= (Sentry context can never carry the secret)", () => {
+  const u = new URL(`https://x.test/fn?token=${FAKE_TOKEN}&a=1`);
+  const redacted = redactedRequestUrl(u);
+  assert(!redacted.includes(FAKE_TOKEN));
+  assertEquals(redacted, "https://x.test/fn?a=1");
+  assertEquals(redactedRequestUrl(new URL(`https://x.test/fn?token=${FAKE_TOKEN}`)), "https://x.test/fn");
+});
+
+Deno.test("sentry-edge scrubString redacts secret-bearing query params in URLs and bare query strings", () => {
+  const url = `https://x.test/fn?token=${FAKE_TOKEN}&a=1`;
+  const scrubbed = _scrubStringForTesting(url);
+  assert(!scrubbed.includes(FAKE_TOKEN));
+  assert(scrubbed.includes("token=[REDACTED]"));
+  // bare query_string shape (no leading ? or &) is scrubbed too
+  const qs = _scrubStringForTesting(`token=${FAKE_TOKEN}&b=2`);
+  assert(!qs.includes(FAKE_TOKEN));
+  // apikey variant
+  assert(!_scrubStringForTesting("https://x.test/?apikey=sk-live-123").includes("sk-live-123"));
+  // non-secret params survive
+  assertEquals(_scrubStringForTesting("https://x.test/?a=1&b=2"), "https://x.test/?a=1&b=2");
 });
 
 // ─── redaction ──────────────────────────────────────────────────────────────
