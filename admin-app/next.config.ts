@@ -56,6 +56,7 @@ const nextConfig: NextConfig = {
     return [
       { source: "/legal/eula", destination: "/legal/eula.html" },
       { source: "/legal/privacy", destination: "/legal/privacy.html" },
+      { source: "/legal/terms", destination: "/legal/terms.html" },
       { source: "/qbo/connected", destination: "/qbo/connected.html" },
       { source: "/qbo/disconnected", destination: "/qbo/disconnected.html" },
     ];
