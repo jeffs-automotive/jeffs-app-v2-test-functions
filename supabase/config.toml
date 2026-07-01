@@ -527,6 +527,16 @@ verify_jwt = false
 import_map = "./functions/qteklink-webhook/deno.json"
 entrypoint = "./functions/qteklink-webhook/index.ts"
 
+[functions.telnyx-webhook]
+enabled = true
+# Telnyx event intake (10DLC campaign provisioning now; Messaging Profile
+# inbound/DLR events in revamp Phase 2). Telnyx cannot send JWT/Authorization
+# headers; auth is `?token=<TELNYX_WEBHOOK_TOKEN>` (constant-time) + Ed25519
+# signature verify when TELNYX_PUBLIC_KEY is set. verify_jwt would 401 every delivery.
+verify_jwt = false
+import_map = "./functions/telnyx-webhook/deno.json"
+entrypoint = "./functions/telnyx-webhook/index.ts"
+
 [functions.qteklink-email]
 enabled = true
 # QTekLink notification sender (service-to-service): the app calls it with the
