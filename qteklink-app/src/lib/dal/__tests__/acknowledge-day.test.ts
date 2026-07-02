@@ -20,7 +20,14 @@ const buildBundleMock = vi.fn();
 // an empty day). The daily-postings read/ack/enqueue seams ARE mocked.
 vi.mock("@/lib/dal/realm", () => ({ resolveRealmForShop: (...a: unknown[]) => realmMock(...a) }));
 vi.mock("@/lib/dal/day-drafts", () => ({ buildDayDrafts: (...a: unknown[]) => buildDayDraftsMock(...a) }));
-vi.mock("@/lib/dal/review-items", () => ({ upsertReviewItem: vi.fn() }));
+vi.mock("@/lib/dal/payment-redates", () => ({
+  syncPaymentRedates: vi.fn().mockResolvedValue({ newlyHeldPaymentIds: new Set(), detected: 0, autoResolved: 0, emailed: false }),
+}));
+vi.mock("@/lib/dal/review-items", () => ({
+  upsertReviewItem: vi.fn(),
+  listOpenReviewItems: vi.fn().mockResolvedValue({ realmId: "9341455608740708", items: [] }),
+  autoResolveReviewItems: vi.fn().mockResolvedValue({ resolved: 0 }),
+}));
 vi.mock("@/lib/reconcile/daily-rollup", () => ({ rollupDay: (...a: unknown[]) => rollupDayMock(...a) }));
 vi.mock("@/lib/daily/daily-je-builder", () => ({
   buildDailyJournalEntries: (...a: unknown[]) => buildBundleMock(...a),
@@ -43,7 +50,7 @@ function row(over: Partial<DailyPostingRow>): DailyPostingRow {
     id: "dp-x", businessDate: DATE, category: "sales", postingVersion: 1, action: "create",
     status: "pending", docNumber: null, txnDate: DATE, lines: [], totalCents: null,
     constituents: { roIds: [], paymentIds: [] }, sourceStateHash: "h", requestid: "q",
-    qboJeId: null, qboSyncToken: null, approvedBy: null, createdAt: "2026-06-09T01:00:00Z",
+    qboJeId: null, qboSyncToken: null, approvedBy: null, approvedAt: null, createdAt: "2026-06-09T01:00:00Z",
     ...over,
   };
 }
@@ -52,7 +59,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   realmMock.mockResolvedValue(REALM);
   // An empty day → runDailyReconciliation enqueues nothing but returns realmId: REALM.
-  buildDayDraftsMock.mockResolvedValue({ sales: [], payments: [], extraReviewItems: [], gateSettings: {} });
+  buildDayDraftsMock.mockResolvedValue({ sales: [], payments: [], heldRedatePayments: [], extraReviewItems: [], gateSettings: {} });
   rollupDayMock.mockReturnValue({
     saleCount: 0, paymentCount: 0, postableSales: 0, postablePayments: 0, reviewCount: 0,
     reviewItems: [], postableSaleDrafts: [], postablePaymentDrafts: [],

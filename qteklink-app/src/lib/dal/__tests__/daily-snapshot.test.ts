@@ -35,6 +35,12 @@ vi.mock("@/lib/dal/daily-postings", async (importOriginal) => ({
   listDailyPostingsForDay: (...a: unknown[]) => listDailyMock(...a),
 }));
 vi.mock("@/lib/reconcile/daily-rollup", () => ({ rollupDay: (...a: unknown[]) => rollupDayMock(...a) }));
+vi.mock("@/lib/dal/review-items", () => ({
+  listOpenReviewItems: vi.fn().mockResolvedValue({ realmId: "9341455608740708", items: [] }),
+}));
+vi.mock("@/lib/dal/payment-redates", () => ({
+  listOpenPaymentRedatesForDay: vi.fn().mockResolvedValue([]),
+}));
 vi.mock("@/lib/reconcile/payment-gate", () => ({
   // benign-suppressed (voided/zero) → no review item; everything else → postable, no items.
   gatePaymentDraft: (je: { suppressed?: boolean }) => ({ postable: !je.suppressed, reviewItems: [] }),
@@ -68,7 +74,7 @@ function dayRow(
     status, docNumber: null, txnDate: DATE, lines: [], totalCents: null,
     constituents: { roIds: constituents.roIds ?? [], paymentIds: constituents.paymentIds ?? [] },
     sourceStateHash: "h", requestid: "q", qboJeId: status === "posted" ? "QBO-1" : null,
-    qboSyncToken: null, approvedBy: null, createdAt: "2026-06-06T01:00:00Z",
+    qboSyncToken: null, approvedBy: null, approvedAt: null, createdAt: "2026-06-06T01:00:00Z",
     ...over,
   };
 }
@@ -111,7 +117,7 @@ describe("getDailySnapshot", () => {
 
   it("LIVE-reconciles the viewed day — but NEVER a fully-acknowledged day (AL history is terminal)", async () => {
     const empty = { postableSaleDrafts: [], postablePaymentDrafts: [], saleCount: 0, paymentCount: 0, postableSales: 0, postablePayments: 0, reviewCount: 0, reviewItems: [] };
-    buildDayDraftsMock.mockResolvedValue({ sales: [], payments: [], gateSettings: {} });
+    buildDayDraftsMock.mockResolvedValue({ sales: [], payments: [], extraReviewItems: [], gateSettings: {} });
     rollupDayMock.mockReturnValue(empty);
 
     listDailyMock.mockResolvedValue({ realmId: REALM, postings: [dayRow("sales", "pending", { roIds: [1] })] });

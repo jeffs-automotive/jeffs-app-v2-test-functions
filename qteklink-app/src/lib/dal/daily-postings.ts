@@ -32,6 +32,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { resolveRealmForShop } from "@/lib/dal/realm";
 import { QboClientError } from "@/lib/qbo/errors";
 import { sourceStateHash } from "@/lib/dal/postings";
+import { isCosmeticDelta } from "@/lib/daily/je-delta";
 import type { DailyCategory, DailyJournalEntry } from "@/lib/daily/daily-je-builder";
 
 export type DailyAction = "create" | "update" | "delete";
@@ -110,6 +111,7 @@ export interface DailyPostingRow {
   qboJeId: string | null;
   qboSyncToken: string | null;
   approvedBy: string | null;
+  approvedAt: string | null;
   createdAt: string;
 }
 
@@ -130,11 +132,12 @@ interface DailyPostingDbRow {
   qbo_je_id: string | null;
   qbo_sync_token: string | null;
   approved_by: string | null;
+  approved_at: string | null;
   created_at: string;
 }
 
 const DAILY_SELECT =
-  "id, business_date, category, posting_version, action, status, proposed_je, constituents, source_state_hash, requestid, qbo_je_id, qbo_sync_token, approved_by, created_at";
+  "id, business_date, category, posting_version, action, status, proposed_je, constituents, source_state_hash, requestid, qbo_je_id, qbo_sync_token, approved_by, approved_at, created_at";
 
 function mapDailyRow(r: DailyPostingDbRow): DailyPostingRow {
   const rawLines = r.proposed_je?.je?.lines ?? [];
@@ -165,6 +168,7 @@ function mapDailyRow(r: DailyPostingDbRow): DailyPostingRow {
     qboJeId: r.qbo_je_id,
     qboSyncToken: r.qbo_sync_token,
     approvedBy: r.approved_by,
+    approvedAt: r.approved_at,
     createdAt: r.created_at,
   };
 }
@@ -293,10 +297,12 @@ export type DailyEnqueueAction =
   | "new"          // a fresh version was enqueued (create/update/delete per `action`)
   | "refreshed"    // an existing PENDING version absorbed the new content
   | "exists"       // an existing PENDING version already matches (no-op)
-  | "skip"         // posted + unchanged — nothing to do
+  | "skip"         // posted + unchanged (or a cosmetic-only delta) — nothing to do
   | "frozen"       // approved/posting version in flight — recheck at post time owns it
   | "blocked"      // the je is unbalanced/over-cap — never enqueued (gate's review item)
   | "withdrawn"    // pending version for a now-empty day with no live JE — system-rejected
+  | "obsoleted"    // a stuck pending/failed correction became moot (desired matches the
+                   //   posted JE, or differs only in descriptions) — system-rejected
   | "noop";        // nothing desired, nothing live, nothing pending
 
 export interface DailyEnqueueResult {
@@ -397,6 +403,40 @@ export async function enqueueDailyPosting(
     return { enqueueAction: "frozen", action: null, postingId: latest.id, postingVersion: latest.postingVersion };
   }
 
+  // ── Cosmetic / moot corrections (resolution-workflow Part C) ────────────────
+  // When a live posted JE exists and the desired state matches it exactly (hash) or
+  // differs ONLY in line-description text, there is nothing QBO-worthy to post:
+  // QBO rejects ANY update to a deposited JE (6540 — proven live on a one-word
+  // description change AND on a purely additive update), and a wording-only delta
+  // changes nothing an accountant cares about. Never stage it — and OBSOLETE a
+  // stuck pending/failed correction that became moot (e.g. a deposit-locked v2
+  // whose late payment was since voided, or a deploy/cache-warm rewording), so the
+  // day CONVERGES instead of wedging (incidents 2026-06-22/26/29).
+  if (liveJe && je) {
+    const matchesLive = liveJe.sourceStateHash != null && hash === liveJe.sourceStateHash;
+    const cosmetic =
+      matchesLive ||
+      isCosmeticDelta(category, liveJe, {
+        docNumber: je.docNumber,
+        txnDate: je.txnDate,
+        constituents: je.constituents,
+        lines: je.lines,
+      });
+    if (cosmetic) {
+      if (latest && latest.id !== liveJe.id && (latest.status === "pending" || latest.status === "failed")) {
+        await rejectDailyPosting(
+          shopId,
+          latest.id,
+          matchesLive
+            ? "system (superseded — desired matches the posted JE)"
+            : "system (cosmetic delta — descriptions only, never posted)",
+        );
+        return { enqueueAction: "obsoleted", action: null, postingId: latest.id, postingVersion: latest.postingVersion };
+      }
+      return { enqueueAction: "skip", action: null, postingId: liveJe.id, postingVersion: liveJe.postingVersion };
+    }
+  }
+
   let version: number;
   let enqueueAction: DailyEnqueueAction;
   if (!latest) {
@@ -406,7 +446,10 @@ export async function enqueueDailyPosting(
     // The RPC refreshes the pending slot in place when the hash moved.
     version = latest.postingVersion;
     enqueueAction = latest.sourceStateHash === hash ? "exists" : "refreshed";
-  } else if (latest.status === "failed" || latest.status === "rejected" || latest.status === "needs_resolution") {
+  } else if (
+    latest.status === "failed" || latest.status === "rejected" ||
+    latest.status === "needs_resolution" || latest.status === "accepted"
+  ) {
     if (latest.sourceStateHash === hash) {
       // Unchanged since a human-relevant terminal state — never silently re-enqueue.
       return { enqueueAction: "skip", action: null, postingId: latest.id, postingVersion: latest.postingVersion };
@@ -462,6 +505,49 @@ export async function acknowledgeDailyPosting(
     throw new Error(`qteklink_acknowledge_daily_posting failed: ${error.message}`);
   }
   return { acknowledged: data === true };
+}
+
+/** Human RETRY of a FAILED daily posting (failed → approved) — "I unlinked the
+ *  deposit — retry now". Same version, same content (the caller's Pattern S flow
+ *  verifies the source hash is unchanged); the poster's claim-time recheck remains
+ *  the last guard. Returns whether a failed row was flipped. */
+export async function retryDailyPosting(
+  shopId: number,
+  id: string,
+  retriedBy: string,
+): Promise<{ retried: boolean }> {
+  const realmId = await resolveRealmForShop(shopId);
+  if (!realmId) throw new QboClientError("QuickBooks is not connected for this shop.", { kind: "reconnect_required" });
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin.rpc("qteklink_retry_daily_posting", {
+    p_shop_id: shopId, p_realm_id: realmId, p_id: id, p_retried_by: retriedBy,
+  });
+  if (error) {
+    if (error.code === "P0001") throw new QboClientError(error.message, { kind: "unknown" });
+    throw new Error(`qteklink_retry_daily_posting failed: ${error.message}`);
+  }
+  return { retried: data === true };
+}
+
+/** Terminal human ACCEPTANCE of a FAILED daily correction (failed → accepted) —
+ *  "Keep QuickBooks as-is". The day stops counting it as needs-attention; the
+ *  version stays in history; a later REAL source change still stages v(N+1). */
+export async function acceptDailyVariance(
+  shopId: number,
+  id: string,
+  acceptedBy: string,
+): Promise<{ accepted: boolean }> {
+  const realmId = await resolveRealmForShop(shopId);
+  if (!realmId) throw new QboClientError("QuickBooks is not connected for this shop.", { kind: "reconnect_required" });
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin.rpc("qteklink_accept_daily_variance", {
+    p_shop_id: shopId, p_realm_id: realmId, p_id: id, p_accepted_by: acceptedBy,
+  });
+  if (error) {
+    if (error.code === "P0001") throw new QboClientError(error.message, { kind: "unknown" });
+    throw new Error(`qteklink_accept_daily_variance failed: ${error.message}`);
+  }
+  return { accepted: data === true };
 }
 
 export async function rejectDailyPosting(

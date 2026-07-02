@@ -27,8 +27,11 @@ import { reduceShopPaymentState } from "@/lib/dal/payment-state";
 import { reconcileDayForView } from "@/lib/dal/daily-reconcile";
 import { buildDayDrafts } from "@/lib/dal/day-drafts";
 import { listDailyPostingsForDay, buildDailyStatusIndex, type DailyStatusIndex } from "@/lib/dal/daily-postings";
+import { listOpenReviewItems } from "@/lib/dal/review-items";
+import { listOpenPaymentRedatesForDay } from "@/lib/dal/payment-redates";
 import { rollupDay } from "@/lib/reconcile/daily-rollup";
 import { gatePaymentDraft } from "@/lib/reconcile/payment-gate";
+import { assembleDayAttention, type DayAttention } from "@/lib/reconcile/day-attention";
 
 export type SnapshotColumn = "needsAttention" | "unapproved" | "inProgress" | "posted";
 export type SnapshotType = "Repair Order" | "Customer Payment" | "Payment Fee";
@@ -49,6 +52,9 @@ export interface DailySnapshot {
   kpis: { salesCents: number; paymentsCents: number; ccFeesCents: number };
   rows: TypeRow[]; // [Repair Order, Customer Payment, Payment Fee]
   needsAttentionCount: number;
+  /** The unified day-scoped fix-it list (Part D) — the approve lock + the banner +
+   *  /approvals/review all render THIS, so they can never disagree. */
+  attention: DayAttention;
 }
 
 /**
@@ -67,6 +73,9 @@ export function statusToColumn(status: string): SnapshotColumn {
     case "posted":
     // acknowledged = approved WITHOUT posting (Accounting Link's day) — done.
     case "acknowledged":
+    // accepted = a human terminally accepted a failed correction ("keep QuickBooks
+    // as-is") — deliberately done; the breakdown badges it, it never re-locks the day.
+    case "accepted":
       return "posted";
     case "failed":
     case "rejected":
@@ -128,6 +137,7 @@ export async function getDailySnapshot(
       kpis: { salesCents: 0, paymentsCents: 0, ccFeesCents: 0 },
       rows: [emptyRow("Repair Order"), emptyRow("Customer Payment"), emptyRow("Payment Fee")],
       needsAttentionCount: 0,
+      attention: { items: [], blockingCount: 0 },
     };
   }
 
@@ -140,9 +150,8 @@ export async function getDailySnapshot(
   const viewBuild = await reconcileDayForView(shopId, businessDate);
   const useShared = viewBuild != null && Object.keys(opts).length === 0;
 
-  const { sales, payments, gateSettings } = useShared
-    ? viewBuild.drafts
-    : await buildDayDrafts(shopId, realmId, businessDate, opts);
+  const drafts = useShared ? viewBuild.drafts : await buildDayDrafts(shopId, realmId, businessDate, opts);
+  const { sales, payments, gateSettings } = drafts;
   const rollup = useShared
     ? viewBuild.rollup
     : rollupDay(businessDate, sales, payments.map((p) => p.je), gateSettings);
@@ -200,11 +209,22 @@ export async function getDailySnapshot(
     }
   }
 
+  // ── The unified day-attention list (Part D) — the approve lock + banner +
+  // fix-it page all render this ONE list (built from the same reconcile pass; a
+  // terminal/override fallback derives the same gate set from its local build).
+  const emittedItems = [...drafts.extraReviewItems, ...rollup.reviewItems];
+  const [{ items: openItems }, openRedates] = await Promise.all([
+    listOpenReviewItems(shopId),
+    listOpenPaymentRedatesForDay(shopId, realmId, businessDate),
+  ]);
+  const attention = assembleDayAttention({ businessDate, emittedItems, postings, openItems, openRedates });
+
   return {
     realmId,
     businessDate,
     kpis: { salesCents: roRow.totalCents, paymentsCents: payRow.totalCents, ccFeesCents: feeRow.totalCents },
     rows: [roRow, payRow, feeRow],
     needsAttentionCount,
+    attention,
   };
 }

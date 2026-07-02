@@ -79,8 +79,11 @@ async function listPostedDays(shopId: number, realmId: string): Promise<string[]
   return [...new Set(((data ?? []) as { business_date: string }[]).map((r) => r.business_date))].sort();
 }
 
-/** How a posted JE category changed between its prior posted version and the correction. */
-export type ChangeKind = "deleted" | "membership" | "amounts" | "descriptions-only" | "no-change";
+/** How a posted JE category changed between its prior posted version and the correction.
+ *  (Type + classification now live in the shared pure module `@/lib/daily/je-delta` —
+ *  the diff layer's cosmetic suppression uses the same logic; re-exported for callers.) */
+export type { ChangeKind } from "@/lib/daily/je-delta";
+import { classifyDelta, type ChangeKind } from "@/lib/daily/je-delta";
 
 /** One category's line in the consolidated per-day correction email. */
 export interface CategoryOutcome {
@@ -102,37 +105,21 @@ const CATEGORY_LABEL: Record<DailyCategory, string> = { sales: "Sales", payments
 /** The constituent noun per category (sales = repair orders; payments + fees are per-payment). */
 const CONSTITUENT_NOUN: Record<DailyCategory, string> = { sales: "repair orders", payments: "payments", fees: "payments" };
 
-/** account|type|amount signature of a JE's lines, IGNORING description — lets us tell a
- *  descriptions-only correction (line TEXT changed, accounts/amounts identical) from a real
- *  amounts/accounts change. */
-function lineSignature(lines: DailyPostingRow["lines"]): string {
-  return lines.map((l) => `${l.accountId}|${l.postingType}|${l.amountCents}`).join("\n");
-}
-
 /**
- * Classify what changed between a posted prior JE and its posted correction:
+ * Classify what changed between a posted prior JE and its posted correction —
+ * a thin adapter over the shared pure `classifyDelta` (`@/lib/daily/je-delta`),
+ * which the diff layer's cosmetic suppression also uses:
  *   deleted          — the category emptied (the JE was removed).
  *   membership       — repair orders / payments were added or removed.
- *   descriptions-only— same constituents + same total + identical account/amount lines, only
+ *   descriptions-only— same constituents + identical account/amount lines, only
  *                      the line DESCRIPTIONS differ (e.g. the JE-line-description feature).
- *   amounts          — same constituents, but the amounts/accounts (and total) changed.
+ *   amounts          — same constituents, but the amounts/accounts changed.
  */
 export function classifyChange(
   prior: DailyPostingRow,
   next: DailyPostingRow,
 ): { changeKind: ChangeKind; added: string[]; removed: string[] } {
-  if (next.action === "delete") return { changeKind: "deleted", added: [], removed: [] };
-  const priorIds = (next.category === "sales" ? prior.constituents.roIds : prior.constituents.paymentIds).map(String);
-  const nextIds = (next.category === "sales" ? next.constituents.roIds : next.constituents.paymentIds).map(String);
-  const priorSet = new Set(priorIds);
-  const nextSet = new Set(nextIds);
-  const added = nextIds.filter((id) => !priorSet.has(id));
-  const removed = priorIds.filter((id) => !nextSet.has(id));
-  if (added.length || removed.length) return { changeKind: "membership", added, removed };
-  // Same constituents: descriptions-only (same total + same account/amount lines) vs amounts.
-  const descriptionsOnly =
-    prior.totalCents === next.totalCents && lineSignature(prior.lines) === lineSignature(next.lines);
-  return { changeKind: descriptionsOnly ? "descriptions-only" : "amounts", added: [], removed: [] };
+  return classifyDelta(next.category, prior, { ...next, isDelete: next.action === "delete" });
 }
 
 /**

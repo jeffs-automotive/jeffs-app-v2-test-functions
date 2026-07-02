@@ -28,6 +28,7 @@ import { resolveRealmForShop } from "@/lib/dal/realm";
 import { buildDayDrafts } from "@/lib/dal/day-drafts";
 import { rollupDay } from "@/lib/reconcile/daily-rollup";
 import { sourceStateHash } from "@/lib/dal/postings";
+import { isCosmeticDelta } from "@/lib/daily/je-delta";
 import {
   listDailyPostingsForDay,
   enqueueDailyPosting,
@@ -116,6 +117,24 @@ async function computeScope(
     if (latest?.status === "acknowledged") continue; // Accounting Link's day — never post
     if (latest?.status === "posted" && latest.sourceStateHash === desiredHash) continue; // done
     if (latest?.status === "posting") continue; // in flight — locked
+    // PARITY with the enqueue diff (resolution-workflow Part C): a terminal-state
+    // latest (failed/rejected/accepted/needs_resolution) with UNCHANGED content, and
+    // any cosmetic-only delta vs the live posted JE, would be SKIPPED by execute —
+    // so the dry-run modal must not promise the write (the 6/29 modal/execute
+    // disagreement: "replaces the posted JE" → "skipped 1").
+    if (
+      latest &&
+      (latest.status === "failed" || latest.status === "rejected" ||
+       latest.status === "accepted" || latest.status === "needs_resolution") &&
+      latest.sourceStateHash === desiredHash
+    ) continue;
+    if (
+      je && livePosted &&
+      (livePosted.sourceStateHash === desiredHash ||
+        isCosmeticDelta(category, livePosted, {
+          docNumber: je.docNumber, txnDate: je.txnDate, constituents: je.constituents, lines: je.lines,
+        }))
+    ) continue;
 
     items.push({
       category,
@@ -205,7 +224,8 @@ export async function executeApproveDay(
         // posting it is exactly right (the poster re-checks at claim).
         const enq = await enqueueDailyPosting(shopId, realmId, businessDate, item.category, item.je);
         if (!enq.postingId || enq.enqueueAction === "blocked" || enq.enqueueAction === "skip"
-            || enq.enqueueAction === "noop" || enq.enqueueAction === "withdrawn") {
+            || enq.enqueueAction === "noop" || enq.enqueueAction === "withdrawn"
+            || enq.enqueueAction === "obsoleted") {
           skipped++;
           continue;
         }

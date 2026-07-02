@@ -27,9 +27,12 @@ import { EmptyState } from "@/components/EmptyState";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
-export default async function MappingsPage() {
+export default async function MappingsPage({ searchParams }: { searchParams: Promise<{ focus?: string }> }) {
   const { email, role, shopId } = await requireQtekUser();
   const isAdmin = role === "admin";
+  // Deep-link from a fix-it card (resolution-workflow Part E): ?focus=<kind|sourceKey>
+  // preselects the item in the picker so the user lands ready to map it.
+  const { focus } = await searchParams;
 
   const { realmId, mappings } = await listMappings(shopId);
   const accounts = isAdmin && realmId ? await listMappableAccounts(shopId) : [];
@@ -141,7 +144,7 @@ export default async function MappingsPage() {
             </CardContent>
           </Card>
 
-          {isAdmin && <MappingEditor items={items} accounts={accounts} />}
+          {isAdmin && <MappingEditor items={items} accounts={accounts} initialToken={focus ?? null} />}
         </>
       )}
     </main>

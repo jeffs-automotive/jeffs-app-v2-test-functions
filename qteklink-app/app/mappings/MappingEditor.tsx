@@ -19,12 +19,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 export default function MappingEditor({
   items,
   accounts,
+  initialToken = null,
 }: {
   items: TekmetricItem[];
   accounts: MappableAccount[];
+  /** Deep-link preselect (?focus= from a fix-it card) — used only when it matches an item. */
+  initialToken?: string | null;
 }) {
   const router = useRouter();
-  const [token, setToken] = useState("");
+  const [token, setToken] = useState(
+    initialToken && items.some((i) => i.token === initialToken) ? initialToken : "",
+  );
   const [account, setAccount] = useState("");
   const [passThrough, setPassThrough] = useState(false);
   const [depositsLikeCard, setDepositsLikeCard] = useState(false);

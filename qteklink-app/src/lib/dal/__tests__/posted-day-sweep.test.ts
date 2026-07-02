@@ -64,7 +64,7 @@ function row(over: Partial<DailyPostingRow>): DailyPostingRow {
     id: "dp-x", businessDate: DATE, category: "sales", postingVersion: 1, action: "create",
     status: "pending", docNumber: `QTL-RO-${DATE}`, txnDate: DATE, lines: [], totalCents: 100000,
     constituents: { roIds: [], paymentIds: [] }, sourceStateHash: "h", requestid: "q",
-    qboJeId: null, qboSyncToken: null, approvedBy: null, createdAt: "2026-06-09T01:00:00Z",
+    qboJeId: null, qboSyncToken: null, approvedBy: null, approvedAt: null, createdAt: "2026-06-09T01:00:00Z",
     ...over,
   };
 }

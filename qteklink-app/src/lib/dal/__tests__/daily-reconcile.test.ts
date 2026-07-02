@@ -238,6 +238,8 @@ describe("runDailyReconciliation", () => {
       realmId: null, businessDate: "2026-05-19", saleCount: 0, paymentCount: 0, postableSales: 0, postablePayments: 0,
       reviewCount: 0, persistedReviewItems: 0, enqueuedPostings: 0,
       dailyEnqueue: { sales: "noop", payments: "noop", fees: "noop" },
+      paymentRedates: { detected: 0, autoResolved: 0, held: 0 },
+      autoResolvedReviewItems: 0,
     });
     expect(fromMock).not.toHaveBeenCalled();
   });

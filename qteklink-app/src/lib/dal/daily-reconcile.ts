@@ -25,9 +25,15 @@ import {
   type DailyEnqueueAction,
   type DailyPostingRow,
 } from "@/lib/dal/daily-postings";
-import { upsertReviewItem } from "@/lib/dal/review-items";
+import {
+  upsertReviewItem,
+  listOpenReviewItems,
+  autoResolveReviewItems,
+  type UpsertReviewItemInput,
+} from "@/lib/dal/review-items";
 import { rollupDay } from "@/lib/reconcile/daily-rollup";
-import { buildDayDrafts } from "@/lib/dal/day-drafts";
+import { buildDayDrafts, type DayPaymentDraft } from "@/lib/dal/day-drafts";
+import { syncPaymentRedates } from "@/lib/dal/payment-redates";
 import { buildDailyJournalEntries, DAILY_LINE_CAP, type DailyCategory } from "@/lib/daily/daily-je-builder";
 
 /** The day's built drafts + gate roll-up — returned (on request) so a read model can
@@ -54,6 +60,10 @@ export interface DailyReconcileSummary {
   enqueuedPostings: number;
   /** What the diff did per category (audit / the reconcile UI). */
   dailyEnqueue: Record<DailyCategory, DailyEnqueueAction>;
+  /** Late-payment redate sync (Part A): detections + auto-resolutions this run. */
+  paymentRedates: { detected: number; autoResolved: number; held: number };
+  /** Review items SYSTEM-closed this run because their condition provably cleared (Part E). */
+  autoResolvedReviewItems: number;
   /** Present only when opts.withBuild was set (the live-on-view read models) — NOT
    *  serialized back through the reconcile action (it stays slim). */
   build?: DayBuild;
@@ -75,11 +85,32 @@ export async function runDailyReconciliation(
       realmId: null, businessDate, saleCount: 0, paymentCount: 0, postableSales: 0, postablePayments: 0,
       reviewCount: 0, persistedReviewItems: 0, enqueuedPostings: 0,
       dailyEnqueue: { sales: "noop", payments: "noop", fees: "noop" },
+      paymentRedates: { detected: 0, autoResolved: 0, held: 0 },
+      autoResolvedReviewItems: 0,
     };
   }
 
-  const drafts = await buildDayDrafts(shopId, realmId, businessDate, opts);
-  const { sales, payments, extraReviewItems, gateSettings } = drafts;
+  const built = await buildDayDrafts(shopId, realmId, businessDate, opts);
+  const { sales, extraReviewItems, gateSettings } = built;
+
+  // ── Late-payment redates (Part A, Chris 2026-07-01): detect + auto-resolve for
+  // this day, THEN drop just-detected payments from the desired set — the hold must
+  // apply from THIS build (a late payment onto a posted day never stages a
+  // correction, not even once; the office gets the void+re-date email instead).
+  const redateSync = await syncPaymentRedates(shopId, realmId, businessDate, built.payments, built.heldRedatePayments);
+  const newlyHeld: DayPaymentDraft[] = [];
+  const payments: DayPaymentDraft[] = [];
+  for (const p of built.payments) {
+    const id = Number(p.input.paymentId);
+    const held = p.input.manual !== true && Number.isSafeInteger(id) && redateSync.newlyHeldPaymentIds.has(id);
+    (held ? newlyHeld : payments).push(p);
+  }
+  const drafts = {
+    ...built,
+    payments,
+    heldRedatePayments: [...built.heldRedatePayments, ...newlyHeld],
+  };
+
   const rollup = rollupDay(businessDate, sales, payments.map((p) => p.je), gateSettings);
 
   // ── persist the §9 review items (the pre-build extras + the gates') ──
@@ -96,30 +127,51 @@ export async function runDailyReconciliation(
   // payment, is the posting subject now). NO QBO write happens here (the daily poster).
   const bundle = buildDailyJournalEntries(businessDate, rollup.postableSaleDrafts, rollup.postablePaymentDrafts);
   let enqueuedPostings = 0;
+  const dayGuardItems: UpsertReviewItemInput[] = [];
   const dailyEnqueue = { sales: "noop", payments: "noop", fees: "noop" } as Record<DailyCategory, DailyEnqueueAction>;
   for (const category of ["sales", "payments", "fees"] as const) {
     const je = bundle[category];
     // Belt-and-suspenders day-level guards (gate-postable constituents make these
     // unreachable in practice; surfacing them beats silently not enqueueing).
     if (je && !je.balanced) {
-      await upsertReviewItem(shopId, {
+      dayGuardItems.push({
         kind: "daily_unbalanced", subjectKind: "day", subjectRef: `${businessDate}:${category}`,
         detail: { totalDebitsCents: je.totalDebitsCents, totalCreditsCents: je.totalCreditsCents },
       });
-      persisted++;
     } else if (je && je.overLineCap) {
-      await upsertReviewItem(shopId, {
+      dayGuardItems.push({
         kind: "daily_line_cap", subjectKind: "day", subjectRef: `${businessDate}:${category}`,
         detail: { lines: je.lines.length, cap: DAILY_LINE_CAP },
       });
-      persisted++;
     }
     const result = await enqueueDailyPosting(shopId, realmId, businessDate, category, je);
     dailyEnqueue[category] = result.enqueueAction;
     if (result.enqueueAction === "new" || result.enqueueAction === "refreshed") enqueuedPostings++;
   }
+  for (const item of dayGuardItems) {
+    await upsertReviewItem(shopId, item);
+    persisted++;
+  }
+
+  // ── Review-item CONVERGENCE (resolution-workflow Part E) ──
+  // Close open items whose condition PROVABLY cleared, so the fix-it list never
+  // lies (the 2026-06-29 incident: resolved queue + locked day, or the inverse —
+  // fixed cause + lingering item). Two proofs:
+  //   GATE kinds — re-emitted on every reconcile: an open item for THIS day's
+  //   subjects that was NOT re-emitted this run is cleared (the mapping landed,
+  //   the RO/payment was fixed in Tekmetric…).
+  //   POSTER kinds — day-scoped: cleared when the category's LATEST version is no
+  //   longer 'failed' (retried, accepted, or obsoleted as moot).
+  // NEVER auto-closed here: redates (their own sync), and anything whose proof the
+  // reconcile can't see (safety-net kinds close on the nightly net's own re-check).
+  const autoResolvedItems = await convergeReviewItems(
+    shopId, realmId, businessDate,
+    [...allReviewItems, ...dayGuardItems],
+    drafts,
+  );
 
   return {
+    autoResolvedReviewItems: autoResolvedItems,
     realmId,
     businessDate,
     saleCount: rollup.saleCount,
@@ -130,8 +182,84 @@ export async function runDailyReconciliation(
     persistedReviewItems: persisted,
     enqueuedPostings,
     dailyEnqueue,
+    paymentRedates: {
+      detected: redateSync.detected,
+      autoResolved: redateSync.autoResolved,
+      held: drafts.heldRedatePayments.length,
+    },
     ...(opts.withBuild ? { build: { drafts, rollup } } : {}),
   };
+}
+
+// ─── Review-item convergence (Part E) ───────────────────────────────────────────
+
+/** Gate-emitted kinds — re-emitted deterministically on every reconcile of the day,
+ *  so "not re-emitted for a subject we can see" PROVES the condition cleared. */
+const GATE_AUTORESOLVE_KINDS = new Set([
+  "unmapped", "tax_identity", "tax_high", "negative_component", "unbalanced",
+  "payment_corrupt", "snapshot_unparseable", "manual_payment_conflict",
+  "daily_unbalanced", "daily_line_cap",
+]);
+
+/** Poster-emitted kinds — day-scoped (`${date}:${category}`); cleared when the
+ *  category's LATEST version is no longer 'failed' (retried/accepted/obsoleted). */
+const POSTER_AUTORESOLVE_KINDS = new Set([
+  "qbo_deposit_locked", "qbo_error", "ar_entity_rejected", "reconnect_required",
+]);
+
+async function convergeReviewItems(
+  shopId: number,
+  realmId: string,
+  businessDate: string,
+  emittedThisRun: UpsertReviewItemInput[],
+  drafts: { sales: { snapshot: { repairOrderId: number } }[]; payments: { input: { paymentId: number | string; repairOrderId: number | null } }[]; heldRedatePayments: { input: { paymentId: number | string; repairOrderId: number | null } }[] },
+): Promise<number> {
+  const { items: openItems } = await listOpenReviewItems(shopId);
+  if (openItems.length === 0) return 0;
+
+  const emitted = new Set(emittedThisRun.map((i) => `${i.kind}|${i.subjectKind}|${i.subjectRef}`));
+  const dayPrefix = `${businessDate}:`;
+
+  // The subjects THIS day's build can vouch for. An item whose subject we cannot see
+  // is never touched (a different day's reconcile owns it).
+  const dayRoRefs = new Set<string>();
+  const dayPaymentRefs = new Set<string>();
+  for (const s of drafts.sales) dayRoRefs.add(String(s.snapshot.repairOrderId));
+  for (const p of [...drafts.payments, ...drafts.heldRedatePayments]) {
+    dayPaymentRefs.add(String(p.input.paymentId));
+    if (p.input.repairOrderId != null) dayRoRefs.add(String(p.input.repairOrderId));
+  }
+
+  // Latest status per category (for the poster kinds). listDailyPostingsForDay
+  // orders by category then posting_version ASC, so the last row per category in
+  // iteration order is the latest version.
+  const { postings } = await listDailyPostingsForDay(shopId, businessDate);
+  const latestStatusByCategory = new Map<string, string>();
+  for (const p of postings) latestStatusByCategory.set(p.category, p.status);
+
+  const toClose = openItems.filter((item) => {
+    if (emitted.has(`${item.kind}|${item.subjectKind}|${item.subjectRef}`)) return false;
+    if (GATE_AUTORESOLVE_KINDS.has(item.kind)) {
+      if (item.subjectKind === "ro") return dayRoRefs.has(item.subjectRef);
+      if (item.subjectKind === "payment") return dayPaymentRefs.has(item.subjectRef);
+      if (item.subjectKind === "day") return item.subjectRef.startsWith(dayPrefix);
+      return false;
+    }
+    if (POSTER_AUTORESOLVE_KINDS.has(item.kind) && item.subjectKind === "day" && item.subjectRef.startsWith(dayPrefix)) {
+      const category = item.subjectRef.slice(dayPrefix.length);
+      const latest = latestStatusByCategory.get(category);
+      return latest !== undefined && latest !== "failed";
+    }
+    return false;
+  });
+
+  const { resolved } = await autoResolveReviewItems(
+    shopId, realmId,
+    toClose.map((i) => i.id),
+    "system (condition cleared)",
+    { auto: true, clearedBy: "reconcile", businessDate },
+  );
+  return resolved;
 }
 
 // ─── Live-on-view preamble (shared by the snapshot + breakdown read models) ─────

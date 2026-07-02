@@ -198,3 +198,30 @@ export async function listManualPayments(
   }));
   return { realmId, manualPayments };
 }
+
+/**
+ * Delete a manual payment pick (resolution-workflow Part E — the
+ * manual_payment_conflict resolution: a REAL payment arrived for the RO, so the
+ * pick must go or the conflict item re-spawns forever). The RPC refuses while the
+ * pick is a constituent of a posted/in-flight daily JE (deleting would orphan a
+ * posted line). Fails closed when the shop has no connection. Throws on DB error.
+ */
+export async function deleteManualPayment(
+  shopId: number,
+  id: string,
+  deletedBy: string,
+): Promise<{ deleted: boolean }> {
+  const realmId = await resolveRealmForShop(shopId);
+  if (!realmId) {
+    throw new QboClientError("QuickBooks is not connected for this shop.", { kind: "reconnect_required" });
+  }
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin.rpc("qteklink_delete_manual_payment", {
+    p_shop_id: shopId, p_realm_id: realmId, p_id: id, p_deleted_by: deletedBy,
+  });
+  if (error) {
+    if (error.code === "P0001") throw new QboClientError(error.message, { kind: "unknown" });
+    throw new Error(`qteklink_delete_manual_payment failed: ${error.message}`);
+  }
+  return { deleted: data === true };
+}

@@ -109,6 +109,32 @@ export async function listOpenReviewItems(
 }
 
 /**
+ * Batch SYSTEM resolution of OPEN review items whose condition provably cleared
+ * (resolution-workflow: reconcile convergence, a successful retry, an accepted
+ * variance, a resolved redate). Ids only — the proving predicate lives with the
+ * caller. Returns how many items were closed. Throws on DB error.
+ */
+export async function autoResolveReviewItems(
+  shopId: number,
+  realmId: string,
+  ids: string[],
+  resolvedBy: string,
+  resolution: Record<string, unknown>,
+): Promise<{ resolved: number }> {
+  if (ids.length === 0) return { resolved: 0 };
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin.rpc("qteklink_auto_resolve_review_items", {
+    p_shop_id: shopId,
+    p_realm_id: realmId,
+    p_ids: ids,
+    p_resolved_by: resolvedBy,
+    p_resolution: resolution,
+  });
+  if (error) throw new Error(`qteklink_auto_resolve_review_items failed: ${error.message}`);
+  return { resolved: typeof data === "number" ? data : 0 };
+}
+
+/**
  * Resolve one OPEN review item (human action). Fails closed when the shop has no
  * connection. Returns whether an open item was closed. Throws on DB error.
  */

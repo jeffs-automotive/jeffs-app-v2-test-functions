@@ -15,6 +15,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { RO_SALE_SCAN_EVENT_KINDS, RO_UNPOST_EVENT_KIND } from "@/lib/events/kinds";
 import { sortByReceivedAtDesc } from "@/lib/events/ordering";
 import { listPendingDateMoves } from "@/lib/dal/date-moves";
+import { listPendingRedatePaymentIds } from "@/lib/dal/payment-redates";
 import { parseSnapshot, resolveMappings, type MappingRow } from "@/lib/dal/sale-je";
 import { resolvePaymentMappings, stateRowToPayment, type PaymentStateRow } from "@/lib/dal/payment-je";
 import { listManualPayments } from "@/lib/dal/manual-payments";
@@ -41,6 +42,10 @@ export interface DayDrafts {
   gateSettings: SaleGateSettings;
   sales: SaleDraft[];
   payments: DayPaymentDraft[];
+  /** Late payments HELD OUT of this (already-posted) day by a PENDING redate
+   *  (resolution-workflow Part A): built for detection/resolution sync + display,
+   *  but excluded from `payments` so no correction ever stages for them. */
+  heldRedatePayments: DayPaymentDraft[];
   /** Pre-gate review items (unparseable snapshots + manual-pick conflicts). */
   extraReviewItems: UpsertReviewItemInput[];
 }
@@ -248,10 +253,24 @@ export async function buildDayDrafts(
     }
   }
 
-  const payments: DayPaymentDraft[] = paymentInputs.map((input) => ({
+  const builtPayments: DayPaymentDraft[] = paymentInputs.map((input) => ({
     input,
     je: buildPaymentJournalEntry(input, paymentMappings, paymentSettings),
   }));
 
-  return { tz, gateSettings, sales, payments, extraReviewItems };
+  // ── LATE-PAYMENT REDATE HOLD (resolution-workflow Part A) ──
+  // A real payment with a PENDING redate on this day is held OUT of the desired
+  // payment set (mirror of the date-move exclude above): the posted day's JE never
+  // stages a correction for it while the office voids + re-dates it in Tekmetric.
+  // Manual picks are app records — never held.
+  const pendingRedates = await listPendingRedatePaymentIds(shopId, realmId, businessDate);
+  const payments: DayPaymentDraft[] = [];
+  const heldRedatePayments: DayPaymentDraft[] = [];
+  for (const p of builtPayments) {
+    const numericId = Number(p.input.paymentId);
+    const held = p.input.manual !== true && Number.isSafeInteger(numericId) && pendingRedates.has(numericId);
+    (held ? heldRedatePayments : payments).push(p);
+  }
+
+  return { tz, gateSettings, sales, payments, heldRedatePayments, extraReviewItems };
 }

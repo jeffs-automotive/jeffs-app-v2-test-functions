@@ -10,7 +10,7 @@
 import { z } from "zod";
 import { requireQtekUser } from "@/lib/auth";
 import { wrapQtekAction } from "@/lib/instrument-action";
-import { recordManualPayment } from "@/lib/dal/manual-payments";
+import { recordManualPayment, deleteManualPayment } from "@/lib/dal/manual-payments";
 import { qboFailure, type QboActionResult } from "./qbo/result";
 
 // Methods that route to the NON-CASH path (need a specific `otherPaymentType`).
@@ -75,3 +75,30 @@ async function recordManualPaymentImpl(
 }
 
 export const recordManualPaymentAction = wrapQtekAction("qboRecordManualPayment", recordManualPaymentImpl);
+
+// ── Delete a manual pick (resolution-workflow Part E — the conflict resolution) ──
+
+const DeleteManualPaymentSchema = z.object({ id: z.string().uuid("A valid manual-payment id is required.") });
+
+type DeleteManualPaymentState = QboActionResult<{ deleted: boolean }>;
+
+async function deleteManualPaymentImpl(
+  _prev: DeleteManualPaymentState | null,
+  formData: FormData,
+): Promise<DeleteManualPaymentState> {
+  try {
+    const { shopId, role, email } = await requireQtekUser();
+    if (role !== "admin") return adminRequired();
+
+    const parsed = DeleteManualPaymentSchema.safeParse({ id: formData.get("id") });
+    if (!parsed.success) {
+      return { ok: false, reason: "validation", message: parsed.error.issues[0]?.message ?? "Invalid input.", timestamp: Date.now() };
+    }
+    const data = await deleteManualPayment(shopId, parsed.data.id, email);
+    return { ok: true, data, timestamp: Date.now() };
+  } catch (e) {
+    return qboFailure(e);
+  }
+}
+
+export const deleteManualPaymentAction = wrapQtekAction("qboDeleteManualPayment", deleteManualPaymentImpl);

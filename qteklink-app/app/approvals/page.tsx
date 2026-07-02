@@ -14,6 +14,7 @@ import { requireQtekUser } from "@/lib/auth";
 import { getDailySnapshot, type TypeRow } from "@/lib/dal/daily-snapshot";
 import { listDailyPostingsForDay } from "@/lib/dal/daily-postings";
 import { getShopSettings } from "@/lib/dal/settings";
+import { deriveApprovedStamp, hasPendingCorrection } from "@/lib/approvals/day-status";
 import { toShopLocalDate } from "@/lib/sales/sale-builder";
 import { fmtUsdSigned, isIsoDate } from "@/lib/format";
 import ApproveDayControls from "./ApproveDayControls";
@@ -84,6 +85,22 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
   const hasPosted = postings.some((p) => p.status === "posted" || p.status === "posting" || p.status === "approved");
   const isAcknowledged = !hasPosted && postings.length > 0 && postings.every((p) => p.status === "acknowledged" || p.status === "rejected");
 
+  // Part F: who approved+posted the day (the human, never the nightly auto-correction)
+  // + whether a staged correction awaits (it auto-posts tonight; the button stays for
+  // an immediate manual push). The lock reads the UNIFIED attention list (Part D) —
+  // the same items the fix-it page shows, so the two can never disagree.
+  const approvedStamp = hasPosted ? deriveApprovedStamp(postings) : null;
+  const pendingCorrection = hasPosted && hasPendingCorrection(postings);
+  const blockingCount = snapshot.attention.blockingCount;
+  const infoCount = snapshot.attention.items.length - blockingCount;
+  const approvedStampLine = approvedStamp
+    ? `Approved and posted on ${
+        approvedStamp.at
+          ? new Intl.DateTimeFormat("en-US", { timeZone: settings.shopTimezone, month: "numeric", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(approvedStamp.at))
+          : date
+      } by ${approvedStamp.by}`
+    : null;
+
   return (
     <main className="mx-auto max-w-5xl px-6 py-12">
       <PageHeader title="Daily approvals" description="Check a day's numbers, then post the whole day to QuickBooks">
@@ -150,10 +167,15 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
 
           <div className="mt-4 flex items-center justify-between gap-3">
             <p className="text-sm text-muted-foreground">
-              {snapshot.needsAttentionCount > 0 ? (
+              {blockingCount > 0 ? (
                 <Link href={`/approvals/review?date=${date}`} className="inline-flex items-center gap-1 font-medium text-amber-800 underline underline-offset-4 dark:text-amber-300">
                   <AlertTriangle className="size-4" aria-hidden="true" />
-                  {snapshot.needsAttentionCount} item{snapshot.needsAttentionCount === 1 ? "" : "s"} need attention — open the fix-it list
+                  {blockingCount} item{blockingCount === 1 ? "" : "s"} need{blockingCount === 1 ? "s" : ""} attention — open the fix-it list
+                </Link>
+              ) : infoCount > 0 ? (
+                <Link href={`/approvals/review?date=${date}`} className="inline-flex items-center gap-1 font-medium text-muted-foreground underline underline-offset-4">
+                  <Info className="size-4" aria-hidden="true" />
+                  {infoCount} item{infoCount === 1 ? "" : "s"} to know about — nothing blocks the day
                 </Link>
               ) : (
                 <span className="text-muted-foreground">Nothing needs attention.</span>
@@ -165,8 +187,31 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
             </Button>
           </div>
 
-          {role === "admin" && !isAcknowledged && (
-            <ApproveDayControls date={date} blockedCount={snapshot.needsAttentionCount} />
+          {/* Part F: a posted day says WHO approved it and WHEN — the approve button
+              only returns when a staged correction awaits a manual push. */}
+          {!isAcknowledged && hasPosted && approvedStampLine && (
+            <section className="mt-6 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+              <p className="flex items-center gap-2 text-sm font-medium text-emerald-800">
+                <CheckCircle2 className="size-5 shrink-0" aria-hidden="true" />
+                {approvedStampLine}
+              </p>
+              {pendingCorrection && (
+                <p className="mt-1 pl-7 text-sm text-emerald-800/80">
+                  A change was detected since posting — it posts automatically tonight, or press the button below to post it now.
+                </p>
+              )}
+              {blockingCount > 0 && (
+                <p className="mt-1 flex items-center gap-1 pl-7 text-sm text-amber-800">
+                  <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
+                  with {blockingCount} exception{blockingCount === 1 ? "" : "s"} —{" "}
+                  <Link href={`/approvals/review?date=${date}`} className="font-medium underline underline-offset-4">open the fix-it list</Link>
+                </p>
+              )}
+            </section>
+          )}
+
+          {role === "admin" && !isAcknowledged && (!hasPosted || pendingCorrection) && (
+            <ApproveDayControls date={date} blockedCount={blockingCount} />
           )}
           {role === "admin" && !isAcknowledged && !hasPosted && (
             <Card className="mt-4 shadow-xs">
