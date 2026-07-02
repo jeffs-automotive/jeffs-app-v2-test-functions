@@ -116,9 +116,12 @@ export function buildMcpToolRegistry(args: BuildRegistryArgs): Record<string, Mc
     serviceRoleKey,
   });
 
-  // (b) Customer-wizard reads + scheduler admin (uploads, exports,
-  //     patches, blocks, syncs). orchestrator-mcp is advisor-only, so
-  //     always include admin tools.
+  // (b) Customer-wizard reads + booking tools. 2026-07-02 (sub-feature A):
+  //     the scheduler ADMIN tools (uploads/exports/revert/audit/ops/patches)
+  //     were deleted from getSchedulerTools — the schedulerconfig webforms
+  //     call the direct RPCs. includeAdminTools/audit are accepted-but-
+  //     ignored legacy params (kept so this call site + keytag flows need
+  //     no signature change).
   const schedulerTools = getSchedulerTools({
     sb,
     shopId,

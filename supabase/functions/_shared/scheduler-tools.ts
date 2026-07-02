@@ -1,15 +1,12 @@
-// AI SDK tool registry for the scheduler specialist.
+// AI SDK tool registry — scheduler READ/booking tools for orchestrator-mcp.
 //
-// Per appointments_design.md §7.2.
-//
-// Wraps each pure tool function from `_shared/tools/scheduler-*.ts` into a
-// Vercel AI SDK tool({ description, inputSchema, execute }) definition. The
-// scheduler specialist (`_shared/specialists/scheduler.ts`, dispatched by
-// `_shared/orchestrator.ts`) passes this map into
-// generateText({ tools: getSchedulerTools(...) }).
-//
-// Chunk 2 refactor (2026-05-13): previously consumed by the now-deprecated
-// `_shared/scheduler-orchestrator.ts`. Tool catalog itself is unchanged.
+// 2026-07-02 (sub-feature A + revamp Phase 0): the LLM specialist chain
+// (`_shared/orchestrator.ts` + `_shared/specialists/*`) was DELETED (zero
+// callers) and the scheduler ADMIN tool block was removed — the
+// schedulerconfig webforms call the direct RPCs instead. What remains here
+// is the deterministic wizard/advisor read + booking tool surface consumed
+// by `_shared/mcp-tool-registry.ts` (orchestrator-mcp), which stays alive
+// for keytag.
 //
 // Tool description guidance (read this when adding new tools):
 //   - Be specific about WHEN this tool is the right answer.
@@ -506,9 +503,9 @@ export function getSchedulerTools(args: SchedulerToolsArgs) {
         // R6 pattern-extension 2026-05-16: aligned with createNewCustomer's
         // actual wire shape (scheduler-customer.ts:580). The helper writes
         // address1/address2 (matches Tekmetric POST /customers contract);
-        // prior `streetAddress` field would have been silently dropped if
-        // the LLM ever passed it through. The system prompt at
-        // specialists/scheduler.ts §178-181 was updated in the same pass.
+        // prior `streetAddress` field would have been silently dropped.
+        // (The specialists/scheduler.ts prompt this note referenced was
+        // deleted 2026-07-02 with the dead LLM chain.)
         address: z
           .object({
             address1: z.string().optional(),
