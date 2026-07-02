@@ -55,10 +55,14 @@ SELECT is(
   2, 'both closed-date ops audited');
 
 -- ─── appointment type RPC: activation color gate ──────────────────────────
-SELECT throws_ok(
+-- 2026-07-02: yellow was WRITE-PROBED (appointment 65743262 → #FCB70D) and
+-- joined the verified set — activation now succeeds. The gate itself is
+-- still exercised: the table CHECK constrains colors to the classifier
+-- vocabulary, and the RPC's v_probed array guards any future addition.
+SELECT lives_ok(
   $$ SELECT public.scheduler_set_appointment_type(7476, 'tap@jeffsautomotive.com',
-       '{"slug":"tap_yellow","label":"TapY","tekmetric_color":"yellow","active":true}'::jsonb) $$,
-  'P0001', NULL, 'activating an unprobed color (yellow) is refused (D8)');
+       '{"slug":"tap_yellow2","label":"TapY","tekmetric_color":"yellow","active":true,"sort":97}'::jsonb) $$,
+  'ACTIVATING a yellow type (probe-verified 2026-07-02) succeeds');
 SELECT lives_ok(
   $$ SELECT public.scheduler_set_appointment_type(7476, 'tap@jeffsautomotive.com',
        '{"slug":"tap_orange","label":"TapO","tekmetric_color":"orange","active":true}'::jsonb) $$,

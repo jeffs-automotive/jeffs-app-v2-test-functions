@@ -53,8 +53,10 @@ import type { AppointmentTypeAdminRow } from "@/lib/scheduler/read-dal";
 
 // ─── color palette ───────────────────────────────────────────────────────────
 // tekmetric_color is a fixed enum in the action schema: red | navy | orange |
-// yellow. Yellow is rendered but disabled pending the Tekmetric write probe
-// (see the swatch title). The swatch hex values are display-only cues.
+// yellow. ALL FOUR are write-probe verified (red/navy/orange: 18-probe pass
+// 2026-05-16; yellow: probe 2026-07-02 — POST color yellow persisted as
+// #FCB70D on appointment 65743262, deleted after verify). The swatch hex
+// values are display-only cues.
 
 type ColorKey = "red" | "navy" | "orange" | "yellow";
 
@@ -68,13 +70,7 @@ const COLOR_SWATCHES: {
   { key: "red", name: "Red", hex: "#c0392b", disabled: false },
   { key: "navy", name: "Navy", hex: "#1f3a5f", disabled: false },
   { key: "orange", name: "Orange", hex: "#d35400", disabled: false },
-  {
-    key: "yellow",
-    name: "Yellow",
-    hex: "#e6b800",
-    disabled: true,
-    disabledReason: "pending Tekmetric write probe",
-  },
+  { key: "yellow", name: "Yellow", hex: "#e6b800", disabled: false },
 ];
 
 function colorMeta(key: string): { name: string; hex: string } {
