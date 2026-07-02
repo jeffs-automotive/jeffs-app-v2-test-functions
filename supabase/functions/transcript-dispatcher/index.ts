@@ -719,12 +719,25 @@ async function dispatchOne(transcript: TranscriptRow): Promise<{
     description: string | null;
   } | null = null;
   if (session.appointment_id) {
-    const { data: appt } = await sb
+    const { data: appt, error: apptErr } = await sb
       .from("appointments")
       .select("start_time, end_time, appointment_type, title, description")
       .eq("shop_id", session.shop_id ?? 7476)
       .eq("tekmetric_appointment_id", session.appointment_id)
       .maybeSingle();
+    if (apptErr) {
+      // Best-effort stays (the email renders without the header row) but
+      // the read failure is observable — observability.md rule 9.
+      await logEdgeError(sb, {
+        session_id,
+        surface: "transcript-dispatcher/appointment_lookup",
+        origin_id: "transcript-dispatcher",
+        level: "warning",
+        error_code: "appointment_lookup_failed",
+        message: apptErr.message,
+        context: { appointment_id: session.appointment_id },
+      });
+    }
     if (appt) {
       appointmentRow = {
         start_time: (appt.start_time as string) ?? null,
@@ -860,44 +873,74 @@ async function dispatchOne(transcript: TranscriptRow): Promise<{
   const send = await sendViaResend(view, html, subject);
 
   if (send.ok) {
-    await sb
-      .from("transcript_emails")
-      .update({
+    await updateTranscriptRow(
+      id,
+      {
         status: "sent",
         resend_id: send.resend_id ?? null,
         attempts: attempts + 1,
         sent_at: new Date().toISOString(),
         last_error: null,
-      })
-      .eq("id", id);
+      },
+      "mark_sent",
+    );
     return { id, result: "sent", detail: send.resend_id };
   }
 
   // Treat 409 (Idempotency-Key replay) as success
   if (send.status === 409) {
-    await sb
-      .from("transcript_emails")
-      .update({
+    await updateTranscriptRow(
+      id,
+      {
         status: "sent",
         attempts: attempts + 1,
         sent_at: new Date().toISOString(),
         last_error: "409 idempotency replay (treated as sent)",
-      })
-      .eq("id", id);
+      },
+      "mark_sent_409",
+    );
     return { id, result: "sent", detail: "409_idempotency_replay" };
   }
 
   const newAttempts = attempts + 1;
   const newStatus = newAttempts >= 5 ? "failed" : "retry";
-  await sb
-    .from("transcript_emails")
-    .update({
+  await updateTranscriptRow(
+    id,
+    {
       status: newStatus,
       attempts: newAttempts,
       last_error: send.error ?? `http_${send.status}`,
-    })
-    .eq("id", id);
+    },
+    "mark_retry_or_failed",
+  );
   return { id, result: newStatus, detail: send.error };
+}
+
+/**
+ * transcript_emails status write with a checked error (observability.md
+ * rule 9 — a silent failure here strands the row in pending/retry; the
+ * Resend Idempotency-Key makes the resulting re-send harmless, but the
+ * write failure itself must be visible).
+ */
+async function updateTranscriptRow(
+  id: string,
+  patch: Record<string, unknown>,
+  phase: string,
+): Promise<void> {
+  const { error } = await sb
+    .from("transcript_emails")
+    .update(patch)
+    .eq("id", id);
+  if (error) {
+    await logEdgeError(sb, {
+      surface: "transcript-dispatcher/status_update",
+      origin_id: "transcript-dispatcher",
+      level: "error",
+      error_code: "transcript_emails_update_failed",
+      message: error.message,
+      context: { transcript_id: id, phase, patch_status: patch.status ?? null },
+    });
+  }
 }
 
 // ─── HTTP handler ────────────────────────────────────────────────────────────
@@ -919,18 +962,30 @@ Deno.serve((req) => withSentryScope(req, "transcript-dispatcher", async () => {
     return unauthorizedResponse(auth);
   }
 
-  // Optional payload for single-transcript dispatch
+  // Optional payload for single-transcript dispatch. An empty body is the
+  // normal cron/backstop mode; a NON-empty body that fails to parse is a
+  // caller bug and must be observable (observability.md rule 15 — no
+  // swallowed catches), though we still proceed in backstop mode to match
+  // the prior lenient contract.
   let targetId: string | null = null;
   if (req.method === "POST") {
-    try {
-      const body = (await req.json().catch(() => null)) as
-        | { transcript_id?: string }
-        | null;
-      if (body && typeof body.transcript_id === "string") {
-        targetId = body.transcript_id;
+    const raw = await req.text().catch(() => "");
+    if (raw.trim().length > 0) {
+      try {
+        const body = JSON.parse(raw) as { transcript_id?: string } | null;
+        if (body && typeof body.transcript_id === "string") {
+          targetId = body.transcript_id;
+        }
+      } catch (e) {
+        await logEdgeError(sb, {
+          surface: "transcript-dispatcher/request_parse",
+          origin_id: "transcript-dispatcher",
+          level: "warning",
+          error_code: "malformed_json_body",
+          message: e instanceof Error ? e.message : String(e),
+          context: { body_prefix: raw.slice(0, 200) },
+        });
       }
-    } catch {
-      // empty body is fine — backstop mode
     }
   }
 
@@ -976,17 +1031,42 @@ Deno.serve((req) => withSentryScope(req, "transcript-dispatcher", async () => {
       );
       // Hard failure during dispatch — bump attempts but stay in retry until 5
       const newAttempts = row.attempts + 1;
-      await sb
-        .from("transcript_emails")
-        .update({
+      await updateTranscriptRow(
+        row.id,
+        {
           status: newAttempts >= 5 ? "failed" : "retry",
           attempts: newAttempts,
           last_error: msg,
-        })
-        .eq("id", row.id);
+        },
+        "mark_unhandled",
+      );
       results.push({ id: row.id, result: "retry", detail: msg });
     }
   }
 
-  return jsonResponse({ ok: true, processed: results.length, results });
+  // silent-webhook-200 (2026-07-02): per-row failures are tracked in
+  // transcript_emails and retried by the next cron pass, but they must
+  // ALSO surface in scheduler_error_log/Sentry — a permanently-failing
+  // transcript was previously invisible outside the table. HTTP stays 200
+  // (the batch itself processed; callers are fire-and-forget) but `ok`
+  // now reflects whether every dispatch succeeded.
+  const failed = results.filter(
+    (r) => r.result === "failed" || r.result === "retry",
+  );
+  if (failed.length > 0) {
+    await logEdgeError(sb, {
+      surface: "transcript-dispatcher/dispatch",
+      origin_id: "transcript-dispatcher",
+      level: "error",
+      error_code: "transcript_dispatch_failures",
+      message: `${failed.length}/${results.length} transcript dispatch(es) failed or queued for retry`,
+      context: { failed: failed.slice(0, 10) },
+    });
+  }
+  return jsonResponse({
+    ok: failed.length === 0,
+    processed: results.length,
+    failed: failed.length,
+    results,
+  });
 }));

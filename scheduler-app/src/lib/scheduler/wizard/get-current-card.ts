@@ -27,6 +27,7 @@ import {
 } from "@/lib/scheduler/appointment-types";
 // P2.8 (2026-05-25): single source of truth for SHOP_ID.
 import { SHOP_ID } from "@/lib/scheduler/shop-config";
+import { getShopTodayPg } from "@/lib/scheduler/shop-clock";
 import {
   computeAvailableDates,
   getEarliestAvailableDate,
@@ -553,10 +554,24 @@ export async function getCurrentCard(
         });
       }
 
-      const today = new Date();
-      const rangeEndIso = ymdFromDate(
-        new Date(today.getFullYear(), today.getMonth(), today.getDate() + 365),
-      );
+      // shop-clock-single-snapshot (2026-07-02): range bounds derive from
+      // the shop-local Postgres clock, not the Vercel server clock — a
+      // server in another timezone (or a DST edge) would otherwise bound
+      // the calendar to the wrong day vs computeAvailableDates, which
+      // already uses the shop clock internally.
+      const shopToday = await getShopTodayPg();
+      // "YYYY-MM-DD" (zod-validated upstream) — slice avoids the
+      // possibly-undefined destructure under noUncheckedIndexedAccess.
+      const ty = Number(shopToday.slice(0, 4));
+      const tm = Number(shopToday.slice(5, 7));
+      const td = Number(shopToday.slice(8, 10));
+      // Noon-UTC anchor avoids DST/rollover edges when adding days.
+      const rangeEnd = new Date(Date.UTC(ty, tm - 1, td + 365, 12));
+      const rangeEndIso = [
+        rangeEnd.getUTCFullYear(),
+        String(rangeEnd.getUTCMonth() + 1).padStart(2, "0"),
+        String(rangeEnd.getUTCDate()).padStart(2, "0"),
+      ].join("-");
 
       return {
         step: "date_pick",
@@ -1088,22 +1103,29 @@ async function assessWaitEligibility(
   // surfaced to the customer as a raw service_key (e.g.,
   // "engine_noise_diagnostic takes longer than a waiter slot allows").
   // Pull testing_services too so the blocker name is human-readable.
-  const [{ data: routineRows, error: routineErr }, { data: testingRows }] =
-    await Promise.all([
-      supabase
-        .from("routine_services")
-        .select("service_key, display_name, wait_eligible")
-        .eq("shop_id", SHOP_ID)
-        .in("service_key", allKeys),
-      supabase
-        .from("testing_services")
-        .select("service_key, display_name")
-        .eq("shop_id", SHOP_ID)
-        .in("service_key", allKeys),
-    ]);
+  const [
+    { data: routineRows, error: routineErr },
+    { data: testingRows, error: testingErr },
+  ] = await Promise.all([
+    supabase
+      .from("routine_services")
+      .select("service_key, display_name, wait_eligible")
+      .eq("shop_id", SHOP_ID)
+      .in("service_key", allKeys),
+    supabase
+      .from("testing_services")
+      .select("service_key, display_name")
+      .eq("shop_id", SHOP_ID)
+      .in("service_key", allKeys),
+  ]);
   if (routineErr) {
     throw new Error(
       `routine_services wait_eligible lookup failed: ${routineErr.message}`,
+    );
+  }
+  if (testingErr) {
+    throw new Error(
+      `testing_services display_name lookup failed: ${testingErr.message}`,
     );
   }
   // R6-C-2 2026-05-16: a service_key may legitimately appear in BOTH
