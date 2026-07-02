@@ -49,10 +49,11 @@
  *   - @ai-sdk/gateway's generateObject path has documented bugs with
  *     Anthropic structured outputs (#13460, #13355, #14342). The
  *     Anthropic SDK direct path is clean.
- *   - Anthropic's native Structured Outputs API (output_format +
- *     structured-outputs-2025-11-13 beta) uses constrained decoding for
- *     guaranteed schema compliance, similar to OpenAI's strict mode.
- *     Documented <0.1% failure rate.
+ *   - Anthropic's native Structured Outputs API (GA: `output_config.format`
+ *     on messages.create — migrated 2026-07-02 from the deprecated
+ *     `output_format` + structured-outputs-2025-11-13 beta) uses constrained
+ *     decoding for guaranteed schema compliance, similar to OpenAI's strict
+ *     mode. Documented <0.1% failure rate.
  *   - We still benefit from the Vercel AI Gateway: prompt caching,
  *     multi-model fallback chains, observability, single credential,
  *     unified billing.
@@ -126,7 +127,6 @@ import {
 const DEFAULT_MODEL = "anthropic/claude-haiku-4-5";
 const FALLBACK_MODEL = "anthropic/claude-sonnet-4-6";
 const MAX_OUTPUT_TOKENS = 1024;
-const STRUCTURED_OUTPUTS_BETA = "structured-outputs-2025-11-13";
 
 function resolveStage1Model(): string {
   return (
@@ -406,9 +406,17 @@ function buildChipHintLine(
 // per call. Keeping this outside the cache_control marker ensures cache
 // hits aren't lost when only the chip changes.
 //
-// Cache-write threshold (5-min ephemeral): Sonnet/Opus 1024 tokens,
-// Haiku 2048 tokens. The Stage 1 static portion is well above the Haiku
-// minimum (~5-8 KB ≈ 1500-2400 tokens depending on catalog size).
+// Cache-write threshold (5-min ephemeral) — corrected 2026-07-02
+// (REVAMP-PLAN §11 P0): Haiku 4.5's minimum cacheable prefix is 4,096
+// tokens (Sonnet 4.6: 2,048; Sonnet 4.5: 1,024) — NOT the 2,048 this
+// comment previously claimed. The Stage 1 static portion (~5-8 KB ≈
+// 1,500-2,400 tokens) is BELOW the Haiku minimum, so on the default
+// Haiku model this marker is currently a harmless no-op (no error;
+// usage.cache_creation_input_tokens stays 0). It starts firing
+// automatically once the catalog grows past ~4,096 tokens, or if the
+// stage is pointed at a Sonnet model via DIAGNOSE_CONCERN_STAGE1_MODEL.
+// We keep the marker + the static/dynamic split rather than padding the
+// prompt to reach the threshold. Verify with cache_read_input_tokens > 0.
 
 export function buildStage1SystemPrompt(
   args: DiagnoseConcernArgs,
@@ -948,15 +956,17 @@ async function callAnthropicStage<T>(args: {
             models: [args.model, FALLBACK_MODEL],
           },
         },
-        // Anthropic native Structured Outputs (beta as of 2025-11-13, GA
-        // per Vercel AI Gateway docs). Uses constrained decoding for
-        // guaranteed schema compliance. The SDK types added support
-        // for `output_format` in 0.97; no @ts-expect-error needed.
-        output_format: {
-          type: "json_schema",
-          schema: args.jsonSchema,
+        // Anthropic native Structured Outputs — GA surface (2026-07-02
+        // migration): `output_config.format` on plain messages.create, no
+        // beta header. Replaces the deprecated top-level `output_format` +
+        // `betas: ["structured-outputs-2025-11-13"]` pair. Constrained
+        // decoding for guaranteed schema compliance; typed in SDK ≥0.97.
+        output_config: {
+          format: {
+            type: "json_schema",
+            schema: args.jsonSchema,
+          },
         },
-        betas: [STRUCTURED_OUTPUTS_BETA],
       });
 
       const textBlock = msg.content.find((b) => b.type === "text");

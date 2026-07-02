@@ -50,6 +50,11 @@ import {
   type CatalogQuestion,
   type DiagnosticCatalog,
 } from "@/lib/scheduler/wizard/llm/load-diagnostic-catalog";
+import {
+  applyConfidenceGate,
+  overAskQuestionIds,
+  type ConfidenceGateOutcome,
+} from "@/lib/scheduler/wizard/confidence-gate";
 import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 import { logError } from "@/lib/scheduler/wizard/log-error";
 import { routeAfterDiagnostics } from "@/lib/scheduler/wizard/route-after-diagnostics";
@@ -390,42 +395,26 @@ async function runDiagnosticsBody(
       item: ExplanationItem;
       result: DiagnoseConcernResult;
       matchedCat: CatalogCategory | null;
+      gate: ConfidenceGateOutcome;
     }> => {
       const hint = buildChipHint(item, routineChipCats, catalog);
-      const result = await diagnoseConcern({
+      const raw = await diagnoseConcern({
         catalog,
         customer_description: item.explanation_text,
         customer_chip_hint: hint,
         vehicle_notes: vehicleNotes,
       });
-      // Observability — record per-concern outcome to Sentry so we can
-      // see what the LLM is doing in production (testing-service match
-      // vs 'other'-subcategory match vs null-match, plus parse_ok +
-      // token usage). One breadcrumb per concern; the aggregate
-      // route-decision is captured separately below.
-      Sentry.addBreadcrumb({
-        category: "scheduler.diagnose",
-        type: "info",
-        level: "info",
-        message: `diagnoseConcern: ${item.service_key} → ${result.matched_kind ?? "null"}:${result.matched_category_key ?? "none"}`,
-        data: {
-          chip_service_key: item.service_key,
-          description_chars: item.explanation_text.length,
-          matched_kind: result.matched_kind,
-          matched_category_key: result.matched_category_key,
-          matched_subcategory_slug: result.matched_subcategory_slug,
-          recommended_service_key: result.recommended_testing_service?.service_key ?? null,
-          unanswered_count: result.unanswered_question_ids.length,
-          parsed_ok: result.parsed_ok,
-          tokens_in: result.tokens_in,
-          tokens_out: result.tokens_out,
-          latency_ms: result.latency_ms,
-          error_message: result.error_message,
-        },
-      });
+      // Confidence gate (REVAMP-PLAN §11 P0, wired 2026-07-02) — low
+      // Stage-1/Stage-2 confidence strips the match (advisor handoff);
+      // low Stage-3 confidence keeps the match but flags over-ask (the
+      // full subcategory question list is queued below instead of the
+      // fact-mapper's unanswered set). See confidence-gate.ts.
+      const gated = applyConfidenceGate(raw);
+      let result = gated.result;
       // Find the matched category record for question lookup. We re-walk
       // the catalog here (cheap — ≤20 entries) rather than expose it from
-      // diagnoseConcern's signature.
+      // diagnoseConcern's signature. A gated (handoff) result has a null
+      // key, so matchedCat stays null — the exact null-match path.
       let matchedCat: CatalogCategory | null = null;
       if (result.matched_category_key) {
         for (const c of catalog.categories) {
@@ -440,7 +429,48 @@ async function runDiagnosticsBody(
           }
         }
       }
-      return { item, result, matchedCat };
+      if (gated.gate === "over_ask") {
+        const allIds = overAskQuestionIds(
+          matchedCat,
+          result.matched_subcategory_slug,
+        );
+        if (allIds) {
+          result = { ...result, unanswered_question_ids: allIds };
+        }
+      }
+      // Observability — record per-concern outcome to Sentry so we can
+      // see what the LLM is doing in production (testing-service match
+      // vs 'other'-subcategory match vs null-match, plus parse_ok +
+      // token usage + the confidence-gate verdict). One breadcrumb per
+      // concern; the aggregate route-decision is captured separately
+      // below. Confidence + gate fields reflect the RAW LLM self-report;
+      // matched_* fields reflect the post-gate result.
+      Sentry.addBreadcrumb({
+        category: "scheduler.diagnose",
+        type: "info",
+        level: "info",
+        message: `diagnoseConcern: ${item.service_key} → ${result.matched_kind ?? "null"}:${result.matched_category_key ?? "none"} (gate: ${gated.gate})`,
+        data: {
+          chip_service_key: item.service_key,
+          description_chars: item.explanation_text.length,
+          matched_kind: result.matched_kind,
+          matched_category_key: result.matched_category_key,
+          matched_subcategory_slug: result.matched_subcategory_slug,
+          recommended_service_key: result.recommended_testing_service?.service_key ?? null,
+          unanswered_count: result.unanswered_question_ids.length,
+          confidence_gate: gated.gate,
+          stage1_confidence: raw.stage1_confidence,
+          stage2_confidence: raw.stage2_confidence,
+          stage3_confidence: raw.stage3_confidence,
+          pre_gate_matched_category_key: raw.matched_category_key,
+          parsed_ok: result.parsed_ok,
+          tokens_in: result.tokens_in,
+          tokens_out: result.tokens_out,
+          latency_ms: result.latency_ms,
+          error_message: result.error_message,
+        },
+      });
+      return { item, result, matchedCat, gate: gated.gate };
     }),
   );
 
@@ -544,6 +574,10 @@ async function runDiagnosticsBody(
         chip: r.item.service_key,
         matched_kind: r.result.matched_kind,
         matched_category_key: r.result.matched_category_key,
+        confidence_gate: r.gate,
+        stage1_confidence: r.result.stage1_confidence,
+        stage2_confidence: r.result.stage2_confidence,
+        stage3_confidence: r.result.stage3_confidence,
         parsed_ok: r.result.parsed_ok,
         error_message: r.result.error_message,
       })),
