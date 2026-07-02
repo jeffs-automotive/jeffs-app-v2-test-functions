@@ -592,6 +592,18 @@ verify_jwt = false
 import_map = "./functions/scheduler-booking-direct/deno.json"
 entrypoint = "./functions/scheduler-booking-direct/index.ts"
 
+[functions.scheduler-manual-review-email]
+enabled = true
+# AVM manual-review email sender (P1.7). Auth is Pattern A bearer via
+# checkSchedulerBearer in-handler (service-role key from the Vercel
+# fire-and-forget client). Block added 2026-07-02 — the gate flagged the
+# missing declaration (it worked only because a service-role bearer also
+# satisfies default verify_jwt; the explicit posture matches every other
+# scheduler function).
+verify_jwt = false
+import_map = "./functions/scheduler-manual-review-email/deno.json"
+entrypoint = "./functions/scheduler-manual-review-email/index.ts"
+
 [functions.scheduler-otp-direct]
 enabled = true
 # Deterministic OTP verify + resend endpoint per phase_05a of the migration

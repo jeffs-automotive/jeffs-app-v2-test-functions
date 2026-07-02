@@ -81,7 +81,26 @@ export async function handler(req: Request): Promise<Response> {
       if ("error" in result) {
         return json(422, { ok: false, error: result.error });
       }
-      return json(200, { ok: true, result });
+      // silent-webhook-200 guard: send failures are settled in the
+      // scheduler_reminders ledger, but they must ALSO surface in
+      // scheduler_error_log/Sentry — a permanently-failing send would
+      // otherwise be invisible outside the table. Skips/already_claimed
+      // are normal outcomes, not failures.
+      if (result.sms === "failed" || result.email === "failed") {
+        await logEdgeError(getSb(), {
+          session_id: body.session_id,
+          surface: "scheduler-comms/send_confirmation",
+          origin_id: "scheduler-comms",
+          level: "error",
+          error_code: "confirmation_send_failed",
+          message: `confirmation send failed (sms: ${result.sms}, email: ${result.email})`,
+          context: { appointment_id: result.appointment_id },
+        });
+      }
+      return json(200, {
+        ok: result.sms !== "failed" && result.email !== "failed",
+        result,
+      });
     }
 
     if (body.op === "sweep_reminders") {
@@ -89,6 +108,16 @@ export async function handler(req: Request): Promise<Response> {
       const failed = result.processed.filter(
         (p) => p.sms === "failed" || p.email === "failed",
       );
+      if (failed.length > 0) {
+        await logEdgeError(getSb(), {
+          surface: "scheduler-comms/sweep_reminders",
+          origin_id: "scheduler-comms",
+          level: "error",
+          error_code: "reminder_send_failures",
+          message: `${failed.length}/${result.processed.length} reminder dispatch(es) had a failed channel`,
+          context: { failed: failed.slice(0, 10) },
+        });
+      }
       return json(200, {
         ok: failed.length === 0,
         quiet_hours: result.quiet_hours,

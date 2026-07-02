@@ -544,7 +544,10 @@ export async function sendConfirmationForSession(
   ];
   let servicesSummary = "";
   if (serviceKeys.length > 0) {
-    const [{ data: r1 }, { data: r2 }] = await Promise.all([
+    const [
+      { data: r1, error: r1Err },
+      { data: r2, error: r2Err },
+    ] = await Promise.all([
       sb
         .from("routine_services")
         .select("service_key, display_name")
@@ -556,6 +559,18 @@ export async function sendConfirmationForSession(
         .eq("shop_id", shopId)
         .in("service_key", serviceKeys),
     ]);
+    if (r1Err || r2Err) {
+      // Non-fatal — the humanized service_key fallback below still renders
+      // a truthful summary; the read failure must be visible (rule 9).
+      await logEdgeError(sb, {
+        session_id: sessionId,
+        surface: "scheduler-comms/service_name_lookup",
+        origin_id: "scheduler-comms",
+        level: "warning",
+        error_code: "service_name_lookup_failed",
+        message: r1Err?.message ?? r2Err?.message ?? "unknown",
+      });
+    }
     const names = new Map<string, string>();
     for (const r of (r1 ?? []) as Array<{ service_key: string; display_name: string }>) {
       names.set(r.service_key, r.display_name);
