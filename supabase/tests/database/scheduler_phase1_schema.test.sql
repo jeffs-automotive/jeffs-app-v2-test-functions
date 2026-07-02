@@ -101,13 +101,23 @@ SELECT throws_ok(
   'appointment_status CHECK rejects invalid value'
 );
 
--- appointment_type enum on appointments
+-- appointment_type validation (B5 2026-07-02: the 2-value CHECK became the
+-- scheduler_appt_type_slug_valid trigger — unknown slugs now raise P0001)
 SELECT throws_ok(
   $$INSERT INTO appointments (shop_id, tekmetric_appointment_id, start_time, end_time, appointment_type, appointment_status)
     VALUES (7476, 999999998, now(), now() + interval '1 hour', 'invalid_type', 'NONE')$$,
-  '23514',
+  'P0001',
   NULL,
-  'appointment_type CHECK rejects invalid value'
+  'appointment_type trigger rejects unknown slug'
+);
+
+-- ...and a seeded non-system slug (inactive loaner) IS storable — the
+-- trigger validates against ALL type rows, not just active/bookable ones
+-- (classifiable ⊇ bookable; sync may store historical yellow appointments).
+SELECT lives_ok(
+  $$INSERT INTO appointments (shop_id, tekmetric_appointment_id, start_time, end_time, appointment_type, appointment_status)
+    VALUES (7476, 999999997, now(), now() + interval '1 hour', 'loaner', 'NONE')$$,
+  'appointment_type trigger accepts any seeded slug (loaner)'
 );
 
 
