@@ -25,6 +25,11 @@ export interface CompletedCardProps {
   appointment_label?: string | null;
   /** Whether "Schedule another" should be shown — defaults to true. */
   allow_schedule_another?: boolean;
+  /** Whether the customer opted into confirmation/reminder texts on the
+   *  phone step (revamp Phase 2). Drives which "what happens next" line is
+   *  truthful. Defaults to false — the safe default promises nothing we
+   *  didn't get consent for (design spec §5). */
+  sms_consent?: boolean;
   /** Disable buttons (e.g., while a refresh is in flight). */
   disabled?: boolean;
   /** Fires on "Schedule another" — server-side starts a fresh session. */
@@ -37,6 +42,7 @@ export function CompletedCard({
   first_name,
   appointment_label,
   allow_schedule_another = true,
+  sms_consent = false,
   disabled = false,
   onScheduleAnother,
   onClose,
@@ -112,11 +118,17 @@ export function CompletedCard({
             </span>
             <span>We&apos;ve booked it in our system</span>
           </li>
+          {/* Consent-aware truthfulness (revamp Phase 2, design spec §5):
+              only promise text/email sends when the customer opted in. */}
           <li className="flex gap-2.5">
             <span aria-hidden className="shrink-0">
-              📲
+              {sms_consent ? "📲" : "📅"}
             </span>
-            <span>You&apos;ll get a text/call confirmation</span>
+            <span>
+              {sms_consent
+                ? "We'll text and email your confirmation and a reminder before your visit."
+                : "Your confirmation and summary are saved right here in this chat. Want text + email reminders? Just tell us at your visit and we'll turn them on."}
+            </span>
           </li>
           <li className="flex gap-2.5">
             <span aria-hidden className="shrink-0">

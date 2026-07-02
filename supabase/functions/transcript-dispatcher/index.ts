@@ -44,9 +44,9 @@ import {
 import { logEdgeError } from "../_shared/log-edge-error.ts";
 import { withSentryScope } from "../_shared/sentry-edge.ts";
 import { loadAppointmentTypes } from "../_shared/scheduler-appointment-types.ts";
+import { sendResendEmail } from "../_shared/resend-client.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 const SERVICE_TEAM_EMAIL =
   Deno.env.get("SERVICE_TEAM_EMAIL") ?? "service@jeffsautomotive.com";
 const FROM_EMAIL =
@@ -133,7 +133,10 @@ async function loadSessionErrors(
   }));
 }
 
-// ─── Resend send ─────────────────────────────────────────────────────────────
+// ─── Resend send (shared transport — revamp Phase 2, 2026-07-02) ────────────
+// The inline fetch moved to _shared/resend-client.ts. Behavior preserved:
+// a 409 idempotency replay is surfaced as ok:false + status 409 so the
+// dispatchOne 409 branch keeps writing its "idempotency replay" note.
 
 interface ResendSendResult {
   ok: boolean;
@@ -147,43 +150,19 @@ async function sendViaResend(
   html: string,
   subject: string,
 ): Promise<ResendSendResult> {
-  if (!RESEND_API_KEY) {
-    return { ok: false, status: 0, error: "RESEND_API_KEY not configured" };
-  }
-  try {
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${RESEND_API_KEY}`,
-        "Content-Type": "application/json",
-        "Idempotency-Key": `transcript:${view.session_id}`,
-      },
-      body: JSON.stringify({
-        from: FROM_EMAIL,
-        to: [SERVICE_TEAM_EMAIL],
-        subject,
-        html,
-      }),
-    });
-    const text = await res.text();
-    if (!res.ok) {
-      return { ok: false, status: res.status, error: text.slice(0, 500) };
-    }
-    let resend_id: string | undefined;
-    try {
-      const json = JSON.parse(text);
-      if (typeof json.id === "string") resend_id = json.id;
-    } catch {
-      // 200 with non-JSON body — still treat as success
-    }
-    return { ok: true, status: res.status, resend_id };
-  } catch (e) {
-    return {
-      ok: false,
-      status: 0,
-      error: e instanceof Error ? e.message : String(e),
-    };
-  }
+  const r = await sendResendEmail({
+    from: FROM_EMAIL,
+    to: SERVICE_TEAM_EMAIL,
+    subject,
+    html,
+    idempotencyKey: `transcript:${view.session_id}`,
+  });
+  return {
+    ok: r.ok && !r.deduped,
+    status: r.status,
+    resend_id: r.id,
+    error: r.error,
+  };
 }
 
 // ─── Tekmetric customer-name lookup (best-effort; fall back to phone) ────────

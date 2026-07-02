@@ -39,6 +39,11 @@ import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 import { checkBotForSensitiveAction } from "@/lib/security/check-bot";
 import { checkPhoneRateLimit } from "@/lib/security/rate-limit";
 import { getCachedSessionRow } from "@/lib/scheduler/cache";
+import { SHOP_ID } from "@/lib/scheduler/shop-config";
+import {
+  CONSENT_CTA_TEXT,
+  CONSENT_CTA_VERSION,
+} from "@/lib/scheduler/consent-copy";
 
 // ─── Input validation ───────────────────────────────────────────────────────
 
@@ -48,6 +53,11 @@ const submitPhoneNameSchema = z.object({
   last_name: z.string().trim().min(1).max(50),
   // The PhoneNameCard normalizes to E.164 +1XXXXXXXXXX before calling us.
   phone_e164: z.string().regex(/^\+1\d{10}$/),
+  // TCPA opt-in for confirmation/reminder texts (revamp Phase 2). The
+  // client sends ONLY the boolean — the canonical disclosure copy +
+  // version are server-side constants (consent-copy.ts), so the stored
+  // proof-of-consent can't be tampered with from the browser.
+  sms_consent: z.boolean().optional().default(false),
 });
 
 export type SubmitPhoneNameV2Args = z.infer<typeof submitPhoneNameSchema>;
@@ -112,7 +122,8 @@ async function submitPhoneNameV2Impl(
       error: parsed.error.issues.map((i) => i.message).join("; "),
     };
   }
-  const { chatId, first_name, last_name, phone_e164 } = parsed.data;
+  const { chatId, first_name, last_name, phone_e164, sms_consent } =
+    parsed.data;
 
   // ─── SEC-7 — SMS-pump defense (bot → phone gates) ───────────────────
   // Cheapest check first (BotID is a single header read). The per-IP limit
@@ -159,6 +170,40 @@ async function submitPhoneNameV2Impl(
         level: "error",
       });
       return { ok: false, error: prewriteErr.message };
+    }
+
+    // Step 1b (revamp Phase 2): persist the TCPA opt-in BEFORE the OTP
+    // dispatch. Grant-only here — STOP revokes via telnyx-webhook; absence
+    // of a row = no consent. A duplicate active grant (23505 on the
+    // partial unique) is a benign re-submit. A WRITE FAILURE is loud
+    // (Sentry + error log) but does NOT block the wizard — booking must
+    // not die on the consent ledger; the send path fail-closes anyway
+    // (no active row → no confirmation/reminder SMS).
+    if (sms_consent) {
+      const { error: consentErr } = await supabase.from("sms_consents").insert({
+        shop_id: SHOP_ID,
+        phone_e164,
+        cta_text: CONSENT_CTA_TEXT,
+        cta_version: CONSENT_CTA_VERSION,
+        acquisition_medium: "wizard_checkbox",
+        consenter_label: `${first_name} ${last_name}`,
+        chat_session_id: chatId,
+      });
+      if (consentErr && consentErr.code !== "23505") {
+        Sentry.captureException(
+          new Error(`sms_consents insert failed: ${consentErr.message}`),
+          {
+            tags: { surface: "submit_phone_name_v2_consent" },
+            level: "error",
+          },
+        );
+        await logError({
+          chatId,
+          surface: "submit_phone_name_v2_consent",
+          error_code: "consent_insert_failed",
+          message: consentErr.message,
+        });
+      }
     }
 
     // Step 2: read the greeting bucket (set by submitGreetingV2 at Step 1).

@@ -22,6 +22,10 @@
 
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { logEdgeError } from "../log-edge-error.ts";
+// Revamp Phase 2 (2026-07-02): the Telnyx transport + provider gating moved
+// to the shared _shared/telnyx-client.ts so the confirmation/reminder
+// senders use the SAME send path as OTP. Behavior-preserving extraction.
+import { sendSms, type SmsSendResult } from "../telnyx-client.ts";
 
 const OTP_TTL_MIN = 5;
 const OTP_LENGTH = 6;
@@ -81,179 +85,30 @@ function bytesToHex(b: Uint8Array): string {
   );
 }
 
-// ─── Telnyx SMS send ─────────────────────────────────────────────────────────
+// ─── Telnyx SMS send — SHARED transport (revamp Phase 2) ─────────────────────
 //
-// Telnyx Messaging API per https://developers.telnyx.com/api-reference/messages.
-//   - POST https://api.telnyx.com/v2/messages
-//   - Auth: Authorization: Bearer ${TELNYX_API_KEY}
-//   - Body: { from, to, text, messaging_profile_id? }
-//   - 200 response: { data: { id, to: [{ status }], ... } }
-//   - Status "queued" = accepted into Telnyx's pipeline; delivery status
-//     comes asynchronously via webhook (we'll wire that in a follow-up).
-//
-// Env-driven provider selection (lock 2026-05-13):
-//   - SMS_PROVIDER='telnyx' (or unset; Telnyx is the default when API key
-//     is present) → real send via Telnyx
-//   - SMS_PROVIDER='stub' → no-op log only (dev path; read otp_codes row
-//     to read the code)
-//   - SMS_PROVIDER='disabled' → reject sends explicitly
+// The Telnyx POST + provider gating (SMS_PROVIDER telnyx|stub|disabled +
+// auto-detect) now live in _shared/telnyx-client.ts, shared with the
+// confirmation/reminder senders. Only the OTP message text stays here.
 
-interface SendOtpResult {
-  ok: boolean;
-  provider_message_id?: string;
-  /** Provider-side status (e.g. "queued"). Set on success. */
-  provider_status?: string;
-  /** Error code for our internal taxonomy. Set on failure. */
-  error_code?: "auth" | "invalid_number" | "rate_limit" | "provider_error" | "network" | "config";
-  /** Free-form detail safe to log (no secrets). */
-  detail?: string;
-}
+type SendOtpResult = SmsSendResult;
 
 function buildOtpMessageText(code: string): string {
   // Keep under 160 chars to stay one SMS segment (cheaper + delivers faster).
-  // 10DLC OTP/transactional messages are exempt from STOP-handling reminders
-  // per Telnyx's compliance docs, so we skip "Reply STOP" to keep length short.
+  // NOTE (corrected 2026-07-02, REVAMP-PLAN §4b): being "transactional" does
+  // NOT blanket-exempt OTP from STOP semantics — a prior STOP is honored at
+  // the carrier/account level regardless of message type. "Reply STOP" is
+  // omitted here purely for single-segment length; STOP/HELP handling lives
+  // in the telnyx-webhook consumer + the campaign auto-responder.
   return `Jeff's Automotive: Your verification code is ${code}. Expires in 5 minutes. Don't share this code.`;
 }
 
-async function sendViaTelnyx(
-  phoneE164: string,
-  code: string,
-): Promise<SendOtpResult> {
-  const apiKey = Deno.env.get("TELNYX_API_KEY");
-  const fromNumber = Deno.env.get("TELNYX_FROM_NUMBER");
-  const messagingProfileId = Deno.env.get("TELNYX_MESSAGING_PROFILE_ID"); // optional
-
-  if (!apiKey) {
-    return {
-      ok: false,
-      error_code: "config",
-      detail: "TELNYX_API_KEY missing in edge secrets",
-    };
-  }
-  if (!fromNumber) {
-    return {
-      ok: false,
-      error_code: "config",
-      detail: "TELNYX_FROM_NUMBER missing in edge secrets",
-    };
-  }
-
-  const body: Record<string, unknown> = {
-    from: fromNumber,
-    to: phoneE164,
-    text: buildOtpMessageText(code),
-  };
-  if (messagingProfileId) body.messaging_profile_id = messagingProfileId;
-
-  let res: Response;
-  try {
-    res = await fetch("https://api.telnyx.com/v2/messages", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-      },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(15_000), // hard 15s cap; Telnyx normally ~300ms
-    });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return { ok: false, error_code: "network", detail: msg.slice(0, 200) };
-  }
-
-  // Read once; non-200 responses include errors[] per Telnyx's standard envelope.
-  let json: unknown;
-  try {
-    json = await res.json();
-  } catch {
-    json = null;
-  }
-
-  if (!res.ok) {
-    const errorCode: SendOtpResult["error_code"] =
-      res.status === 401 || res.status === 403
-        ? "auth"
-        : res.status === 422
-          ? "invalid_number"
-          : res.status === 429
-            ? "rate_limit"
-            : "provider_error";
-    return {
-      ok: false,
-      error_code: errorCode,
-      detail: `telnyx HTTP ${res.status}: ${JSON.stringify(json).slice(0, 300)}`,
-    };
-  }
-
-  const payload = json as {
-    data?: { id?: string; to?: Array<{ status?: string }> };
-  };
-  const providerMessageId = payload.data?.id;
-  const providerStatus = payload.data?.to?.[0]?.status ?? "queued";
-
-  console.log(
-    JSON.stringify({
-      level: "info",
-      msg: "send_otp_telnyx_ok",
-      provider_message_id: providerMessageId,
-      provider_status: providerStatus,
-      to_last_four: phoneE164.slice(-4),
-    }),
-  );
-
-  return {
-    ok: true,
-    provider_message_id: providerMessageId,
-    provider_status: providerStatus,
-  };
-}
-
-/**
- * Dispatch the OTP to the configured SMS provider.
- *
- * Selection: explicit `SMS_PROVIDER` env wins; otherwise we auto-detect
- * (TELNYX_API_KEY present → telnyx; else stub).
- */
+/** Dispatch the OTP through the shared provider-gated transport. */
 async function sendOtpViaSmsProvider(
   phoneE164: string,
   code: string,
 ): Promise<SendOtpResult> {
-  const explicit = Deno.env.get("SMS_PROVIDER")?.toLowerCase();
-  const hasTelnyx = !!Deno.env.get("TELNYX_API_KEY");
-  const provider = explicit ?? (hasTelnyx ? "telnyx" : "stub");
-
-  if (provider === "stub") {
-    console.log(
-      JSON.stringify({
-        level: "warning",
-        msg: "send_otp_stub",
-        note:
-          "SMS_PROVIDER=stub — no real send. Read otp_codes row to retrieve code.",
-        to_last_four: phoneE164.slice(-4),
-      }),
-    );
-    return { ok: true, provider_message_id: "stub-no-send" };
-  }
-
-  if (provider === "disabled") {
-    return {
-      ok: false,
-      error_code: "config",
-      detail: "SMS_PROVIDER=disabled",
-    };
-  }
-
-  if (provider === "telnyx") {
-    return sendViaTelnyx(phoneE164, code);
-  }
-
-  return {
-    ok: false,
-    error_code: "config",
-    detail: `unknown_sms_provider: ${provider}`,
-  };
+  return sendSms(phoneE164, buildOtpMessageText(code), "otp");
 }
 
 // ─── Tool functions ──────────────────────────────────────────────────────────

@@ -273,6 +273,10 @@ export interface CompletedPayload {
   first_name: string | null;
   appointment_label: string | null;
   allow_schedule_another: boolean;
+  /** Active confirmation/reminder-text consent for the session's phone at
+   *  render time (revamp Phase 2). Drives the CompletedCard's truthful
+   *  what-happens-next line; false when unknown/lookup-failed. */
+  sms_consent: boolean;
 }
 
 /** Escalation terminal state. */

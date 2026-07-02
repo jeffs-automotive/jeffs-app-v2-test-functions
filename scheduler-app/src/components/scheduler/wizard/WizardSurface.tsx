@@ -199,12 +199,13 @@ function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
           initial_first_name={card.payload.initial_first_name}
           initial_last_name={card.payload.initial_last_name}
           initial_phone_e164={card.payload.initial_phone_e164}
-          onSubmit={async ({ first_name, last_name, phone }) => {
+          onSubmit={async ({ first_name, last_name, phone, sms_consent }) => {
             const result = await submitPhoneNameV2({
               chatId,
               first_name,
               last_name,
               phone_e164: phone,
+              sms_consent,
             });
             handleResult("submitPhoneNameV2", chatId, result);
           }}
@@ -621,6 +622,7 @@ function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
           first_name={card.payload.first_name}
           appointment_label={card.payload.appointment_label}
           allow_schedule_another={card.payload.allow_schedule_another}
+          sms_consent={card.payload.sms_consent}
           onScheduleAnother={async () => {
             // 2026-05-17 fix: call submitStartOverV2 directly so the row
             // is wiped (status='ended' otherwise sticks per the terminal-

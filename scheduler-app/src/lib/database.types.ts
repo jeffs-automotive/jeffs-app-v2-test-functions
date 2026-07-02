@@ -239,9 +239,14 @@ export type Database = {
           arrived: boolean | null
           color: string | null
           confirmation_status: string | null
+          contact_source: string | null
+          contact_synced_at: string | null
           created_at: string
           created_date: string | null
+          customer_email: string | null
+          customer_first_name: string | null
           customer_id: number | null
+          customer_phone_e164: string | null
           deleted_at: string | null
           description: string | null
           dropoff_time: string | null
@@ -269,9 +274,14 @@ export type Database = {
           arrived?: boolean | null
           color?: string | null
           confirmation_status?: string | null
+          contact_source?: string | null
+          contact_synced_at?: string | null
           created_at?: string
           created_date?: string | null
+          customer_email?: string | null
+          customer_first_name?: string | null
           customer_id?: number | null
+          customer_phone_e164?: string | null
           deleted_at?: string | null
           description?: string | null
           dropoff_time?: string | null
@@ -299,9 +309,14 @@ export type Database = {
           arrived?: boolean | null
           color?: string | null
           confirmation_status?: string | null
+          contact_source?: string | null
+          contact_synced_at?: string | null
           created_at?: string
           created_date?: string | null
+          customer_email?: string | null
+          customer_first_name?: string | null
           customer_id?: number | null
+          customer_phone_e164?: string | null
           deleted_at?: string | null
           description?: string | null
           dropoff_time?: string | null
@@ -2736,6 +2751,48 @@ export type Database = {
           },
         ]
       }
+      scheduler_reminders: {
+        Row: {
+          channel: string
+          created_at: string
+          error: string | null
+          id: string
+          reminder_kind: string
+          sent_at: string | null
+          shop_id: number
+          skip_reason: string | null
+          status: string
+          tekmetric_appointment_id: number
+          updated_at: string
+        }
+        Insert: {
+          channel: string
+          created_at?: string
+          error?: string | null
+          id?: string
+          reminder_kind: string
+          sent_at?: string | null
+          shop_id: number
+          skip_reason?: string | null
+          status: string
+          tekmetric_appointment_id: number
+          updated_at?: string
+        }
+        Update: {
+          channel?: string
+          created_at?: string
+          error?: string | null
+          id?: string
+          reminder_kind?: string
+          sent_at?: string | null
+          shop_id?: number
+          skip_reason?: string | null
+          status?: string
+          tekmetric_appointment_id?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       sentry_webhook_events: {
         Row: {
           action: string | null
@@ -2828,6 +2885,121 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      sms_consents: {
+        Row: {
+          acquisition_medium: string
+          chat_session_id: string | null
+          consent_ip: string | null
+          consenter_label: string | null
+          created_at: string
+          cta_text: string
+          cta_version: string
+          granted_at: string
+          id: string
+          phone_e164: string
+          revoke_source: string | null
+          revoked_at: string | null
+          shop_id: number
+          user_agent: string | null
+        }
+        Insert: {
+          acquisition_medium: string
+          chat_session_id?: string | null
+          consent_ip?: string | null
+          consenter_label?: string | null
+          created_at?: string
+          cta_text: string
+          cta_version: string
+          granted_at?: string
+          id?: string
+          phone_e164: string
+          revoke_source?: string | null
+          revoked_at?: string | null
+          shop_id: number
+          user_agent?: string | null
+        }
+        Update: {
+          acquisition_medium?: string
+          chat_session_id?: string | null
+          consent_ip?: string | null
+          consenter_label?: string | null
+          created_at?: string
+          cta_text?: string
+          cta_version?: string
+          granted_at?: string
+          id?: string
+          phone_e164?: string
+          revoke_source?: string | null
+          revoked_at?: string | null
+          shop_id?: number
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_consents_chat_session_id_fkey"
+            columns: ["chat_session_id"]
+            isOneToOne: false
+            referencedRelation: "customer_chat_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sms_messages: {
+        Row: {
+          body: string | null
+          chat_session_id: string | null
+          created_at: string
+          direction: string
+          id: string
+          kind: string
+          phone_e164: string
+          shop_id: number
+          status: string
+          status_detail: string | null
+          tekmetric_appointment_id: number | null
+          telnyx_message_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          body?: string | null
+          chat_session_id?: string | null
+          created_at?: string
+          direction: string
+          id?: string
+          kind: string
+          phone_e164: string
+          shop_id: number
+          status?: string
+          status_detail?: string | null
+          tekmetric_appointment_id?: number | null
+          telnyx_message_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          body?: string | null
+          chat_session_id?: string | null
+          created_at?: string
+          direction?: string
+          id?: string
+          kind?: string
+          phone_e164?: string
+          shop_id?: number
+          status?: string
+          status_detail?: string | null
+          tekmetric_appointment_id?: number | null
+          telnyx_message_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_messages_chat_session_id_fkey"
+            columns: ["chat_session_id"]
+            isOneToOne: false
+            referencedRelation: "customer_chat_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       tekmetric_webhook_events: {
         Row: {

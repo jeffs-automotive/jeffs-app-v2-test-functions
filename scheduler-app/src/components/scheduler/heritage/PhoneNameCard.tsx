@@ -2,7 +2,13 @@
 
 import { useState, type FormEvent } from "react";
 
-import { Button, Card, Field, Input } from "@/components/ui";
+import { Button, Card, Checkbox, Field, Input } from "@/components/ui";
+import {
+  CONSENT_LABEL_LEAD,
+  CONSENT_OPTIONAL_NOTE,
+  CONSENT_PRIVACY_URL,
+  CONSENT_TERMS_URL,
+} from "@/lib/scheduler/consent-copy";
 
 /**
  * Step 2 — Phone + Name card (Heritage exemplar).
@@ -34,6 +40,9 @@ export interface PhoneNameCardProps {
     first_name: string;
     last_name: string;
     phone: string; // E.164 +1xxxxxxxxxx
+    /** TCPA opt-in for confirmation/reminder texts (revamp Phase 2).
+     *  NEVER gates submit — the OTP rides its own consent basis. */
+    sms_consent: boolean;
   }) => void | Promise<void>;
 }
 
@@ -84,6 +93,9 @@ export function PhoneNameCard({
     phone?: string;
   }>({});
   const [pending, setPending] = useState(false);
+  // TCPA opt-in — unchecked by default (design spec §4). NEVER appears in
+  // any disabled=/validation branch: the OTP has its own consent basis.
+  const [smsConsent, setSmsConsent] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -115,6 +127,7 @@ export function PhoneNameCard({
         first_name: capitalizeFirst(fn),
         last_name: capitalizeFirst(ln),
         phone: e164!,
+        sms_consent: smsConsent,
       });
     } finally {
       setPending(false);
@@ -199,6 +212,60 @@ export function PhoneNameCard({
           </Field>
         </Card.Body>
 
+        {/* SMS-consent panel (revamp Phase 2; design spec
+            scheduler-comms-consent-spec.md §4). OPTIONAL by design — the
+            checkbox never gates the submit button; the OTP text rides its
+            own consent basis (the customer requests the code). Checked =
+            confirmation/reminder texts allowed; the exact disclosure copy
+            is versioned in consent-copy.ts and persisted server-side on
+            grant (TCPA proof-of-consent). */}
+        <Card.Body className="mt-5">
+          <div className="rounded-[var(--radius-input)] border border-rule bg-paper-200 px-4 py-3.5">
+            <p className="label-eyebrow mb-2">Text updates — optional</p>
+            <Checkbox
+              id="pn-sms-consent"
+              name="sms_consent"
+              checked={smsConsent}
+              onChange={(e) => setSmsConsent(e.target.checked)}
+              disabled={pending || disabled}
+              aria-describedby="pn-sms-consent-note"
+              description={
+                <span id="pn-sms-consent-note">{CONSENT_OPTIONAL_NOTE}</span>
+              }
+            >
+              <span className="text-[14px] font-medium leading-snug text-ink">
+                {CONSENT_LABEL_LEAD}
+              </span>
+              {/* Fine print stays ink-secondary on paper-200 — ink-tertiary
+                  fails AA here (design spec §2 contrast trap). */}
+              <span className="mt-1 block text-[12px] leading-relaxed text-ink-secondary">
+                Appointment confirmations &amp; reminders, up to ~4 messages
+                per appointment. Msg &amp; data rates may apply. Reply STOP to
+                opt out, HELP for help. See our{" "}
+                <a
+                  href={CONSENT_TERMS_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-brand-burgundy-700 underline underline-offset-2 hover:text-brand-burgundy-800"
+                >
+                  Terms<span className="sr-only"> (opens in a new tab)</span>
+                </a>{" "}
+                and{" "}
+                <a
+                  href={CONSENT_PRIVACY_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-brand-burgundy-700 underline underline-offset-2 hover:text-brand-burgundy-800"
+                >
+                  Privacy Policy
+                  <span className="sr-only"> (opens in a new tab)</span>
+                </a>
+                .
+              </span>
+            </Checkbox>
+          </div>
+        </Card.Body>
+
         {/* While pending, surface a "sending your code" reassurance line
             above the button. The full chain takes ~4-5s end-to-end
             (Tekmetric lookup + LLM specialist + Telnyx send) and silent
@@ -233,7 +300,7 @@ export function PhoneNameCard({
 
       <Card.Footnote>
         By continuing, you agree this conversation may be recorded and
-        reviewed by our team. Standard texting rates apply.
+        reviewed by our team to help us serve you better.
       </Card.Footnote>
     </Card>
   );

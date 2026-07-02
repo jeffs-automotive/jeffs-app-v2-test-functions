@@ -537,6 +537,15 @@ verify_jwt = false
 import_map = "./functions/telnyx-webhook/deno.json"
 entrypoint = "./functions/telnyx-webhook/index.ts"
 
+[functions.scheduler-comms]
+enabled = true
+# Confirmation + reminder senders (revamp Phase 3). Pattern A bearer via
+# checkSchedulerBearer in-handler; verify_jwt would block the cron invoker
+# and the Vercel fire-and-forget client.
+verify_jwt = false
+import_map = "./functions/scheduler-comms/deno.json"
+entrypoint = "./functions/scheduler-comms/index.ts"
+
 [functions.qteklink-email]
 enabled = true
 # QTekLink notification sender (service-to-service): the app calls it with the

@@ -49,6 +49,7 @@ import {
 import {
   sendSchedulerManualReviewEmail,
 } from "@/lib/scheduler/manual-review-email-client";
+import { sendBookingConfirmation } from "@/lib/scheduler/comms-client";
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
 import { logError } from "@/lib/scheduler/wizard/log-error";
@@ -860,6 +861,19 @@ async function handleConfirmPath(chatId: string): Promise<WizardTransitionResult
   // Tekmetric — the staff email below also fires and ops sees it. Not
   // a slot-loss scenario.
   await releaseClaimedHold();
+
+  // Revamp Phase 3 (2026-07-02): fire the booking-confirmation sends
+  // (email live; SMS consent + provider gated inside the edge fn).
+  // Fire-and-forget — the customer's advance never blocks on comms; the
+  // scheduler_reminders claim makes retries/replays idempotent, and the
+  // edge fn ledgers every skip/failure. Config/network errors surface to
+  // Sentry via the catch (same pattern as the manual-review email).
+  void sendBookingConfirmation(chatId).catch((e) => {
+    Sentry.captureException(e, {
+      tags: { surface: "submit_summary_confirmation_send", chat_id: chatId },
+      level: "warning",
+    });
+  });
 
   // Advance to customer_notes. Both confirmed + needs_review paths
   // go through customer_notes per Chris's UX call — the apology

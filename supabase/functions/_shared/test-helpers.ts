@@ -99,6 +99,7 @@ export function createMockSupabaseClient(): MockSupabaseClient {
       "delete",
       "eq",
       "neq",
+      "not",
       "in",
       "is",
       "or",

@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		},
+		{
+			"path": "../../quickbooks-online-mcp-server"
+		},
+		{
+			"path": "../../dotfiles-v2-test-data"
+		}
+	],
+	"settings": {}
+}

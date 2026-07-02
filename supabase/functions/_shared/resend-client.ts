@@ -18,6 +18,9 @@ export interface SendEmailArgs {
   html: string;
   /** Resend Idempotency-Key. Same key within 24h → 409 dedup (treated as sent). */
   idempotencyKey?: string;
+  /** Optional hard cap on the request (AbortSignal.timeout). A timeout
+   *  resolves as { ok:false, status:0 } — this client never throws. */
+  timeoutMs?: number;
 }
 
 export interface SendEmailResult {
@@ -57,6 +60,7 @@ export async function sendResendEmail(args: SendEmailArgs): Promise<SendEmailRes
         subject: args.subject,
         html: args.html,
       }),
+      ...(args.timeoutMs ? { signal: AbortSignal.timeout(args.timeoutMs) } : {}),
     });
     const text = await res.text();
 

@@ -42,6 +42,7 @@ import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { withSentryScope, Sentry } from "../_shared/sentry-edge.ts";
 import { bearersEqual } from "../_shared/scheduler-auth.ts";
 import { resolveSecretKey } from "../_shared/resolve-secret-key.ts";
+import { processMessageEvent } from "./consumers.ts";
 
 // test seam — lazily-initialized service-role client (see index.test.ts).
 let sb: SupabaseClient | null = null;
@@ -83,12 +84,15 @@ export async function verifyTelnyxSignature(
   rawBody: string,
 ): Promise<boolean> {
   try {
-    const publicKey = b64ToBytes(publicKeyB64);
-    const signature = b64ToBytes(signatureB64);
+    // BufferSource casts: TS's lib dom Ed25519 overloads reject
+    // Uint8Array<ArrayBufferLike>; runtime behavior is unchanged (this
+    // path has been live since 2026-07-01 — tests run it end-to-end).
+    const publicKey = b64ToBytes(publicKeyB64) as unknown as BufferSource;
+    const signature = b64ToBytes(signatureB64) as unknown as BufferSource;
     const key = await crypto.subtle.importKey("raw", publicKey, { name: "Ed25519" }, false, [
       "verify",
     ]);
-    const message = new TextEncoder().encode(`${timestamp}|${rawBody}`);
+    const message = new TextEncoder().encode(`${timestamp}|${rawBody}`) as unknown as BufferSource;
     return await crypto.subtle.verify({ name: "Ed25519" }, key, signature, message);
   } catch {
     // Malformed key/signature/base64 → treat as verification failure.
@@ -261,6 +265,19 @@ export async function handler(req: Request): Promise<Response> {
       new Error(`telnyx-webhook: insert failed (${insertErr.code}): ${insertErr.message}`),
     );
     return json(503, { ok: false, stored: false, error: "store_failed" });
+  }
+
+  // Post-store consumers (revamp Phase 2, 2026-07-02): inbound STOP/HELP →
+  // consent ledger; DLRs → sms_messages status. AFTER the durable store so a
+  // consumer failure can never cost us the event (consumers never throw —
+  // failures land in scheduler_error_log for reprocessing off the firehose).
+  if (!parseError && ev.eventType.startsWith("message.")) {
+    await processMessageEvent({
+      sb: getSb(),
+      eventType: ev.eventType,
+      body,
+      signatureVerified,
+    });
   }
 
   // Post-store alerting: campaign suspension/deactivation must never be silent

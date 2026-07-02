@@ -45,7 +45,8 @@ import {
   RESOLVED_SERVICE_ROLE_KEY,
 } from "../_shared/scheduler-auth.ts";
 import { logEdgeError } from "../_shared/log-edge-error.ts";
-import { withSentryScope, Sentry } from "../_shared/sentry-edge.ts";
+import { withSentryScope } from "../_shared/sentry-edge.ts";
+import { sendResendEmail } from "../_shared/resend-client.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const sb = createClient(SUPABASE_URL, RESOLVED_SERVICE_ROLE_KEY, {
@@ -116,7 +117,7 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ ok: false, error: "method_not_allowed" }, 405);
     }
 
-    const authCheck = checkSchedulerBearer(req);
+    const authCheck = checkSchedulerBearer(req, "scheduler-manual-review-email");
     if (!authCheck.ok) {
       return unauthorizedResponse(authCheck);
     }
@@ -177,78 +178,45 @@ Deno.serve(async (req: Request) => {
       body.context ?? {},
     );
 
+    // Shared transport (revamp Phase 2, 2026-07-02): the inline fetch moved
+    // to _shared/resend-client.ts. Behavior preserved — same Idempotency-Key
+    // (409 → dedup:true), same 15s cap (timeoutMs), same logEdgeError + 502
+    // on failure. The client never throws: network errors/timeouts surface
+    // as { ok:false, status:0 } and land in the same failure branch.
     const t0 = Date.now();
-    try {
-      const res = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${RESEND_API_KEY}`,
-          "Content-Type": "application/json",
-          // Per-code idempotency. Resend dedupes within ~24h. Multiple
-          // POSTs for the same code (Vercel retry / orchestrator
-          // retry) collapse into one email.
-          "Idempotency-Key": `scheduler-manual-review:${body.code}`,
-        },
-        body: JSON.stringify({
-          from: REVIEW_FROM_EMAIL,
-          to: [REVIEW_TO_EMAIL],
-          subject,
-          html,
-        }),
-        signal: AbortSignal.timeout(15_000),
-      });
-      const latency_ms = Date.now() - t0;
-      if (res.status === 409) {
-        return jsonResponse({ ok: true, dedup: true, latency_ms });
-      }
-      if (!res.ok) {
-        const text = await res.text().catch(() => "<unreadable>");
-        await logEdgeError(sb, {
-          origin_id: "scheduler-manual-review-email",
-          surface: "scheduler-manual-review-email/resend_send",
-          level: "error",
-          error_code: `resend_${res.status}`,
-          message: `Resend returned ${res.status}`,
-          context: { code: body.code, status: res.status, body: text.slice(0, 300) },
-        });
-        return jsonResponse(
-          {
-            ok: false,
-            error: "resend_send_failed",
-            status: res.status,
-            detail: text.slice(0, 300),
-            latency_ms,
-          },
-          502,
-        );
-      }
-      return jsonResponse({ ok: true, latency_ms });
-    } catch (e) {
-      const latency_ms = Date.now() - t0;
-      Sentry.captureException(e, {
-        tags: { surface: "scheduler-manual-review-email/resend_send_throw" },
-        level: "error",
-        extra: { code: body.code },
-      });
+    const r = await sendResendEmail({
+      from: REVIEW_FROM_EMAIL,
+      to: REVIEW_TO_EMAIL,
+      subject,
+      html,
+      idempotencyKey: `scheduler-manual-review:${body.code}`,
+      timeoutMs: 15_000,
+    });
+    const latency_ms = Date.now() - t0;
+    if (r.deduped) {
+      return jsonResponse({ ok: true, dedup: true, latency_ms });
+    }
+    if (!r.ok) {
       await logEdgeError(sb, {
         origin_id: "scheduler-manual-review-email",
-        surface: "scheduler-manual-review-email/resend_send_throw",
+        surface: "scheduler-manual-review-email/resend_send",
         level: "error",
-        error_code: "resend_send_threw",
-        message: e instanceof Error ? e.message : String(e),
-        stack: e instanceof Error ? (e.stack ?? null) : null,
-        context: { code: body.code },
+        error_code: `resend_${r.status}`,
+        message: r.error ?? `Resend returned ${r.status}`,
+        context: { code: body.code, status: r.status },
       });
       return jsonResponse(
         {
           ok: false,
-          error: "resend_send_threw",
-          detail: e instanceof Error ? e.message : String(e),
+          error: "resend_send_failed",
+          status: r.status,
+          detail: (r.error ?? "").slice(0, 300),
           latency_ms,
         },
         502,
       );
     }
+    return jsonResponse({ ok: true, latency_ms });
   });
 });
 
