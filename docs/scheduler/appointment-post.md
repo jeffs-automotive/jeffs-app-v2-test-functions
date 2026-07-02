@@ -177,3 +177,19 @@ not required - We will add this feature in later. We will ask the customer how t
 Eight fields. Drop the previous `appointmentOption` — it's dead weight.
 
 Reference: empirical test runs T1–T18 via the `tekmetric-api-testing` edge function on 2026-05-16. All 17 successful test appointments cancelled post-test.
+## 2026-07-02 write probes — yellow + rideOption VERIFIED
+
+Automated probes via `tekmetric-api-testing` (shop 7476, both test appointments deleted after verify):
+
+| Probe | Sent | Stored | Verdict |
+|---|---|---|---|
+| color `yellow` (appt 65743262) | `"color": "yellow"` | `"#FCB70D"` | ✅ persists — matches the loaner classifier hex exactly |
+| rideOption without times (attempt) | `"rideOption": "LOANER"` | HTTP 400 | ❌ `"Drop-off and Pick-up times are required when ride option is provided."` |
+| rideOption WITH times (appt 65744277) | `"rideOption": "LOANER"` + `dropoffTime`/`pickupTime` | `{"id":2,"code":"LOANER","name":"Loaner Required"}` | ✅ persists |
+
+Consequences: the probe-verified color set is now red/navy/orange/**yellow**
+(migration `20260702132500` widened the activation gate — the Loaner
+appointment type can be activated). A future loaner booking write can ALSO
+set `rideOption: "LOANER"` for native Tekmetric visibility, provided the
+POST includes `dropoffTime` + `pickupTime` (start/end times are acceptable
+values). This settles REVAMP-PLAN §4e's "rideOption unverified" open item.
