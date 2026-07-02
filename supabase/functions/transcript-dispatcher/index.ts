@@ -501,7 +501,7 @@ function buildCustomerActivity(
 
   // 4. Free-text concern descriptions (Step 6.5 explanation_required_items).
   //    Prefer the synthesized "Customer states ..." summary added 2026-05-18
-  //    by ensureConcernSummaries (LLM-generated paragraph that folds the
+  //    by ensureConcernSummaries (deterministic buildConcernSummary paragraph that folds the
   //    customer's raw description + their Q&A answers into one sentence).
   //    Falls back to the raw explanation_text quoted verbatim when no
   //    summary is on the row yet (back-compat with pre-summarization

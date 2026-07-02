@@ -32,7 +32,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { sessionTag } from "@/lib/scheduler/cache";
-import { summarizeConcern } from "@/lib/scheduler/wizard/llm/summarize-concern";
+import { buildConcernSummary } from "@/lib/scheduler/wizard/concern-summary";
 // P2.8 (2026-05-25): single source of truth for SHOP_ID.
 import { SHOP_ID } from "@/lib/scheduler/shop-config";
 
@@ -263,12 +263,16 @@ export async function ensureConcernSummaries(
           answer: answerLabel,
         });
       }
-      const result = await summarizeConcern({
+      // Revamp Phase 0 (2026-07-02): deterministic paragraph builder
+      // replaced the summarize-concern LLM (REVAMP-PLAN §2b). Q&A pairs
+      // are preserved as follow-up clauses — no information loss in the
+      // Tekmetric description.
+      const summary = buildConcernSummary({
         explanation_text: it.explanation_text,
         qa_pairs: qaPairs,
         chip_display_name: it.display_name,
       });
-      return { item: it, summary: result.summary, llm_ok: result.parsed_ok };
+      return { item: it, summary };
     }),
   );
 

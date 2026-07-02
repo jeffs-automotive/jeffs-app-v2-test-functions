@@ -100,8 +100,7 @@ import { getCurrentCard } from "@/lib/scheduler/wizard/get-current-card";
 
 beforeEach(() => {
   storedRow = null;
-  cachedRowThrows = null;
-  parseCustomerNoteMock.mockReset();
+  cachedRowThrows = null;
 });
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
@@ -142,11 +141,10 @@ describe("getCurrentCard", () => {
         edit_attempts: 0,
       },
     });
-    // No LLM call in input mode.
-    expect(parseCustomerNoteMock).not.toHaveBeenCalled();
+    // No LLM call in input mode.
   });
 
-  it("returns approval-mode customer_notes payload + calls parseCustomerNote with attempt=1 on first preview", async () => {
+  it("returns approval-mode customer_notes payload with the RAW note as the preview (LLM rewriter removed, revamp Phase 0)", async () => {
     storedRow = {
       id: "sess-1",
       current_step: "customer_notes",
@@ -155,63 +153,35 @@ describe("getCurrentCard", () => {
       customer_notes_edit_attempts: 0,
       verified_first_name: "Sarah",
     };
-    parseCustomerNoteMock.mockResolvedValueOnce({
-      parsed_text: "Please don't move the seats.",
-      reasoning: "trimmed greeting",
-      parsed_ok: true,
-      model: "claude-haiku-4-5",
-      latency_ms: 200,
-      tokens_in: 0,
-      tokens_out: 0,
-      error_message: "",
-    });
 
     const card = await getCurrentCard("sess-1");
     expect(card?.step).toBe("customer_notes");
     if (card?.step === "customer_notes") {
       expect(card.payload.parsed_preview).toBe(
-        "Please don't move the seats.",
+        "Hey can you please not move the seats",
       );
       expect(card.payload.edit_attempts).toBe(0);
     }
-
-    expect(parseCustomerNoteMock).toHaveBeenCalledTimes(1);
-    const arg = parseCustomerNoteMock.mock.calls[0]![0] as {
-      raw_text: string;
-      attempt: number;
-      customer_first_name?: string;
-    };
-    expect(arg.attempt).toBe(1);
-    expect(arg.customer_first_name).toBe("Sarah");
   });
 
-  it("calls parseCustomerNote with attempt=2 after a 1st reject (edit_attempts=1)", async () => {
+  it("edit_attempts still tracks after a reject (edit path re-renders with the retyped raw note)", async () => {
     storedRow = {
       id: "sess-1",
       current_step: "customer_notes",
-      customer_notes_text: "Hey can you please not move the seats",
+      customer_notes_text: "Dont move seats please",
       customer_notes_approved: null,
       customer_notes_edit_attempts: 1,
       verified_first_name: null,
       entered_first_name: "Sarah",
     };
-    parseCustomerNoteMock.mockResolvedValueOnce({
-      parsed_text: "Don't move the seats, please.",
-      reasoning: "alternate phrasing",
-      parsed_ok: true,
-      model: "claude-haiku-4-5",
-      latency_ms: 200,
-      tokens_in: 0,
-      tokens_out: 0,
-      error_message: "",
-    });
 
-    await getCurrentCard("sess-1");
-
-    expect(parseCustomerNoteMock).toHaveBeenCalledTimes(1);
-    const arg = parseCustomerNoteMock.mock.calls[0]![0] as { attempt: number };
-    expect(arg.attempt).toBe(2);
+    const card = await getCurrentCard("sess-1");
+    if (card?.step === "customer_notes") {
+      expect(card.payload.parsed_preview).toBe("Dont move seats please");
+      expect(card.payload.edit_attempts).toBe(1);
+    }
   });
+
 
   it("builds appointment_label with time for waiter appointments on the completed card", async () => {
     storedRow = {

@@ -32,7 +32,6 @@ import {
   getEarliestAvailableDate,
 } from "./availability";
 import { buildSummaryCardPayload } from "./build-summary-data";
-import { parseCustomerNote } from "./llm/parse-customer-note";
 import { shopLocalToIsoString } from "./shop-tz";
 import type { WizardCard } from "./card-payloads";
 import type { WizardStep } from "../session-state";
@@ -699,33 +698,12 @@ export async function getCurrentCard(
         };
       }
 
-      // Approval mode — call the LLM rewriter. Attempt 2 fires on the
-      // 1st Edit click (edit_attempts === 1 after the action incremented).
-      const firstName =
-        (row.verified_first_name as string | null) ??
-        (row.entered_first_name as string | null) ??
-        null;
-      const attempt: 1 | 2 = editAttempts >= 1 ? 2 : 1;
-
-      let parsedPreview = rawText.trim().slice(0, 150);
-      try {
-        const result = await parseCustomerNote({
-          raw_text: rawText,
-          attempt,
-          customer_first_name: firstName,
-        });
-        // Fail-safe inside parseCustomerNote returns parsed_text=raw on
-        // LLM error, so this branch always produces a non-empty preview.
-        if (result.parsed_text.trim().length > 0) {
-          parsedPreview = result.parsed_text;
-        }
-      } catch (e) {
-        Sentry.captureException(e, {
-          tags: { surface: "get_current_card_customer_notes_parse" },
-          level: "warning",
-          extra: { chatId, attempt },
-        });
-      }
+      // Revamp Phase 0 (2026-07-02): the parse-customer-note LLM rewriter
+      // is GONE (REVAMP-PLAN §2b) — the preview IS the customer's own note,
+      // verbatim. The approve step remains (customer confirms their note);
+      // the Edit path just lets them retype it. editAttempts is still
+      // tracked for the card's "last try" copy.
+      const parsedPreview = rawText.trim();
 
       return {
         step: "customer_notes",
