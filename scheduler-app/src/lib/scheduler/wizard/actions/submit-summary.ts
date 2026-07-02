@@ -270,6 +270,24 @@ async function handleConfirmPath(chatId: string): Promise<WizardTransitionResult
       error: "hold_token missing on session row — cannot confirm",
     };
   }
+  // OTP gate belt (2026-07-02 /code-review blocker): the FSM already
+  // prevents reaching summary without OTP, but the confirm seam re-checks
+  // explicitly — a session with no proven phone never books. Gate is
+  // otp_verified_at (phone ownership), NOT identity_verification_level
+  // ('partial' is a sanctioned proceed-with-staff-review path).
+  if (!r.otp_verified_at) {
+    return applyWizardTransition({
+      chatId,
+      nextStep: "escalated",
+      updates: {
+        status: "escalated",
+        escalated_at: new Date().toISOString(),
+        escalation_reason: "otp_not_verified_at_confirm",
+      },
+      jeffBubble:
+        "Something got out of sync on my end — please call us at (610) 253-6565 and we'll take care of you. 📞",
+    });
+  }
   const customerId = r.customer_id;
   const vehicleId = r.vehicle_id;
   if (typeof customerId !== "number") {

@@ -278,6 +278,9 @@ function makeValidSessionRow(
     appointment_confirmed_at: null,
     entered_first_name: "Chris",
     appointment_type: "dropoff",
+    // 2026-07-02 confirm-seam hardening: the OTP gate requires a proven
+    // phone at confirm; every real session at this step has it.
+    otp_verified_at: "2026-07-02T00:00:00Z",
     ...overrides,
   };
 }
@@ -337,6 +340,26 @@ beforeEach(() => {
   sentryCaptureMessageMock.mockClear();
   logErrorMock.mockClear();
   createSupabaseAdminClientMock.mockClear();
+});
+
+describe("submitSummaryV2 confirm path — OTP gate (2026-07-02 hardening)", () => {
+  it("session without otp_verified_at escalates before any hold claim or booking", async () => {
+    sessionRowResult = {
+      data: makeValidSessionRow({ otp_verified_at: null }),
+      error: null,
+    };
+
+    await submitSummaryV2({ chatId: CHAT_ID, confirmed: true });
+
+    expect(confirmCalls).toHaveLength(0);
+    expect(findCasClaimCall()).toBeUndefined();
+    expect(awtCalls).toHaveLength(1);
+    expect(awtCalls[0]!.nextStep).toBe("escalated");
+    expect(awtCalls[0]!.updates).toMatchObject({
+      status: "escalated",
+      escalation_reason: "otp_not_verified_at_confirm",
+    });
+  });
 });
 
 describe("submitSummaryV2 confirm path — CAS claim happy path", () => {

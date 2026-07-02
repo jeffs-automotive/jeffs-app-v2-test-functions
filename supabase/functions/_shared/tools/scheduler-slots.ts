@@ -899,7 +899,7 @@ export async function confirmAppointment(
   const { data: hold, error: holdErr } = await sb
     .from("appointment_holds")
     .select(
-      "scheduled_date, scheduled_time, appointment_type, released_at, expires_at, session_id",
+      "scheduled_date, scheduled_time, appointment_type, released_at, expires_at, session_id, claimed_by_session_id",
     )
     .eq("id", args.hold_id)
     .single();
@@ -909,6 +909,65 @@ export async function confirmAppointment(
   if (hold.released_at) throw new Error("hold_already_released");
   if (new Date(hold.expires_at as string) <= new Date()) {
     throw new Error("hold_expired");
+  }
+
+  // ── Confirm-seam hardening (2026-07-02 /code-review blockers) ──────────
+  // This helper must not trust its callers: as orchestrator layers are
+  // removed, direct callers multiply. Two in-helper gates:
+  //
+  // 1. OTP GATE — the hold's owning session must have a proven phone
+  //    (otp_verified_at). Deliberately NOT identity_verification_level ===
+  //    'full': 'partial' is a sanctioned booking path (OTP passed, name
+  //    partially matched, customer chose proceed_as_partial + staff review)
+  //    — the gate is phone ownership, not name-match quality. The inputs
+  //    (hold/customer/vehicle) must also match the session row so a caller
+  //    can't book arbitrary IDs against someone else's verified session.
+  const sessionId = hold.session_id as string;
+  const { data: gateSession, error: gateErr } = await sb
+    .from("customer_chat_sessions")
+    .select("otp_verified_at, hold_token, customer_id, vehicle_id")
+    .eq("id", sessionId)
+    .single();
+  if (gateErr || !gateSession) {
+    throw new Error(`confirm_session_not_found: ${gateErr?.message ?? sessionId}`);
+  }
+  if (!gateSession.otp_verified_at) {
+    throw new Error("identity_not_verified: session has no otp_verified_at");
+  }
+  if (gateSession.hold_token !== args.hold_id) {
+    throw new Error("hold_session_mismatch: session hold_token differs from hold_id");
+  }
+  if (
+    gateSession.customer_id !== args.customer_id ||
+    gateSession.vehicle_id !== args.vehicle_id
+  ) {
+    throw new Error("confirm_ids_mismatch: customer/vehicle differ from the verified session");
+  }
+
+  // 2. HOLD CAS — the hold must be claimed by its owning session before we
+  //    POST (P0.2 protocol). The wizard claims in submit-summary; if an
+  //    unclaimed hold reaches here (direct caller), claim it atomically
+  //    with the canonical filters. A hold claimed by another session is a
+  //    conflict, never overridden.
+  if (hold.claimed_by_session_id !== sessionId) {
+    if (hold.claimed_by_session_id) {
+      throw new Error("hold_claim_conflict: hold is claimed by another session");
+    }
+    const { data: claimed, error: claimErr } = await sb
+      .from("appointment_holds")
+      .update({ claimed_by_session_id: sessionId })
+      .eq("id", args.hold_id)
+      .eq("session_id", sessionId)
+      .is("released_at", null)
+      .is("claimed_by_session_id", null)
+      .gt("expires_at", new Date().toISOString())
+      .select("id");
+    if (claimErr) {
+      throw new Error(`hold_claim_failed: ${claimErr.message}`);
+    }
+    if (!claimed || claimed.length === 0) {
+      throw new Error("hold_claim_lost: hold was claimed/released/expired concurrently");
+    }
   }
 
   // Build the appointment time window
@@ -1032,11 +1091,15 @@ export async function confirmAppointment(
     );
   }
 
-  // Mark hold consumed
+  // Mark hold consumed — scoped to THIS session's claim + unreleased rows
+  // (2026-07-02 hardening: an id-only release could consume a hold that was
+  // re-claimed or already released by a concurrent path).
   await sb
     .from("appointment_holds")
     .update({ released_at: new Date().toISOString() })
-    .eq("id", args.hold_id);
+    .eq("id", args.hold_id)
+    .eq("claimed_by_session_id", sessionId)
+    .is("released_at", null);
 
   // Write-through to local shadow (so list_available_slots is up-to-date
   // immediately, before next sync tick). Phase 9d shape: appointment_type

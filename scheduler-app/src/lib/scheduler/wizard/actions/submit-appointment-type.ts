@@ -18,6 +18,7 @@ import * as Sentry from "@sentry/nextjs";
 import { z } from "zod";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getCachedSessionRow } from "@/lib/scheduler/cache";
 import {
   getAppointmentTypeBySlug,
   laneFor,
@@ -115,18 +116,14 @@ export const submitAppointmentTypeV2 = wrapAction(
  *   - additional_routine_services_round2 (Step 7.6)
  */
 async function isWaitEligibleForSession(chatId: string): Promise<boolean> {
-  const supabase = createSupabaseAdminClient();
-  const { data: row, error: rowErr } = await supabase
-    .from("customer_chat_sessions")
-    .select(
-      "selected_simple_services, approved_testing_services, explanation_required_items, additional_routine_services_round2",
-    )
-    .eq("id", chatId)
-    .maybeSingle();
-  if (rowErr || !row) {
+  // 2026-07-02 (/code-review session-cache-revalidate): session row via the
+  // per-render memoized reader instead of a bypassing direct read.
+  const row = await getCachedSessionRow(chatId);
+  if (!row) {
     // Fail closed: if we can't read the row we can't prove eligibility.
-    throw new Error(rowErr?.message ?? "session_not_found");
+    throw new Error("session_not_found");
   }
+  const supabase = createSupabaseAdminClient();
 
   const allKeys = collectAllPickedServiceKeys(row);
   if (allKeys.length === 0) {
