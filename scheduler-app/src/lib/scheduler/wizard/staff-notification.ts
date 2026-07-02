@@ -35,7 +35,10 @@ export interface StaffNotificationArgs {
   chatId: string;
   appointmentId: number;
   startsAtIso: string;
-  appointmentType: "waiter" | "dropoff";
+  /** Type slug (B4 2026-07-02: DB-driven — no longer a closed union). */
+  appointmentType: string;
+  /** Short display label from scheduler_appointment_types ("Wait", "Drop-off"). */
+  appointmentTypeLabel: string;
   /** Title sent to Tekmetric (already includes [TM] + slot tag). */
   title: string;
   /** Description sent to Tekmetric (services + concerns). */
@@ -117,11 +120,9 @@ export async function notifyStaffOfNewAppointment(
     const customerNotesText = (row.customer_notes_text as string | null) ?? "";
 
     const appointmentLink = `${TEKMETRIC_ADMIN_URL_BASE}${args.appointmentId}`;
-    const typeDisplay =
-      args.appointmentType === "waiter" ? "Wait" : "Drop off";
+    const typeDisplay = args.appointmentTypeLabel;
 
-    const subjectPrefix =
-      args.appointmentType === "waiter" ? "Wait" : "Drop off";
+    const subjectPrefix = args.appointmentTypeLabel;
     const subject = `New chat appointment — ${customerName} · ${formatFriendlyDate(args.startsAtIso)} · ${subjectPrefix}`;
 
     const lines: string[] = [

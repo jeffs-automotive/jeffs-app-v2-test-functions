@@ -43,6 +43,7 @@ import {
 } from "../_shared/scheduler-auth.ts";
 import { logEdgeError } from "../_shared/log-edge-error.ts";
 import { withSentryScope } from "../_shared/sentry-edge.ts";
+import { loadAppointmentTypes } from "../_shared/scheduler-appointment-types.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
@@ -412,6 +413,8 @@ interface ActivityArgs {
     title: string | null;
     description: string | null;
   } | null;
+  /** B4: scheduler_appointment_types rows for slug→label display (null = table unreadable → legacy literals). */
+  apptTypes: Array<{ slug: string; label: string }> | null;
   routineLookup: Map<string, RoutineLookup>;
   testingLookup: Map<string, TestingLookup>;
   questionLookup: Map<number, QuestionLookup>;
@@ -427,7 +430,7 @@ interface ActivityArgs {
 function buildCustomerActivity(
   args: ActivityArgs,
 ): NonNullable<TranscriptViewModel["activity"]> {
-  const { session, appointmentRow, routineLookup, testingLookup, questionLookup } = args;
+  const { session, appointmentRow, apptTypes, routineLookup, testingLookup, questionLookup } = args;
   const events: NonNullable<TranscriptViewModel["activity"]> = [];
 
   // 1. Identity — verified vs. provided.
@@ -610,7 +613,11 @@ function buildCustomerActivity(
     (appointmentRow?.appointment_type as string | null) ??
     ((session.appointment_type as string | null) ?? null);
   if (apptType || appointmentRow?.start_time) {
-    const typeDisplay = apptType === "waiter" ? "Wait" : apptType === "dropoff" ? "Drop-off" : "Appointment";
+    // B4 (2026-07-02): label from scheduler_appointment_types (passed in by
+    // the caller); legacy literals as fallback.
+    const typeDisplay =
+      apptTypes?.find((t) => t.slug === apptType)?.label ??
+      (apptType === "waiter" ? "Wait" : apptType === "dropoff" ? "Drop-off" : "Appointment");
     const when = appointmentRow?.start_time
       ? fmtDateTime(appointmentRow.start_time)
       : ((session.appointment_date as string | null) ?? "TBD");
@@ -776,9 +783,14 @@ async function dispatchOne(transcript: TranscriptRow): Promise<{
   // Build the structured "Customer activity" view from the session row.
   // Cast through unknown — Supabase-js doesn't have typegen wired for this
   // function so `session` is `any`; the helper consumes a Record shape.
+  // B4 (2026-07-02): appointment-type labels come from the type table
+  // (5-min-cached; null on read failure → legacy literal fallback).
+  const apptTypesForLabel = await loadAppointmentTypes(sb, shopIdForLookups);
+
   const activity = buildCustomerActivity({
     session: session as unknown as Record<string, unknown>,
     appointmentRow,
+    apptTypes: apptTypesForLabel,
     routineLookup,
     testingLookup,
     questionLookup,
@@ -790,6 +802,15 @@ async function dispatchOne(transcript: TranscriptRow): Promise<{
     ? `https://shop.tekmetric.com/admin/shop/${shopIdForLookups}/appointments/${session.appointment_id}`
     : null;
 
+  // B4 (2026-07-02): type label from scheduler_appointment_types (short
+  // `label` column); the legacy waiter/dropoff literals stay as fallback in
+  // transcript-html so a table outage degrades to today's copy.
+  const viewApptType =
+    (appointmentRow?.appointment_type as string | null) ??
+    ((session.appointment_type as string | null) ?? null);
+  const viewApptTypeLabel =
+    apptTypesForLabel?.find((t) => t.slug === viewApptType)?.label ?? null;
+
   const view: TranscriptViewModel = {
     session_id,
     channel: session.channel as "web" | "sms",
@@ -800,9 +821,8 @@ async function dispatchOne(transcript: TranscriptRow): Promise<{
     sentiment,
     appointment_id: session.appointment_id as number | null,
     appointment_starts_at: appointmentRow?.start_time ?? null,
-    appointment_type:
-      (appointmentRow?.appointment_type as "waiter" | "dropoff" | null) ??
-      ((session.appointment_type as "waiter" | "dropoff" | null) ?? null),
+    appointment_type: viewApptType,
+    appointment_type_label: viewApptTypeLabel,
     appointment_link: appointmentLink,
     appointment_title: appointmentRow?.title ?? null,
     appointment_description: appointmentRow?.description ?? null,

@@ -39,6 +39,10 @@ import { z } from "zod";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
+  getAppointmentTypeBySlug,
+  laneFor,
+} from "@/lib/scheduler/appointment-types";
+import {
   confirmBooking,
   BookingDirectError,
 } from "@/lib/scheduler/booking-direct-client";
@@ -498,10 +502,26 @@ async function handleConfirmPath(chatId: string): Promise<WizardTransitionResult
     buildServiceSummary({ chatId }),
   ]);
 
-  // Color = staff-facing channel: red for waiter, navy for dropoff.
-  const apptType =
-    r.appointment_type === "waiter" ? "waiter" : "dropoff";
-  const color = apptType === "waiter" ? "red" : "navy";
+  // Color = the staff-facing type channel on the Tekmetric calendar.
+  // B4 (2026-07-02): looked up from scheduler_appointment_types (the slug's
+  // tekmetric_color) instead of the retired waiter-red/dropoff-navy ternary.
+  // Fallback preserves the exact legacy mapping if the row is unreadable.
+  const apptTypeSlug =
+    typeof r.appointment_type === "string" && r.appointment_type.length
+      ? r.appointment_type
+      : "dropoff";
+  const typeRow = await getAppointmentTypeBySlug(apptTypeSlug);
+  const color =
+    typeRow?.tekmetric_color ?? (apptTypeSlug === "waiter" ? "red" : "navy");
+  // Capacity lane + short label drive the copy surfaces below (confirmed
+  // bubble, staff email). Lane fallback mirrors the legacy slug semantics.
+  const lane: "waiter" | "dropoff" = typeRow
+    ? laneFor(typeRow)
+    : apptTypeSlug === "waiter"
+      ? "waiter"
+      : "dropoff";
+  const typeLabel =
+    typeRow?.label ?? (lane === "waiter" ? "Wait" : "Drop off");
 
   // Call scheduler-booking-direct confirm_booking op.
   let confirmResult: Awaited<ReturnType<typeof confirmBooking>>;
@@ -789,7 +809,8 @@ async function handleConfirmPath(chatId: string): Promise<WizardTransitionResult
     chatId,
     appointmentId,
     startsAtIso: confirmResult.start_time ?? "",
-    appointmentType: apptType,
+    appointmentType: apptTypeSlug,
+    appointmentTypeLabel: typeLabel,
     title,
     description,
   }).catch((e) => {
@@ -846,7 +867,7 @@ async function handleConfirmPath(chatId: string): Promise<WizardTransitionResult
       ? buildVerificationMismatchBubble(r.entered_first_name as string | null)
       : buildConfirmedBubble(
           r.entered_first_name as string | null,
-          apptType,
+          lane,
           confirmResult.start_time ?? "",
         ),
   });

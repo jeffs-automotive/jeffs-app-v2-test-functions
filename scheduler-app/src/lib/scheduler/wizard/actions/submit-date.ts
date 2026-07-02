@@ -26,6 +26,10 @@ import { z } from "zod";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
+  getAppointmentTypeBySlug,
+  laneFor,
+} from "@/lib/scheduler/appointment-types";
+import {
   holdSlot,
   BookingDirectError,
 } from "@/lib/scheduler/booking-direct-client";
@@ -81,8 +85,18 @@ async function submitDateV2Impl(
     if (currentStep && currentStep !== "date_pick") {
       return { ok: true, next_step: currentStep as never };
     }
-    const apptType = (row.appointment_type as "waiter" | "dropoff" | null) ??
-      null;
+    const apptType = (row.appointment_type as string | null) ?? null;
+    // B4 (2026-07-02): branch on the type's capacity LANE (time-slotted vs
+    // daily-cap) from scheduler_appointment_types, not the slug literal.
+    // Legacy fallback keeps mid-flight sessions working if a type row is
+    // unreadable/deactivated; unknown slugs escalate below with the
+    // missing-type path.
+    const typeRow = apptType ? await getAppointmentTypeBySlug(apptType) : null;
+    const lane: "waiter" | "dropoff" | null = typeRow
+      ? laneFor(typeRow)
+      : apptType === "waiter" || apptType === "dropoff"
+        ? apptType
+        : null;
 
     // Same-day cutoff defense (added 2026-05-18). The date picker filters
     // today out of the available set when (a) appointment_type === 'waiter'
@@ -97,7 +111,7 @@ async function submitDateV2Impl(
     // helper keeps this to one RPC call per request.
     const shopNow = await getShopClock();
     if (selected_date === shopNow.date) {
-      if (apptType === "waiter") {
+      if (lane === "waiter") {
         return applyWizardTransition({
           chatId,
           nextStep: "date_pick",
@@ -105,7 +119,7 @@ async function submitDateV2Impl(
             "Same-day waiter appointments aren't possible — our waiter slots are 8 AM and 9 AM. Pick another day below and I'll line you up. ⏰",
         });
       }
-      if (apptType === "dropoff" && shopNow.hour >= SAME_DAY_CUTOFF_HOUR) {
+      if (lane === "dropoff" && shopNow.hour >= SAME_DAY_CUTOFF_HOUR) {
         return applyWizardTransition({
           chatId,
           nextStep: "date_pick",
@@ -115,7 +129,7 @@ async function submitDateV2Impl(
       }
     }
 
-    if (apptType === null) {
+    if (lane === null) {
       // Shouldn't normally happen — Phase 10 always writes appointment_type
       // before advancing to date_pick. Defensive escalation if it does.
       return applyWizardTransition({
@@ -131,8 +145,8 @@ async function submitDateV2Impl(
       });
     }
 
-    // Waiter path: just write the date + advance to time picker.
-    if (apptType === "waiter") {
+    // Waiter-lane path: just write the date + advance to time picker.
+    if (lane === "waiter") {
       return applyWizardTransition({
         chatId,
         updates: { appointment_date: selected_date },

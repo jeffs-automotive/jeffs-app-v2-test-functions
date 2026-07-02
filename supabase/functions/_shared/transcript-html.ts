@@ -40,7 +40,10 @@ export interface TranscriptViewModel {
   appointment_starts_at?: string | null;
   /** Waiter vs. drop-off — drives the summary header label. Added 2026-05-18
    *  redesign. */
-  appointment_type?: "waiter" | "dropoff" | null;
+  /** Type slug (B4 2026-07-02: DB-driven — no longer a closed union). */
+  appointment_type?: string | null;
+  /** Short label from scheduler_appointment_types; null → legacy literal fallback. */
+  appointment_type_label?: string | null;
   /** Tekmetric admin URL for the appointment (shop.tekmetric.com/admin/...).
    *  Added 2026-05-18 — surfaced in the summary header per Chris's directive
    *  "should also have the link to the appointment." */
@@ -293,11 +296,12 @@ export function buildTranscriptHtml(view: TranscriptViewModel): string {
   // Top-of-email "at a glance" block. Per Chris: services + when + wait-
   // or-drop-off + appointment link.
   const apptTypeLabel =
-    view.appointment_type === "waiter"
+    view.appointment_type_label ??
+    (view.appointment_type === "waiter"
       ? "Wait"
       : view.appointment_type === "dropoff"
         ? "Drop-off"
-        : null;
+        : null);
   const apptWhen = view.appointment_starts_at
     ? fmtFriendlyDay(view.appointment_starts_at)
     : null;
