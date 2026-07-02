@@ -166,7 +166,8 @@ describe("getDailySnapshot", () => {
     expect(fee).toMatchObject({ count: 1, inProgressCents: 35, unapprovedCents: 0, totalCents: 35 });
 
     expect(snap.kpis).toEqual({ salesCents: 2400, paymentsCents: 1700, ccFeesCents: 35 });
-    expect(snap.needsAttentionCount).toBe(1); // RO 3 only
+    // (the day-lock count moved to snap.attention.blockingCount — the per-row
+    // needsAttentionCents assertions above cover the blocked-RO money behavior)
   });
 
   it("a posted day with a STAGED correction: posted constituents stay Posted; new ones show the staged column", async () => {

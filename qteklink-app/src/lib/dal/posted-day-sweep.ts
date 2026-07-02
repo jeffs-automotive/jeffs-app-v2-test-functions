@@ -79,10 +79,9 @@ async function listPostedDays(shopId: number, realmId: string): Promise<string[]
   return [...new Set(((data ?? []) as { business_date: string }[]).map((r) => r.business_date))].sort();
 }
 
-/** How a posted JE category changed between its prior posted version and the correction.
- *  (Type + classification now live in the shared pure module `@/lib/daily/je-delta` —
- *  the diff layer's cosmetic suppression uses the same logic; re-exported for callers.) */
-export type { ChangeKind } from "@/lib/daily/je-delta";
+/** How a posted JE category changed between its prior posted version and the correction —
+ *  type + classification live in the shared pure module `@/lib/daily/je-delta` (the diff
+ *  layer's cosmetic suppression uses the same logic). */
 import { classifyDelta, type ChangeKind } from "@/lib/daily/je-delta";
 
 /** One category's line in the consolidated per-day correction email. */

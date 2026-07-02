@@ -51,9 +51,9 @@ export interface DailySnapshot {
   businessDate: string;
   kpis: { salesCents: number; paymentsCents: number; ccFeesCents: number };
   rows: TypeRow[]; // [Repair Order, Customer Payment, Payment Fee]
-  needsAttentionCount: number;
   /** The unified day-scoped fix-it list (Part D) — the approve lock + the banner +
-   *  /approvals/review all render THIS, so they can never disagree. */
+   *  /approvals/review all render THIS, so they can never disagree. (The old
+   *  per-constituent needsAttentionCount was superseded by attention.blockingCount.) */
   attention: DayAttention;
 }
 
@@ -136,7 +136,6 @@ export async function getDailySnapshot(
       businessDate,
       kpis: { salesCents: 0, paymentsCents: 0, ccFeesCents: 0 },
       rows: [emptyRow("Repair Order"), emptyRow("Customer Payment"), emptyRow("Payment Fee")],
-      needsAttentionCount: 0,
       attention: { items: [], blockingCount: 0 },
     };
   }
@@ -164,7 +163,6 @@ export async function getDailySnapshot(
   const roRow = emptyRow("Repair Order");
   const payRow = emptyRow("Customer Payment");
   const feeRow = emptyRow("Payment Fee");
-  let needsAttentionCount = 0;
 
   // ── SALES (Repair Order) — every parseable RO for the day ──
   for (const s of sales) {
@@ -174,7 +172,6 @@ export async function getDailySnapshot(
     // per-RO A/R amounts); a blocked RO falls back to the SOURCE gross.
     const cents = col === "needsAttention" ? s.snapshot.totalSales : debitTotal(s.je.lines);
     addToColumn(roRow, col, cents);
-    if (col === "needsAttention") needsAttentionCount += 1;
   }
 
   // ── PAYMENTS (Customer Payment) + the derived Payment Fee row ──
@@ -192,7 +189,6 @@ export async function getDailySnapshot(
     // their positive face value out of the totals), so dropping abs only affects refunds.
     const gross = p.input.signedAmountCents;
     addToColumn(payRow, col, gross);
-    if (col === "needsAttention") needsAttentionCount += 1;
 
     // Derived fee — fees post as their OWN daily JE: use the fees category's status for
     // this payment when present, else follow the parent payment's column. Kept as a
@@ -224,7 +220,6 @@ export async function getDailySnapshot(
     businessDate,
     kpis: { salesCents: roRow.totalCents, paymentsCents: payRow.totalCents, ccFeesCents: feeRow.totalCents },
     rows: [roRow, payRow, feeRow],
-    needsAttentionCount,
     attention,
   };
 }

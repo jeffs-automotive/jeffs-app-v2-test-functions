@@ -89,32 +89,6 @@ function mapRedate(r: PaymentRedateDbRow): PaymentRedateRow {
   };
 }
 
-/** All redates for the UI: open first, then recently-resolved (audit trail). */
-export async function listPaymentRedates(
-  shopId: number,
-): Promise<{ realmId: string | null; open: PaymentRedateRow[]; recentlyResolved: PaymentRedateRow[] }> {
-  const realmId = await resolveRealmForShop(shopId);
-  if (!realmId) return { realmId: null, open: [], recentlyResolved: [] };
-
-  const admin = createSupabaseAdminClient();
-  const { data, error } = await admin
-    .from("qteklink_payment_redates")
-    .select(REDATE_SELECT)
-    .eq("shop_id", shopId)
-    .eq("realm_id", realmId)
-    .order("detected_at", { ascending: false })
-    .limit(200);
-  if (error) throw new Error(`listPaymentRedates failed: ${error.message}`);
-
-  const rows = ((data ?? []) as PaymentRedateDbRow[]).map(mapRedate);
-  const cutoff = Date.now() - 14 * 24 * 60 * 60 * 1000;
-  return {
-    realmId,
-    open: rows.filter((m) => m.status === "pending" || m.status === "approved"),
-    recentlyResolved: rows.filter((m) => m.status === "resolved" && Date.parse(m.resolvedAt ?? m.detectedAt) >= cutoff),
-  };
-}
-
 /** PENDING redates for one business day — the HOLD the day-draft builder applies
  *  (the payment is excluded from the posted day's desired state until decided). */
 export async function listPendingRedatePaymentIds(

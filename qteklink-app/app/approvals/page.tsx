@@ -196,7 +196,7 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
                 {approvedStampLine}
               </p>
               {pendingCorrection && (
-                <p className="mt-1 pl-7 text-sm text-emerald-800/80">
+                <p className="mt-1 pl-7 text-sm text-emerald-800">
                   A change was detected since posting — it posts automatically tonight, or press the button below to post it now.
                 </p>
               )}
