@@ -1,0 +1,1203 @@
+{
+  "ts": "2026-07-02T23-17-38",
+  "verdicts": {
+    "stage1_accuracy": false,
+    "stage1_macro_f1": true,
+    "stage2_accuracy": true,
+    "stage3_slot_precision": false,
+    "misroute_safety": true
+  },
+  "allPass": false,
+  "s1": {
+    "accuracy": 0.8896551724137931,
+    "macroF1": 0.8862593468822615
+  },
+  "s2": {
+    "accuracy": 0.9809523809523809,
+    "correct": 103,
+    "graded": 105
+  },
+  "s3": {
+    "precision": 0.42536115569823435,
+    "recall": 0.9498207885304659,
+    "tp": 265,
+    "fp": 358,
+    "fn": 14,
+    "valueMismatch": 12
+  },
+  "landings": {
+    "handoff": 12,
+    "correct": 127,
+    "over_ask": 6
+  },
+  "overAskTotal": 1,
+  "underAskTotal": 36,
+  "gateFires": 2,
+  "parseFails": 0,
+  "latency": {
+    "p50": 7095,
+    "p95": 9880
+  },
+  "rows": [
+    {
+      "id": "ac_leak_testing-005",
+      "gate": "pass",
+      "landing": "handoff",
+      "raw_key": null,
+      "raw_slug": null,
+      "latency_ms": 1586
+    },
+    {
+      "id": "ac_leak_testing-006",
+      "gate": "pass",
+      "landing": "handoff",
+      "raw_key": null,
+      "raw_slug": null,
+      "latency_ms": 1594
+    },
+    {
+      "id": "ac_leak_testing-002",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "ac_performance_check",
+      "raw_slug": "ac_blows_warm_or_hot_air",
+      "latency_ms": 7072
+    },
+    {
+      "id": "ac_leak_testing-001",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "ac_leak_testing",
+      "raw_slug": "ac_blows_warm_or_hot_air",
+      "latency_ms": 7362
+    },
+    {
+      "id": "ac_leak_testing-003",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "ac_leak_testing",
+      "raw_slug": "ac_is_weak_not_cold_enough",
+      "latency_ms": 8155
+    },
+    {
+      "id": "ac_performance_check-001",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "ac_leak_testing",
+      "raw_slug": "ac_blows_warm_or_hot_air",
+      "latency_ms": 7325
+    },
+    {
+      "id": "ac_performance_check-002",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "ac_performance_check",
+      "raw_slug": "ac_is_weak_not_cold_enough",
+      "latency_ms": 8392
+    },
+    {
+      "id": "ac_leak_testing-004",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "ac_performance_check",
+      "raw_slug": "ac_is_weak_not_cold_enough",
+      "latency_ms": 14082
+    },
+    {
+      "id": "ac_performance_check-003",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "ac_performance_check",
+      "raw_slug": "vents_dont_blow_strongly",
+      "latency_ms": 7365
+    },
+    {
+      "id": "ac_performance_check-004",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "ac_performance_check",
+      "raw_slug": "bad_smell_from_vents",
+      "latency_ms": 7984
+    },
+    {
+      "id": "ac_performance_check-005",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "ac_performance_check",
+      "raw_slug": "one_zone_works_but_another_doesnt",
+      "latency_ms": 7484
+    },
+    {
+      "id": "ac_performance_check-006",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "ac_performance_check",
+      "raw_slug": "strange_noise_from_vents",
+      "latency_ms": 7545
+    },
+    {
+      "id": "ac_performance_check-007",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "ac_performance_check",
+      "raw_slug": "foggy_or_hard_to_defog_windows",
+      "latency_ms": 8195
+    },
+    {
+      "id": "abs_traction_stability_testing-002",
+      "gate": "pass",
+      "landing": "over_ask",
+      "raw_key": "tpms_testing",
+      "raw_slug": null,
+      "latency_ms": 7260
+    },
+    {
+      "id": "abs_traction_stability_testing-004",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "abs_traction_stability_testing",
+      "raw_slug": "traction_control_stability_light",
+      "latency_ms": 7019
+    },
+    {
+      "id": "abs_traction_stability_testing-001",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "abs_traction_stability_testing",
+      "raw_slug": "abs_anti_lock_brake_light",
+      "latency_ms": 9241
+    },
+    {
+      "id": "airbag_srs_testing-001",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "airbag_srs_testing",
+      "raw_slug": "airbag_srs_light",
+      "latency_ms": 7713
+    },
+    {
+      "id": "abs_traction_stability_testing-003",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "abs_traction_stability_testing",
+      "raw_slug": "abs_anti_lock_brake_light",
+      "latency_ms": 9911
+    },
+    {
+      "id": "airbag_srs_testing-002",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "airbag_srs_testing",
+      "raw_slug": "airbag_srs_light",
+      "latency_ms": 7304
+    },
+    {
+      "id": "airbag_srs_testing-004",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "airbag_srs_testing",
+      "raw_slug": "airbag_srs_light",
+      "latency_ms": 6146
+    },
+    {
+      "id": "airbag_srs_testing-003",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "airbag_srs_testing",
+      "raw_slug": "airbag_srs_light",
+      "latency_ms": 7288
+    },
+    {
+      "id": "awd_4x4_testing-001",
+      "gate": "pass",
+      "landing": "handoff",
+      "raw_key": "after_a_recent_accident_or_impact",
+      "raw_slug": "after_a_recent_accident_or_impact",
+      "latency_ms": 7170
+    },
+    {
+      "id": "awd_4x4_testing-003",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "awd_4x4_testing",
+      "raw_slug": null,
+      "latency_ms": 6370
+    },
+    {
+      "id": "awd_4x4_testing-002",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "awd_4x4_testing",
+      "raw_slug": null,
+      "latency_ms": 7538
+    },
+    {
+      "id": "awd_4x4_testing-004",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "awd_4x4_testing",
+      "raw_slug": null,
+      "latency_ms": 7477
+    },
+    {
+      "id": "battery_test-003",
+      "gate": "pass",
+      "landing": "handoff",
+      "raw_key": "car_has_been_sitting_unused_for_a_long_time",
+      "raw_slug": "car_has_been_sitting_unused_for_a_long_time",
+      "latency_ms": 6298
+    },
+    {
+      "id": "battery_test-001",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "battery_test",
+      "raw_slug": null,
+      "latency_ms": 6922
+    },
+    {
+      "id": "battery_test-004",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "battery_test",
+      "raw_slug": null,
+      "latency_ms": 6701
+    },
+    {
+      "id": "brake_inspection-002",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "brake_inspection",
+      "raw_slug": "metallic_grinding",
+      "latency_ms": 7390
+    },
+    {
+      "id": "brake_inspection-003",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "brake_inspection",
+      "raw_slug": "smoke_or_burning_smell_from_a_wheel",
+      "latency_ms": 8498
+    },
+    {
+      "id": "brake_inspection-004",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "brake_inspection",
+      "raw_slug": "spongy_or_soft_pedal",
+      "latency_ms": 7740
+    },
+    {
+      "id": "brake_inspection-005",
+      "gate": "pass",
+      "landing": "over_ask",
+      "raw_key": "brake_inspection_warning_light",
+      "raw_slug": null,
+      "latency_ms": 7191
+    },
+    {
+      "id": "brake_inspection-006",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "brake_inspection",
+      "raw_slug": "hard_or_unresponsive_pedal",
+      "latency_ms": 6975
+    },
+    {
+      "id": "brake_inspection-008",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "brake_inspection",
+      "raw_slug": "pulling_only_when_braking",
+      "latency_ms": 6209
+    },
+    {
+      "id": "brake_inspection_warning_light-001",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "brake_inspection_warning_light",
+      "raw_slug": "brake_system_red_light",
+      "latency_ms": 6877
+    },
+    {
+      "id": "brake_inspection_warning_light-002",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "brake_inspection_warning_light",
+      "raw_slug": "brake_system_red_light",
+      "latency_ms": 6179
+    },
+    {
+      "id": "brake_inspection_warning_light-003",
+      "gate": "pass",
+      "landing": "over_ask",
+      "raw_key": "abs_traction_stability_testing",
+      "raw_slug": null,
+      "latency_ms": 7095
+    },
+    {
+      "id": "brake_inspection_warning_light-004",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "brake_inspection_warning_light",
+      "raw_slug": "brake_system_red_light",
+      "latency_ms": 6679
+    },
+    {
+      "id": "charging_starting_testing-001",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "charging_starting_testing",
+      "raw_slug": "wont_crank_just_clicks",
+      "latency_ms": 8150
+    },
+    {
+      "id": "charging_starting_testing-003",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "charging_starting_testing",
+      "raw_slug": "battery_charging_light",
+      "latency_ms": 7399
+    },
+    {
+      "id": "charging_starting_testing-004",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "charging_starting_testing",
+      "raw_slug": "high_pitched_whining_under_the_hood",
+      "latency_ms": 7254
+    },
+    {
+      "id": "charging_starting_testing-005",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "charging_starting_testing",
+      "raw_slug": "dim_or_flickering_lights",
+      "latency_ms": 6391
+    },
+    {
+      "id": "charging_starting_testing-002",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "charging_starting_testing",
+      "raw_slug": "slow_crank_sluggish_start",
+      "latency_ms": 11589
+    },
+    {
+      "id": "charging_starting_testing-006",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "charging_starting_testing",
+      "raw_slug": "battery_drains_overnight",
+      "latency_ms": 6682
+    },
+    {
+      "id": "check_engine_light_testing-001",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "check_engine_light_testing",
+      "raw_slug": "check_engine_light",
+      "latency_ms": 6875
+    },
+    {
+      "id": "check_engine_light_testing-003",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "transmission_testing",
+      "raw_slug": "hesitation_or_lag_when_accelerating",
+      "latency_ms": 7062
+    },
+    {
+      "id": "check_engine_light_testing-004",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "check_engine_light_testing",
+      "raw_slug": "rough_idle_or_shaking_at_a_stop",
+      "latency_ms": 8007
+    },
+    {
+      "id": "check_engine_light_testing-006",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "check_engine_light_testing",
+      "raw_slug": "stalling_at_idle_or_when_stopping",
+      "latency_ms": 6669
+    },
+    {
+      "id": "check_engine_light_testing-005",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "check_engine_light_testing",
+      "raw_slug": "blue_or_gray_smoke_from_tailpipe",
+      "latency_ms": 7588
+    },
+    {
+      "id": "check_engine_light_testing-007",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "check_engine_light_testing",
+      "raw_slug": "black_smoke_from_tailpipe",
+      "latency_ms": 6490
+    },
+    {
+      "id": "coolant_leak_testing-001",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "coolant_leak_testing",
+      "raw_slug": "white_smoke_from_tailpipe",
+      "latency_ms": 7024
+    },
+    {
+      "id": "coolant_leak_testing-002",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "coolant_leak_testing",
+      "raw_slug": "green_orange_yellow_or_pink_puddle_coolant",
+      "latency_ms": 6479
+    },
+    {
+      "id": "coolant_leak_testing-005",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "coolant_leak_testing",
+      "raw_slug": "sweet_smell_maple_syrup_antifreeze",
+      "latency_ms": 6965
+    },
+    {
+      "id": "coolant_leak_testing-004",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "coolant_leak_testing",
+      "raw_slug": "engine_temperature_light",
+      "latency_ms": 7145
+    },
+    {
+      "id": "coolant_leak_testing-003",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "coolant_leak_testing",
+      "raw_slug": "heat_doesnt_work",
+      "latency_ms": 7637
+    },
+    {
+      "id": "coolant_leak_testing-006",
+      "gate": "pass",
+      "landing": "over_ask",
+      "raw_key": "coolant_leak_testing",
+      "raw_slug": "engine_temperature_light",
+      "latency_ms": 7340
+    },
+    {
+      "id": "electrical_testing_general-006",
+      "gate": "pass",
+      "landing": "handoff",
+      "raw_key": null,
+      "raw_slug": null,
+      "latency_ms": 1442
+    },
+    {
+      "id": "electrical_testing_general-002",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "electrical_testing_general",
+      "raw_slug": "accessory_doesnt_work",
+      "latency_ms": 7217
+    },
+    {
+      "id": "electrical_testing_general-004",
+      "gate": "pass",
+      "landing": "handoff",
+      "raw_key": "multiple_symptoms_not_sure_what_category",
+      "raw_slug": "multiple_symptoms_not_sure_what_category",
+      "latency_ms": 7253
+    },
+    {
+      "id": "exhaust_system_testing-001",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "exhaust_system_testing",
+      "raw_slug": "rattling_underneath_the_car",
+      "latency_ms": 7439
+    },
+    {
+      "id": "exhaust_system_testing-002",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "exhaust_system_testing",
+      "raw_slug": "exhaust_fumes_inside_the_cabin",
+      "latency_ms": 7431
+    },
+    {
+      "id": "electrical_testing_general-003",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "electrical_testing_general",
+      "raw_slug": "burning_electrical_plastic_smell",
+      "latency_ms": 10371
+    },
+    {
+      "id": "exhaust_system_testing-003",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "exhaust_system_testing",
+      "raw_slug": "exhaust_manifold_tick_or_puff",
+      "latency_ms": 7668
+    },
+    {
+      "id": "exhaust_system_testing-004",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "exhaust_system_testing",
+      "raw_slug": "exhaust_louder_or_rumbling",
+      "latency_ms": 7522
+    },
+    {
+      "id": "no_start_testing-002",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "charging_starting_testing",
+      "raw_slug": "car_died_while_driving_electrical",
+      "latency_ms": 6780
+    },
+    {
+      "id": "no_start_testing-003",
+      "gate": "pass",
+      "landing": "over_ask",
+      "raw_key": "charging_starting_testing",
+      "raw_slug": "slow_crank_sluggish_start",
+      "latency_ms": 6883
+    },
+    {
+      "id": "no_start_testing-004",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "no_start_testing",
+      "raw_slug": "hard_to_start_when_hot",
+      "latency_ms": 7508
+    },
+    {
+      "id": "exhaust_system_testing-005",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "exhaust_system_testing",
+      "raw_slug": "exhaust_louder_or_rumbling",
+      "latency_ms": 10220
+    },
+    {
+      "id": "no_start_testing-005",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "no_start_testing",
+      "raw_slug": "stalling_while_driving_under_load",
+      "latency_ms": 8314
+    },
+    {
+      "id": "no_start_testing-006",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "no_start_testing",
+      "raw_slug": "wont_crank_just_clicks",
+      "latency_ms": 7790
+    },
+    {
+      "id": "oil_leak_testing-002",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "oil_leak_testing",
+      "raw_slug": "brown_or_black_puddle_engine_oil",
+      "latency_ms": 7347
+    },
+    {
+      "id": "oil_leak_testing-004",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "oil_leak_testing",
+      "raw_slug": "burnt_oil_smell",
+      "latency_ms": 6480
+    },
+    {
+      "id": "oil_leak_testing-005",
+      "gate": "advisor_handoff",
+      "landing": "handoff",
+      "raw_key": "check_engine_light_testing",
+      "raw_slug": "blue_or_gray_smoke_from_tailpipe",
+      "latency_ms": 6474
+    },
+    {
+      "id": "oil_leak_testing-006",
+      "gate": "pass",
+      "landing": "over_ask",
+      "raw_key": "transmission_testing",
+      "raw_slug": null,
+      "latency_ms": 6914
+    },
+    {
+      "id": "oil_leak_testing-003",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "oil_leak_testing",
+      "raw_slug": "burnt_oil_smell",
+      "latency_ms": 9880
+    },
+    {
+      "id": "oil_pressure_light_testing-001",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "oil_pressure_light_testing",
+      "raw_slug": "oil_pressure_light",
+      "latency_ms": 7644
+    },
+    {
+      "id": "oil_pressure_light_testing-002",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "oil_pressure_light_testing",
+      "raw_slug": "oil_pressure_light",
+      "latency_ms": 7092
+    },
+    {
+      "id": "power_steering_eps_testing-002",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "power_steering_eps_testing",
+      "raw_slug": "power_steering_eps_light",
+      "latency_ms": 6409
+    },
+    {
+      "id": "power_steering_eps_testing-001",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "power_steering_eps_testing",
+      "raw_slug": "hard_to_turn_heavy_steering",
+      "latency_ms": 8559
+    },
+    {
+      "id": "suspension_steering_check-001",
+      "gate": "pass",
+      "landing": "handoff",
+      "raw_key": "after_a_recent_accident_or_impact",
+      "raw_slug": "after_a_recent_accident_or_impact",
+      "latency_ms": 6103
+    },
+    {
+      "id": "power_steering_eps_testing-003",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "power_steering_eps_testing",
+      "raw_slug": "noise_when_turning_the_steering_wheel",
+      "latency_ms": 7679
+    },
+    {
+      "id": "suspension_steering_check-002",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "suspension_steering_check",
+      "raw_slug": "clunking_over_bumps",
+      "latency_ms": 7757
+    },
+    {
+      "id": "tpms_testing-001",
+      "gate": "pass",
+      "landing": "handoff",
+      "raw_key": null,
+      "raw_slug": null,
+      "latency_ms": 1597
+    },
+    {
+      "id": "suspension_steering_check-003",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "suspension_steering_check",
+      "raw_slug": "pull_that_started_after_recent_tire_or_service_work",
+      "latency_ms": 7654
+    },
+    {
+      "id": "suspension_steering_check-005",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "suspension_steering_check",
+      "raw_slug": "loose_or_sloppy_steering",
+      "latency_ms": 7347
+    },
+    {
+      "id": "suspension_steering_check-007",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "suspension_steering_check",
+      "raw_slug": "steering_wheel_off_center_when_driving_straight",
+      "latency_ms": 7012
+    },
+    {
+      "id": "suspension_steering_check-006",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "suspension_steering_check",
+      "raw_slug": "humming_or_whirring_at_speed",
+      "latency_ms": 7409
+    },
+    {
+      "id": "transmission_testing-002",
+      "gate": "pass",
+      "landing": "handoff",
+      "raw_key": null,
+      "raw_slug": null,
+      "latency_ms": 1445
+    },
+    {
+      "id": "suspension_steering_check-008",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "suspension_steering_check",
+      "raw_slug": "drift_that_follows_the_roads_slope",
+      "latency_ms": 8037
+    },
+    {
+      "id": "tpms_testing-002",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "tpms_testing",
+      "raw_slug": "tire_going_flat_losing_air",
+      "latency_ms": 7071
+    },
+    {
+      "id": "tpms_testing-003",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "tpms_testing",
+      "raw_slug": "low_pressure_warning_light_only",
+      "latency_ms": 7340
+    },
+    {
+      "id": "transmission_testing-001",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "check_engine_light_testing",
+      "raw_slug": "hesitation_or_lag_when_accelerating",
+      "latency_ms": 7095
+    },
+    {
+      "id": "transmission_testing-003",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "transmission_testing",
+      "raw_slug": "shaking_when_speeding_up_or_going_uphill",
+      "latency_ms": 7593
+    },
+    {
+      "id": "transmission_testing-004",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "check_engine_light_testing",
+      "raw_slug": "surging_or_rpms_going_up_and_down",
+      "latency_ms": 8280
+    },
+    {
+      "id": "warning_light_general-004",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "warning_light_general",
+      "raw_slug": "multiple_warning_lights_at_once",
+      "latency_ms": 6844
+    },
+    {
+      "id": "transmission_testing-006",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "check_engine_light_testing",
+      "raw_slug": "hesitation_or_lag_when_accelerating",
+      "latency_ms": 8602
+    },
+    {
+      "id": "window_inop_testing-001",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "window_inop_testing",
+      "raw_slug": null,
+      "latency_ms": 6353
+    },
+    {
+      "id": "tpms_testing-004",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "tpms_testing",
+      "raw_slug": "tpms_tire_pressure_light",
+      "latency_ms": 14873
+    },
+    {
+      "id": "window_inop_testing-003",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "window_inop_testing",
+      "raw_slug": null,
+      "latency_ms": 6016
+    },
+    {
+      "id": "window_inop_testing-004",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "window_inop_testing",
+      "raw_slug": null,
+      "latency_ms": 5857
+    },
+    {
+      "id": "window_inop_testing-002",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "window_inop_testing",
+      "raw_slug": null,
+      "latency_ms": 10141
+    },
+    {
+      "id": "windshield_inop_testing-002",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "windshield_inop_testing",
+      "raw_slug": null,
+      "latency_ms": 6219
+    },
+    {
+      "id": "windshield_inop_testing-003",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "windshield_inop_testing",
+      "raw_slug": null,
+      "latency_ms": 6551
+    },
+    {
+      "id": "windshield_inop_testing-001",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "windshield_inop_testing",
+      "raw_slug": null,
+      "latency_ms": 8904
+    },
+    {
+      "id": "windshield_inop_testing-004",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "windshield_inop_testing",
+      "raw_slug": null,
+      "latency_ms": 6776
+    },
+    {
+      "id": "other-multi-1",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "multiple_symptoms_not_sure_what_category",
+      "raw_slug": "multiple_symptoms_not_sure_what_category",
+      "latency_ms": 6938
+    },
+    {
+      "id": "other-multi-2",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "multiple_symptoms_not_sure_what_category",
+      "raw_slug": "multiple_symptoms_not_sure_what_category",
+      "latency_ms": 7247
+    },
+    {
+      "id": "other-accident-1",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "after_a_recent_accident_or_impact",
+      "raw_slug": "after_a_recent_accident_or_impact",
+      "latency_ms": 7350
+    },
+    {
+      "id": "other-postservice-1",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "after_recent_service_or_repair_work",
+      "raw_slug": "after_recent_service_or_repair_work",
+      "latency_ms": 6156
+    },
+    {
+      "id": "other-accident-2",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "after_a_recent_accident_or_impact",
+      "raw_slug": "after_a_recent_accident_or_impact",
+      "latency_ms": 7469
+    },
+    {
+      "id": "other-postservice-2",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "after_recent_service_or_repair_work",
+      "raw_slug": "after_recent_service_or_repair_work",
+      "latency_ms": 6258
+    },
+    {
+      "id": "other-safety-1",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "safety_concern_dont_feel_safe_driving_it",
+      "raw_slug": "safety_concern_dont_feel_safe_driving_it",
+      "latency_ms": 6361
+    },
+    {
+      "id": "null-01-single-word-hi",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": null,
+      "raw_slug": null,
+      "latency_ms": 0
+    },
+    {
+      "id": "other-checkup-1",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "general_check_up_or_pre_trip_inspection",
+      "raw_slug": "general_check_up_or_pre_trip_inspection",
+      "latency_ms": 5872
+    },
+    {
+      "id": "other-safety-2",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "safety_concern_dont_feel_safe_driving_it",
+      "raw_slug": "safety_concern_dont_feel_safe_driving_it",
+      "latency_ms": 6594
+    },
+    {
+      "id": "null-02-greeting-friendly",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": null,
+      "raw_slug": null,
+      "latency_ms": 1281
+    },
+    {
+      "id": "other-checkup-2",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "general_check_up_or_pre_trip_inspection",
+      "raw_slug": "general_check_up_or_pre_trip_inspection",
+      "latency_ms": 5986
+    },
+    {
+      "id": "null-03-broken-zero-symptoms",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": null,
+      "raw_slug": null,
+      "latency_ms": 1192
+    },
+    {
+      "id": "null-05-single-word-help",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": null,
+      "raw_slug": null,
+      "latency_ms": 1421
+    },
+    {
+      "id": "other-sitting-1",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "car_has_been_sitting_unused_for_a_long_time",
+      "raw_slug": "car_has_been_sitting_unused_for_a_long_time",
+      "latency_ms": 6480
+    },
+    {
+      "id": "null-04-vague-callback-request",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": null,
+      "raw_slug": null,
+      "latency_ms": 1859
+    },
+    {
+      "id": "null-07-hours-question",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": null,
+      "raw_slug": null,
+      "latency_ms": 1601
+    },
+    {
+      "id": "null-06-price-question",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": null,
+      "raw_slug": null,
+      "latency_ms": 1762
+    },
+    {
+      "id": "null-08-gibberish",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": null,
+      "raw_slug": null,
+      "latency_ms": 1263
+    },
+    {
+      "id": "null-09-hiring-inquiry",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": null,
+      "raw_slug": null,
+      "latency_ms": 1136
+    },
+    {
+      "id": "null-10-loaner-question",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": null,
+      "raw_slug": null,
+      "latency_ms": 1257
+    },
+    {
+      "id": "other-sitting-2",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "car_has_been_sitting_unused_for_a_long_time",
+      "raw_slug": "car_has_been_sitting_unused_for_a_long_time",
+      "latency_ms": 7250
+    },
+    {
+      "id": "null-11-reschedule-request",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": null,
+      "raw_slug": null,
+      "latency_ms": 1234
+    },
+    {
+      "id": "null-12-offtopic-referral",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": null,
+      "raw_slug": null,
+      "latency_ms": 1478
+    },
+    {
+      "id": "nearmiss-001",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "brake_inspection_warning_light",
+      "raw_slug": "brake_system_red_light",
+      "latency_ms": 6637
+    },
+    {
+      "id": "nearmiss-002",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "abs_traction_stability_testing",
+      "raw_slug": "abs_anti_lock_brake_light",
+      "latency_ms": 6943
+    },
+    {
+      "id": "nearmiss-004",
+      "gate": "advisor_handoff",
+      "landing": "handoff",
+      "raw_key": "coolant_leak_testing_euro",
+      "raw_slug": "blue_or_light_blue_puddle_washer_fluid",
+      "latency_ms": 6856
+    },
+    {
+      "id": "nearmiss-003",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "brake_inspection",
+      "raw_slug": "metallic_grinding",
+      "latency_ms": 7060
+    },
+    {
+      "id": "nearmiss-006",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "coolant_leak_testing",
+      "raw_slug": "green_orange_yellow_or_pink_puddle_coolant",
+      "latency_ms": 7272
+    },
+    {
+      "id": "nearmiss-005",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "oil_leak_testing",
+      "raw_slug": "brown_or_black_puddle_engine_oil",
+      "latency_ms": 7639
+    },
+    {
+      "id": "nearmiss-007",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "oil_pressure_light_testing",
+      "raw_slug": "oil_pressure_light",
+      "latency_ms": 6791
+    },
+    {
+      "id": "nearmiss-008",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "check_engine_light_testing",
+      "raw_slug": "blue_or_gray_smoke_from_tailpipe",
+      "latency_ms": 6524
+    },
+    {
+      "id": "nearmiss-009",
+      "gate": "pass",
+      "landing": "handoff",
+      "raw_key": "multiple_symptoms_not_sure_what_category",
+      "raw_slug": "multiple_symptoms_not_sure_what_category",
+      "latency_ms": 6350
+    },
+    {
+      "id": "nearmiss-010",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "brake_inspection",
+      "raw_slug": "pulling_only_when_braking",
+      "latency_ms": 7113
+    },
+    {
+      "id": "nearmiss-011",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "suspension_steering_check",
+      "raw_slug": "steady_drift_while_cruising",
+      "latency_ms": 6652
+    },
+    {
+      "id": "nearmiss-012",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "tpms_testing",
+      "raw_slug": "tpms_tire_pressure_light",
+      "latency_ms": 6936
+    },
+    {
+      "id": "nearmiss-013",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "battery_test",
+      "raw_slug": null,
+      "latency_ms": 7294
+    },
+    {
+      "id": "nearmiss-015",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "ac_leak_testing",
+      "raw_slug": "ac_blows_warm_or_hot_air",
+      "latency_ms": 7817
+    },
+    {
+      "id": "nearmiss-016",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "ac_performance_check",
+      "raw_slug": "vents_dont_blow_strongly",
+      "latency_ms": 7134
+    },
+    {
+      "id": "nearmiss-014",
+      "gate": "pass",
+      "landing": "correct",
+      "raw_key": "no_start_testing",
+      "raw_slug": "hard_to_start_when_cold",
+      "latency_ms": 8560
+    }
+  ]
+}

@@ -40,6 +40,8 @@ function loadEnvLocal(): void {
     ) {
       v = v.slice(1, -1);
     }
+    // Skip EMPTY values (Vercel "sensitive" vars pull as '').
+    if (v.length === 0) continue;
     process.env[key] = v;
   }
 }

@@ -1,0 +1,56 @@
+{
+  "generated_at": "2026-07-02T16:50:00Z",
+  "source": "backfill-required-facts workflow (adversarially challenged, intersection-on-conflict)",
+  "ratified_always_ask": 319,
+  "assignments": [
+    {
+      "question_id": 124,
+      "required_facts": [
+        "warning_light_named"
+      ],
+      "rationale": "Asks about ANY warning light, so any non-null warning_light_named fully answers yes (the 'especially' clause is a hint, not a separate option)."
+    },
+    {
+      "question_id": 190,
+      "required_facts": [
+        "pull_direction"
+      ],
+      "rationale": "pull_direction fully encodes the answer: left/right means a consistent one-direction drift (yes), varies_or_wanders means no, no_pull means no - same mapping the catalog already uses for questions 218 and 695."
+    },
+    {
+      "question_id": 241,
+      "required_facts": [
+        "fluid_color"
+      ],
+      "rationale": "Any non-null fluid_color means the customer saw fluid under the vehicle, which fully answers yes; mirrors the catalog's pre-assigned q402 puddle question."
+    },
+    {
+      "question_id": 304,
+      "required_facts": [
+        "fluid_under_car_location"
+      ],
+      "rationale": "The question is location-agnostic (any puddle under the car), and fluid_under_car_location is non-null exactly when the customer described fluid under the vehicle — every allowed value, including unsure, maps to Yes, so the slot fully determines the answer."
+    },
+    {
+      "question_id": 320,
+      "required_facts": [
+        "smoke_color"
+      ],
+      "rationale": "smoke_color is non-null only when the customer described visible smoke/haze (including visible_but_color_unclear), which directly yields the 'visible smoke' answer; smell-only cases leave it null so the question is still asked."
+    },
+    {
+      "question_id": 577,
+      "required_facts": [
+        "speed_band"
+      ],
+      "rationale": "Already assigned in file (speed_band) — listed for completeness only; not an empty target. NOTE: ignore this row if the harness treats it as a change; value matches the existing assignment."
+    },
+    {
+      "question_id": 644,
+      "required_facts": [
+        "fluid_color"
+      ],
+      "rationale": "fluid_color is only extracted when the customer described fluid seen under the vehicle, so any non-null value fully determines the answer yes; null keeps the question asked."
+    }
+  ]
+}

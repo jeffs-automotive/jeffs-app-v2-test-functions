@@ -73,6 +73,10 @@ function loadEnvLocal(): void {
     ) {
       v = v.slice(1, -1);
     }
+    // Skip EMPTY values — Vercel "sensitive" env vars pull as '' and an
+    // empty string is NOT nullish, so it would defeat diagnose-concern's
+    // `AI_GATEWAY_API_KEY ?? VERCEL_OIDC_TOKEN` fallback.
+    if (v.length === 0) continue;
     process.env[key] = v;
   }
 }
@@ -429,7 +433,7 @@ ${rows
   writeFileSync(
     resolve(__dirname, "last-run.json"),
     JSON.stringify(
-      { ts, verdicts, allPass, s1: { accuracy: s1.accuracy, macroF1: s1.macroF1 }, s2, s3, landings: Object.fromEntries(landings), overAskTotal, underAskTotal, gateFires, parseFails, latency: { p50: percentile(latencies, 50), p95: percentile(latencies, 95) }, rows: rows.map((r) => ({ id: r.id, gate: r.gate, landing: r.landing, raw_key: r.raw.matched_category_key, raw_slug: r.raw.matched_subcategory_slug, latency_ms: r.latency_ms })) },
+      { ts, verdicts, allPass, s1: { accuracy: s1.accuracy, macroF1: s1.macroF1 }, s2, s3, landings: Object.fromEntries(landings), overAskTotal, underAskTotal, gateFires, parseFails, latency: { p50: percentile(latencies, 50), p95: percentile(latencies, 95) }, rows: rows.map((r) => ({ id: r.id, gate: r.gate, landing: r.landing, raw_key: r.raw.matched_category_key, raw_slug: r.raw.matched_subcategory_slug, latency_ms: r.latency_ms, expected_facts: r.expected.stage3_facts, raw_facts: r.raw.extracted_facts, stage3: r.stage3, askDelta: r.askDelta })) },
       null,
       2,
     ) + "\n",
