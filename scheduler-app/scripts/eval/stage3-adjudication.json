@@ -1,0 +1,1776 @@
+{
+  "generated_at": "2026-07-02T19:45:00Z",
+  "source": "adjudicate-stage3-fps workflow (blind strict-literal judging)",
+  "total_adjudicated": 353,
+  "literal_count": 107,
+  "over_assertion_count": 246,
+  "fixture_under_labels": [
+    {
+      "id": "ac_leak_testing-002",
+      "slot": "customer_request_type",
+      "literal": true
+    },
+    {
+      "id": "ac_performance_check-002",
+      "slot": "hvac_mode",
+      "literal": true
+    },
+    {
+      "id": "ac_performance_check-001",
+      "slot": "hvac_mode",
+      "literal": true
+    },
+    {
+      "id": "ac_performance_check-005",
+      "slot": "customer_request_type",
+      "literal": true
+    },
+    {
+      "id": "ac_performance_check-006",
+      "slot": "sound_or_smoke_location_zone",
+      "literal": true
+    },
+    {
+      "id": "ac_performance_check-007",
+      "slot": "hvac_mode",
+      "literal": true
+    },
+    {
+      "id": "abs_traction_stability_testing-001",
+      "slot": "drivable_state",
+      "literal": true
+    },
+    {
+      "id": "abs_traction_stability_testing-002",
+      "slot": "customer_request_type",
+      "literal": true
+    },
+    {
+      "id": "abs_traction_stability_testing-004",
+      "slot": "customer_request_type",
+      "literal": true
+    },
+    {
+      "id": "abs_traction_stability_testing-003",
+      "slot": "customer_request_type",
+      "literal": true
+    },
+    {
+      "id": "airbag_srs_testing-002",
+      "slot": "customer_request_type",
+      "literal": true
+    },
+    {
+      "id": "airbag_srs_testing-003",
+      "slot": "warning_light_behavior",
+      "literal": true
+    },
+    {
+      "id": "airbag_srs_testing-004",
+      "slot": "customer_request_type",
+      "literal": true
+    },
+    {
+      "id": "airbag_srs_testing-001",
+      "slot": "drivable_state",
+      "literal": true
+    },
+    {
+      "id": "awd_4x4_testing-002",
+      "slot": "recent_action",
+      "literal": true
+    },
+    {
+      "id": "awd_4x4_testing-003",
+      "slot": "customer_request_type",
+      "literal": true
+    },
+    {
+      "id": "brake_inspection-005",
+      "slot": "onset_timing",
+      "literal": true
+    },
+    {
+      "id": "brake_inspection_warning_light-002",
+      "slot": "customer_request_type",
+      "literal": true
+    },
+    {
+      "id": "brake_inspection_warning_light-003",
+      "slot": "drivable_state",
+      "literal": true
+    },
+    {
+      "id": "brake_inspection_warning_light-004",
+      "slot": "customer_request_type",
+      "literal": true
+    },
+    {
+      "id": "charging_starting_testing-001",
+      "slot": "onset_timing",
+      "literal": true
+    },
+    {
+      "id": "charging_starting_testing-003",
+      "slot": "drivable_state",
+      "literal": true
+    },
+    {
+      "id": "charging_starting_testing-006",
+      "slot": "customer_request_type",
+      "literal": true
+    },
+    {
+      "id": "check_engine_light_testing-001",
+      "slot": "engine_running",
+      "literal": true
+    },
+    {
+      "id": "check_engine_light_testing-004",
+      "slot": "onset_timing",
+      "literal": true
+    },
+    {
+      "id": "check_engine_light_testing-006",
+      "slot": "customer_request_type",
+      "literal": true
+    },
+    {
+      "id": "check_engine_light_testing-007",
+      "slot": "customer_request_type",
+      "literal": true
+    },
+    {
+      "id": "coolant_leak_testing-002",
+      "slot": "location_axle",
+      "literal": true
+    },
+    {
+      "id": "coolant_leak_testing-001",
+      "slot": "onset_timing",
+      "literal": true
+    },
+    {
+      "id": "coolant_leak_testing-005",
+      "slot": "onset_timing",
+      "literal": true
+    },
+    {
+      "id": "coolant_leak_testing-006",
+      "slot": "onset_timing",
+      "literal": true
+    },
+    {
+      "id": "electrical_testing_general-004",
+      "slot": "accessory_affected",
+      "literal": true
+    },
+    {
+      "id": "exhaust_system_testing-001",
+      "slot": "drivable_state",
+      "literal": true
+    },
+    {
+      "id": "exhaust_system_testing-002",
+      "slot": "drivable_state",
+      "literal": true
+    },
+    {
+      "id": "exhaust_system_testing-003",
+      "slot": "sound_or_smoke_location_zone",
+      "literal": true
+    },
+    {
+      "id": "exhaust_system_testing-004",
+      "slot": "noise_descriptor",
+      "literal": true
+    },
+    {
+      "id": "exhaust_system_testing-004",
+      "slot": "sound_or_smoke_location_zone",
+      "literal": true
+    },
+    {
+      "id": "exhaust_system_testing-005",
+      "slot": "noise_descriptor",
+      "literal": true
+    },
+    {
+      "id": "no_start_testing-002",
+      "slot": "onset_timing",
+      "literal": true
+    },
+    {
+      "id": "no_start_testing-002",
+      "slot": "started_when",
+      "literal": true
+    },
+    {
+      "id": "no_start_testing-003",
+      "slot": "drivable_state",
+      "literal": true
+    },
+    {
+      "id": "no_start_testing-004",
+      "slot": "onset_timing",
+      "literal": true
+    },
+    {
+      "id": "no_start_testing-006",
+      "slot": "onset_timing",
+      "literal": true
+    },
+    {
+      "id": "no_start_testing-006",
+      "slot": "noise_descriptor",
+      "literal": true
+    },
+    {
+      "id": "no_start_testing-006",
+      "slot": "drivable_state",
+      "literal": true
+    },
+    {
+      "id": "oil_leak_testing-002",
+      "slot": "fluid_under_car_location",
+      "literal": true
+    },
+    {
+      "id": "oil_leak_testing-003",
+      "slot": "onset_timing",
+      "literal": true
+    },
+    {
+      "id": "oil_leak_testing-006",
+      "slot": "location_axle",
+      "literal": true
+    },
+    {
+      "id": "oil_pressure_light_testing-001",
+      "slot": "sound_or_smoke_location_zone",
+      "literal": true
+    },
+    {
+      "id": "oil_pressure_light_testing-002",
+      "slot": "onset_timing",
+      "literal": true
+    },
+    {
+      "id": "power_steering_eps_testing-001",
+      "slot": "location_axle",
+      "literal": true
+    },
+    {
+      "id": "power_steering_eps_testing-002",
+      "slot": "started_when",
+      "literal": true
+    },
+    {
+      "id": "suspension_steering_check-001",
+      "slot": "onset_timing",
+      "literal": true
+    },
+    {
+      "id": "suspension_steering_check-001",
+      "slot": "started_when",
+      "literal": true
+    },
+    {
+      "id": "suspension_steering_check-003",
+      "slot": "onset_timing",
+      "literal": true
+    },
+    {
+      "id": "suspension_steering_check-006",
+      "slot": "onset_timing",
+      "literal": true
+    },
+    {
+      "id": "suspension_steering_check-008",
+      "slot": "onset_timing",
+      "literal": true
+    },
+    {
+      "id": "suspension_steering_check-007",
+      "slot": "onset_timing",
+      "literal": true
+    },
+    {
+      "id": "tpms_testing-004",
+      "slot": "customer_request_type",
+      "literal": true
+    },
+    {
+      "id": "tpms_testing-003",
+      "slot": "started_when",
+      "literal": true
+    },
+    {
+      "id": "transmission_testing-004",
+      "slot": "onset_timing",
+      "literal": true
+    },
+    {
+      "id": "transmission_testing-001",
+      "slot": "speed_band",
+      "literal": true
+    },
+    {
+      "id": "transmission_testing-001",
+      "slot": "recent_action",
+      "literal": true
+    },
+    {
+      "id": "warning_light_general-004",
+      "slot": "customer_request_type",
+      "literal": true
+    },
+    {
+      "id": "transmission_testing-003",
+      "slot": "recent_action",
+      "literal": true
+    },
+    {
+      "id": "transmission_testing-006",
+      "slot": "speed_band",
+      "literal": true
+    },
+    {
+      "id": "window_inop_testing-004",
+      "slot": "location_axle",
+      "literal": true
+    },
+    {
+      "id": "window_inop_testing-003",
+      "slot": "location_axle",
+      "literal": true
+    },
+    {
+      "id": "windshield_inop_testing-001",
+      "slot": "accessory_affected",
+      "literal": true
+    },
+    {
+      "id": "windshield_inop_testing-003",
+      "slot": "accessory_affected",
+      "literal": true
+    },
+    {
+      "id": "windshield_inop_testing-004",
+      "slot": "onset_timing",
+      "literal": true
+    },
+    {
+      "id": "windshield_inop_testing-004",
+      "slot": "accessory_affected",
+      "literal": true
+    },
+    {
+      "id": "other-multi-1",
+      "slot": "onset_timing",
+      "literal": true
+    },
+    {
+      "id": "other-multi-1",
+      "slot": "hvac_mode",
+      "literal": true
+    },
+    {
+      "id": "other-multi-1",
+      "slot": "noise_descriptor",
+      "literal": true
+    },
+    {
+      "id": "other-multi-1",
+      "slot": "steering_feel",
+      "literal": true
+    },
+    {
+      "id": "other-multi-1",
+      "slot": "customer_request_type",
+      "literal": true
+    },
+    {
+      "id": "other-accident-1",
+      "slot": "started_when",
+      "literal": true
+    },
+    {
+      "id": "other-accident-1",
+      "slot": "recent_action",
+      "literal": true
+    },
+    {
+      "id": "other-accident-1",
+      "slot": "drivable_state",
+      "literal": true
+    },
+    {
+      "id": "other-accident-1",
+      "slot": "customer_request_type",
+      "literal": true
+    },
+    {
+      "id": "other-postservice-1",
+      "slot": "started_when",
+      "literal": true
+    },
+    {
+      "id": "other-postservice-1",
+      "slot": "noise_descriptor",
+      "literal": true
+    },
+    {
+      "id": "other-postservice-1",
+      "slot": "recent_action",
+      "literal": true
+    },
+    {
+      "id": "other-postservice-1",
+      "slot": "customer_request_type",
+      "literal": true
+    },
+    {
+      "id": "other-multi-2",
+      "slot": "noise_descriptor",
+      "literal": true
+    },
+    {
+      "id": "other-multi-2",
+      "slot": "customer_request_type",
+      "literal": true
+    },
+    {
+      "id": "other-accident-2",
+      "slot": "location_axle",
+      "literal": true
+    },
+    {
+      "id": "other-accident-2",
+      "slot": "recent_action",
+      "literal": true
+    },
+    {
+      "id": "other-accident-2",
+      "slot": "drivable_state",
+      "literal": true
+    },
+    {
+      "id": "other-accident-2",
+      "slot": "customer_request_type",
+      "literal": true
+    },
+    {
+      "id": "other-postservice-2",
+      "slot": "started_when",
+      "literal": true
+    },
+    {
+      "id": "other-postservice-2",
+      "slot": "warning_light_named",
+      "literal": true
+    },
+    {
+      "id": "other-postservice-2",
+      "slot": "recent_action",
+      "literal": true
+    },
+    {
+      "id": "other-postservice-2",
+      "slot": "customer_request_type",
+      "literal": true
+    },
+    {
+      "id": "other-checkup-1",
+      "slot": "customer_request_type",
+      "literal": true
+    },
+    {
+      "id": "other-safety-2",
+      "slot": "speed_band",
+      "literal": true
+    },
+    {
+      "id": "other-safety-2",
+      "slot": "onset_timing",
+      "literal": true
+    },
+    {
+      "id": "other-sitting-1",
+      "slot": "recent_action",
+      "literal": true
+    },
+    {
+      "id": "other-safety-1",
+      "slot": "drivable_state",
+      "literal": true
+    },
+    {
+      "id": "other-sitting-2",
+      "slot": "recent_action",
+      "literal": true
+    },
+    {
+      "id": "nearmiss-002",
+      "slot": "started_when",
+      "literal": true
+    },
+    {
+      "id": "nearmiss-005",
+      "slot": "location_axle",
+      "literal": true
+    },
+    {
+      "id": "nearmiss-006",
+      "slot": "location_axle",
+      "literal": true
+    },
+    {
+      "id": "nearmiss-007",
+      "slot": "onset_timing",
+      "literal": true
+    },
+    {
+      "id": "nearmiss-009",
+      "slot": "customer_request_type",
+      "literal": true
+    },
+    {
+      "id": "nearmiss-011",
+      "slot": "onset_timing",
+      "literal": true
+    }
+  ],
+  "extractor_over_assertions": [
+    {
+      "id": "ac_leak_testing-002",
+      "slot": "airflow_state",
+      "literal": false
+    },
+    {
+      "id": "ac_leak_testing-002",
+      "slot": "drivable_state",
+      "literal": false
+    },
+    {
+      "id": "ac_leak_testing-004",
+      "slot": "airflow_state",
+      "literal": false
+    },
+    {
+      "id": "ac_leak_testing-001",
+      "slot": "onset_timing",
+      "literal": false
+    },
+    {
+      "id": "ac_leak_testing-001",
+      "slot": "airflow_state",
+      "literal": false
+    },
+    {
+      "id": "ac_leak_testing-001",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "ac_leak_testing-003",
+      "slot": "speed_band",
+      "literal": false
+    },
+    {
+      "id": "ac_leak_testing-003",
+      "slot": "onset_timing",
+      "literal": false
+    },
+    {
+      "id": "ac_leak_testing-003",
+      "slot": "airflow_state",
+      "literal": false
+    },
+    {
+      "id": "ac_leak_testing-003",
+      "slot": "drivable_state",
+      "literal": false
+    },
+    {
+      "id": "ac_leak_testing-003",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "ac_performance_check-002",
+      "slot": "speed_band",
+      "literal": false
+    },
+    {
+      "id": "ac_performance_check-002",
+      "slot": "onset_timing",
+      "literal": false
+    },
+    {
+      "id": "ac_performance_check-002",
+      "slot": "airflow_state",
+      "literal": false
+    },
+    {
+      "id": "ac_performance_check-002",
+      "slot": "recent_action",
+      "literal": false
+    },
+    {
+      "id": "ac_performance_check-002",
+      "slot": "drivable_state",
+      "literal": false
+    },
+    {
+      "id": "ac_performance_check-002",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "ac_performance_check-001",
+      "slot": "onset_timing",
+      "literal": false
+    },
+    {
+      "id": "ac_performance_check-001",
+      "slot": "airflow_state",
+      "literal": false
+    },
+    {
+      "id": "ac_performance_check-003",
+      "slot": "hvac_mode",
+      "literal": false
+    },
+    {
+      "id": "ac_performance_check-004",
+      "slot": "sound_or_smoke_location_zone",
+      "literal": false
+    },
+    {
+      "id": "ac_performance_check-005",
+      "slot": "hvac_mode",
+      "literal": false
+    },
+    {
+      "id": "ac_performance_check-006",
+      "slot": "onset_timing",
+      "literal": false
+    },
+    {
+      "id": "ac_performance_check-006",
+      "slot": "started_when",
+      "literal": false
+    },
+    {
+      "id": "ac_performance_check-006",
+      "slot": "recent_action",
+      "literal": false
+    },
+    {
+      "id": "ac_performance_check-006",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "ac_performance_check-007",
+      "slot": "onset_timing",
+      "literal": false
+    },
+    {
+      "id": "ac_performance_check-007",
+      "slot": "airflow_state",
+      "literal": false
+    },
+    {
+      "id": "ac_performance_check-007",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "abs_traction_stability_testing-001",
+      "slot": "onset_timing",
+      "literal": false
+    },
+    {
+      "id": "abs_traction_stability_testing-001",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "abs_traction_stability_testing-002",
+      "slot": "onset_timing",
+      "literal": false
+    },
+    {
+      "id": "abs_traction_stability_testing-002",
+      "slot": "started_when",
+      "literal": false
+    },
+    {
+      "id": "abs_traction_stability_testing-002",
+      "slot": "warning_light_behavior",
+      "literal": false
+    },
+    {
+      "id": "abs_traction_stability_testing-004",
+      "slot": "warning_light_behavior",
+      "literal": false
+    },
+    {
+      "id": "abs_traction_stability_testing-003",
+      "slot": "pedal_feel",
+      "literal": false
+    },
+    {
+      "id": "abs_traction_stability_testing-003",
+      "slot": "warning_light_behavior",
+      "literal": false
+    },
+    {
+      "id": "abs_traction_stability_testing-003",
+      "slot": "drivable_state",
+      "literal": false
+    },
+    {
+      "id": "airbag_srs_testing-002",
+      "slot": "onset_timing",
+      "literal": false
+    },
+    {
+      "id": "airbag_srs_testing-002",
+      "slot": "started_when",
+      "literal": false
+    },
+    {
+      "id": "airbag_srs_testing-003",
+      "slot": "recent_action",
+      "literal": false
+    },
+    {
+      "id": "airbag_srs_testing-003",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "airbag_srs_testing-004",
+      "slot": "warning_light_behavior",
+      "literal": false
+    },
+    {
+      "id": "awd_4x4_testing-001",
+      "slot": "onset_timing",
+      "literal": false
+    },
+    {
+      "id": "awd_4x4_testing-001",
+      "slot": "sound_or_smoke_location_zone",
+      "literal": false
+    },
+    {
+      "id": "awd_4x4_testing-001",
+      "slot": "drivable_state",
+      "literal": false
+    },
+    {
+      "id": "awd_4x4_testing-001",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "airbag_srs_testing-001",
+      "slot": "onset_timing",
+      "literal": false
+    },
+    {
+      "id": "airbag_srs_testing-001",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "awd_4x4_testing-002",
+      "slot": "onset_timing",
+      "literal": false
+    },
+    {
+      "id": "awd_4x4_testing-002",
+      "slot": "drivable_state",
+      "literal": false
+    },
+    {
+      "id": "awd_4x4_testing-003",
+      "slot": "onset_timing",
+      "literal": false
+    },
+    {
+      "id": "awd_4x4_testing-003",
+      "slot": "warning_light_behavior",
+      "literal": false
+    },
+    {
+      "id": "awd_4x4_testing-003",
+      "slot": "drivable_state",
+      "literal": false
+    },
+    {
+      "id": "awd_4x4_testing-004",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "battery_test-001",
+      "slot": "drivable_state",
+      "literal": false
+    },
+    {
+      "id": "battery_test-001",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "battery_test-004",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "battery_test-003",
+      "slot": "started_when",
+      "literal": false
+    },
+    {
+      "id": "battery_test-003",
+      "slot": "drivable_state",
+      "literal": false
+    },
+    {
+      "id": "battery_test-003",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "brake_inspection-003",
+      "slot": "onset_timing",
+      "literal": false
+    },
+    {
+      "id": "brake_inspection-005",
+      "slot": "drivable_state",
+      "literal": false
+    },
+    {
+      "id": "brake_inspection-005",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "brake_inspection_warning_light-002",
+      "slot": "warning_light_behavior",
+      "literal": false
+    },
+    {
+      "id": "brake_inspection_warning_light-003",
+      "slot": "onset_timing",
+      "literal": false
+    },
+    {
+      "id": "brake_inspection_warning_light-003",
+      "slot": "started_when",
+      "literal": false
+    },
+    {
+      "id": "brake_inspection_warning_light-003",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "brake_inspection_warning_light-004",
+      "slot": "warning_light_behavior",
+      "literal": false
+    },
+    {
+      "id": "charging_starting_testing-001",
+      "slot": "noise_descriptor",
+      "literal": false
+    },
+    {
+      "id": "charging_starting_testing-001",
+      "slot": "lights_state",
+      "literal": false
+    },
+    {
+      "id": "charging_starting_testing-001",
+      "slot": "sound_or_smoke_location_zone",
+      "literal": false
+    },
+    {
+      "id": "charging_starting_testing-001",
+      "slot": "drivable_state",
+      "literal": false
+    },
+    {
+      "id": "charging_starting_testing-001",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "charging_starting_testing-002",
+      "slot": "onset_timing",
+      "literal": false
+    },
+    {
+      "id": "charging_starting_testing-002",
+      "slot": "lights_state",
+      "literal": false
+    },
+    {
+      "id": "charging_starting_testing-003",
+      "slot": "warning_light_behavior",
+      "literal": false
+    },
+    {
+      "id": "charging_starting_testing-003",
+      "slot": "sound_or_smoke_location_zone",
+      "literal": false
+    },
+    {
+      "id": "charging_starting_testing-003",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "charging_starting_testing-004",
+      "slot": "location_axle",
+      "literal": false
+    },
+    {
+      "id": "charging_starting_testing-004",
+      "slot": "onset_timing",
+      "literal": false
+    },
+    {
+      "id": "charging_starting_testing-004",
+      "slot": "engine_running",
+      "literal": false
+    },
+    {
+      "id": "charging_starting_testing-004",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "charging_starting_testing-006",
+      "slot": "onset_timing",
+      "literal": false
+    },
+    {
+      "id": "charging_starting_testing-006",
+      "slot": "started_when",
+      "literal": false
+    },
+    {
+      "id": "charging_starting_testing-006",
+      "slot": "engine_running",
+      "literal": false
+    },
+    {
+      "id": "charging_starting_testing-006",
+      "slot": "drivable_state",
+      "literal": false
+    },
+    {
+      "id": "check_engine_light_testing-001",
+      "slot": "onset_timing",
+      "literal": false
+    },
+    {
+      "id": "check_engine_light_testing-001",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "check_engine_light_testing-005",
+      "slot": "speed_band",
+      "literal": false
+    },
+    {
+      "id": "check_engine_light_testing-005",
+      "slot": "weather_condition",
+      "literal": false
+    },
+    {
+      "id": "check_engine_light_testing-005",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "check_engine_light_testing-004",
+      "slot": "warning_light_behavior",
+      "literal": false
+    },
+    {
+      "id": "check_engine_light_testing-006",
+      "slot": "drivable_state",
+      "literal": false
+    },
+    {
+      "id": "check_engine_light_testing-007",
+      "slot": "sound_or_smoke_location_zone",
+      "literal": false
+    },
+    {
+      "id": "coolant_leak_testing-002",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "coolant_leak_testing-001",
+      "slot": "fluid_color",
+      "literal": false
+    },
+    {
+      "id": "coolant_leak_testing-001",
+      "slot": "drivable_state",
+      "literal": false
+    },
+    {
+      "id": "coolant_leak_testing-001",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "coolant_leak_testing-003",
+      "slot": "onset_timing",
+      "literal": false
+    },
+    {
+      "id": "coolant_leak_testing-003",
+      "slot": "airflow_state",
+      "literal": false
+    },
+    {
+      "id": "coolant_leak_testing-003",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "coolant_leak_testing-004",
+      "slot": "warning_light_behavior",
+      "literal": false
+    },
+    {
+      "id": "coolant_leak_testing-004",
+      "slot": "drivable_state",
+      "literal": false
+    },
+    {
+      "id": "coolant_leak_testing-004",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "coolant_leak_testing-005",
+      "slot": "sound_or_smoke_location_zone",
+      "literal": false
+    },
+    {
+      "id": "coolant_leak_testing-005",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "coolant_leak_testing-006",
+      "slot": "location_axle",
+      "literal": false
+    },
+    {
+      "id": "coolant_leak_testing-006",
+      "slot": "started_when",
+      "literal": false
+    },
+    {
+      "id": "coolant_leak_testing-006",
+      "slot": "warning_light_named",
+      "literal": false
+    },
+    {
+      "id": "coolant_leak_testing-006",
+      "slot": "warning_light_behavior",
+      "literal": false
+    },
+    {
+      "id": "coolant_leak_testing-006",
+      "slot": "recent_action",
+      "literal": false
+    },
+    {
+      "id": "coolant_leak_testing-006",
+      "slot": "drivable_state",
+      "literal": false
+    },
+    {
+      "id": "coolant_leak_testing-006",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "electrical_testing_general-003",
+      "slot": "onset_timing",
+      "literal": false
+    },
+    {
+      "id": "electrical_testing_general-004",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "exhaust_system_testing-001",
+      "slot": "engine_running",
+      "literal": false
+    },
+    {
+      "id": "exhaust_system_testing-001",
+      "slot": "recent_action",
+      "literal": false
+    },
+    {
+      "id": "exhaust_system_testing-001",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "exhaust_system_testing-002",
+      "slot": "sound_or_smoke_location_zone",
+      "literal": false
+    },
+    {
+      "id": "exhaust_system_testing-002",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "exhaust_system_testing-003",
+      "slot": "speed_band",
+      "literal": false
+    },
+    {
+      "id": "exhaust_system_testing-003",
+      "slot": "weather_condition",
+      "literal": false
+    },
+    {
+      "id": "exhaust_system_testing-004",
+      "slot": "onset_timing",
+      "literal": false
+    },
+    {
+      "id": "exhaust_system_testing-004",
+      "slot": "recent_action",
+      "literal": false
+    },
+    {
+      "id": "exhaust_system_testing-004",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "exhaust_system_testing-005",
+      "slot": "sound_or_smoke_location_zone",
+      "literal": false
+    },
+    {
+      "id": "exhaust_system_testing-005",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "no_start_testing-002",
+      "slot": "warning_light_behavior",
+      "literal": false
+    },
+    {
+      "id": "no_start_testing-002",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "no_start_testing-003",
+      "slot": "engine_running",
+      "literal": false
+    },
+    {
+      "id": "no_start_testing-003",
+      "slot": "recent_action",
+      "literal": false
+    },
+    {
+      "id": "no_start_testing-003",
+      "slot": "weather_condition",
+      "literal": false
+    },
+    {
+      "id": "no_start_testing-003",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "no_start_testing-004",
+      "slot": "sound_or_smoke_location_zone",
+      "literal": false
+    },
+    {
+      "id": "no_start_testing-004",
+      "slot": "drivable_state",
+      "literal": false
+    },
+    {
+      "id": "no_start_testing-004",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "no_start_testing-005",
+      "slot": "speed_band",
+      "literal": false
+    },
+    {
+      "id": "no_start_testing-005",
+      "slot": "onset_timing",
+      "literal": false
+    },
+    {
+      "id": "no_start_testing-005",
+      "slot": "started_when",
+      "literal": false
+    },
+    {
+      "id": "no_start_testing-005",
+      "slot": "drivable_state",
+      "literal": false
+    },
+    {
+      "id": "no_start_testing-005",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "no_start_testing-006",
+      "slot": "sound_or_smoke_location_zone",
+      "literal": false
+    },
+    {
+      "id": "no_start_testing-006",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "oil_leak_testing-004",
+      "slot": "started_when",
+      "literal": false
+    },
+    {
+      "id": "oil_leak_testing-004",
+      "slot": "sound_or_smoke_location_zone",
+      "literal": false
+    },
+    {
+      "id": "oil_leak_testing-004",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "oil_leak_testing-006",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "oil_pressure_light_testing-001",
+      "slot": "onset_timing",
+      "literal": false
+    },
+    {
+      "id": "oil_pressure_light_testing-001",
+      "slot": "started_when",
+      "literal": false
+    },
+    {
+      "id": "oil_pressure_light_testing-001",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "oil_pressure_light_testing-002",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "power_steering_eps_testing-001",
+      "slot": "onset_timing",
+      "literal": false
+    },
+    {
+      "id": "power_steering_eps_testing-001",
+      "slot": "drivable_state",
+      "literal": false
+    },
+    {
+      "id": "power_steering_eps_testing-001",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "power_steering_eps_testing-002",
+      "slot": "onset_timing",
+      "literal": false
+    },
+    {
+      "id": "suspension_steering_check-001",
+      "slot": "sound_or_smoke_location_zone",
+      "literal": false
+    },
+    {
+      "id": "suspension_steering_check-001",
+      "slot": "drivable_state",
+      "literal": false
+    },
+    {
+      "id": "suspension_steering_check-001",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "suspension_steering_check-002",
+      "slot": "sound_or_smoke_location_zone",
+      "literal": false
+    },
+    {
+      "id": "suspension_steering_check-003",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "suspension_steering_check-005",
+      "slot": "onset_timing",
+      "literal": false
+    },
+    {
+      "id": "suspension_steering_check-006",
+      "slot": "speed_band",
+      "literal": false
+    },
+    {
+      "id": "suspension_steering_check-006",
+      "slot": "sound_or_smoke_location_zone",
+      "literal": false
+    },
+    {
+      "id": "suspension_steering_check-008",
+      "slot": "pull_direction",
+      "literal": false
+    },
+    {
+      "id": "suspension_steering_check-008",
+      "slot": "drivable_state",
+      "literal": false
+    },
+    {
+      "id": "suspension_steering_check-008",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "suspension_steering_check-007",
+      "slot": "speed_band",
+      "literal": false
+    },
+    {
+      "id": "suspension_steering_check-007",
+      "slot": "drivable_state",
+      "literal": false
+    },
+    {
+      "id": "suspension_steering_check-007",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "tpms_testing-001",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "tpms_testing-002",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "tpms_testing-004",
+      "slot": "warning_light_behavior",
+      "literal": false
+    },
+    {
+      "id": "tpms_testing-003",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "transmission_testing-001",
+      "slot": "drivable_state",
+      "literal": false
+    },
+    {
+      "id": "transmission_testing-001",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "transmission_testing-003",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "transmission_testing-006",
+      "slot": "engine_running",
+      "literal": false
+    },
+    {
+      "id": "transmission_testing-006",
+      "slot": "drivable_state",
+      "literal": false
+    },
+    {
+      "id": "transmission_testing-006",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "window_inop_testing-001",
+      "slot": "sound_or_smoke_location_zone",
+      "literal": false
+    },
+    {
+      "id": "window_inop_testing-001",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "window_inop_testing-004",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "window_inop_testing-002",
+      "slot": "onset_timing",
+      "literal": false
+    },
+    {
+      "id": "window_inop_testing-002",
+      "slot": "drivable_state",
+      "literal": false
+    },
+    {
+      "id": "window_inop_testing-003",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "windshield_inop_testing-002",
+      "slot": "onset_timing",
+      "literal": false
+    },
+    {
+      "id": "windshield_inop_testing-002",
+      "slot": "started_when",
+      "literal": false
+    },
+    {
+      "id": "windshield_inop_testing-002",
+      "slot": "drivable_state",
+      "literal": false
+    },
+    {
+      "id": "windshield_inop_testing-002",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "windshield_inop_testing-001",
+      "slot": "onset_timing",
+      "literal": false
+    },
+    {
+      "id": "windshield_inop_testing-001",
+      "slot": "noise_descriptor",
+      "literal": false
+    },
+    {
+      "id": "windshield_inop_testing-001",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "windshield_inop_testing-003",
+      "slot": "onset_timing",
+      "literal": false
+    },
+    {
+      "id": "windshield_inop_testing-003",
+      "slot": "sound_or_smoke_location_zone",
+      "literal": false
+    },
+    {
+      "id": "windshield_inop_testing-003",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "windshield_inop_testing-004",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "other-accident-1",
+      "slot": "onset_timing",
+      "literal": false
+    },
+    {
+      "id": "other-multi-2",
+      "slot": "engine_running",
+      "literal": false
+    },
+    {
+      "id": "other-accident-2",
+      "slot": "onset_timing",
+      "literal": false
+    },
+    {
+      "id": "other-accident-2",
+      "slot": "started_when",
+      "literal": false
+    },
+    {
+      "id": "other-accident-2",
+      "slot": "steering_feel",
+      "literal": false
+    },
+    {
+      "id": "other-postservice-2",
+      "slot": "onset_timing",
+      "literal": false
+    },
+    {
+      "id": "other-postservice-2",
+      "slot": "warning_light_behavior",
+      "literal": false
+    },
+    {
+      "id": "other-checkup-2",
+      "slot": "started_when",
+      "literal": false
+    },
+    {
+      "id": "other-checkup-2",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "other-safety-2",
+      "slot": "started_when",
+      "literal": false
+    },
+    {
+      "id": "other-safety-2",
+      "slot": "drivable_state",
+      "literal": false
+    },
+    {
+      "id": "other-sitting-1",
+      "slot": "started_when",
+      "literal": false
+    },
+    {
+      "id": "other-sitting-1",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "other-safety-1",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "other-sitting-2",
+      "slot": "weather_condition",
+      "literal": false
+    },
+    {
+      "id": "other-sitting-2",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "nearmiss-001",
+      "slot": "warning_light_behavior",
+      "literal": false
+    },
+    {
+      "id": "nearmiss-002",
+      "slot": "onset_timing",
+      "literal": false
+    },
+    {
+      "id": "nearmiss-002",
+      "slot": "pedal_feel",
+      "literal": false
+    },
+    {
+      "id": "nearmiss-002",
+      "slot": "warning_light_behavior",
+      "literal": false
+    },
+    {
+      "id": "nearmiss-002",
+      "slot": "drivable_state",
+      "literal": false
+    },
+    {
+      "id": "nearmiss-002",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "nearmiss-003",
+      "slot": "sound_or_smoke_location_zone",
+      "literal": false
+    },
+    {
+      "id": "nearmiss-005",
+      "slot": "started_when",
+      "literal": false
+    },
+    {
+      "id": "nearmiss-005",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "nearmiss-004",
+      "slot": "location_axle",
+      "literal": false
+    },
+    {
+      "id": "nearmiss-004",
+      "slot": "fluid_under_car_location",
+      "literal": false
+    },
+    {
+      "id": "nearmiss-004",
+      "slot": "sound_or_smoke_location_zone",
+      "literal": false
+    },
+    {
+      "id": "nearmiss-004",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "nearmiss-006",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "nearmiss-007",
+      "slot": "speed_band",
+      "literal": false
+    },
+    {
+      "id": "nearmiss-007",
+      "slot": "warning_light_behavior",
+      "literal": false
+    },
+    {
+      "id": "nearmiss-008",
+      "slot": "speed_band",
+      "literal": false
+    },
+    {
+      "id": "nearmiss-009",
+      "slot": "onset_timing",
+      "literal": false
+    },
+    {
+      "id": "nearmiss-012",
+      "slot": "onset_timing",
+      "literal": false
+    },
+    {
+      "id": "nearmiss-012",
+      "slot": "started_when",
+      "literal": false
+    },
+    {
+      "id": "nearmiss-012",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "nearmiss-013",
+      "slot": "onset_timing",
+      "literal": false
+    },
+    {
+      "id": "nearmiss-013",
+      "slot": "weather_condition",
+      "literal": false
+    },
+    {
+      "id": "nearmiss-013",
+      "slot": "drivable_state",
+      "literal": false
+    },
+    {
+      "id": "nearmiss-013",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "nearmiss-015",
+      "slot": "started_when",
+      "literal": false
+    },
+    {
+      "id": "nearmiss-015",
+      "slot": "airflow_state",
+      "literal": false
+    },
+    {
+      "id": "nearmiss-015",
+      "slot": "customer_request_type",
+      "literal": false
+    },
+    {
+      "id": "nearmiss-016",
+      "slot": "airflow_state",
+      "literal": false
+    },
+    {
+      "id": "nearmiss-014",
+      "slot": "engine_running",
+      "literal": false
+    },
+    {
+      "id": "nearmiss-014",
+      "slot": "weather_condition",
+      "literal": false
+    },
+    {
+      "id": "nearmiss-014",
+      "slot": "drivable_state",
+      "literal": false
+    },
+    {
+      "id": "nearmiss-014",
+      "slot": "customer_request_type",
+      "literal": false
+    }
+  ]
+}
