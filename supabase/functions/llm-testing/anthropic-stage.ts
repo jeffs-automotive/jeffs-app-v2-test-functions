@@ -3,7 +3,7 @@
 
 import Anthropic from "npm:@anthropic-ai/sdk@^0.97";
 import { z } from "npm:zod@^4";
-import { FALLBACK_MODEL, MAX_OUTPUT_TOKENS, STRUCTURED_OUTPUTS_BETA, anthropic } from "./config.ts";
+import { FALLBACK_MODEL, MAX_OUTPUT_TOKENS, anthropic } from "./config.ts";
 
 // ════════════════════════════════════════════════════════════════════
 // ANTHROPIC SDK STAGE CALLER (with retry + Zod validation)
@@ -53,11 +53,16 @@ export async function callAnthropicStage<T>(args: {
             models: [args.model, FALLBACK_MODEL],
           },
         },
-        output_format: {
-          type: "json_schema",
-          schema: args.jsonSchema,
+        // GA structured outputs (synced 2026-07-02 with the production
+        // diagnose-concern.ts migration): `output_config.format` on plain
+        // messages.create, no beta header. Replaces the deprecated
+        // `output_format` + structured-outputs-2025-11-13 pair.
+        output_config: {
+          format: {
+            type: "json_schema",
+            schema: args.jsonSchema,
+          },
         },
-        betas: [STRUCTURED_OUTPUTS_BETA],
       });
 
       const textBlock = msg.content.find((b) => b.type === "text");

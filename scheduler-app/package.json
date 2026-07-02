@@ -14,7 +14,9 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
-    "postinstall": "echo '[scheduler-app] Reminder: run `npm install` at the repo root to wire husky pre-commit hooks.'"
+    "postinstall": "echo '[scheduler-app] Reminder: run `npm install` at the repo root to wire husky pre-commit hooks.'",
+    "eval:diagnose": "node --experimental-strip-types --import ./scripts/eval/register-alias.mjs scripts/eval/run-eval.ts",
+    "eval:catalog-dump": "node --experimental-strip-types --import ./scripts/eval/register-alias.mjs scripts/eval/catalog-dump.ts"
   },
   "lint-staged": {
     "**/*.{ts,tsx,js,jsx,mjs}": [

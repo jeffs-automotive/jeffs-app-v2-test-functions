@@ -25,7 +25,8 @@
 //
 // Why Path C: bypasses the @ai-sdk/gateway generateObject path's documented
 // Anthropic-compat bugs (#12020, #13355, #13460, #14342). Anthropic's
-// native structured outputs (output_format + structured-outputs-2025-11-13
+// native structured outputs (GA `output_config.format` — synced 2026-07-02
+// with production diagnose-concern.ts, off the deprecated output_format
 // beta) use constrained decoding; documented <0.1% schema-failure rate.
 //
 // The Supabase edge function CANNOT import scheduler-app source (Deno can't
@@ -40,7 +41,7 @@
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { withSentryScope } from "../_shared/sentry-edge.ts";
-import { STRUCTURED_OUTPUTS_BETA, STAGE1_MODEL, STAGE2_MODEL, STAGE3_MODEL, CORS_HEADERS, anthropic } from "./config.ts";
+import { STAGE1_MODEL, STAGE2_MODEL, STAGE3_MODEL, CORS_HEADERS, anthropic } from "./config.ts";
 import { isTestingService, isOtherSubcategory, getCatalog } from "./catalog.ts";
 import { matchQuestionsToFacts, type QuestionForFactMatch, type QuestionFactMatcherOutput } from "./fact-matcher.ts";
 import { STAGE1_JSON_SCHEMA, STAGE2_JSON_SCHEMA, STAGE3_JSON_SCHEMA, Stage1ResponseSchema, Stage2ResponseSchema, Stage3ResponseSchema } from "./stage-schemas.ts";
@@ -76,7 +77,7 @@ Deno.serve((req) => withSentryScope(req, "llm-testing", async () => {
       stage1_model: STAGE1_MODEL,
       stage2_model: STAGE2_MODEL,
       stage3_model: STAGE3_MODEL,
-      structured_outputs_beta: STRUCTURED_OUTPUTS_BETA,
+      structured_outputs: "ga-output_config.format",
       hint: "POST { concern_text, chip_hint? } to run one concern through the three-stage diagnostic LLM (category → subcategory → fact-extract → mapper).",
     });
   }

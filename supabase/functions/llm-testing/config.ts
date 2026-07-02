@@ -15,7 +15,6 @@ export const SHOP_ID = parseInt(Deno.env.get("TEKMETRIC_SHOP_ID") ?? "7476", 10)
 const DEFAULT_MODEL = "anthropic/claude-haiku-4-5";
 export const FALLBACK_MODEL = "anthropic/claude-sonnet-4-6";
 export const MAX_OUTPUT_TOKENS = 1024;
-export const STRUCTURED_OUTPUTS_BETA = "structured-outputs-2025-11-13";
 
 export const STAGE1_MODEL =
   Deno.env.get("DIAGNOSE_CONCERN_STAGE1_MODEL") ??
