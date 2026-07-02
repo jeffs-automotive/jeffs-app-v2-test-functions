@@ -181,7 +181,13 @@ export interface SecondRoutinePassPayload {
 /** Step 8 — Appointment type picker. */
 export interface AppointmentTypePayload {
   options: Array<{
-    type: "waiter" | "dropoff";
+    /** Type slug from scheduler_appointment_types (B3 2026-07-02: DB-driven —
+     *  no longer a closed "waiter"|"dropoff" union). */
+    type: string;
+    /** Card copy, from the type row (replaces the component's TYPE_META). */
+    title: string;
+    description: string;
+    emoji: string;
     available: boolean;
     unavailable_reason: string | null;
     earliest_hint: string | null;

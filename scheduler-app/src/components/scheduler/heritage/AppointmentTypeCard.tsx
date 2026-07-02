@@ -18,9 +18,14 @@ import { Button, Card } from "@/components/ui";
  */
 
 export interface AppointmentTypeCardProps {
-  /** Available types. Each carries a label + optional disabled-reason. */
+  /** Available types. B3 (2026-07-02): DB-driven — the card renders copy
+   *  straight from the payload (scheduler_appointment_types rows); the old
+   *  hardcoded TYPE_META is gone. */
   options: Array<{
-    type: "waiter" | "dropoff";
+    type: string;
+    title: string;
+    description: string;
+    emoji: string;
     available: boolean;
     /** Reason shown when available=false (e.g. "service can't be done while you wait"). */
     unavailable_reason?: string;
@@ -28,26 +33,8 @@ export interface AppointmentTypeCardProps {
     earliest_hint?: string;
   }>;
   disabled?: boolean;
-  onSubmit: (output: { appointment_type: "waiter" | "dropoff" }) => void | Promise<void>;
+  onSubmit: (output: { appointment_type: string }) => void | Promise<void>;
 }
-
-const TYPE_META: Record<
-  "waiter" | "dropoff",
-  { title: string; description: string; emoji: string }
-> = {
-  waiter: {
-    title: "Wait while we work",
-    description:
-      "Grab a coffee — most waiter jobs are 30 to 60 minutes. Available at 8 AM or 9 AM.",
-    emoji: "☕",
-  },
-  dropoff: {
-    title: "Drop off in the morning",
-    description:
-      "Drop your car off by 10 AM. We'll text or call when it's ready.",
-    emoji: "🚗",
-  },
-};
 
 export function AppointmentTypeCard({
   options,
@@ -55,9 +42,9 @@ export function AppointmentTypeCard({
   onSubmit,
 }: AppointmentTypeCardProps) {
   const [pending, setPending] = useState(false);
-  const [picked, setPicked] = useState<"waiter" | "dropoff" | null>(null);
+  const [picked, setPicked] = useState<string | null>(null);
 
-  async function submit(type: "waiter" | "dropoff") {
+  async function submit(type: string) {
     if (pending || disabled) return;
     setPicked(type);
     setPending(true);
@@ -75,7 +62,6 @@ export function AppointmentTypeCard({
 
       <Card.Body className="space-y-3">
         {options.map((opt) => {
-          const meta = TYPE_META[opt.type];
           const isPicked = picked === opt.type;
           const isAvailable = opt.available;
           return (
@@ -104,14 +90,14 @@ export function AppointmentTypeCard({
             >
               <span className="flex items-start gap-3">
                 <span aria-hidden className="text-2xl">
-                  {meta.emoji}
+                  {opt.emoji}
                 </span>
                 <span className="flex-1">
                   <span className="block font-display text-lg leading-tight text-ink">
-                    {meta.title}
+                    {opt.title}
                   </span>
                   <span className="mt-1 block text-[14px] leading-relaxed text-ink-secondary">
-                    {meta.description}
+                    {opt.description}
                   </span>
                   {opt.earliest_hint && isAvailable ? (
                     <span className="mt-2 block text-[13px] text-brand-burgundy-700">

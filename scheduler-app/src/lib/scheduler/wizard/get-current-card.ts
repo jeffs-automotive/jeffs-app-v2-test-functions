@@ -21,6 +21,10 @@ import {
   BookingDirectError,
 } from "@/lib/scheduler/booking-direct-client";
 import { getRoutineServicesForChips } from "@/lib/scheduler/routine-services-cache";
+import {
+  getActiveAppointmentTypes,
+  laneFor,
+} from "@/lib/scheduler/appointment-types";
 // P2.8 (2026-05-25): single source of truth for SHOP_ID.
 import { SHOP_ID } from "@/lib/scheduler/shop-config";
 import {
@@ -499,25 +503,31 @@ export async function getCurrentCard(
         }),
       ]);
 
+      // B3 (2026-07-02): options come from scheduler_appointment_types
+      // (active rows, display order) instead of a hardcoded pair. Each
+      // type's availability + earliest hint derive from its capacity LANE:
+      // time-slotted types share the waiter lane's wait-eligibility gate;
+      // daily-cap types share the dropoff lane. With the seeded system rows
+      // this renders EXACTLY the previous two options.
+      const apptTypes = await getActiveAppointmentTypes();
       return {
         step: "appointment_type",
         payload: {
-          options: [
-            {
-              type: "waiter",
-              available: waitEligible,
-              unavailable_reason: waitEligible ? null : waitEligibilityReason,
-              earliest_hint: waitEligible
-                ? formatDateHint(earliestWaiter)
+          options: apptTypes.map((t) => {
+            const isSlotLane = laneFor(t) === "waiter";
+            const available = isSlotLane ? waitEligible : true;
+            return {
+              type: t.slug,
+              title: t.card_title,
+              description: t.card_description ?? "",
+              emoji: t.emoji ?? "",
+              available,
+              unavailable_reason: available ? null : waitEligibilityReason,
+              earliest_hint: available
+                ? formatDateHint(isSlotLane ? earliestWaiter : earliestDropoff)
                 : null,
-            },
-            {
-              type: "dropoff",
-              available: true,
-              unavailable_reason: null,
-              earliest_hint: formatDateHint(earliestDropoff),
-            },
-          ],
+            };
+          }),
         },
       };
     }

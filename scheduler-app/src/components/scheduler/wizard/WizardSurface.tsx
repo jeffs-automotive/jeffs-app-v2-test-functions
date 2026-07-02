@@ -469,6 +469,9 @@ function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
         <AppointmentTypeCard
           options={card.payload.options.map((o) => ({
             type: o.type,
+            title: o.title,
+            description: o.description,
+            emoji: o.emoji,
             available: o.available,
             unavailable_reason: o.unavailable_reason ?? undefined,
             earliest_hint: o.earliest_hint ?? undefined,

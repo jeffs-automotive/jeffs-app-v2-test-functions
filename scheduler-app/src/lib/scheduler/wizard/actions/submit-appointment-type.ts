@@ -18,15 +18,24 @@ import * as Sentry from "@sentry/nextjs";
 import { z } from "zod";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import {
+  getAppointmentTypeBySlug,
+  laneFor,
+} from "@/lib/scheduler/appointment-types";
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
 import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 // P2.8 (2026-05-25): single source of truth for SHOP_ID.
 import { SHOP_ID } from "@/lib/scheduler/shop-config";
 
+// B3 (2026-07-02): types are DB-driven (scheduler_appointment_types) — the
+// closed z.enum became a slug-shaped string validated against the ACTIVE
+// rows inside the impl (getAppointmentTypeBySlug). Until step B5 swaps the
+// session-table CHECK, only 'waiter'/'dropoff' can be active, so the write
+// set is unchanged.
 const submitAppointmentTypeSchema = z.object({
   chatId: z.string().min(1),
-  appointment_type: z.enum(["waiter", "dropoff"]),
+  appointment_type: z.string().regex(/^[a-z0-9_]{2,40}$/),
 });
 
 export type SubmitAppointmentTypeV2Args = z.infer<
@@ -46,7 +55,20 @@ async function submitAppointmentTypeV2Impl(
   const { chatId, appointment_type } = parsed.data;
 
   try {
-    if (appointment_type === "waiter") {
+    // Slug must be an ACTIVE type (server-side re-validation of the card's
+    // option list — a stale/forged submit can't book a retired type).
+    const typeRow = await getAppointmentTypeBySlug(appointment_type);
+    if (!typeRow) {
+      return applyWizardTransition({
+        chatId,
+        nextStep: "appointment_type",
+        jeffBubble:
+          "That appointment option isn't available anymore — here are the current choices.",
+      });
+    }
+
+    // Time-slotted types (the waiter lane) share the wait-eligibility gate.
+    if (laneFor(typeRow) === "waiter") {
       const eligible = await isWaitEligibleForSession(chatId);
       if (!eligible) {
         return applyWizardTransition({
