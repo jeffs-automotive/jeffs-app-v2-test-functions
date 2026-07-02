@@ -62,12 +62,12 @@ async function runServiceUpsert(
 
 export const upsertRoutineServiceAction = wrapAdminAction(
   "upsertRoutineServiceAction",
-  (args: unknown) => runServiceUpsert("routine", args),
+  async (args: unknown) => runServiceUpsert("routine", args),
 );
 
 export const upsertTestingServiceAction = wrapAdminAction(
   "upsertTestingServiceAction",
-  (args: unknown) => runServiceUpsert("testing", args),
+  async (args: unknown) => runServiceUpsert("testing", args),
 );
 
 const enrichmentSchema = z.object({
