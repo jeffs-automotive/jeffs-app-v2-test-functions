@@ -1,12 +1,11 @@
 /**
- * chat-store DAL — session-row helpers for customer_chat_sessions.
+ * session-create — the idempotent customer_chat_sessions row creator.
  *
- * Phase 16 trim (2026-05-16): the AI-SDK chat-stream layer was deleted,
- * so this file no longer carries the loadChat / saveChat / message-array
- * persistence helpers — V2 reads + writes the row directly via Server
- * Actions + getCurrentCard. The only remaining helper is
- * `ensureSessionExists`, the idempotent row creator that the
- * BookPageShell calls on every request.
+ * Renamed from chat-store.ts (revamp Phase 0, 2026-07-02): the chat-era
+ * name was the last vestige of the deleted AI-SDK chat-stream layer
+ * (Phase 16 trim, 2026-05-16, removed loadChat/saveChat). The one helper
+ * live in V2 is `ensureSessionExists`, called by BookPageShell on every
+ * request.
  *
  * RLS: deny-all to public; this file uses the admin client (bypasses
  * RLS). App-level auth must enforce session/shop scoping (we hardcode

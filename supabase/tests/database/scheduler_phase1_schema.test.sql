@@ -35,7 +35,7 @@ SELECT has_table('public', 'appointment_holds',          'appointment_holds tabl
 SELECT has_table('public', 'service_dept_users',         'service_dept_users table exists');
 SELECT has_table('public', 'appointment_blocks',         'appointment_blocks table exists');
 SELECT has_table('public', 'closed_dates',               'closed_dates table exists');
-SELECT has_table('public', 'appointment_concerns',       'appointment_concerns table exists');
+-- appointment_concerns DROPPED 2026-07-02 (revamp Phase 0, migration 20260702140000)
 SELECT has_table('public', 'otp_codes',                  'otp_codes table exists');
 SELECT has_table('public', 'transcript_emails',          'transcript_emails table exists');
 SELECT has_table('public', 'testing_services',           'testing_services table exists');
@@ -154,11 +154,6 @@ SELECT is(
   (SELECT relrowsecurity FROM pg_class WHERE relname = 'closed_dates' AND relnamespace = 'public'::regnamespace),
   TRUE,
   'closed_dates has RLS enabled'
-);
-SELECT is(
-  (SELECT relrowsecurity FROM pg_class WHERE relname = 'appointment_concerns' AND relnamespace = 'public'::regnamespace),
-  TRUE,
-  'appointment_concerns has RLS enabled'
 );
 SELECT is(
   (SELECT relrowsecurity FROM pg_class WHERE relname = 'otp_codes' AND relnamespace = 'public'::regnamespace),
@@ -418,7 +413,7 @@ SELECT pass('Advisory lock + capacity check rejects 3rd hold on capacity-2 waite
 -- 9. Architectural claim: ON DELETE CASCADE on session deletion
 -- ---------------------------------------------------------------------
 -- Deleting a customer_chat_sessions row should cascade-delete its
--- customer_chat_messages, appointment_holds, and appointment_concerns rows.
+-- customer_chat_messages + appointment_holds rows. (appointment_concerns was dropped 2026-07-02.)
 -- ---------------------------------------------------------------------
 
 DO $$
@@ -433,9 +428,6 @@ BEGIN
   INSERT INTO customer_chat_messages (id, session_id, shop_id, role, parts)
     VALUES (gen_random_uuid(), v_session_id, 7476, 'user',
             '[{"type":"text","text":"hi"}]'::JSONB);
-  INSERT INTO appointment_concerns (session_id, category, raw_text, prose_summary)
-    VALUES (v_session_id, 'noise', 'grinding noise',
-            'Customer states a grinding noise from the front when braking.');
 
   -- Delete the session
   DELETE FROM customer_chat_sessions WHERE id = v_session_id;
@@ -446,10 +438,6 @@ BEGIN
     RAISE EXCEPTION 'cascade FAILED: customer_chat_messages remain after session delete (% rows)', v_count;
   END IF;
 
-  SELECT COUNT(*) INTO v_count FROM appointment_concerns WHERE session_id = v_session_id;
-  IF v_count <> 0 THEN
-    RAISE EXCEPTION 'cascade FAILED: appointment_concerns remain after session delete (% rows)', v_count;
-  END IF;
 END;
 $$;
 SELECT pass('ON DELETE CASCADE on customer_chat_sessions cleans up child rows');

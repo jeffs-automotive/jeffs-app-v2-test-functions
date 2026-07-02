@@ -1,4 +1,4 @@
-import { ensureSessionExists } from "@/lib/scheduler/chat-store";
+import { ensureSessionExists } from "@/lib/scheduler/session-create";
 import { hydrateSession } from "@/lib/scheduler/hydrate-session";
 import { getCurrentCard } from "@/lib/scheduler/wizard/get-current-card";
 import { signBeaconPayload } from "@/lib/security/beacon-hmac";

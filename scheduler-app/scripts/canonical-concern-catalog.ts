@@ -1,4 +1,14 @@
 /**
+ * ⚠️ FROZEN — HISTORICAL ONE-TIME SEED (revamp Phase 0, 2026-07-02).
+ *
+ * DO NOT RE-RUN. The DATABASE is the live source of truth for the concern
+ * catalog; it has diverged from this data file through months of admin edits
+ * (enrichment, required_facts, service-map, and the /schedulerconfig
+ * webforms). Re-running the generator soft-deletes admin-added rows and
+ * WIPES all enrichment + required_facts (REVAMP-PLAN §3 issue 3).
+ * Catalog edits go through /schedulerconfig.
+ */
+/**
  * Canonical answer-option catalog for the customer-facing diagnostic wizard.
  *
  * Each question has a hand-tuned `multi_select` flag and `options` array that

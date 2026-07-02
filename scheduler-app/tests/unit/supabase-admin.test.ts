@@ -10,7 +10,7 @@ import {
  * The actual @supabase/supabase-js createClient is not mocked here — the
  * client is constructed lazily and only the URL + key need to be set for
  * construction to succeed. Network calls happen on .from(...) usage which
- * is tested separately in the chat-store DAL tests with MSW.
+ * is tested separately in the session-create DAL tests with MSW.
  */
 
 describe("createSupabaseAdminClient", () => {

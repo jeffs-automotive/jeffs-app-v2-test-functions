@@ -1,4 +1,14 @@
 /**
+ * ⚠️ FROZEN — HISTORICAL ONE-TIME SEED (revamp Phase 0, 2026-07-02).
+ *
+ * DO NOT RE-RUN. The DATABASE is the live source of truth for the concern
+ * catalog; it has diverged from this generator through months of admin edits
+ * (enrichment, required_facts, service-map, and the /schedulerconfig
+ * webforms). Re-running the generator soft-deletes admin-added rows and
+ * WIPES all enrichment + required_facts (REVAMP-PLAN §3 issue 3).
+ * Catalog edits go through /schedulerconfig.
+ */
+/**
  * generate-catalog-migration — emits the SQL migration that rebuilds
  * `concern_subcategories` + `concern_questions` from the canonical
  * TypeScript catalog at `canonical-concern-catalog.ts`.

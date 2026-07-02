@@ -109,44 +109,6 @@ export type Database = {
         }
         Relationships: []
       }
-      appointment_concerns: {
-        Row: {
-          appointment_id: number | null
-          category: string
-          classified_at: string
-          id: string
-          prose_summary: string
-          raw_text: string
-          session_id: string
-        }
-        Insert: {
-          appointment_id?: number | null
-          category: string
-          classified_at?: string
-          id?: string
-          prose_summary: string
-          raw_text: string
-          session_id: string
-        }
-        Update: {
-          appointment_id?: number | null
-          category?: string
-          classified_at?: string
-          id?: string
-          prose_summary?: string
-          raw_text?: string
-          session_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "appointment_concerns_session_id_fkey"
-            columns: ["session_id"]
-            isOneToOne: false
-            referencedRelation: "customer_chat_sessions"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       appointment_default_limits: {
         Row: {
           day_of_week: number
@@ -1104,6 +1066,7 @@ export type Database = {
         Row: {
           client_id: string
           expires_at: string
+          family_id: string | null
           issued_at: string
           last_used_at: string | null
           resource: string | null
@@ -1115,6 +1078,7 @@ export type Database = {
         Insert: {
           client_id: string
           expires_at: string
+          family_id?: string | null
           issued_at?: string
           last_used_at?: string | null
           resource?: string | null
@@ -1126,6 +1090,7 @@ export type Database = {
         Update: {
           client_id?: string
           expires_at?: string
+          family_id?: string | null
           issued_at?: string
           last_used_at?: string | null
           resource?: string | null
@@ -1243,6 +1208,7 @@ export type Database = {
         Row: {
           client_id: string
           expires_at: string
+          family_id: string
           issued_at: string
           last_used_at: string | null
           parent_token_hash: string | null
@@ -1255,6 +1221,7 @@ export type Database = {
         Insert: {
           client_id: string
           expires_at: string
+          family_id?: string
           issued_at?: string
           last_used_at?: string | null
           parent_token_hash?: string | null
@@ -1267,6 +1234,7 @@ export type Database = {
         Update: {
           client_id?: string
           expires_at?: string
+          family_id?: string
           issued_at?: string
           last_used_at?: string | null
           parent_token_hash?: string | null
@@ -1551,6 +1519,42 @@ export type Database = {
         }
         Relationships: []
       }
+      qteklink_customers: {
+        Row: {
+          created_at: string
+          display_name: string | null
+          fetched_at: string
+          first_name: string | null
+          id: string
+          last_name: string | null
+          shop_id: number
+          tekmetric_customer_id: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          display_name?: string | null
+          fetched_at?: string
+          first_name?: string | null
+          id?: string
+          last_name?: string | null
+          shop_id: number
+          tekmetric_customer_id: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string | null
+          fetched_at?: string
+          first_name?: string | null
+          id?: string
+          last_name?: string | null
+          shop_id?: number
+          tekmetric_customer_id?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       qteklink_daily_postings: {
         Row: {
           action: string
@@ -1794,6 +1798,74 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "qbo_accounts"
             referencedColumns: ["shop_id", "realm_id", "qbo_account_id"]
+          },
+        ]
+      }
+      qteklink_payment_redates: {
+        Row: {
+          amount_cents: number
+          approved_at: string | null
+          approved_by: string | null
+          business_date: string
+          created_at: string
+          customer_name: string | null
+          detected_at: string
+          id: string
+          notified_at: string | null
+          payment_id: number
+          realm_id: string
+          resolved_at: string | null
+          ro_number: string | null
+          shop_id: number
+          status: string
+          tekmetric_ro_id: number | null
+          updated_at: string
+        }
+        Insert: {
+          amount_cents: number
+          approved_at?: string | null
+          approved_by?: string | null
+          business_date: string
+          created_at?: string
+          customer_name?: string | null
+          detected_at?: string
+          id?: string
+          notified_at?: string | null
+          payment_id: number
+          realm_id: string
+          resolved_at?: string | null
+          ro_number?: string | null
+          shop_id: number
+          status?: string
+          tekmetric_ro_id?: number | null
+          updated_at?: string
+        }
+        Update: {
+          amount_cents?: number
+          approved_at?: string | null
+          approved_by?: string | null
+          business_date?: string
+          created_at?: string
+          customer_name?: string | null
+          detected_at?: string
+          id?: string
+          notified_at?: string | null
+          payment_id?: number
+          realm_id?: string
+          resolved_at?: string | null
+          ro_number?: string | null
+          shop_id?: number
+          status?: string
+          tekmetric_ro_id?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qteklink_payment_redates_conn_fk"
+            columns: ["shop_id", "realm_id"]
+            isOneToOne: false
+            referencedRelation: "qbo_connections"
+            referencedColumns: ["shop_id", "realm_id"]
           },
         ]
       }
@@ -2143,6 +2215,36 @@ export type Database = {
           },
         ]
       }
+      qteklink_ros: {
+        Row: {
+          created_at: string
+          fetched_at: string
+          id: string
+          repair_order_number: string | null
+          shop_id: number
+          tekmetric_ro_id: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          fetched_at?: string
+          id?: string
+          repair_order_number?: string | null
+          shop_id: number
+          tekmetric_ro_id: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          fetched_at?: string
+          id?: string
+          repair_order_number?: string | null
+          shop_id?: number
+          tekmetric_ro_id?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       qteklink_settings: {
         Row: {
           advisor_emails: string | null
@@ -2418,6 +2520,60 @@ export type Database = {
           },
         ]
       }
+      scheduler_appointment_types: {
+        Row: {
+          active: boolean
+          card_description: string | null
+          card_title: string
+          created_at: string
+          emoji: string | null
+          id: string
+          is_system: boolean
+          label: string
+          requires_time_slot: boolean
+          shop_id: number
+          slug: string
+          sort: number
+          tekmetric_color: string
+          updated_at: string
+          updated_by_email: string | null
+        }
+        Insert: {
+          active?: boolean
+          card_description?: string | null
+          card_title: string
+          created_at?: string
+          emoji?: string | null
+          id?: string
+          is_system?: boolean
+          label: string
+          requires_time_slot?: boolean
+          shop_id: number
+          slug: string
+          sort?: number
+          tekmetric_color: string
+          updated_at?: string
+          updated_by_email?: string | null
+        }
+        Update: {
+          active?: boolean
+          card_description?: string | null
+          card_title?: string
+          created_at?: string
+          emoji?: string | null
+          id?: string
+          is_system?: boolean
+          label?: string
+          requires_time_slot?: boolean
+          shop_id?: number
+          slug?: string
+          sort?: number
+          tekmetric_color?: string
+          updated_at?: string
+          updated_by_email?: string | null
+        }
+        Relationships: []
+      }
       scheduler_audit_log: {
         Row: {
           error_message: string | null
@@ -2527,6 +2683,56 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "customer_chat_sessions"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      scheduler_message_templates: {
+        Row: {
+          active: boolean
+          body: string
+          channel: string
+          created_at: string
+          id: string
+          kind: string
+          shop_id: number
+          subject: string | null
+          type_id: string | null
+          updated_at: string
+          updated_by_email: string | null
+        }
+        Insert: {
+          active?: boolean
+          body: string
+          channel: string
+          created_at?: string
+          id?: string
+          kind: string
+          shop_id: number
+          subject?: string | null
+          type_id?: string | null
+          updated_at?: string
+          updated_by_email?: string | null
+        }
+        Update: {
+          active?: boolean
+          body?: string
+          channel?: string
+          created_at?: string
+          id?: string
+          kind?: string
+          shop_id?: number
+          subject?: string | null
+          type_id?: string | null
+          updated_at?: string
+          updated_by_email?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduler_message_templates_shop_id_type_id_fkey"
+            columns: ["shop_id", "type_id"]
+            isOneToOne: false
+            referencedRelation: "scheduler_appointment_types"
+            referencedColumns: ["shop_id", "id"]
           },
         ]
       }
@@ -2689,6 +2895,45 @@ export type Database = {
           tekmetric_ro_id?: number | null
           tekmetric_shop_id?: number | null
           tekmetric_vehicle_id?: number | null
+        }
+        Relationships: []
+      }
+      telnyx_webhook_events: {
+        Row: {
+          event_type: string
+          id: string
+          occurred_at: string | null
+          payload: Json
+          raw_headers: Json | null
+          raw_query_string: string | null
+          received_at: string
+          shop_id: number | null
+          signature_verified: boolean
+          telnyx_event_id: string | null
+        }
+        Insert: {
+          event_type?: string
+          id?: string
+          occurred_at?: string | null
+          payload: Json
+          raw_headers?: Json | null
+          raw_query_string?: string | null
+          received_at?: string
+          shop_id?: number | null
+          signature_verified?: boolean
+          telnyx_event_id?: string | null
+        }
+        Update: {
+          event_type?: string
+          id?: string
+          occurred_at?: string | null
+          payload?: Json
+          raw_headers?: Json | null
+          raw_query_string?: string | null
+          received_at?: string
+          shop_id?: number | null
+          signature_verified?: boolean
+          telnyx_event_id?: string | null
         }
         Relationships: []
       }
@@ -2916,6 +3161,19 @@ export type Database = {
       attach_resolution_audit_log: {
         Args: { p_audit_log_id: number; p_review_id: number }
         Returns: undefined
+      }
+      auto_resolve_manual_review: {
+        Args: { p_code: string; p_reason: string; p_source?: string }
+        Returns: {
+          audit_log_id: number
+          failure_reason: string
+          ok: boolean
+          review_id: number
+        }[]
+      }
+      auto_resolve_reviews_for_ro: {
+        Args: { p_reason: string; p_ro_id: number; p_source?: string }
+        Returns: number
       }
       canonical_state_appointment_default_limits: {
         Args: { p_shop_id: number; p_snapshot: Json }
@@ -3150,9 +3408,33 @@ export type Database = {
         Args: { p_token_hash: string }
         Returns: {
           client_id: string
+          family_id: string
           resource: string
           scope: string
+          status: string
           user_label: string
+        }[]
+      }
+      oauth_issue_token_pair: {
+        Args: {
+          p_access_token_hash: string
+          p_access_ttl_seconds: number
+          p_client_id: string
+          p_family_id: string
+          p_parent_token_hash: string
+          p_refresh_token_hash: string
+          p_refresh_ttl_seconds: number
+          p_resource: string
+          p_scope: string
+          p_user_label: string
+        }
+        Returns: undefined
+      }
+      oauth_revoke_token_family: {
+        Args: { p_family_id: string }
+        Returns: {
+          access_revoked: number
+          refresh_revoked: number
         }[]
       }
       oauth_validate_access_token: {
@@ -3193,6 +3475,15 @@ export type Database = {
       qbo_resolve_realm_for_shop: {
         Args: { p_shop_id: number }
         Returns: string
+      }
+      qteklink_accept_daily_variance: {
+        Args: {
+          p_accepted_by: string
+          p_id: string
+          p_realm_id: string
+          p_shop_id: number
+        }
+        Returns: boolean
       }
       qteklink_acknowledge_daily_posting: {
         Args: {
@@ -3235,6 +3526,15 @@ export type Database = {
         }
         Returns: boolean
       }
+      qteklink_approve_payment_redate: {
+        Args: {
+          p_approved_by: string
+          p_id: string
+          p_realm_id: string
+          p_shop_id: number
+        }
+        Returns: boolean
+      }
       qteklink_approve_posting: {
         Args: {
           p_approved_by: string
@@ -3243,6 +3543,16 @@ export type Database = {
           p_shop_id: number
         }
         Returns: boolean
+      }
+      qteklink_auto_resolve_review_items: {
+        Args: {
+          p_ids: string[]
+          p_realm_id: string
+          p_resolution?: Json
+          p_resolved_by: string
+          p_shop_id: number
+        }
+        Returns: number
       }
       qteklink_claim_daily_posting_by_id: {
         Args: {
@@ -3355,6 +3665,15 @@ export type Database = {
         Args: { p_id: string; p_realm_id: string; p_shop_id: number }
         Returns: boolean
       }
+      qteklink_delete_manual_payment: {
+        Args: {
+          p_deleted_by: string
+          p_id: string
+          p_realm_id: string
+          p_shop_id: number
+        }
+        Returns: boolean
+      }
       qteklink_discover_tekmetric_items: {
         Args: { p_realm_id: string; p_shop_id: number }
         Returns: {
@@ -3442,6 +3761,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      qteklink_mark_payment_redate_notified: {
+        Args: { p_id: string; p_realm_id: string; p_shop_id: number }
+        Returns: boolean
+      }
       qteklink_mark_posted: {
         Args: {
           p_id: string
@@ -3525,12 +3848,25 @@ export type Database = {
         Args: { p_id: string; p_realm_id: string; p_shop_id: number }
         Returns: boolean
       }
+      qteklink_resolve_payment_redate: {
+        Args: { p_id: string; p_realm_id: string; p_shop_id: number }
+        Returns: boolean
+      }
       qteklink_resolve_review_item: {
         Args: {
           p_id: string
           p_realm_id: string
           p_resolution: Json
           p_resolved_by: string
+          p_shop_id: number
+        }
+        Returns: boolean
+      }
+      qteklink_retry_daily_posting: {
+        Args: {
+          p_id: string
+          p_realm_id: string
+          p_retried_by: string
           p_shop_id: number
         }
         Returns: boolean
@@ -3569,12 +3905,32 @@ export type Database = {
         }
         Returns: boolean
       }
+      qteklink_upsert_customers: {
+        Args: { p_customers: Json; p_shop_id: number }
+        Returns: number
+      }
       qteklink_upsert_date_move: {
         Args: {
           p_new_business_date: string
           p_new_total_cents: number
           p_original_business_date: string
           p_original_total_cents: number
+          p_realm_id: string
+          p_ro_number: string
+          p_shop_id: number
+          p_tekmetric_ro_id: number
+        }
+        Returns: {
+          changed: boolean
+          id: string
+        }[]
+      }
+      qteklink_upsert_payment_redate: {
+        Args: {
+          p_amount_cents: number
+          p_business_date: string
+          p_customer_name: string
+          p_payment_id: number
           p_realm_id: string
           p_ro_number: string
           p_shop_id: number
@@ -3614,6 +3970,10 @@ export type Database = {
           p_tekmetric_ro_id: number
         }
         Returns: string
+      }
+      qteklink_upsert_ros: {
+        Args: { p_ros: Json; p_shop_id: number }
+        Returns: number
       }
       qteklink_upsert_settings: {
         Args: {
@@ -3824,10 +4184,141 @@ export type Database = {
         Args: never
         Returns: undefined
       }
+      scheduler_admin_add_closed_date: {
+        Args: {
+          p_actor: string
+          p_closed_date: string
+          p_reason: string
+          p_shop_id: number
+        }
+        Returns: Json
+      }
+      scheduler_admin_direct_log: {
+        Args: {
+          p_actor: string
+          p_added: number
+          p_deactivated: number
+          p_diff: Json
+          p_modified: number
+          p_shop_id: number
+          p_snapshot: Json
+          p_surface: string
+          p_table_name: string
+        }
+        Returns: number
+      }
+      scheduler_admin_remove_closed_date: {
+        Args: { p_actor: string; p_closed_date: string; p_shop_id: number }
+        Returns: Json
+      }
+      scheduler_admin_set_appointment_limits: {
+        Args: {
+          p_actor: string
+          p_day_of_week: number
+          p_expected_updated_at?: string
+          p_patch: Json
+          p_shop_id: number
+        }
+        Returns: Json
+      }
+      scheduler_admin_update_category_guideline: {
+        Args: {
+          p_actor: string
+          p_category: string
+          p_display_label: string
+          p_expected_updated_at?: string
+          p_guideline_prose: string
+          p_shop_id: number
+        }
+        Returns: Json
+      }
+      scheduler_admin_update_question_required_facts: {
+        Args: {
+          p_actor: string
+          p_expected_updated_at?: string
+          p_question_id: number
+          p_required_facts: string[]
+          p_shop_id: number
+        }
+        Returns: Json
+      }
+      scheduler_admin_update_subcategory_enrichment: {
+        Args: {
+          p_actor: string
+          p_expected_updated_at?: string
+          p_patch: Json
+          p_shop_id: number
+          p_subcategory_id: number
+        }
+        Returns: Json
+      }
+      scheduler_admin_update_subcategory_service_map: {
+        Args: {
+          p_actor: string
+          p_eligible_keys: string[]
+          p_expected_updated_at?: string
+          p_shop_id: number
+          p_subcategory_id: number
+        }
+        Returns: Json
+      }
+      scheduler_admin_upsert_concern_question: {
+        Args: {
+          p_actor: string
+          p_expected_updated_at?: string
+          p_question: Json
+          p_shop_id: number
+        }
+        Returns: Json
+      }
+      scheduler_admin_upsert_routine_service: {
+        Args: {
+          p_actor: string
+          p_expected_updated_at?: string
+          p_service: Json
+          p_shop_id: number
+        }
+        Returns: Json
+      }
+      scheduler_admin_upsert_testing_service: {
+        Args: {
+          p_actor: string
+          p_expected_updated_at?: string
+          p_service: Json
+          p_shop_id: number
+        }
+        Returns: Json
+      }
+      scheduler_deactivate_appointment_type: {
+        Args: { p_actor: string; p_id: string; p_shop_id: number }
+        Returns: Json
+      }
       scheduler_get_service_role_key: { Args: never; Returns: string }
       scheduler_invoke_edge_function: {
         Args: { p_body?: Json; p_function_name: string }
         Returns: number
+      }
+      scheduler_set_appointment_type: {
+        Args: {
+          p_actor: string
+          p_expected_updated_at?: string
+          p_shop_id: number
+          p_type: Json
+        }
+        Returns: Json
+      }
+      scheduler_set_message_template: {
+        Args: {
+          p_actor: string
+          p_body: string
+          p_channel: string
+          p_expected_updated_at?: string
+          p_kind: string
+          p_shop_id: number
+          p_subject: string
+          p_type_id: string
+        }
+        Returns: Json
       }
       scheduler_shop_now: { Args: never; Returns: Json }
       sentry_cron_checkin: {

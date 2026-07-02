@@ -244,7 +244,7 @@ describe("submitStartOverV2", () => {
     await submitStartOverV2({ chatId: "sess-abc" });
 
     // Plan 04 Phase 5B: applyWizardTransition replaced the 3-path
-    // ["/", "/book", "/book-v2"] loop with a single revalidatePath("/", "page")
+    // legacy ["/", "/book", "/book-v2"] loop (the /book-v2 route itself was deleted 2026-06-13) with a single revalidatePath("/", "page")
     // fallback + a per-session revalidateTag. Asserting on the path
     // here keeps the regression-detection signal for the fallback path.
     expect(revalidatePathMock).toHaveBeenCalledWith("/", "page");
