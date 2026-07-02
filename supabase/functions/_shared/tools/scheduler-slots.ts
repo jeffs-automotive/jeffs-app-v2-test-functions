@@ -36,6 +36,11 @@ import {
   type TekmetricPage,
 } from "../tekmetric-client.ts";
 import { logEdgeError } from "../log-edge-error.ts";
+import {
+  type AppointmentTypeRow,
+  laneForColor,
+  loadAppointmentTypes,
+} from "../scheduler-appointment-types.ts";
 // 2026-05-25 post-audit extraction: shop-local TZ helpers promoted to
 // `_shared/scheduler-tz.ts` so appointments-sync + this file + future
 // edge fns all share one source of truth. shopLocalToIsoString was
@@ -219,20 +224,16 @@ function addDays(d: Date, days: number): Date {
  * the shadow.
  */
 function classifyAppointmentType(
+  types: AppointmentTypeRow[] | null,
   color: string | null | undefined,
   startTime?: string,
 ): "waiter" | "dropoff" {
-  const c = (color ?? "").toLowerCase();
-  switch (c) {
-    case "#d01919": return "waiter";
-    case "#0d4a80":
-    case "#fcb70d":
-    case "#f0572a":
-    case "#1786e8":
-    case "#128743":
-      return "dropoff";
-  }
-  // No color set — fall back to shop-local-hour heuristic. Was
+  // B2 2026-07-02: table-driven via scheduler_appointment_types (static
+  // fallback inside laneForColor preserves the retired switch's mapping
+  // exactly — see _shared/scheduler-appointment-types.ts).
+  const lane = laneForColor(types, color);
+  if (lane) return lane;
+  // No/unknown color — fall back to shop-local-hour heuristic. Was
   // UTC-hour (12 or 13 = waiter) which works in EDT but is off by
   // one in EST (where shop 8/9 AM = UTC 13/14). P0 TZ fix
   // (2026-05-25 Validator-3 audit).
@@ -417,6 +418,8 @@ export async function listAvailableSlots(
     } else {
       // Beyond shadow horizon — fall through to Tekmetric direct
       const { start: dStart, end: dEnd } = shopLocalDayBoundsUtc(date);
+      // B2: table-driven classifier (5-min-cached; null → static fallback).
+      const apptTypes = await loadAppointmentTypes(sb, shopId);
       try {
         const page = await tekmetricGetJson<
           TekmetricPage<TekmetricAppointment>
@@ -442,7 +445,7 @@ export async function listAvailableSlots(
             continue;
           }
           totalDayCount += 1;
-          const t = classifyAppointmentType(a.color, a.startTime);
+          const t = classifyAppointmentType(apptTypes, a.color, a.startTime);
           if (t === "waiter") {
             // P0 TZ fix: same UTC-hour bucketing bug as the shadow
             // path above — see shopLocalDateAndHour comment for the
@@ -693,6 +696,8 @@ export async function holdAppointmentSlot(
   // Pre-check: count Tekmetric appointments for that slot
   const { start: dStart, end: dEnd } = shopLocalDayBoundsUtc(date);
   let tekmetricSlotCount = 0;
+  // B2: table-driven classifier (5-min-cached; null → static fallback).
+  const apptTypesForCount = await loadAppointmentTypes(sb, shopId);
   try {
     const page = await tekmetricGetJson<TekmetricPage<TekmetricAppointment>>(
       sb,
@@ -708,7 +713,7 @@ export async function holdAppointmentSlot(
       ) {
         continue;
       }
-      const aType = classifyAppointmentType(a.color, a.startTime);
+      const aType = classifyAppointmentType(apptTypesForCount, a.color, a.startTime);
       if (type === "waiter") {
         if (aType !== "waiter") continue;
         // P0 TZ fix: was UTC-hour bucketing (works in EDT, off by one

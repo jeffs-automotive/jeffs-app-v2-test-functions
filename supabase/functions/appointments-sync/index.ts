@@ -33,6 +33,10 @@ import {
   type TekmetricPage,
 } from "../_shared/tekmetric-client.ts";
 import { ENV_NAMES } from "../_shared/tekmetric.ts";
+import {
+  laneForColor,
+  loadAppointmentTypes,
+} from "../_shared/scheduler-appointment-types.ts";
 // 2026-05-25 audit Validator-3: rolling 7-day window was UTC-derived;
 // switched to shop-local to fix the "missing today's early appointments
 // + false soft-deletes at the day boundary" bug.
@@ -155,20 +159,12 @@ interface TekmetricAppointment {
  * @param color  hex color from Tekmetric (e.g., "#D01919"); case-insensitive
  * @returns "waiter" if red, else "dropoff"
  */
-function classifyAppointmentType(color: string | null | undefined): "waiter" | "dropoff" {
-  const c = (color ?? "").toLowerCase();
-  switch (c) {
-    case "#d01919": return "waiter";    // red
-    case "#0d4a80": return "dropoff";   // navy (default)
-    case "#fcb70d": return "dropoff";   // yellow loaner
-    case "#f0572a": return "dropoff";   // orange tow-in
-    case "#1786e8": return "dropoff";   // blue needs-ride
-    case "#128743": return "dropoff";   // green needs-by
-    // light_green / lavender / purple — hex codes not yet observed; default
-    // to dropoff for safety. Add explicit cases here if they start appearing.
-    default:        return "dropoff";   // unknown / null / pre-Phase-9d rows
-  }
-}
+// Sub-feature B2 (2026-07-02, config-webforms-comms-types-plan §2): the
+// hardcoded switch moved to the TABLE-DRIVEN shared classifier —
+// _shared/scheduler-appointment-types.ts laneForColor() over
+// public.scheduler_appointment_types (static fallback preserves this exact
+// mapping when the table is unreadable). Unknown/null color stays "dropoff"
+// via the ?? at the call site.
 
 function ymd(d: Date): string {
   const y = d.getUTCFullYear();
@@ -240,6 +236,10 @@ async function runSync(): Promise<SyncResult> {
   const startIso = shopLocalDayBoundsUtc(todayYmd).start;
   const endIso = shopLocalDayBoundsUtc(endYmd).start;
 
+  // B2: table-driven classifier input. null on read failure → laneForColor
+  // serves the static legacy mapping (fail-safe; sync never blocks on it).
+  const apptTypes = await loadAppointmentTypes(sb, SHOP_ID);
+
   let items: TekmetricAppointment[];
   let pages: number;
   try {
@@ -293,10 +293,11 @@ async function runSync(): Promise<SyncResult> {
       vehicle_id: a.vehicleId ?? null,
       start_time: a.startTime,
       end_time: a.endTime,
-      // Phase 9d 2026-05-16: color-derived classifier replaces the prior
-      // appointmentOption.code + UTC-hour heuristic. See classifyAppointmentType
-      // above for the full color-to-type mapping.
-      appointment_type: classifyAppointmentType(a.color ?? null),
+      // Phase 9d 2026-05-16: color-derived classification (replaced the prior
+      // appointmentOption.code + UTC-hour heuristic). B2 2026-07-02: now
+      // table-driven via scheduler_appointment_types; unknown/null → dropoff
+      // (unchanged).
+      appointment_type: laneForColor(apptTypes, a.color ?? null) ?? "dropoff",
       // Phase 9d 2026-05-16: appointmentStatus is a BARE STRING on the
       // Tekmetric side ("NONE" | "CANCELED" | "ARRIVED" | "NO_SHOW"), not
       // a { id, name, code } object. The prior `?.code` read returned
