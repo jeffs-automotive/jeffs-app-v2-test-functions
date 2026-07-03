@@ -1,0 +1,1984 @@
+{
+ "harvested_at": "2026-07-03",
+ "source": "forum-concern-harvest wf_5ffa3e16-0dd",
+ "total_collected": 249,
+ "dropped_failed_verification": 0,
+ "concerns": [
+  {
+   "domain": "brakes",
+   "spot_verified": true,
+   "text": "Brake pedal not holding, it sinks to the floor. i have change the brake master cylinder but did not fix. I have bleed the brake system, it has improve little bit, in the sense of the pedal holding at certain point, but if constant pressure is kept on the pedal it will still sink to the floor.",
+   "source_url": "https://www.2carpros.com/questions/brakes-pedal-sinks-to-the-floor",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2008 Dodge Avenger"
+  },
+  {
+   "domain": "brakes",
+   "spot_verified": false,
+   "text": "The brake pedal sinks to floor when engine running and hard pedal when car is off. replaced the master cylinder.new .bench bled installed.bled brake entire starting at rear right rear left front right front.",
+   "source_url": "https://www.2carpros.com/questions/brake-pedal-sinks-to-floor-91756519",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2001 Toyota Camry Solara"
+  },
+  {
+   "domain": "brakes",
+   "spot_verified": false,
+   "text": "When I have been driving the van, and come to a stop in \"drive\", after about ten seconds, the brake pedal slowly sinks, and lets the van move forward.",
+   "source_url": "https://www.2carpros.com/questions/brake-pedal-slowly-sinks-when-at-a-stoplight",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2004 Ford E-Series Van"
+  },
+  {
+   "domain": "brakes",
+   "spot_verified": true,
+   "text": "I have a sinking brake pedal. I've replaced the master cylinder, ABS pump, wheel cylinders, drums, shoes, rotors and pads. New ca pliers on front a d new lines. I have a sinking pedal. The brakes engage but as the pedal sinks the obviously lose their braking power.",
+   "source_url": "https://www.2carpros.com/questions/sinking-brake-pedal-55150549",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2004 Toyota Tundra"
+  },
+  {
+   "domain": "brakes",
+   "spot_verified": false,
+   "text": "Hi guys, so the other day I noticed my brakes were almost to the floor, so I took it home and discovered a brake line under the hood had busted, it's I believe the main line from the rear of the master cylinder to the union joint on the ABS module.",
+   "source_url": "https://www.2carpros.com/questions/brakes-to-the-floor-41237384",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2006 Dodge Magnum"
+  },
+  {
+   "domain": "brakes",
+   "spot_verified": false,
+   "text": "I have replaced my brake pads, my rotors, my calipers, my CV axle, my tire rods, my front differential, and I still cannot figure out what the grinding is coming from. It's getting worse.",
+   "source_url": "https://www.2carpros.com/questions/grinding-while-driving-and-braking",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2003 Chevrolet Tahoe"
+  },
+  {
+   "domain": "brakes",
+   "spot_verified": true,
+   "text": "hello, I have '07 Envoy & I recently experienced that when I brake I hear a grinding noise I think I need brakes",
+   "source_url": "https://www.2carpros.com/questions/2007-gmc-envoy-below",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2007 GMC Envoy"
+  },
+  {
+   "domain": "brakes",
+   "spot_verified": false,
+   "text": "Every time I step on the brake on my van I hear this squeaking noise on the rear. I can also hear this noise after parking and apply the parking brake. What I mean is, while it is park I try to shake and I can hear this noise.",
+   "source_url": "https://www.2carpros.com/questions/squeaking-noise-on-rear-brakes",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2014 Dodge Caravan"
+  },
+  {
+   "domain": "brakes",
+   "spot_verified": false,
+   "text": "I have just replaced my brake pads and rotors and sometimes I do hear a squeaking sound during when I only apply my brakes when coming to stopping or slowing down.",
+   "source_url": "https://www.2carpros.com/questions/applying-brakes-s-squeaking-noise",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2007 Chevrolet Tahoe"
+  },
+  {
+   "domain": "brakes",
+   "spot_verified": true,
+   "text": "Checked the handbrake switch and it works fine, and the brake fluid is at the max. I have also unplugged the brake fluid reservoir sensor, also still the light is on.",
+   "source_url": "https://www.2carpros.com/questions/hand-brake-light-always-on",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2011 Toyota Corolla"
+  },
+  {
+   "domain": "brakes",
+   "spot_verified": false,
+   "text": "I just changed my master cylinder and my brake light stays on. I checked the fluid it was a little low so I filled it up. But I noticed that I have to fill it after a while when using the car. Is it possible that they did not bleed the brakes?",
+   "source_url": "https://www.2carpros.com/questions/brake-light-stays-on",
+   "source_site": "2carpros.com",
+   "vehicle_context": "1998 Toyota Corolla"
+  },
+  {
+   "domain": "brakes",
+   "spot_verified": false,
+   "text": "So, my car pulls to the left when i have to suddenly brake too hard. I've had it looked at several times. One shop said alignment. One shop said there's a caliper locked on my front right wheel.",
+   "source_url": "https://www.2carpros.com/questions/breaks-58709902",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2007 Kia Sportage"
+  },
+  {
+   "domain": "brakes",
+   "spot_verified": true,
+   "text": "The light stays on, the fluid is full, the brakes are fine, the pads are fine, even tried bypassing the float switch in the master cylinder",
+   "source_url": "https://www.2carpros.com/questions/brake-fluid-level-indicator-light-on-the-dash",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2006 Honda Civic"
+  },
+  {
+   "domain": "brakes",
+   "spot_verified": false,
+   "text": "This brake lamp light on my dash lit up today.. any ideas? The brake lights are working.",
+   "source_url": "https://www.2carpros.com/questions/brake-lamp-dash-light",
+   "source_site": "2carpros.com",
+   "vehicle_context": "1989 Honda Accord"
+  },
+  {
+   "domain": "brakes",
+   "spot_verified": false,
+   "text": "My 2001 4runner violently shakes/shudders/wobbles when I apply the brakes, regardless of how fast or slow I'm driving. It feels like the rotors are badly warped, but the rotors are good, brakes also. They were replaced about a year ago. The car stops just fine - but the way it shudders is terrifying. The whole car shakes.",
+   "source_url": "https://community.cartalk.com/t/severe-brake-shudder/124957",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2001 Toyota 4Runner"
+  },
+  {
+   "domain": "brakes",
+   "spot_verified": true,
+   "text": "Since the move it has started to make a grinding noise. At first it only happened when I was turning sharply and the A/C was on, if the A/C was off it didn't happen. The noise started to happen when I was braking and now the noise is happening when I am driving and getting worse when I brake. I had the brakes replaced less than 6 months ago.",
+   "source_url": "https://community.cartalk.com/t/grinding-noise-when-braking-and-now-also-when-driving/36813",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2001 Mitsubishi Galant"
+  },
+  {
+   "domain": "brakes",
+   "spot_verified": false,
+   "text": "After replacing my brake pads and shoes I am hearing a squealing noise coming from the area near my brake pedal. This noise sometimes becomes high pitched if I depress the brake too hard. I am also losing a little bit of brake fluid if I depress the pedal hard several times. The brakes themselves function fine and have no problem stopping.",
+   "source_url": "https://community.cartalk.com/t/squealing-noise-coming-from-my-brake-pedal/80649",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "1997 Pontiac Sunfire"
+  },
+  {
+   "domain": "brakes",
+   "spot_verified": false,
+   "text": "The braking used to also produced that noise at low speeds, but after stopping quickly multiple times from 50MPH (On a road without anyone on it!) it's become a squeaking noise under any amount of brake pressure.",
+   "source_url": "https://community.cartalk.com/t/2013-toyota-camry-squealing-under-braking-grinding-when-turning-at-speed/178806",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2013 Toyota Camry"
+  },
+  {
+   "domain": "ac-heat",
+   "spot_verified": true,
+   "text": "So I have a 2005 Ford F150 4.6 V8 150,000 miles on it and the Heat will blow warm not hot just warm and after a couple of seconds it will get cold and just blow cool air",
+   "source_url": "https://community.cartalk.com/t/no-heat-in-cabin-flushed-heater-core-still-nothing/109307",
+   "source_site": "Car Talk Community",
+   "vehicle_context": "2005 Ford F150"
+  },
+  {
+   "domain": "ac-heat",
+   "spot_verified": false,
+   "text": "as of 2021 late winter, the heater stopped working. I also noticed that, when I shift from coolest to warmest temperature, the air flow slows to almost off. Bizarre?",
+   "source_url": "https://community.cartalk.com/t/dodge-caravan-heater-not-working/179604",
+   "source_site": "Car Talk Community",
+   "vehicle_context": "2000 Dodge Caravan"
+  },
+  {
+   "domain": "ac-heat",
+   "spot_verified": false,
+   "text": "2001 over heating no hot air from heater antifreeze level is good all belts working",
+   "source_url": "https://community.cartalk.com/t/heater-blowing-cold-air-but-vehicle-is-overheating-anti-freeze-is-at-right-level/187213",
+   "source_site": "Car Talk Community",
+   "vehicle_context": "2001 Mazda Tribute"
+  },
+  {
+   "domain": "ac-heat",
+   "spot_verified": true,
+   "text": "When I have the thermostat set to cold/cool for non-mixed ambient outside air to be blown at any speed, it blows warm air that smells like the engine bay. This remains true under all driving conditions until I reach highway speed.",
+   "source_url": "https://www.2carpros.com/questions/warm-air-blows-on-cold-setting",
+   "source_site": "2CarPros",
+   "vehicle_context": "2005 Subaru Outback"
+  },
+  {
+   "domain": "ac-heat",
+   "spot_verified": false,
+   "text": "Air conditioner intermittently stops blowing cool air. Doesn't follow a pattern. It can work fine for a few days, or it can happen several times a day, Iong or short drives. Sometimes turning the engine off and back on helps or turning Auto on and off. No odd noises or smells. This only effects the front Air. The back seat Air works perfect.",
+   "source_url": "https://www.2carpros.com/questions/ac-blowing-warm-air-cold-air-intermittently",
+   "source_site": "2CarPros",
+   "vehicle_context": "2011 Honda Pilot"
+  },
+  {
+   "domain": "ac-heat",
+   "spot_verified": false,
+   "text": "A/C was working fine then the next morning it was not. I checked the refrigerant, it is full, the compressor is turning fine but it just blows hot air.",
+   "source_url": "https://www.2carpros.com/questions/a-c-blows-hot-air-31792567",
+   "source_site": "2CarPros",
+   "vehicle_context": "2018 Ford Focus"
+  },
+  {
+   "domain": "ac-heat",
+   "spot_verified": true,
+   "text": "I have a 1992 Mazda 929 in which the heat does not work while the a/c does work perfectly.",
+   "source_url": "https://community.cartalk.com/t/no-heat-but-the-a-c-works/70673",
+   "source_site": "Car Talk Community",
+   "vehicle_context": "1992 Mazda 929"
+  },
+  {
+   "domain": "ac-heat",
+   "spot_verified": false,
+   "text": "After having the \"routine\" 60k tune up, my heat stopped working. Not great timing as it is winter.",
+   "source_url": "https://community.cartalk.com/t/heater-working-intermittently/77595",
+   "source_site": "Car Talk Community",
+   "vehicle_context": "2005 Nissan Sentra"
+  },
+  {
+   "domain": "ac-heat",
+   "spot_verified": false,
+   "text": "When first turned on, the amount of air blowing from the vents is plenty strong, but after about 20 minutes or so of driving, the air gets very weak. Hardly blowing anything out even on high.",
+   "source_url": "https://community.cartalk.com/t/2011-jeep-liberty-weak-airflow-from-vents-after-about-20-mins-of-driving/185366",
+   "source_site": "Car Talk Community",
+   "vehicle_context": "2011 Jeep Liberty"
+  },
+  {
+   "domain": "ac-heat",
+   "spot_verified": true,
+   "text": "I believe my A/C is leaking inside the car (2000 LX470). When running there is a slow drip onto the passengers side carpet in front of the seat.",
+   "source_url": "https://forum.ih8mud.com/threads/air-conditioner-leaking-on-passenger-floor-carpet.588669/",
+   "source_site": "IH8MUD Forum",
+   "vehicle_context": "2000 Lexus LX470"
+  },
+  {
+   "domain": "ac-heat",
+   "spot_verified": false,
+   "text": "Water is leaking into the driver's side of my car. The floor is full or water! It seems to happen only when I drive with the air conditioning on. Where is the water coming from? Will this be difficult to get fixed?",
+   "source_url": "https://www.yourmechanic.com/question/car-leaking-water-into-driver-s-side-when-air-conditioner-on",
+   "source_site": "YourMechanic",
+   "vehicle_context": "2010 Mitsubishi Endeavor"
+  },
+  {
+   "domain": "ac-heat",
+   "spot_verified": false,
+   "text": "When I turn on the A/C, the air coming out stinks like a mildew order. It lasts long enough to get in my clothes, etc.",
+   "source_url": "https://www.2carpros.com/questions/toyota-avalon-ac-musty-odor",
+   "source_site": "2CarPros",
+   "vehicle_context": "2000 Toyota Avalon"
+  },
+  {
+   "domain": "ac-heat",
+   "spot_verified": true,
+   "text": "I just bought this car. When I turn the AC or heat on, the smell of garbage, or dead animal rushes through the car.",
+   "source_url": "https://www.2carpros.com/questions/terrible-smell-coming-from-vents",
+   "source_site": "2CarPros",
+   "vehicle_context": "2001 Chevrolet Cavalier"
+  },
+  {
+   "domain": "ac-heat",
+   "spot_verified": false,
+   "text": "front floor board, passenger side, under floor mat, you can visibly see water standing, the top of floor mat is not wet.",
+   "source_url": "https://www.2carpros.com/questions/ford-taurus-2005-ford-taurus-something-leaking-somewhere",
+   "source_site": "2CarPros",
+   "vehicle_context": "2005 Ford Taurus"
+  },
+  {
+   "domain": "ac-heat",
+   "spot_verified": false,
+   "text": "late last summer, the AC stopped blowing cold air. This year, I filled it with refrigerant & 1 tall can just got it into the green. It ran pretty good for 10 days, then stopped completly, then 10 days later it started blowing cold again. Now it seems to blow cold on cooler days, but hot air at 85+ degrees.",
+   "source_url": "https://community.cartalk.com/t/ac-works-on-cool-days-but-not-on-hot-days/178195",
+   "source_site": "Car Talk Community",
+   "vehicle_context": "2003 Buick Century"
+  },
+  {
+   "domain": "ac-heat",
+   "spot_verified": true,
+   "text": "When I turn on the air conditioning or heat with the air circulation on, a really bad \"gym-bag\" kind of smell comes out.. This also happens when the car just sits there for at least 10 minutes.. However, when I turn on the AC without the air circulation on, the smell goes away.",
+   "source_url": "https://www.2carpros.com/questions/honda-other-99-honda-crv-air-conditioning",
+   "source_site": "2CarPros",
+   "vehicle_context": "1999 Honda CRV"
+  },
+  {
+   "domain": "ac-heat",
+   "spot_verified": false,
+   "text": "Daughter has the vehicle listed above. No air blowing from vents. The blower motor and resistor have been changed with no luck.",
+   "source_url": "https://www.2carpros.com/questions/no-air-blowing-ac-or-heat",
+   "source_site": "2CarPros",
+   "vehicle_context": "2004 Ford Escape"
+  },
+  {
+   "domain": "ac-heat",
+   "spot_verified": false,
+   "text": "My AC blows cold for about fifteen to twenty minutes and then it will start blowing warm after, need to turn off the switch (on dashboard) for about three to five minutes and then turn it on before it will start blowing cold air again. This happens during outside temperature is hot.",
+   "source_url": "https://www.2carpros.com/questions/2000-isuzu-trooper-ac-blows-cold-then-warm",
+   "source_site": "2CarPros",
+   "vehicle_context": "2000 Isuzu Trooper"
+  },
+  {
+   "domain": "ac-heat",
+   "spot_verified": false,
+   "text": "So our heat/ac has not been working for over a year. I think it might be an electrical issue. it used to work every once in a while, but now, its not working at all.",
+   "source_url": "https://community.cartalk.com/t/blower-not-working-for-ac-or-heat/108692",
+   "source_site": "Car Talk Community",
+   "vehicle_context": "1999 Buick Regal"
+  },
+  {
+   "domain": "ac-heat",
+   "spot_verified": false,
+   "text": "Just bought a used car in florida and drove it non-stop to NYS-1500 miles.When I got into SC I needed heat and found out that it does not work.",
+   "source_url": "https://community.cartalk.com/t/heater-problem-no-heat/40988",
+   "source_site": "Car Talk Community",
+   "vehicle_context": "1997 Chrysler Town & Country"
+  },
+  {
+   "domain": "noises",
+   "spot_verified": true,
+   "text": "About a month later I noticed a weird sound like a humming noise coming from the front of the car but only after hitting around 30 MPH.",
+   "source_url": "https://www.2carpros.com/questions/car-makes-a-weird-noise-passenger-front",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2005 Hyundai Elantra"
+  },
+  {
+   "domain": "noises",
+   "spot_verified": false,
+   "text": "Car has a loud humming noise at very low speed on driver side I believe from the rear depending on type of road it hums less at higher speed. Please advise, at low speed it almost sounds like the tire has a bulge, but tires are not very old. Thanks for your help.",
+   "source_url": "https://www.2carpros.com/questions/humming-noise-low-speed",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2015 Honda Accord"
+  },
+  {
+   "domain": "noises",
+   "spot_verified": false,
+   "text": "The problem of going more than 40 MPH while making a left turn my van makes a metal grinding sound. After replacing those parts, the problem still occurs.",
+   "source_url": "https://www.2carpros.com/questions/turning-left-making-a-grinding-sound",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2000 Chevrolet Astro"
+  },
+  {
+   "domain": "noises",
+   "spot_verified": true,
+   "text": "Best way I can describe the sound is it is like driving over fresh snow. Kind of squeaky, kind of grinding only louder and there is no snow right now. I only hear it when I turn left and only under about thirty mph.",
+   "source_url": "https://www.2carpros.com/questions/crunching-grinding-noise-turning-left",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2007 Kia Sedona"
+  },
+  {
+   "domain": "noises",
+   "spot_verified": false,
+   "text": "Noticing whinny/humming noise when accelerating and when let off gas stops. Transmission flush was done recently. Car drives normal besides this noise. Could it be differential? They recommended getting those flushed last oil change.",
+   "source_url": "https://www.2carpros.com/questions/whining-noise-64595504",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2010 GMC Yukon"
+  },
+  {
+   "domain": "noises",
+   "spot_verified": false,
+   "text": "there is no slipping and the noise acts the same whether I'm parked, neutral, D, 2, 1. What might this be? It sounds like a bad bearing, and it is loud.",
+   "source_url": "https://community.cartalk.com/t/whining-noise-that-gets-louder-when-i-accelerate/42820",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "Ford Expedition"
+  },
+  {
+   "domain": "noises",
+   "spot_verified": true,
+   "text": "Just recently we have a rattling noise when the car is driving between 5 and 40mph. No sound when stopped at red light or in park or neutral. Rattling seems to be coming from right under the middle of the car.",
+   "source_url": "https://www.2carpros.com/questions/rattling-noise-under-car-when-driving",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2005 Chrysler Crossfire"
+  },
+  {
+   "domain": "noises",
+   "spot_verified": false,
+   "text": "To be short, there is a loud clunking sound when driving over street bumps or ditches. I have stood atop of the tires on both the front and rear end, made the car bounce up and down, but there is no noise produced.",
+   "source_url": "https://www.2carpros.com/questions/clunking-noise-over-bumps",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2005 Toyota Camry"
+  },
+  {
+   "domain": "noises",
+   "spot_verified": false,
+   "text": "My car has clunking noises when going over bumps or turning left, I had a new parts fitted couple months ago CV joints, tie rods, steering rod, boot kits. I do not know what it could be, tried to look, I know this sounds daft, is it safe to drive, for a few days ,",
+   "source_url": "https://www.2carpros.com/questions/clunking-51159672",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2003 Renault Laguna"
+  },
+  {
+   "domain": "noises",
+   "spot_verified": true,
+   "text": "When the rear of my truck goes over bumps it makes a rattle/clunking noise but I can't find where it is coming from.",
+   "source_url": "https://community.cartalk.com/t/rattle-clunking-noise-going-over-bumps/95310",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2001 Chevy Silverado 1500"
+  },
+  {
+   "domain": "noises",
+   "spot_verified": false,
+   "text": "I have a 2013 Subaru Outback that since I bought it, has had a rhythmic humming noise/vibration when at highway speeds (55-70). Sounds like a hum, hum, hum once per second. Vibration doesn't shake the wheel, but you can feel it in the floorboards. Rhythm gets faster when driving around a curve to the left, quieter when curving to the right.",
+   "source_url": "https://community.cartalk.com/t/rhythmic-humming-noise-at-highway-speeds/196416",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2013 Subaru Outback"
+  },
+  {
+   "domain": "noises",
+   "spot_verified": false,
+   "text": "Clunking noise coming from front end while going over bumps. I have taken it in three times and the mechanic cannot figure out where the clunking is coming from. He has replaced control arms with ball joints, sway bar links, front outer tie rods and bushings. Now he thinks it might be my calipers, can calipers make a clunking noise? This clunking noise is driving me crazy!",
+   "source_url": "https://www.2carpros.com/questions/clunking-front-end",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2008 Ford Escape"
+  },
+  {
+   "domain": "noises",
+   "spot_verified": true,
+   "text": "I have recently started hearing a knocking noise from my front driver wheel area that speeds up as I speed up. I recently replaced the lower control arm, inner and outer tie rod ends, brakes, rotor, CV axle, and ball joint.",
+   "source_url": "https://www.2carpros.com/questions/knocking-noise-64454038",
+   "source_site": "2carpros.com",
+   "vehicle_context": "1998 Nissan Sentra"
+  },
+  {
+   "domain": "noises",
+   "spot_verified": false,
+   "text": "I have a ford ka+ 2018, owned it for a week and noticed when I'm driving over speed bumps there's a strange sound from the front left of the car.",
+   "source_url": "https://community.cartalk.com/t/crunching-crushing-sound-over-speed-bumps/181940",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2018 Ford Ka+"
+  },
+  {
+   "domain": "noises",
+   "spot_verified": false,
+   "text": "When driving just over 60 mph, there is a fairly loud humming sound at the back of the car (seems to be more toward the right rear).",
+   "source_url": "https://community.cartalk.com/t/annoying-humming-from-back-of-car/85022",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2010 Toyota Highlander"
+  },
+  {
+   "domain": "noises",
+   "spot_verified": true,
+   "text": "I have got a bad clunking/thumping when i turn my steering wheel barely to the left while driving. Not a full turn but like when going around a curve, and it is only to the left. I can feel the thumping and hear a clunking. Any help is appreciated!",
+   "source_url": "https://www.2carpros.com/questions/clunking-while-turning",
+   "source_site": "2carpros.com",
+   "vehicle_context": "1993 GMC Sonoma"
+  },
+  {
+   "domain": "noises",
+   "spot_verified": false,
+   "text": "Clunking, thumping, popping (depending upon one's definition of those words) noise from front passenger side when driving at slower speeds (two to thirty mph) over rough surface such as gravel driveway or a patched road surface and the front wheels are straight ahead. However, the noise is not there at all when steering wheel is turned 3/4 or more to full right turn.",
+   "source_url": "https://www.2carpros.com/questions/front-end-noise-66311521",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2006 Mercury Milan"
+  },
+  {
+   "domain": "noises",
+   "spot_verified": false,
+   "text": "Recently I have been hearing a humming noise that increases with speed. I don't get it when the car stops. I think it's coming from the rear but only when the car is moving and steadily increases in volume as speed increases and comes down as speed comes down.",
+   "source_url": "https://community.cartalk.com/t/humming-noise-from-rear/77817",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": ""
+  },
+  {
+   "domain": "noises",
+   "spot_verified": false,
+   "text": "After driving it for a while, we began to notice a bumping/clunking sound when going over bumps in the road. These sometimes sounded as if the struts were bottoming out.",
+   "source_url": "https://community.cartalk.com/t/clunking-bumping-sound-from-front-end/172778",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2017 Ford Escape SE"
+  },
+  {
+   "domain": "noises",
+   "spot_verified": false,
+   "text": "My car is making a loud scraping/rubbing noise mostly when I turn right, a tiny bit when turning left also. It's not clicking at all. It was doing this before, and I thought it was my front brakes, had them done. Now the noise is back, only much louder, and I'm afraid to drive my car anywhere for fear something will break.",
+   "source_url": "https://www.2carpros.com/questions/grinding-or-scraping-noise-when-turning",
+   "source_site": "2carpros.com",
+   "vehicle_context": "1995 Toyota Corolla"
+  },
+  {
+   "domain": "noises",
+   "spot_verified": false,
+   "text": "three days ago I started having a metal on metal grinding sound while turning left. The noise is located up on my right passenger wheel side. The noise is in sync with my tire rotating as I move. It sometimes does it when I'm going straight after a stopping at a stop light as well. The noise stops at around 40 mph every time.",
+   "source_url": "https://www.2carpros.com/questions/grind-while-turning",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2012 Toyota Camry"
+  },
+  {
+   "domain": "noises",
+   "spot_verified": false,
+   "text": "Our car started making a noise when driving 20-35 MPH on the roads back in June. I took it into the shop locally and they said that the front undercarriage pan was loose, and the wind was catching it and making the noise!",
+   "source_url": "https://www.2carpros.com/questions/ratteling-noise-at-low-speeds",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2012 Infiniti M37"
+  },
+  {
+   "domain": "noises",
+   "spot_verified": false,
+   "text": "I hear a whine sound while accelerating, that doesn't seem to match up with the RPM of the wheels. It is very noticeable and loud while going up hills. I hear the same sound with the car up in the air (all four wheels off the ground) and pressing the accelerator (all though not as loud as when going up a hill).",
+   "source_url": "https://community.cartalk.com/t/whine-sound-while-accelerating/193853",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2005 Toyota Camry"
+  },
+  {
+   "domain": "leaks",
+   "spot_verified": true,
+   "text": "I have the car listed above 3.0ohv and coolant is draining between engine and transmission. Is there a freeze plug between the two?",
+   "source_url": "https://www.2carpros.com/questions/coolant-leak-between-transmission-and-engine",
+   "source_site": "2carpros.com",
+   "vehicle_context": "1998 Ford Taurus"
+  },
+  {
+   "domain": "leaks",
+   "spot_verified": false,
+   "text": "My car started overheating the other day and now when I add water into the reserve it pours out the bottom of the engine. I will add a photo it looks like it's a gasket it drips right where a gasket should be anyway.",
+   "source_url": "https://www.2carpros.com/questions/water-coolant-leaking-from-engine",
+   "source_site": "2carpros.com",
+   "vehicle_context": "1996 Lincoln Town Car"
+  },
+  {
+   "domain": "leaks",
+   "spot_verified": false,
+   "text": "Bought a car last Friday, while inspecting it noticed it was kinda wet under the car, wiped my finger and left kind of a gloss, thought nothing of it, it's winter. Drove it home, added coolant, went through the tank. Added coolant again assuming it was just super low and sucked up a lot, it took half the tank of coolant.",
+   "source_url": "https://www.2carpros.com/questions/coolant-leaking-fast-not-sure-where-going",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2010 Chevrolet HHR"
+  },
+  {
+   "domain": "leaks",
+   "spot_verified": true,
+   "text": "My van has an oil leak on the passenger side of the vehicle. I looked underneath and the oil is dripping off a plastic cover near the front. It is saturating the metal brace that connects to somewhere that is covered by the plastic. The oil is not rushing out, but there are lots of 3-4 inch spots on the driveway where it's parked.",
+   "source_url": "https://www.2carpros.com/questions/2010-honda-odyssey-oil-leak",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2010 Honda Odyssey"
+  },
+  {
+   "domain": "leaks",
+   "spot_verified": false,
+   "text": "The van constantly drips oil when not running from bottom of engine and transmission were they bolt up. when I am driving it is leaking oil at a lot faster flow, and reason I say more is because under the van is soaked with oil from front to back of van.",
+   "source_url": "https://www.2carpros.com/questions/major-oil-leak-in-one-spot",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2011 Kia Sedona"
+  },
+  {
+   "domain": "leaks",
+   "spot_verified": false,
+   "text": "My truck has a pretty bad oil leak. then i actually added too much oil and did not know where the oil leak is actually from.",
+   "source_url": "https://www.2carpros.com/questions/oil-leak-99727559",
+   "source_site": "2carpros.com",
+   "vehicle_context": "1999 Chevrolet S-10"
+  },
+  {
+   "domain": "leaks",
+   "spot_verified": true,
+   "text": "I have a 2007 Mazda 3 with 203K miles. I noticed a small puddle of coolant under the car after parking on a modest down slope. The coolant level was well below the MIN level.",
+   "source_url": "https://community.cartalk.com/t/help-me-find-a-small-coolant-leak/198476",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2007 Mazda 3"
+  },
+  {
+   "domain": "leaks",
+   "spot_verified": false,
+   "text": "Car has sat for a month, never had an oil leak before. Woke up this morning to a puddle of oil under the car. What do you think is causing this?",
+   "source_url": "https://community.cartalk.com/t/oil-leak-on-a-car-that-hasnt-been-driven-in-a-month/121312",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2000 Ford Mustang"
+  },
+  {
+   "domain": "leaks",
+   "spot_verified": false,
+   "text": "Okay so I know this sounds weird, but my car only leaks transmission fluid after driving. I originally thought it was my pan gasket because I just did a fluid and filter change but it wasn't.",
+   "source_url": "https://community.cartalk.com/t/car-only-leaking-transmission-fluid-after-driving/169156",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "Buick LeSabre"
+  },
+  {
+   "domain": "leaks",
+   "spot_verified": true,
+   "text": "So I checked my transmission fluid and it was low. I bought a quart of transmission fluid and put it in. It was still a little low and I noticed some transmission fluid leaking on the ground underneath my car.",
+   "source_url": "https://community.cartalk.com/t/transmission-fluid-leak-is-my-car-scrap-metal/180684",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2004 Toyota Matrix XR"
+  },
+  {
+   "domain": "leaks",
+   "spot_verified": false,
+   "text": "Saturday morning, I noticed a small puddle under the car like you see when condensation drips off the AC. I knew this wasn't condensation because car hadn't been on in 12 hours and this was fresh. I touched it and it had a faint blue color and slight smell like coolant.",
+   "source_url": "https://community.cartalk.com/t/09-nissan-murano-coolant-leak-and-now-condenser-issues-not-sure-next-steps/166192",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2009 Nissan Murano"
+  },
+  {
+   "domain": "leaks",
+   "spot_verified": false,
+   "text": "When I park the vehicle and turn off the engine the coolant dumps out. I'm not sure, but I think it's dumping from the reservoir tank because the leaked coolant is sort of under that area.",
+   "source_url": "https://www.2carpros.com/questions/radiator-54750794",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2007 Nissan Xterra"
+  },
+  {
+   "domain": "leaks",
+   "spot_verified": true,
+   "text": "Three months ago i noticed oil dripping under my car listed above (mk3 CLX). Upon inspection it looked like the oil pan or this gasket. Upon pulling the car on a lift we found the leak to actually coming from up higher. checked all seals, no leaks. However, right underneath the exhaust manifold system at the rear of engine pools of oil leaking between the head and block.",
+   "source_url": "https://www.2carpros.com/questions/oil-leak-from-underneath-manifold",
+   "source_site": "2carpros.com",
+   "vehicle_context": "1997 Volkswagen Jetta"
+  },
+  {
+   "domain": "leaks",
+   "spot_verified": false,
+   "text": "Yesterday after I got home, I noticed fluid leaking out of the pipe located bottom center (more to the passenger side) of the vehicle. It was clear and had slightly oily texture with a tint of rubbery oily scent.",
+   "source_url": "https://community.cartalk.com/t/fluid-leak-from-the-bottom/170855",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2010 Kia Sedona"
+  },
+  {
+   "domain": "leaks",
+   "spot_verified": false,
+   "text": "Brake fluid light came on and had to refill reservoir. I put cardboard under car and seen 3-4 separate spots of dark liquid in center of cardboard. No gas smell and no real smell at all. Can this be a brake line leak?",
+   "source_url": "https://community.cartalk.com/t/what-would-be-leaking-underneath-car-in-the-center-along-cross-member/176082",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2006 Hyundai Sonata 3.3 V6"
+  },
+  {
+   "domain": "leaks",
+   "spot_verified": true,
+   "text": "My car leaks a fluid that looks like oil, feels like oil (not old, black oil though) but smells like nothing. I don't understand. I check ALL of my fluids every morning and before I drive it after it's been sitting for a few hours and none of the levels are dropping. It's usually just a few drops and comes from the front. Sometimes there will be a larger puddle, sometimes nothing.",
+   "source_url": "https://community.cartalk.com/t/car-leak-looks-like-oil/66285",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "1998 Chrysler Sebring JXi convertible"
+  },
+  {
+   "domain": "leaks",
+   "spot_verified": false,
+   "text": "my car is leaking power steering fluid but i can not find were it is coming from. today i noticed a puddle of fluid on the opposite side of power steering unit",
+   "source_url": "https://www.2carpros.com/questions/1999-ford-windstar-car-leaking-power-steering-fluid-find-coming-today-noticed",
+   "source_site": "2carpros.com",
+   "vehicle_context": "1999 Ford Windstar"
+  },
+  {
+   "domain": "leaks",
+   "spot_verified": false,
+   "text": "My car is leaking power steering fluid and it is coming from the driver side of the vehicle. There are drips and small puddles of power steering fluid under the car on the front driver side. The pump (which is on the passenger side) has been replaced within the year so I don't really know what could be causing the leak.",
+   "source_url": "https://www.2carpros.com/questions/power-steering-fluid-leak-26640172",
+   "source_site": "2carpros.com",
+   "vehicle_context": "1993 Toyota Camry"
+  },
+  {
+   "domain": "leaks",
+   "spot_verified": false,
+   "text": "Opened the hood and discovered brown liquid, which looks yellow when it's dried, splattered all over the passenger side of the engine. Doesn't smell like oil…maybe brake fluid? No obvious leaks or source when the engine is running, and no other symptoms when driving so far.",
+   "source_url": "https://community.cartalk.com/t/brown-liquid/133592",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2012 Mazda 5"
+  },
+  {
+   "domain": "leaks",
+   "spot_verified": false,
+   "text": "Car parked overnight on slightly sloped driveway (nose up). This morning, small coolant puddle under water pump area, with slow drip continuing. Reservoir looked empty, and check under radiator cap showed full. But slow drip seemed to pick up speed.",
+   "source_url": "https://community.cartalk.com/t/coolant-leak-mystery/105461",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "Chrysler Town & Country"
+  },
+  {
+   "domain": "warning-lights",
+   "spot_verified": true,
+   "text": "I was driving my 2001 Mazda 626 6 cylinder on a highway up a not very steep hill when it the engine shook and the check engine light came on. It stopped shaking when I slowed down, but it started again after I got a little above 2000 rpm or about 60 mph.",
+   "source_url": "https://www.2carpros.com/questions/started-shaking-and-check-engine-light-came-on",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2001 Mazda 626"
+  },
+  {
+   "domain": "warning-lights",
+   "spot_verified": false,
+   "text": "I was driving on the highway getting ready to exit, I sped up and drove around another car on a curve and my check engine light came on flashing as I rounded the curve. the flashing stopped in about 30 seconds, should I be worried about this?",
+   "source_url": "https://www.2carpros.com/questions/check-engine-light-came-on-while-on-the-highway",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2013 Ford Expedition"
+  },
+  {
+   "domain": "warning-lights",
+   "spot_verified": false,
+   "text": "A couple of weeks ago my check engine light came on and then the next day before taking it to the garage it went off. It has been perfect since then until this morning when I started the car and moved it into second gear, the check engine light came on and the car wouldn't speed up?",
+   "source_url": "https://www.2carpros.com/questions/why-does-the-check-engine-light-keep-on-going-on-and-off",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2006 Nissan Almera"
+  },
+  {
+   "domain": "warning-lights",
+   "spot_verified": true,
+   "text": "when I turn left the ABS and traction control light stays on for 20 seconds then goes away, I'm not sure what it could be I got my truck leveled and after that is when it started to happen, when I turn left and brake it gets hard to brake and every once in a while when I'm driving the dashboard flashes and all the power to the dashboard goes off and on.",
+   "source_url": "https://www.2carpros.com/questions/abs-light-and-traction-control-light-77564311",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2014 Ram 1500"
+  },
+  {
+   "domain": "warning-lights",
+   "spot_verified": false,
+   "text": "Sometimes when I'm driving the traction control, ABS, and hill assist lights light up on my dash. Vehicle still drives fine, sometimes they will disappear after I turn the car off and turn it back on. Sometimes it will remain on which will then make it difficult to put car in drive, as it will lock it in park.",
+   "source_url": "https://www.2carpros.com/questions/warning-lights-on-dash",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2013 Subaru Impreza"
+  },
+  {
+   "domain": "warning-lights",
+   "spot_verified": false,
+   "text": "Over the last couple of years I have noticed a quick blink of the battery light coming on and just as quick turning off so fast I would be like did I imagine that? It would only happen about once every couple of months. Over the last 2 weeks it has been coming on a lot now and staying on a little bit longer as time progresses. But always turns off after about 3-5 seconds or so.",
+   "source_url": "https://www.2carpros.com/questions/battery-light-comes-on-and-then-goes-off-while-driving-sometimes",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2001 Mercury Cougar"
+  },
+  {
+   "domain": "warning-lights",
+   "spot_verified": true,
+   "text": "The Oil light on the dash comes on when the engine is at idle speed. Oil light goes out when accelerating or moving at higher rpm than idle. This only happens after engine is warm. Do I have an oil pump problem?",
+   "source_url": "https://www.2carpros.com/questions/oil-light-comes-on-at-idle-speed",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2003 BMW 325i"
+  },
+  {
+   "domain": "warning-lights",
+   "spot_verified": false,
+   "text": "I have filled the tires to the appropriate size and the tried reseting the tire pressure sensor, but it will not go. it blinks three times and then stays on again.",
+   "source_url": "https://www.2carpros.com/questions/tire-pressure-sign-wont-go-away",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2009 Lexus RX 350"
+  },
+  {
+   "domain": "warning-lights",
+   "spot_verified": false,
+   "text": "This pasted Friday I was on the road and about seventy or so miles from home. I noticed the tire icon blinking off and on. So I stopped my truck got out and checked all the tires. All were a little high for being on the road. Released some air and went on to where I was going. When I arrived it was still blinking.",
+   "source_url": "https://www.2carpros.com/questions/tire-pressure-light-is-blinking-off-and-on",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2005 Toyota 4Runner"
+  },
+  {
+   "domain": "warning-lights",
+   "spot_verified": true,
+   "text": "Twice in the last month, all of the warning lights on the dashboard have come on. The car still runs, but barely. eventually slowing down to about 5 miles mph.",
+   "source_url": "https://www.2carpros.com/questions/all-dashboard-warning-lights-come-on",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2006 Dodge Charger"
+  },
+  {
+   "domain": "warning-lights",
+   "spot_verified": false,
+   "text": "All warning lights came on at once. Dealer diagnosed fuel injector(s) problem and recommended replacement. Decided to wait. One week later all the lights went off. Why?",
+   "source_url": "https://www.2carpros.com/questions/warning-lights-62406503",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2017 Honda CRV"
+  },
+  {
+   "domain": "warning-lights",
+   "spot_verified": false,
+   "text": "Hi, twice in the past few days I have been driving at a low speed when out of nowhere the battery light comes on and the car dies and comes to a stop. the car restarts instantly without any issues at all. Both times this has happened the heater has been turned on.",
+   "source_url": "https://www.2carpros.com/questions/battery-dies-whiles-driving-and-then-restarts",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2004 Volkswagen Polo"
+  },
+  {
+   "domain": "warning-lights",
+   "spot_verified": true,
+   "text": "While driving on the freeway my \"service engine soon\" light came on. The vehicle runs fine, idles fine, starts normally but the light stays on. So what's the problem? Oxygen sensor? or something else? Vehicle is 2002 GMC Sonoma pickup w/4.3 liter V-6 motor and 72,000 miles.",
+   "source_url": "https://community.cartalk.com/t/check-engine-light-came-on-while-driving/158239",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2002 GMC Sonoma"
+  },
+  {
+   "domain": "warning-lights",
+   "spot_verified": false,
+   "text": "I was driving around 70-75 mph when my check engine light came on and started flashing rhythmically. It went off about a minute, then a minute later it came on again. After another minute it went off. I haven't had it happen since then. Is this something serious? I have 2001 Chevy Blazer, and I recently replaced my thermostat because the engine light was on about a month ago.",
+   "source_url": "https://community.cartalk.com/t/engine-light-blinking-then-goes-off/56688",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2001 Chevy Blazer"
+  },
+  {
+   "domain": "warning-lights",
+   "spot_verified": false,
+   "text": "Honda accord( 2005), Engine lights off and on, Radio goes off a few seconds and then reboots by itself , ABS lights off and on, car still runs, power seems to be down slightly when engine lights comes on , stalled twice, but restarted right away.",
+   "source_url": "https://community.cartalk.com/t/check-engine-light-on-and-off-radio-goes-off-for-a-few-seconds-and-reboots/89010",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2005 Honda Accord"
+  },
+  {
+   "domain": "warning-lights",
+   "spot_verified": true,
+   "text": "Since I've owned it, whenever I'm cruising down the Interstate between 65 & 75 MPH the ABS & brake light come on. It does NOT do it while cruising in local traffic. I just replaced the center speed sensor on the differencial and am experiencing the same problem. I'm stumped!! Any suggestions?",
+   "source_url": "https://community.cartalk.com/t/abs-brake-light-on-dash/105931",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2001 Dodge Ram 1500"
+  },
+  {
+   "domain": "warning-lights",
+   "spot_verified": false,
+   "text": "I have a 2001 Chrysler Town & Country 3.8L w/164,000 miles. The brake and ABS light come on simultaneously while driving down the road. There doesn't seem to be a time frame or anything that I am doing that will make it come on consistently. I have had the front and back brakes replaced.",
+   "source_url": "https://community.cartalk.com/t/brake-and-abs-light-comes-on-randomly/37483",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2001 Chrysler Town & Country"
+  },
+  {
+   "domain": "warning-lights",
+   "spot_verified": false,
+   "text": "Intermittently, the oil pressure light flickers on when I'm driving. Sometimes, it flickers on when the RPMs drop in the range of 500-600 at traffic light and other stops. Most of the time, it does not come on at all.",
+   "source_url": "https://community.cartalk.com/t/oil-pressure-intermittent-warning-light-how-concerned-should-i-be/97373",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2005 Mazda MPV"
+  },
+  {
+   "domain": "warning-lights",
+   "spot_verified": false,
+   "text": "My problem is that after 15 mins or so of driving around, the Oil Pressure light comes on but only when idling. Such conditions include - When waiting at a traffic light - A little before coming to stop at a traffic light when I have released the gas pedal.",
+   "source_url": "https://community.cartalk.com/t/oil-pressure-light-comes-on-only-when-idling/46022",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "1991 Toyota Corolla LX"
+  },
+  {
+   "domain": "warning-lights",
+   "spot_verified": false,
+   "text": "2018 with 110,000 miles and the check engine came on while driving to work. This is the only ifo I have right now. Should I be worried?",
+   "source_url": "https://www.f150forum.com/f118/check-engine-light-came-morning-536930/",
+   "source_site": "f150forum.com",
+   "vehicle_context": "2018 Ford F-150"
+  },
+  {
+   "domain": "warning-lights",
+   "spot_verified": false,
+   "text": "My check engine light came on while I was sitting at a stop light. It stayed on for 2 days, probably 8-10 miles. Now it's no longer on. The engine did not miss or anything, no other lights came on. While the light was on, I could not use my remote start. If I tried remote start, the horn would honk.",
+   "source_url": "https://www.f150forum.com/f118/check-engine-light-2-days-then-off-408900/",
+   "source_site": "f150forum.com",
+   "vehicle_context": "2016 Ford F-150 XLT Sport 5.0 4WD"
+  },
+  {
+   "domain": "no-start-battery",
+   "spot_verified": true,
+   "text": "About 30 minutes later, I tried to start the car, and got a bunch of click click clicks in response. This has happened before on this car/battery, when I had a dead battery, so I got a jump from a fella in a big, new pickup truck. The subie started no problem. I drove it around to charge the battery (this usually works), then shut the engine off, and immediately tried a restart. All I got were clicks.",
+   "source_url": "https://www.2carpros.com/questions/1990-subaru-legacy-wont-start-cranks-slowly-even-when-jumped",
+   "source_site": "2carpros.com",
+   "vehicle_context": "1990 Subaru Legacy"
+  },
+  {
+   "domain": "no-start-battery",
+   "spot_verified": false,
+   "text": "I just started having an issue with the ignition when it gets pretty cold outside. I have to wait for about 30-60 seconds in until I start to hear a rapid clicking noise (lasts 2-3 seconds) from the hood, only then the engine will start. If I don't wait for the clicking noise the engine will crank but not start. My battery is good and alternator seems to be charging the battery well.",
+   "source_url": "https://www.2carpros.com/questions/car-wont-start-until-i-hear-a-rapid-clicking-noise",
+   "source_site": "2carpros.com",
+   "vehicle_context": "1995 Jeep Wrangler YJ"
+  },
+  {
+   "domain": "no-start-battery",
+   "spot_verified": false,
+   "text": "Very weird, intermittent issue. Twice now, 4 months apart, after driving a short distance then leaving the car for a few hours, it refuses to start. Pressing ignition leads to long crank and either no start, or a weak, sputtering start then engine dies.",
+   "source_url": "https://community.cartalk.com/t/occasionally-cranks-but-won-t-start/201381",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "Cadillac SRX"
+  },
+  {
+   "domain": "no-start-battery",
+   "spot_verified": true,
+   "text": "When I first turn the key, the car makes clicking sounds for a few seconds as though there were a dead battery. Then it goes silent for a few seconds, and slowly starts turning over. This speeds up a little at a time, and by maybe 30 seconds the engine catches and runs fine.",
+   "source_url": "https://community.cartalk.com/t/dead-battery-sounds-then-slow-cranking-then-car-starts-in-cold-ish-weather/10218",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "1993 Nissan Maxima"
+  },
+  {
+   "domain": "no-start-battery",
+   "spot_verified": false,
+   "text": "when I turn the key nothing happens no clicking, no cranking and all the interior lights and the daytime headlights dim and go off but the check gauges light and the battery light stay on. so, i`m assuming the battery is no good. I checked the battery with a volt meter and it has 13 volts.",
+   "source_url": "https://community.cartalk.com/t/no-crank-no-start-think-it-s-the-battery/99695",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "1999 Chevrolet Suburban"
+  },
+  {
+   "domain": "no-start-battery",
+   "spot_verified": false,
+   "text": "My 92 F150-4.9 cranks very slow at startup. Had the battery checked and no dead cells and cranking amp @ 650. What else would cause a very slow cranking? It does startup with no problem but concerned with the slow cranking. Is there a possibility of a starter going out that would cause that, or anything else?",
+   "source_url": "https://www.f150forum.com/f2/slow-cranking-startup-405320/",
+   "source_site": "f150forum.com",
+   "vehicle_context": "1992 Ford F-150 4.9L"
+  },
+  {
+   "domain": "no-start-battery",
+   "spot_verified": true,
+   "text": "I have an 04 f150 I was going down the road one day my truck just shut off when I try and start it it turns over really slow and doesn't start I've changed battery,e asalternator also when it turning over it makes a knocking sound coming from the motor but the truck won't start only turn over really slow please help",
+   "source_url": "https://www.fordforum.com/forum/new-member-area-5/slow-crank-no-start-45486/",
+   "source_site": "fordforum.com",
+   "vehicle_context": "2004 Ford F-150"
+  },
+  {
+   "domain": "no-start-battery",
+   "spot_verified": false,
+   "text": "While driving at night, my battery and break light came on on the dashboard. About 50 minutes later, my car can no longer travel faster than 5mph. The engine was not able to rev up when it is in Drive, but it was able to rev up the when I put it in Park or Neutral. Finally it died, while traveling at 5mph.",
+   "source_url": "https://community.cartalk.com/t/car-died-while-driving-jump-started-worked-for-a-little-bit-then-died-again-is-it-the-alternator/76482",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": ""
+  },
+  {
+   "domain": "no-start-battery",
+   "spot_verified": false,
+   "text": "My car keeps dying when Im driving and when I try to jump it sometimes it wont do anything at all and then a few days later starts right up. Battery is new and alternator tested good. I charged the battery this morning, went and put it in and it started right up. Two minutes later it died. I tried to restart it and nothing. No cranking, no dashlights.",
+   "source_url": "https://community.cartalk.com/t/battery-alternator-good-car-keeps-dying/103963",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2001 Chevrolet Venture"
+  },
+  {
+   "domain": "no-start-battery",
+   "spot_verified": true,
+   "text": "After running several errands with 5 to 10 minutes of city driving between each stop, it wouldn't start after the final stop (20 minutes in the grocery store). The lights were not left on, and no accessories were left on. The outdoor temperature was about 50 degrees F. It would turn over a couple of times before finally dying. I got a jump from a stranger, and it fired right up.",
+   "source_url": "https://community.cartalk.com/t/car-wont-start-battery-alternator-and-starter-test-good/198411",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2007 Honda Accord LX"
+  },
+  {
+   "domain": "no-start-battery",
+   "spot_verified": false,
+   "text": "So 3 times in the last 2 days, my car has needed a jumpstart. Took it to pepboys and they told me to replace the battery, a new battery later, my car wouldn't start again and I needed to get it jumpstarted again.",
+   "source_url": "https://community.cartalk.com/t/car-wont-start-battery-and-alternator-are-fine-what-could-it-be/85735",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2012 Ford Mustang V6 convertible"
+  },
+  {
+   "domain": "no-start-battery",
+   "spot_verified": false,
+   "text": "Usually only in the morning, when I attempt to start my car, I hear a single click after I turn the key then nothing, it starts right up after a few tries though and does not do it again until the next morning.",
+   "source_url": "https://www.2carpros.com/questions/single-click-when-attempting-to-start-vehicle",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2001 Chrysler Sebring"
+  },
+  {
+   "domain": "no-start-battery",
+   "spot_verified": true,
+   "text": "I have a 94 4.9L straight 6 f150 with 151,879k miles and every time I turn the ignition I just hear one click nothing else. I've changed the battery, solenoid, and starter still nothing.",
+   "source_url": "https://community.cartalk.com/t/truck-clicks-once-and-won-t-start/167596",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "1994 Ford F-150 4.9L"
+  },
+  {
+   "domain": "no-start-battery",
+   "spot_verified": false,
+   "text": "When you try to start it the battery acts dead and sometimes after 4 or 5 tries it will finally start. If I give it a jump start it starts right away also. I put it on a slow charge and it was fine for a couple days now doing it again. The battery tested good and it had some corrosion on it but I cleaned it off.",
+   "source_url": "https://community.cartalk.com/t/car-needing-jumped-every-couple-of-days/168212",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "Ford Focus"
+  },
+  {
+   "domain": "no-start-battery",
+   "spot_verified": false,
+   "text": "I have a 2002 Ford Focus and every time we have cold weather my car battery will be dead in the mornings. After I jump the car I can drive it and it will be fine the rest of the day but the next morning the battery is dead again. I seem to have this problem every winter and I end up buying a new battery every time only to have it die the next year.",
+   "source_url": "https://community.cartalk.com/t/dead-battery-on-cold-mornings/44518",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2002 Ford Focus"
+  },
+  {
+   "domain": "no-start-battery",
+   "spot_verified": true,
+   "text": "Tried without inserting the key and with inserted key, same problem. All instruments work, dashboard was lighted, seat was adjusted, steering also adjusted to my position. Car was never in accident and the airbags were never deployed. I measured the voltage on the battery and it registers at 12.04V, the battery was few months new. Also tried jump start with other car and that did not help either.",
+   "source_url": "https://www.yourmechanic.com/question/car-won-t-start-when-start-button-is-pushed-single-click-noise-is-heard-by-kurnia-k",
+   "source_site": "yourmechanic.com",
+   "vehicle_context": "2010 BMW 535i"
+  },
+  {
+   "domain": "no-start-battery",
+   "spot_verified": false,
+   "text": "Anyway, once I got everything replaced and buttoned up, I got one click from the starter and nothing else. I had the battery disconnected the whole time I was working on the alternator, checked all the grounds, cleaned and checked battery terminals, checked all the fuses that are related to the engine, and checked the voltage of the battery which read 12.6V. Any idea what could be going on?",
+   "source_url": "https://www.2carpros.com/questions/one-click-no-start",
+   "source_site": "2carpros.com",
+   "vehicle_context": "1995 Nissan Sentra"
+  },
+  {
+   "domain": "no-start-battery",
+   "spot_verified": false,
+   "text": "About 3 mornings out of 5 it will turn over slow as if the battery is about to die.The battery checks good as does the charging system along with the starter motor also checking as not too much draw.This past week one morning i thought it would not go i would have to use another way to get to work.But after trying it several times it did crank up.",
+   "source_url": "https://honda-tech.com/forums/honda-cr-v-element-156/crv-slow-crank-morning-only-3141808/",
+   "source_site": "honda-tech.com",
+   "vehicle_context": "2003 Honda CR-V"
+  },
+  {
+   "domain": "no-start-battery",
+   "spot_verified": false,
+   "text": "It's been cold lately, but we've stayed in the positive temps, so not as cold as the last few years. In the last two weeks I've had a slow turnover/crank about three times. The last two times occured within 24 hours - when I was leaving from work last night, and again heading to work this morning.",
+   "source_url": "https://community.cartalk.com/t/do-slow-cranks-just-happen-in-the-winter/92508",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2009 Honda Civic"
+  },
+  {
+   "domain": "transmission",
+   "spot_verified": true,
+   "text": "When shifting to either Drive or Reverse, it takes 2,3,4 seconds for transmission to engage causing a jerking motion",
+   "source_url": "https://www.2carpros.com/questions/2008-ford-explorer-transmission-problems",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2008 Ford Explorer"
+  },
+  {
+   "domain": "transmission",
+   "spot_verified": false,
+   "text": "When shifting from 1-2 the transmission will not shift until relatively high RPM's (4500 +/-) or the accelerator is lifted. The other gears shift normally at lower RPM, but there is a slight pause and increase in RPM's (500 or so) as the transmission shifts. There is no Check Engine light when driving. The transmission does not appear to slip in any gear.",
+   "source_url": "https://www.2carpros.com/questions/honda-civic-1997-honda-civic-delayed-engagement-when-transmission-shift",
+   "source_site": "2carpros.com",
+   "vehicle_context": "1997 Honda Civic EX"
+  },
+  {
+   "domain": "transmission",
+   "spot_verified": false,
+   "text": "When driving the transmission either slips or has a slow or delayed shift going from first to second. Also it makes a clunking noise when put in reverse but then goes fine in reverse.",
+   "source_url": "https://www.2carpros.com/questions/transmission-58657500",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2008 Ford Fusion"
+  },
+  {
+   "domain": "transmission",
+   "spot_verified": true,
+   "text": "When I put the transmission in drive or reverse it won't engage until I tap the gas then after that it drives fine. even taking off from stop signs no slipping or codes showing up. But you have to give it a little gas or it won't engage.",
+   "source_url": "https://www.2carpros.com/questions/escape-transmission-engagement",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2003 Ford Escape"
+  },
+  {
+   "domain": "transmission",
+   "spot_verified": false,
+   "text": "Hard shift between second and third going up and down and this occurs when in drive but also if using the gear selector to shift between second and third same thing.",
+   "source_url": "https://www.2carpros.com/questions/hard-shift-between-second-and-third-going-up-and-down",
+   "source_site": "2carpros.com",
+   "vehicle_context": "1996 Isuzu Rodeo"
+  },
+  {
+   "domain": "transmission",
+   "spot_verified": false,
+   "text": "Vehicle is starting to do what Nissan's TSB states is a 'judder'. There are no stored DTCs in the vehicle's TCM. General repair shop states the transmission needs to be replaced but everything I find online says Nissan's fix in most cases is to replace the valve body.",
+   "source_url": "https://www.2carpros.com/questions/cvt-jutter",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2015 Nissan Pathfinder"
+  },
+  {
+   "domain": "transmission",
+   "spot_verified": true,
+   "text": "I have the car listed above sl and it jerks really hard and turns off when i put in drive and reverse.",
+   "source_url": "https://www.2carpros.com/questions/2007-nissan-maxima-jerks-and-turns-off-when-put-in-gear",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2007 Nissan Maxima"
+  },
+  {
+   "domain": "transmission",
+   "spot_verified": false,
+   "text": "The transmission had the feel that it was being \"slammed\" into the next gear without any clutch. Once the car was warmed up, it appeared that when it shifted at 38-40 mph or 48-50 mph, the car shudders. It almost resembles the feeling you get when you run a car across those strips in the road.",
+   "source_url": "https://community.cartalk.com/t/chrysler-300-transmission-shuddering/64944",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2005 Chrysler 300 Limited"
+  },
+  {
+   "domain": "transmission",
+   "spot_verified": false,
+   "text": "I went to drive my 1970 Nova today and after driving it for about 15 seconds it seemed to stick in second gear. I cannot get it to go into neutral to be able to put it into any other gear including reverse.",
+   "source_url": "https://community.cartalk.com/t/stuck-in-gear/71483",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "1970 Chevrolet Nova"
+  },
+  {
+   "domain": "transmission",
+   "spot_verified": true,
+   "text": "I have a 98 ford escort. A few days ago, the engine started to rev while I accelerated between 20 and 30 mph. It kicks into gear after the reving, and will continue to accelerate, but the gears don't seem to shift as I go 40 - 50 mph (my car doesn't have a tachometer).",
+   "source_url": "https://community.cartalk.com/t/slipping-transmission-causes-car-to-die/59058",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "1998 Ford Escort"
+  },
+  {
+   "domain": "transmission",
+   "spot_verified": false,
+   "text": "Twice in past three days, when shifting from reverse to drive the transmission has slipped, revving hard with rpms spiked above 3,000 for about 2 seconds before engaging the forward drive gear.",
+   "source_url": "https://community.cartalk.com/t/transmission-slipping/83880",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2007 Chevy Impala"
+  },
+  {
+   "domain": "transmission",
+   "spot_verified": false,
+   "text": "Specifically, when I am climbing a hill and the transmission is in a higher gear, say 4th and the RPMs are relatively low, say 1800, I feel a shudder as the car goes up the hill. When I let my foot off the gas the shudder stops.",
+   "source_url": "https://community.cartalk.com/t/shudder-going-uphill/87092",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2009 Cadillac Escalade"
+  },
+  {
+   "domain": "transmission",
+   "spot_verified": true,
+   "text": "I have a 2000 4-Runner Limited with a manual transmission. Recently it has started slipping when in 4-high and first gear. After first gear it is totally fine and in 4-low or 2-high there are no problems.",
+   "source_url": "https://community.cartalk.com/t/manual-transmission-slipping-when-in-1st-and-4high/172961",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2000 Toyota 4-Runner Limited"
+  },
+  {
+   "domain": "transmission",
+   "spot_verified": false,
+   "text": "After filling out the paperwork etc I was on my way home and the transmission made a loud CLUNK. I thought I must be imagining things. At the next intersection as I accelerated from the light \"CLUNK\".",
+   "source_url": "https://community.cartalk.com/t/transmission-shudder/78094",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2003 Chrysler Town and Country"
+  },
+  {
+   "domain": "transmission",
+   "spot_verified": false,
+   "text": "My car, a 2000 (2001?) Chevy Blazer won't go into reverse as of 2am last night. I went into reverse, but when I hit the gas, I heard a loud pop and a whine that died out over about 4 seconds. Then, no more reverse. The car also started making a whirring sound while driving in forward, which is slightly alarming.",
+   "source_url": "https://community.cartalk.com/t/car-wont-go-into-reverse-automatic-transmission/51685",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2000/2001 Chevy Blazer"
+  },
+  {
+   "domain": "transmission",
+   "spot_verified": true,
+   "text": "I have a 2004 Hyundai Sonata with about 85,000 miles. For the past few weeks, when trying to accelerate, I press down steady on the gas pedal, and sometimes the car does not accelerate. Also, the RPMs rev very high from about 2 to sometimes 5,000 (all with no acceleration). This seems to happen randomly, regardless of how fast I am driving or the road conditions.",
+   "source_url": "https://community.cartalk.com/t/rpm-rev-and-no-acceleration/41972",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2004 Hyundai Sonata"
+  },
+  {
+   "domain": "transmission",
+   "spot_verified": false,
+   "text": "The issue is, at times I used to feel car being slowed down for a second or two before catching up again. It felt like someone is pulling it down and then it would catch up but there was no jerk or anything.",
+   "source_url": "https://community.cartalk.com/t/rpm-drops-momentarily-for-2-to-3-seconds-before-picking-up/167540",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2014 Nissan Versa"
+  },
+  {
+   "domain": "transmission",
+   "spot_verified": false,
+   "text": "1986 S10 blazer automatic transmission won't go into reverse OR neutral! It goes fwd in both reverse and neutral. It goes into park just fine. The fluid is full and not burnt. It will drive forward when in reverse and in neutral. I turned the engine off and checked neutral, it was not in gear but tried to go forward as soon as I started the engine.",
+   "source_url": "https://community.cartalk.com/t/automatic-transmission-wont-go-into-reverse-or-neutral/75235",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "1986 Chevrolet S10 Blazer"
+  },
+  {
+   "domain": "transmission",
+   "spot_verified": false,
+   "text": "For the last year or so it felt like the driveshaft would slip a little if you took off fast from a stop. The last couple months it would slip a little if in cruise going up a big hill. Yesterday I picked up something somewhat heavy and on the way home it jerked when shifting. Worse at lower gears.",
+   "source_url": "https://community.cartalk.com/t/transmission-shifts-hard-jerks/197790",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2005 Buick Park Avenue"
+  },
+  {
+   "domain": "transmission",
+   "spot_verified": false,
+   "text": "Two months ago, I went to parallel park and the entire car started violently jerking. It's done it several times since then and here's what I've gathered: 1) The car primarily jerks at low speeds 1-5 mph in both reverse and drive, primarily when parking but sometimes when I'm accelerating from 0 mph, 2) Applying the break stops all jerking, applying the gas again commences jerking",
+   "source_url": "https://community.cartalk.com/t/2013-honda-accord-is-jerking/84346",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2013 Honda Accord Touring"
+  },
+  {
+   "domain": "transmission",
+   "spot_verified": false,
+   "text": "When cold, the transmission works as normal, however when warm the transmission \"slips\" when in \"D4\" and accelerating from a dead stop. To remedy this situation, I will use \"2\" to start when warm and manually shift to \"D3\" and \"D4\" if I'm going on the highway when warm.",
+   "source_url": "https://community.cartalk.com/t/98-civic-automatic-transmission-problem/51617",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "1998 Honda Civic"
+  },
+  {
+   "domain": "transmission",
+   "spot_verified": false,
+   "text": "While driving my Nissan Altima at highway speeds, the transmission started to shudder and eventually stopping pulling in the middle of traffic.",
+   "source_url": "https://www.carproblemzoo.com/nissan/altima/transmission-shudder-problems.php",
+   "source_site": "carproblemzoo.com",
+   "vehicle_context": "2016 Nissan Altima"
+  },
+  {
+   "domain": "transmission",
+   "spot_verified": false,
+   "text": "The transmission in my vehicle shudders between 1000 and 2000 rpm. Also, it will do the same shudder at highway speed sudden acceleration.",
+   "source_url": "https://www.carproblemzoo.com/nissan/altima/transmission-shudder-problems.php",
+   "source_site": "carproblemzoo.com",
+   "vehicle_context": "2013 Nissan Altima"
+  },
+  {
+   "domain": "steering-suspension",
+   "spot_verified": true,
+   "text": "I have an 05 Saturn Ion. I recently got 4 new tires and an alignment. My car pulled left prior to that. Afterwards, it still pulls left.",
+   "source_url": "https://community.cartalk.com/t/car-pulls-left-after-alignment/18498",
+   "source_site": "cartalk.com",
+   "vehicle_context": "2005 Saturn Ion"
+  },
+  {
+   "domain": "steering-suspension",
+   "spot_verified": false,
+   "text": "Front pop/clunk coming from passenger side/front right wheel area. Had mechanic check the front suspension over the weekend (I assumed it was sway bar links or bushings, etc.). Mechanic did not find any problems and refilled the sway bar link grease. Soon as I left the mechanic the popping has now been more noticeable/prevalent.",
+   "source_url": "https://www.2carpros.com/questions/pop-clunk-from-front-passenger-side-had-suspension-checked-with-no-problems",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2005 Honda CR-V"
+  },
+  {
+   "domain": "steering-suspension",
+   "spot_verified": true,
+   "text": "one still remains and that is the steering wheel vibrates 50mph above/highway speed. I've done wheel alignment. I brought the car to my mechanic and they checked all tires and was told one of the tires needed to be balanced. They did that. However today when I was on the highway, the steering wheel vibrated again. The thing is the vibration only happens OCCASIONALLY at 50mph or above.",
+   "source_url": "https://community.cartalk.com/t/vibration-at-50mph-above-highway-speed/107472",
+   "source_site": "cartalk.com",
+   "vehicle_context": "2005 Mitsubishi Endeavor"
+  },
+  {
+   "domain": "steering-suspension",
+   "spot_verified": false,
+   "text": "I have 2007 Honda Odyssey. When I hit the brake at or over 65 mph, the steering wheel start to vibrate. This does not happen when driving under 65 mph.",
+   "source_url": "https://community.cartalk.com/t/steering-wheel-vibrates-when-brake-is-applied-over-65-mph/36950",
+   "source_site": "cartalk.com",
+   "vehicle_context": "2007 Honda Odyssey"
+  },
+  {
+   "domain": "steering-suspension",
+   "spot_verified": false,
+   "text": "The car is in very good condition but several months ago it began to wander badly, especially at highway speeds. It is now at the point that I am uncomfortable driving it.",
+   "source_url": "https://community.cartalk.com/t/car-wanders-badly/59995",
+   "source_site": "cartalk.com",
+   "vehicle_context": "2002 Mercury Grand Marquis"
+  },
+  {
+   "domain": "steering-suspension",
+   "spot_verified": true,
+   "text": "The car wanders at highway speeds (60mph+). This generally only occurs with some wind, on a long straight without wind you can take your hands off the wheel and it goes straight without issues.",
+   "source_url": "https://community.cartalk.com/t/2008-corolla-wandering-at-highway-speeds/92642",
+   "source_site": "cartalk.com",
+   "vehicle_context": "2008 Toyota Corolla"
+  },
+  {
+   "domain": "steering-suspension",
+   "spot_verified": false,
+   "text": "My Hyundai Santa Fe Sport AWD (currently at ~34000 mil) is unstable while driving on the highway. It wanders more frequently to the right and tend to skid off its lane. I have to try so hard to keep it straight making me so scared that i may hit an oncoming vehicle.",
+   "source_url": "https://community.cartalk.com/t/2014-hyundai-santa-fe-sport-awd-veers-drifts-out-of-its-lane/120143",
+   "source_site": "cartalk.com",
+   "vehicle_context": "2014 Hyundai Santa Fe Sport AWD"
+  },
+  {
+   "domain": "steering-suspension",
+   "spot_verified": false,
+   "text": "Car wanders on the highway. Has anyone else experienced this? Is there a fix ?Haven 't taken it back to the dealer yet. only 500 miles.",
+   "source_url": "https://community.cartalk.com/t/2018-kia-sorento-wandering-on-the-highway/114299",
+   "source_site": "cartalk.com",
+   "vehicle_context": "2018 Kia Sorento"
+  },
+  {
+   "domain": "steering-suspension",
+   "spot_verified": true,
+   "text": "We just took our car to the shop this week bc it overheated and our radiator was out. So they put in a new one and then it overheated again. We took it back and said the thermostat was bad. Fixed that and that next day we noticed how bouncy our car was and how bad the any little bump was.",
+   "source_url": "https://community.cartalk.com/t/im-feeling-every-bump-and-the-car-is-so-bouncy-overnight/56163",
+   "source_site": "cartalk.com",
+   "vehicle_context": "Hyundai Elantra"
+  },
+  {
+   "domain": "steering-suspension",
+   "spot_verified": false,
+   "text": "When I got it back, I noticed the ride was more bouncy and floaty than before. It always had a smooth ride that absorbed the road well, but now I tend to feel every bump and road change, although it is more of a floaty response than a harsh one.",
+   "source_url": "https://community.cartalk.com/t/floaty-and-bouncy-ride-after-service-work/29130",
+   "source_site": "cartalk.com",
+   "vehicle_context": "1998 Acura RL"
+  },
+  {
+   "domain": "steering-suspension",
+   "spot_verified": false,
+   "text": "Actually in a middle of a road trip. Hit a pothole going about 20mph. Steering wheel is way to the driver side. Truck still drives straight but having the steering wheel like that bugs me. Is there a way I can straighten it out? I will take to alignment shop when I get back home. Did visual inspection and nothing looks abnormal. 2006 taco 4x4.",
+   "source_url": "https://www.tacomaworld.com/threads/hit-pothole-steering-wheel-not-straight.514776/",
+   "source_site": "tacomaworld.com",
+   "vehicle_context": "2006 Toyota Tacoma 4x4"
+  },
+  {
+   "domain": "steering-suspension",
+   "spot_verified": true,
+   "text": "Recently, it has developed a high-frequency vibration that manifests in a humming noise and is most noticeable through the steering wheel, producing a tickling sensation in the hands. The steering wheel does not shake like when the tires are off balance, just this tickling sensation. Other symptoms are a vibrating noise behind the instrument cluster and slight tickling in the pedals. It happens most noticeable at 65 mph and goes away around 80 to 85 mph.",
+   "source_url": "https://www.f150forum.com/f118/high-frequency-vibration-tickling-steering-wheel-564396/",
+   "source_site": "f150forum.com",
+   "vehicle_context": "2018 Ford F-150 Platinum V6"
+  },
+  {
+   "domain": "steering-suspension",
+   "spot_verified": false,
+   "text": "So I've been having some erratic vibration problems with my 2018 on the freeway. It used to be on and off at about 59mph-65mph, any lower like on a local two-lane highway it would be smooth, and any higher on the freeway it would go away. Basically low-frequency shaking and jerking through the steering column, floor and seat at that speed, nothing too violent but definitely easily noticeable and annoying.",
+   "source_url": "https://www.f150forum.com/f118/2018-steering-wheel-vibration-shake-hwy-speeds-437904/",
+   "source_site": "f150forum.com",
+   "vehicle_context": "2018 Ford F-150"
+  },
+  {
+   "domain": "steering-suspension",
+   "spot_verified": false,
+   "text": "I have an '07 Honda Accord that pulls ever so slightly to the right I'm wondering if it's slowly wanders to the right when going down the highway.",
+   "source_url": "https://community.cartalk.com/t/steering-pulls-slightly-to-the-right/2384",
+   "source_site": "cartalk.com",
+   "vehicle_context": "2007 Honda Accord"
+  },
+  {
+   "domain": "steering-suspension",
+   "spot_verified": false,
+   "text": "I've driven it about 1,000 miles since then, and have noticed a vibration through the steering wheel and the entire car at speeds over 70mph (mild at 70, maximizing at 78, then mild again over 80).",
+   "source_url": "https://community.cartalk.com/t/pothole-at-30mph-caused-vibration-at-70-mph/52960",
+   "source_site": "cartalk.com",
+   "vehicle_context": "2006 Acura RL"
+  },
+  {
+   "domain": "steering-suspension",
+   "spot_verified": false,
+   "text": "When i pulled out of the space immediately i noticed a very subtle 'vibration'. You can feel it in the floorboard and the steering wheel.",
+   "source_url": "https://community.cartalk.com/t/hit-curb-10mph-brand-new-corolla-mild-vibration-after/107589",
+   "source_site": "cartalk.com",
+   "vehicle_context": "2017 Toyota Corolla SE"
+  },
+  {
+   "domain": "steering-suspension",
+   "spot_verified": false,
+   "text": "What I do know is that my alignment is totally jacked (steering wheel is cocked 45 degrees to the left to stay straight), but now when I turn right I hear a rubbing/grinding noise. It sounds like rubber on plastic, so I'm hoping that just the plastic wheel well cover is bent or something, but I haven't done a good inspection yet.",
+   "source_url": "https://community.cartalk.com/t/hit-a-huge-hole/87618",
+   "source_site": "cartalk.com",
+   "vehicle_context": "1991 Buick Regal"
+  },
+  {
+   "domain": "electrical",
+   "spot_verified": true,
+   "text": "My vehicle was parked outside for an hour (seventy eight degrees, no rain) and when we started it up, the power window controls and radio stopped working. Visually checked fuses and relays; no problems.",
+   "source_url": "https://www.2carpros.com/questions/2004-lincoln-aviator-power-window-controls-radio-went-dead-same-time-reason",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2004 Lincoln Aviator"
+  },
+  {
+   "domain": "electrical",
+   "spot_verified": false,
+   "text": "This has happened within the past few months the radio and clock quit working. then the power door locks quit working with the key fob. then with the door lock/unlock switch (unless van is running). can't open lift gate unless van is running, no interior lights work unless the van is running and shut off immediately when van is turned off. Driver/passenger power windows won't go up or down.",
+   "source_url": "https://www.2carpros.com/questions/radio-clock-door-locks-interior-lights-power-windows-quit-working",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2005 Dodge Caravan"
+  },
+  {
+   "domain": "electrical",
+   "spot_verified": false,
+   "text": "Driver side power window once in awhile will not work you slam the door or smack the door panel and it will work again. Now the right side front window power window does not work at all",
+   "source_url": "https://www.2carpros.com/questions/power-windows-63505032",
+   "source_site": "2carpros.com",
+   "vehicle_context": "1999 Plymouth Breeze"
+  },
+  {
+   "domain": "electrical",
+   "spot_verified": true,
+   "text": "dash gauges are all out and no power windows and no blower for air and heater and its as something shot or blew but the two places that i checked the fuses are not blown.",
+   "source_url": "https://www.2carpros.com/questions/dash-gages-are-all-out-and-no-power-windows-and-no-blower",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2001 Buick Regal"
+  },
+  {
+   "domain": "electrical",
+   "spot_verified": false,
+   "text": "When I park my 1999 Suburban on my 15 degree inclined driveway (nose up), the battery dies overnight. When I park on the flat street, or nose down on the driveway, it can sit a week or more with no trouble.",
+   "source_url": "https://community.cartalk.com/t/mysterious-battery-drain/57014",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "1999 Chevrolet Suburban"
+  },
+  {
+   "domain": "electrical",
+   "spot_verified": false,
+   "text": "on the third day of having it the car was dead so we jumped it and drove to walmart to replace the battery. the previous owner may have crossed some of the wires, exaple: my head lights open my rear hatch, my radio can stay on without the key in the ignition, etc. so after replacing the battery the car died again",
+   "source_url": "https://community.cartalk.com/t/my-cars-battery-dies-every-3-4-days-help/60841",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2000 Chevy Blazer"
+  },
+  {
+   "domain": "electrical",
+   "spot_verified": true,
+   "text": "I have a 98 Mercury Sable. If you start and drive the car at least once every 24 hours, no problems. However, if you leave it sit for extended periods, say 48 hours, the battery is totally dead and I need to jump the battery. Replaced the battery but this did not fix the problem.",
+   "source_url": "https://community.cartalk.com/t/whats-draining-my-battery/76022",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "1998 Mercury Sable"
+  },
+  {
+   "domain": "electrical",
+   "spot_verified": false,
+   "text": "I was driving one night and noticed that my headlights were flickering so I decided to also turn on the interior light and it was also flickering. After awhile the flickering stopped and never occurred.",
+   "source_url": "https://www.2carpros.com/questions/flickering-headlights",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2003 Honda Civic"
+  },
+  {
+   "domain": "electrical",
+   "spot_verified": false,
+   "text": "The headlights and interior lights of my 2001 camry started to flicker while driving and sometimes loses the power to the radio, a/c and the lights shut off - the power comes back within few seconds. The flicker is not related to RPM speed - when the RPM's increase, the flickering remains the same - no change.",
+   "source_url": "https://www.2carpros.com/questions/2001-toyota-camry-headlights-and-interior-lights-flicker-loses-power",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2001 Toyota Camry"
+  },
+  {
+   "domain": "electrical",
+   "spot_verified": true,
+   "text": "I have a 2003 Chevy Suburban Z71(103k miles) and there is a flicker in the interior lights and will have the headlights go out for a split second when first starting it and shifting into drive and take accelarating to take off. I also get the interior lights to go off for a split second when shifting from park to drive and drive to park.",
+   "source_url": "https://www.2carpros.com/questions/2003-chevrolet-suburban-chevy-lights-flicker--3",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2003 Chevrolet Suburban Z71"
+  },
+  {
+   "domain": "electrical",
+   "spot_verified": false,
+   "text": "My headlights keep flickering on and off. i changed the switch and it stopped for a while, but now it is doing the same thing again. There are times when i can drive eight hours at night and they are good, but there are times when i drive for about an hour and they start turning on and off.",
+   "source_url": "https://www.2carpros.com/questions/headlights-12759290",
+   "source_site": "2carpros.com",
+   "vehicle_context": "1988 Lincoln Town Car"
+  },
+  {
+   "domain": "electrical",
+   "spot_verified": false,
+   "text": "The headlights & dash lights flicker almost all the time - 80% of the time to be sure. No error / warning lights. voltage at battery with lights flickering 14.2 VDC (engine running)",
+   "source_url": "https://www.2carpros.com/questions/2006-dodge-caravan-headlights-dash-lights-flicker",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2006 Dodge Caravan"
+  },
+  {
+   "domain": "electrical",
+   "spot_verified": true,
+   "text": "All my lights on my silhouette van flickers Often on as we're driving All the lights not just my headlights with every light with on the van",
+   "source_url": "https://www.2carpros.com/questions/2003-oldsmobile-silhouette-lights-on-van-flickers-often-re-driving-just",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2003 Oldsmobile Silhouette"
+  },
+  {
+   "domain": "electrical",
+   "spot_verified": false,
+   "text": "Both cigarette lighter power outlets, when used, blow the 15a PWR outlet fuse. Replacing the fuse initially worked with a rechargeable flashlight. When I plugged in my inverter (which always used to work) green power light goes on then fades and goes off and 15 amp power outlet fuse is blown.",
+   "source_url": "https://www.2carpros.com/questions/power-fuse-blowing",
+   "source_site": "2carpros.com",
+   "vehicle_context": "1999 Toyota Sienna"
+  },
+  {
+   "domain": "electrical",
+   "spot_verified": false,
+   "text": "Cigarette lighter fuse keeps blowing. Tried replacing 15 amp fuse with 20 amp and 25 amp, fuse continues to blow.",
+   "source_url": "https://www.2carpros.com/questions/2002-chevrolet-blazer-cigarette-lighter-fuse-keeps-blowing-tried-replacing-15",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2002 Chevrolet Blazer"
+  },
+  {
+   "domain": "electrical",
+   "spot_verified": true,
+   "text": "The in-dash lighter/power socket worked perfectly since new, but suddenly stopped working. I checked the fuse which was blown, and replaced it. As soon as I plugged in my phone charger, it blew the fuse immediately again.",
+   "source_url": "https://www.2carpros.com/questions/2008-infiniti-g35-cigar-lighter-keeps-blowing-fuses",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2008 Infiniti G35"
+  },
+  {
+   "domain": "electrical",
+   "spot_verified": false,
+   "text": "Hey there so my mom's car has been having a bunch of problems and when I was just looking over her car I noticed that with the key turned to on it makes a buzzing or humming noise",
+   "source_url": "https://community.cartalk.com/t/humming-buzzing-noise-with-key-turned/108799",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "Dodge Neon"
+  },
+  {
+   "domain": "electrical",
+   "spot_verified": false,
+   "text": "2003 cartier, makes a humming noise intermittently while driving, but most concerning is the same humming noise which happens even after the engine has been turned off, sometimes hours after it is turned off.",
+   "source_url": "https://community.cartalk.com/t/humming-noise-while-not-running/104462",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2003 Lincoln Town Car Cartier"
+  },
+  {
+   "domain": "electrical",
+   "spot_verified": false,
+   "text": "During damp or cold conditions, our truck windows, wipers, door chime, four wheel drive and dome lights will not work. We will hear a \"click\" on the passenger side to the right of the ashtray. When that click noise is heard, the issues stop. This may last a second or two, but if we are lucky it may last for an hour.",
+   "source_url": "https://www.2carpros.com/questions/intermittent-issues",
+   "source_site": "2carpros.com",
+   "vehicle_context": "1999 Ford Ranger"
+  },
+  {
+   "domain": "electrical",
+   "spot_verified": false,
+   "text": "I have the SUV listed above which I had driven daily with no issues and I drove it 400 miles the day before it presented with the following problems. Codes U0109, U0102, and P1682 no run or start, intermittent dash lights, ABS, traction control, airbag and security light also no power locks or windows.",
+   "source_url": "https://www.2carpros.com/questions/communication-issue",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2010 Chevrolet Tahoe"
+  },
+  {
+   "domain": "electrical",
+   "spot_verified": false,
+   "text": "I have a 2006 BMW X3 and the radio will turn off by itself when I'm driving or when i have it parked.",
+   "source_url": "https://www.2carpros.com/questions/2006-bmw-x3-radio-turns-off-by-itself",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2006 BMW X3"
+  },
+  {
+   "domain": "electrical",
+   "spot_verified": false,
+   "text": "It started with the radio turning off when I started the car. Also a rough idle but went away once I drove it for a minute or two. Now I have now power at all to my dome lights, heat/AC controls. It's all dead nothing at all working, the radio lights up but nothing on the screen.",
+   "source_url": "https://www.2carpros.com/questions/electrical-problem-help-me-please",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2006 Jeep Grand Cherokee"
+  },
+  {
+   "domain": "tires-tpms",
+   "spot_verified": true,
+   "text": "My TPMS light is constantly on, and sometimes flashing. The tires are at the right preasure. No work has been done with the tires. The light just came on a couple weeks ago and stays on. It used to work fine.",
+   "source_url": "https://www.2carpros.com/questions/tpms-light-on-and-flashing",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2007 Suzuki Forenza"
+  },
+  {
+   "domain": "tires-tpms",
+   "spot_verified": false,
+   "text": "I have a 2010 Honda Odyssey and the rear right tire, passenger's side, has been leaking very slowly for the past several months. I've managed to continue driving it by checking and putting in pressure at least once a week. But I did notice that the pressure drops by about 0.5 to 1 psi per day.",
+   "source_url": "https://www.2carpros.com/questions/question-about-slow-tire-leak-and-maintaining-tpms",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2010 Honda Odyssey"
+  },
+  {
+   "domain": "tires-tpms",
+   "spot_verified": false,
+   "text": "I have a very slow air leak in my right front tire. It'll lose 10-15 PSI over several weeks (2-3) while the others will lose next to no air.",
+   "source_url": "https://community.cartalk.com/t/very-slow-tire-leak/90225",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": ""
+  },
+  {
+   "domain": "tires-tpms",
+   "spot_verified": true,
+   "text": "Everytime I have tire rotation done, the tire on the back/driver side always seem to lose air pressure slowly over a few days. Usually within a week I lose about 5 to 8 psi.",
+   "source_url": "https://community.cartalk.com/t/car-tire-losing-pressure-after-tire-rotation-very-confused/185045",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2020 Nissan Altima"
+  },
+  {
+   "domain": "tires-tpms",
+   "spot_verified": false,
+   "text": "For about the last 6 months, about every 2 weeks my tire pressure monitor would indicate that the right rear tire needs air. I would use a pressure gauge to verify that the pressure was low, and then fill it to the specified pressure. Everything would then be fine for about 2 weeks, when the process would repeat all over again.",
+   "source_url": "https://community.cartalk.com/t/slow-leak-in-new-tire-just-like-in-old-tire/109683",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "Volvo XC90"
+  },
+  {
+   "domain": "tires-tpms",
+   "spot_verified": false,
+   "text": "Two or three times in the past two weeks one tire seems to have leaked down over a couple of days from specified 29 PSI to 16 PSI. Holds pressure for a few days, then goes down over a couple of days.",
+   "source_url": "https://community.cartalk.com/t/tire-with-intermittent-slow-leak/26854",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "1999 Ford Escort"
+  },
+  {
+   "domain": "tires-tpms",
+   "spot_verified": true,
+   "text": "is this possibly sabotage? no leak when discovered. when i tried to unscrew the screw its actually a long screw. my point is that if the screw lodged itself on road wouldnt it cause immediate pressure loss?",
+   "source_url": "https://community.cartalk.com/t/this-is-the-second-screw-in-my-tire-and-this-time-it-looks-suspicious/197618",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": ""
+  },
+  {
+   "domain": "tires-tpms",
+   "spot_verified": false,
+   "text": "However today when I was on the highway, the steering wheel vibrated again. The thing is the vibration only happens OCCASIONALLY at 50mph or above. There's no weird noises as far as I know, no clucking/clicking/thumping or noise of any kind.",
+   "source_url": "https://community.cartalk.com/t/vibration-at-50mph-above-highway-speed/107472",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2005 Mitsubishi Endeavor"
+  },
+  {
+   "domain": "tires-tpms",
+   "spot_verified": false,
+   "text": "A month ago I put a new set of Goodyear tires on my RAV. I drive on the highway 35-40 miles each way to and from work every day. Immediately after the new tires go on, I notice a vibration from the steering wheel at highway speed, above 60 mph.",
+   "source_url": "https://community.cartalk.com/t/vibration-after-new-tires/66974",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2003 Toyota RAV4"
+  },
+  {
+   "domain": "tires-tpms",
+   "spot_verified": true,
+   "text": "One of the wheels on my 2002 Grand Cherokee has a very slow leak. This leak has persisted through numerous tire mountings, valve and tire replacements, and two US Presidents. I am convinced the problem lies somewhere with the wheel itself. The leak is very small- it takes a couple weeks to even go down 2 or 3 PSI.",
+   "source_url": "https://community.cartalk.com/t/tire-losing-air/77100",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2002 Jeep Grand Cherokee"
+  },
+  {
+   "domain": "tires-tpms",
+   "spot_verified": false,
+   "text": "For the past few weeks, my rear passenger tire has been looking a bit low when it is cold, then looking completely normal when the temps rise again. Tonight when we got home, I noticed that the tire was very visibly low.",
+   "source_url": "https://community.cartalk.com/t/low-tire-pressure-leak-or-extreme-cold/89153",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "Ford (model not stated)"
+  },
+  {
+   "domain": "tires-tpms",
+   "spot_verified": false,
+   "text": "My wife's 2018 Jeep Cherokee was wearing the inside front tires badly. So I took it to get alignment and new tires.",
+   "source_url": "https://community.cartalk.com/t/inside-tire-wear/180226",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2018 Jeep Cherokee"
+  },
+  {
+   "domain": "tires-tpms",
+   "spot_verified": true,
+   "text": "So I went to have my tires rotated a couple weeks ago and the guy brought in the tire to show me the wear on the inside of my left front tire. The rest of the left tire is great and my right front tire is perfectly fine.",
+   "source_url": "https://community.cartalk.com/t/inside-of-the-tire-is-bald/75051",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": ""
+  },
+  {
+   "domain": "tires-tpms",
+   "spot_verified": false,
+   "text": "Last nite Driving with windows down Heard Flapping sounds on my Right side of car tire, thought was going flat. Woke up this am, tire was fine. Drove nearby had window down & could Hear Flapping sounds again. Parked my car to look at Right side Tires again. Saw a Tack like Nail stuck in between the Groove on middle of Tire.",
+   "source_url": "https://community.cartalk.com/t/nail-on-tire-but-not-flat/146867",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2019 Honda Accord"
+  },
+  {
+   "domain": "tires-tpms",
+   "spot_verified": false,
+   "text": "so . . about 500 miles on the new tire, a roofing nail with a flat head, can easily be removed. Tire patch? Plug? New tire?",
+   "source_url": "https://community.cartalk.com/t/nail-in-a-brand-new-tire/7872",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": ""
+  },
+  {
+   "domain": "tires-tpms",
+   "spot_verified": true,
+   "text": "The lite comes on I thought it was the tire pressure I fixed that problem and the lite won't go out it says check your time",
+   "source_url": "https://community.cartalk.com/t/2016-subaru-forester-tpms-light-issue/188114",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2016 Subaru Forester"
+  },
+  {
+   "domain": "tires-tpms",
+   "spot_verified": false,
+   "text": "I had a Tpms light on and off, went to the auto shop and been told that the sensor has not been detected so it needed to be replaced. I paid $180 and today when driving on a highway the light appeared again… please help",
+   "source_url": "https://community.cartalk.com/t/tpms-light-went-off-again-after-replacing-sensor/113794",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2013 Honda Fit Sport"
+  },
+  {
+   "domain": "tires-tpms",
+   "spot_verified": false,
+   "text": "Can the hole due to the stuck nail be repaired (i.e. plug and/or patch)? See the attached photo. By the way, the air does NOT leak!",
+   "source_url": "https://community.cartalk.com/t/nail-in-a-tire/199287",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": ""
+  },
+  {
+   "domain": "tires-tpms",
+   "spot_verified": false,
+   "text": "I got a tire pressure warning, so I went to my local NTB, and they said that the location of the nail in my tire means that it can't be repaired. When I googled it, it seemed less clear that it's not repairable.",
+   "source_url": "https://community.cartalk.com/t/can-my-tire-with-a-nail-in-it-be-repaired-pic/153244",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": ""
+  },
+  {
+   "domain": "tires-tpms",
+   "spot_verified": false,
+   "text": "I pick my car up, and the grinding is gone, but now the whole front end of my car shakes when I go 45-55 mph",
+   "source_url": "https://www.2carpros.com/questions/car-vibrates-constant-and-violently-shakes-when-braking",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2007 Chevrolet Cobalt"
+  },
+  {
+   "domain": "engine-performance",
+   "spot_verified": true,
+   "text": "My car runs sputters when Idling, when driving I accelerate and it sound like it is backfiring somewhere in the engine compartment.",
+   "source_url": "https://www.2carpros.com/questions/sputters-and-hesitates-when-accelerating",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2002 Saturn L200"
+  },
+  {
+   "domain": "engine-performance",
+   "spot_verified": false,
+   "text": "My car when at a complete stop does not want to take off or whenever going uphill, if I am under the speed of 40MPH it acts like it does not want to change gears.",
+   "source_url": "https://www.2carpros.com/questions/what-is-causing-my-car-to-do-this",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2008 Nissan Rogue"
+  },
+  {
+   "domain": "engine-performance",
+   "spot_verified": false,
+   "text": "The engine hesitates when accelerating, but not all the time. No triggering factors except for acceleration and moving. Up, down hill, or flat does make it happen more or less times. Never happens at idle.",
+   "source_url": "https://www.2carpros.com/questions/hesitation-when-accelerating-intermittently",
+   "source_site": "2carpros.com",
+   "vehicle_context": "1994 Lincoln Town Car"
+  },
+  {
+   "domain": "engine-performance",
+   "spot_verified": true,
+   "text": "My car starts just fine idles fine but no matter how long you let it warm up it stalls when you put it in gear and as soon as you give it gas it shuts off.",
+   "source_url": "https://www.2carpros.com/questions/car-stalls-when-put-in-gear",
+   "source_site": "2carpros.com",
+   "vehicle_context": "1996 Mitsubishi Eclipse"
+  },
+  {
+   "domain": "engine-performance",
+   "spot_verified": false,
+   "text": "When car gets to operating temperature and fans get ready to come on the car will stall. No codes are present no mil light on.",
+   "source_url": "https://www.2carpros.com/questions/stalling-23534930",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2000 Buick Century"
+  },
+  {
+   "domain": "engine-performance",
+   "spot_verified": false,
+   "text": "My car stalls completely out when you try yo accelerate unless you very lightly ease on the gas pedal and slowly push it down. Then it will rev wide open if you want it to, but then it acts like it is flooding out and it will spit and sputter until it quits running.",
+   "source_url": "https://www.2carpros.com/questions/stalls-when-trying-to-accelerate",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2000 Dodge Stratus"
+  },
+  {
+   "domain": "engine-performance",
+   "spot_verified": true,
+   "text": "My car starts fine but will not idle unless I keep my foot on the throttle until it warms up a good bit. It sounds great and no miss at all when revved up but does have somewhat of a miss when warm and idling.",
+   "source_url": "https://www.2carpros.com/questions/rough-idle-stall-when-cold",
+   "source_site": "2carpros.com",
+   "vehicle_context": "1991 Nissan 300ZX"
+  },
+  {
+   "domain": "engine-performance",
+   "spot_verified": false,
+   "text": "Every few weeks, the car will go through a phase where it will stall out, run rough and hesitate on acceleration. Oftentimes it is accompanied with the rotten egg smell coming from the catalytic converter. When I decelerate to a stop light, the car will stall.",
+   "source_url": "https://community.cartalk.com/t/stalling-hesitation-and-rough-idle-on-a-2004-toyota-corolla/72927",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2004 Toyota Corolla"
+  },
+  {
+   "domain": "engine-performance",
+   "spot_verified": false,
+   "text": "My 1999 Toyota Camry le 4L continuously stalls/dies when I stop and struggles to turn over/start. It also hesitates to accelerate (when you push down on the pedal the car will decrease in rpms instead of increasing). It also has a rough idle.",
+   "source_url": "https://community.cartalk.com/t/1999-toyota-camry-stalling-problem-rough-idle-trouble-accelerating/136236",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "1999 Toyota Camry LE"
+  },
+  {
+   "domain": "engine-performance",
+   "spot_verified": true,
+   "text": "it has a rough idle at start, it stalls sometimes during starting or a few minutes afterward, and it has trouble starting occasionally where it'll take a few minutes to get it going, (an example being you need to hold down the accelerator for a while to keep it from dying).",
+   "source_url": "https://community.cartalk.com/t/camry-rough-idle-trouble-starting-and-stalling-at-stops/139772",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "1999 Toyota Camry LE 4-cylinder"
+  },
+  {
+   "domain": "engine-performance",
+   "spot_verified": false,
+   "text": "Hesitation upon acceleration, \"sputtering\" spells. After a few seconds and removing/adding gas car accelerates normally without issue",
+   "source_url": "https://community.cartalk.com/t/rough-idle-acceleration-hesitation/139200",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2009 Saturn Astra XE"
+  },
+  {
+   "domain": "engine-performance",
+   "spot_verified": false,
+   "text": "About 2wks ago when very cold started abruptly to misfire badly at idle with poor gas mileage and modest loss of power.",
+   "source_url": "https://community.cartalk.com/t/misfires-and-poor-gas-mileage-2003-c230-mercedes/83066",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2003 Mercedes-Benz C230"
+  },
+  {
+   "domain": "engine-performance",
+   "spot_verified": true,
+   "text": "I have a 2005 GMC Sierra 2500HD that is getting poor gas mileage. Yes, it is a truck, and yes I expect bad gas mileage but 7.5 miles/ gallon is horrendous.",
+   "source_url": "https://community.cartalk.com/t/gas-mileage-getting-continualy-worse/59797",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2005 GMC Sierra 2500HD"
+  },
+  {
+   "domain": "engine-performance",
+   "spot_verified": false,
+   "text": "Before the new engine I would get about 30 to 37 mpg. Now I get between 15 and 27 with an average of about 25 mpg. Recently the car started to vibrate and \"occasionally\" I can smell gas.",
+   "source_url": "https://community.cartalk.com/t/car-vibrations-and-poor-gas-mileage/27382",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "1998 Ford Escort"
+  },
+  {
+   "domain": "engine-performance",
+   "spot_verified": false,
+   "text": "The past month or so the truck has been giving me trouble starting after getting hot and being allowed to rest for 2-3 hours. It takes longer to turn over, and also when it starts it sputters for 2-3 seconds and then runs like nothing is wrong with is. I'll also add that when the truck sits over night and gets cold it gives me zero issues starting",
+   "source_url": "https://www.f150forum.com/f118/truck-hard-start-after-getting-hot-sitting-2-3-hours-488840/",
+   "source_site": "f150forum.com",
+   "vehicle_context": "2016 Ford F-150 5.0L"
+  },
+  {
+   "domain": "engine-performance",
+   "spot_verified": true,
+   "text": "Car idles rough shakes but seems to run down the road fine at normal speed sometimes may shut off at a stop.",
+   "source_url": "https://www.2carpros.com/questions/misfire-rough-idle-77926513",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2004 Chrysler Sebring"
+  },
+  {
+   "domain": "engine-performance",
+   "spot_verified": false,
+   "text": "If the car sits for a couple days, it stalls when I depress the gas pedal or turn on the A/C. This problem only seems to happen during the spring and summer when it's humid outside. If I drive for about 20 minutes, the issue seems to resolve itself.",
+   "source_url": "https://www.2carpros.com/questions/intermittent-engine-stalling",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2007 Chevrolet Malibu"
+  },
+  {
+   "domain": "engine-performance",
+   "spot_verified": false,
+   "text": "i got my used Mazda last year in August and after a short while i noticed that it hesitates when accelerating, especially uphill.",
+   "source_url": "https://www.2carpros.com/questions/car-hesitating-or-lacking-power-when-accelerating",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2005 Mazda 3"
+  },
+  {
+   "domain": "engine-performance",
+   "spot_verified": false,
+   "text": "When I start my car it idles kind of rough. While idling my car will shut off unless I press on the gas. While driving if I am stopping or take my foot off the gas my car will turn off.",
+   "source_url": "https://www.2carpros.com/questions/engine-23492397",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2002 Ford Escape"
+  },
+  {
+   "domain": "engine-performance",
+   "spot_verified": false,
+   "text": "Every once in a while the car starts to idle rough but then it returns to normal, sometimes while driving, even on highway, the car looses power, as if it ran out of gas but than, after a a couple of seconds, things return to normal.",
+   "source_url": "https://community.cartalk.com/t/intermittent-engine-performance-rough-idle-and-stall/96752",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2005 Volvo XC70"
+  },
+  {
+   "domain": "engine-performance",
+   "spot_verified": false,
+   "text": "When the car would run, it would run the gambit from idling semi rough then stalling out and refusing to restart, almost like it was flooded, to idling scarily bad and no pedal response, to running too high of an idle and idle searching.",
+   "source_url": "https://community.cartalk.com/t/sudden-undrivably-rough-idle-stalling-and-a-long-story/95134",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "1996 Oldsmobile Cutlass Ciera 2.2L"
+  },
+  {
+   "domain": "engine-performance",
+   "spot_verified": false,
+   "text": "My car stalls whenever I am accelerating and thereafter stabilizes. The most painful part is that it cannot move up on a slightly hilly road. The acceleration drops so bad that a man running alongside my car ran past the vehicle.",
+   "source_url": "https://www.2carpros.com/questions/stalling-when-accelerating",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2008 Ford Escape"
+  },
+  {
+   "domain": "engine-performance",
+   "spot_verified": false,
+   "text": "My car recently started giving me problems, it idles roughly then the check engine light came on. I took it to the mechanic he replaced the spark plugs and wires as well as the 02 sensor, however the car is idling rough and has began to cut off randomly.",
+   "source_url": "https://www.2carpros.com/questions/rough-idol",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2007 Saturn Vue"
+  },
+  {
+   "domain": "overheating-exhaust",
+   "spot_verified": true,
+   "text": "My wife's vehicle began overheating this morning. The temperature gauge goes all the way up, and I can see steam or mist coming from behind the fan. I take it that means there's a hole in the radiator. Would that be correct, or could there be another source of the steam?",
+   "source_url": "https://www.2carpros.com/questions/overheating-33058087",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2015 Chevrolet Equinox"
+  },
+  {
+   "domain": "overheating-exhaust",
+   "spot_verified": false,
+   "text": "After about 20 minutes of running the temperature gauge rises eventually overheating. Steam and antifreeze will shoot from the radiator as well as reservoir. There is also a significant loss of power during overheating as well as a loud knocking sound.",
+   "source_url": "https://www.2carpros.com/questions/overheating-33500613",
+   "source_site": "2carpros.com",
+   "vehicle_context": "1992 Ford Ranger"
+  },
+  {
+   "domain": "overheating-exhaust",
+   "spot_verified": false,
+   "text": "After about 30 minutes of driving the temperature gauge will go halfway and then a little bit higher but never higher than one notch above halfway. Only the driver side cooling fan comes on the passenger side fan never comes on.",
+   "source_url": "https://www.2carpros.com/questions/temperature-gauge-says-running-hot-but-not-overheating",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2003 Chevrolet Impala"
+  },
+  {
+   "domain": "overheating-exhaust",
+   "spot_verified": true,
+   "text": "My muffler has been making noises as soon as my car is turned off. It first sounds like a small rattle noise, than it disappears and sounds like there is small stones or pebbles inside it.",
+   "source_url": "https://www.2carpros.com/questions/muffler-is-making-a-noise-soon-as-car-is-turned-off",
+   "source_site": "2carpros.com",
+   "vehicle_context": "1989 Buick Regal"
+  },
+  {
+   "domain": "overheating-exhaust",
+   "spot_verified": false,
+   "text": "I smell a some what sweet smell coming from my vents when I turn on the heat. It could possibly be antifreeze not sure. but it do give me a headache and irritate my throat. I do get heat and air no problem.",
+   "source_url": "https://www.2carpros.com/questions/sweet-msell-coming-through-heater-wents-maybe-intifreeze",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2003 Ford F-150"
+  },
+  {
+   "domain": "overheating-exhaust",
+   "spot_verified": false,
+   "text": "I started to smell something burning then I noticed light smoke coming out of the AC vents. I did not have the AC, fan or heater on at the time and the smoke also came out from underneath the driver side steering wheel area.",
+   "source_url": "https://www.2carpros.com/questions/the-smell-of-something-burning",
+   "source_site": "2carpros.com",
+   "vehicle_context": "1997 Toyota Camry"
+  },
+  {
+   "domain": "overheating-exhaust",
+   "spot_verified": true,
+   "text": "While merging on to a highway under hard acceleration (3,000 to 5,000 rpm's) I notice a slight burning smell coming from the engine area through the cabin vents. The smell is most similar to burning plastic, maybe rubber. I can't generate it under any other condition asides from hard acceleration.",
+   "source_url": "https://www.2carpros.com/questions/burning-smell-during-hard-acceleration",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2017 Ford Escape"
+  },
+  {
+   "domain": "overheating-exhaust",
+   "spot_verified": false,
+   "text": "I was driving when I smelled something burnt I pulled over shut the van off and looked under the hood, very little light gray smoke was coming from the front. I went to go restart my van to it would not start. I can hear a clicking noise when I key the key over.",
+   "source_url": "https://www.2carpros.com/questions/burnt-smell-and-wont-start",
+   "source_site": "2carpros.com",
+   "vehicle_context": "1999 Plymouth Voyager"
+  },
+  {
+   "domain": "overheating-exhaust",
+   "spot_verified": false,
+   "text": "When the car is started the exhaust is very loud and for the first 5 minutes of driving then it quiets down. Can't figure out why it is really loud then gets quiet. Doesn't seem like a muffler but sure sounds like one.",
+   "source_url": "https://www.2carpros.com/questions/exhaust-noise",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2009 Honda Fit"
+  },
+  {
+   "domain": "overheating-exhaust",
+   "spot_verified": true,
+   "text": "Today I noticed steam coming from underneath my hood. I pulled into walmart parking lot thinking it was just running hot. I went shopping came back out checked my oil and coolant and levels were good. I looked underneath the truck no leaks on the ground.",
+   "source_url": "https://www.2carpros.com/questions/steam-coming-form-under-the-hood",
+   "source_site": "2carpros.com",
+   "vehicle_context": "1998 Oldsmobile Bravada"
+  },
+  {
+   "domain": "overheating-exhaust",
+   "spot_verified": false,
+   "text": "The car overheated on my way home and next day I was taking to have it looked at and had to stop and cool off several times. We checked the radiator for water and the resivor tank was full.",
+   "source_url": "https://www.2carpros.com/questions/2004-chevrolet-impala-car-overheated-suddenly-steam-coming-under-hood-checked-r",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2004 Chevrolet Impala"
+  },
+  {
+   "domain": "overheating-exhaust",
+   "spot_verified": false,
+   "text": "My car started smoking slightly over the last couple days and just recently my antifreeze keeps leaking but my car is not over heating. It drives normally. It is not affecting performance of the car other than the leak and the smoke.",
+   "source_url": "https://www.2carpros.com/questions/coolant-is-leaking-and-steam-smoke-is-coming-from-the-hood",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2008 Pontiac G6"
+  },
+  {
+   "domain": "overheating-exhaust",
+   "spot_verified": true,
+   "text": "After driving steam comes from under hood. Has been happening for a while.",
+   "source_url": "https://www.2carpros.com/questions/steam-from-under-hood",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2015 Ford Edge"
+  },
+  {
+   "domain": "overheating-exhaust",
+   "spot_verified": false,
+   "text": "I have a hissing sound and smoke/steam coming from under my hood. Radiator is full and it is not overheating and I cannot quite figure it out.",
+   "source_url": "https://www.2carpros.com/questions/hissing-sound-and-steam-smoke-under-hood",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2000 Chrysler Sebring"
+  },
+  {
+   "domain": "overheating-exhaust",
+   "spot_verified": false,
+   "text": "there is a popping sound that comes from the exhaust whenever i down shift from third to second or second to first gear, also when i maintain the rpm at 2,500-3,000 and then release it pops or when i accelerate full throttle at low speed then immediately lift my leg from the gas it pops.",
+   "source_url": "https://www.2carpros.com/questions/popping-sound-in-exhaust",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2015 Toyota Corolla"
+  },
+  {
+   "domain": "overheating-exhaust",
+   "spot_verified": true,
+   "text": "My car's exhaust smells oddly sweet/chemical smell on a cold start, not the same sweet smell as a coolant leak. There is no smoke from the exhaust and the smell goes away after a minute or two.",
+   "source_url": "https://www.2carpros.com/questions/exhaust-smell-on-cold-start",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2013 Kia Sorento"
+  },
+  {
+   "domain": "overheating-exhaust",
+   "spot_verified": false,
+   "text": "My exhaust manifold heat shield was rattling so I just removed it. It rusted out and I wasn't sure if it could be welded back on.",
+   "source_url": "https://www.2carpros.com/questions/exhaust-manifold-heat-shield-rattling",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2010 Chevrolet Aveo"
+  },
+  {
+   "domain": "overheating-exhaust",
+   "spot_verified": false,
+   "text": "The temperature gauge was climbing to well above halfway. I never noticed this happen before.",
+   "source_url": "https://www.2carpros.com/questions/overheating-26611858",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2005 Jeep Liberty"
+  },
+  {
+   "domain": "overheating-exhaust",
+   "spot_verified": false,
+   "text": "The temperature hand goes to hot, but the car is not running hot.",
+   "source_url": "https://www.2carpros.com/questions/temp-hand-reads-hot",
+   "source_site": "2carpros.com",
+   "vehicle_context": "2007 Chevrolet Impala"
+  },
+  {
+   "domain": "overheating-exhaust",
+   "spot_verified": false,
+   "text": "There is a sweet smell coming from the vents when I turn the heat on that's really strong and making me feel sick. My initial though is the heater core is leaking.",
+   "source_url": "https://community.cartalk.com/t/heater-core-sweet-smell-wont-go-away/192298",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "2005 Pontiac Vibe"
+  },
+  {
+   "domain": "overheating-exhaust",
+   "spot_verified": false,
+   "text": "I smell antifreeze when I run my heat and/or defroster…but BOTH still WORK fine! There is no leaking of coolant into the cab of the car or through defroster vents.",
+   "source_url": "https://community.cartalk.com/t/smelling-antifreeze-when-i-run-heat/59686",
+   "source_site": "community.cartalk.com",
+   "vehicle_context": "1995 Isuzu Rodeo"
+  }
+ ]
+}
