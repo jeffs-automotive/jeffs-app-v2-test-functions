@@ -32,7 +32,9 @@ function makeResult(
     },
     unanswered_question_ids: [3],
     extracted_facts: FACTS,
-    stage1_confidence: "high",
+    stage1_candidates: ["brake_inspection"],
+    requires_clarification: false,
+    candidate_results: null,
     stage2_confidence: "high",
     stage3_confidence: "high",
     parsed_ok: true,
@@ -95,7 +97,6 @@ describe("applyConfidenceGate", () => {
   it("passes medium confidence — only 'low' escalates", () => {
     const { gate } = applyConfidenceGate(
       makeResult({
-        stage1_confidence: "medium",
         stage2_confidence: "medium",
         stage3_confidence: "medium",
       }),
@@ -103,9 +104,9 @@ describe("applyConfidenceGate", () => {
     expect(gate).toBe("pass");
   });
 
-  it("routes Stage-1 low to advisor handoff (strips the match)", () => {
+  it("routes Stage-2 low WITH a subcategory pick to advisor handoff (strips the match)", () => {
     const { result, gate } = applyConfidenceGate(
-      makeResult({ stage1_confidence: "low" }),
+      makeResult({ stage2_confidence: "low" }),
     );
     expect(gate).toBe("advisor_handoff");
     expect(result.matched_category_key).toBeNull();
@@ -115,14 +116,8 @@ describe("applyConfidenceGate", () => {
     expect(result.unanswered_question_ids).toEqual([]);
     // Audit fields survive the strip.
     expect(result.extracted_facts).toBe(FACTS);
-    expect(result.stage1_confidence).toBe("low");
-  });
-
-  it("routes Stage-2 low WITH a subcategory pick to advisor handoff", () => {
-    const { gate } = applyConfidenceGate(
-      makeResult({ stage2_confidence: "low" }),
-    );
-    expect(gate).toBe("advisor_handoff");
+    expect(result.stage2_confidence).toBe("low");
+    expect(result.stage1_candidates).toEqual(["brake_inspection"]);
   });
 
   it("does NOT gate the Stage-2 'low' placeholder when Stage 2 never picked (failure path keeps recommend-without-questions)", () => {
@@ -160,7 +155,6 @@ describe("applyConfidenceGate", () => {
       matched_kind: "other_subcategory",
       matched_category_key: "multiple-symptoms",
       recommended_testing_service: null,
-      stage1_confidence: "low",
       stage2_confidence: "low",
       stage3_confidence: "low",
     });
@@ -176,15 +170,33 @@ describe("applyConfidenceGate", () => {
         matched_category_key: null,
         matched_subcategory_slug: null,
         recommended_testing_service: null,
-        stage1_confidence: "low",
+        stage2_confidence: "low",
       }),
     );
     expect(gate).toBe("pass");
   });
 
-  it("advisor handoff wins over over-ask when Stage 1 and Stage 3 are both low", () => {
+  it("never gates a requires_clarification (multi-candidate) result — matched_kind is null on the clarify path", () => {
+    const input = makeResult({
+      matched_kind: null,
+      matched_category_key: null,
+      matched_subcategory_slug: null,
+      recommended_testing_service: null,
+      unanswered_question_ids: [],
+      stage1_candidates: ["brake_inspection", "suspension_steering_check"],
+      requires_clarification: true,
+      candidate_results: [],
+      stage2_confidence: "low",
+      stage3_confidence: "low",
+    });
+    const { result, gate } = applyConfidenceGate(input);
+    expect(gate).toBe("pass");
+    expect(result).toBe(input);
+  });
+
+  it("advisor handoff wins over over-ask when Stage 2 and Stage 3 are both low", () => {
     const { gate } = applyConfidenceGate(
-      makeResult({ stage1_confidence: "low", stage3_confidence: "low" }),
+      makeResult({ stage2_confidence: "low", stage3_confidence: "low" }),
     );
     expect(gate).toBe("advisor_handoff");
   });

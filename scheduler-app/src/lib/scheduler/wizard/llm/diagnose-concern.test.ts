@@ -1,11 +1,18 @@
 /**
- * Unit tests for diagnoseConcern — the 3-stage Anthropic LLM classifier that
- * drives the appointment-scheduler wizard's diagnostic flow.
+ * Unit tests for diagnoseConcern — the 3-stage LLM classifier that drives
+ * the appointment-scheduler wizard's diagnostic flow.
  *
- * Coverage targets per PLAN-01 Phase 4A:
+ * Coverage targets per PLAN-01 Phase 4A + act-or-ask AO2 (2026-07-03):
  *   - 3-stage happy path (testing service + 'other' subcategory shapes)
  *   - Short-circuit: empty description, empty catalog
- *   - Stage 1: null match, hallucinated key, total failure, transient retry
+ *   - Stage 1 (candidates contract): null/empty list, hallucinated keys
+ *     dropped, de-dupe + truncation to 3, total failure, transient retry
+ *   - Orchestration branching: 0 candidates → null match; 1 → direct
+ *     S2→S3; 2-3 → parallel per-candidate S2+S3 (clarify path) with
+ *     per-candidate degradation
+ *   - Transport dispatch: anthropic/* → Anthropic SDK; other prefixes →
+ *     @ai-sdk/gateway generateObject; gateway failure → anthropic
+ *     DEFAULT_MODEL fallback
  *   - Stage 2: null subcategory (Stage 3 still runs), hallucinated slug, total failure
  *   - Stage 3: total failure → safe over-ask
  *   - Confidence + token accumulation across stages
@@ -18,10 +25,15 @@
  *     `tests/fixtures/mock-anthropic.ts`. Every `new Anthropic({...})` then
  *     yields the same fake `messages.create` mock so tests can queue per-stage
  *     responses + errors.
+ *   - `vi.mock("ai")` + `vi.mock("@ai-sdk/gateway")` swap the gateway
+ *     transport for spies. Most tests pin every stage to the Anthropic
+ *     transport via the DIAGNOSE_CONCERN_MODEL env stub (see the global
+ *     beforeEach); the dispatch suite overrides per-stage models to
+ *     exercise the gateway path.
  *   - `vi.mock("@sentry/nextjs", ...)` swaps out `addBreadcrumb` /
  *     `captureException` with spies so tests can assert the breadcrumb chain.
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 import {
   sharedMockAnthropic,
@@ -43,6 +55,19 @@ const sentryCaptureException = vi.fn();
 vi.mock("@sentry/nextjs", () => ({
   addBreadcrumb: (...args: unknown[]) => sentryAddBreadcrumb(...args),
   captureException: (...args: unknown[]) => sentryCaptureException(...args),
+}));
+
+// Gateway transport spies (act-or-ask AO2b). The factories dereference the
+// spies lazily (call-time arrows) so vi.mock hoisting can't hit a TDZ on
+// the consts below.
+const generateObjectMock = vi.fn();
+const gatewayModelMock = vi.fn((modelId: string) => ({ modelId }));
+vi.mock("ai", () => ({
+  generateObject: (...args: unknown[]) => generateObjectMock(...args),
+  jsonSchema: (schema: unknown) => schema,
+}));
+vi.mock("@ai-sdk/gateway", () => ({
+  createGateway: () => (modelId: string) => gatewayModelMock(modelId),
 }));
 
 import {
@@ -204,13 +229,16 @@ function makeFacts(overrides: Partial<ExtractedFacts> = {}): ExtractedFacts {
 // Canned response builders matching each stage's JSON Schema
 // ---------------------------------------------------------------------------
 
-function stage1Response(
-  matched_category_key: string | null,
-  confidence: "high" | "medium" | "low" = "high",
-) {
+/** Act-or-ask Stage-1 shape: 0-3 ranked candidate keys. Accepts a single
+ *  key (wrapped), an array, or null (→ empty list) for call-site brevity. */
+function stage1Response(candidates: string[] | string | null) {
   return {
-    matched_category_key,
-    confidence,
+    candidates:
+      candidates === null
+        ? []
+        : Array.isArray(candidates)
+          ? candidates
+          : [candidates],
     reasoning: "stage 1 mock reasoning",
   };
 }
@@ -253,6 +281,24 @@ function makeArgs(overrides: Partial<DiagnoseConcernArgs> = {}): DiagnoseConcern
 }
 
 // ---------------------------------------------------------------------------
+// Global transport pinning
+// ---------------------------------------------------------------------------
+//
+// Act-or-ask AO2b: Stage 1 + 2 now DEFAULT to a gateway-transported model
+// (google/gemini-3.1-flash-lite). These unit tests drive the Anthropic
+// mock queue, so pin every stage to the Anthropic transport via the
+// combined env override. The transport-dispatch suite below stubs
+// per-stage overrides on top (they take precedence over the combined var).
+beforeEach(() => {
+  vi.stubEnv("DIAGNOSE_CONCERN_MODEL", "anthropic/claude-haiku-4-5");
+  generateObjectMock.mockReset();
+  gatewayModelMock.mockClear();
+});
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -265,7 +311,7 @@ describe("diagnoseConcern — three-stage happy path", () => {
 
   it("3 stages return validated structured outputs → populated result with parsed_ok=true", async () => {
     sharedMockAnthropic.addStageResponse(
-      stage1Response("brake_inspection", "high"),
+      stage1Response("brake_inspection"),
     );
     sharedMockAnthropic.addStageResponse(
       stage2Response("metallic_grinding", "high"),
@@ -289,7 +335,9 @@ describe("diagnoseConcern — three-stage happy path", () => {
         matched_category_key: "brake_inspection",
         matched_kind: "testing_service",
         matched_subcategory_slug: "metallic_grinding",
-        stage1_confidence: "high",
+        stage1_candidates: ["brake_inspection"],
+        requires_clarification: false,
+        candidate_results: null,
         stage2_confidence: "high",
         stage3_confidence: "high",
         parsed_ok: true,
@@ -313,7 +361,7 @@ describe("diagnoseConcern — three-stage happy path", () => {
 
   it("matches an 'other' subcategory and skips testing-service payload", async () => {
     sharedMockAnthropic.addStageResponse(
-      stage1Response("recent_accident", "high"),
+      stage1Response("recent_accident"),
     );
     sharedMockAnthropic.addStageResponse(
       stage2Response("recent_accident", "high"),
@@ -375,34 +423,69 @@ describe("diagnoseConcern — Stage 1 outcomes", () => {
     sentryCaptureException.mockClear();
   });
 
-  it("returns null match (LLM self-reported can't categorize) → no Stage 2/3 dispatch", async () => {
-    sharedMockAnthropic.addStageResponse(stage1Response(null, "low"));
+  it("returns an EMPTY candidate list (LLM self-reported nothing fits) → no Stage 2/3 dispatch", async () => {
+    sharedMockAnthropic.addStageResponse(stage1Response(null));
 
     const result = await diagnoseConcern(makeArgs());
 
     expect(result.matched_category_key).toBeNull();
     expect(result.matched_kind).toBeNull();
-    expect(result.stage1_confidence).toBe("low");
+    expect(result.stage1_candidates).toEqual([]);
+    expect(result.requires_clarification).toBe(false);
+    expect(result.candidate_results).toBeNull();
     expect(result.parsed_ok).toBe(true);
     expect(result.error_message).toBe("");
     expect(sharedMockAnthropic.create).toHaveBeenCalledTimes(1);
   });
 
-  it("returns a hallucinated category key (not in catalog) → null match + invalid_category_key error", async () => {
+  it("returns ONLY hallucinated keys (not in catalog) → null match + invalid_category_key error", async () => {
     sharedMockAnthropic.addStageResponse(
-      stage1Response("ghost_service_not_in_catalog", "medium"),
+      stage1Response("ghost_service_not_in_catalog"),
     );
 
     const result = await diagnoseConcern(makeArgs());
 
     expect(result.matched_category_key).toBeNull();
     expect(result.matched_kind).toBeNull();
-    expect(result.stage1_confidence).toBe("medium");
+    expect(result.stage1_candidates).toEqual([]);
     expect(result.parsed_ok).toBe(true);
     expect(result.error_message).toMatch(
       /^invalid_category_key:ghost_service_not_in_catalog/,
     );
     expect(sharedMockAnthropic.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("drops invalid keys but keeps valid ones → single survivor takes the direct path", async () => {
+    sharedMockAnthropic.addStageResponse(
+      stage1Response(["ghost_service_not_in_catalog", "brake_inspection"]),
+    );
+    sharedMockAnthropic.addStageResponse(stage2Response("metallic_grinding"));
+    sharedMockAnthropic.addStageResponse(stage3Response());
+
+    const result = await diagnoseConcern(makeArgs());
+
+    expect(result.matched_category_key).toBe("brake_inspection");
+    expect(result.stage1_candidates).toEqual(["brake_inspection"]);
+    expect(result.requires_clarification).toBe(false);
+    expect(result.candidate_results).toBeNull();
+    expect(result.parsed_ok).toBe(true);
+    // Direct path: S1 + S2 + S3.
+    expect(sharedMockAnthropic.create).toHaveBeenCalledTimes(3);
+  });
+
+  it("de-dupes repeated candidate keys before branching", async () => {
+    sharedMockAnthropic.addStageResponse(
+      stage1Response(["brake_inspection", "brake_inspection"]),
+    );
+    sharedMockAnthropic.addStageResponse(stage2Response("metallic_grinding"));
+    sharedMockAnthropic.addStageResponse(stage3Response());
+
+    const result = await diagnoseConcern(makeArgs());
+
+    // One unique candidate → direct path, NOT clarify.
+    expect(result.stage1_candidates).toEqual(["brake_inspection"]);
+    expect(result.requires_clarification).toBe(false);
+    expect(sharedMockAnthropic.create).toHaveBeenCalledTimes(3);
   });
 
   it("fails BOTH attempts → failSafe returns parsed_ok=false + stage1_failed message", async () => {
@@ -414,7 +497,8 @@ describe("diagnoseConcern — Stage 1 outcomes", () => {
     expect(result.matched_category_key).toBeNull();
     expect(result.parsed_ok).toBe(false);
     expect(result.error_message).toMatch(/^stage1_failed: /);
-    expect(result.stage1_confidence).toBe("low");
+    expect(result.stage1_candidates).toEqual([]);
+    expect(result.requires_clarification).toBe(false);
     expect(result.stage2_confidence).toBe("low");
     expect(result.stage3_confidence).toBe("low");
     // Stage 1 attempted twice, no Stage 2 or 3.
@@ -565,10 +649,8 @@ describe("diagnoseConcern — short-circuit + edge cases", () => {
     expect(result.error_message).toBe("empty_catalog");
   });
 
-  it("preserves Stage 1 + Stage 2 self-reported confidence end-to-end", async () => {
-    sharedMockAnthropic.addStageResponse(
-      stage1Response("brake_inspection", "medium"),
-    );
+  it("preserves Stage 2 + Stage 3 self-reported confidence end-to-end", async () => {
+    sharedMockAnthropic.addStageResponse(stage1Response("brake_inspection"));
     sharedMockAnthropic.addStageResponse(
       stage2Response("metallic_grinding", "medium"),
     );
@@ -576,9 +658,340 @@ describe("diagnoseConcern — short-circuit + edge cases", () => {
 
     const result = await diagnoseConcern(makeArgs());
 
-    expect(result.stage1_confidence).toBe("medium");
     expect(result.stage2_confidence).toBe("medium");
     expect(result.stage3_confidence).toBe("low");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Act-or-ask clarify path (2-3 candidates) — content-routed mock
+// ---------------------------------------------------------------------------
+
+/**
+ * Catalog wide enough for 3+ valid candidates: three testing services
+ * (distinct subcategory slugs + question ids) + the 'other'
+ * recent_accident category.
+ */
+function makeWideCatalog(): DiagnosticCatalog {
+  const brake = makeTestingService("brake_inspection", [
+    makeSubcategory("metallic_grinding", [
+      makeQuestion(101, ["noise_descriptor"]),
+      makeQuestion(102, ["location_axle", "location_side"]),
+    ]),
+  ]);
+  const suspension = makeTestingService("suspension_check", [
+    makeSubcategory("clunk_over_bumps", [makeQuestion(401, ["onset_timing"])]),
+  ]);
+  const tires = makeTestingService("tire_inspection", [
+    makeSubcategory("vibration_at_speed", [makeQuestion(501, ["speed_band"])]),
+  ]);
+  const otherCat = makeOtherSubcategory("recent_accident", [
+    makeQuestion(301, ["recent_action"]),
+  ]);
+  return {
+    categories: [
+      brake,
+      suspension,
+      tires,
+      otherCat,
+    ] as CatalogCategory[],
+  };
+}
+
+/** Minimal Anthropic Message envelope for mockImplementation-based routing. */
+function msgOf(json: unknown) {
+  return {
+    content: [{ type: "text" as const, text: JSON.stringify(json) }],
+    usage: {
+      input_tokens: 10,
+      output_tokens: 5,
+      cache_creation_input_tokens: null,
+      cache_read_input_tokens: null,
+    },
+    stop_reason: "end_turn" as const,
+    id: "msg_routed",
+    model: "anthropic/claude-haiku-4-5",
+    role: "assistant" as const,
+    type: "message" as const,
+    stop_sequence: null,
+    container: null,
+    stop_details: null,
+  };
+}
+
+/**
+ * Content-routing mock: inspects the system prompt to decide which stage
+ * (and, for Stage 2, which candidate category) is being answered. Makes
+ * the parallel per-candidate Promise.all ORDER-INSENSITIVE — no reliance
+ * on FIFO interleaving across concurrently running chains. A handler may
+ * return an Error to make that call throw (attempt failure).
+ */
+function routeAnthropicMock(handlers: {
+  stage1: () => unknown;
+  stage2: (systemText: string) => unknown;
+  stage3: (systemText: string) => unknown;
+}) {
+  sharedMockAnthropic.create.mockImplementation(async (req: unknown) => {
+    const sys = (req as { system: Array<{ text: string }> }).system
+      .map((b) => b.text)
+      .join("\n\n");
+    const out = sys.includes("Stage 1: candidate categories")
+      ? handlers.stage1()
+      : sys.includes("Stage 2: subcategory pick")
+        ? handlers.stage2(sys)
+        : handlers.stage3(sys);
+    if (out instanceof Error) throw out;
+    return msgOf(out);
+  });
+}
+
+describe("diagnoseConcern — act-or-ask clarify path (2-3 candidates)", () => {
+  beforeEach(() => {
+    sharedMockAnthropic.reset();
+    sentryAddBreadcrumb.mockClear();
+    sentryCaptureException.mockClear();
+  });
+
+  afterEach(() => {
+    // routeAnthropicMock overrides the fixture's FIFO-queue implementation;
+    // mockReset restores the original implementation passed to vi.fn so
+    // queue-driven suites keep working after this one.
+    sharedMockAnthropic.create.mockReset();
+  });
+
+  it("3 candidates → requires_clarification + per-candidate FULL S2+S3 chains; truncates past 3", async () => {
+    routeAnthropicMock({
+      stage1: () =>
+        stage1Response([
+          "brake_inspection",
+          "suspension_check",
+          "tire_inspection",
+          "recent_accident", // 4th VALID key — must be truncated away
+        ]),
+      stage2: (sys) =>
+        sys.includes('service_key="brake_inspection"')
+          ? stage2Response("metallic_grinding")
+          : sys.includes('service_key="suspension_check"')
+            ? stage2Response("clunk_over_bumps")
+            : stage2Response("vibration_at_speed"),
+      stage3: () => stage3Response(),
+    });
+
+    const result = await diagnoseConcern(
+      makeArgs({ catalog: makeWideCatalog() }),
+    );
+
+    expect(result.requires_clarification).toBe(true);
+    expect(result.matched_category_key).toBeNull();
+    expect(result.matched_kind).toBeNull();
+    expect(result.recommended_testing_service).toBeNull();
+    expect(result.unanswered_question_ids).toEqual([]);
+    expect(result.parsed_ok).toBe(true);
+    expect(result.error_message).toBe("");
+    // Truncated to 3, ranked order preserved.
+    expect(result.stage1_candidates).toEqual([
+      "brake_inspection",
+      "suspension_check",
+      "tire_inspection",
+    ]);
+    const crs = result.candidate_results!;
+    expect(crs).toHaveLength(3);
+    expect(crs.map((c) => c.category_key)).toEqual(result.stage1_candidates);
+    // Each candidate carries its own full chain.
+    const brake = crs[0]!;
+    expect(brake.matched_kind).toBe("testing_service");
+    expect(brake.matched_subcategory_slug).toBe("metallic_grinding");
+    expect(brake.recommended_testing_service).toEqual(
+      expect.objectContaining({ service_key: "brake_inspection" }),
+    );
+    // stage3Response() sets no facts → both questions unanswered.
+    expect(brake.unanswered_question_ids).toEqual([101, 102]);
+    expect(crs[1]!.matched_subcategory_slug).toBe("clunk_over_bumps");
+    expect(crs[1]!.unanswered_question_ids).toEqual([401]);
+    expect(crs[2]!.matched_subcategory_slug).toBe("vibration_at_speed");
+    // S1 + 3 × (S2 + S3) = 7 calls.
+    expect(sharedMockAnthropic.create).toHaveBeenCalledTimes(7);
+  });
+
+  it("mixed kinds: an 'other' candidate precomputes with null recommended service + its own questions", async () => {
+    routeAnthropicMock({
+      stage1: () => stage1Response(["brake_inspection", "recent_accident"]),
+      stage2: (sys) =>
+        sys.includes('service_key="brake_inspection"')
+          ? stage2Response("metallic_grinding")
+          : stage2Response("recent_accident"),
+      stage3: () => stage3Response(),
+    });
+
+    const result = await diagnoseConcern(
+      makeArgs({ catalog: makeWideCatalog() }),
+    );
+
+    expect(result.requires_clarification).toBe(true);
+    const other = result.candidate_results![1]!;
+    expect(other.category_key).toBe("recent_accident");
+    expect(other.matched_kind).toBe("other_subcategory");
+    expect(other.recommended_testing_service).toBeNull();
+    expect(other.matched_subcategory_slug).toBe("recent_accident");
+    expect(other.unanswered_question_ids).toEqual([301]);
+  });
+
+  it("per-candidate degradation: one candidate's Stage 2 fails both attempts → that candidate degrades, the other completes", async () => {
+    routeAnthropicMock({
+      stage1: () => stage1Response(["brake_inspection", "suspension_check"]),
+      stage2: (sys) =>
+        sys.includes('service_key="suspension_check"')
+          ? new Error("stage2_boom")
+          : stage2Response("metallic_grinding"),
+      stage3: () => stage3Response(),
+    });
+
+    const result = await diagnoseConcern(
+      makeArgs({ catalog: makeWideCatalog() }),
+    );
+
+    // The clarify result itself is intact — degradation is per-candidate.
+    expect(result.requires_clarification).toBe(true);
+    expect(result.parsed_ok).toBe(true);
+    const [brake, susp] = result.candidate_results!;
+    expect(brake!.matched_subcategory_slug).toBe("metallic_grinding");
+    expect(brake!.stage2_confidence).toBe("high");
+    // Degraded candidate: recommend-without-questions shape (stage2
+    // fallback semantics) — no subcategory, no questions, low confidence.
+    expect(susp!.matched_subcategory_slug).toBeNull();
+    expect(susp!.stage2_confidence).toBe("low");
+    expect(susp!.stage3_confidence).toBe("low");
+    expect(susp!.unanswered_question_ids).toEqual([]);
+    expect(susp!.extracted_facts).toBeNull();
+    expect(susp!.recommended_testing_service).toEqual(
+      expect.objectContaining({ service_key: "suspension_check" }),
+    );
+    // S1 (1) + brake S2+S3 (2) + susp S2 two failed attempts (2) = 5.
+    expect(sharedMockAnthropic.create).toHaveBeenCalledTimes(5);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Transport dispatch (act-or-ask AO2b)
+// ---------------------------------------------------------------------------
+
+describe("callModelStage transport dispatch (act-or-ask AO2b)", () => {
+  beforeEach(() => {
+    sharedMockAnthropic.reset();
+    sentryAddBreadcrumb.mockClear();
+    sentryCaptureException.mockClear();
+  });
+
+  it("non-anthropic/ Stage-1 model routes through @ai-sdk/gateway generateObject; anthropic stages stay on the SDK", async () => {
+    vi.stubEnv("DIAGNOSE_CONCERN_STAGE1_MODEL", "google/gemini-3.1-flash-lite");
+    generateObjectMock.mockResolvedValueOnce({
+      object: stage1Response("brake_inspection"),
+      usage: { inputTokens: 7, outputTokens: 3 },
+    });
+    sharedMockAnthropic.addStageResponse(stage2Response("metallic_grinding"));
+    sharedMockAnthropic.addStageResponse(stage3Response());
+
+    const result = await diagnoseConcern(makeArgs());
+
+    expect(result.matched_category_key).toBe("brake_inspection");
+    expect(result.model).toBe("google/gemini-3.1-flash-lite");
+    // Gateway path used exactly once (Stage 1).
+    expect(generateObjectMock).toHaveBeenCalledTimes(1);
+    expect(gatewayModelMock).toHaveBeenCalledWith(
+      "google/gemini-3.1-flash-lite",
+    );
+    const call = generateObjectMock.mock.calls[0]![0] as {
+      temperature: number;
+      system: string;
+      prompt: string;
+    };
+    expect(call.temperature).toBe(0);
+    // Flattened content-block system prompt (single string, both blocks).
+    expect(typeof call.system).toBe("string");
+    expect(call.system).toContain("Stage 1: candidate categories");
+    expect(call.system).toContain("No chip hint");
+    expect(call.prompt).toContain("grinding noise");
+    // Anthropic SDK used for Stages 2 + 3 only.
+    expect(sharedMockAnthropic.create).toHaveBeenCalledTimes(2);
+    // Gateway usage tokens flow into the totals (7/3 + two anthropic
+    // stages at the fixture default 100/50 each).
+    expect(result.tokens_in).toBe(7 + 100 + 100);
+    expect(result.tokens_out).toBe(3 + 50 + 50);
+  });
+
+  it("anthropic/-prefixed models NEVER touch the gateway path", async () => {
+    sharedMockAnthropic.addStageResponse(stage1Response("brake_inspection"));
+    sharedMockAnthropic.addStageResponse(stage2Response("metallic_grinding"));
+    sharedMockAnthropic.addStageResponse(stage3Response());
+
+    await diagnoseConcern(makeArgs());
+
+    expect(generateObjectMock).not.toHaveBeenCalled();
+    expect(gatewayModelMock).not.toHaveBeenCalled();
+    expect(sharedMockAnthropic.create).toHaveBeenCalledTimes(3);
+  });
+
+  it("gateway both-attempts failure degrades to the Anthropic path on the default model", async () => {
+    vi.stubEnv("DIAGNOSE_CONCERN_STAGE1_MODEL", "google/gemini-3.1-flash-lite");
+    generateObjectMock.mockRejectedValue(new Error("gateway_5xx"));
+    sharedMockAnthropic.addStageResponse(stage1Response("brake_inspection"));
+    sharedMockAnthropic.addStageResponse(stage2Response("metallic_grinding"));
+    sharedMockAnthropic.addStageResponse(stage3Response());
+
+    const result = await diagnoseConcern(makeArgs());
+
+    expect(result.matched_category_key).toBe("brake_inspection");
+    expect(result.parsed_ok).toBe(true);
+    // Two gateway attempts…
+    expect(generateObjectMock).toHaveBeenCalledTimes(2);
+    // …then the Anthropic fallback took Stage 1 on DEFAULT_MODEL, and
+    // Stages 2+3 ran on the anthropic path (per the env pin) — 3 calls.
+    expect(sharedMockAnthropic.create).toHaveBeenCalledTimes(3);
+    const firstCreateArgs = sharedMockAnthropic.create.mock.calls[0]![0] as {
+      model: string;
+    };
+    expect(firstCreateArgs.model).toBe("anthropic/claude-haiku-4-5");
+    // Both gateway failures got the transport-tagged Sentry capture.
+    const gatewayCaptures = sentryCaptureException.mock.calls.filter((c) => {
+      const opts = c[1] as { tags?: { transport?: string } } | undefined;
+      return opts?.tags?.transport === "gateway";
+    });
+    expect(gatewayCaptures).toHaveLength(2);
+  });
+
+  it("gateway failure + anthropic fallback failure fails the stage with the combined error", async () => {
+    vi.stubEnv("DIAGNOSE_CONCERN_STAGE1_MODEL", "google/gemini-3.1-flash-lite");
+    generateObjectMock.mockRejectedValue(new Error("gateway_down"));
+    sharedMockAnthropic.addStageError("anthropic_down");
+    sharedMockAnthropic.addStageError("anthropic_down");
+
+    const result = await diagnoseConcern(makeArgs());
+
+    expect(result.parsed_ok).toBe(false);
+    expect(result.error_message).toContain("stage1_failed");
+    expect(result.error_message).toContain("gateway_failed: gateway_down");
+    expect(result.error_message).toContain("anthropic_fallback_failed");
+  });
+
+  it("gateway Zod post-parse rejects a malformed object → counts as an attempt failure, retried", async () => {
+    vi.stubEnv("DIAGNOSE_CONCERN_STAGE1_MODEL", "google/gemini-3.1-flash-lite");
+    generateObjectMock
+      .mockResolvedValueOnce({
+        object: { wrong_shape: true },
+        usage: { inputTokens: 1, outputTokens: 1 },
+      })
+      .mockResolvedValueOnce({
+        object: stage1Response("brake_inspection"),
+        usage: { inputTokens: 7, outputTokens: 3 },
+      });
+    sharedMockAnthropic.addStageResponse(stage2Response("metallic_grinding"));
+    sharedMockAnthropic.addStageResponse(stage3Response());
+
+    const result = await diagnoseConcern(makeArgs());
+
+    expect(result.matched_category_key).toBe("brake_inspection");
+    expect(result.parsed_ok).toBe(true);
+    expect(generateObjectMock).toHaveBeenCalledTimes(2);
   });
 });
 

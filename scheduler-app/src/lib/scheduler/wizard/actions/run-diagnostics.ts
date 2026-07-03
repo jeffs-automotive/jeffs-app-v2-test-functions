@@ -36,6 +36,7 @@ import * as Sentry from "@sentry/nextjs";
 import { z } from "zod";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import type { WizardStep } from "@/lib/scheduler/session-state";
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
 import {
@@ -70,6 +71,22 @@ export type RunDiagnosticsV2Args = z.infer<typeof inputSchema>;
 
 const OTHER_ISSUE_SERVICE_KEY = "other_issue";
 
+/**
+ * Act-or-ask AO2c (2026-07-03): the chip-card step shown when a concern's
+ * Stage 1 returned 2-3 ranked candidates.
+ *
+ * TODO(AO4 — wizard task): 'concern_clarify' is NOT yet a member of
+ * WIZARD_STEPS. It can't be added here because get-current-card.ts (and
+ * the card-payload/WizardSurface switches) carry `never` exhaustiveness
+ * checks — adding the member without the card arms breaks typecheck, and
+ * those files belong to the wizard task. Until AO4 lands, sessions that
+ * reach this step render no card (get-current-card falls through to its
+ * default → null), which is acceptable pre-ship since AO2+AO4 deploy
+ * together. The double-cast below is removed by AO4 when the step joins
+ * WIZARD_STEPS.
+ */
+const CONCERN_CLARIFY_STEP = "concern_clarify" as unknown as WizardStep;
+
 interface ExplanationItem {
   service_key: string;
   display_name: string;
@@ -96,6 +113,61 @@ interface PendingQuestionEntry {
    *  to render multi-chip + Continue (true) or single-tap-to-submit
    *  (false). Added 2026-05-18 with the CAT-2 catalog rebuild. */
   multi_select: boolean;
+}
+
+// ─── Act-or-ask clarify candidates (AO2c, 2026-07-03) ───────────────────────
+//
+// When diagnoseConcern returns requires_clarification (Stage 1 produced
+// 2-3 ranked candidates), the concern is NOT gated/aggregated into
+// recommendations/questions. Instead one ConcernClarifyEntry per such
+// concern is persisted to customer_chat_sessions.concern_clarify_candidates
+// (JSONB) and the wizard routes to the concern_clarify chip card. The
+// customer's tap resolves DETERMINISTICALLY from the precomputed
+// per-candidate S2+S3 payloads — no second LLM call, no second spinner.
+
+interface ClarifyCandidateOption {
+  key: string;
+  kind: "testing_service" | "other_subcategory";
+  display_name: string;
+  /** null for 'other' (advisor-handoff) candidates — they carry no fee. */
+  starting_price_cents: number | null;
+  /** First sentence of the catalog description only (chip-card sized). */
+  description: string | null;
+  /** Precomputed Stage-2/Stage-3 outcome for this candidate, persisted so
+   *  the tap resolution can rebuild the normal pipeline outputs. */
+  precomputed: {
+    matched_subcategory_slug: string | null;
+    unanswered_question_ids: number[];
+  };
+}
+
+interface ConcernClarifyEntry {
+  concern_index: number;
+  /** The explanation item's picker-chip service_key (source concern id). */
+  service_key: string;
+  concern_text: string;
+  candidates: ClarifyCandidateOption[];
+}
+
+/** First sentence of a description (chip-card sized). Falls back to the
+ *  whole (trimmed) text when no sentence terminator is found. */
+function firstSentence(text: string | null): string | null {
+  if (!text) return null;
+  const trimmed = text.trim();
+  if (trimmed.length === 0) return null;
+  const match = trimmed.match(/^[\s\S]*?[.!?](?=\s|$)/);
+  return (match ? match[0] : trimmed).trim();
+}
+
+function parseClarifyEntries(raw: unknown): ConcernClarifyEntry[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (entry): entry is ConcernClarifyEntry =>
+      !!entry &&
+      typeof entry === "object" &&
+      typeof (entry as Record<string, unknown>).service_key === "string" &&
+      Array.isArray((entry as Record<string, unknown>).candidates),
+  );
 }
 
 function parseExplanationItems(raw: unknown): ExplanationItem[] {
@@ -336,7 +408,7 @@ async function runDiagnosticsBody(
   const { data: row, error: rowErr } = await supabase
     .from("customer_chat_sessions")
     .select(
-      "id, explanation_required_items, new_vehicle_info, diagnostic_processing_complete, clarification_questions_pending, recommended_testing_services",
+      "id, explanation_required_items, new_vehicle_info, diagnostic_processing_complete, clarification_questions_pending, recommended_testing_services, concern_clarify_candidates",
     )
     .eq("id", chatId)
     .maybeSingle();
@@ -354,6 +426,16 @@ async function runDiagnosticsBody(
   // already ran for this session's current explanation queue. Just
   // re-route based on the persisted pending + recommendation state.
   if (row.diagnostic_processing_complete) {
+    // Act-or-ask AO2c: unresolved clarify candidates take priority over
+    // the standard routing — the customer still owes us a chip tap. The
+    // clarify-resolution action clears the column when it merges the
+    // chosen candidate, so a non-empty array means "still pending".
+    const existingClarify = parseClarifyEntries(
+      (row as Record<string, unknown>).concern_clarify_candidates,
+    );
+    if (existingClarify.length > 0) {
+      return applyWizardTransition({ chatId, nextStep: CONCERN_CLARIFY_STEP });
+    }
     const existingPending = parsePendingQuestions(
       (row as Record<string, unknown>).clarification_questions_pending,
     );
@@ -378,6 +460,7 @@ async function runDiagnosticsBody(
         diagnostic_processing_complete: true,
         clarification_questions_pending: [],
         recommended_testing_services: [],
+        concern_clarify_candidates: [],
       },
       nextStep: "second_routine_pass",
     });
@@ -391,11 +474,12 @@ async function runDiagnosticsBody(
 
   // ── Per-concern LLM call in parallel ─────────────────────────────────
   const perConcernResults = await Promise.all(
-    items.map(async (item): Promise<{
+    items.map(async (item, concernIndex): Promise<{
       item: ExplanationItem;
       result: DiagnoseConcernResult;
       matchedCat: CatalogCategory | null;
       gate: ConfidenceGateOutcome;
+      clarify: ConcernClarifyEntry | null;
     }> => {
       const hint = buildChipHint(item, routineChipCats, catalog);
       const raw = await diagnoseConcern({
@@ -404,8 +488,77 @@ async function runDiagnosticsBody(
         customer_chip_hint: hint,
         vehicle_notes: vehicleNotes,
       });
-      // Confidence gate (REVAMP-PLAN §11 P0, wired 2026-07-02) — low
-      // Stage-1/Stage-2 confidence strips the match (advisor handoff);
+      // Act-or-ask AO2c (2026-07-03): a 2-3-candidate Stage-1 result is
+      // NOT gated or aggregated into recommendations/questions. It
+      // becomes a ConcernClarifyEntry (with the per-candidate precomputed
+      // S2/S3 payloads) that the customer resolves with one chip tap.
+      if (raw.requires_clarification) {
+        const candidateResults = raw.candidate_results ?? [];
+        const options: ClarifyCandidateOption[] = [];
+        for (const key of raw.stage1_candidates) {
+          let cat: CatalogCategory | null = null;
+          for (const c of catalog.categories) {
+            if (
+              (c.kind === "testing_service" && c.service_key === key) ||
+              (c.kind === "other_subcategory" && c.subcategory_slug === key)
+            ) {
+              cat = c;
+              break;
+            }
+          }
+          // diagnoseConcern already validated the keys against this same
+          // catalog — defensive skip only.
+          if (!cat) continue;
+          const cr =
+            candidateResults.find((c) => c.category_key === key) ?? null;
+          options.push({
+            key,
+            kind: cat.kind,
+            display_name:
+              cat.kind === "testing_service"
+                ? cat.display_name
+                : cat.display_label,
+            starting_price_cents:
+              cat.kind === "testing_service" ? cat.starting_price_cents : null,
+            description:
+              cat.kind === "testing_service"
+                ? firstSentence(cat.description)
+                : null,
+            precomputed: {
+              matched_subcategory_slug: cr?.matched_subcategory_slug ?? null,
+              unanswered_question_ids: cr?.unanswered_question_ids ?? [],
+            },
+          });
+        }
+        const clarify: ConcernClarifyEntry = {
+          concern_index: concernIndex,
+          service_key: item.service_key,
+          concern_text: item.explanation_text,
+          candidates: options,
+        };
+        Sentry.addBreadcrumb({
+          category: "scheduler.diagnose",
+          type: "info",
+          level: "info",
+          message: `diagnoseConcern: ${item.service_key} → clarify:${raw.stage1_candidates.join("|")}`,
+          data: {
+            chip_service_key: item.service_key,
+            description_chars: item.explanation_text.length,
+            requires_clarification: true,
+            candidate_count: options.length,
+            stage1_candidates: raw.stage1_candidates.join(","),
+            parsed_ok: raw.parsed_ok,
+            tokens_in: raw.tokens_in,
+            tokens_out: raw.tokens_out,
+            latency_ms: raw.latency_ms,
+            error_message: raw.error_message,
+          },
+        });
+        return { item, result: raw, matchedCat: null, gate: "pass", clarify };
+      }
+      // Confidence gate (REVAMP-PLAN §11 P0, wired 2026-07-02; Stage-1
+      // branch replaced by the structural candidate signal 2026-07-03) —
+      // low Stage-2 confidence strips the match (advisor handoff);
       // low Stage-3 confidence keeps the match but flags over-ask (the
       // full subcategory question list is queued below instead of the
       // fact-mapper's unanswered set). See confidence-gate.ts.
@@ -459,7 +612,8 @@ async function runDiagnosticsBody(
           recommended_service_key: result.recommended_testing_service?.service_key ?? null,
           unanswered_count: result.unanswered_question_ids.length,
           confidence_gate: gated.gate,
-          stage1_confidence: raw.stage1_confidence,
+          stage1_candidates: raw.stage1_candidates.join(","),
+          candidate_count: raw.stage1_candidates.length,
           stage2_confidence: raw.stage2_confidence,
           stage3_confidence: raw.stage3_confidence,
           pre_gate_matched_category_key: raw.matched_category_key,
@@ -470,9 +624,14 @@ async function runDiagnosticsBody(
           error_message: result.error_message,
         },
       });
-      return { item, result, matchedCat, gate: gated.gate };
+      return { item, result, matchedCat, gate: gated.gate, clarify: null };
     }),
   );
+
+  // ── Act-or-ask clarify entries (routed BEFORE routeAfterDiagnostics) ──
+  const clarifyEntries = perConcernResults
+    .map((r) => r.clarify)
+    .filter((c): c is ConcernClarifyEntry => c !== null);
 
   // ── Aggregate recommendations ────────────────────────────────────────
   const recsByService = new Map<string, RecommendedService>();
@@ -549,10 +708,19 @@ async function runDiagnosticsBody(
   }));
 
   // ── Persist + advance ────────────────────────────────────────────────
-  const { nextStep, jeffBubble } = routeAfterDiagnostics({
-    pending_count: pending.length,
-    recommendation_count: recommended_testing_services.length,
-  });
+  //
+  // Act-or-ask AO2c: pending clarify candidates take top routing priority
+  // — this branch sits BEFORE routeAfterDiagnostics (which is left
+  // untouched; the wizard task centralizes the routing later). No
+  // jeffBubble here: the concern_clarify transcript bubbles (chip-shown +
+  // tapped) are owned by the wizard task's card/submit surfaces (AO4).
+  const { nextStep, jeffBubble } =
+    clarifyEntries.length > 0
+      ? { nextStep: CONCERN_CLARIFY_STEP, jeffBubble: undefined }
+      : routeAfterDiagnostics({
+          pending_count: pending.length,
+          recommendation_count: recommended_testing_services.length,
+        });
 
   // Aggregate outcome telemetry — PLAN-02 Phase 2B (I-OBS-8): migrated FROM
   // Sentry.captureMessage('info') (creates a Sentry issue per call, which
@@ -570,12 +738,15 @@ async function runDiagnosticsBody(
       concern_count: items.length,
       recommendation_count: recommended_testing_services.length,
       pending_question_count: pending.length,
+      clarify_concern_count: clarifyEntries.length,
       per_concern: perConcernResults.map((r) => ({
         chip: r.item.service_key,
         matched_kind: r.result.matched_kind,
         matched_category_key: r.result.matched_category_key,
         confidence_gate: r.gate,
-        stage1_confidence: r.result.stage1_confidence,
+        stage1_candidates: r.result.stage1_candidates.join(","),
+        candidate_count: r.result.stage1_candidates.length,
+        requires_clarification: r.result.requires_clarification,
         stage2_confidence: r.result.stage2_confidence,
         stage3_confidence: r.result.stage3_confidence,
         parsed_ok: r.result.parsed_ok,
@@ -596,15 +767,21 @@ async function runDiagnosticsBody(
       clarification_questions_pending: pending,
       clarification_questions_answered: {},
       recommended_testing_services,
+      // Act-or-ask AO2c: persisted per-concern clarify candidates (with
+      // precomputed per-candidate S2/S3 payloads). [] when every concern
+      // resolved directly — also clears any stale prior value.
+      concern_clarify_candidates: clarifyEntries,
     },
     nextStep,
     jeffBubble,
   });
-  if (pending.length === 0) {
+  if (pending.length === 0 && clarifyEntries.length === 0) {
     // Fire-and-forget? No — we want summaries persisted before the
     // customer reaches submit. Await it. Cost is one Haiku call per
     // concern (~500ms each, parallel) which is acceptable here since
     // the customer is about to read the recommendation card anyway.
+    // (Deferred while clarify candidates are pending — the tap resolution
+    // merges the chosen candidate first.)
     await ensureConcernSummaries({ chatId });
   }
   return transitionResult;

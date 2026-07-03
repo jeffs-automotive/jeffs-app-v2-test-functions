@@ -345,7 +345,9 @@ function makeServiceMatch(
     },
     unanswered_question_ids: [],
     extracted_facts: null,
-    stage1_confidence: "high",
+    stage1_candidates: ["brake_inspection"],
+    requires_clarification: false,
+    candidate_results: null,
     stage2_confidence: "high",
     stage3_confidence: "high",
     parsed_ok: true,
@@ -369,7 +371,9 @@ function makeOtherMatch(
     recommended_testing_service: null,
     unanswered_question_ids: [],
     extracted_facts: null,
-    stage1_confidence: "medium",
+    stage1_candidates: ["noise_other"],
+    requires_clarification: false,
+    candidate_results: null,
     stage2_confidence: "medium",
     stage3_confidence: "medium",
     parsed_ok: true,
@@ -382,7 +386,7 @@ function makeOtherMatch(
   };
 }
 
-/** Build a null-match (LLM couldn't categorize the concern). */
+/** Build a null-match (LLM returned zero candidates for the concern). */
 function makeNullMatch(
   overrides: Partial<DiagnoseConcernResult> = {},
 ): DiagnoseConcernResult {
@@ -393,7 +397,9 @@ function makeNullMatch(
     recommended_testing_service: null,
     unanswered_question_ids: [],
     extracted_facts: null,
-    stage1_confidence: "low",
+    stage1_candidates: [],
+    requires_clarification: false,
+    candidate_results: null,
     stage2_confidence: "low",
     stage3_confidence: "low",
     parsed_ok: true,
@@ -401,6 +407,64 @@ function makeNullMatch(
     latency_ms: 200,
     tokens_in: 80,
     tokens_out: 30,
+    error_message: "",
+    ...overrides,
+  };
+}
+
+/** Build an act-or-ask clarify result (2 ranked candidates + precomputed
+ *  per-candidate S2/S3 chains). Matches the makeCatalog fixture keys. */
+function makeClarifyMatch(
+  overrides: Partial<DiagnoseConcernResult> = {},
+): DiagnoseConcernResult {
+  return {
+    matched_category_key: null,
+    matched_kind: null,
+    matched_subcategory_slug: null,
+    recommended_testing_service: null,
+    unanswered_question_ids: [],
+    extracted_facts: null,
+    stage1_candidates: ["brake_inspection", "ac_diagnostic"],
+    requires_clarification: true,
+    candidate_results: [
+      {
+        category_key: "brake_inspection",
+        matched_kind: "testing_service",
+        matched_subcategory_slug: "brake_squeal",
+        recommended_testing_service: {
+          service_key: "brake_inspection",
+          display_name: "Brake Inspection",
+          description: "We inspect your brakes.",
+          starting_price_cents: 4900,
+        },
+        unanswered_question_ids: [101],
+        extracted_facts: null,
+        stage2_confidence: "high",
+        stage3_confidence: "high",
+      },
+      {
+        category_key: "ac_diagnostic",
+        matched_kind: "testing_service",
+        matched_subcategory_slug: "ac_no_cool",
+        recommended_testing_service: {
+          service_key: "ac_diagnostic",
+          display_name: "AC Diagnostic",
+          description: "We diagnose the A/C.",
+          starting_price_cents: 9900,
+        },
+        unanswered_question_ids: [201],
+        extracted_facts: null,
+        stage2_confidence: "high",
+        stage3_confidence: "high",
+      },
+    ],
+    stage2_confidence: "low",
+    stage3_confidence: "low",
+    parsed_ok: true,
+    model: "google/gemini-3.1-flash-lite",
+    latency_ms: 400,
+    tokens_in: 300,
+    tokens_out: 60,
     error_message: "",
     ...overrides,
   };
@@ -697,6 +761,155 @@ describe("runDiagnosticsV2 — multi-concern aggregation", () => {
     expect(recs.map((r) => r.service_key).sort()).toEqual(
       ["ac_diagnostic", "brake_inspection"].sort(),
     );
+  });
+});
+
+describe("runDiagnosticsV2 — act-or-ask clarify path (AO2c)", () => {
+  it("a 2-candidate concern routes to concern_clarify and persists the clarify entry (not gated/aggregated)", async () => {
+    diagnoseConcernMock.mockResolvedValueOnce(makeClarifyMatch());
+
+    const result = await runDiagnosticsV2({ chatId: "sess-1" });
+
+    expect(result).toEqual({ ok: true, next_step: "concern_clarify" });
+
+    const update = findSessionUpdate();
+    expect(update).toBeDefined();
+    expect(update?.current_step).toBe("concern_clarify");
+    // NOT aggregated into recommendations or pending questions.
+    expect((update?.recommended_testing_services as unknown[]).length).toBe(0);
+    expect((update?.clarification_questions_pending as unknown[]).length).toBe(
+      0,
+    );
+    // Persisted clarify entry shape.
+    const clarify = update?.concern_clarify_candidates as Array<{
+      concern_index: number;
+      service_key: string;
+      concern_text: string;
+      candidates: Array<{
+        key: string;
+        kind: string;
+        display_name: string;
+        starting_price_cents: number | null;
+        description: string | null;
+        precomputed: {
+          matched_subcategory_slug: string | null;
+          unanswered_question_ids: number[];
+        };
+      }>;
+    }>;
+    expect(clarify).toHaveLength(1);
+    const entry = clarify[0]!;
+    expect(entry.concern_index).toBe(0);
+    expect(entry.service_key).toBe("noise_brakes");
+    expect(entry.concern_text).toBe("Squeaking when I brake at low speed.");
+    expect(entry.candidates).toHaveLength(2);
+    const [brake, ac] = entry.candidates;
+    expect(brake).toEqual({
+      key: "brake_inspection",
+      kind: "testing_service",
+      display_name: "Brake Inspection",
+      starting_price_cents: 4900,
+      description: "We inspect your brakes.",
+      precomputed: {
+        matched_subcategory_slug: "brake_squeal",
+        unanswered_question_ids: [101],
+      },
+    });
+    expect(ac!.key).toBe("ac_diagnostic");
+    expect(ac!.precomputed.matched_subcategory_slug).toBe("ac_no_cool");
+    expect(ac!.precomputed.unanswered_question_ids).toEqual([201]);
+
+    // Summaries deferred while a clarify tap is owed.
+    expect(ensureConcernSummariesMock).not.toHaveBeenCalled();
+
+    // Per-concern breadcrumb flags the clarify outcome + candidate count.
+    const clarifyBreadcrumbs = sentryAddBreadcrumb.mock.calls.filter((c) => {
+      const arg = c[0] as { category?: string; message?: string };
+      return (
+        arg?.category === "scheduler.diagnose" &&
+        (arg?.message ?? "").includes("clarify:")
+      );
+    });
+    expect(clarifyBreadcrumbs).toHaveLength(1);
+    const crumbData = (clarifyBreadcrumbs[0]![0] as {
+      data: Record<string, unknown>;
+    }).data;
+    expect(crumbData.requires_clarification).toBe(true);
+    expect(crumbData.candidate_count).toBe(2);
+  });
+
+  it("mixed direct + clarify concerns: clarify routing wins; the direct match still aggregates", async () => {
+    storedRow = {
+      ...storedRow!,
+      explanation_required_items: [
+        {
+          service_key: "noise_brakes",
+          display_name: "Brake noise",
+          explanation_text: "Grinding when stopping.",
+          category: "brakes",
+        },
+        {
+          service_key: "ac_problem",
+          display_name: "AC issue",
+          explanation_text: "Blows warm and squeals.",
+          category: "ac",
+        },
+      ],
+    };
+    diagnoseConcernMock
+      .mockResolvedValueOnce(makeServiceMatch({ unanswered_question_ids: [] }))
+      .mockResolvedValueOnce(makeClarifyMatch());
+
+    const result = await runDiagnosticsV2({ chatId: "sess-1" });
+
+    expect(result).toEqual({ ok: true, next_step: "concern_clarify" });
+    const update = findSessionUpdate();
+    // The direct concern's recommendation is still aggregated.
+    const recs = update?.recommended_testing_services as Array<{
+      service_key: string;
+    }>;
+    expect(recs).toHaveLength(1);
+    expect(recs[0]!.service_key).toBe("brake_inspection");
+    // The clarify entry carries the SECOND concern's index + key.
+    const clarify = update?.concern_clarify_candidates as Array<{
+      concern_index: number;
+      service_key: string;
+    }>;
+    expect(clarify).toHaveLength(1);
+    expect(clarify[0]!.concern_index).toBe(1);
+    expect(clarify[0]!.service_key).toBe("ac_problem");
+  });
+
+  it("idempotent re-invoke with clarify candidates still pending re-routes to concern_clarify without any LLM call", async () => {
+    storedRow = {
+      id: "sess-1",
+      explanation_required_items: [
+        {
+          service_key: "noise_brakes",
+          display_name: "Brake noise",
+          explanation_text: "Squeak.",
+          category: "brakes",
+        },
+      ],
+      new_vehicle_info: null,
+      diagnostic_processing_complete: true,
+      clarification_questions_pending: [],
+      recommended_testing_services: [],
+      concern_clarify_candidates: [
+        {
+          concern_index: 0,
+          service_key: "noise_brakes",
+          concern_text: "Squeak.",
+          candidates: [],
+        },
+      ],
+    };
+
+    const result = await runDiagnosticsV2({ chatId: "sess-1" });
+
+    expect(result).toEqual({ ok: true, next_step: "concern_clarify" });
+    expect(diagnoseConcernMock).not.toHaveBeenCalled();
+    expect(loadDiagnosticCatalogMock).not.toHaveBeenCalled();
   });
 });
 

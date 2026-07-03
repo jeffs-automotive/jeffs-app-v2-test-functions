@@ -2,21 +2,29 @@
  * Confidence gate for diagnoseConcern results — REVAMP-PLAN §11 P0,
  * wired 2026-07-02.
  *
- * diagnoseConcern self-reports per-stage confidence ("high" | "medium" |
- * "low") but the wizard previously discarded all three values — a
+ * diagnoseConcern self-reports Stage-2 + Stage-3 confidence ("high" |
+ * "medium" | "low") but the wizard previously discarded the values — a
  * low-confidence-but-valid pick silently became a fee-bearing testing-
  * service recommendation. Small models are OVERconfident, so "low" is a
  * strong escalate signal; "high" never suppresses the human net (every
  * recommendation is still advisor-reviewed downstream).
  *
+ * Act-or-ask rework (AO2c, 2026-07-03): the former Stage-1 "low" branch
+ * is REMOVED — Stage 1 no longer self-reports confidence at all. The
+ * STRUCTURAL candidate-count signal replaces it upstream: 0 candidates →
+ * the null-match advisor path; 2-3 candidates → requires_clarification
+ * (the caller routes to the concern_clarify chip card and never gates
+ * that result — matched_kind is null there, so this gate passes it
+ * through untouched anyway).
+ *
  * Gate rules (testing-service matches only — 'other' + null matches are
  * already the advisor-handoff path and carry no autonomous consequence):
  *
- *   - Stage 1 OR Stage 2 reports "low" → ADVISOR HANDOFF. The match is
- *     stripped so the concern takes the exact null-match path: no
- *     recommendation, no clarification questions. The raw concern text
- *     still reaches the advisor via the deterministic concern summary in
- *     the Tekmetric appointment description.
+ *   - Stage 2 reports "low" → ADVISOR HANDOFF. The match is stripped so
+ *     the concern takes the exact null-match path: no recommendation, no
+ *     clarification questions. The raw concern text still reaches the
+ *     advisor via the deterministic concern summary in the Tekmetric
+ *     appointment description.
  *   - Stage 3 reports "low" (fact extraction suspect) → OVER-ASK. The
  *     match is kept but the answered-question mapping is distrusted: the
  *     caller re-queues EVERY question for the matched subcategory. A
@@ -53,11 +61,10 @@ export function applyConfidenceGate(
     return { result, gate: "pass" };
   }
 
-  const stage1Low = result.stage1_confidence === "low";
   const stage2Low =
     result.stage2_confidence === "low" &&
     result.matched_subcategory_slug !== null;
-  if (stage1Low || stage2Low) {
+  if (stage2Low) {
     return {
       gate: "advisor_handoff",
       result: {
