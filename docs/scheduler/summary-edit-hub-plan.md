@@ -96,6 +96,42 @@ already queue-based per the map).
   designed `SummaryEditHubCard.tsx` + `SecondRoutinePassCard.tsx` "describe another issue" belong to a
   separate UI task.
 
+## Decisions during implement (task EH2 — UI, 2026-07-04)
+
+- **`SummaryEditHubCard` consumes the EH1 payload verbatim.** The design spec's illustrative
+  `SummaryEditHubCardProps` (flat `customer`/`primary_phone`/`starts_at` ISO) predated EH1; the card was
+  built against the **real** `SummaryEditHubPayload` (`contact{name,phone_last_four,email}` /
+  `vehicle_label` / `services{routine,concerns,testing}` / `appointment{type,date,time}` / `hold_active`)
+  so no payload/wiring change was needed. Visual intent honored: four `Card.Divider` bands, right-aligned
+  ghost `size="sm"` Edit buttons with distinct aria-labels ("Edit contact info" / "Edit vehicle" / "Edit
+  services and concerns" / "Edit appointment time"), the warn-token slot-release caution under the time
+  value (gated on `hold_active`), +N-more cap at 4 for concern/testing rows, italic empty-ish fallbacks,
+  and the single burgundy "Looks good — back to summary" primary. The placeholder `SummaryEditHubPlaceholder`
+  arm + its now-unused type imports were deleted from `WizardSurface.tsx`.
+- **Appointment band formats from date/time, not ISO.** The hub payload carries a `YYYY-MM-DD` `date`
+  (+ `HH:MM` `time` for waiter), not a full ISO timestamp like `SummaryCard`, so the band formats the
+  calendar date (parsed at local noon to avoid TZ date-rollover) and appends the waiter time when present.
+- **APPROVAL-LOOP LANDING FINDING (the requirement's open question).** Verified by reading
+  `route-after-diagnostics.ts` + `submit-testing-service-approval.ts`: after a `describe_issue` submit
+  routes to `concern_explanation → diagnostic_loading`, `routeAfterDiagnostics` lands on ONE of three
+  steps, and **all three converge back on `second_routine_pass`**:
+    - `pending_count > 0` → `clarification_question` → (queue drains, same `routeAfterDiagnostics`) → …
+    - `pending_count === 0` **with recs** → `testing_service_approval`, and
+      `submitTestingServiceApprovalV2` **always** advances to `second_routine_pass` (line 126, no branch).
+    - `pending_count === 0` **with 0 recs** → `second_routine_pass` directly.
+  So the loop reaches `second_routine_pass` in BOTH tested cases (diagnostics complete with 0 pending/0
+  recs AND with recs), where the customer can describe yet another symptom or continue — confirming the
+  plan §D "loops back naturally" claim end-to-end. (It never lands on `appointment_type` mid-loop; that's
+  only reached by pressing the second-pass "continue" CTA.)
+- **No concern-count cap.** Searched the diagnostic flow — there is no existing per-concern cap or
+  escalation-on-N-concerns idiom (the plan's "escalation at 3" counter is the summary-EDIT counter, a
+  separate concern), so per the requirement no cap was added; N typed concerns are supported.
+- **`describe_issue` is `z.literal(true).optional()`.** The card sends `{ added, describe_issue: true }`
+  for the describe path and `{ added }` (no key) for the normal path; the action branches on
+  `describe_issue`, persists the validated round2 adds first, then appends the empty `other_issue` entry
+  (matching `submit-service-and-concern-picker`'s pseudo-chip shape) and resets
+  `diagnostic_processing_complete=false`.
+
 ## Verify
 
 typecheck + vitest + build; gate; manual E2E script for Chris's exact repro (add concern → answer

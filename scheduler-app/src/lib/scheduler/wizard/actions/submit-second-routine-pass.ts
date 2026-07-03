@@ -21,6 +21,18 @@
  * Empty `added` is a valid "Continue without adding more" submission — the
  * row update still fires (writes [] so a subsequent back-button-replay
  * doesn't preserve a stale add list) and we still advance.
+ *
+ * Describe-another-issue branch (task EH2, 2026-07-04): when the card sends
+ * `describe_issue: true`, the customer wants to type a second symptom. We
+ * FIRST persist the validated `added` routine keys exactly as the normal
+ * path does (nothing they toggled is lost), THEN append a fresh
+ * `other_issue` entry to `explanation_required_items` (same shape
+ * submit-service-and-concern-picker synthesizes for its "Other Issue"
+ * pseudo-chip), reset `diagnostic_processing_complete=false`, and route to
+ * `concern_explanation`. The downstream chain
+ * (concern_explanation → diagnostic_loading → clarify/questions/approval)
+ * loops back to `second_routine_pass` naturally per routeAfterDiagnostics —
+ * so the customer can add yet another symptom or continue.
  */
 import * as Sentry from "@sentry/nextjs";
 import { z } from "zod";
@@ -32,14 +44,69 @@ import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 // P2.8 (2026-05-25): single source of truth for SHOP_ID.
 import { SHOP_ID } from "@/lib/scheduler/shop-config";
 
+/**
+ * Synthetic service_key for a free-text "Other issue" concern, matching the
+ * picker's OTHER_ISSUE pseudo-chip (submit-service-and-concern-picker.ts).
+ * The diagnostic LLM classifies + recommends from the customer's free-text
+ * description in the next step; there's no pre-resolved category.
+ */
+const OTHER_ISSUE_SERVICE_KEY = "other_issue";
+const OTHER_ISSUE_DISPLAY_NAME = "Other issue";
+
 const submitSecondRoutinePassSchema = z.object({
   chatId: z.string().min(1),
   added: z.array(z.string().min(1)).max(20),
+  /** EH2: TRUE routes into the describe-another-issue branch. */
+  describe_issue: z.literal(true).optional(),
 });
 
 export type SubmitSecondRoutinePassV2Args = z.infer<
   typeof submitSecondRoutinePassSchema
 >;
+
+/** An explanation_required_items entry (mirrors the picker's shape). */
+interface ExplanationEntry {
+  service_key: string;
+  display_name: string;
+  explanation_text: string;
+  category: string | null;
+  unanswered_question_ids?: number[];
+  summary?: string;
+}
+
+/** Parse the row's existing explanation_required_items defensively. */
+function parseExistingExplanationItems(raw: unknown): ExplanationEntry[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ExplanationEntry[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") continue;
+    const e = entry as Record<string, unknown>;
+    const service_key =
+      typeof e.service_key === "string" ? e.service_key : null;
+    if (!service_key) continue;
+    const item: ExplanationEntry = {
+      service_key,
+      display_name:
+        typeof e.display_name === "string" ? e.display_name : service_key,
+      explanation_text:
+        typeof e.explanation_text === "string" ? e.explanation_text : "",
+      category:
+        typeof e.category === "string" && e.category.length > 0
+          ? e.category
+          : null,
+    };
+    if (Array.isArray(e.unanswered_question_ids)) {
+      item.unanswered_question_ids = e.unanswered_question_ids.filter(
+        (x): x is number => typeof x === "number",
+      );
+    }
+    if (typeof e.summary === "string" && e.summary.length > 0) {
+      item.summary = e.summary;
+    }
+    out.push(item);
+  }
+  return out;
+}
 
 async function submitSecondRoutinePassV2Impl(
   args: SubmitSecondRoutinePassV2Args,
@@ -51,7 +118,7 @@ async function submitSecondRoutinePassV2Impl(
       error: parsed.error.issues.map((i) => i.message).join("; "),
     };
   }
-  const { chatId, added } = parsed.data;
+  const { chatId, added, describe_issue } = parsed.data;
 
   try {
     const supabase = createSupabaseAdminClient();
@@ -124,6 +191,42 @@ async function submitSecondRoutinePassV2Impl(
           .map((r) => r.service_key),
       );
       validKeys = requested.filter((k) => knownKeys.has(k));
+    }
+
+    // ── DESCRIBE-ANOTHER-ISSUE branch (task EH2) ─────────────────────────
+    // The customer wants to type a second symptom. Persist the validated
+    // routine adds EXACTLY as the normal path does (nothing they toggled is
+    // lost), append a fresh empty `other_issue` concern entry (same shape
+    // the picker synthesizes), reset diagnostic_processing_complete so the
+    // downstream diagnostic pass re-runs, and route to concern_explanation.
+    // The chain loops back to second_routine_pass naturally, so the customer
+    // can describe yet another issue or continue.
+    if (describe_issue) {
+      const existing = parseExistingExplanationItems(
+        row.explanation_required_items,
+      );
+      const newConcern: ExplanationEntry = {
+        service_key: OTHER_ISSUE_SERVICE_KEY,
+        display_name: OTHER_ISSUE_DISPLAY_NAME,
+        explanation_text: "",
+        category: null,
+      };
+      const mergedExplanation = [...existing, newConcern];
+
+      return applyWizardTransition({
+        chatId,
+        updates: {
+          additional_routine_services_round2: validKeys,
+          explanation_required_items: mergedExplanation,
+          // run-diagnostics keys off this being FALSE to do the work; the
+          // new concern needs the full explanation → diagnostic pass.
+          diagnostic_processing_complete: false,
+        },
+        nextStep: "concern_explanation",
+        userBubble: "I've got another issue to describe",
+        jeffBubble:
+          "Of course — tell me a little about what you're noticing and I'll match up what we should test. 🤔",
+      });
     }
 
     // Build the §1866 transition bubble. Use display names so the customer

@@ -17,9 +17,15 @@ import { Button, Card, Chip } from "@/components/ui";
  *   - [ Add and continue ] (primary)         when at least one new pick
  *   - [ Continue without adding more ] (ghost) when nothing new selected
  *
- * Submit shape: { added: string[] } — only NEW picks (already_picked items
- * are excluded by the disabled state). The Server Action writes this to
- * `additional_routine_services_round2` TEXT[] on the row.
+ * Submit shape (task EH2, 2026-07-04): a discriminated union.
+ *   - { added: string[] } (or describe_issue:false) — the normal add-on
+ *     path; the Server Action writes `added` to
+ *     `additional_routine_services_round2` TEXT[] on the row.
+ *   - { added: string[], describe_issue: true } — the "Describe another
+ *     issue" path: the action persists `added` exactly as above THEN appends
+ *     a fresh `other_issue` concern entry and routes into the diagnostic
+ *     flow. `added` is the CURRENT chip selection so the customer never loses
+ *     chips they toggled before deciding to also describe a symptom.
  */
 
 export interface SecondRoutinePassCardProps {
@@ -28,7 +34,11 @@ export interface SecondRoutinePassCardProps {
    *  disabled with an "already added" badge. */
   already_picked: string[];
   disabled?: boolean;
-  onSubmit: (output: { added: string[] }) => void | Promise<void>;
+  onSubmit: (
+    output:
+      | { added: string[]; describe_issue?: false }
+      | { added: string[]; describe_issue: true },
+  ) => void | Promise<void>;
 }
 
 export function SecondRoutinePassCard({
@@ -40,6 +50,9 @@ export function SecondRoutinePassCard({
   const alreadyPickedSet = new Set(already_picked);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pending, setPending] = useState(false);
+  // Discriminator so only the pressed control spins: "add" = the primary
+  // CTA, "describe" = the describe-another-issue ghost.
+  const [action, setAction] = useState<"add" | "describe" | null>(null);
 
   function toggle(service_key: string) {
     if (alreadyPickedSet.has(service_key)) return;
@@ -54,10 +67,26 @@ export function SecondRoutinePassCard({
   async function submit(addedKeys: string[]) {
     if (pending || disabled) return;
     setPending(true);
+    setAction("add");
     try {
       await onSubmit({ added: addedKeys });
     } finally {
       setPending(false);
+      setAction(null);
+    }
+  }
+
+  async function describe() {
+    if (pending || disabled) return;
+    setPending(true);
+    setAction("describe");
+    try {
+      // Preserve any chips the customer toggled before deciding to describe
+      // a symptom — the action persists them before appending the concern.
+      await onSubmit({ added: Array.from(selected), describe_issue: true });
+    } finally {
+      setPending(false);
+      setAction(null);
     }
   }
 
@@ -103,6 +132,32 @@ export function SecondRoutinePassCard({
             );
           })}
         </div>
+
+        {/* Describe-another-issue path (task EH2). A quiet ghost door beneath
+            the chips, separated by a hairline, so a customer with a second
+            symptom can type it in. Placed so it never competes with the
+            primary continue CTA. The divider is guarded so it never leaves a
+            lonely rule above an empty chip group. */}
+        {common_services.length > 0 ? <Card.Divider /> : null}
+        <div>
+          <p className="text-[14px] text-ink-secondary">
+            Noticing something that isn&apos;t on the list — a noise, a leak, a
+            warning light?
+          </p>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            leadingIcon="💬"
+            loading={action === "describe" && pending}
+            disabled={disabled || pending}
+            fullWidthOnMobile={false}
+            onClick={() => void describe()}
+            className="mt-2"
+          >
+            Describe another issue
+          </Button>
+        </div>
       </Card.Body>
 
       <Card.Actions>
@@ -111,8 +166,8 @@ export function SecondRoutinePassCard({
             type="button"
             variant="primary"
             size="md"
-            loading={pending}
-            disabled={disabled}
+            loading={action === "add" && pending}
+            disabled={disabled || pending}
             onClick={() => void submit(newPicks)}
             fullWidthOnMobile
           >
@@ -123,8 +178,8 @@ export function SecondRoutinePassCard({
             type="button"
             variant="primary"
             size="md"
-            loading={pending}
-            disabled={disabled}
+            loading={action === "add" && pending}
+            disabled={disabled || pending}
             onClick={() => void submit([])}
             fullWidthOnMobile
           >
