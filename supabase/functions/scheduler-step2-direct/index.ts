@@ -44,7 +44,11 @@ import {
 } from "../_shared/tools/scheduler-customer.ts";
 import { sendOtp } from "../_shared/tools/scheduler-otp.ts";
 import { logEdgeError } from "../_shared/log-edge-error.ts";
-import { withSentryScope } from "../_shared/sentry-edge.ts";
+import { withSentryScope, Sentry } from "../_shared/sentry-edge.ts";
+import {
+  tekmetricGetJson,
+  type TekmetricPage,
+} from "../_shared/tekmetric-client.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SHOP_ID = parseInt(
@@ -110,24 +114,61 @@ function parseBody(raw: unknown):
 }
 
 // Pull a short "recent vehicle" label for the multi-account picker UX.
+//
+// Bugfix 2026-07-03: this used to query a `tekmetric_customer_vehicles` mirror
+// table that was never created (no migration exists), and the bare catch
+// swallowed the error — so in the 2+ phone-hit branch EVERY candidate looked
+// vehicle-less, all were filtered out, and shared-phone customers (households,
+// numbers also on the shop's own record) landed on the no-match card. Now
+// reads the Tekmetric API directly; /vehicles requires the `shop` param
+// (Tekmetric API drift, verified 2026-07-03).
+interface TekmetricVehicleRow {
+  year?: number | null;
+  make?: string | null;
+  model?: string | null;
+  updatedDate?: string | null;
+  deletedDate?: string | null;
+}
+
 async function recentVehicleLabel(
   customerId: number,
 ): Promise<string | null> {
   try {
-    const { data } = await sb
-      .from("tekmetric_customer_vehicles")
-      .select("year, make, model")
-      .eq("customer_id", customerId)
-      .eq("deleted", false)
-      .order("updated_date", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (!data) return null;
-    const parts = [data.year, data.make, data.model]
-      .map((p) => (p == null ? "" : String(p).trim()))
-      .filter(Boolean);
-    return parts.length ? parts.join(" ") : null;
-  } catch {
+    const page = await tekmetricGetJson<TekmetricPage<TekmetricVehicleRow>>(
+      sb,
+      "/vehicles",
+      { shop: SHOP_ID, customerId, size: 25 },
+    );
+    const vehicles = (page.content ?? [])
+      .filter((v) => !v.deletedDate)
+      .sort((a, b) =>
+        String(b.updatedDate ?? "").localeCompare(String(a.updatedDate ?? ""))
+      );
+    for (const v of vehicles) {
+      const parts = [v.year, v.make, v.model]
+        .map((p) => (p == null ? "" : String(p).trim()))
+        .filter(Boolean);
+      if (parts.length) return parts.join(" ");
+    }
+    return null;
+  } catch (e) {
+    // Fail-safe to "no renderable vehicle" (candidate gets filtered), but
+    // NEVER silently: this exact silent catch hid the phantom-table bug.
+    console.error(
+      JSON.stringify({
+        level: "error",
+        msg: "step2_direct_recent_vehicle_lookup_failed",
+        customer_id: customerId,
+        detail: e instanceof Error ? e.message : String(e),
+      }),
+    );
+    try {
+      Sentry.captureException(e, {
+        tags: { surface: "scheduler-step2-direct", op: "recentVehicleLabel" },
+      });
+    } catch {
+      // Sentry unavailable — the console.error above still lands in edge logs.
+    }
     return null;
   }
 }
