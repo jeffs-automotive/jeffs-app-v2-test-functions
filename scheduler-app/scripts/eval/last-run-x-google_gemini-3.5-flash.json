@@ -1,0 +1,1742 @@
+{
+ "model": "google/gemini-3.5-flash",
+ "s1": {
+  "accuracy": 0.9517241379310345,
+  "macroF1": 0.9661341315957557
+ },
+ "s2": {
+  "accuracy": 0.9912280701754386,
+  "correct": 113,
+  "graded": 114
+ },
+ "s3": {
+  "precision": 1,
+  "recall": 1,
+  "tp": 0,
+  "fp": 0,
+  "fn": 0,
+  "valueMismatch": 0
+ },
+ "dangerous": 0,
+ "tokens": {
+  "in": 1104541,
+  "out": 17898
+ },
+ "latency": {
+  "p50": 6386,
+  "p95": 9843
+ },
+ "rows": [
+  {
+   "id": "ac_leak_testing-006",
+   "raw_key": null,
+   "raw_slug": null,
+   "landing": "handoff",
+   "expected_facts": {
+    "fluid_color": "clear_no_color"
+   },
+   "raw_facts": null,
+   "latency_ms": 4755
+  },
+  {
+   "id": "ac_leak_testing-005",
+   "raw_key": null,
+   "raw_slug": null,
+   "landing": "handoff",
+   "expected_facts": {
+    "fluid_color": "clear_no_color",
+    "fluid_under_car_location": "under_passenger_side"
+   },
+   "raw_facts": null,
+   "latency_ms": 4976
+  },
+  {
+   "id": "ac_leak_testing-003",
+   "raw_key": "ac_performance_check",
+   "raw_slug": "ac_is_weak_not_cold_enough",
+   "landing": "correct",
+   "expected_facts": {
+    "hvac_mode": "ac",
+    "speed_band": "stopped",
+    "weather_condition": "hot_weather",
+    "started_when": "gradually"
+   },
+   "raw_facts": null,
+   "latency_ms": 5789
+  },
+  {
+   "id": "ac_leak_testing-002",
+   "raw_key": "ac_performance_check",
+   "raw_slug": "ac_blows_warm_or_hot_air",
+   "landing": "correct",
+   "expected_facts": {
+    "hvac_mode": "ac"
+   },
+   "raw_facts": null,
+   "latency_ms": 6048
+  },
+  {
+   "id": "ac_leak_testing-004",
+   "raw_key": "ac_performance_check",
+   "raw_slug": "ac_is_weak_not_cold_enough",
+   "landing": "correct",
+   "expected_facts": {
+    "hvac_mode": "ac",
+    "started_when": "weeks_ago"
+   },
+   "raw_facts": null,
+   "latency_ms": 7739
+  },
+  {
+   "id": "ac_leak_testing-001",
+   "raw_key": "ac_leak_testing",
+   "raw_slug": "ac_blows_warm_or_hot_air",
+   "landing": "correct",
+   "expected_facts": {
+    "hvac_mode": "ac",
+    "started_when": "sudden_onset",
+    "recent_action": "ac_recharge_or_service"
+   },
+   "raw_facts": null,
+   "latency_ms": 8084
+  },
+  {
+   "id": "ac_performance_check-002",
+   "raw_key": "ac_performance_check",
+   "raw_slug": "ac_is_weak_not_cold_enough",
+   "landing": "correct",
+   "expected_facts": {
+    "started_when": "gradually",
+    "speed_band": "stopped",
+    "weather_condition": "hot_weather"
+   },
+   "raw_facts": null,
+   "latency_ms": 6876
+  },
+  {
+   "id": "ac_performance_check-004",
+   "raw_key": "ac_performance_check",
+   "raw_slug": "bad_smell_from_vents",
+   "landing": "correct",
+   "expected_facts": {
+    "smell_descriptor": "musty_or_mildew",
+    "onset_timing": "at_first_turn_on",
+    "hvac_mode": "ac"
+   },
+   "raw_facts": null,
+   "latency_ms": 6170
+  },
+  {
+   "id": "ac_performance_check-003",
+   "raw_key": "ac_performance_check",
+   "raw_slug": "vents_dont_blow_strongly",
+   "landing": "correct",
+   "expected_facts": {
+    "airflow_state": "only_on_highest_setting"
+   },
+   "raw_facts": null,
+   "latency_ms": 6763
+  },
+  {
+   "id": "ac_performance_check-005",
+   "raw_key": "ac_performance_check",
+   "raw_slug": "one_zone_works_but_another_doesnt",
+   "landing": "correct",
+   "expected_facts": {
+    "location_side": "right",
+    "airflow_state": "uneven_temperature_between_zones"
+   },
+   "raw_facts": null,
+   "latency_ms": 6460
+  },
+  {
+   "id": "ac_performance_check-006",
+   "raw_key": "ac_performance_check",
+   "raw_slug": "strange_noise_from_vents",
+   "landing": "correct",
+   "expected_facts": {},
+   "raw_facts": null,
+   "latency_ms": 7957
+  },
+  {
+   "id": "ac_performance_check-001",
+   "raw_key": "ac_performance_check",
+   "raw_slug": "ac_blows_warm_or_hot_air",
+   "landing": "correct",
+   "expected_facts": {
+    "started_when": "sudden_onset",
+    "recent_action": "ac_recharge_or_service",
+    "customer_request_type": "diagnose_problem"
+   },
+   "raw_facts": null,
+   "latency_ms": 11960
+  },
+  {
+   "id": "abs_traction_stability_testing-001",
+   "raw_key": "abs_traction_stability_testing",
+   "raw_slug": "abs_anti_lock_brake_light",
+   "landing": "correct",
+   "expected_facts": {
+    "warning_light_named": "*",
+    "started_when": "today",
+    "recent_action": "hit_pothole_or_curb",
+    "warning_light_behavior": "steady_on",
+    "pedal_feel": "normal"
+   },
+   "raw_facts": null,
+   "latency_ms": 5977
+  },
+  {
+   "id": "abs_traction_stability_testing-002",
+   "raw_key": "abs_traction_stability_testing",
+   "raw_slug": "traction_control_stability_light",
+   "landing": "correct",
+   "expected_facts": {
+    "warning_light_named": "*",
+    "recent_action": "tire_rotation_or_replacement"
+   },
+   "raw_facts": null,
+   "latency_ms": 6246
+  },
+  {
+   "id": "abs_traction_stability_testing-003",
+   "raw_key": "abs_traction_stability_testing",
+   "raw_slug": "abs_anti_lock_brake_light",
+   "landing": "correct",
+   "expected_facts": {
+    "warning_light_named": "*"
+   },
+   "raw_facts": null,
+   "latency_ms": 5116
+  },
+  {
+   "id": "ac_performance_check-007",
+   "raw_key": "ac_performance_check",
+   "raw_slug": "foggy_or_hard_to_defog_windows",
+   "landing": "correct",
+   "expected_facts": {
+    "weather_condition": "rainy_or_wet"
+   },
+   "raw_facts": null,
+   "latency_ms": 8233
+  },
+  {
+   "id": "abs_traction_stability_testing-004",
+   "raw_key": "abs_traction_stability_testing",
+   "raw_slug": "traction_control_stability_light",
+   "landing": "correct",
+   "expected_facts": {},
+   "raw_facts": null,
+   "latency_ms": 5843
+  },
+  {
+   "id": "airbag_srs_testing-001",
+   "raw_key": "airbag_srs_testing",
+   "raw_slug": "airbag_srs_light",
+   "landing": "correct",
+   "expected_facts": {
+    "warning_light_named": "*",
+    "warning_light_behavior": "steady_on",
+    "recent_action": "accident_or_impact",
+    "started_when": "days_ago"
+   },
+   "raw_facts": null,
+   "latency_ms": 6331
+  },
+  {
+   "id": "airbag_srs_testing-004",
+   "raw_key": "airbag_srs_testing",
+   "raw_slug": "airbag_srs_light",
+   "landing": "correct",
+   "expected_facts": {
+    "warning_light_named": "*"
+   },
+   "raw_facts": null,
+   "latency_ms": 4856
+  },
+  {
+   "id": "airbag_srs_testing-002",
+   "raw_key": "airbag_srs_testing",
+   "raw_slug": "airbag_srs_light",
+   "landing": "correct",
+   "expected_facts": {
+    "warning_light_named": "*",
+    "warning_light_behavior": "flashing_or_blinking",
+    "recent_action": "jump_started"
+   },
+   "raw_facts": null,
+   "latency_ms": 6075
+  },
+  {
+   "id": "airbag_srs_testing-003",
+   "raw_key": "airbag_srs_testing",
+   "raw_slug": "airbag_srs_light",
+   "landing": "correct",
+   "expected_facts": {
+    "warning_light_named": "*",
+    "started_when": "weeks_ago"
+   },
+   "raw_facts": null,
+   "latency_ms": 5784
+  },
+  {
+   "id": "awd_4x4_testing-001",
+   "raw_key": "awd_4x4_testing",
+   "raw_slug": null,
+   "landing": "correct",
+   "expected_facts": {
+    "warning_light_named": "*",
+    "warning_light_behavior": "flashing_or_blinking",
+    "noise_descriptor": "grinding_metallic",
+    "started_when": "weeks_ago",
+    "recent_action": "hit_pothole_or_curb"
+   },
+   "raw_facts": null,
+   "latency_ms": 6318
+  },
+  {
+   "id": "awd_4x4_testing-002",
+   "raw_key": "awd_4x4_testing",
+   "raw_slug": null,
+   "landing": "correct",
+   "expected_facts": {
+    "warning_light_named": "*",
+    "warning_light_behavior": "steady_on",
+    "started_when": "today",
+    "onset_timing": "when_turning",
+    "customer_request_type": "diagnose_problem"
+   },
+   "raw_facts": null,
+   "latency_ms": 4690
+  },
+  {
+   "id": "awd_4x4_testing-003",
+   "raw_key": "awd_4x4_testing",
+   "raw_slug": null,
+   "landing": "correct",
+   "expected_facts": {
+    "warning_light_named": "*",
+    "started_when": "days_ago"
+   },
+   "raw_facts": null,
+   "latency_ms": 5793
+  },
+  {
+   "id": "battery_test-003",
+   "raw_key": "battery_test",
+   "raw_slug": null,
+   "landing": "correct",
+   "expected_facts": {
+    "recent_action": "car_sat_unused"
+   },
+   "raw_facts": null,
+   "latency_ms": 4641
+  },
+  {
+   "id": "battery_test-001",
+   "raw_key": "battery_test",
+   "raw_slug": null,
+   "landing": "correct",
+   "expected_facts": {
+    "engine_running": "slow_crank",
+    "onset_timing": "cold_start",
+    "weather_condition": "cold_weather",
+    "recent_action": "jump_started",
+    "started_when": "days_ago"
+   },
+   "raw_facts": null,
+   "latency_ms": 5117
+  },
+  {
+   "id": "awd_4x4_testing-004",
+   "raw_key": "awd_4x4_testing",
+   "raw_slug": null,
+   "landing": "correct",
+   "expected_facts": {},
+   "raw_facts": null,
+   "latency_ms": 5741
+  },
+  {
+   "id": "battery_test-004",
+   "raw_key": "battery_test",
+   "raw_slug": null,
+   "landing": "correct",
+   "expected_facts": {},
+   "raw_facts": null,
+   "latency_ms": 5255
+  },
+  {
+   "id": "brake_inspection-002",
+   "raw_key": "brake_inspection",
+   "raw_slug": "metallic_grinding",
+   "landing": "correct",
+   "expected_facts": {
+    "noise_descriptor": "grinding_metallic",
+    "onset_timing": "when_braking"
+   },
+   "raw_facts": null,
+   "latency_ms": 6641
+  },
+  {
+   "id": "brake_inspection-006",
+   "raw_key": "brake_inspection",
+   "raw_slug": "hard_or_unresponsive_pedal",
+   "landing": "correct",
+   "expected_facts": {
+    "pedal_feel": "hard_unresponsive"
+   },
+   "raw_facts": null,
+   "latency_ms": 4721
+  },
+  {
+   "id": "brake_inspection-004",
+   "raw_key": "brake_inspection",
+   "raw_slug": "spongy_or_soft_pedal",
+   "landing": "correct",
+   "expected_facts": {
+    "pedal_feel": "soft_spongy",
+    "started_when": "days_ago"
+   },
+   "raw_facts": null,
+   "latency_ms": 5902
+  },
+  {
+   "id": "brake_inspection-005",
+   "raw_key": "brake_inspection",
+   "raw_slug": "pedal_sinks_to_floor",
+   "landing": "correct",
+   "expected_facts": {
+    "pedal_feel": "sinks_to_floor"
+   },
+   "raw_facts": null,
+   "latency_ms": 6141
+  },
+  {
+   "id": "brake_inspection-003",
+   "raw_key": "brake_inspection",
+   "raw_slug": "smoke_or_burning_smell_from_a_wheel",
+   "landing": "correct",
+   "expected_facts": {
+    "smoke_color": "visible_but_color_unclear",
+    "sound_or_smoke_location_zone": "from_a_wheel",
+    "location_axle": "rear",
+    "location_side": "right",
+    "parking_brake_state": "engaged_or_partially_engaged"
+   },
+   "raw_facts": null,
+   "latency_ms": 6899
+  },
+  {
+   "id": "brake_inspection-008",
+   "raw_key": "brake_inspection",
+   "raw_slug": "pulling_only_when_braking",
+   "landing": "correct",
+   "expected_facts": {
+    "pull_direction": "left",
+    "onset_timing": "when_braking"
+   },
+   "raw_facts": null,
+   "latency_ms": 6797
+  },
+  {
+   "id": "brake_inspection_warning_light-001",
+   "raw_key": "brake_inspection_warning_light",
+   "raw_slug": "brake_system_red_light",
+   "landing": "correct",
+   "expected_facts": {
+    "warning_light_named": "*",
+    "warning_light_behavior": "steady_on",
+    "parking_brake_state": "released",
+    "pedal_feel": "soft_spongy",
+    "fluid_under_car_location": "under_a_wheel"
+   },
+   "raw_facts": null,
+   "latency_ms": 6610
+  },
+  {
+   "id": "brake_inspection_warning_light-002",
+   "raw_key": "brake_inspection_warning_light",
+   "raw_slug": "brake_system_red_light",
+   "landing": "correct",
+   "expected_facts": {
+    "warning_light_named": "*",
+    "parking_brake_state": "released"
+   },
+   "raw_facts": null,
+   "latency_ms": 6386
+  },
+  {
+   "id": "brake_inspection_warning_light-004",
+   "raw_key": "brake_inspection_warning_light",
+   "raw_slug": "brake_system_red_light",
+   "landing": "correct",
+   "expected_facts": {
+    "warning_light_named": "*"
+   },
+   "raw_facts": null,
+   "latency_ms": 5755
+  },
+  {
+   "id": "charging_starting_testing-001",
+   "raw_key": "charging_starting_testing",
+   "raw_slug": "wont_crank_just_clicks",
+   "landing": "correct",
+   "expected_facts": {
+    "engine_running": "wont_crank_just_clicks",
+    "lights_state": "dim_or_flickering",
+    "recent_action": "jump_started",
+    "started_when": "sudden_onset"
+   },
+   "raw_facts": null,
+   "latency_ms": 5651
+  },
+  {
+   "id": "charging_starting_testing-002",
+   "raw_key": "charging_starting_testing",
+   "raw_slug": "slow_crank_sluggish_start",
+   "landing": "correct",
+   "expected_facts": {
+    "engine_running": "slow_crank",
+    "weather_condition": "cold_weather",
+    "lights_state": "dim_or_flickering"
+   },
+   "raw_facts": null,
+   "latency_ms": 7261
+  },
+  {
+   "id": "brake_inspection_warning_light-003",
+   "raw_key": "abs_traction_stability_testing",
+   "raw_slug": "abs_anti_lock_brake_light",
+   "landing": "handoff",
+   "expected_facts": {
+    "warning_light_named": "*",
+    "warning_light_behavior": "multiple_lights_at_once"
+   },
+   "raw_facts": null,
+   "latency_ms": 10871
+  },
+  {
+   "id": "charging_starting_testing-003",
+   "raw_key": "charging_starting_testing",
+   "raw_slug": "battery_charging_light",
+   "landing": "correct",
+   "expected_facts": {
+    "warning_light_named": "*",
+    "noise_descriptor": "squealing_high_pitched"
+   },
+   "raw_facts": null,
+   "latency_ms": 7013
+  },
+  {
+   "id": "charging_starting_testing-006",
+   "raw_key": "charging_starting_testing",
+   "raw_slug": "battery_drains_overnight",
+   "landing": "correct",
+   "expected_facts": {
+    "recent_action": "jump_started"
+   },
+   "raw_facts": null,
+   "latency_ms": 6447
+  },
+  {
+   "id": "charging_starting_testing-004",
+   "raw_key": "charging_starting_testing",
+   "raw_slug": "high_pitched_whining_under_the_hood",
+   "landing": "correct",
+   "expected_facts": {
+    "noise_descriptor": "whining",
+    "sound_or_smoke_location_zone": "under_hood"
+   },
+   "raw_facts": null,
+   "latency_ms": 7786
+  },
+  {
+   "id": "charging_starting_testing-005",
+   "raw_key": "charging_starting_testing",
+   "raw_slug": "dim_or_flickering_lights",
+   "landing": "correct",
+   "expected_facts": {
+    "lights_state": "dim_or_flickering"
+   },
+   "raw_facts": null,
+   "latency_ms": 7593
+  },
+  {
+   "id": "check_engine_light_testing-001",
+   "raw_key": "check_engine_light_testing",
+   "raw_slug": "check_engine_light",
+   "landing": "correct",
+   "expected_facts": {
+    "warning_light_named": "*",
+    "warning_light_behavior": "steady_on",
+    "recent_action": "fuel_fill_up",
+    "started_when": "weeks_ago",
+    "drivable_state": "drivable_normally"
+   },
+   "raw_facts": null,
+   "latency_ms": 6822
+  },
+  {
+   "id": "check_engine_light_testing-006",
+   "raw_key": "check_engine_light_testing",
+   "raw_slug": "stalling_at_idle_or_when_stopping",
+   "landing": "correct",
+   "expected_facts": {
+    "engine_running": "stalls",
+    "onset_timing": "at_stop"
+   },
+   "raw_facts": null,
+   "latency_ms": 5405
+  },
+  {
+   "id": "check_engine_light_testing-005",
+   "raw_key": "check_engine_light_testing",
+   "raw_slug": "blue_or_gray_smoke_from_tailpipe",
+   "landing": "correct",
+   "expected_facts": {
+    "smoke_color": "blue_or_gray",
+    "onset_timing": "cold_start",
+    "smell_descriptor": "burnt_oil",
+    "sound_or_smoke_location_zone": "from_tailpipe"
+   },
+   "raw_facts": null,
+   "latency_ms": 7051
+  },
+  {
+   "id": "check_engine_light_testing-003",
+   "raw_key": "transmission_testing",
+   "raw_slug": "hesitation_or_lag_when_accelerating",
+   "landing": "correct",
+   "expected_facts": {
+    "onset_timing": "when_accelerating",
+    "started_when": "sudden_onset"
+   },
+   "raw_facts": null,
+   "latency_ms": 9508
+  },
+  {
+   "id": "check_engine_light_testing-004",
+   "raw_key": "check_engine_light_testing",
+   "raw_slug": "rough_idle_or_shaking_at_a_stop",
+   "landing": "correct",
+   "expected_facts": {
+    "engine_running": "rough_idle",
+    "speed_band": "stopped",
+    "warning_light_named": "*",
+    "smell_descriptor": "rotten_egg_or_sulfur"
+   },
+   "raw_facts": null,
+   "latency_ms": 9153
+  },
+  {
+   "id": "check_engine_light_testing-007",
+   "raw_key": "check_engine_light_testing",
+   "raw_slug": "black_smoke_from_tailpipe",
+   "landing": "correct",
+   "expected_facts": {
+    "smoke_color": "black"
+   },
+   "raw_facts": null,
+   "latency_ms": 7934
+  },
+  {
+   "id": "coolant_leak_testing-001",
+   "raw_key": "coolant_leak_testing",
+   "raw_slug": "white_smoke_from_tailpipe",
+   "landing": "correct",
+   "expected_facts": {
+    "smoke_color": "white",
+    "smell_descriptor": "sweet_or_maple_syrup",
+    "sound_or_smoke_location_zone": "from_tailpipe",
+    "started_when": "days_ago"
+   },
+   "raw_facts": null,
+   "latency_ms": 6898
+  },
+  {
+   "id": "coolant_leak_testing-002",
+   "raw_key": "coolant_leak_testing",
+   "raw_slug": "green_orange_yellow_or_pink_puddle_coolant",
+   "landing": "correct",
+   "expected_facts": {
+    "fluid_color": "green_or_orange_or_yellow_or_pink",
+    "fluid_under_car_location": "under_engine_front",
+    "smell_descriptor": "sweet_or_maple_syrup",
+    "started_when": "today"
+   },
+   "raw_facts": null,
+   "latency_ms": 5717
+  },
+  {
+   "id": "coolant_leak_testing-003",
+   "raw_key": "coolant_leak_testing",
+   "raw_slug": "heat_doesnt_work",
+   "landing": "correct",
+   "expected_facts": {
+    "hvac_mode": "heat",
+    "started_when": "weeks_ago"
+   },
+   "raw_facts": null,
+   "latency_ms": 7175
+  },
+  {
+   "id": "coolant_leak_testing-004",
+   "raw_key": "coolant_leak_testing",
+   "raw_slug": "engine_temperature_light",
+   "landing": "correct",
+   "expected_facts": {
+    "warning_light_named": "*"
+   },
+   "raw_facts": null,
+   "latency_ms": 6889
+  },
+  {
+   "id": "coolant_leak_testing-005",
+   "raw_key": "coolant_leak_testing",
+   "raw_slug": "sweet_smell_maple_syrup_antifreeze",
+   "landing": "correct",
+   "expected_facts": {
+    "smell_descriptor": "sweet_or_maple_syrup"
+   },
+   "raw_facts": null,
+   "latency_ms": 7517
+  },
+  {
+   "id": "coolant_leak_testing-006",
+   "raw_key": "coolant_leak_testing",
+   "raw_slug": "smoke_from_under_the_hood",
+   "landing": "correct",
+   "expected_facts": {
+    "sound_or_smoke_location_zone": "under_hood",
+    "smoke_color": "visible_but_color_unclear"
+   },
+   "raw_facts": null,
+   "latency_ms": 7096
+  },
+  {
+   "id": "electrical_testing_general-006",
+   "raw_key": "electrical_testing_general",
+   "raw_slug": "electrical_buzzing",
+   "landing": "correct",
+   "expected_facts": {
+    "noise_descriptor": "buzzing"
+   },
+   "raw_facts": null,
+   "latency_ms": 6243
+  },
+  {
+   "id": "electrical_testing_general-004",
+   "raw_key": "electrical_testing_general",
+   "raw_slug": "multiple_random_electrical_glitches",
+   "landing": "correct",
+   "expected_facts": {
+    "onset_timing": "intermittent",
+    "weather_condition": "rainy_or_wet"
+   },
+   "raw_facts": null,
+   "latency_ms": 6781
+  },
+  {
+   "id": "electrical_testing_general-003",
+   "raw_key": "electrical_testing_general",
+   "raw_slug": "burning_electrical_plastic_smell",
+   "landing": "correct",
+   "expected_facts": {
+    "smell_descriptor": "burning_electrical_or_plastic",
+    "sound_or_smoke_location_zone": "behind_dashboard",
+    "hvac_mode": "heat",
+    "started_when": "today",
+    "lights_state": "dim_or_flickering"
+   },
+   "raw_facts": null,
+   "latency_ms": 9009
+  },
+  {
+   "id": "electrical_testing_general-002",
+   "raw_key": "electrical_testing_general",
+   "raw_slug": "accessory_doesnt_work",
+   "landing": "correct",
+   "expected_facts": {
+    "accessory_affected": "*"
+   },
+   "raw_facts": null,
+   "latency_ms": 9627
+  },
+  {
+   "id": "exhaust_system_testing-001",
+   "raw_key": "exhaust_system_testing",
+   "raw_slug": "rattling_underneath_the_car",
+   "landing": "correct",
+   "expected_facts": {
+    "noise_descriptor": "rattling",
+    "sound_or_smoke_location_zone": "under_car",
+    "onset_timing": "when_idling",
+    "speed_band": "idle",
+    "started_when": "days_ago"
+   },
+   "raw_facts": null,
+   "latency_ms": 6180
+  },
+  {
+   "id": "exhaust_system_testing-002",
+   "raw_key": "exhaust_system_testing",
+   "raw_slug": "exhaust_fumes_inside_the_cabin",
+   "landing": "correct",
+   "expected_facts": {
+    "smell_descriptor": "exhaust_inside_cabin",
+    "hvac_mode": "heat",
+    "started_when": "weeks_ago"
+   },
+   "raw_facts": null,
+   "latency_ms": 6711
+  },
+  {
+   "id": "exhaust_system_testing-003",
+   "raw_key": "exhaust_system_testing",
+   "raw_slug": "exhaust_manifold_tick_or_puff",
+   "landing": "correct",
+   "expected_facts": {
+    "noise_descriptor": "ticking_or_tapping",
+    "onset_timing": "cold_start"
+   },
+   "raw_facts": null,
+   "latency_ms": 5348
+  },
+  {
+   "id": "exhaust_system_testing-004",
+   "raw_key": "exhaust_system_testing",
+   "raw_slug": "exhaust_louder_or_rumbling",
+   "landing": "correct",
+   "expected_facts": {
+    "started_when": "sudden_onset"
+   },
+   "raw_facts": null,
+   "latency_ms": 6250
+  },
+  {
+   "id": "exhaust_system_testing-005",
+   "raw_key": "exhaust_system_testing",
+   "raw_slug": "exhaust_louder_or_rumbling",
+   "landing": "correct",
+   "expected_facts": {},
+   "raw_facts": null,
+   "latency_ms": 6746
+  },
+  {
+   "id": "no_start_testing-002",
+   "raw_key": "charging_starting_testing",
+   "raw_slug": "car_died_while_driving_electrical",
+   "landing": "correct",
+   "expected_facts": {
+    "warning_light_named": "*",
+    "lights_state": "dim_or_flickering",
+    "engine_running": "died_while_driving",
+    "drivable_state": "stranded_now"
+   },
+   "raw_facts": null,
+   "latency_ms": 7850
+  },
+  {
+   "id": "no_start_testing-004",
+   "raw_key": "no_start_testing",
+   "raw_slug": "hard_to_start_when_hot",
+   "landing": "correct",
+   "expected_facts": {
+    "engine_running": "wont_start",
+    "smell_descriptor": "gasoline_or_fuel"
+   },
+   "raw_facts": null,
+   "latency_ms": 8160
+  },
+  {
+   "id": "no_start_testing-005",
+   "raw_key": "no_start_testing",
+   "raw_slug": "stalling_while_driving_under_load",
+   "landing": "correct",
+   "expected_facts": {
+    "engine_running": "died_while_driving"
+   },
+   "raw_facts": null,
+   "latency_ms": 7695
+  },
+  {
+   "id": "oil_leak_testing-002",
+   "raw_key": "oil_leak_testing",
+   "raw_slug": "brown_or_black_puddle_engine_oil",
+   "landing": "correct",
+   "expected_facts": {
+    "fluid_color": "brown_or_black"
+   },
+   "raw_facts": null,
+   "latency_ms": 6511
+  },
+  {
+   "id": "no_start_testing-006",
+   "raw_key": "charging_starting_testing",
+   "raw_slug": "wont_crank_just_clicks",
+   "landing": "correct",
+   "expected_facts": {
+    "engine_running": "wont_crank_just_clicks"
+   },
+   "raw_facts": null,
+   "latency_ms": 7564
+  },
+  {
+   "id": "oil_leak_testing-003",
+   "raw_key": "oil_leak_testing",
+   "raw_slug": "burnt_oil_smell",
+   "landing": "correct",
+   "expected_facts": {
+    "smell_descriptor": "burnt_oil",
+    "sound_or_smoke_location_zone": "under_hood"
+   },
+   "raw_facts": null,
+   "latency_ms": 6714
+  },
+  {
+   "id": "oil_leak_testing-004",
+   "raw_key": "oil_leak_testing",
+   "raw_slug": "burnt_oil_smell",
+   "landing": "correct",
+   "expected_facts": {
+    "smell_descriptor": "burnt_oil"
+   },
+   "raw_facts": null,
+   "latency_ms": 6546
+  },
+  {
+   "id": "no_start_testing-003",
+   "raw_key": "charging_starting_testing",
+   "raw_slug": "slow_crank_sluggish_start",
+   "landing": "over_ask",
+   "expected_facts": {
+    "onset_timing": "cold_start",
+    "started_when": "weeks_ago"
+   },
+   "raw_facts": null,
+   "latency_ms": 16746
+  },
+  {
+   "id": "oil_leak_testing-006",
+   "raw_key": null,
+   "raw_slug": null,
+   "landing": "handoff",
+   "expected_facts": {
+    "fluid_color": "thick_dark_brown",
+    "fluid_under_car_location": "under_rear"
+   },
+   "raw_facts": null,
+   "latency_ms": 6781
+  },
+  {
+   "id": "oil_leak_testing-005",
+   "raw_key": "oil_leak_testing",
+   "raw_slug": "smoke_from_under_the_hood",
+   "landing": "correct",
+   "expected_facts": {
+    "smoke_color": "blue_or_gray",
+    "sound_or_smoke_location_zone": "under_hood",
+    "smell_descriptor": "burnt_oil"
+   },
+   "raw_facts": null,
+   "latency_ms": 7940
+  },
+  {
+   "id": "oil_pressure_light_testing-001",
+   "raw_key": "oil_pressure_light_testing",
+   "raw_slug": "oil_pressure_light",
+   "landing": "correct",
+   "expected_facts": {
+    "warning_light_named": "*",
+    "warning_light_behavior": "steady_on",
+    "drivable_state": "stranded_now",
+    "noise_descriptor": "ticking_or_tapping",
+    "recent_action": "oil_change"
+   },
+   "raw_facts": null,
+   "latency_ms": 7616
+  },
+  {
+   "id": "oil_pressure_light_testing-002",
+   "raw_key": "oil_pressure_light_testing",
+   "raw_slug": "oil_pressure_light",
+   "landing": "correct",
+   "expected_facts": {
+    "warning_light_named": "*",
+    "warning_light_behavior": "comes_and_goes"
+   },
+   "raw_facts": null,
+   "latency_ms": 6687
+  },
+  {
+   "id": "power_steering_eps_testing-002",
+   "raw_key": "power_steering_eps_testing",
+   "raw_slug": "power_steering_eps_light",
+   "landing": "correct",
+   "expected_facts": {
+    "warning_light_named": "*",
+    "warning_light_behavior": "steady_on",
+    "recent_action": "battery_or_alternator_work",
+    "steering_feel": "heavy_or_hard_to_turn"
+   },
+   "raw_facts": null,
+   "latency_ms": 7124
+  },
+  {
+   "id": "power_steering_eps_testing-001",
+   "raw_key": "power_steering_eps_testing",
+   "raw_slug": "hard_to_turn_heavy_steering",
+   "landing": "correct",
+   "expected_facts": {
+    "steering_feel": "heavy_or_hard_to_turn",
+    "speed_band": "low_speed",
+    "started_when": "sudden_onset",
+    "fluid_color": "red_or_pink",
+    "fluid_under_car_location": "under_engine_front"
+   },
+   "raw_facts": null,
+   "latency_ms": 11366
+  },
+  {
+   "id": "power_steering_eps_testing-003",
+   "raw_key": "power_steering_eps_testing",
+   "raw_slug": "noise_when_turning_the_steering_wheel",
+   "landing": "correct",
+   "expected_facts": {
+    "noise_descriptor": "whining",
+    "onset_timing": "when_turning"
+   },
+   "raw_facts": null,
+   "latency_ms": 8154
+  },
+  {
+   "id": "suspension_steering_check-002",
+   "raw_key": "suspension_steering_check",
+   "raw_slug": "clunking_over_bumps",
+   "landing": "correct",
+   "expected_facts": {
+    "noise_descriptor": "clunking",
+    "location_axle": "front",
+    "location_side": "left",
+    "onset_timing": "over_bumps",
+    "started_when": "weeks_ago"
+   },
+   "raw_facts": null,
+   "latency_ms": 6908
+  },
+  {
+   "id": "suspension_steering_check-003",
+   "raw_key": "suspension_steering_check",
+   "raw_slug": "pull_that_started_after_recent_tire_or_service_work",
+   "landing": "correct",
+   "expected_facts": {
+    "recent_action": "tire_rotation_or_replacement",
+    "started_when": "weeks_ago",
+    "pull_direction": "left",
+    "speed_band": "highway"
+   },
+   "raw_facts": null,
+   "latency_ms": 7213
+  },
+  {
+   "id": "suspension_steering_check-001",
+   "raw_key": "suspension_steering_check",
+   "raw_slug": "steering_wheel_shake_at_highway_speed",
+   "landing": "correct",
+   "expected_facts": {
+    "speed_band": "specific_mph",
+    "speed_specific_mph": 65,
+    "recent_action": "hit_pothole_or_curb"
+   },
+   "raw_facts": null,
+   "latency_ms": 10825
+  },
+  {
+   "id": "suspension_steering_check-005",
+   "raw_key": "suspension_steering_check",
+   "raw_slug": "loose_or_sloppy_steering",
+   "landing": "correct",
+   "expected_facts": {
+    "steering_feel": "loose_or_sloppy",
+    "speed_band": "highway"
+   },
+   "raw_facts": null,
+   "latency_ms": 7037
+  },
+  {
+   "id": "tpms_testing-001",
+   "raw_key": null,
+   "raw_slug": null,
+   "landing": "handoff",
+   "expected_facts": {
+    "location_axle": "rear",
+    "location_side": "left",
+    "tire_state": "visible_damage",
+    "started_when": "today",
+    "drivable_state": "drivable_normally"
+   },
+   "raw_facts": null,
+   "latency_ms": 4712
+  },
+  {
+   "id": "suspension_steering_check-007",
+   "raw_key": "suspension_steering_check",
+   "raw_slug": "steering_wheel_off_center_when_driving_straight",
+   "landing": "correct",
+   "expected_facts": {
+    "steering_feel": "wheel_off_center_while_straight"
+   },
+   "raw_facts": null,
+   "latency_ms": 5912
+  },
+  {
+   "id": "suspension_steering_check-006",
+   "raw_key": "suspension_steering_check",
+   "raw_slug": "humming_or_whirring_at_speed",
+   "landing": "correct",
+   "expected_facts": {
+    "noise_descriptor": "humming_or_whirring",
+    "location_axle": "front"
+   },
+   "raw_facts": null,
+   "latency_ms": 6625
+  },
+  {
+   "id": "suspension_steering_check-008",
+   "raw_key": "suspension_steering_check",
+   "raw_slug": "drift_that_follows_the_roads_slope",
+   "landing": "correct",
+   "expected_facts": {},
+   "raw_facts": null,
+   "latency_ms": 6644
+  },
+  {
+   "id": "tpms_testing-002",
+   "raw_key": null,
+   "raw_slug": null,
+   "landing": "handoff",
+   "expected_facts": {
+    "location_axle": "front",
+    "tire_state": "low_pressure"
+   },
+   "raw_facts": null,
+   "latency_ms": 3790
+  },
+  {
+   "id": "tpms_testing-004",
+   "raw_key": "tpms_testing",
+   "raw_slug": "tpms_tire_pressure_light",
+   "landing": "correct",
+   "expected_facts": {
+    "warning_light_named": "*",
+    "weather_condition": "cold_weather"
+   },
+   "raw_facts": null,
+   "latency_ms": 4758
+  },
+  {
+   "id": "tpms_testing-003",
+   "raw_key": "tpms_testing",
+   "raw_slug": "low_pressure_warning_light_only",
+   "landing": "correct",
+   "expected_facts": {
+    "warning_light_named": "*",
+    "recent_action": "tire_air_added",
+    "warning_light_behavior": "steady_on",
+    "tire_state": "normal_or_unknown"
+   },
+   "raw_facts": null,
+   "latency_ms": 9148
+  },
+  {
+   "id": "transmission_testing-003",
+   "raw_key": "transmission_testing",
+   "raw_slug": "shaking_when_speeding_up_or_going_uphill",
+   "landing": "correct",
+   "expected_facts": {
+    "onset_timing": "when_accelerating",
+    "started_when": "weeks_ago"
+   },
+   "raw_facts": null,
+   "latency_ms": 8822
+  },
+  {
+   "id": "transmission_testing-001",
+   "raw_key": "check_engine_light_testing",
+   "raw_slug": "hesitation_or_lag_when_accelerating",
+   "landing": "correct",
+   "expected_facts": {
+    "onset_timing": "when_accelerating",
+    "speed_band": "mid_speed",
+    "started_when": "weeks_ago",
+    "warning_light_named": "*",
+    "warning_light_behavior": "steady_on"
+   },
+   "raw_facts": null,
+   "latency_ms": 9843
+  },
+  {
+   "id": "transmission_testing-004",
+   "raw_key": "check_engine_light_testing",
+   "raw_slug": "surging_or_rpms_going_up_and_down",
+   "landing": "correct",
+   "expected_facts": {
+    "engine_running": "surging",
+    "speed_band": "stopped"
+   },
+   "raw_facts": null,
+   "latency_ms": 9464
+  },
+  {
+   "id": "transmission_testing-006",
+   "raw_key": "check_engine_light_testing",
+   "raw_slug": "hesitation_or_lag_when_accelerating",
+   "landing": "correct",
+   "expected_facts": {
+    "onset_timing": "when_accelerating"
+   },
+   "raw_facts": null,
+   "latency_ms": 8980
+  },
+  {
+   "id": "transmission_testing-002",
+   "raw_key": "transmission_testing",
+   "raw_slug": "red_or_pink_puddle_transmission_or_power_steering",
+   "landing": "correct",
+   "expected_facts": {
+    "fluid_color": "red_or_pink",
+    "fluid_under_car_location": "under_middle",
+    "steering_feel": "normal",
+    "customer_request_type": "diagnose_problem"
+   },
+   "raw_facts": null,
+   "latency_ms": 12886
+  },
+  {
+   "id": "window_inop_testing-001",
+   "raw_key": "window_inop_testing",
+   "raw_slug": null,
+   "landing": "correct",
+   "expected_facts": {
+    "accessory_affected": "*",
+    "location_side": "left",
+    "noise_descriptor": "grinding_metallic",
+    "started_when": "days_ago"
+   },
+   "raw_facts": null,
+   "latency_ms": 4163
+  },
+  {
+   "id": "warning_light_general-004",
+   "raw_key": "warning_light_general",
+   "raw_slug": "multiple_warning_lights_at_once",
+   "landing": "correct",
+   "expected_facts": {
+    "warning_light_behavior": "multiple_lights_at_once"
+   },
+   "raw_facts": null,
+   "latency_ms": 7534
+  },
+  {
+   "id": "window_inop_testing-002",
+   "raw_key": "window_inop_testing",
+   "raw_slug": null,
+   "landing": "correct",
+   "expected_facts": {
+    "accessory_affected": "*",
+    "location_side": "right",
+    "started_when": "today",
+    "customer_request_type": "diagnose_problem"
+   },
+   "raw_facts": null,
+   "latency_ms": 4767
+  },
+  {
+   "id": "window_inop_testing-003",
+   "raw_key": "window_inop_testing",
+   "raw_slug": null,
+   "landing": "correct",
+   "expected_facts": {
+    "accessory_affected": "*",
+    "location_side": "both"
+   },
+   "raw_facts": null,
+   "latency_ms": 4151
+  },
+  {
+   "id": "other-multi-1",
+   "raw_key": "multiple_symptoms_not_sure_what_category",
+   "raw_slug": null,
+   "landing": "correct",
+   "expected_facts": {},
+   "raw_facts": null,
+   "latency_ms": 2919
+  },
+  {
+   "id": "windshield_inop_testing-001",
+   "raw_key": "windshield_inop_testing",
+   "raw_slug": null,
+   "landing": "correct",
+   "expected_facts": {
+    "weather_condition": "rainy_or_wet",
+    "noise_descriptor": "creaking_or_squeaking",
+    "location_side": "right",
+    "started_when": "weeks_ago"
+   },
+   "raw_facts": null,
+   "latency_ms": 5449
+  },
+  {
+   "id": "windshield_inop_testing-003",
+   "raw_key": "windshield_inop_testing",
+   "raw_slug": null,
+   "landing": "correct",
+   "expected_facts": {
+    "noise_descriptor": "grinding_metallic",
+    "started_when": "months_ago"
+   },
+   "raw_facts": null,
+   "latency_ms": 4559
+  },
+  {
+   "id": "windshield_inop_testing-002",
+   "raw_key": "windshield_inop_testing",
+   "raw_slug": null,
+   "landing": "correct",
+   "expected_facts": {
+    "accessory_affected": "*",
+    "recent_action": "car_wash_or_driven_through_water"
+   },
+   "raw_facts": null,
+   "latency_ms": 5408
+  },
+  {
+   "id": "windshield_inop_testing-004",
+   "raw_key": "windshield_inop_testing",
+   "raw_slug": null,
+   "landing": "correct",
+   "expected_facts": {},
+   "raw_facts": null,
+   "latency_ms": 4959
+  },
+  {
+   "id": "other-multi-2",
+   "raw_key": "multiple_symptoms_not_sure_what_category",
+   "raw_slug": null,
+   "landing": "correct",
+   "expected_facts": {},
+   "raw_facts": null,
+   "latency_ms": 1946
+  },
+  {
+   "id": "window_inop_testing-004",
+   "raw_key": "window_inop_testing",
+   "raw_slug": null,
+   "landing": "correct",
+   "expected_facts": {
+    "accessory_affected": "*"
+   },
+   "raw_facts": null,
+   "latency_ms": 7249
+  },
+  {
+   "id": "other-accident-1",
+   "raw_key": "after_a_recent_accident_or_impact",
+   "raw_slug": null,
+   "landing": "correct",
+   "expected_facts": {},
+   "raw_facts": null,
+   "latency_ms": 1760
+  },
+  {
+   "id": "other-accident-2",
+   "raw_key": "after_a_recent_accident_or_impact",
+   "raw_slug": null,
+   "landing": "correct",
+   "expected_facts": {},
+   "raw_facts": null,
+   "latency_ms": 2216
+  },
+  {
+   "id": "other-safety-1",
+   "raw_key": "safety_concern_dont_feel_safe_driving_it",
+   "raw_slug": null,
+   "landing": "correct",
+   "expected_facts": {},
+   "raw_facts": null,
+   "latency_ms": 1514
+  },
+  {
+   "id": "other-postservice-1",
+   "raw_key": "after_recent_service_or_repair_work",
+   "raw_slug": null,
+   "landing": "correct",
+   "expected_facts": {},
+   "raw_facts": null,
+   "latency_ms": 2685
+  },
+  {
+   "id": "other-checkup-1",
+   "raw_key": "general_check_up_or_pre_trip_inspection",
+   "raw_slug": null,
+   "landing": "correct",
+   "expected_facts": {},
+   "raw_facts": null,
+   "latency_ms": 1726
+  },
+  {
+   "id": "other-safety-2",
+   "raw_key": "safety_concern_dont_feel_safe_driving_it",
+   "raw_slug": null,
+   "landing": "correct",
+   "expected_facts": {},
+   "raw_facts": null,
+   "latency_ms": 2261
+  },
+  {
+   "id": "other-checkup-2",
+   "raw_key": "general_check_up_or_pre_trip_inspection",
+   "raw_slug": null,
+   "landing": "correct",
+   "expected_facts": {},
+   "raw_facts": null,
+   "latency_ms": 2103
+  },
+  {
+   "id": "other-sitting-1",
+   "raw_key": "car_has_been_sitting_unused_for_a_long_time",
+   "raw_slug": null,
+   "landing": "correct",
+   "expected_facts": {},
+   "raw_facts": null,
+   "latency_ms": 1932
+  },
+  {
+   "id": "other-postservice-2",
+   "raw_key": "after_recent_service_or_repair_work",
+   "raw_slug": null,
+   "landing": "correct",
+   "expected_facts": {},
+   "raw_facts": null,
+   "latency_ms": 3818
+  },
+  {
+   "id": "other-sitting-2",
+   "raw_key": "car_has_been_sitting_unused_for_a_long_time",
+   "raw_slug": null,
+   "landing": "correct",
+   "expected_facts": {},
+   "raw_facts": null,
+   "latency_ms": 1849
+  },
+  {
+   "id": "null-01-single-word-hi",
+   "raw_key": null,
+   "raw_slug": null,
+   "landing": "correct",
+   "expected_facts": {},
+   "raw_facts": null,
+   "latency_ms": 1749
+  },
+  {
+   "id": "null-02-greeting-friendly",
+   "raw_key": null,
+   "raw_slug": null,
+   "landing": "correct",
+   "expected_facts": {},
+   "raw_facts": null,
+   "latency_ms": 1772
+  },
+  {
+   "id": "null-03-broken-zero-symptoms",
+   "raw_key": null,
+   "raw_slug": null,
+   "landing": "correct",
+   "expected_facts": {},
+   "raw_facts": null,
+   "latency_ms": 1619
+  },
+  {
+   "id": "null-04-vague-callback-request",
+   "raw_key": null,
+   "raw_slug": null,
+   "landing": "correct",
+   "expected_facts": {},
+   "raw_facts": null,
+   "latency_ms": 1734
+  },
+  {
+   "id": "null-05-single-word-help",
+   "raw_key": null,
+   "raw_slug": null,
+   "landing": "correct",
+   "expected_facts": {},
+   "raw_facts": null,
+   "latency_ms": 1634
+  },
+  {
+   "id": "null-07-hours-question",
+   "raw_key": null,
+   "raw_slug": null,
+   "landing": "correct",
+   "expected_facts": {},
+   "raw_facts": null,
+   "latency_ms": 1630
+  },
+  {
+   "id": "null-08-gibberish",
+   "raw_key": null,
+   "raw_slug": null,
+   "landing": "correct",
+   "expected_facts": {},
+   "raw_facts": null,
+   "latency_ms": 1756
+  },
+  {
+   "id": "null-09-hiring-inquiry",
+   "raw_key": null,
+   "raw_slug": null,
+   "landing": "correct",
+   "expected_facts": {},
+   "raw_facts": null,
+   "latency_ms": 1671
+  },
+  {
+   "id": "null-10-loaner-question",
+   "raw_key": null,
+   "raw_slug": null,
+   "landing": "correct",
+   "expected_facts": {},
+   "raw_facts": null,
+   "latency_ms": 1654
+  },
+  {
+   "id": "null-06-price-question",
+   "raw_key": null,
+   "raw_slug": null,
+   "landing": "correct",
+   "expected_facts": {},
+   "raw_facts": null,
+   "latency_ms": 2853
+  },
+  {
+   "id": "null-11-reschedule-request",
+   "raw_key": null,
+   "raw_slug": null,
+   "landing": "correct",
+   "expected_facts": {},
+   "raw_facts": null,
+   "latency_ms": 1621
+  },
+  {
+   "id": "null-12-offtopic-referral",
+   "raw_key": null,
+   "raw_slug": null,
+   "landing": "correct",
+   "expected_facts": {},
+   "raw_facts": null,
+   "latency_ms": 2476
+  },
+  {
+   "id": "nearmiss-003",
+   "raw_key": "brake_inspection",
+   "raw_slug": "metallic_grinding",
+   "landing": "correct",
+   "expected_facts": {
+    "noise_descriptor": "grinding_metallic",
+    "onset_timing": "when_braking",
+    "location_axle": "front"
+   },
+   "raw_facts": null,
+   "latency_ms": 4970
+  },
+  {
+   "id": "nearmiss-001",
+   "raw_key": "brake_inspection_warning_light",
+   "raw_slug": "brake_system_red_light",
+   "landing": "correct",
+   "expected_facts": {
+    "noise_descriptor": "squealing_high_pitched",
+    "started_when": "weeks_ago",
+    "warning_light_named": "*",
+    "parking_brake_state": "released"
+   },
+   "raw_facts": null,
+   "latency_ms": 6285
+  },
+  {
+   "id": "nearmiss-004",
+   "raw_key": "coolant_leak_testing_euro",
+   "raw_slug": "blue_or_light_blue_puddle_washer_fluid",
+   "landing": "handoff",
+   "expected_facts": {
+    "smell_descriptor": "sweet_or_maple_syrup"
+   },
+   "raw_facts": null,
+   "latency_ms": 5753
+  },
+  {
+   "id": "nearmiss-002",
+   "raw_key": "abs_traction_stability_testing",
+   "raw_slug": "abs_anti_lock_brake_light",
+   "landing": "correct",
+   "expected_facts": {
+    "warning_light_named": "*",
+    "recent_action": "hit_pothole_or_curb"
+   },
+   "raw_facts": null,
+   "latency_ms": 6778
+  },
+  {
+   "id": "nearmiss-005",
+   "raw_key": "oil_leak_testing",
+   "raw_slug": "brown_or_black_puddle_engine_oil",
+   "landing": "correct",
+   "expected_facts": {
+    "fluid_color": "brown_or_black",
+    "fluid_under_car_location": "under_engine_front",
+    "recent_action": "oil_change"
+   },
+   "raw_facts": null,
+   "latency_ms": 7300
+  },
+  {
+   "id": "nearmiss-007",
+   "raw_key": "oil_pressure_light_testing",
+   "raw_slug": "oil_pressure_light",
+   "landing": "correct",
+   "expected_facts": {
+    "warning_light_named": "*",
+    "warning_light_behavior": "comes_and_goes",
+    "onset_timing": "at_stop",
+    "speed_band": "stopped"
+   },
+   "raw_facts": null,
+   "latency_ms": 5846
+  },
+  {
+   "id": "nearmiss-006",
+   "raw_key": "coolant_leak_testing",
+   "raw_slug": "green_orange_yellow_or_pink_puddle_coolant",
+   "landing": "correct",
+   "expected_facts": {
+    "fluid_color": "green_or_orange_or_yellow_or_pink",
+    "fluid_under_car_location": "under_engine_front",
+    "warning_light_named": "*",
+    "warning_light_behavior": "comes_and_goes"
+   },
+   "raw_facts": null,
+   "latency_ms": 9944
+  },
+  {
+   "id": "nearmiss-008",
+   "raw_key": "check_engine_light_testing",
+   "raw_slug": "blue_or_gray_smoke_from_tailpipe",
+   "landing": "correct",
+   "expected_facts": {
+    "smoke_color": "blue_or_gray",
+    "sound_or_smoke_location_zone": "from_tailpipe",
+    "smell_descriptor": "burnt_oil",
+    "onset_timing": "when_accelerating"
+   },
+   "raw_facts": null,
+   "latency_ms": 7024
+  },
+  {
+   "id": "nearmiss-009",
+   "raw_key": "warning_light_general",
+   "raw_slug": "multiple_warning_lights_at_once",
+   "landing": "correct",
+   "expected_facts": {
+    "warning_light_behavior": "multiple_lights_at_once",
+    "started_when": "today"
+   },
+   "raw_facts": null,
+   "latency_ms": 7363
+  },
+  {
+   "id": "nearmiss-010",
+   "raw_key": "brake_inspection",
+   "raw_slug": "pulling_only_when_braking",
+   "landing": "correct",
+   "expected_facts": {
+    "pull_direction": "left",
+    "onset_timing": "when_braking"
+   },
+   "raw_facts": null,
+   "latency_ms": 7171
+  },
+  {
+   "id": "nearmiss-011",
+   "raw_key": "suspension_steering_check",
+   "raw_slug": "steady_drift_while_cruising",
+   "landing": "correct",
+   "expected_facts": {
+    "pull_direction": "right",
+    "speed_band": "highway"
+   },
+   "raw_facts": null,
+   "latency_ms": 6562
+  },
+  {
+   "id": "nearmiss-013",
+   "raw_key": "battery_test",
+   "raw_slug": null,
+   "landing": "correct",
+   "expected_facts": {
+    "engine_running": "slow_crank",
+    "started_when": "today"
+   },
+   "raw_facts": null,
+   "latency_ms": 5188
+  },
+  {
+   "id": "nearmiss-012",
+   "raw_key": "tpms_testing",
+   "raw_slug": "tpms_tire_pressure_light",
+   "landing": "correct",
+   "expected_facts": {
+    "warning_light_named": "*",
+    "warning_light_behavior": "comes_and_goes",
+    "recent_action": "tire_air_added"
+   },
+   "raw_facts": null,
+   "latency_ms": 8703
+  },
+  {
+   "id": "nearmiss-016",
+   "raw_key": "ac_performance_check",
+   "raw_slug": "vents_dont_blow_strongly",
+   "landing": "correct",
+   "expected_facts": {
+    "hvac_mode": "ac",
+    "airflow_state": "weak_overall"
+   },
+   "raw_facts": null,
+   "latency_ms": 6151
+  },
+  {
+   "id": "nearmiss-015",
+   "raw_key": "ac_leak_testing",
+   "raw_slug": "ac_blows_warm_or_hot_air",
+   "landing": "correct",
+   "expected_facts": {
+    "hvac_mode": "ac",
+    "recent_action": "ac_recharge_or_service"
+   },
+   "raw_facts": null,
+   "latency_ms": 7867
+  },
+  {
+   "id": "nearmiss-014",
+   "raw_key": "no_start_testing",
+   "raw_slug": "hard_to_start_when_cold",
+   "landing": "correct",
+   "expected_facts": {
+    "onset_timing": "cold_start"
+   },
+   "raw_facts": null,
+   "latency_ms": 9191
+  }
+ ]
+}

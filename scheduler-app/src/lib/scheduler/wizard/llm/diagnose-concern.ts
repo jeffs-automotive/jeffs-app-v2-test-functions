@@ -225,7 +225,7 @@ export interface DiagnoseConcernResult {
 // Nullable fields use the JSON Schema standard `type: ['string', 'null']`
 // — Anthropic supports this directly.
 
-const STAGE1_JSON_SCHEMA = {
+export const STAGE1_JSON_SCHEMA = {
   type: "object",
   additionalProperties: false,
   properties: {
@@ -261,7 +261,7 @@ const STAGE1_JSON_SCHEMA = {
   required: ["matched_category_key", "confidence", "reasoning"],
 } as const;
 
-const STAGE2_JSON_SCHEMA = {
+export const STAGE2_JSON_SCHEMA = {
   type: "object",
   additionalProperties: false,
   properties: {
@@ -301,7 +301,7 @@ const STAGE2_JSON_SCHEMA = {
 // `extracted_facts` property's schema IS the EXTRACTED_FACTS_JSON_SCHEMA
 // verbatim — same shape both files agree on as the source of truth for
 // the 29 fact slots.
-const STAGE3_JSON_SCHEMA = {
+export const STAGE3_JSON_SCHEMA = {
   type: "object",
   additionalProperties: false,
   properties: {
@@ -339,19 +339,19 @@ const STAGE3_JSON_SCHEMA = {
 //      drift between Anthropic's constrained-decoding output and our
 //      expected shape)
 
-const Stage1ResponseSchema = z.object({
+export const Stage1ResponseSchema = z.object({
   matched_category_key: z.string().nullable(),
   confidence: z.enum(["high", "medium", "low"]),
   reasoning: z.string(),
 });
 
-const Stage2ResponseSchema = z.object({
+export const Stage2ResponseSchema = z.object({
   matched_subcategory_slug: z.string().nullable(),
   confidence: z.enum(["high", "medium", "low"]),
   reasoning: z.string(),
 });
 
-const Stage3ResponseSchema = z.object({
+export const Stage3ResponseSchema = z.object({
   extracted_facts: ExtractedFactsSchema,
   confidence: z.enum(["high", "medium", "low"]),
   reasoning: z.string(),
@@ -903,7 +903,7 @@ function buildTestingServicePayload(
   };
 }
 
-function categoryHeaderForStage3(cat: CatalogCategory): string {
+export function categoryHeaderForStage3(cat: CatalogCategory): string {
   return isTestingService(cat)
     ? `service_key="${cat.service_key}" — ${cat.display_name}`
     : `subcategory_slug="${cat.subcategory_slug}" — ${cat.display_label}`;
