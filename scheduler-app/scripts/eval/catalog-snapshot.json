@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-03T12:56:09.996Z",
+  "generated_at": "2026-07-03T12:57:07.782Z",
   "counts": {
     "categories": 31,
     "testing_services": 25,
@@ -24878,7 +24878,7 @@
       "kind": "testing_service",
       "service_key": "tire_repair",
       "display_name": "Tire repair (patch & plug)",
-      "description": "The technician will remove the wheel and inspect the tire to locate the puncture and confirm it is in a repairable area of the tread. The tire is dismounted from the rim, the damaged area is prepared, and a patch/plug combination is installed from the inside to properly seal the puncture and restore tire integrity. The tire is then remounted, balanced, and reinstalled, and the repair is verified. Scope: physical tire damage — a nail or screw in the tire, a puncture, or a tire that keeps losing air. NOT for a tire-pressure warning light with no visible damage or leak (route to tpms_testing); NOT for vibration, pulling, or steering concerns (route to suspension_steering_check).",
+      "description": "The technician will remove the wheel and inspect the tire to locate the puncture and confirm it is in a repairable area of the tread. The tire is dismounted from the rim, the damaged area is prepared, and a patch/plug combination is installed from the inside to properly seal the puncture and restore tire integrity. The tire is then remounted, balanced, and reinstalled, and the repair is verified. Scope: physical tire damage — a nail or screw in the tire, a puncture, or a tire that keeps losing air. NOT for a tire-pressure warning light with no visible damage or leak (route to tpms_testing); NOT for vibration, pulling, or steering concerns (route to suspension_steering_check). NOT for worn-out, dry-rotted, or end-of-life tires or requests to buy/replace tires (no catalog fit — a service advisor will quote new tires).",
       "starting_price_cents": 4768,
       "concern_categories": [
         "tires"
