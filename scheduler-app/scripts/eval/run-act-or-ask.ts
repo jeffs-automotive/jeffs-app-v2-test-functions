@@ -241,11 +241,12 @@ Return RANKED candidate category keys under this contract:
   }
 
   const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  const outPath = arg("output") ?? "scripts/eval/act-or-ask-report.json";
   writeFileSync(
-    resolve(appRoot, `scripts/eval/act-or-ask-report.json`),
+    resolve(appRoot, outPath),
     JSON.stringify({ ran_at: stamp, prompt_contract: "ranked 0-3 candidates", models: report, rows: allRows }, null, 1),
   );
-  console.log(`\nWrote scripts/eval/act-or-ask-report.json`);
+  console.log(`\nWrote ${outPath}`);
 }
 
 main().catch((e) => {
