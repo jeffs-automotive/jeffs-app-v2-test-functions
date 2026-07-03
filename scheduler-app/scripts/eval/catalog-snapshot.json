@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-03T12:57:07.782Z",
+  "generated_at": "2026-07-03T17:46:21.129Z",
   "counts": {
     "categories": 31,
     "testing_services": 25,
@@ -415,6 +415,7 @@
         "hvac",
         "leak"
       ],
+      "example_keywords": [],
       "subcategories": [
         {
           "slug": "ac_blows_warm_or_hot_air",
@@ -1200,10 +1201,28 @@
       "kind": "testing_service",
       "service_key": "ac_performance_check",
       "display_name": "A/C performance check",
-      "description": "The technician will check A/C performance by measuring vent temperature and verifying blower, mode, and cooling fan operation, checking system pressures if needed. They will also inspect for leaks and check related belts and pulleys. Scope: AC cooling, blower/mode operation, and vent-side HVAC complaints (weak airflow, musty smell from vents, one zone vs another). If the customer reports the HEATER blowing cold or weak heat — that's a coolant/HVAC heat issue and routes to coolant_leak_testing, not here.",
+      "description": "The technician will check A/C performance by measuring vent temperature and verifying blower, mode, and cooling fan operation, checking system pressures if needed. They will also inspect for leaks and check related belts and pulleys. Scope: AC cooling, blower/mode operation, and vent-side HVAC complaints (weak airflow, musty smell from vents, one zone vs another). Includes heater complaints — no heat, weak heat, heat blowing cold (this is the HVAC heat surface). NOT coolant leaks (visible coolant puddle, sweet smell, overheating route to coolant_leak_testing).",
       "starting_price_cents": 5495,
       "concern_categories": [
         "hvac"
+      ],
+      "example_keywords": [
+        "no heat",
+        "weak heat",
+        "heat blows cold",
+        "heater blows cold",
+        "heater not working",
+        "heat not working",
+        "heat doesn't work",
+        "cold air from heater",
+        "takes forever to warm up",
+        "slow to warm",
+        "defroster not warming",
+        "blower",
+        "weak airflow",
+        "AC not cold",
+        "AC blows warm",
+        "musty smell from vents"
       ],
       "subcategories": [
         {
@@ -3056,6 +3075,7 @@
         "warning_light",
         "brakes"
       ],
+      "example_keywords": [],
       "subcategories": [
         {
           "slug": "abs_anti_lock_brake_light",
@@ -3471,6 +3491,7 @@
         "warning_light",
         "electrical"
       ],
+      "example_keywords": [],
       "subcategories": [
         {
           "slug": "airbag_srs_light",
@@ -3687,6 +3708,7 @@
         "electrical",
         "warning_light"
       ],
+      "example_keywords": [],
       "subcategories": []
     },
     {
@@ -3699,6 +3721,7 @@
         "electrical",
         "warning_light"
       ],
+      "example_keywords": [],
       "subcategories": []
     },
     {
@@ -3711,6 +3734,7 @@
         "brakes",
         "noise"
       ],
+      "example_keywords": [],
       "subcategories": [
         {
           "slug": "high_pitched_squealing",
@@ -5858,6 +5882,9 @@
         "noise",
         "warning_light"
       ],
+      "example_keywords": [
+        "Red brake light on"
+      ],
       "subcategories": [
         {
           "slug": "brake_system_red_light",
@@ -6077,6 +6104,7 @@
         "warning_light",
         "performance"
       ],
+      "example_keywords": [],
       "subcategories": [
         {
           "slug": "wont_crank_just_clicks",
@@ -7553,6 +7581,7 @@
         "warning_light",
         "performance"
       ],
+      "example_keywords": [],
       "subcategories": [
         {
           "slug": "check_engine_light",
@@ -12081,6 +12110,7 @@
         "performance",
         "warning_light"
       ],
+      "example_keywords": [],
       "subcategories": [
         {
           "slug": "white_smoke_from_tailpipe",
@@ -13681,6 +13711,7 @@
         "performance",
         "warning_light"
       ],
+      "example_keywords": [],
       "subcategories": [
         {
           "slug": "blue_or_light_blue_puddle_washer_fluid",
@@ -13882,6 +13913,7 @@
       "concern_categories": [
         "electrical"
       ],
+      "example_keywords": [],
       "subcategories": [
         {
           "slug": "accessory_doesnt_work",
@@ -14926,6 +14958,7 @@
         "smell",
         "performance"
       ],
+      "example_keywords": [],
       "subcategories": [
         {
           "slug": "rattling_underneath_the_car",
@@ -15435,6 +15468,7 @@
         "performance",
         "electrical"
       ],
+      "example_keywords": [],
       "subcategories": [
         {
           "slug": "wont_crank_just_clicks",
@@ -16476,6 +16510,7 @@
         "smell",
         "smoke"
       ],
+      "example_keywords": [],
       "subcategories": [
         {
           "slug": "brown_or_black_puddle_engine_oil",
@@ -17451,6 +17486,7 @@
         "leak",
         "performance"
       ],
+      "example_keywords": [],
       "subcategories": [
         {
           "slug": "engine_ticking_or_tapping",
@@ -18072,6 +18108,7 @@
         "steering",
         "electrical"
       ],
+      "example_keywords": [],
       "subcategories": [
         {
           "slug": "hard_to_turn_heavy_steering",
@@ -19095,6 +19132,7 @@
         "pulling",
         "vibration"
       ],
+      "example_keywords": [],
       "subcategories": [
         {
           "slug": "steering_wheel_shake_at_highway_speed",
@@ -23616,6 +23654,7 @@
         "warning_light",
         "tires"
       ],
+      "example_keywords": [],
       "subcategories": [
         {
           "slug": "visible_damage_nail_screw_bulge_cut",
@@ -24883,6 +24922,7 @@
       "concern_categories": [
         "tires"
       ],
+      "example_keywords": [],
       "subcategories": [
         {
           "slug": "visible_damage_nail_screw_bulge_cut",
@@ -25741,6 +25781,7 @@
       "concern_categories": [
         "performance"
       ],
+      "example_keywords": [],
       "subcategories": [
         {
           "slug": "hesitation_or_lag_when_accelerating",
@@ -26783,6 +26824,7 @@
         "warning_light",
         "performance"
       ],
+      "example_keywords": [],
       "subcategories": [
         {
           "slug": "multiple_warning_lights_at_once",
@@ -27044,6 +27086,7 @@
         "electrical",
         "other"
       ],
+      "example_keywords": [],
       "subcategories": []
     },
     {
@@ -27056,6 +27099,7 @@
         "electrical",
         "other"
       ],
+      "example_keywords": [],
       "subcategories": []
     },
     {

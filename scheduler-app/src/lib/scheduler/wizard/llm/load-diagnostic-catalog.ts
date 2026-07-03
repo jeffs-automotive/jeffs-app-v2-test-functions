@@ -118,6 +118,15 @@ export interface TestingServiceCategory {
   /** The concern_categories[] tag column verbatim — drives which
    *  subcategories the LLM can pick when matching to this service. */
   concern_categories: string[];
+  /** DB-editable customer-word keywords for this testing service
+   *  (testing_services.example_keywords, TEXT[]). Rendered into the
+   *  Stage-1 catalog block's per-category `keywords:` line (union'd with
+   *  this service's subcategories' synonyms) so the keyword layer stays
+   *  editable via /schedulerconfig. The loader always populates it (`[]`
+   *  when the DB column is null); OPTIONAL on the type so hand-built test
+   *  fixtures may omit it (the Stage-1 renderer tolerates `undefined`).
+   *  Added 2026-07-03 (act-or-ask Stage-1 iteration). */
+  example_keywords?: string[];
   /** Subcategories reachable from any concern_category in the
    *  concern_categories[] above. Filtered to active rows. */
   subcategories: CatalogSubcategory[];
@@ -148,6 +157,7 @@ interface TestingServiceRow {
   description: string | null;
   starting_price_cents: number;
   concern_categories: string[] | null;
+  example_keywords: string[] | null;
 }
 
 interface SubcategoryRow {
@@ -198,7 +208,7 @@ export async function loadDiagnosticCatalog(
     supabase
       .from("testing_services")
       .select(
-        "service_key, display_name, description, starting_price_cents, concern_categories",
+        "service_key, display_name, description, starting_price_cents, concern_categories, example_keywords",
       )
       .eq("shop_id", SHOP_ID)
       .eq("active", true)
@@ -349,6 +359,9 @@ export async function loadDiagnosticCatalog(
       description: row.description,
       starting_price_cents: row.starting_price_cents,
       concern_categories: cats,
+      example_keywords: Array.isArray(row.example_keywords)
+        ? row.example_keywords
+        : [],
       subcategories: subs,
     };
   });

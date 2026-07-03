@@ -451,6 +451,53 @@ function fmtPriceForLLM(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
+/**
+ * Build the per-category `keywords:` line for the Stage-1 catalog block
+ * (act-or-ask Stage-1 iteration, 2026-07-03). Sources:
+ *   1. testing_services.example_keywords (DB, may be null/empty) — kept
+ *      whole, first, since these are the advisor's curated top signals.
+ *   2. this service's subcategories' synonyms, gathered ROUND-ROBIN across
+ *      subcategories so EVERY subcategory contributes some vocabulary before
+ *      the cap (a category like ac_performance_check whose heat_doesnt_work
+ *      synonyms sit in a later subcategory still surfaces heater words, not
+ *      just the first subcategory's AC-cooling words).
+ * De-duped case-insensitively (first spelling wins), capped at
+ * KEYWORD_LINE_MAX to keep the catalog compact. Returns "" when there are
+ * no keywords (caller omits the line). Both sources are advisor-editable via
+ * /schedulerconfig, so the keyword signal stays DB-owned — no hardcoding.
+ */
+const KEYWORD_LINE_MAX = 40;
+function buildCategoryKeywordLine(t: TestingServiceCategory): string {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const push = (raw: unknown): boolean => {
+    if (typeof raw !== "string") return false;
+    const kw = raw.trim();
+    if (!kw) return false;
+    const norm = kw.toLowerCase();
+    if (seen.has(norm)) return false;
+    seen.add(norm);
+    out.push(kw);
+    return true;
+  };
+  // (1) example_keywords first — may be undefined on hand-built fixtures.
+  for (const kw of t.example_keywords ?? []) {
+    if (out.length >= KEYWORD_LINE_MAX) break;
+    push(kw);
+  }
+  // (2) subcategory synonyms, round-robin by column index so each
+  //     subcategory contributes before any one drains the budget.
+  const synLists = t.subcategories.map((s) => s.synonyms);
+  const maxLen = synLists.reduce((m, l) => Math.max(m, l.length), 0);
+  for (let col = 0; col < maxLen && out.length < KEYWORD_LINE_MAX; col++) {
+    for (const list of synLists) {
+      if (out.length >= KEYWORD_LINE_MAX) break;
+      if (col < list.length) push(list[col]);
+    }
+  }
+  return out.join(", ");
+}
+
 function buildChipHintLine(
   chipHint: DiagnoseConcernChipHint | null | undefined,
 ): string {
@@ -509,11 +556,19 @@ export function buildStage1SystemPrompt(
 
   const testingServicesBlock = testingServices
     .map((t, i) => {
-      return [
+      const lines = [
         `${i + 1}. service_key="${t.service_key}" — ${t.display_name} (${fmtPriceForLLM(t.starting_price_cents)})`,
         `   What we'd do: ${t.description ?? "—"}`,
         `   Concern categories tagged: ${t.concern_categories.join(", ") || "(none)"}`,
-      ].join("\n");
+      ];
+      // DB-derived keyword layer (act-or-ask Stage-1 iteration, 2026-07-03):
+      // testing_services.example_keywords ∪ the union of this service's
+      // subcategories' synonyms, de-duped (case-insensitive), capped so the
+      // catalog stays compact. Both sources are advisor-editable via
+      // /schedulerconfig, keeping the keyword signal DB-owned (no hardcoding).
+      const keywordLine = buildCategoryKeywordLine(t);
+      if (keywordLine) lines.push(`   keywords: ${keywordLine}`);
+      return lines.join("\n");
     })
     .join("\n\n");
 
@@ -549,6 +604,61 @@ multiple symptoms at once, recent accidents, work just done elsewhere, safety
 worries, general inspections, cars that have been sitting.
 
 ${otherSubcategoriesBlock}
+
+# PRIORITY-ORDER rule (read FIRST — overrides symptom keywords)
+
+Before matching symptom keywords, scan the WHOLE description for these
+SITUATIONAL CUES. A cue applies ONLY when it is CAUSALLY tied to the symptom
+— the customer connects the symptom to the situation ("after X, now Y",
+"since X, it Y", "ever since the work, still Y"). A cue that is merely
+mentioned in passing (they took the car somewhere, it got towed here) does
+NOT override a specific, testable symptom. When a cue genuinely applies, the
+matching 'Other' situation key belongs in your candidates (usually FIRST).
+
+  a. **Recent repair / service / part work AS THE STATED CAUSE.** The symptom
+     STARTED or PERSISTS because of recent work: "after replacing my brake
+     pads it squeals", "since the tire replacement it sways", "multiple
+     repairs completed, STILL misfiring", "replaced the master cylinder …
+     STILL sinks" → the recent-service 'Other' key (e.g.,
+     after_recent_service_or_repair_work). Do NOT fire this just because the
+     text mentions visiting a shop or a prior unrelated repair — if the
+     customer is describing a fresh testable symptom ("makes a noise at
+     20-35 mph"), route the symptom, not this key.
+  b. **Recent accident / impact / pothole AS THE STATED CAUSE.** "hit a
+     pothole and now the wheel shakes", "since I got rear-ended it pulls",
+     "curbed the wheel, now it's off-center" → the recent-accident/impact
+     'Other' key (e.g., after_a_recent_accident_or_impact).
+  c. **Explicit safety fear or told-not-to-drive.** "brakes gave out", "NO
+     BRAKE PRESSURE", "DO NOT DRIVE", "I don't feel safe driving it",
+     "scared to drive it" → the safety 'Other' key (e.g.,
+     safety_concern_dont_feel_safe_driving_it). A total loss of a safety
+     system is NOT a routine inspection/warning-light case.
+  d. **Vehicle towed in with NO specific testable concern.** "vehicle towed
+     in", "tow in" ALONE (or with only a vague "won't run") → route to the
+     advisor (an 'Other' situation such as
+     multiple_symptoms_not_sure_what_category). BUT when the tow line is
+     FOLLOWED by a specific, testable symptom — "tow in, does not shift /
+     transmission failed" (→ transmission_testing), "tow in, no brakes,
+     brake fluid empty" (→ brakes) — route THAT concern; the tow is just how
+     the car arrived, not the concern. Do not let "tow in" swallow a clear
+     symptom.
+
+If a cue genuinely applies AND a specific symptom is ALSO clearly described,
+return the situation key first and the testing service second (a 2-candidate
+clarify) rather than silently dropping either.
+
+# NON-CONCERN rejection rule
+
+If the text is a SERVICE / REPAIR / MAINTENANCE REQUEST or a work-order line
+— it names an action to perform with NO described symptom — return
+candidates: [] (advisor handoff). Examples: "rack replacement", "replace
+front wheel hub", "CHECK ALIGNMENT", "recharge a/c system", "oil change",
+"REPLACE DRIVERS SIDE LOW BEAM", "reset oil maintenance light",
+"Previously declined> …", "23-point inspection + tire rotation". These are
+things a shop DOES, not problems a customer is DESCRIBING; there is no
+symptom to test for, so do NOT guess a testing service. (A request that ALSO
+describes a symptom — "AC recharged a couple months ago, now blowing hot
+again" — is a real concern; keep it.)
 
 # Decision rules (act-or-ask)
 
@@ -587,7 +697,34 @@ ${otherSubcategoriesBlock}
 6. **Never invent IDs or slugs.** Only return keys that appear above,
    VERBATIM. Never more than three.
 
-7. **Reasoning is for the audit log.** One sentence under 280 characters
+7. **Use the per-category \`keywords:\` line as a matching aid.** Each
+   testing service lists customer-word keywords. A keyword hit is a strong
+   signal for that category — but it does NOT override the PRIORITY-ORDER
+   situational cues above, and a bare work-order request still falls under
+   the NON-CONCERN rule even if it contains a keyword.
+
+8. **Hedge between a KNOWN confusable pair — return BOTH, don't guess.**
+   When the description plausibly fits BOTH members of one of these
+   look-alike pairs, return both as candidates (best-guess first) instead
+   of confidently picking one:
+     - brake_inspection ↔ brake_inspection_warning_light — a mechanical
+       brake symptom (pedal, fluid, grinding) vs a dashboard BRAKE/ABS
+       warning light. "Added brake fluid and it leaks right out" or "pedal
+       sinks" is mechanical (brake_inspection); a red BRAKE light with no
+       stated pedal problem is the warning-light key. If both are in play,
+       offer both.
+     - no_start_testing ↔ charging_starting_testing — "won't crank / just
+       clicks / totally dead" leans no_start; "trouble starting / slow
+       crank / battery keeps dying / had it jumped" leans charging-starting.
+       When the text says only "trouble starting" without which, offer both.
+     - coolant_leak_testing ↔ ac_performance_check for HEAT complaints —
+       "no heat / weak heat / heater blows cold" is a HEATER complaint;
+       route ac_performance_check (it owns heater/HVAC heat complaints), and
+       offer coolant_leak_testing second only if a coolant symptom (visible
+       leak, sweet smell, overheating) is ALSO described. Do not send a bare
+       "heat doesn't work" to coolant_leak_testing.
+
+9. **Reasoning is for the audit log.** One sentence under 280 characters
    citing the customer words that drove the candidate set.`;
 
   const dynamicText = `# Customer's pre-selection (context)
