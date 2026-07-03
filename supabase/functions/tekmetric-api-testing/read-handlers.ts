@@ -79,7 +79,10 @@ export async function handleSearchCustomerByPhone(
       400,
     );
   }
-  const result = await tekmetricCall("/customers/search", { search: phone });
+  // Tekmetric removed GET /customers/search (API drift, verified 2026-07-03 —
+  // it now 400s as if "search" were a customer id). The supported form is the
+  // list endpoint's `search` param; shop is force-added by tekmetricCall.
+  const result = await tekmetricCall("/customers", { search: phone });
   return jsonResponse({
     ok: result.status < 400,
     op: "search_customer_by_phone",
