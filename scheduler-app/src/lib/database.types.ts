@@ -587,6 +587,7 @@ export type Database = {
           clarification_questions_answered: Json | null
           clarification_questions_pending: Json | null
           completed_at: string | null
+          concern_clarify_candidates: Json | null
           cookie_session: string | null
           current_step: string | null
           customer_id: number | null
@@ -648,6 +649,7 @@ export type Database = {
           clarification_questions_answered?: Json | null
           clarification_questions_pending?: Json | null
           completed_at?: string | null
+          concern_clarify_candidates?: Json | null
           cookie_session?: string | null
           current_step?: string | null
           customer_id?: number | null
@@ -709,6 +711,7 @@ export type Database = {
           clarification_questions_answered?: Json | null
           clarification_questions_pending?: Json | null
           completed_at?: string | null
+          concern_clarify_candidates?: Json | null
           cookie_session?: string | null
           current_step?: string | null
           customer_id?: number | null
@@ -3001,6 +3004,710 @@ export type Database = {
           },
         ]
       }
+      tekmetric_ro_customer_concerns: {
+        Row: {
+          concern: string | null
+          id: number
+          ro_id: number
+          tech_comment: string | null
+        }
+        Insert: {
+          concern?: string | null
+          id: number
+          ro_id: number
+          tech_comment?: string | null
+        }
+        Update: {
+          concern?: string | null
+          id?: number
+          ro_id?: number
+          tech_comment?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tekmetric_ro_customer_concerns_ro_id_fkey"
+            columns: ["ro_id"]
+            isOneToOne: false
+            referencedRelation: "tekmetric_ros"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tekmetric_ro_discounts: {
+        Row: {
+          id: number
+          name: string | null
+          ro_id: number
+          total_cents: number | null
+        }
+        Insert: {
+          id: number
+          name?: string | null
+          ro_id: number
+          total_cents?: number | null
+        }
+        Update: {
+          id?: number
+          name?: string | null
+          ro_id?: number
+          total_cents?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tekmetric_ro_discounts_ro_id_fkey"
+            columns: ["ro_id"]
+            isOneToOne: false
+            referencedRelation: "tekmetric_ros"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tekmetric_ro_fees: {
+        Row: {
+          id: number
+          name: string | null
+          ro_id: number
+          total_cents: number | null
+        }
+        Insert: {
+          id: number
+          name?: string | null
+          ro_id: number
+          total_cents?: number | null
+        }
+        Update: {
+          id?: number
+          name?: string | null
+          ro_id?: number
+          total_cents?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tekmetric_ro_fees_ro_id_fkey"
+            columns: ["ro_id"]
+            isOneToOne: false
+            referencedRelation: "tekmetric_ros"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tekmetric_ro_ingest_alerts: {
+        Row: {
+          first_seen: string
+          id: number
+          last_seen: string
+          level: string
+          occurrences: number
+          ro_id: number | null
+          sample: Json | null
+          unknown_keys: string[]
+        }
+        Insert: {
+          first_seen?: string
+          id?: number
+          last_seen?: string
+          level: string
+          occurrences?: number
+          ro_id?: number | null
+          sample?: Json | null
+          unknown_keys: string[]
+        }
+        Update: {
+          first_seen?: string
+          id?: number
+          last_seen?: string
+          level?: string
+          occurrences?: number
+          ro_id?: number | null
+          sample?: Json | null
+          unknown_keys?: string[]
+        }
+        Relationships: []
+      }
+      tekmetric_ro_job_discounts: {
+        Row: {
+          id: number
+          job_id: number
+          name: string | null
+          ro_id: number
+          total_cents: number | null
+        }
+        Insert: {
+          id: number
+          job_id: number
+          name?: string | null
+          ro_id: number
+          total_cents?: number | null
+        }
+        Update: {
+          id?: number
+          job_id?: number
+          name?: string | null
+          ro_id?: number
+          total_cents?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tekmetric_ro_job_discounts_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "tekmetric_ro_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tekmetric_ro_job_fees: {
+        Row: {
+          id: number
+          job_id: number
+          name: string | null
+          ro_id: number
+          total_cents: number | null
+        }
+        Insert: {
+          id: number
+          job_id: number
+          name?: string | null
+          ro_id: number
+          total_cents?: number | null
+        }
+        Update: {
+          id?: number
+          job_id?: number
+          name?: string | null
+          ro_id?: number
+          total_cents?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tekmetric_ro_job_fees_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "tekmetric_ro_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tekmetric_ro_job_labor: {
+        Row: {
+          complete: boolean | null
+          hours: number | null
+          id: number
+          job_id: number
+          name: string | null
+          rate_cents: number | null
+          ro_id: number
+          technician_id: number | null
+        }
+        Insert: {
+          complete?: boolean | null
+          hours?: number | null
+          id: number
+          job_id: number
+          name?: string | null
+          rate_cents?: number | null
+          ro_id: number
+          technician_id?: number | null
+        }
+        Update: {
+          complete?: boolean | null
+          hours?: number | null
+          id?: number
+          job_id?: number
+          name?: string | null
+          rate_cents?: number | null
+          ro_id?: number
+          technician_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tekmetric_ro_job_labor_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "tekmetric_ro_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tekmetric_ro_job_parts: {
+        Row: {
+          brand: string | null
+          construction_type: string | null
+          cost_cents: number | null
+          description: string | null
+          diameter: number | null
+          dot_numbers: string[] | null
+          id: number
+          job_id: number
+          load_index: string | null
+          load_range: string | null
+          mileage_warranty: string | null
+          model: string | null
+          name: string | null
+          part_number: string | null
+          part_status_code: string | null
+          part_status_id: number | null
+          part_status_name: string | null
+          part_type_code: string | null
+          part_type_id: number | null
+          part_type_name: string | null
+          quantity: number | null
+          ratio: number | null
+          retail_cents: number | null
+          ro_id: number
+          run_flat: boolean | null
+          side_wall_style: string | null
+          speed_rating: string | null
+          temperature: string | null
+          tire_category: string | null
+          tire_type: string | null
+          traction: string | null
+          treadwear: string | null
+          width: string | null
+        }
+        Insert: {
+          brand?: string | null
+          construction_type?: string | null
+          cost_cents?: number | null
+          description?: string | null
+          diameter?: number | null
+          dot_numbers?: string[] | null
+          id: number
+          job_id: number
+          load_index?: string | null
+          load_range?: string | null
+          mileage_warranty?: string | null
+          model?: string | null
+          name?: string | null
+          part_number?: string | null
+          part_status_code?: string | null
+          part_status_id?: number | null
+          part_status_name?: string | null
+          part_type_code?: string | null
+          part_type_id?: number | null
+          part_type_name?: string | null
+          quantity?: number | null
+          ratio?: number | null
+          retail_cents?: number | null
+          ro_id: number
+          run_flat?: boolean | null
+          side_wall_style?: string | null
+          speed_rating?: string | null
+          temperature?: string | null
+          tire_category?: string | null
+          tire_type?: string | null
+          traction?: string | null
+          treadwear?: string | null
+          width?: string | null
+        }
+        Update: {
+          brand?: string | null
+          construction_type?: string | null
+          cost_cents?: number | null
+          description?: string | null
+          diameter?: number | null
+          dot_numbers?: string[] | null
+          id?: number
+          job_id?: number
+          load_index?: string | null
+          load_range?: string | null
+          mileage_warranty?: string | null
+          model?: string | null
+          name?: string | null
+          part_number?: string | null
+          part_status_code?: string | null
+          part_status_id?: number | null
+          part_status_name?: string | null
+          part_type_code?: string | null
+          part_type_id?: number | null
+          part_type_name?: string | null
+          quantity?: number | null
+          ratio?: number | null
+          retail_cents?: number | null
+          ro_id?: number
+          run_flat?: boolean | null
+          side_wall_style?: string | null
+          speed_rating?: string | null
+          temperature?: string | null
+          tire_category?: string | null
+          tire_type?: string | null
+          traction?: string | null
+          treadwear?: string | null
+          width?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tekmetric_ro_job_parts_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "tekmetric_ro_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tekmetric_ro_jobs: {
+        Row: {
+          archived: boolean | null
+          authorized: boolean | null
+          authorized_date: string | null
+          canned_job_id: number | null
+          completed_date: string | null
+          created_date: string | null
+          customer_id: number | null
+          discount_total_cents: number | null
+          fee_total_cents: number | null
+          id: number
+          job_category_name: string | null
+          labor_hours: number | null
+          labor_total_cents: number | null
+          logged_hours: number | null
+          name: string | null
+          note: string | null
+          parts_total_cents: number | null
+          ro_id: number
+          selected: boolean | null
+          shop_id: number
+          sort: number | null
+          subtotal_cents: number | null
+          technician_id: number | null
+          updated_date: string | null
+          vehicle_id: number | null
+        }
+        Insert: {
+          archived?: boolean | null
+          authorized?: boolean | null
+          authorized_date?: string | null
+          canned_job_id?: number | null
+          completed_date?: string | null
+          created_date?: string | null
+          customer_id?: number | null
+          discount_total_cents?: number | null
+          fee_total_cents?: number | null
+          id: number
+          job_category_name?: string | null
+          labor_hours?: number | null
+          labor_total_cents?: number | null
+          logged_hours?: number | null
+          name?: string | null
+          note?: string | null
+          parts_total_cents?: number | null
+          ro_id: number
+          selected?: boolean | null
+          shop_id: number
+          sort?: number | null
+          subtotal_cents?: number | null
+          technician_id?: number | null
+          updated_date?: string | null
+          vehicle_id?: number | null
+        }
+        Update: {
+          archived?: boolean | null
+          authorized?: boolean | null
+          authorized_date?: string | null
+          canned_job_id?: number | null
+          completed_date?: string | null
+          created_date?: string | null
+          customer_id?: number | null
+          discount_total_cents?: number | null
+          fee_total_cents?: number | null
+          id?: number
+          job_category_name?: string | null
+          labor_hours?: number | null
+          labor_total_cents?: number | null
+          logged_hours?: number | null
+          name?: string | null
+          note?: string | null
+          parts_total_cents?: number | null
+          ro_id?: number
+          selected?: boolean | null
+          shop_id?: number
+          sort?: number | null
+          subtotal_cents?: number | null
+          technician_id?: number | null
+          updated_date?: string | null
+          vehicle_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tekmetric_ro_jobs_ro_id_fkey"
+            columns: ["ro_id"]
+            isOneToOne: false
+            referencedRelation: "tekmetric_ros"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tekmetric_ro_sublet_items: {
+        Row: {
+          complete: boolean | null
+          cost_cents: number | null
+          id: number
+          name: string | null
+          price_cents: number | null
+          ro_id: number
+          sublet_id: number
+        }
+        Insert: {
+          complete?: boolean | null
+          cost_cents?: number | null
+          id: number
+          name?: string | null
+          price_cents?: number | null
+          ro_id: number
+          sublet_id: number
+        }
+        Update: {
+          complete?: boolean | null
+          cost_cents?: number | null
+          id?: number
+          name?: string | null
+          price_cents?: number | null
+          ro_id?: number
+          sublet_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tekmetric_ro_sublet_items_sublet_id_fkey"
+            columns: ["sublet_id"]
+            isOneToOne: false
+            referencedRelation: "tekmetric_ro_sublets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tekmetric_ro_sublets: {
+        Row: {
+          ap_amount_cents: number | null
+          ap_amount_paid_cents: number | null
+          ap_id: number | null
+          ap_payment_details: Json | null
+          ap_payment_type: Json | null
+          authorized: boolean | null
+          authorized_date: string | null
+          cost_cents: number | null
+          feeable: boolean | null
+          id: number
+          name: string | null
+          note: string | null
+          price_cents: number | null
+          ro_id: number
+          selected: boolean | null
+          sort: number | null
+          tax_sublet: boolean | null
+          vendor_id: number | null
+          vendor_name: string | null
+          vendor_nickname: string | null
+          vendor_phone: string | null
+          vendor_website: string | null
+        }
+        Insert: {
+          ap_amount_cents?: number | null
+          ap_amount_paid_cents?: number | null
+          ap_id?: number | null
+          ap_payment_details?: Json | null
+          ap_payment_type?: Json | null
+          authorized?: boolean | null
+          authorized_date?: string | null
+          cost_cents?: number | null
+          feeable?: boolean | null
+          id: number
+          name?: string | null
+          note?: string | null
+          price_cents?: number | null
+          ro_id: number
+          selected?: boolean | null
+          sort?: number | null
+          tax_sublet?: boolean | null
+          vendor_id?: number | null
+          vendor_name?: string | null
+          vendor_nickname?: string | null
+          vendor_phone?: string | null
+          vendor_website?: string | null
+        }
+        Update: {
+          ap_amount_cents?: number | null
+          ap_amount_paid_cents?: number | null
+          ap_id?: number | null
+          ap_payment_details?: Json | null
+          ap_payment_type?: Json | null
+          authorized?: boolean | null
+          authorized_date?: string | null
+          cost_cents?: number | null
+          feeable?: boolean | null
+          id?: number
+          name?: string | null
+          note?: string | null
+          price_cents?: number | null
+          ro_id?: number
+          selected?: boolean | null
+          sort?: number | null
+          tax_sublet?: boolean | null
+          vendor_id?: number | null
+          vendor_name?: string | null
+          vendor_nickname?: string | null
+          vendor_phone?: string | null
+          vendor_website?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tekmetric_ro_sublets_ro_id_fkey"
+            columns: ["ro_id"]
+            isOneToOne: false
+            referencedRelation: "tekmetric_ros"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tekmetric_ros: {
+        Row: {
+          amount_paid_cents: number | null
+          appointment_id: number | null
+          color: string | null
+          completed_date: string | null
+          created_date: string | null
+          custom_label_name: string | null
+          customer_id: number | null
+          customer_time_out: string | null
+          deleted_date: string | null
+          discount_total_cents: number | null
+          estimate_share_date: string | null
+          estimate_url: string | null
+          fee_total_cents: number | null
+          id: number
+          inspection_share_date: string | null
+          inspection_url: string | null
+          invoice_share_date: string | null
+          invoice_url: string | null
+          keytag: string | null
+          label_code: string | null
+          label_id: number | null
+          label_name: string | null
+          label_status_code: string | null
+          label_status_id: number | null
+          label_status_name: string | null
+          label_status_posted_or_accrecv: boolean | null
+          labor_sales_cents: number | null
+          lead_source: string | null
+          miles_in: number | null
+          miles_out: number | null
+          parts_sales_cents: number | null
+          posted_date: string | null
+          raw: Json
+          repair_order_number: number | null
+          service_writer_id: number | null
+          shop_id: number
+          status_code: string | null
+          status_id: number | null
+          status_name: string | null
+          status_posted_or_accrecv: boolean | null
+          sublet_sales_cents: number | null
+          synced_at: string
+          taxes_cents: number | null
+          technician_id: number | null
+          total_sales_cents: number | null
+          updated_date: string | null
+          vehicle_id: number | null
+        }
+        Insert: {
+          amount_paid_cents?: number | null
+          appointment_id?: number | null
+          color?: string | null
+          completed_date?: string | null
+          created_date?: string | null
+          custom_label_name?: string | null
+          customer_id?: number | null
+          customer_time_out?: string | null
+          deleted_date?: string | null
+          discount_total_cents?: number | null
+          estimate_share_date?: string | null
+          estimate_url?: string | null
+          fee_total_cents?: number | null
+          id: number
+          inspection_share_date?: string | null
+          inspection_url?: string | null
+          invoice_share_date?: string | null
+          invoice_url?: string | null
+          keytag?: string | null
+          label_code?: string | null
+          label_id?: number | null
+          label_name?: string | null
+          label_status_code?: string | null
+          label_status_id?: number | null
+          label_status_name?: string | null
+          label_status_posted_or_accrecv?: boolean | null
+          labor_sales_cents?: number | null
+          lead_source?: string | null
+          miles_in?: number | null
+          miles_out?: number | null
+          parts_sales_cents?: number | null
+          posted_date?: string | null
+          raw: Json
+          repair_order_number?: number | null
+          service_writer_id?: number | null
+          shop_id: number
+          status_code?: string | null
+          status_id?: number | null
+          status_name?: string | null
+          status_posted_or_accrecv?: boolean | null
+          sublet_sales_cents?: number | null
+          synced_at?: string
+          taxes_cents?: number | null
+          technician_id?: number | null
+          total_sales_cents?: number | null
+          updated_date?: string | null
+          vehicle_id?: number | null
+        }
+        Update: {
+          amount_paid_cents?: number | null
+          appointment_id?: number | null
+          color?: string | null
+          completed_date?: string | null
+          created_date?: string | null
+          custom_label_name?: string | null
+          customer_id?: number | null
+          customer_time_out?: string | null
+          deleted_date?: string | null
+          discount_total_cents?: number | null
+          estimate_share_date?: string | null
+          estimate_url?: string | null
+          fee_total_cents?: number | null
+          id?: number
+          inspection_share_date?: string | null
+          inspection_url?: string | null
+          invoice_share_date?: string | null
+          invoice_url?: string | null
+          keytag?: string | null
+          label_code?: string | null
+          label_id?: number | null
+          label_name?: string | null
+          label_status_code?: string | null
+          label_status_id?: number | null
+          label_status_name?: string | null
+          label_status_posted_or_accrecv?: boolean | null
+          labor_sales_cents?: number | null
+          lead_source?: string | null
+          miles_in?: number | null
+          miles_out?: number | null
+          parts_sales_cents?: number | null
+          posted_date?: string | null
+          raw?: Json
+          repair_order_number?: number | null
+          service_writer_id?: number | null
+          shop_id?: number
+          status_code?: string | null
+          status_id?: number | null
+          status_name?: string | null
+          status_posted_or_accrecv?: boolean | null
+          sublet_sales_cents?: number | null
+          synced_at?: string
+          taxes_cents?: number | null
+          technician_id?: number | null
+          total_sales_cents?: number | null
+          updated_date?: string | null
+          vehicle_id?: number | null
+        }
+        Relationships: []
+      }
       tekmetric_webhook_events: {
         Row: {
           error_message: string | null
@@ -4163,6 +4870,15 @@ export type Database = {
       }
       record_keytag_patched: {
         Args: { p_error?: string; p_ro_id: number; p_success: boolean }
+        Returns: undefined
+      }
+      record_tekmetric_ingest_alert: {
+        Args: {
+          p_level: string
+          p_ro_id: number
+          p_sample: Json
+          p_unknown_keys: string[]
+        }
         Returns: undefined
       }
       release_keytag_as_orphan: {
