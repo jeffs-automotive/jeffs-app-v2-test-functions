@@ -159,7 +159,13 @@ async function submitWaiterTimeV2Impl(
 
     return applyWizardTransition({
       chatId,
-      updates: { appointment_time: selected_time },
+      updates: {
+        appointment_time: selected_time,
+        // Summary edit hub (task EH1): the slot flow always ends AT summary,
+        // so clear the return-to-hub breadcrumb here (explicit null). A
+        // no-op on the normal forward flow (already null).
+        edit_return_step: null,
+      },
       nextStep: "summary",
       jeffBubble: "Locked it in! Take a look — does this look right? ✨",
     });

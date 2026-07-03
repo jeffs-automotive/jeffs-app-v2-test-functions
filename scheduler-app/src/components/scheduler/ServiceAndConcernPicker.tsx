@@ -63,6 +63,10 @@ export interface ServiceAndConcernPickerProps {
   routine_services: RoutineServiceChip[];
   onSubmit: (output: { picks: string[] }) => void | Promise<void>;
   disabled?: boolean;
+  /** Summary edit hub (2026-07-04): service_keys to pre-select on mount
+   *  when the customer re-opens the picker to edit their services. Empty
+   *  / omitted on the normal forward flow. */
+  initialSelected?: string[];
 }
 
 function formatPrice(cents: number | null): string | null {
@@ -125,8 +129,11 @@ export function ServiceAndConcernPicker({
   routine_services,
   onSubmit,
   disabled = false,
+  initialSelected,
 }: ServiceAndConcernPickerProps) {
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<Set<string>>(
+    () => new Set(initialSelected ?? []),
+  );
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 

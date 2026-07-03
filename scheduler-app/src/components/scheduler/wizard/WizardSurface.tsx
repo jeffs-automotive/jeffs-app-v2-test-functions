@@ -61,6 +61,7 @@ import { submitConcernClarifyV2 } from "@/lib/scheduler/wizard/actions/submit-co
 import { submitCustomerNotesV2 } from "@/lib/scheduler/wizard/actions/submit-customer-notes";
 import { submitCustomerQuestionV2 } from "@/lib/scheduler/wizard/actions/submit-customer-question";
 import { submitDateV2 } from "@/lib/scheduler/wizard/actions/submit-date";
+import { submitEditHubV2 } from "@/lib/scheduler/wizard/actions/submit-edit-hub";
 import { dismissEscalationV2 } from "@/lib/scheduler/wizard/actions/dismiss-escalation";
 import { submitExplanationV2 } from "@/lib/scheduler/wizard/actions/submit-explanation";
 import { submitGreetingV2 } from "@/lib/scheduler/wizard/actions/submit-greeting";
@@ -78,7 +79,11 @@ import { submitSummaryV2 } from "@/lib/scheduler/wizard/actions/submit-summary";
 import { submitTestingServiceApprovalV2 } from "@/lib/scheduler/wizard/actions/submit-testing-service-approval";
 import { submitVehiclePickV2 } from "@/lib/scheduler/wizard/actions/submit-vehicle-pick";
 import { submitWaiterTimeV2 } from "@/lib/scheduler/wizard/actions/submit-waiter-time";
-import type { WizardCard } from "@/lib/scheduler/wizard/card-payloads";
+import type {
+  WizardCard,
+  SummaryEditHubPayload,
+} from "@/lib/scheduler/wizard/card-payloads";
+import type { EditHubSection } from "@/lib/scheduler/wizard/actions/submit-edit-hub";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
 
 export interface WizardSurfaceProps {
@@ -360,6 +365,7 @@ function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
       return (
         <ServiceAndConcernPicker
           routine_services={card.payload.routine_services}
+          initialSelected={card.payload.initial_selected}
           onSubmit={async ({ picks }) => {
             const result = await submitServiceAndConcernPickerV2({
               chatId,
@@ -573,6 +579,20 @@ function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
         />
       );
 
+    case "summary_edit_hub":
+      // Minimal placeholder arm (task EH1). The designed SummaryEditHubCard
+      // lands in a separate UI task; this fallback keeps the flow wired +
+      // typecheck green by exposing each section + a back-to-summary path.
+      return (
+        <SummaryEditHubPlaceholder
+          payload={card.payload}
+          onSelect={async (section) => {
+            const result = await submitEditHubV2({ chatId, section });
+            handleResult("submitEditHubV2", chatId, result);
+          }}
+        />
+      );
+
     case "customer_notes":
       return (
         <CustomerNotesCard
@@ -732,6 +752,97 @@ function logIfFailed(
   });
    
   console.error(`[wizard] ${actionName} failed:`, result.error);
+}
+
+/**
+ * SummaryEditHubPlaceholder — minimal, unstyled hub (task EH1).
+ *
+ * Design-and-wiring polish (the real SummaryEditHubCard) lands in a
+ * separate UI task; this keeps the flow functional in the meantime. It
+ * lists each section's current values and offers per-section Edit buttons
+ * plus a primary "back to summary". No card chrome, no design tokens —
+ * intentionally plain.
+ */
+function SummaryEditHubPlaceholder({
+  payload,
+  onSelect,
+}: {
+  payload: SummaryEditHubPayload;
+  onSelect: (section: EditHubSection) => void | Promise<void>;
+}) {
+  const { contact, vehicle_label, services, appointment } = payload;
+  return (
+    <div className="rounded-[var(--radius-card)] border border-rule bg-paper-100 p-6">
+      <p className="font-display text-[17px] leading-snug text-ink">
+        Edit your booking
+      </p>
+      <ul className="mt-4 flex flex-col gap-4">
+        <li className="flex items-baseline justify-between gap-3">
+          <span className="text-[14px] text-ink-secondary">
+            Contact: {contact.name || "—"}
+          </span>
+          <button
+            type="button"
+            className="text-[14px] font-medium text-brand-burgundy-700 underline"
+            onClick={() => void onSelect("contact")}
+          >
+            Edit my contact info
+          </button>
+        </li>
+        <li className="flex items-baseline justify-between gap-3">
+          <span className="text-[14px] text-ink-secondary">
+            Vehicle: {vehicle_label ?? "—"}
+          </span>
+          <button
+            type="button"
+            className="text-[14px] font-medium text-brand-burgundy-700 underline"
+            onClick={() => void onSelect("vehicle")}
+          >
+            Edit my vehicle
+          </button>
+        </li>
+        <li className="flex items-baseline justify-between gap-3">
+          <span className="text-[14px] text-ink-secondary">
+            Services:{" "}
+            {[
+              ...services.routine,
+              ...services.concerns.map((c) => c.display_name),
+              ...services.testing.map((t) => t.display_name),
+            ].join(", ") || "—"}
+          </span>
+          <button
+            type="button"
+            className="text-[14px] font-medium text-brand-burgundy-700 underline"
+            onClick={() => void onSelect("services")}
+          >
+            Edit my services
+          </button>
+        </li>
+        <li className="flex items-baseline justify-between gap-3">
+          <span className="text-[14px] text-ink-secondary">
+            Time: {appointment.date || "—"}
+            {appointment.time ? ` at ${appointment.time}` : ""}
+          </span>
+          <button
+            type="button"
+            className="text-[14px] font-medium text-brand-burgundy-700 underline"
+            onClick={() => void onSelect("time")}
+          >
+            Edit my appointment time
+          </button>
+        </li>
+      </ul>
+      <div className="mt-6">
+        <button
+          type="button"
+          className="rounded-[var(--radius-input)] bg-brand-burgundy-700 px-4 py-2 text-[14px] font-medium text-paper-100"
+          onClick={() => void onSelect("done")}
+        >
+          Looks good — back to summary
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function UnhandledStepFallback() {

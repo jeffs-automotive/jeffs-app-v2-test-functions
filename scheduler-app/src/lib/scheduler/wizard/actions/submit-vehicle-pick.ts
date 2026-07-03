@@ -108,10 +108,12 @@ async function submitVehiclePickV2Impl(
     const supabase = createSupabaseAdminClient();
     const { data: row } = await supabase
       .from("customer_chat_sessions")
-      .select("customer_id")
+      .select("customer_id, edit_return_step")
       .eq("id", chatId)
       .maybeSingle();
     const customerId = (row?.customer_id as number | null) ?? null;
+    const fromHub =
+      (row?.edit_return_step as string | null) === "summary_edit_hub";
 
     if (!customerId) {
       // Data-integrity issue — by the vehicle_pick step the row MUST
@@ -218,6 +220,10 @@ async function submitVehiclePickV2Impl(
       });
     }
 
+    // Summary edit hub (task EH1, 2026-07-04): when this pick was reached
+    // FROM the hub (edit_return_step='summary_edit_hub'), return to the hub
+    // instead of the forced forward chain into service_concern_picker. The
+    // flag stays set (only the hub's "done" / start-over clears it).
     return applyWizardTransition({
       chatId,
       updates: {
@@ -227,8 +233,10 @@ async function submitVehiclePickV2Impl(
         // (preserves any prior write).
         ...(newVehicleInfo ? { new_vehicle_info: newVehicleInfo } : {}),
       },
-      nextStep: "service_concern_picker",
-      jeffBubble: "Got it! 🔧 What can we help with today?",
+      nextStep: fromHub ? "summary_edit_hub" : "service_concern_picker",
+      jeffBubble: fromHub
+        ? "Updated your vehicle. ✅"
+        : "Got it! 🔧 What can we help with today?",
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

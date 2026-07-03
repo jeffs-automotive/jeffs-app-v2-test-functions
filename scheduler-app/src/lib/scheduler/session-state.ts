@@ -47,6 +47,11 @@ export const WIZARD_STEPS = [
   "waiter_time_pick",
   // Step 10
   "summary",
+  // Summary edit hub (2026-07-04): the per-section edit landing reached
+  // from the summary card's "Edit something". Renders 4 section cards
+  // (contact / vehicle / services / time) + "back to summary". Sits next
+  // to summary in the step-10 cluster.
+  "summary_edit_hub",
   "customer_notes",
   "customer_question",
   // Terminal states

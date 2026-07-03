@@ -599,6 +599,7 @@ export type Database = {
           customer_self_identified: string | null
           declined_testing_services: string[] | null
           diagnostic_processing_complete: boolean
+          edit_return_step: string | null
           edited_address: Json | null
           edited_emails: Json | null
           edited_phones: Json | null
@@ -661,6 +662,7 @@ export type Database = {
           customer_self_identified?: string | null
           declined_testing_services?: string[] | null
           diagnostic_processing_complete?: boolean
+          edit_return_step?: string | null
           edited_address?: Json | null
           edited_emails?: Json | null
           edited_phones?: Json | null
@@ -723,6 +725,7 @@ export type Database = {
           customer_self_identified?: string | null
           declined_testing_services?: string[] | null
           diagnostic_processing_complete?: boolean
+          edit_return_step?: string | null
           edited_address?: Json | null
           edited_emails?: Json | null
           edited_phones?: Json | null

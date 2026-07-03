@@ -132,6 +132,9 @@ async function submitStartOverV2Impl(
         customer_question: null,
         customer_question_forwarded: false,
         summary_edit_attempts: 0,
+        // Summary edit hub (task EH1): clear the return-to-hub breadcrumb
+        // so a fresh session never resumes mid-edit.
+        edit_return_step: null,
         escalated_at: null,
         escalation_reason: null,
         ended_at: null,

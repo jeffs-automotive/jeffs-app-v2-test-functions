@@ -384,3 +384,183 @@ export async function buildSummaryCardPayload(args: {
     is_same_day,
   };
 }
+
+/**
+ * Structured section summaries for the summary edit hub (2026-07-04).
+ *
+ * Mirrors the SummaryEditHubPayload shape in card-payloads.ts. Derives
+ * each section from the SAME row columns as buildSummaryCardPayload so the
+ * hub shows exactly what the customer confirmed — contact, vehicle,
+ * services (routine / concerns / testing), appointment slot, and whether
+ * a live hold is still in place.
+ *
+ * `hold_active` is TRUE only when the row carries a hold_token AND the
+ * matching appointment_holds row has NOT been released. RSC-only (called
+ * from get-current-card.ts's summary_edit_hub case).
+ */
+export interface SummaryEditHubData {
+  contact: {
+    name: string;
+    phone_last_four?: string;
+    email?: string;
+  };
+  vehicle_label: string | null;
+  services: {
+    routine: string[];
+    concerns: Array<{ display_name: string; one_liner: string }>;
+    testing: Array<{ display_name: string; starting_price_cents: number }>;
+  };
+  appointment: {
+    type: "waiter" | "dropoff";
+    date: string;
+    time: string;
+  };
+  hold_active: boolean;
+}
+
+export async function buildSummaryEditHubData(args: {
+  chatId: string;
+}): Promise<SummaryEditHubData> {
+  const rowTyped = await getCachedSessionRow(args.chatId);
+  const row = (rowTyped ?? {}) as unknown as Record<string, unknown>;
+  const supabase = createSupabaseAdminClient();
+
+  // ── Contact ──────────────────────────────────────────────────────────
+  const first =
+    (row.verified_first_name as string | null) ??
+    (row.entered_first_name as string | null) ??
+    "";
+  const last =
+    (row.verified_last_name as string | null) ??
+    (row.entered_last_name as string | null) ??
+    "";
+  const name = [first.trim(), last.trim()].filter(Boolean).join(" ");
+  const phone = typeof row.phone_e164 === "string" ? row.phone_e164 : "";
+  const phoneLastFour = phone ? phone.slice(-4) : "";
+  const email =
+    typeof row.primary_email_for_description === "string" &&
+    row.primary_email_for_description.length > 0
+      ? row.primary_email_for_description
+      : undefined;
+
+  // ── Vehicle ──────────────────────────────────────────────────────────
+  const nvi = (row.new_vehicle_info ?? {}) as Record<string, unknown>;
+  const year = nvi.year ? String(nvi.year).trim() : "";
+  const make = nvi.make ? String(nvi.make).trim() : "";
+  const model = nvi.model ? String(nvi.model).trim() : "";
+  const sub = nvi.sub_model ? String(nvi.sub_model).trim() : "";
+  const vehicleLabelRaw = [year, make, model, sub].filter(Boolean).join(" ");
+  const vehicle_label = vehicleLabelRaw.length > 0 ? vehicleLabelRaw : null;
+
+  // ── Services (routine / concerns / testing) ──────────────────────────
+  const selectedRoutine = Array.isArray(row.selected_simple_services)
+    ? (row.selected_simple_services as string[])
+    : [];
+  const additionalRoutine = Array.isArray(
+    row.additional_routine_services_round2,
+  )
+    ? (row.additional_routine_services_round2 as string[])
+    : [];
+  const approvedTesting = Array.isArray(row.approved_testing_services)
+    ? (row.approved_testing_services as string[])
+    : [];
+  const explanationItems = Array.isArray(row.explanation_required_items)
+    ? (row.explanation_required_items as Array<{
+        service_key: string;
+        display_name?: string;
+        explanation_text?: string;
+        summary?: string;
+      }>)
+    : [];
+
+  const routineNames: string[] = [];
+  const routineKeys = Array.from(
+    new Set([...selectedRoutine, ...additionalRoutine]),
+  );
+  if (routineKeys.length > 0) {
+    const { data } = await supabase
+      .from("routine_services")
+      .select("service_key, display_name")
+      .eq("shop_id", SHOP_ID)
+      .in("service_key", routineKeys);
+    const nameByKey = new Map(
+      ((data ?? []) as Array<{ service_key: string; display_name: string }>)
+        .map((r) => [r.service_key, r.display_name]),
+    );
+    for (const key of routineKeys) {
+      const dn = nameByKey.get(key);
+      if (dn) routineNames.push(dn);
+    }
+  }
+
+  const concerns: Array<{ display_name: string; one_liner: string }> = [];
+  for (const item of explanationItems) {
+    const display_name = item.display_name ?? item.service_key;
+    // Prefer the synthesized "Customer states ..." summary; fall back to
+    // the raw explanation text; empty when neither is present.
+    const one_liner =
+      (typeof item.summary === "string" && item.summary.trim().length > 0
+        ? item.summary.trim()
+        : typeof item.explanation_text === "string"
+          ? item.explanation_text.trim()
+          : "") || "";
+    concerns.push({ display_name, one_liner });
+  }
+
+  const testing: Array<{
+    display_name: string;
+    starting_price_cents: number;
+  }> = [];
+  if (approvedTesting.length > 0) {
+    const { data } = await supabase
+      .from("testing_services")
+      .select("service_key, display_name, starting_price_cents")
+      .eq("shop_id", SHOP_ID)
+      .in("service_key", approvedTesting);
+    for (const t of (data ?? []) as Array<{
+      service_key: string;
+      display_name: string;
+      starting_price_cents: number | null;
+    }>) {
+      testing.push({
+        display_name: t.display_name,
+        starting_price_cents:
+          typeof t.starting_price_cents === "number"
+            ? t.starting_price_cents
+            : 0,
+      });
+    }
+  }
+
+  // ── Appointment ──────────────────────────────────────────────────────
+  const type: "waiter" | "dropoff" =
+    row.appointment_type === "waiter" ? "waiter" : "dropoff";
+  const date = (row.appointment_date as string | null) ?? "";
+  const timeRaw = (row.appointment_time as string | null) ?? "";
+  // Trim TIME's seconds for display (HH:MM); dropoff carries no time.
+  const time = type === "waiter" && timeRaw ? timeRaw.slice(0, 5) : "";
+
+  // ── Hold ─────────────────────────────────────────────────────────────
+  let hold_active = false;
+  const holdToken = (row.hold_token as string | null) ?? null;
+  if (holdToken) {
+    const { data: hold } = await supabase
+      .from("appointment_holds")
+      .select("released_at")
+      .eq("id", holdToken)
+      .maybeSingle();
+    hold_active = !!hold && !hold.released_at;
+  }
+
+  return {
+    contact: {
+      name,
+      ...(phoneLastFour ? { phone_last_four: phoneLastFour } : {}),
+      ...(email ? { email } : {}),
+    },
+    vehicle_label,
+    services: { routine: routineNames, concerns, testing },
+    appointment: { type, date, time },
+    hold_active,
+  };
+}

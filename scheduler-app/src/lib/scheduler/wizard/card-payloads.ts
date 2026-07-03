@@ -133,6 +133,11 @@ export interface ServiceConcernPickerPayload {
      *  2026-05-19 with the rectangular one-per-line tile layout. */
     description: string | null;
   }>;
+  /** Summary edit hub (2026-07-04): service_keys to pre-select when the
+   *  picker is opened to edit services from the hub (`edit_return_step` is
+   *  set). Empty on the normal forward flow. The picker seeds its selected
+   *  set from these so the customer's prior picks aren't lost. */
+  initial_selected?: string[];
 }
 
 /** Step 7.2 — Per-concern explanation card. */
@@ -260,6 +265,47 @@ export interface SummaryPayload {
 }
 
 /**
+ * Step 10.2 — Summary edit hub (2026-07-04).
+ *
+ * The "Edit something" landing reached from the SummaryCard. Renders a
+ * per-section overview (contact / vehicle / services / appointment time),
+ * each with an Edit button, plus a primary "Looks good — back to summary".
+ * Section summaries are derived from the same row columns as the summary
+ * card via build-summary-data's `buildSummaryEditHubData`, so the hub shows
+ * exactly what the customer confirmed.
+ */
+export interface SummaryEditHubPayload {
+  contact: {
+    name: string;
+    /** Last 4 of the session phone. Optional — omitted when unknown. */
+    phone_last_four?: string;
+    /** Primary email for the description, when present. */
+    email?: string;
+  };
+  /** "2022 Toyota Camry" style label, or null when no vehicle resolved. */
+  vehicle_label: string | null;
+  services: {
+    /** Routine service display names. */
+    routine: string[];
+    /** Free-text / requires-explanation concerns with a one-line recap. */
+    concerns: Array<{ display_name: string; one_liner: string }>;
+    /** Approved testing services with their starting price. */
+    testing: Array<{ display_name: string; starting_price_cents: number }>;
+  };
+  appointment: {
+    type: "waiter" | "dropoff";
+    /** YYYY-MM-DD, or "" when not yet picked. */
+    date: string;
+    /** HH:MM (waiter) or "" (dropoff / not-yet-picked). */
+    time: string;
+  };
+  /** TRUE when the session still holds a live (unreleased) slot. Editing
+   *  the appointment time releases it; the hub surfaces this so the card
+   *  can warn before the customer re-picks. */
+  hold_active: boolean;
+}
+
+/**
  * Step 10.3 — Customer notes capture (Phase 13 2026-05-16).
  *
  * Two render modes:
@@ -345,6 +391,7 @@ export type WizardCard =
   | { step: "date_pick"; payload: DatePickPayload }
   | { step: "waiter_time_pick"; payload: WaiterTimePickPayload }
   | { step: "summary"; payload: SummaryPayload }
+  | { step: "summary_edit_hub"; payload: SummaryEditHubPayload }
   | { step: "customer_notes"; payload: CustomerNotesPayload }
   | { step: "customer_question"; payload: CustomerQuestionPayload }
   | { step: "completed"; payload: CompletedPayload }

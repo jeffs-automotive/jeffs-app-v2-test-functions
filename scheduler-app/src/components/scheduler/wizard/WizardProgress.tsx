@@ -68,6 +68,7 @@ const STEP_PHASE: Partial<Record<WizardStep, PhaseIndex>> = {
   date_pick: 3,
   waiter_time_pick: 3,
   summary: 3,
+  summary_edit_hub: 3,
   customer_notes: 3,
   customer_question: 3,
   completed: 3,

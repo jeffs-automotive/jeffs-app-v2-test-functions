@@ -46,6 +46,7 @@ import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
 import type { WizardStep } from "@/lib/scheduler/session-state";
 import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
+import { releaseSessionHold } from "@/lib/scheduler/wizard/release-hold";
 
 const submitBackSchema = z.object({
   chatId: z.string().min(1),
@@ -104,11 +105,7 @@ async function submitBackV2Impl(
       typeof row.hold_token === "string" &&
       row.hold_token.length > 0
     ) {
-      await supabase
-        .from("appointment_holds")
-        .update({ released_at: new Date().toISOString() })
-        .eq("id", row.hold_token)
-        .is("released_at", null);
+      await releaseSessionHold(supabase, row.hold_token);
     }
 
     const updates: Record<string, unknown> = {};
@@ -218,6 +215,13 @@ function backTargetFor(
       // Per-section "Edit" buttons on the SummaryCard remain the
       // preferred way to jump deeper.
       return "date_pick";
+
+    case "summary_edit_hub":
+      // Summary edit hub (task EH1): Back returns to the summary card. The
+      // hub's own "Looks good — back to summary" primary does the same via
+      // submit-edit-hub (clearing edit_return_step); Back is the escape
+      // affordance without needing to hit the primary.
+      return "summary";
 
     case "customer_notes":
     case "customer_question":

@@ -92,7 +92,7 @@ async function submitCustomerInfoEditV2Impl(
     const { data: row, error: readErr } = await supabase
       .from("customer_chat_sessions")
       .select(
-        "customer_id, identity_verification_level, edited_phones, edited_emails, edited_address, primary_email_for_description",
+        "customer_id, identity_verification_level, edited_phones, edited_emails, edited_address, primary_email_for_description, edit_return_step",
       )
       .eq("id", chatId)
       .maybeSingle();
@@ -182,9 +182,17 @@ async function submitCustomerInfoEditV2Impl(
       }
     }
 
-    // Write the user's submitted values to the row + advance to vehicle_pick.
+    // Write the user's submitted values to the row + advance.
     // This always runs (even when Tekmetric PATCH was skipped) so the
     // summary card later renders what the customer just confirmed.
+    //
+    // Summary edit hub (task EH1, 2026-07-04): when this edit was reached
+    // FROM the hub (edit_return_step='summary_edit_hub'), return to the hub
+    // instead of the forced forward chain into vehicle_pick. The flag stays
+    // set (only the hub's "done" / start-over clears it) so the customer
+    // can edit multiple sections.
+    const fromHub =
+      (row.edit_return_step as string | null) === "summary_edit_hub";
     return applyWizardTransition({
       chatId,
       updates: {
@@ -193,8 +201,10 @@ async function submitCustomerInfoEditV2Impl(
         edited_address,
         primary_email_for_description,
       },
-      nextStep: "vehicle_pick",
-      jeffBubble: "Looks good — let's pick your vehicle. 🚗",
+      nextStep: fromHub ? "summary_edit_hub" : "vehicle_pick",
+      jeffBubble: fromHub
+        ? "Saved your contact info. ✅"
+        : "Looks good — let's pick your vehicle. 🚗",
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

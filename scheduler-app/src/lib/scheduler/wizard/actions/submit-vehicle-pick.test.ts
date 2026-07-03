@@ -295,6 +295,42 @@ describe("submitVehiclePickV2 — fail-soft on fetch failures", () => {
   });
 });
 
+describe("submitVehiclePickV2 — summary edit hub return (task EH1)", () => {
+  it("edit_return_step='summary_edit_hub' → returns to hub instead of service_concern_picker", async () => {
+    sessionRowResult = {
+      data: { customer_id: CUSTOMER_ID, edit_return_step: "summary_edit_hub" },
+      error: null,
+    };
+    fetchVehiclesResult = { ok: true, vehicles: [makeVehicle(OWNED_VEHICLE_ID)] };
+
+    await submitVehiclePickV2({
+      chatId: CHAT_ID,
+      vehicle_id: String(OWNED_VEHICLE_ID),
+    });
+
+    expect(awtCalls).toHaveLength(1);
+    expect(awtCalls[0]!.nextStep).toBe("summary_edit_hub");
+    expect(awtCalls[0]!.updates).toMatchObject({ vehicle_id: OWNED_VEHICLE_ID });
+    // edit_return_step is NOT cleared here — it survives until hub "done".
+    expect(awtCalls[0]!.updates).not.toHaveProperty("edit_return_step");
+  });
+
+  it("edit_return_step null → normal forward chain to service_concern_picker", async () => {
+    sessionRowResult = {
+      data: { customer_id: CUSTOMER_ID, edit_return_step: null },
+      error: null,
+    };
+    fetchVehiclesResult = { ok: true, vehicles: [makeVehicle(OWNED_VEHICLE_ID)] };
+
+    await submitVehiclePickV2({
+      chatId: CHAT_ID,
+      vehicle_id: String(OWNED_VEHICLE_ID),
+    });
+
+    expect(awtCalls[0]!.nextStep).toBe("service_concern_picker");
+  });
+});
+
 describe("submitVehiclePickV2 — data integrity (missing customer_id)", () => {
   it("row has no customer_id → returns session_missing_customer_id, no fetch, no advance", async () => {
     sessionRowResult = { data: { customer_id: null }, error: null };

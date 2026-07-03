@@ -32,7 +32,10 @@ import {
   computeAvailableDates,
   getEarliestAvailableDate,
 } from "./availability";
-import { buildSummaryCardPayload } from "./build-summary-data";
+import {
+  buildSummaryCardPayload,
+  buildSummaryEditHubData,
+} from "./build-summary-data";
 import { shopLocalToIsoString } from "./shop-tz";
 import type { WizardCard } from "./card-payloads";
 import type { WizardStep } from "../session-state";
@@ -296,9 +299,49 @@ export async function getCurrentCard(
         });
       }
 
+      // Summary edit hub (2026-07-04): when the picker is opened to EDIT
+      // services from the hub (edit_return_step set), seed the selected set
+      // from the picker chips the customer already chose — routine picks,
+      // approved testing picks, and the explanation-queue concern chips
+      // (including "other_issue"). round2 second-pass adds are NOT picker
+      // chips, so they're intentionally excluded. Empty on the normal
+      // forward flow so the picker opens blank.
+      const editReturnStep = (row as Record<string, unknown>)
+        .edit_return_step as string | null;
+      let initialSelected: string[] | undefined = undefined;
+      if (editReturnStep === "summary_edit_hub") {
+        const seed = new Set<string>();
+        for (const k of (row.selected_simple_services as string[] | null) ??
+          []) {
+          seed.add(k);
+        }
+        for (const k of (row.approved_testing_services as string[] | null) ??
+          []) {
+          seed.add(k);
+        }
+        if (Array.isArray(row.explanation_required_items)) {
+          for (const entry of row.explanation_required_items) {
+            if (
+              entry &&
+              typeof entry === "object" &&
+              typeof (entry as Record<string, unknown>).service_key ===
+                "string"
+            ) {
+              seed.add(
+                (entry as Record<string, unknown>).service_key as string,
+              );
+            }
+          }
+        }
+        initialSelected = Array.from(seed);
+      }
+
       return {
         step: "service_concern_picker",
-        payload: { routine_services: routineServices },
+        payload: {
+          routine_services: routineServices,
+          ...(initialSelected ? { initial_selected: initialSelected } : {}),
+        },
       };
     }
 
@@ -709,6 +752,40 @@ export async function getCurrentCard(
               "dropoff",
             services: [],
             reminders: [],
+          },
+        };
+      }
+    }
+
+    case "summary_edit_hub": {
+      // Summary edit hub (2026-07-04): render the per-section overview the
+      // customer edits from. buildSummaryEditHubData derives every section
+      // from the same row columns as the summary card. Fail-soft to a
+      // minimal payload so the hub always renders SOMETHING (the customer
+      // can still tap "back to summary").
+      try {
+        const payload = await buildSummaryEditHubData({ chatId });
+        return { step: "summary_edit_hub", payload };
+      } catch (e) {
+        Sentry.captureException(e, {
+          tags: { surface: "get_current_card_summary_edit_hub" },
+          level: "warning",
+          extra: { chatId },
+        });
+        return {
+          step: "summary_edit_hub",
+          payload: {
+            contact: { name: buildCustomerName(row) },
+            vehicle_label: null,
+            services: { routine: [], concerns: [], testing: [] },
+            appointment: {
+              type:
+                (row.appointment_type as "waiter" | "dropoff" | null) ??
+                "dropoff",
+              date: (row.appointment_date as string | null) ?? "",
+              time: "",
+            },
+            hold_active: false,
           },
         };
       }

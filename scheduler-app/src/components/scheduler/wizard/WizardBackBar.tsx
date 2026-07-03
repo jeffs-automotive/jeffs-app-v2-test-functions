@@ -45,6 +45,7 @@ const STEPS_WITH_BACK = new Set<string>([
   "date_pick",
   "waiter_time_pick",
   "summary",
+  "summary_edit_hub",
 ]);
 
 export interface WizardBackBarProps {

@@ -25,14 +25,14 @@
  *    - On hold_expired: bounce to date_pick with a friendly bubble
  *    - On Tekmetric failure: log + escalate
  *
- * 2. EDIT path (`confirmed: false`, with optional `edit_target`)
+ * 2. EDIT path (`confirmed: false`)
  *    - Increment summary_edit_attempts; at >=3 the next edit escalates
  *      (per chat-design §10.1.5)
- *    - Route to the appropriate step:
- *        'date' or 'datetime' → date_pick
- *        'vehicle'            → vehicle_pick
- *        'services'           → service_concern_picker
- *        'other' / undefined  → customer_info_edit (catch-all)
+ *    - Route to the summary edit hub (`summary_edit_hub`) — the per-section
+ *      landing that owns which section the customer edits and preserves the
+ *      others' data (task EH1, docs/scheduler/summary-edit-hub-plan.md). The
+ *      legacy `edit_target` deep-jump is retired; the field is still
+ *      accepted (ignored) for back-compat with the SummaryCard.
  */
 import * as Sentry from "@sentry/nextjs";
 import { z } from "zod";
@@ -54,7 +54,6 @@ import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
 import { logError } from "@/lib/scheduler/wizard/log-error";
 import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
-import type { WizardStep } from "@/lib/scheduler/session-state";
 import {
   buildAppointmentTitleV2,
 } from "@/lib/scheduler/wizard/build-summary-data";
@@ -125,7 +124,11 @@ export const submitSummaryV2 = wrapAction(
 
 async function handleEditPath(
   chatId: string,
-  edit_target?: "date" | "datetime" | "vehicle" | "services" | "other",
+  // edit_target is still accepted from the SummaryCard for back-compat but
+  // is no longer used to pick a deep-jump target — the summary edit hub
+  // (task EH1) owns section selection now. Kept in the signature so the
+  // caller's contract is unchanged.
+  _edit_target?: "date" | "datetime" | "vehicle" | "services" | "other",
 ): Promise<WizardTransitionResult> {
   const supabase = createSupabaseAdminClient();
   const { data: row, error: rowErr } = await supabase
@@ -156,61 +159,19 @@ async function handleEditPath(
     });
   }
 
-  const nextStep = mapEditTargetToStep(edit_target);
-  const bubble = buildEditJumpBubble(edit_target);
-
+  // Summary edit hub (task EH1, 2026-07-04): the "Edit something" tap now
+  // routes to the per-section hub instead of the old hardcoded
+  // customer_info_edit jump (which force-walked the whole forward chain and
+  // wiped the customer's diagnostic work). The hub owns which section the
+  // customer edits — each section preserves the others' data. The attempts
+  // counter + escalation-at-3 above are unchanged: one hub entry can host
+  // many section edits, but each "Edit something" tap from summary counts.
   return applyWizardTransition({
     chatId,
     updates: { summary_edit_attempts: nextAttempts },
-    nextStep,
-    jeffBubble: bubble,
+    nextStep: "summary_edit_hub",
+    jeffBubble: "Sure — what would you like to change? ✏️",
   });
-}
-
-function mapEditTargetToStep(
-  edit_target: "date" | "datetime" | "vehicle" | "services" | "other" | undefined,
-): WizardStep {
-  switch (edit_target) {
-    case "date":
-    case "datetime":
-      return "date_pick";
-    case "vehicle":
-      return "vehicle_pick";
-    case "services":
-      return "service_concern_picker";
-    case "other":
-    case undefined:
-    default:
-      // Catch-all goes to customer_info_edit — the most common edit
-      // target (phones/emails/address). Customers who want a different
-      // section after that hop will edit again, which counts toward
-      // the 2-edit cap.
-      return "customer_info_edit";
-  }
-}
-
-function buildEditJumpBubble(
-  edit_target:
-    | "date"
-    | "datetime"
-    | "vehicle"
-    | "services"
-    | "other"
-    | undefined,
-): string {
-  switch (edit_target) {
-    case "date":
-    case "datetime":
-      return "Sure — pick a different day below. 📅";
-    case "vehicle":
-      return "Got it — let's pick the right vehicle. 🚙";
-    case "services":
-      return "No problem — let's adjust the services. 🛠️";
-    case "other":
-    case undefined:
-    default:
-      return "Sure thing — let's update your contact info. 👤";
-  }
 }
 
 // ─── Confirm path ───────────────────────────────────────────────────────────
