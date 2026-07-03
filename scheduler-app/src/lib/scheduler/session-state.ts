@@ -34,6 +34,10 @@ export const WIZARD_STEPS = [
   "concern_explanation",
   "diagnostic_loading",
   "clarification_question",
+  // Act-or-ask AO4 (2026-07-03): the chip card shown when a concern's
+  // Stage-1 returned 2-3 ranked candidates. Sits in the step-7 cluster
+  // next to clarification_question (both are diagnostic-loop cards).
+  "concern_clarify",
   "testing_service_approval",
   "second_routine_pass",
   // Step 8

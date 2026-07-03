@@ -195,6 +195,7 @@ function backTargetFor(
 
     case "concern_explanation":
     case "clarification_question":
+    case "concern_clarify":
     case "testing_service_approval":
       return "service_concern_picker";
 

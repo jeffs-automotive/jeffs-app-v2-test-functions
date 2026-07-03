@@ -100,7 +100,7 @@ import { getCurrentCard } from "@/lib/scheduler/wizard/get-current-card";
 
 beforeEach(() => {
   storedRow = null;
-  cachedRowThrows = null;
+  cachedRowThrows = null;
 });
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
@@ -141,7 +141,7 @@ describe("getCurrentCard", () => {
         edit_attempts: 0,
       },
     });
-    // No LLM call in input mode.
+    // No LLM call in input mode.
   });
 
   it("returns approval-mode customer_notes payload with the RAW note as the preview (LLM rewriter removed, revamp Phase 0)", async () => {
@@ -182,6 +182,91 @@ describe("getCurrentCard", () => {
     }
   });
 
+
+  it("builds the concern_clarify payload from the HEAD entry of concern_clarify_candidates", async () => {
+    storedRow = {
+      id: "sess-1",
+      current_step: "concern_clarify",
+      concern_clarify_candidates: [
+        {
+          concern_index: 0,
+          service_key: "noise_brakes",
+          display_name: "Brake noise",
+          concern_text: "Squeaking when I brake at low speed.",
+          candidates: [
+            {
+              key: "brake_inspection",
+              kind: "testing_service",
+              display_name: "Brake Inspection",
+              starting_price_cents: 4900,
+              description: "We inspect your brakes.",
+              precomputed: {
+                matched_subcategory_slug: "brake_squeal",
+                unanswered_question_ids: [101],
+              },
+            },
+            {
+              key: "noise_other",
+              kind: "other_subcategory",
+              display_name: "Other noise",
+              starting_price_cents: null,
+              description: null,
+              precomputed: {
+                matched_subcategory_slug: "noise_other",
+                unanswered_question_ids: [],
+              },
+            },
+          ],
+        },
+        {
+          // A second (tail) entry — must NOT leak into the payload.
+          concern_index: 1,
+          service_key: "ac_problem",
+          display_name: "AC issue",
+          concern_text: "Blows warm.",
+          candidates: [],
+        },
+      ],
+    };
+
+    const card = await getCurrentCard("sess-1");
+    expect(card?.step).toBe("concern_clarify");
+    if (card?.step === "concern_clarify") {
+      expect(card.payload.concern_text).toBe(
+        "Squeaking when I brake at low speed.",
+      );
+      expect(card.payload.service_display_name).toBe("Brake noise");
+      expect(card.payload.candidates).toHaveLength(2);
+      // The card payload strips the `precomputed` chain (card-facing only).
+      expect(card.payload.candidates[0]).toEqual({
+        key: "brake_inspection",
+        kind: "testing_service",
+        display_name: "Brake Inspection",
+        starting_price_cents: 4900,
+        description: "We inspect your brakes.",
+      });
+      // Null-price candidate survives as-is (drives the pill in the card).
+      expect(card.payload.candidates[1]!.starting_price_cents).toBeNull();
+    }
+  });
+
+  it("falls back to an empty concern_clarify payload when the column is empty/malformed", async () => {
+    storedRow = {
+      id: "sess-1",
+      current_step: "concern_clarify",
+      concern_clarify_candidates: null,
+    };
+
+    const card = await getCurrentCard("sess-1");
+    expect(card).toEqual({
+      step: "concern_clarify",
+      payload: {
+        concern_text: "",
+        service_display_name: null,
+        candidates: [],
+      },
+    });
+  });
 
   it("builds appointment_label with time for waiter appointments on the completed card", async () => {
     storedRow = {

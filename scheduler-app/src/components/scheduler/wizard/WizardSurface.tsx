@@ -29,6 +29,7 @@ import { AppointmentTypeCard } from "@/components/scheduler/heritage/Appointment
 import { CalendarDatePicker } from "@/components/scheduler/CalendarDatePicker";
 import { ClarificationQuestionCard } from "@/components/scheduler/heritage/ClarificationQuestionCard";
 import { CompletedCard } from "@/components/scheduler/heritage/CompletedCard";
+import { ConcernClarifyCard } from "@/components/scheduler/heritage/ConcernClarifyCard";
 import { ConcernExplanationCard } from "@/components/scheduler/heritage/ConcernExplanationCard";
 import { CustomerInfoEditCard } from "@/components/scheduler/heritage/CustomerInfoEditCard";
 import { CustomerNotesCard } from "@/components/scheduler/heritage/CustomerNotesCard";
@@ -56,6 +57,7 @@ import { runDiagnosticsV2 } from "@/lib/scheduler/wizard/actions/run-diagnostics
 import { submitAppointmentTypeV2 } from "@/lib/scheduler/wizard/actions/submit-appointment-type";
 import { submitClarificationAnswerV2 } from "@/lib/scheduler/wizard/actions/submit-clarification-answer";
 import { submitCustomerInfoEditV2 } from "@/lib/scheduler/wizard/actions/submit-customer-info-edit";
+import { submitConcernClarifyV2 } from "@/lib/scheduler/wizard/actions/submit-concern-clarify";
 import { submitCustomerNotesV2 } from "@/lib/scheduler/wizard/actions/submit-customer-notes";
 import { submitCustomerQuestionV2 } from "@/lib/scheduler/wizard/actions/submit-customer-question";
 import { submitDateV2 } from "@/lib/scheduler/wizard/actions/submit-date";
@@ -430,6 +432,32 @@ function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
                   : { kind: "answer", value: answer },
             });
             handleResult("submitClarificationAnswerV2", chatId, result);
+          }}
+        />
+      );
+
+    case "concern_clarify":
+      return (
+        // key on the concern text forces React to unmount + remount the card
+        // between queued concerns (each clarify entry is a distinct concern).
+        // Same rationale as clarification_question's key={question_id} above:
+        // the local `pending` state must not persist across queue items.
+        <ConcernClarifyCard
+          key={card.payload.concern_text}
+          concern_text={card.payload.concern_text}
+          candidates={card.payload.candidates.map((c) => ({
+            candidate_key: c.key,
+            display_name: c.display_name,
+            starting_price_cents: c.starting_price_cents,
+            description: c.description,
+          }))}
+          onSubmit={async (output) => {
+            const result = await submitConcernClarifyV2({
+              chatId,
+              chosen_key:
+                output.action === "select" ? output.candidate_key : null,
+            });
+            handleResult("submitConcernClarifyV2", chatId, result);
           }}
         />
       );

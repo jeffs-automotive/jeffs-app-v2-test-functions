@@ -72,20 +72,12 @@ export type RunDiagnosticsV2Args = z.infer<typeof inputSchema>;
 const OTHER_ISSUE_SERVICE_KEY = "other_issue";
 
 /**
- * Act-or-ask AO2c (2026-07-03): the chip-card step shown when a concern's
- * Stage 1 returned 2-3 ranked candidates.
- *
- * TODO(AO4 — wizard task): 'concern_clarify' is NOT yet a member of
- * WIZARD_STEPS. It can't be added here because get-current-card.ts (and
- * the card-payload/WizardSurface switches) carry `never` exhaustiveness
- * checks — adding the member without the card arms breaks typecheck, and
- * those files belong to the wizard task. Until AO4 lands, sessions that
- * reach this step render no card (get-current-card falls through to its
- * default → null), which is acceptable pre-ship since AO2+AO4 deploy
- * together. The double-cast below is removed by AO4 when the step joins
- * WIZARD_STEPS.
+ * Act-or-ask (2026-07-03): the chip-card step shown when a concern's
+ * Stage 1 returned 2-3 ranked candidates. Now a first-class WizardStep
+ * member (AO4 wired the card arms + exhaustiveness cases), so this is the
+ * real typed value — no cast.
  */
-const CONCERN_CLARIFY_STEP = "concern_clarify" as unknown as WizardStep;
+const CONCERN_CLARIFY_STEP: WizardStep = "concern_clarify";
 
 interface ExplanationItem {
   service_key: string;
@@ -145,6 +137,8 @@ interface ConcernClarifyEntry {
   concern_index: number;
   /** The explanation item's picker-chip service_key (source concern id). */
   service_key: string;
+  /** The picker-chip display name (surfaced by the clarify card's eyebrow). */
+  display_name: string;
   concern_text: string;
   candidates: ClarifyCandidateOption[];
 }
@@ -533,6 +527,7 @@ async function runDiagnosticsBody(
         const clarify: ConcernClarifyEntry = {
           concern_index: concernIndex,
           service_key: item.service_key,
+          display_name: item.display_name,
           concern_text: item.explanation_text,
           candidates: options,
         };

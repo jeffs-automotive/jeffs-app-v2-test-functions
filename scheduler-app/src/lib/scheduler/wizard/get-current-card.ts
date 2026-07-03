@@ -373,6 +373,38 @@ export async function getCurrentCard(
       };
     }
 
+    case "concern_clarify": {
+      // Act-or-ask AO4 (2026-07-03): pop the HEAD entry of
+      // concern_clarify_candidates (run-diagnostics writes one entry per
+      // concern that got 2-3 Stage-1 candidates; submit-concern-clarify
+      // pops the head as each tap is consumed). Same queue-head idiom as
+      // clarification_question above. When the column is empty/malformed,
+      // fall through to a defensive stub (WizardSurface renders the escape-
+      // only card so the customer always has the advisor path).
+      const clarifyQueue = parseConcernClarifyCandidates(
+        (row as Record<string, unknown>).concern_clarify_candidates,
+      );
+      const clarifyHead = clarifyQueue[0];
+      if (!clarifyHead) {
+        return {
+          step: "concern_clarify",
+          payload: {
+            concern_text: "",
+            service_display_name: null,
+            candidates: [],
+          },
+        };
+      }
+      return {
+        step: "concern_clarify",
+        payload: {
+          concern_text: clarifyHead.concern_text,
+          service_display_name: clarifyHead.service_display_name,
+          candidates: clarifyHead.candidates,
+        },
+      };
+    }
+
     case "testing_service_approval": {
       // 2026-05-17 restoration: render the actual approval card per
       // chat-design.md §7.5. The prior auto-flip-to-second_routine_pass
@@ -1033,6 +1065,75 @@ function parseClarificationQuestionsPending(raw: unknown): PendingQuestion[] {
           : null,
       multi_select: e.multi_select === true,
     });
+  }
+  return out;
+}
+
+// ─── Act-or-ask AO4 — concern_clarify queue parser ─────────────────────────
+
+interface ConcernClarifyCandidate {
+  key: string;
+  kind: "testing_service" | "other_subcategory";
+  display_name: string;
+  starting_price_cents: number | null;
+  description: string | null;
+}
+
+interface ConcernClarifyQueueEntry {
+  concern_text: string;
+  service_display_name: string | null;
+  candidates: ConcernClarifyCandidate[];
+}
+
+/**
+ * Parse the concern_clarify_candidates JSONB array into typed queue
+ * entries. Defensive: each entry must carry a candidates array; each
+ * candidate must have a string key + a valid kind + display_name. Malformed
+ * entries/candidates are dropped so the card renders whatever survives (an
+ * empty candidates set falls back to the escape-only path in the card).
+ */
+function parseConcernClarifyCandidates(
+  raw: unknown,
+): ConcernClarifyQueueEntry[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ConcernClarifyQueueEntry[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") continue;
+    const e = entry as Record<string, unknown>;
+    if (!Array.isArray(e.candidates)) continue;
+    const concern_text =
+      typeof e.concern_text === "string" ? e.concern_text : "";
+    const service_display_name =
+      typeof e.display_name === "string" && e.display_name.length > 0
+        ? e.display_name
+        : null;
+    const candidates: ConcernClarifyCandidate[] = [];
+    for (const cand of e.candidates) {
+      if (!cand || typeof cand !== "object") continue;
+      const c = cand as Record<string, unknown>;
+      const key = typeof c.key === "string" ? c.key : null;
+      const kind =
+        c.kind === "testing_service" || c.kind === "other_subcategory"
+          ? c.kind
+          : null;
+      const display_name =
+        typeof c.display_name === "string" ? c.display_name : null;
+      if (!key || !kind || !display_name) continue;
+      candidates.push({
+        key,
+        kind,
+        display_name,
+        starting_price_cents:
+          typeof c.starting_price_cents === "number"
+            ? c.starting_price_cents
+            : null,
+        description:
+          typeof c.description === "string" && c.description.length > 0
+            ? c.description
+            : null,
+      });
+    }
+    out.push({ concern_text, service_display_name, candidates });
   }
   return out;
 }

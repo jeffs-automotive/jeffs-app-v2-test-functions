@@ -161,6 +161,34 @@ export interface ClarificationQuestionPayload {
   multi_select: boolean;
 }
 
+/**
+ * Step 7.4b — Concern clarify chip card (act-or-ask AO4, 2026-07-03).
+ *
+ * Shown when a concern's Stage-1 diagnostic returned 2-3 ranked candidate
+ * categories. The customer taps the closest fit (or "None of these"). The
+ * shape mirrors the HEAD entry of the persisted
+ * `concern_clarify_candidates` JSONB array (get-current-card reads the head
+ * defensively — same queue-head idiom as clarification_question).
+ *
+ * `candidates` are ALREADY RANKED best-first by run-diagnostics; the card
+ * renders them in array order and never re-sorts. A `null`
+ * `starting_price_cents` (advisor-handoff `other_subcategory` candidate)
+ * renders the "We'll take a look" pill instead of a price.
+ */
+export interface ConcernClarifyPayload {
+  concern_text: string;
+  /** The picker-chip display name for the source concern (nullable when
+   *  the chip label wasn't resolvable — the card doesn't render it). */
+  service_display_name: string | null;
+  candidates: Array<{
+    key: string;
+    kind: "testing_service" | "other_subcategory";
+    display_name: string;
+    starting_price_cents: number | null;
+    description: string | null;
+  }>;
+}
+
 /** Step 7.5 — Testing service approval. */
 export interface TestingServiceApprovalPayload {
   services: Array<{
@@ -310,6 +338,7 @@ export type WizardCard =
   | { step: "concern_explanation"; payload: ConcernExplanationPayload }
   | { step: "diagnostic_loading"; payload: DiagnosticLoadingPayload }
   | { step: "clarification_question"; payload: ClarificationQuestionPayload }
+  | { step: "concern_clarify"; payload: ConcernClarifyPayload }
   | { step: "testing_service_approval"; payload: TestingServiceApprovalPayload }
   | { step: "second_routine_pass"; payload: SecondRoutinePassPayload }
   | { step: "appointment_type"; payload: AppointmentTypePayload }
