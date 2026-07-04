@@ -147,11 +147,11 @@ async function submitStartOverV2Impl(
         "All clear — let's start fresh. 👋 Are you a returning customer or new to Jeff's?",
     });
 
-    // Best-effort audit write. We're not blocking on the result; if the
-    // insert fails the wizard still advances.
-    void supabase
-      .from("scheduler_audit_log")
-      .insert({
+    // Best-effort audit write — awaited so serverless teardown can't drop it
+    // (gate finding 2026-07-04: a void'd promise may never run after the
+    // response). Failure still never blocks the wizard: captured, not thrown.
+    try {
+      const { error } = await supabase.from("scheduler_audit_log").insert({
         session_id: chatId,
         step: "greeting",
         event_type: "session_restarted",
@@ -160,15 +160,25 @@ async function submitStartOverV2Impl(
           previous_status: priorStatus,
           latency_in_old_session_sec: latencyInPriorSession,
         },
-      })
-      .then(({ error }) => {
-        if (error) {
-          Sentry.captureMessage("submit_start_over_v2 audit insert failed", {
-            level: "warning",
-            extra: { chatId, error: error.message },
-          });
-        }
       });
+      if (error) {
+        Sentry.captureMessage("submit_start_over_v2 audit insert failed", {
+          level: "warning",
+          extra: { chatId, error: error.message },
+        });
+      }
+    } catch (auditError) {
+      Sentry.captureMessage("submit_start_over_v2 audit insert threw", {
+        level: "warning",
+        extra: {
+          chatId,
+          error:
+            auditError instanceof Error
+              ? auditError.message
+              : String(auditError),
+        },
+      });
+    }
 
     return result;
   } catch (e) {
