@@ -1135,3 +1135,293 @@ describe("runDiagnosticsV2 — observability + persistence shape", () => {
     expect(outcomeAttrs.next_step).toBe("testing_service_approval");
   });
 });
+
+// ─── Selective re-diagnosis (2026-07-04 describe-another-issue fix) ──────────
+//
+// The "💬 Describe another issue" branch (submit-second-routine-pass) appends
+// a fresh empty `other_issue` entry and resets diagnostic_processing_complete
+// to false, causing run-diagnostics to fire AGAIN with a queue that mixes an
+// already-diagnosed+answered concern and a brand-new one. The pre-fix bug:
+//   (a) EVERY entry was re-diagnosed (the answered concern's questions were
+//       re-queued ahead of the new concern's), and
+//   (b) clarification_questions_answered was reset to {} so already-answered
+//       questions became "unanswered" and re-queued, and
+//   (c) the per-entry unanswered_question_ids write-back matched by
+//       service_key, so two duplicate `other_issue` entries clobbered each
+//       other (both ended up with the SECOND diagnosis's ids).
+describe("runDiagnosticsV2 — selective re-diagnosis on describe-another-issue re-run", () => {
+  it("SKIPS an already-diagnosed+answered concern, diagnoses only the new one, preserves the answered map, and does NOT re-queue answered questions", async () => {
+    // Concern 0 (clunk) — already diagnosed on a prior run: it carries
+    // unanswered_question_ids [101] and the customer already ANSWERED 101.
+    // Concern 1 (brakes) — the freshly-appended describe-another-issue
+    // entry: explanation_text just filled by the concern_explanation step,
+    // NO unanswered_question_ids annotation yet → must be diagnosed.
+    storedRow = {
+      id: "sess-1",
+      explanation_required_items: [
+        {
+          service_key: "other_issue",
+          display_name: "Other issue",
+          explanation_text: "Clunk over bumps.",
+          category: null,
+          unanswered_question_ids: [101],
+          summary: "Clunking noise over bumps.",
+        },
+        {
+          service_key: "other_issue",
+          display_name: "Other issue",
+          explanation_text: "Brakes grind when stopping.",
+          category: null,
+        },
+      ],
+      new_vehicle_info: null,
+      diagnostic_processing_complete: false,
+      clarification_questions_pending: [],
+      // The clunk question (101) is already answered.
+      clarification_questions_answered: { "101": "front" },
+      recommended_testing_services: [
+        {
+          service_key: "brake_inspection",
+          display_name: "Brake Inspection",
+          description: "We inspect your brakes.",
+          starting_price_cents: 4900,
+          source_concerns: ["other_issue"],
+        },
+      ],
+    };
+    // Only the NEW (second) concern should hit diagnoseConcern. It matches
+    // the AC diagnostic with one fresh unanswered question (201).
+    diagnoseConcernMock.mockResolvedValueOnce(
+      makeServiceMatch({
+        matched_category_key: "ac_diagnostic",
+        matched_subcategory_slug: "ac_no_cool",
+        recommended_testing_service: {
+          service_key: "ac_diagnostic",
+          display_name: "AC Diagnostic",
+          description: "We diagnose the A/C.",
+          starting_price_cents: 9900,
+        },
+        unanswered_question_ids: [201],
+      }),
+    );
+
+    const result = await runDiagnosticsV2({ chatId: "sess-1" });
+
+    // Only ONE LLM call — the already-diagnosed concern was skipped.
+    expect(diagnoseConcernMock).toHaveBeenCalledTimes(1);
+    // The single call diagnosed the NEW concern's text, not the clunk.
+    expect(
+      (diagnoseConcernMock.mock.calls[0]![0] as { customer_description: string })
+        .customer_description,
+    ).toBe("Brakes grind when stopping.");
+
+    expect(result).toEqual({ ok: true, next_step: "clarification_question" });
+
+    const update = findSessionUpdate();
+    expect(update).toBeDefined();
+
+    // (b) The answered map is PRESERVED, never wiped to {}.
+    expect(update?.clarification_questions_answered).toEqual({ "101": "front" });
+
+    // (c) Pending contains ONLY the new concern's question (201). The
+    // already-answered clunk question (101) is NOT re-queued.
+    const pending = update?.clarification_questions_pending as Array<{
+      question_id: number;
+    }>;
+    expect(pending.map((p) => p.question_id)).toEqual([201]);
+
+    // (a) The first (skipped) entry's annotation is UNTOUCHED; the second
+    // (new) entry gets its own fresh ids — no cross-entry clobber.
+    const items = update?.explanation_required_items as Array<{
+      service_key: string;
+      explanation_text: string;
+      unanswered_question_ids: number[];
+      summary?: string;
+    }>;
+    expect(items).toHaveLength(2);
+    expect(items[0]!.unanswered_question_ids).toEqual([101]);
+    expect(items[0]!.summary).toBe("Clunking noise over bumps.");
+    expect(items[1]!.unanswered_question_ids).toEqual([201]);
+
+    // Recommendations: the skipped concern's prior brake rec SURVIVES and the
+    // new concern's AC rec is added.
+    const recs = update?.recommended_testing_services as Array<{
+      service_key: string;
+    }>;
+    expect(recs.map((r) => r.service_key).sort()).toEqual(
+      ["ac_diagnostic", "brake_inspection"].sort(),
+    );
+  });
+
+  it("INDEX-SAFE write-back: two duplicate `other_issue` concerns each get their OWN diagnosed ids (no service_key clobber)", async () => {
+    // Both concerns are brand-new (no prior annotation) duplicate
+    // `other_issue` entries → both diagnosed. Concern 0 → brake (q101),
+    // concern 1 → AC (q201). Pre-fix, the by-service_key write-back gave
+    // BOTH entries [201] (the second diagnosis clobbered the first).
+    storedRow = {
+      id: "sess-1",
+      explanation_required_items: [
+        {
+          service_key: "other_issue",
+          display_name: "Other issue",
+          explanation_text: "Squeal when braking.",
+          category: null,
+        },
+        {
+          service_key: "other_issue",
+          display_name: "Other issue",
+          explanation_text: "AC blows warm.",
+          category: null,
+        },
+      ],
+      new_vehicle_info: null,
+      diagnostic_processing_complete: false,
+      clarification_questions_pending: [],
+      clarification_questions_answered: {},
+      recommended_testing_services: [],
+    };
+    diagnoseConcernMock
+      .mockResolvedValueOnce(
+        makeServiceMatch({ unanswered_question_ids: [101] }),
+      )
+      .mockResolvedValueOnce(
+        makeServiceMatch({
+          matched_category_key: "ac_diagnostic",
+          matched_subcategory_slug: "ac_no_cool",
+          recommended_testing_service: {
+            service_key: "ac_diagnostic",
+            display_name: "AC Diagnostic",
+            description: "We diagnose the A/C.",
+            starting_price_cents: 9900,
+          },
+          unanswered_question_ids: [201],
+        }),
+      );
+
+    await runDiagnosticsV2({ chatId: "sess-1" });
+
+    const update = findSessionUpdate();
+    const items = update?.explanation_required_items as Array<{
+      service_key: string;
+      unanswered_question_ids: number[];
+    }>;
+    expect(items).toHaveLength(2);
+    // Each duplicate `other_issue` entry carries its OWN ids — no clobber.
+    expect(items[0]!.unanswered_question_ids).toEqual([101]);
+    expect(items[1]!.unanswered_question_ids).toEqual([201]);
+    // Both questions queued (order: concern 0 then concern 1).
+    const pending = update?.clarification_questions_pending as Array<{
+      question_id: number;
+    }>;
+    expect(pending.map((p) => p.question_id)).toEqual([101, 201]);
+  });
+
+  it("FRESH first run is unchanged: no prior annotations → every entry is diagnosed and the answered map stays {}", async () => {
+    // The genuinely-fresh first run after a picker submit: the picker set
+    // clarification_questions_answered={} and NO entry has an annotation.
+    // run-diagnostics must diagnose all entries and leave answered={} (it
+    // never wipes the map, but a fresh {} is the correct starting value the
+    // PICKER — not run-diagnostics — established).
+    storedRow = {
+      ...storedRow!,
+      explanation_required_items: [
+        {
+          service_key: "noise_brakes",
+          display_name: "Brake noise",
+          explanation_text: "Squeaking when I brake.",
+          category: "brakes",
+        },
+      ],
+      clarification_questions_answered: {},
+    };
+    diagnoseConcernMock.mockResolvedValueOnce(
+      makeServiceMatch({ unanswered_question_ids: [101] }),
+    );
+
+    const result = await runDiagnosticsV2({ chatId: "sess-1" });
+
+    // All (one) concerns diagnosed — no skip on a fresh run.
+    expect(diagnoseConcernMock).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ ok: true, next_step: "clarification_question" });
+
+    const update = findSessionUpdate();
+    expect(update?.clarification_questions_answered).toEqual({});
+    const items = update?.explanation_required_items as Array<{
+      unanswered_question_ids: number[];
+    }>;
+    expect(items[0]!.unanswered_question_ids).toEqual([101]);
+    const pending = update?.clarification_questions_pending as Array<{
+      question_id: number;
+    }>;
+    expect(pending.map((p) => p.question_id)).toEqual([101]);
+  });
+
+  it("carries forward an existing-queue question that is still unanswered for a skipped concern, but drops the answered ones", async () => {
+    // Concern 0 (skipped, already diagnosed with ids [101,102]) — the
+    // customer answered 101 but NOT 102, so 102 is still in the existing
+    // pending queue. Concern 1 (new) diagnoses to AC (q201). The new queue
+    // must keep 102 (carried forward, unanswered) + 201 (fresh), and must
+    // NOT re-queue 101 (answered).
+    storedRow = {
+      id: "sess-1",
+      explanation_required_items: [
+        {
+          service_key: "other_issue",
+          display_name: "Other issue",
+          explanation_text: "Clunk and rattle.",
+          category: null,
+          unanswered_question_ids: [101, 102],
+        },
+        {
+          service_key: "other_issue",
+          display_name: "Other issue",
+          explanation_text: "AC warm.",
+          category: null,
+        },
+      ],
+      new_vehicle_info: null,
+      diagnostic_processing_complete: false,
+      // 102 is still pending (unanswered); 101 already answered.
+      clarification_questions_pending: [
+        {
+          question_id: 102,
+          question_text: "Rattle location?",
+          options: [{ label: "Front", value: "front" }],
+          service_key: "other_issue",
+          category: "brakes",
+          subcategory_slug: "brake_squeal",
+          multi_select: false,
+        },
+      ],
+      clarification_questions_answered: { "101": "front" },
+      recommended_testing_services: [],
+    };
+    diagnoseConcernMock.mockResolvedValueOnce(
+      makeServiceMatch({
+        matched_category_key: "ac_diagnostic",
+        matched_subcategory_slug: "ac_no_cool",
+        recommended_testing_service: {
+          service_key: "ac_diagnostic",
+          display_name: "AC Diagnostic",
+          description: "We diagnose the A/C.",
+          starting_price_cents: 9900,
+        },
+        unanswered_question_ids: [201],
+      }),
+    );
+
+    const result = await runDiagnosticsV2({ chatId: "sess-1" });
+
+    expect(diagnoseConcernMock).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ ok: true, next_step: "clarification_question" });
+
+    const update = findSessionUpdate();
+    const pending = update?.clarification_questions_pending as Array<{
+      question_id: number;
+    }>;
+    // 102 carried forward first, then 201 fresh. 101 (answered) excluded.
+    expect(pending.map((p) => p.question_id)).toEqual([102, 201]);
+    // Answered map still preserved.
+    expect(update?.clarification_questions_answered).toEqual({ "101": "front" });
+  });
+});

@@ -371,6 +371,49 @@ describe("submitConcernClarifyV2 — chosen testing_service candidate", () => {
     expect(rpc.args.p_user_bubble_text).toBe("Brake Inspection");
   });
 
+  it("INDEX-SAFE annotation: two duplicate `other_issue` concerns — only the head's concern_index entry is annotated (no service_key clobber)", async () => {
+    // Two duplicate `other_issue` entries share a service_key. The clarify
+    // head is concern_index 1 (the SECOND entry). The annotation must land
+    // on index 1 ONLY. Pre-fix, the `|| item.service_key === head.service_key`
+    // fallback ALSO matched index 0, clobbering the first entry's own
+    // (empty) annotation with the head's ids (2026-07-04 fix — same class as
+    // the run-diagnostics write-back bug).
+    storedRow = baseRow({
+      concern_clarify_candidates: [
+        makeClarifyEntry({ concern_index: 1, service_key: "other_issue" }),
+      ],
+      explanation_required_items: [
+        {
+          service_key: "other_issue",
+          display_name: "Other issue",
+          explanation_text: "Clunk over bumps.",
+          category: null,
+          unanswered_question_ids: [],
+        },
+        {
+          service_key: "other_issue",
+          display_name: "Other issue",
+          explanation_text: "Squeal when braking.",
+          category: null,
+        },
+      ],
+    });
+
+    await submitConcernClarifyV2({
+      chatId: "sess-1",
+      chosen_key: "brake_inspection",
+    });
+
+    const update = findSessionUpdate();
+    const items = update?.explanation_required_items as Array<{
+      unanswered_question_ids?: number[];
+    }>;
+    // Index 0 (the OTHER duplicate) is UNTOUCHED — still empty.
+    expect(items[0]!.unanswered_question_ids ?? []).toEqual([]);
+    // Index 1 (the head) got the queued ids.
+    expect(items[1]!.unanswered_question_ids).toEqual([101]);
+  });
+
   it("routes to testing_service_approval + fires ensureConcernSummaries when the chosen candidate has NO precomputed questions", async () => {
     storedRow = baseRow({
       concern_clarify_candidates: [

@@ -477,12 +477,18 @@ async function submitConcernClarifyV2Impl(
 
     // Annotate the source concern's explanation_required_items entry with
     // the queued question ids (the canonical per-concern grouping consumed
-    // by ensureConcernSummaries). Match by concern_index first (stable),
-    // falling back to service_key. Only merge NEW ids so a prior concern's
-    // annotations survive.
+    // by ensureConcernSummaries). Match by concern_index ONLY when it's a
+    // valid in-range index (the stable, duplicate-safe join key). Matching
+    // by service_key would clobber BOTH entries when two duplicate
+    // `other_issue` concerns share a service_key (2026-07-04 fix — same
+    // class as the run-diagnostics write-back bug); service_key is used
+    // only as a defensive fallback when concern_index is out of range.
+    const indexInRange =
+      head.concern_index >= 0 && head.concern_index < explanationItems.length;
     const updatedExplanationItems = explanationItems.map((item, idx) => {
-      const isTarget =
-        idx === head.concern_index || item.service_key === head.service_key;
+      const isTarget = indexInRange
+        ? idx === head.concern_index
+        : item.service_key === head.service_key;
       if (!isTarget || queuedQuestionIds.length === 0) return item;
       const prior = item.unanswered_question_ids ?? [];
       const merged = Array.from(new Set([...prior, ...queuedQuestionIds]));

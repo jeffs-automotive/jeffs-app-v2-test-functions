@@ -84,6 +84,17 @@ interface ExplanationItem {
   display_name: string;
   explanation_text: string;
   category: string | null;
+  /** Present as an array once run-diagnostics has diagnosed this entry
+   *  (the per-entry write-back below). Its PRESENCE — not its length — is
+   *  the "already diagnosed" discriminator for selective re-diagnosis: a
+   *  re-run keeps such an entry's stored diagnostic state verbatim and does
+   *  NOT re-call diagnoseConcern (2026-07-04 describe-another-issue fix).
+   *  Absent on a fresh picker entry (never diagnosed) and on the empty
+   *  `other_issue` entry the describe-another-issue branch appends. */
+  unanswered_question_ids?: number[];
+  /** Populated by ensureConcernSummaries after the queue drains. Preserved
+   *  verbatim for skipped (already-diagnosed) entries on a re-run. */
+  summary?: string;
 }
 
 interface RecommendedService {
@@ -181,14 +192,47 @@ function parseExplanationItems(raw: unknown): ExplanationItem[] {
         typeof obj.category === "string" && obj.category.length > 0
           ? obj.category
           : null;
-      return {
+      const item: ExplanationItem = {
         service_key,
         display_name: display_name ?? service_key,
         explanation_text,
         category,
-      } satisfies ExplanationItem;
+      };
+      // Carry the prior diagnostic annotations through so selective
+      // re-diagnosis can detect + preserve already-diagnosed entries.
+      if (Array.isArray(obj.unanswered_question_ids)) {
+        item.unanswered_question_ids = obj.unanswered_question_ids.filter(
+          (x): x is number => typeof x === "number",
+        );
+      }
+      if (typeof obj.summary === "string" && obj.summary.length > 0) {
+        item.summary = obj.summary;
+      }
+      return item;
     })
     .filter((x): x is ExplanationItem => x !== null);
+}
+
+// ─── Answered-map parser (mirrors the sibling actions) ──────────────────────
+//
+// clarification_questions_answered maps a `question_id` (as a STRING key) to
+// the customer's chosen value(s). Selective re-diagnosis reads this so it
+// can (a) NEVER wipe it and (b) exclude already-answered question ids from
+// the freshly-built pending queue.
+function parseAnsweredMap(raw: unknown): Record<string, string | string[]> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: Record<string, string | string[]> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof v === "string") {
+      out[k] = v;
+    } else if (
+      Array.isArray(v) &&
+      v.every((x): x is string => typeof x === "string")
+    ) {
+      out[k] = v;
+    }
+  }
+  return out;
 }
 
 function parseVehicleNotes(raw: unknown): string | null {
@@ -402,7 +446,7 @@ async function runDiagnosticsBody(
   const { data: row, error: rowErr } = await supabase
     .from("customer_chat_sessions")
     .select(
-      "id, explanation_required_items, new_vehicle_info, diagnostic_processing_complete, clarification_questions_pending, recommended_testing_services, concern_clarify_candidates",
+      "id, explanation_required_items, new_vehicle_info, diagnostic_processing_complete, clarification_questions_pending, clarification_questions_answered, recommended_testing_services, concern_clarify_candidates",
     )
     .eq("id", chatId)
     .maybeSingle();
@@ -460,21 +504,93 @@ async function runDiagnosticsBody(
     });
   }
 
+  // ── Selective re-diagnosis setup (2026-07-04 describe-another-issue fix) ─
+  //
+  // run-diagnostics can be RE-invoked mid-flow — the "💬 Describe another
+  // issue" branch (submit-second-routine-pass) appends a fresh `other_issue`
+  // entry and resets diagnostic_processing_complete=false. On that re-run we
+  // MUST NOT (a) re-diagnose the already-diagnosed earlier concerns, (b) wipe
+  // the answers the customer already gave, or (c) re-queue their already-
+  // answered questions. So:
+  //   - `answered` is read here and NEVER reset to {} (the picker owns that
+  //     reset on a genuinely fresh pick-submit; run-diagnostics only ever
+  //     PRESERVES it).
+  //   - an entry with a populated explanation_text AND a persisted
+  //     unanswered_question_ids array is treated as already diagnosed → its
+  //     diagnoseConcern call is SKIPPED and its stored diagnostic state is
+  //     kept verbatim.
+  //   - the new pending queue carries forward the still-unanswered entries of
+  //     the EXISTING queue (skipped concerns' residual questions) plus the
+  //     freshly-diagnosed concerns' questions, and EXCLUDES anything already
+  //     in `answered`.
+  const answered = parseAnsweredMap(
+    (row as Record<string, unknown>).clarification_questions_answered,
+  );
+  const answeredIds = new Set<number>();
+  for (const k of Object.keys(answered)) {
+    const n = Number(k);
+    if (Number.isFinite(n)) answeredIds.add(n);
+  }
+  const existingPending = parsePendingQuestions(
+    (row as Record<string, unknown>).clarification_questions_pending,
+  );
+  const existingRecs = parseRecommendedServices(
+    (row as Record<string, unknown>).recommended_testing_services,
+  );
+
+  /** An entry is already diagnosed when run-diagnostics has previously
+   *  annotated it (unanswered_question_ids present as an array) AND it has
+   *  a populated description. Such entries are SKIPPED on a re-run. A fresh
+   *  picker entry (no annotation) and the empty `other_issue` entry the
+   *  describe branch appends (no annotation, empty text until the
+   *  concern_explanation step fills it) both fail this test → diagnosed. */
+  const isAlreadyDiagnosed = (item: ExplanationItem): boolean =>
+    Array.isArray(item.unanswered_question_ids) &&
+    item.explanation_text.trim().length > 0;
+
   // ── Load supporting context in parallel ──────────────────────────────
   const [catalog, routineChipCats] = await Promise.all([
     loadDiagnosticCatalog(supabase),
     loadRoutineChipConcernCategories(supabase),
   ]);
 
-  // ── Per-concern LLM call in parallel ─────────────────────────────────
+  // ── Per-concern LLM call in parallel (skipping already-diagnosed) ────
   const perConcernResults = await Promise.all(
     items.map(async (item, concernIndex): Promise<{
       item: ExplanationItem;
-      result: DiagnoseConcernResult;
+      /** Null for a skipped (already-diagnosed) entry — it ran no LLM. */
+      result: DiagnoseConcernResult | null;
       matchedCat: CatalogCategory | null;
       gate: ConfidenceGateOutcome;
       clarify: ConcernClarifyEntry | null;
+      /** True when this entry reused its stored diagnostic state (no LLM). */
+      skipped: boolean;
     }> => {
+      // Selective re-diagnosis: reuse stored state for already-diagnosed
+      // entries. Their unanswered_question_ids / category / summary are kept
+      // verbatim; no diagnoseConcern call, no new recommendation derivation.
+      if (isAlreadyDiagnosed(item)) {
+        Sentry.addBreadcrumb({
+          category: "scheduler.diagnose",
+          type: "info",
+          level: "info",
+          message: `diagnoseConcern: ${item.service_key} → SKIPPED (already diagnosed)`,
+          data: {
+            chip_service_key: item.service_key,
+            concern_index: concernIndex,
+            skipped: true,
+            stored_unanswered_count: (item.unanswered_question_ids ?? []).length,
+          },
+        });
+        return {
+          item,
+          result: null,
+          matchedCat: null,
+          gate: "pass",
+          clarify: null,
+          skipped: true,
+        };
+      }
       const hint = buildChipHint(item, routineChipCats, catalog);
       const raw = await diagnoseConcern({
         catalog,
@@ -549,7 +665,14 @@ async function runDiagnosticsBody(
             error_message: raw.error_message,
           },
         });
-        return { item, result: raw, matchedCat: null, gate: "pass", clarify };
+        return {
+          item,
+          result: raw,
+          matchedCat: null,
+          gate: "pass",
+          clarify,
+          skipped: false,
+        };
       }
       // Confidence gate (REVAMP-PLAN §11 P0, wired 2026-07-02; Stage-1
       // branch replaced by the structural candidate signal 2026-07-03) —
@@ -619,7 +742,14 @@ async function runDiagnosticsBody(
           error_message: result.error_message,
         },
       });
-      return { item, result, matchedCat, gate: gated.gate, clarify: null };
+      return {
+        item,
+        result,
+        matchedCat,
+        gate: gated.gate,
+        clarify: null,
+        skipped: false,
+      };
     }),
   );
 
@@ -629,8 +759,25 @@ async function runDiagnosticsBody(
     .filter((c): c is ConcernClarifyEntry => c !== null);
 
   // ── Aggregate recommendations ────────────────────────────────────────
+  //
+  // Seed from the EXISTING recommendations so a skipped (already-diagnosed)
+  // concern's recommendation survives the re-run — its diagnoseConcern was
+  // not re-called, so its rec isn't re-derived below. Only freshly-diagnosed
+  // concerns add/merge recs (deduped by service_key, source_concerns
+  // accumulated). On a genuinely fresh first run existingRecs is [] (the
+  // picker resets it), so seeding is a no-op there.
   const recsByService = new Map<string, RecommendedService>();
+  for (const rec of existingRecs) {
+    recsByService.set(rec.service_key, {
+      service_key: rec.service_key,
+      display_name: rec.display_name,
+      description: rec.description,
+      starting_price_cents: rec.starting_price_cents,
+      source_concerns: [...rec.source_concerns],
+    });
+  }
   for (const r of perConcernResults) {
+    if (r.skipped || !r.result) continue;
     const rec = r.result.recommended_testing_service;
     if (!rec) continue;
     const existing = recsByService.get(rec.service_key);
@@ -652,17 +799,44 @@ async function runDiagnosticsBody(
     recsByService.values(),
   );
 
-  // ── Aggregate pending questions ──────────────────────────────────────
+  // ── Aggregate pending questions (INDEX-SAFE write-back) ──────────────
+  //
+  // perIndexQuestionIds is keyed by the concern's ARRAY INDEX, not its
+  // service_key. Two duplicate `other_issue` entries share a service_key,
+  // so a service_key-keyed map would let the second concern's write-back
+  // CLOBBER the first's ids (the confirmed 2026-07-04 bug). Concern order is
+  // stable across the pass, so the index is the safe join key.
   const pending: PendingQuestionEntry[] = [];
-  // Per-concern question_id list — also persisted on each
-  // explanation_required_items entry so ensureConcernSummaries can
-  // group the answered Q&A back to its source concern after the queue
-  // drains. (Without this map, summaries would have to re-derive the
-  // grouping via subcategory→category→source, which is heuristic when
-  // two concerns hit the same category.)
-  const perItemQuestionIds = new Map<string, number[]>();
-  for (const r of perConcernResults) {
-    if (!r.matchedCat || !r.result.matched_subcategory_slug) continue;
+  const perIndexQuestionIds = new Map<number, number[]>();
+  // De-dupe guard so a question queued once (carried forward or freshly
+  // built) is never queued twice.
+  const queuedIds = new Set<number>();
+
+  const pushPending = (entry: PendingQuestionEntry): void => {
+    if (answeredIds.has(entry.question_id)) return; // already answered
+    if (queuedIds.has(entry.question_id)) return; // already queued
+    queuedIds.add(entry.question_id);
+    pending.push(entry);
+  };
+
+  // (1) Carry forward the EXISTING queue's still-unanswered entries. These
+  //     belong to skipped (already-diagnosed) concerns whose questions the
+  //     customer hadn't finished answering. In the normal describe flow the
+  //     earlier concerns are fully answered by the time run-diagnostics
+  //     re-fires, so this is usually empty — but preserving residuals keeps
+  //     the queue correct without a catalog rebuild. On a fresh first run
+  //     existingPending is [] (picker cleared it), so this is a no-op.
+  for (const p of existingPending) {
+    pushPending(p);
+  }
+
+  // (2) Freshly-diagnosed concerns contribute their new questions. Skipped
+  //     concerns produce no r.result, so they never re-enter the queue here.
+  for (let idx = 0; idx < perConcernResults.length; idx++) {
+    const r = perConcernResults[idx]!;
+    if (r.skipped || !r.result || !r.matchedCat || !r.result.matched_subcategory_slug) {
+      continue;
+    }
     const subSlug = r.result.matched_subcategory_slug;
     const parentCategory =
       r.matchedCat.kind === "testing_service"
@@ -674,7 +848,12 @@ async function runDiagnosticsBody(
     for (const qid of r.result.unanswered_question_ids) {
       const q = findQuestionInCatalog(catalog, r.matchedCat, subSlug, qid);
       if (!q) continue;
-      pending.push({
+      // Record the id for THIS concern's annotation even if it's already
+      // answered / queued — the annotation is the canonical "these questions
+      // belong to this concern" record ensureConcernSummaries reads, so it
+      // must reflect the full diagnosed set, not just what's still pending.
+      idsForConcern.push(q.id);
+      pushPending({
         question_id: q.id,
         question_text: q.question_text,
         options: q.options,
@@ -683,24 +862,41 @@ async function runDiagnosticsBody(
         subcategory_slug: subSlug,
         multi_select: q.multi_select,
       });
-      idsForConcern.push(q.id);
     }
     if (idsForConcern.length > 0) {
-      perItemQuestionIds.set(r.item.service_key, idsForConcern);
+      perIndexQuestionIds.set(idx, idsForConcern);
     }
   }
 
   // Annotate each explanation_required_items entry with the question_ids
-  // it queued. This is the canonical "which questions belong to this
+  // it queued. INDEX-SAFE: skipped entries keep their STORED annotation
+  // verbatim; freshly-diagnosed entries get their new ids from the
+  // by-index map. This is the canonical "which questions belong to this
   // concern" record consumed later by ensureConcernSummaries.
-  const updatedExplanationItems = items.map((item) => ({
-    service_key: item.service_key,
-    display_name: item.display_name,
-    explanation_text: item.explanation_text,
-    category: item.category,
-    unanswered_question_ids:
-      perItemQuestionIds.get(item.service_key) ?? [],
-  }));
+  const updatedExplanationItems = items.map((item, idx) => {
+    const base: {
+      service_key: string;
+      display_name: string;
+      explanation_text: string;
+      category: string | null;
+      unanswered_question_ids: number[];
+      summary?: string;
+    } = {
+      service_key: item.service_key,
+      display_name: item.display_name,
+      explanation_text: item.explanation_text,
+      category: item.category,
+      unanswered_question_ids: isAlreadyDiagnosed(item)
+        ? // Skipped — keep its stored ids verbatim (never re-derived).
+          item.unanswered_question_ids ?? []
+        : // Freshly diagnosed — its new ids (or [] when it queued none).
+          perIndexQuestionIds.get(idx) ?? [],
+    };
+    // Preserve a skipped entry's stored summary so ensureConcernSummaries
+    // doesn't have to regenerate it.
+    if (item.summary) base.summary = item.summary;
+    return base;
+  });
 
   // ── Persist + advance ────────────────────────────────────────────────
   //
@@ -736,16 +932,17 @@ async function runDiagnosticsBody(
       clarify_concern_count: clarifyEntries.length,
       per_concern: perConcernResults.map((r) => ({
         chip: r.item.service_key,
-        matched_kind: r.result.matched_kind,
-        matched_category_key: r.result.matched_category_key,
+        skipped: r.skipped,
+        matched_kind: r.result?.matched_kind ?? null,
+        matched_category_key: r.result?.matched_category_key ?? null,
         confidence_gate: r.gate,
-        stage1_candidates: r.result.stage1_candidates.join(","),
-        candidate_count: r.result.stage1_candidates.length,
-        requires_clarification: r.result.requires_clarification,
-        stage2_confidence: r.result.stage2_confidence,
-        stage3_confidence: r.result.stage3_confidence,
-        parsed_ok: r.result.parsed_ok,
-        error_message: r.result.error_message,
+        stage1_candidates: r.result?.stage1_candidates.join(",") ?? "",
+        candidate_count: r.result?.stage1_candidates.length ?? 0,
+        requires_clarification: r.result?.requires_clarification ?? false,
+        stage2_confidence: r.result?.stage2_confidence ?? null,
+        stage3_confidence: r.result?.stage3_confidence ?? null,
+        parsed_ok: r.result?.parsed_ok ?? null,
+        error_message: r.result?.error_message ?? null,
       })),
     },
   );
@@ -760,7 +957,12 @@ async function runDiagnosticsBody(
       diagnostic_processing_complete: true,
       explanation_required_items: updatedExplanationItems,
       clarification_questions_pending: pending,
-      clarification_questions_answered: {},
+      // PRESERVE the answered map (2026-07-04 fix) — NEVER reset it to {}.
+      // On a genuinely fresh first run the picker already set it to {} at
+      // submit time, so preserving that {} is correct; on a describe-another-
+      // issue re-run this keeps the earlier concerns' answers so their
+      // already-answered questions are not re-queued.
+      clarification_questions_answered: answered,
       recommended_testing_services,
       // Act-or-ask AO2c: persisted per-concern clarify candidates (with
       // precomputed per-candidate S2/S3 payloads). [] when every concern
