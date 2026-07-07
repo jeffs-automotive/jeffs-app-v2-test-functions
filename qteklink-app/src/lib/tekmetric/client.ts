@@ -21,6 +21,25 @@ export interface TekmetricRepairOrder {
   postedDate: string | null;
 }
 
+/** The raw /repair-orders row: the status arrives ONLY as the NESTED repairOrderStatus
+ *  object — there is NO flat repairOrderStatusId field (verified live 2026-07-06; parsing
+ *  the flat field nulled every status and made the missed_ro_webhook safety net vacuous —
+ *  the RO 153886 / $21.38 incident). The flat field stays as a defensive fallback only. */
+interface RawRepairOrderRow {
+  id: number;
+  repairOrderStatus?: { id?: number | null } | null;
+  repairOrderStatusId?: number | null;
+  postedDate?: string | null;
+}
+
+function roStatusId(ro: RawRepairOrderRow): number | null {
+  const nested = ro.repairOrderStatus?.id;
+  if (typeof nested === "number" && Number.isSafeInteger(nested)) return nested;
+  const flat = ro.repairOrderStatusId;
+  if (typeof flat === "number" && Number.isSafeInteger(flat)) return flat;
+  return null;
+}
+
 interface TekmetricDeps {
   /** Inject a token (tests / reuse); otherwise fetched via OAuth. */
   token?: string;
@@ -73,10 +92,10 @@ export async function listPostedRepairOrders(
       `&size=100&page=${page}`;
     const res = await fetchImpl(url, { headers: { Authorization: `Bearer ${token}` } });
     if (!res.ok) throw new Error(`tekmetric listPostedRepairOrders failed: HTTP ${res.status}`);
-    const json = (await res.json()) as TekmetricRepairOrder[] | { content?: TekmetricRepairOrder[]; totalPages?: number };
+    const json = (await res.json()) as RawRepairOrderRow[] | { content?: RawRepairOrderRow[]; totalPages?: number };
     const content = Array.isArray(json) ? json : (json.content ?? []);
     for (const ro of content) {
-      out.push({ id: Number(ro.id), repairOrderStatusId: ro.repairOrderStatusId ?? null, postedDate: ro.postedDate ?? null });
+      out.push({ id: Number(ro.id), repairOrderStatusId: roStatusId(ro), postedDate: ro.postedDate ?? null });
     }
     const totalPages = Array.isArray(json) ? undefined : json.totalPages;
     if (content.length < 100 || (totalPages != null && page + 1 >= totalPages)) break;

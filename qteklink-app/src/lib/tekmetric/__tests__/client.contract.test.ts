@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from "vitest";
 import {
-  multiPageList, bareArrayList, emptyPage, repairOrderWithStatus,
+  multiPageList, bareArrayList, emptyPage, repairOrderWithStatus, springPage,
   TEKMETRIC_POSTED_STATUS_IDS as KIT_POSTED, customerPerson, customerBusiness, customerBlank,
 } from "@testkit/fixtures/tekmetric";
 import { listPostedRepairOrders, TEKMETRIC_POSTED_STATUS_IDS, customerDisplayName } from "../client";
@@ -51,12 +51,29 @@ describe("contract: Tekmetric posted-status counts BOTH 5 (Posted) and 6 (A/R)",
     expect(TEKMETRIC_POSTED_STATUS_IDS).toContain(6); // A/R — the easy-to-miss one
   });
 
-  it("a status-6 (A/R) RO is treated as posted; an in-progress status is not", () => {
-    const isPosted = (ro: { repairOrderStatusId: number }) =>
+  // The status arrives ONLY as the NESTED repairOrderStatus object — parsing a flat
+  // repairOrderStatusId nulls every status, empties the safety net's posted filter, and
+  // missed_ro_webhook can never fire (RO 153886 / $21.38 incident, 2026-07-06). These run
+  // the REAL-shape fixture through the client so that regression is pinned at the parse.
+  it("parses repairOrderStatusId from the NESTED repairOrderStatus.id (no flat field exists)", async () => {
+    const ros = await listPostedRepairOrders(7476, "2026-07-03T00:00:00Z", "2026-07-04T00:00:00Z", {
+      token: "t",
+      fetchImpl: mockFetchPages([springPage([repairOrderWithStatus(5), repairOrderWithStatus(6), repairOrderWithStatus(3)], 0, 1)]),
+    });
+    expect(ros.map((r) => r.repairOrderStatusId)).toEqual([5, 6, 3]);
+  });
+
+  it("a status-6 (A/R) RO is treated as posted; an in-progress status is not — through the client parse", async () => {
+    const parsed = await listPostedRepairOrders(7476, "2026-07-03T00:00:00Z", "2026-07-04T00:00:00Z", {
+      token: "t",
+      fetchImpl: mockFetchPages([springPage([repairOrderWithStatus(6), repairOrderWithStatus(5), repairOrderWithStatus(3)], 0, 1)]),
+    });
+    const isPosted = (ro: { repairOrderStatusId: number | null }) =>
+      ro.repairOrderStatusId != null &&
       (TEKMETRIC_POSTED_STATUS_IDS as readonly number[]).includes(ro.repairOrderStatusId);
-    expect(isPosted(repairOrderWithStatus(6))).toBe(true); // A/R posting recognized as a sale
-    expect(isPosted(repairOrderWithStatus(5))).toBe(true);
-    expect(isPosted(repairOrderWithStatus(3))).toBe(false); // Complete, not posted
+    expect(isPosted(parsed[0]!)).toBe(true); // A/R posting recognized as a sale
+    expect(isPosted(parsed[1]!)).toBe(true);
+    expect(isPosted(parsed[2]!)).toBe(false); // Complete, not posted
   });
 });
 

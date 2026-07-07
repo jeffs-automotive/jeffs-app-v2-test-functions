@@ -5,8 +5,12 @@
 // would — so the C5 SALE builder reads them transparently. The API is the source of
 // truth, so its received_at = now() makes it win the builder's latest-per-RO pick.
 //
-// Run:  cd qteklink-app && node --env-file=.env.local scripts/tekmetric-ro-backfill.mjs [from] [to] [--insert]
+// Run:  cd qteklink-app && node --env-file=.env.local scripts/tekmetric-ro-backfill.mjs [from] [to] [--insert] [--only-missing]
 //   DRY by default (fetch + summarize, no writes). --insert performs the backfill.
+//   --only-missing narrows to currently-posted ROs with NO captured posting webhook
+//   (ro_posted / ro_sent_to_ar) in qteklink_events — the precise single-gap affordance
+//   (without it, ROs captured as ro_sent_to_ar get redundant ro_posted rows: the dedup
+//   hash is kind|source_id|event_time_raw, so a different kind never dedupes).
 import { createClient } from "@supabase/supabase-js";
 
 const SHOP_ID = 7476;
@@ -14,6 +18,7 @@ const REALM = "9341455608740708";
 const TEK_BASE = "https://shop.tekmetric.com/api/v1";
 const args = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 const DO_INSERT = process.argv.includes("--insert");
+const ONLY_MISSING = process.argv.includes("--only-missing");
 const FROM = args[0] ?? "2026-05-10";
 const TO = args[1] ?? "2026-06-06";
 const etDay = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" });
@@ -65,9 +70,26 @@ async function fetchPostedROs(token) {
   return out;
 }
 
+/** RO ids that already have a captured posting event (ro_posted / ro_sent_to_ar). */
+async function capturedRoIds(roIds) {
+  const captured = new Set();
+  for (let i = 0; i < roIds.length; i += 200) {
+    const { data, error } = await sb
+      .from("qteklink_events")
+      .select("tekmetric_ro_id")
+      .eq("shop_id", SHOP_ID)
+      .eq("realm_id", REALM)
+      .in("event_kind", ["ro_posted", "ro_sent_to_ar"])
+      .in("tekmetric_ro_id", roIds.slice(i, i + 200));
+    if (error) throw new Error(`qteklink_events captured-scan failed: ${error.message}`);
+    for (const r of data ?? []) captured.add(Number(r.tekmetric_ro_id));
+  }
+  return captured;
+}
+
 const main = async () => {
   const token = await tekToken();
-  const ros = (await fetchPostedROs(token)).filter((r) => r.postedDate);
+  let ros = (await fetchPostedROs(token)).filter((r) => r.postedDate);
   const sample = ros[0] ?? {};
   const haveSales = sample.totalSales != null;
   const haveJobs = Array.isArray(sample.jobs);
@@ -86,6 +108,17 @@ const main = async () => {
   console.log(`Tekmetric posted ROs ${FROM}..${TO}: ${ros.length} | sample has totalSales=${haveSales} jobs=${haveJobs} fees=${haveFees}`);
   console.log(`Total sales: $${(totalCents / 100).toFixed(2)}\n\nPer ET day — ROs | sales($):`);
   for (const [d, r] of [...byDay.entries()].sort()) console.log(`${d} | ${r.n} | ${(r.cents / 100).toFixed(2)}`);
+
+  if (ONLY_MISSING) {
+    // Currently-posted ROs only (an unposted-now RO's sale is not recognized — nothing to backfill).
+    const postedNow = ros.filter((r) => r.repairOrderStatus?.postedOrAccrecv === true);
+    const captured = await capturedRoIds(postedNow.map((r) => r.id));
+    ros = postedNow.filter((r) => !captured.has(r.id));
+    console.log(`\n--only-missing: ${ros.length} of ${postedNow.length} currently-posted ROs have NO captured posting webhook`);
+    for (const r of ros) {
+      console.log(`  missing: RO ${r.repairOrderNumber} (${r.id}) $${((Number(r.totalSales) || 0) / 100).toFixed(2)} posted=${r.postedDate}`);
+    }
+  }
 
   if (!DO_INSERT) { console.log("\n(DRY RUN — pass --insert to backfill into qteklink_events)"); return; }
   if (!haveSales || !haveJobs) throw new Error("List rows lack totalSales/jobs — need per-RO detail fetch; aborting before insert.");

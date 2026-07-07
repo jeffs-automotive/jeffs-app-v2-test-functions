@@ -51,11 +51,25 @@ export const backdatedRepostBurst: SaleScanEvent[] = [
 /** The expected current state once correctly ordered by received time. */
 export const backdatedRepostExpected = { event_kind: "ro_posted", repairOrderNumber: "153211", totalSales: 48651 } as const;
 
-// ── Posted-status trap: an RO is POSTED when repairOrderStatusId ∈ {5 (Posted), 6 (A/R)} ──
+// ── Posted-status trap: an RO is POSTED when repairOrderStatus.id ∈ {5 (Posted), 6 (A/R)} ──
+//    The API/webhook payload carries the status ONLY as the NESTED repairOrderStatus object —
+//    there is NO flat repairOrderStatusId field (verified live 2026-07-06 against
+//    GET /repair-orders; a flat-field parse turned every status null and made the
+//    missed_ro_webhook safety net vacuous — the RO 153886 / $21.38 incident). ──
 /** The full posted-status set; a consumer that filters on 5 only drops ~1/5 of revenue (A/R). */
 export const TEKMETRIC_POSTED_STATUS_IDS = [5, 6] as const;
-export const repairOrderWithStatus = (repairOrderStatusId: number, over: Record<string, unknown> = {}) => ({
-  id: 328577176, repairOrderNumber: "153330", repairOrderStatusId, postedDate: "2026-06-15T10:44:30Z", totalSales: 2400, ...over,
+const RO_STATUS_META: Record<number, { code: string; name: string; postedOrAccrecv: boolean }> = {
+  5: { code: "POSTED", name: "Posted", postedOrAccrecv: true },
+  6: { code: "ACCRECV", name: "Accounts Receivable", postedOrAccrecv: true },
+  3: { code: "COMPLETE", name: "Complete", postedOrAccrecv: false },
+};
+export const repairOrderWithStatus = (statusId: number, over: Record<string, unknown> = {}) => ({
+  id: 328577176, repairOrderNumber: "153330",
+  repairOrderStatus: {
+    id: statusId,
+    ...(RO_STATUS_META[statusId] ?? { code: "UNKNOWN", name: "Unknown", postedOrAccrecv: false }),
+  },
+  postedDate: "2026-06-15T10:44:30Z", totalSales: 2400, ...over,
 });
 
 // ── Spring-pageable pagination: list endpoints return content[]/totalPages/last, size capped
