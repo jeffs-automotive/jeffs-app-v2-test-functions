@@ -16,11 +16,18 @@
  *    (Williams $27.7673, Aube $25.3687). pay_config money is INTEGER cents by contract,
  *    so the converted rate is off by up to half a cent → rate×hours products drift a
  *    few cents. The formulas are proven by the other 4 workbooks for the same sheets.
- *  - Quirk B (hand-keyed leave pay): the PTO-block pay cells are unlocked in the
- *    workbook, and on 6 sheets someone typed leave pay at a rate ≠ the hourly rate
- *    (e.g. Trilli 6-28 holiday @ $53.06/hr vs $31.67 hourly). The 5-17 + 5-31 workbooks
- *    prove the template formula is hours × hourly rate (extraction doc: leave paid at
- *    the week's hourly rate) — these cells are manual overrides, not the formula.
+ *  - Quirk B (avg-hourly leave-pay POLICY, round-3 decision #24): the PTO-block pay
+ *    cells are unlocked, and on 6 sheets the leave pay was keyed at a rate ≠ the
+ *    hourly rate (e.g. Trilli 6-28 holiday @ $53.06/hr vs $31.67 hourly). Chris
+ *    confirmed this was POLICY, not typos — PTO/Holiday/Bereavement for billed-hours
+ *    employees pay at the employee's AVERAGE HOURLY RATE WITHOUT BONUS. The workbook
+ *    cells reflect that policy with an EXTERNAL (payroll-system) basis rate we cannot
+ *    reproduce from workbook data (extraction forensic note: no window computable
+ *    from the sheets matches, e.g. Williams $45.87 vs $48–62 candidates), so these
+ *    cells stay SKIPPED — never asserted, never engine-bent. The engine's own
+ *    leave-rate implementation is locked by calc.leave.test.ts; these golden replays
+ *    supply no leave rate, so leave falls back to hours × hourly rate (which the
+ *    5-17 + 5-31 workbooks match).
  *  Every SKIPS entry must be consumed; a stale entry fails the last test.
  */
 import { readdirSync, readFileSync } from "node:fs";
@@ -84,7 +91,7 @@ const QUIRK_A_WILLIAMS =
 const QUIRK_A_AUBE =
   "Quirk A: Aube 5-3 hourly rate $25.3687 has sub-cent precision — integer-cents pay_config shifts rate×hours by >1¢ on this sheet only";
 const quirkB = (cell: string, rate: string, hourly: string) =>
-  `Quirk B: hand-keyed ${cell} cell pays @ $${rate}/hr vs the $${hourly} hourly rate — manual override in the unlocked PTO block, not the template formula (hours × hourly rate, proven by the 5-17/5-31 workbooks)`;
+  `Quirk B (round-3 decision #24 — avg-hourly leave-pay POLICY): ${cell} pays @ $${rate}/hr vs the $${hourly} base hourly — the cell reflects the PTO/Hol/Ber-at-average-hourly-rate policy with an external (payroll-system) basis rate not reproducible from workbook data, so it cannot be asserted here; the engine's leave-rate basis is locked by calc.leave.test.ts instead`;
 
 const SKIPS: Record<string, string> = {
   // ---- Quirk A — workbook-5-3-26-5-16-26.json :: Williams, Charles (rate cells E7/Q7) ----

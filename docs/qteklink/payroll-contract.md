@@ -92,7 +92,30 @@ Common: `{ "config_version": 1, "pto_balance_hours": number, "pto_accrual_hours_
 
 ## overrides JSONB (run_employees) — every key optional; shape `{ "value": number, "note": string }`
 `billed_hours_w1, billed_hours_w2, month_sales_cents, month_gp_with_fees_cents,
-month_gp_without_fees_cents, spiff_count, shop_hours`
+month_gp_without_fees_cents, spiff_count, shop_hours, sales_goal_cents, leave_rate_cents_per_hour`
+
+## Round-3 amendments (2026-07-10 late — extraction doc #22–27; supersede conflicting text above)
+
+- **SA tier semantics:** salesGoal = PRIOR-YEAR same-month subtotal, auto-derived
+  (`priorYearMonthSubtotalCents`), override key `sales_goal_cents` wins; `pay_config.sales_goal_cents`
+  (SA family) is now a legacy manual fallback used only when derivation returns no data.
+  Tiering: beat = sales > salesGoal (strict); tier3 = beat AND gpWithFees ≥ gpGoal2;
+  tier2 = beat AND gpWithFees ≥ gpGoal1; tier1 = NOT beat AND gpWithFees ≥ gpGoal1; else 0.
+  GP comparisons ≥ (Chris's example: GPwith exactly at goal2 ⇒ tier3; payout = GPwithout × pct).
+  Office-manager bonus unchanged (fixed pay_config.sales_goal_cents, excess × pct).
+- **Leave pay basis (technician + shop_foreman only):** PTO/Holiday/Bereavement hours × the employee's
+  AVERAGE HOURLY RATE WITHOUT BONUS; Training hours × base hourly rate. The basis rate =
+  Σ(base+OT+billed+efficiency pay) ÷ Σ(clock hours) over the last 12 COMPLETED runs (from snapshots);
+  fallback with no history = the same ratio over the current run (ex-bonus, ex-leave); override key
+  `leave_rate_cents_per_hour` wins over both. The rate + its provenance (window used, run count) are
+  part of SheetComputation + the snapshot. Other families: leave at base hourly (support/office-manager),
+  hours-only (SA). Foreman's shop bonus and all bonuses/spiffs/manual incentives are EXCLUDED from the basis.
+- **Avg-hourly metrics (summary.ts):** `avg_hourly_without_bonus_cents` (everyone) and
+  `avg_hourly_with_bonus_cents` (non-null ONLY for SA/office_manager/shop_foreman), last-12-completed-runs,
+  clock-hour denominator.
+- **Write-through:** a run-level `pay_config` patch via updateEntry ALSO updates the employee master's
+  `pay_config` (same values, separate `qteklink_payroll_upsert_employee` call + audit rows) so future
+  runs prefill it. Run-scoped-only fields (`rates_w2`) do NOT write through.
 
 ## settings (qteklink_settings, new `payroll` JSONB key via existing qteklink_upsert_settings partial-update)
 `{ "anchor_period_start": "2026-06-28",

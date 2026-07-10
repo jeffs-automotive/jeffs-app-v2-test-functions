@@ -16,9 +16,13 @@
  * never summed post-rounding. Hours: 2dp. Ratio metrics return null (never Infinity/
  * NaN) on zero denominators.
  *
- * PTO/Hol/Ber/Trn are PAID at the hourly rate (per week, at that week's rate) for the
- * hourly families (technician, shop_foreman, office_manager, support) and tracked as
- * HOURS ONLY for the salaried family (service_advisor) — leave-pay fields are null there.
+ * Leave pay (round-3 decision #24): technician + shop_foreman pay PTO/Holiday/
+ * Bereavement at `derived.leave_rate_cents_per_hour` (the avg-hourly-WITHOUT-bonus
+ * basis, resolved by the DAL — history → current run → override → base rate) and
+ * Training at the base hourly rate; when no leave rate is supplied (legacy path,
+ * golden fixtures) all leave falls back to each week's hourly rate. office_manager +
+ * support pay ALL leave at the week's hourly rate; the salaried family
+ * (service_advisor) tracks hours only — leave-pay fields are null there.
  *
  * `rates_w2` (run-level pay_config) applies a mid-period rate change: week 1 always
  * uses the base fields, week 2 uses the override when present.
@@ -26,6 +30,7 @@
 import type {
   DerivedInputs,
   Family,
+  LeaveRateSource,
   OfficeManagerPayConfig,
   PayConfigFor,
   ServiceAdvisorPayConfig,
@@ -38,8 +43,11 @@ import type {
   WeekSplit,
 } from "./types";
 
-/** Bumped whenever a formula changes; pinned into every run snapshot. */
-export const CALC_VERSION = 1;
+/** Bumped whenever a formula changes; pinned into every run snapshot.
+ *  v2 (2026-07-10 round-3 amendments): SA tier ladder reordered to the beat-last-year
+ *  semantics with ≥ GP comparisons (#22), and technician/shop_foreman PTO/Holiday/
+ *  Bereavement pay moved to the avg-hourly leave-rate basis (#24). */
+export const CALC_VERSION = 2;
 
 // ── Rounding (same semantics as derive.ts's roundCents — kept local so calc.ts
 //    stays free of the fetcher module's import graph) ──────────────────────────
@@ -135,6 +143,9 @@ function hourlyWeekExact(
   split: WeekSplit,
   leave: LeaveHours,
   billed: { billedRateCents: number; billedHours: number } | null,
+  /** Rate for PTO/Holiday/Bereavement (round-3 #24); Training ALWAYS pays the hourly
+   *  rate. Defaults to the hourly rate (office_manager/support + the legacy path). */
+  ptoHolBerRateCents: number = hourlyRateCents,
 ): HourlyWeekExact {
   const basePay = hourlyRateCents * split.reg;
   const otPay = hourlyRateCents * 1.5 * split.ot;
@@ -159,9 +170,9 @@ function hourlyWeekExact(
     billedPay,
     effPay,
     leavePay: {
-      pto: leave.pto * hourlyRateCents,
-      holiday: leave.holiday * hourlyRateCents,
-      bereavement: leave.bereavement * hourlyRateCents,
+      pto: leave.pto * ptoHolBerRateCents,
+      holiday: leave.holiday * ptoHolBerRateCents,
+      bereavement: leave.bereavement * ptoHolBerRateCents,
       training: leave.training * hourlyRateCents,
     },
   };
@@ -193,6 +204,8 @@ function hourlySheet(
     manualIncentiveCents: number | null; // support echo (null = none entered)
     incentiveExact: number; // family rollup, exact cents
     withMetrics: boolean; // technician-family layouts show metrics
+    leaveRateCents: number | null; // round-3 #24 — technician/shop_foreman only
+    leaveRateSource: LeaveRateSource | null;
   },
   leaveHoursTotals: LeaveHours,
 ): SheetComputation {
@@ -231,6 +244,8 @@ function hourlySheet(
     training_pay_cents: roundCents(leaveTotals.training),
     holiday_pay_cents: roundCents(leaveTotals.holiday),
     bereavement_pay_cents: roundCents(leaveTotals.bereavement),
+    leave_rate_cents_per_hour: extra.leaveRateCents,
+    leave_rate_source: extra.leaveRateSource,
     total_pay_cents: roundCents(totalPay),
     metrics: extra.withMetrics
       ? {
@@ -268,14 +283,26 @@ function computeTechnicianFamily(
   const hourlyW2 = config.rates_w2?.hourly_rate_cents ?? config.hourly_rate_cents;
   const billedRateW1 = config.billed_rate_cents;
   const billedRateW2 = config.rates_w2?.billed_rate_cents ?? config.billed_rate_cents;
-  const w1 = hourlyWeekExact(hourlyW1, s1, leaveHoursForWeek(entries, 1), {
-    billedRateCents: billedRateW1,
-    billedHours: num(derived.billed_hours_w1),
-  });
-  const w2 = hourlyWeekExact(hourlyW2, s2, leaveHoursForWeek(entries, 2), {
-    billedRateCents: billedRateW2,
-    billedHours: num(derived.billed_hours_w2),
-  });
+  // Leave-rate basis (round-3 #24): PTO/Hol/Ber pay at the supplied avg-hourly rate
+  // (one rate, both weeks); Training pays the week's base hourly rate. No rate
+  // supplied (legacy path / golden fixtures) → each week's hourly rate.
+  const leaveRate = derived.leave_rate_cents_per_hour ?? null;
+  const leaveSource: LeaveRateSource | null =
+    leaveRate === null ? null : (derived.leave_rate_source ?? "base_rate");
+  const w1 = hourlyWeekExact(
+    hourlyW1,
+    s1,
+    leaveHoursForWeek(entries, 1),
+    { billedRateCents: billedRateW1, billedHours: num(derived.billed_hours_w1) },
+    leaveRate ?? hourlyW1,
+  );
+  const w2 = hourlyWeekExact(
+    hourlyW2,
+    s2,
+    leaveHoursForWeek(entries, 2),
+    { billedRateCents: billedRateW2, billedHours: num(derived.billed_hours_w2) },
+    leaveRate ?? hourlyW2,
+  );
   // Foreman cliff bonus (extraction §Shop Foreman): pays on ALL shop hours once the
   // goal is exceeded (shopHours × rate), NOT on the excess. Strictly-greater-than.
   let bonusExact: number | null = null;
@@ -295,6 +322,8 @@ function computeTechnicianFamily(
       manualIncentiveCents: null,
       incentiveExact,
       withMetrics: true,
+      leaveRateCents: leaveRate,
+      leaveRateSource: leaveSource,
     },
     leaveTotalsFromEntries(entries),
   );
@@ -311,22 +340,29 @@ function computeServiceAdvisor(
   const salaryW2 = config.rates_w2?.weekly_salary_cents ?? config.weekly_salary_cents;
   // Spiff (decision #15 rollup happens upstream): spiff_count × spiff_amount_cents.
   const spiffExact = num(derived.spiff_count) * config.spiff_amount_cents;
-  // Tier bonus (extraction §Service Advisor, decision #3): the TIER qualifies on
-  // sales vs sales goal + GP-WITH-fees vs GP goals; the payout % applies to
-  // GP-WITHOUT-fees. Exact workbook IF-nesting, strict comparisons:
-  //   sales > goal AND gpWith > gp2 → tier3
-  //   sales > goal AND gpWith > gp1 → tier2
-  //   sales ≤ goal AND gpWith > gp1 → tier1
-  //   else 0   (note: sales > goal with gpWith ≤ gp1 pays NOTHING — as the workbook)
+  // Tier bonus (round-3 decision #22 — supersedes the workbook's strict-> nesting):
+  // the TIER qualifies on "beat last year" (sales vs the auto-derived prior-year
+  // sales goal, STRICTLY >) + GP-WITH-fees vs the GP goals (≥); the payout % applies
+  // to GP-WITHOUT-fees.
+  //   beat AND gpWith ≥ gp2      → tier3
+  //   beat AND gpWith ≥ gp1      → tier2
+  //   NOT beat AND gpWith ≥ gp1  → tier1  (clearing gp2 without the beat is STILL tier1)
+  //   else 0                     (beat with gpWith < gp1 pays NOTHING — gp1 is a hard floor)
+  // Chris's worked example: gpWith exactly at goal2 ⇒ tier3; payout = gpWithout × pct.
+  // The sales goal arrives via derived.sales_goal_cents (prior-year same-month
+  // subtotal, override already applied by the DAL — round-3 #23);
+  // pay_config.sales_goal_cents is the legacy manual fallback (derivation had no data).
   const sales = num(derived.month_sales_cents);
   const gpWith = num(derived.month_gp_with_fees_cents);
   const gpWithout = num(derived.month_gp_without_fees_cents);
+  const salesGoal = derived.sales_goal_cents ?? config.sales_goal_cents;
+  const beat = sales > salesGoal;
   let bonusExact = 0;
-  if (sales > config.sales_goal_cents && gpWith > config.gp_goal_2_cents) {
+  if (beat && gpWith >= config.gp_goal_2_cents) {
     bonusExact = gpWithout * config.tier3_pct;
-  } else if (sales > config.sales_goal_cents && gpWith > config.gp_goal_1_cents) {
+  } else if (beat && gpWith >= config.gp_goal_1_cents) {
     bonusExact = gpWithout * config.tier2_pct;
-  } else if (sales <= config.sales_goal_cents && gpWith > config.gp_goal_1_cents) {
+  } else if (!beat && gpWith >= config.gp_goal_1_cents) {
     bonusExact = gpWithout * config.tier1_pct;
   }
   const incentiveExact = spiffExact + bonusExact;
@@ -368,6 +404,8 @@ function computeServiceAdvisor(
     training_pay_cents: null,
     holiday_pay_cents: null,
     bereavement_pay_cents: null,
+    leave_rate_cents_per_hour: null,
+    leave_rate_source: null,
     total_pay_cents: roundCents(totalPay),
     metrics: { pay_per_clock_hour_cents: null, cost_per_billed_hour_cents: null, productivity: null },
   };
@@ -397,6 +435,8 @@ function computeOfficeManager(
       manualIncentiveCents: null,
       incentiveExact: bonusExact,
       withMetrics: false,
+      leaveRateCents: null,
+      leaveRateSource: null,
     },
     leaveTotalsFromEntries(entries),
   );
@@ -422,6 +462,8 @@ function computeSupport(
       manualIncentiveCents: manual,
       incentiveExact: num(manual),
       withMetrics: false,
+      leaveRateCents: null,
+      leaveRateSource: null,
     },
     leaveTotalsFromEntries(entries),
   );

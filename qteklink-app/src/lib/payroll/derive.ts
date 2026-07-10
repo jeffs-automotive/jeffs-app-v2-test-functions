@@ -112,6 +112,14 @@ export function monthDateRange(month: string): { start: string; end: string } {
   return { start: `${month}-01`, end: `${month}-${String(lastDay).padStart(2, "0")}` };
 }
 
+/** "YYYY-MM" → the SAME month one year earlier (round-3 decisions #22/#23). */
+export function priorYearMonth(month: string): string {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+    throw new Error(`payroll derive: month must be "YYYY-MM", got "${month}"`);
+  }
+  return `${String(Number(month.slice(0, 4)) - 1).padStart(4, "0")}${month.slice(4)}`;
+}
+
 function provenanceFor(ros: MirrorRoRow[], start: string, end: string): DeriveProvenance {
   let asOf: string | null = null;
   for (const r of ros) {
@@ -199,6 +207,16 @@ export function aggregateFeesCents(ros: MirrorRoRow[]): number {
   let total = 0;
   for (const r of ros) total += r.fee_total_cents ?? 0;
   return total;
+}
+
+/**
+ * Month "subtotal" (round-3 #22, Chris: "sales − tax" ≡ the backtest-pinned
+ * Σ(total_sales − taxes − FEES) — Tekmetric's subtotal excludes fee lines). RO-level
+ * totals are Tekmetric's own authorized-only rollups (extraction #20) — no job-level
+ * filter applies here.
+ */
+export function aggregateMonthSubtotalCents(ros: MirrorRoRow[]): number {
+  return aggregateSalesCandidates(ros).totalSalesMinusTaxesCents - aggregateFeesCents(ros);
 }
 
 /** Month parts cost (contract definition): Σ part.cost_cents over AUTHORIZED jobs only. */
@@ -400,6 +418,25 @@ export async function monthSalesPreTaxCents(
   const tz = await resolveTz(shopId, opts.tz);
   const ros = await fetchPostedRos(shopId, start, end, tz);
   return { value: aggregateSalesCandidates(ros), provenance: provenanceFor(ros, start, end) };
+}
+
+/**
+ * SAME-month-PREVIOUS-year subtotal = Σ(total_sales − taxes − fees) over ROs posted
+ * in that prior-year month (round-3 #22/#23) — the auto-derived service-advisor
+ * sales goal ("beat last year"). `month` is the BONUS month ("YYYY-MM"); the
+ * prior-year month is derived here. A provenance roCount of 0 means "no data" —
+ * callers fall back to the legacy pay_config.sales_goal_cents.
+ */
+export async function priorYearMonthSubtotalCents(
+  shopId: number,
+  month: string,
+  opts: DeriveOpts = {},
+): Promise<Derived<number>> {
+  const target = priorYearMonth(month);
+  const { start, end } = monthDateRange(target);
+  const tz = await resolveTz(shopId, opts.tz);
+  const ros = await fetchPostedRos(shopId, start, end, tz);
+  return { value: aggregateMonthSubtotalCents(ros), provenance: provenanceFor(ros, start, end) };
 }
 
 /** Month fees = Σ ro.fee_total_cents over ROs posted in the month (decision #14). */

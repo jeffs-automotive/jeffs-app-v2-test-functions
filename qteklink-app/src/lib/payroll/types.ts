@@ -69,6 +69,13 @@ export const TEKMETRIC_ID_TYPE_BY_FAMILY: Record<Family, "technician" | "service
 export const RunStatusSchema = z.enum(["open", "completed", "voided"]);
 export type RunStatus = z.infer<typeof RunStatusSchema>;
 
+/** Where a technician/shop-foreman PTO/Holiday/Bereavement rate came from (round-3
+ *  decision #24): the last-12-completed-runs basis, the current run's ex-bonus
+ *  ex-leave ratio, an explicit override, or the base hourly rate (final fallback). */
+export const LEAVE_RATE_SOURCES = ["history", "current_run", "override", "base_rate"] as const;
+export const LeaveRateSourceSchema = z.enum(LEAVE_RATE_SOURCES);
+export type LeaveRateSource = z.infer<typeof LeaveRateSourceSchema>;
+
 // ── PayConfig (config_version: 1) — contract §pay_config JSONB ────────────────
 
 const centsInt = z.number().int().min(0);
@@ -177,6 +184,10 @@ export const OverridesSchema = z.strictObject({
   month_gp_without_fees_cents: overrideOf(z.number().int()).optional(),
   spiff_count: overrideOf(z.number().int().min(0)).optional(),
   shop_hours: overrideOf(hoursNum).optional(),
+  /** SA family (round-3 #22/#23): beats the auto-derived prior-year sales goal. */
+  sales_goal_cents: overrideOf(z.number().int().min(0)).optional(),
+  /** technician/shop_foreman (round-3 #24): beats the computed leave-rate basis. */
+  leave_rate_cents_per_hour: overrideOf(z.number().int().min(0)).optional(),
 });
 export type Overrides = z.infer<typeof OverridesSchema>;
 
@@ -212,6 +223,15 @@ export const DerivedInputsSchema = z.strictObject({
   month_gp_without_fees_cents: z.number().int().nullish(),
   spiff_count: z.number().int().min(0).nullish(),
   shop_hours: hoursNum.nullish(),
+  /** SA-family sales goal (round-3 #22/#23): the auto-derived prior-year same-month
+   *  subtotal (override already applied); null → calc falls back to the legacy
+   *  pay_config.sales_goal_cents. Ignored by every other family. */
+  sales_goal_cents: z.number().int().nullish(),
+  /** technician/shop_foreman leave rate (round-3 #24): the rate PTO/Holiday/
+   *  Bereavement hours pay at (Training always pays the base hourly rate);
+   *  null → each week's base hourly rate. Ignored by every other family. */
+  leave_rate_cents_per_hour: z.number().int().min(0).nullish(),
+  leave_rate_source: LeaveRateSourceSchema.nullish(),
 });
 export type DerivedInputs = z.infer<typeof DerivedInputsSchema>;
 
@@ -268,11 +288,18 @@ export const SheetComputationSchema = z.strictObject({
   /** Family rollup: tech = billed+efficiency pay (+foreman bonus); SA = spiff+bonus;
    *  office_manager = bonus; support = manual incentive (null treated as 0). */
   incentive_cents: z.number().int(),
-  // Leave pay at the week's hourly rate; null for salaried families (hours-only).
+  // Leave pay; null for salaried families (hours-only). technician/shop_foreman pay
+  // PTO/Hol/Ber at leave_rate_cents_per_hour (round-3 #24) and Training at the base
+  // hourly rate; office_manager/support pay all leave at the week's hourly rate.
   pto_pay_cents: z.number().int().nullable(),
   training_pay_cents: z.number().int().nullable(),
   holiday_pay_cents: z.number().int().nullable(),
   bereavement_pay_cents: z.number().int().nullable(),
+  /** technician/shop_foreman only (round-3 #24): the rate applied to PTO/Holiday/
+   *  Bereavement hours + its provenance; null for every other family AND on the
+   *  legacy no-rate-supplied path (leave then pays at each week's hourly rate). */
+  leave_rate_cents_per_hour: z.number().int().nullable(),
+  leave_rate_source: LeaveRateSourceSchema.nullable(),
   total_pay_cents: z.number().int(),
   /** Technician-family only (the workbook shows them only there); null elsewhere and
    *  null (never Infinity/NaN) on zero denominators. */

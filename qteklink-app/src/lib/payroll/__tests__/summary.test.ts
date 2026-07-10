@@ -13,8 +13,11 @@ import { computeSheet } from "../calc";
 import {
   aggregateLastCompletedRuns,
   avgHourlyPayCents,
+  avgHourlyWithoutBonusCents,
   buildRunSummary,
+  employeeHourlyAverages,
   lastCompletedRuns,
+  WITH_BONUS_FAMILIES,
   type EmployeeSheet,
   type RunForAggregation,
 } from "../summary";
@@ -239,5 +242,88 @@ describe("avgHourlyPayCents (per-employee dashboard figure)", () => {
   it("returns null on an empty set and on zero hours", () => {
     expect(avgHourlyPayCents([])).toBeNull();
     expect(avgHourlyPayCents([row({ reg_hours: 0, ot_hours: 0, total_pay_cents: 50_000 })])).toBeNull();
+  });
+});
+
+describe("avg-hourly variants (round-3 decisions #24/#25)", () => {
+  it("without-bonus strips the foreman shop bonus but keeps billed/efficiency/leave pay", () => {
+    // total 150,000 incl. 20,000 shop bonus + 30,000 billed pay; 80 clock hours.
+    const rows = [
+      row({
+        family: "shop_foreman",
+        role: "shop_foreman",
+        total_pay_cents: 150_000,
+        bonus_cents: 20_000,
+        incentive_cents: 50_000, // billed+efficiency+bonus — NOT stripped (not support)
+        billed_pay_cents: 30_000,
+        reg_hours: 80,
+      }),
+    ];
+    expect(avgHourlyWithoutBonusCents(rows)).toBe(Math.round(130_000 / 80)); // 1,625
+    expect(avgHourlyPayCents(rows)).toBe(Math.round(150_000 / 80)); // with-bonus keeps it
+  });
+
+  it("without-bonus strips the SA tier bonus + spiff (leaves 2×salary)", () => {
+    const rows = [
+      row({
+        family: "service_advisor",
+        role: "service_manager",
+        total_pay_cents: 291_600,
+        bonus_cents: 85_600,
+        spiff_cents: 6_000,
+        incentive_cents: 91_600,
+        reg_hours: 80,
+        ot_hours: 0,
+      }),
+    ];
+    expect(avgHourlyWithoutBonusCents(rows)).toBe(Math.round(200_000 / 80)); // 2,500
+  });
+
+  it("without-bonus strips the support manual incentive (incentive_cents on a support row)", () => {
+    const rows = [
+      row({
+        family: "support",
+        role: "shop_support",
+        total_pay_cents: 104_200,
+        incentive_cents: 4_200, // the manual incentive
+        reg_hours: 40,
+      }),
+    ];
+    expect(avgHourlyWithoutBonusCents(rows)).toBe(Math.round(100_000 / 40)); // 2,500
+    // a support row with NO incentive entered (null) strips nothing:
+    expect(
+      avgHourlyWithoutBonusCents([
+        row({ family: "support", role: "shop_support", incentive_cents: null, total_pay_cents: 100_000, reg_hours: 40 }),
+      ]),
+    ).toBe(2_500);
+  });
+
+  it("is null-safe (empty set / zero hours)", () => {
+    expect(avgHourlyWithoutBonusCents([])).toBeNull();
+    expect(avgHourlyWithoutBonusCents([row({ reg_hours: 0, ot_hours: 0 })])).toBeNull();
+  });
+
+  it("employeeHourlyAverages: with-bonus is non-null ONLY for the bonus families", () => {
+    const rows = [row({ total_pay_cents: 160_000, bonus_cents: 20_000, reg_hours: 80 })];
+    expect(WITH_BONUS_FAMILIES).toEqual(["service_advisor", "office_manager", "shop_foreman"]);
+    for (const family of WITH_BONUS_FAMILIES) {
+      expect(employeeHourlyAverages(family, rows)).toEqual({
+        avg_hourly_without_bonus_cents: Math.round(140_000 / 80),
+        avg_hourly_with_bonus_cents: Math.round(160_000 / 80),
+      });
+    }
+    for (const family of ["technician", "support"] as const) {
+      expect(employeeHourlyAverages(family, rows)).toEqual({
+        avg_hourly_without_bonus_cents: Math.round(140_000 / 80),
+        avg_hourly_with_bonus_cents: null, // "n/a" for non-bonus families
+      });
+    }
+  });
+
+  it("employeeHourlyAverages is null-safe on an empty window", () => {
+    expect(employeeHourlyAverages("shop_foreman", [])).toEqual({
+      avg_hourly_without_bonus_cents: null,
+      avg_hourly_with_bonus_cents: null,
+    });
   });
 });

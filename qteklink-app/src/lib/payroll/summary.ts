@@ -1,7 +1,9 @@
 /**
  * Payroll summary layer — per-run summary rows (extraction requirement #6) and the
  * dashboard aggregates (requirement #7): the last-12-completed-runs card and the
- * null-safe average hourly pay (decision #9: clock-hours denominator, last-12 window).
+ * null-safe average hourly pay (decision #9: clock-hours denominator, last-12 window),
+ * plus the two per-employee variants (round-3 decision #25): WITHOUT-bonus for
+ * everyone and WITH-bonus for the bonus families only (SA/office_manager/shop_foreman).
  * Contract: docs/qteklink/payroll-contract.md §summary.ts.
  *
  * PURE — rows in, rows/aggregates out. Voided runs are EXCLUDED from every aggregate
@@ -121,6 +123,48 @@ export function avgHourlyPayCents(rows: SummaryRow[]): number | null {
     hours += r.reg_hours + r.ot_hours;
   }
   return hours > 0 ? roundCents(pay / hours) : null;
+}
+
+/** Families whose employees receive a bonus — the only ones with a with-bonus
+ *  average (round-3 decision #25); everyone else renders "n/a" (null). */
+export const WITH_BONUS_FAMILIES: readonly Family[] = ["service_advisor", "office_manager", "shop_foreman"];
+
+/**
+ * Average hourly pay WITHOUT bonuses (round-3 decisions #24/#25): strips the SA tier
+ * bonus + spiff, the foreman shop bonus, the office-manager sales bonus, and the
+ * support manual incentive; KEEPS base + OT + billed + efficiency + leave pay.
+ * Σ stripped pay ÷ Σ (reg + OT) clock hours; null-safe (null on an empty set or
+ * zero hours). Window the rows with {@link lastCompletedRuns} first.
+ */
+export function avgHourlyWithoutBonusCents(rows: SummaryRow[]): number | null {
+  let pay = 0;
+  let hours = 0;
+  for (const r of rows) {
+    const manualIncentive = r.family === "support" ? (r.incentive_cents ?? 0) : 0;
+    pay += r.total_pay_cents - (r.bonus_cents ?? 0) - (r.spiff_cents ?? 0) - manualIncentive;
+    hours += r.reg_hours + r.ot_hours;
+  }
+  return hours > 0 ? roundCents(pay / hours) : null;
+}
+
+export interface EmployeeHourlyAverages {
+  /** Every employee (null only when the window has no rows / zero clock hours). */
+  avg_hourly_without_bonus_cents: number | null;
+  /** Non-null ONLY for the bonus families (SA / office_manager / shop_foreman). */
+  avg_hourly_with_bonus_cents: number | null;
+}
+
+/**
+ * The dashboard's two per-employee hourly averages (round-3 decision #25), over the
+ * employee's rows from the last-12-COMPLETED-runs window (callers window via
+ * {@link lastCompletedRuns}). `family` is the employee's CURRENT family — it gates
+ * the with-bonus column, not the row math.
+ */
+export function employeeHourlyAverages(family: Family, rows: SummaryRow[]): EmployeeHourlyAverages {
+  return {
+    avg_hourly_without_bonus_cents: avgHourlyWithoutBonusCents(rows),
+    avg_hourly_with_bonus_cents: WITH_BONUS_FAMILIES.includes(family) ? avgHourlyPayCents(rows) : null,
+  };
 }
 
 /** The most recent `limit` COMPLETED runs (period_start descending). Voided and open

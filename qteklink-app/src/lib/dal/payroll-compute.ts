@@ -15,6 +15,12 @@
  * Read-path rule: completed/voided runs render EXCLUSIVELY from the frozen
  * snapshot — never recomputed.
  *
+ * Round-3 amendments (2026-07-10, extraction #22–#27): tech/foreman PTO/Hol/Ber pay
+ * at the avg-hourly-WITHOUT-bonus leave rate (override → last-12-completed-runs
+ * snapshot basis → current run ex-bonus ex-leave → base hourly), and the SA sales
+ * goal auto-derives from the prior-year same-month subtotal (override →
+ * priorYearMonthSubtotalCents → legacy pay_config.sales_goal_cents when 0 ROs).
+ *
  * GP labor allocation note: gp.ts wants per-week totals. Week totals from calc.ts
  * are time-based (base+OT+billed+efficiency+leave); run-level incentive extras
  * (foreman monthly bonus, support manual incentive) are split 50/50 across the two
@@ -31,6 +37,7 @@ import {
   monthFeesCents,
   monthPartsCostCents,
   monthSalesPreTaxCents,
+  priorYearMonthSubtotalCents,
   roundCents,
   shopBilledHours,
   spiffCountsByServiceWriter,
@@ -38,6 +45,12 @@ import {
 } from "@/lib/payroll/derive";
 import { GP_LABOR_ROLES, monthGpFromRuns, type GpRunEmployeePay, type GpRunInput } from "@/lib/payroll/gp";
 import { buildRunSummary, type EmployeeSheet } from "@/lib/payroll/summary";
+import {
+  fetchLeaveRateHistory,
+  resolveLeaveRate,
+  type LeaveRateHistory,
+  type LeaveRateResolution,
+} from "@/lib/dal/payroll-leave-rate";
 import {
   familyForRole,
   parsePayConfig,
@@ -52,6 +65,7 @@ import {
   type SheetComputation,
   type SheetEntries,
   type SnapshotEmployee,
+  type TechnicianPayConfig,
 } from "@/lib/payroll/types";
 import {
   fetchEmployeesByIds,
@@ -81,8 +95,17 @@ function applyOverrides(base: DerivedInputs, overrides: Overrides): DerivedInput
       overrides.month_gp_without_fees_cents?.value ?? base.month_gp_without_fees_cents,
     spiff_count: overrides.spiff_count?.value ?? base.spiff_count,
     shop_hours: overrides.shop_hours?.value ?? base.shop_hours,
+    sales_goal_cents: overrides.sales_goal_cents?.value ?? base.sales_goal_cents,
+    leave_rate_cents_per_hour:
+      overrides.leave_rate_cents_per_hour?.value ?? base.leave_rate_cents_per_hour,
+    // Not overridable by shape ({value, note} carries numbers only): resolveLeaveRate
+    // owns the source and already reports 'override' when the override key is set.
+    leave_rate_source: base.leave_rate_source,
   };
 }
+
+const isTechnicianFamily = (family: Family): family is "technician" | "shop_foreman" =>
+  family === "technician" || family === "shop_foreman";
 
 /**
  * Per-week GP pay from a computed sheet: calc.ts week totals are time-based
@@ -138,12 +161,15 @@ function gpInputFromSnapshot(run: RunDbRow): GpRunInput {
 }
 
 /** Live GP-role pay for ANOTHER open run overlapping the month (its own billed-hours
- *  derivation + overrides; foreman shop hours only when that run is a bonus run). */
+ *  derivation + overrides; foreman shop hours only when that run is a bonus run).
+ *  Tech/foreman leave pay uses the leave-rate basis (round-3 #24) so the per-week
+ *  totals feeding gp.ts include leave at the same rates the run itself would pay. */
 async function gpInputForOpenRun(
   shopId: number,
   run: RunDbRow,
   tz: string,
   shopHoursByMonth: Map<string, number>,
+  leaveHistory: Map<string, LeaveRateHistory>,
 ): Promise<GpRunInput> {
   const rows = await fetchRunEntries(run.id);
   const gpRows = rows.filter((r) => (GP_LABOR_ROLES as readonly string[]).includes(r.role_snapshot));
@@ -179,9 +205,24 @@ async function gpInputForOpenRun(
       month_gp_without_fees_cents: null,
       spiff_count: null,
       shop_hours: family === "shop_foreman" ? shopHours : null,
+      sales_goal_cents: null,
+      leave_rate_cents_per_hour: null, // resolved below for tech/foreman
+      leave_rate_source: null,
     };
-    const effective = applyOverrides(base, normalizeOverrides(r.overrides, `entry ${r.id}`));
-    const sheet = computeSheet(family, payConfig, sheetEntriesFromRow(r), effective);
+    const overrides = normalizeOverrides(r.overrides, `entry ${r.id}`);
+    const entries = sheetEntriesFromRow(r);
+    let effective = applyOverrides(base, overrides);
+    let sheet = computeSheet(family, payConfig, entries, effective);
+    if (isTechnicianFamily(family)) {
+      const lr = resolveLeaveRate(
+        overrides,
+        leaveHistory.get(r.employee_id),
+        sheet,
+        (payConfig as TechnicianPayConfig).hourly_rate_cents,
+      );
+      effective = { ...effective, leave_rate_cents_per_hour: lr.rateCents, leave_rate_source: lr.source };
+      sheet = computeSheet(family, payConfig, entries, effective);
+    }
     gpEmployees.push(gpPayFromSheet(role, sheet));
   }
   return { status: run.status, periodStart: run.period_start, employees: gpEmployees };
@@ -200,6 +241,12 @@ interface MonthDerivations {
   gpWithoutFeesCents: number;
   laborPayProratedCents: number;
   provenance: DeriveProvenance;
+  /** Round-3 #22/#23: prior-year same-month subtotal (raw) + the SA sales goal it
+   *  yields — null when the prior-year month had 0 posted ROs (no data → calc falls
+   *  back to the legacy pay_config.sales_goal_cents). */
+  priorYearSubtotalCents: number;
+  salesGoalCents: number | null;
+  salesGoalProvenance: DeriveProvenance;
 }
 
 /**
@@ -219,21 +266,25 @@ export async function buildOpenRunSnapshot(shopId: number, run: RunDbRow): Promi
   const employees = await fetchEmployeesByIds(shopId, rows.map((r) => r.employee_id));
 
   const w2Start = addDaysIso(run.period_start, 7);
-  const [billedW1, billedW2] = await Promise.all([
+  const [billedW1, billedW2, leaveHistory] = await Promise.all([
     billedHoursByTechnician(shopId, run.period_start, addDaysIso(run.period_start, 6), { tz }),
     billedHoursByTechnician(shopId, w2Start, run.period_end, { tz }),
+    // Round-3 #24: the tech/foreman PTO/Hol/Ber rate basis (last 12 completed runs,
+    // read from frozen snapshots) — also feeds other open runs' GP labor pay below.
+    fetchLeaveRateHistory(shopId),
   ]);
 
   // ── Bonus-month derivations (only when the slider is on) ──
   let month: MonthDerivations | null = null;
   if (run.bonus_period && run.bonus_month) {
     const monthKey = run.bonus_month.slice(0, 7);
-    const [sales, fees, parts, shopHrs, spiffs] = await Promise.all([
+    const [sales, fees, parts, shopHrs, spiffs, priorYear] = await Promise.all([
       monthSalesPreTaxCents(shopId, monthKey, { tz }),
       monthFeesCents(shopId, monthKey, { tz }),
       monthPartsCostCents(shopId, monthKey, { tz }),
       shopBilledHours(shopId, monthKey, { tz }),
       spiffCountsByServiceWriter(shopId, monthKey, settings.spiff_categories, { tz }),
+      priorYearMonthSubtotalCents(shopId, monthKey, { tz }),
     ]);
     month = {
       month: monthKey,
@@ -249,6 +300,12 @@ export async function buildOpenRunSnapshot(shopId: number, run: RunDbRow): Promi
       gpWithoutFeesCents: 0,
       laborPayProratedCents: 0,
       provenance: sales.provenance,
+      // Round-3 #22/#23: the SA sales goal auto-prefills from the prior-year
+      // same-month subtotal; 0 posted ROs in that month = no data → null → calc
+      // falls back to the legacy pay_config.sales_goal_cents.
+      priorYearSubtotalCents: priorYear.value,
+      salesGoalCents: priorYear.provenance.roCount > 0 ? priorYear.value : null,
+      salesGoalProvenance: priorYear.provenance,
     };
   }
 
@@ -261,6 +318,7 @@ export async function buildOpenRunSnapshot(shopId: number, run: RunDbRow): Promi
     overrides: Overrides;
     effective: DerivedInputs;
     sheet: SheetComputation | null; // SA filled in pass 2
+    leaveRate: LeaveRateResolution | null; // tech/foreman only (round-3 #24)
   }
   const assembled: AssembledEmployee[] = rows.map((r) => {
     const role = RoleSchema.parse(r.role_snapshot);
@@ -268,7 +326,7 @@ export async function buildOpenRunSnapshot(shopId: number, run: RunDbRow): Promi
     const emp = employees.get(r.employee_id);
     const techId = emp?.tekmetricIdType === "technician" ? emp.tekmetricEmployeeId : null;
     const writerId = emp?.tekmetricIdType === "service_writer" ? emp.tekmetricEmployeeId : null;
-    const isTechFamily = family === "technician" || family === "shop_foreman";
+    const isTechFamily = isTechnicianFamily(family);
     const base: DerivedInputs = {
       billed_hours_w1: isTechFamily && techId !== null ? (billedW1.value.get(techId) ?? 0) : null,
       billed_hours_w2: isTechFamily && techId !== null ? (billedW2.value.get(techId) ?? 0) : null,
@@ -281,14 +339,38 @@ export async function buildOpenRunSnapshot(shopId: number, run: RunDbRow): Promi
           ? (month.spiffCounts.get(writerId) ?? 0)
           : null,
       shop_hours: family === "shop_foreman" && month ? month.shopHours : null,
+      // Round-3 #23: the auto-derived SA sales goal (office_manager keeps its fixed
+      // pay_config.sales_goal_cents — never derived).
+      sales_goal_cents: family === "service_advisor" && month ? month.salesGoalCents : null,
+      leave_rate_cents_per_hour: null, // resolved below for tech/foreman
+      leave_rate_source: null,
     };
     const entries = sheetEntriesFromRow(r);
     const overrides = normalizeOverrides(r.overrides, `entry ${r.id}`);
-    const effective = applyOverrides(base, overrides);
+    let effective = applyOverrides(base, overrides);
     const payConfig = parsePayConfig(family, r.pay_config);
-    const sheet =
-      family === "service_advisor" ? null : computeSheet(family, payConfig, entries, effective);
-    return { row: r, role, family, entries, overrides, effective, sheet };
+    let sheet: SheetComputation | null = null;
+    let leaveRate: LeaveRateResolution | null = null;
+    if (isTechFamily) {
+      // Preliminary sheet (no leave rate) → its base/OT/billed/efficiency components
+      // feed the current-run fallback basis; then recompute with the resolved rate.
+      const prelim = computeSheet(family, payConfig, entries, effective);
+      leaveRate = resolveLeaveRate(
+        overrides,
+        leaveHistory.get(r.employee_id),
+        prelim,
+        (payConfig as TechnicianPayConfig).hourly_rate_cents,
+      );
+      effective = {
+        ...effective,
+        leave_rate_cents_per_hour: leaveRate.rateCents,
+        leave_rate_source: leaveRate.source,
+      };
+      sheet = computeSheet(family, payConfig, entries, effective);
+    } else if (family !== "service_advisor") {
+      sheet = computeSheet(family, payConfig, entries, effective);
+    }
+    return { row: r, role, family, entries, overrides, effective, sheet, leaveRate };
   });
 
   // ── Month GP (needs pass-1 GP-role sheets of THIS run + every other overlapping run) ──
@@ -319,7 +401,7 @@ export async function buildOpenRunSnapshot(shopId: number, run: RunDbRow): Promi
       gpInputs.push(
         other.status === "completed"
           ? gpInputFromSnapshot(other)
-          : await gpInputForOpenRun(shopId, other, tz, shopHoursByMonth),
+          : await gpInputForOpenRun(shopId, other, tz, shopHoursByMonth, leaveHistory),
       );
     }
     const gp = monthGpFromRuns(gpInputs, month.month, {
@@ -395,6 +477,20 @@ export async function buildOpenRunSnapshot(shopId: number, run: RunDbRow): Promi
       ro_count: billedW1.provenance.roCount + billedW2.provenance.roCount,
       source: "tekmetric_ros mirror",
       // extra keys allowed by the loose provenance schema:
+      // Round-3 #24: per-employee PTO/Hol/Ber rate + where it came from + how many
+      // completed window runs backed it (technician/shop_foreman only).
+      leave_rates: Object.fromEntries(
+        assembled
+          .filter((a) => a.leaveRate !== null)
+          .map((a) => [
+            a.row.employee_id,
+            {
+              rate_cents_per_hour: (a.leaveRate as LeaveRateResolution).rateCents,
+              source: (a.leaveRate as LeaveRateResolution).source,
+              window_runs: (a.leaveRate as LeaveRateResolution).windowRuns,
+            },
+          ]),
+      ),
       ...(month
         ? {
             month_ro_count: month.provenance.roCount,
@@ -405,6 +501,16 @@ export async function buildOpenRunSnapshot(shopId: number, run: RunDbRow): Promi
             month_labor_pay_prorated_cents: month.laborPayProratedCents,
             month_gp_with_fees_cents: month.gpWithFeesCents,
             month_gp_without_fees_cents: month.gpWithoutFeesCents,
+            // Round-3 #22/#23: the auto-derived SA sales goal + its provenance.
+            month_sales_goal_cents: month.salesGoalCents,
+            month_sales_goal_source:
+              month.salesGoalCents === null ? "pay_config_fallback" : "prior_year_subtotal",
+            month_sales_goal_prior_year: {
+              subtotal_cents: month.priorYearSubtotalCents,
+              ro_count: month.salesGoalProvenance.roCount,
+              date_range: month.salesGoalProvenance.dateRange,
+              as_of: month.salesGoalProvenance.asOf,
+            },
           }
         : {}),
     },

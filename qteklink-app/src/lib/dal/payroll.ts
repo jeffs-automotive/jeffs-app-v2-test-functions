@@ -2,12 +2,14 @@
  * Payroll DAL (contract: docs/qteklink/payroll-contract.md §dal/payroll.ts) — the
  * PUBLIC entrypoint over the qteklink_payroll_* SECURITY DEFINER RPCs + the pure
  * engine (src/lib/payroll/*). Split per the ~500-line file policy:
- *   - payroll-shared.ts  — row shapes, coercers, guarded fetchers, settings READ;
- *   - payroll-compute.ts — run computation assembly + the RunSnapshot v1 builder;
- *   - THIS file          — employees CRUD, runs list/detail/create/roster/patches,
- *                          settings write + new-category discovery, the Pattern S
- *                          complete/void orchestration, email alerts, per-run
- *                          Tekmetric refresh. Everything public re-exports from here.
+ *   - payroll-shared.ts     — row shapes, coercers, guarded fetchers, settings READ;
+ *   - payroll-compute.ts    — run computation assembly + the RunSnapshot v1 builder;
+ *   - payroll-leave-rate.ts — the tech/foreman leave-rate basis (round-3 #24);
+ *   - payroll-employees.ts  — employees CRUD + the pay_config write-through (#26);
+ *   - THIS file             — runs list/detail/create/roster/patches, settings write
+ *                             + new-category discovery, the Pattern S complete/void
+ *                             orchestration, email alerts, per-run Tekmetric refresh.
+ *                             Everything public re-exports from here.
  *
  * Pattern S (complete/void): the WHOLE dance runs server-side in one call —
  * RPC dry-run → state_hash → issue single-use token bound to it → confirm call;
@@ -38,10 +40,8 @@ import {
 import { runMirrorIngest, type MirrorIngestResult } from "@/lib/payroll/mirror-ingest";
 import {
   DEFAULT_PAYROLL_SETTINGS,
-  EMPLOYEE_COLS,
   HOUR_KEYS,
   RUN_COLS,
-  employeeFromRow,
   fetchEmployeesByIds,
   fetchRunEntries,
   fetchRunGuarded,
@@ -50,7 +50,6 @@ import {
   runFromRow,
   sheetEntriesFromRow,
   throwRpc,
-  type EmployeeDbRow,
   type PayrollActor,
   type PayrollAlertEmails,
   type PayrollEmployee,
@@ -61,13 +60,21 @@ import {
   type RunDbRow,
 } from "@/lib/dal/payroll-shared";
 import { buildOpenRunSnapshot, computePayrollRun, type PayrollRunComputation } from "@/lib/dal/payroll-compute";
+import {
+  listPayrollEmployees,
+  upsertPayrollEmployee,
+  writeThroughEmployeePayConfig,
+  type UpsertPayrollEmployeeInput,
+} from "@/lib/dal/payroll-employees";
 import type { Family, Overrides, SheetEntries } from "@/lib/payroll/types";
 
 // ── Public surface re-exports (the contract path is "@/lib/dal/payroll") ───────
 
 export { DEFAULT_PAYROLL_SETTINGS, getPayrollSettings, computePayrollRun };
+export { listPayrollEmployees, upsertPayrollEmployee };
 export type { PayrollActor, PayrollAlertEmails, PayrollEmployee, PayrollEntryPatch };
 export type { PayrollHourKey, PayrollRun, PayrollRunComputation, PayrollSettings };
+export type { UpsertPayrollEmployeeInput };
 
 // ── Settings write + new-category discovery ────────────────────────────────────
 
@@ -131,81 +138,6 @@ export async function discoverAndMergePayrollCategories(shopId: number): Promise
   ];
   await updatePayrollSettings(shopId, { spiff_categories: merged });
   return { added: fresh };
-}
-
-// ── Employees CRUD ─────────────────────────────────────────────────────────────
-
-export interface UpsertPayrollEmployeeInput {
-  /** null/undefined = create. */
-  employeeId?: string | null;
-  displayName: string;
-  role: Role;
-  tekmetricEmployeeId: number | null;
-  payConfig: Record<string, unknown>;
-  archived: boolean;
-}
-
-export async function listPayrollEmployees(
-  shopId: number,
-  opts: { includeArchived?: boolean } = {},
-): Promise<PayrollEmployee[]> {
-  const admin = createSupabaseAdminClient();
-  let query = admin
-    .from("qteklink_payroll_employees")
-    .select(EMPLOYEE_COLS)
-    .eq("shop_id", shopId)
-    .order("display_name", { ascending: true });
-  if (!opts.includeArchived) query = query.is("archived_at", null);
-  const { data, error } = await query;
-  if (error) throw new Error(`listPayrollEmployees failed: ${error.message}`);
-  return ((data ?? []) as EmployeeDbRow[]).map(employeeFromRow);
-}
-
-/**
- * Create / update / archive an employee. pay_config is Zod-validated per the role's
- * family HERE (and again in the RPC — the contract's dual validation). rates_w2 is a
- * per-RUN override only and is rejected at the employee level.
- */
-export async function upsertPayrollEmployee(
-  shopId: number,
-  input: UpsertPayrollEmployeeInput,
-  actor: PayrollActor,
-): Promise<string> {
-  const role = RoleSchema.parse(input.role);
-  const displayName = input.displayName.trim();
-  if (displayName.length === 0 || displayName.length > 200) {
-    throw new QboClientError("A display name (1–200 characters) is required.", { kind: "validation" });
-  }
-  if (
-    input.tekmetricEmployeeId !== null &&
-    (!Number.isInteger(input.tekmetricEmployeeId) || input.tekmetricEmployeeId <= 0)
-  ) {
-    throw new QboClientError("The Tekmetric employee id must be a positive integer.", { kind: "validation" });
-  }
-  if (Object.prototype.hasOwnProperty.call(input.payConfig, "rates_w2")) {
-    throw new QboClientError("rates_w2 is a per-run override — it cannot be saved on the employee.", {
-      kind: "validation",
-    });
-  }
-  parsePayConfig(familyForRole(role), input.payConfig);
-
-  const admin = createSupabaseAdminClient();
-  const { data, error } = await admin.rpc("qteklink_payroll_upsert_employee", {
-    p_shop_id: shopId,
-    p_employee_id: input.employeeId ?? null,
-    p_display_name: displayName,
-    p_role: role,
-    p_tekmetric_employee_id: input.tekmetricEmployeeId,
-    p_pay_config: input.payConfig,
-    p_archived: input.archived,
-    p_actor_user_id: actor.userId,
-    p_actor_label: actor.label,
-  });
-  if (error) throwRpc("qteklink_payroll_upsert_employee", error);
-  if (typeof data !== "string" || data.length === 0) {
-    throw new Error("qteklink_payroll_upsert_employee returned no employee id");
-  }
-  return data;
 }
 
 // ── Runs: list / detail / create / roster / patches ────────────────────────────
@@ -317,6 +249,7 @@ const manualIncentivePatchValue = z.number().int().min(0).max(5_000_000).nullabl
 /**
  * Patch one entry row (open runs only — the RPC enforces it). Whitelist + shapes are
  * validated here first so the user sees a clean message, then again in SQL.
+ * A pay_config patch ALSO writes through to the employee master (round-3 #26).
  */
 export async function updatePayrollEntry(
   shopId: number,
@@ -327,12 +260,20 @@ export async function updatePayrollEntry(
   const admin = createSupabaseAdminClient();
   const { data, error } = await admin
     .from("qteklink_payroll_run_employees")
-    .select("id, shop_id, role_snapshot")
+    .select("id, shop_id, employee_id, role_snapshot, pay_config")
     .eq("id", runEmployeeId)
     .eq("shop_id", shopId)
     .limit(1);
   if (error) throw new Error(`payroll DAL: entry fetch failed: ${error.message}`);
-  const row = (data ?? [])[0] as { id: string; shop_id: number; role_snapshot: string } | undefined;
+  const row = (data ?? [])[0] as
+    | {
+        id: string;
+        shop_id: number;
+        employee_id: string;
+        role_snapshot: string;
+        pay_config: Record<string, unknown> | null;
+      }
+    | undefined;
   if (!row) throw new QboClientError("Payroll entry not found.", { kind: "not_found" });
 
   const keys = Object.keys(patch);
@@ -363,6 +304,39 @@ export async function updatePayrollEntry(
     p_actor_label: actor.label,
   });
   if (rpcErr) throwRpc("qteklink_payroll_update_entry", rpcErr);
+
+  // Round-3 decision #26: a run-level pay_config edit WRITES THROUGH to the employee
+  // master (only the keys the edit changed — diffed against the entry's previous
+  // pay_config) so future runs prefill the new values. Runs AFTER the entry RPC
+  // commits — on failure the entry edit itself already stands, so the error must say
+  // exactly that (retrying the same save re-applies both idempotently).
+  if ("pay_config" in jsonPatch) {
+    try {
+      await writeThroughEmployeePayConfig(
+        shopId,
+        row.employee_id,
+        RoleSchema.parse(row.role_snapshot),
+        jsonPatch.pay_config as Record<string, unknown>,
+        row.pay_config ?? {},
+        actor,
+      );
+    } catch (e) {
+      // Half-apply: the entry row COMMITTED; only the copy to the employee master
+      // failed. A bare rethrow would read as the whole edit failing — surface the
+      // ordering explicitly (and keep it fail-loud: captured to Sentry; business
+      // causes ride along, system internals never leak to the browser).
+      Sentry.captureException(e, {
+        tags: { surface: "qteklink-payroll", step: "pay_config_write_through" },
+        extra: { runEmployeeId, employeeId: row.employee_id },
+      });
+      const cause = e instanceof QboClientError ? ` (${e.message})` : "";
+      throw new QboClientError(
+        "The entry was saved, but copying the pay config to the employee record failed — " +
+          `re-save the same pay config to retry.${cause}`,
+        { kind: "validation", cause: e },
+      );
+    }
+  }
 }
 
 /** Patch the run itself — bonus_period only (the RPC derives + stores bonus_month). */

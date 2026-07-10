@@ -443,7 +443,8 @@ LANGUAGE plpgsql
 AS $$
 DECLARE
   c_allowed CONSTANT text[] := ARRAY['billed_hours_w1','billed_hours_w2','month_sales_cents',
-    'month_gp_with_fees_cents','month_gp_without_fees_cents','spiff_count','shop_hours'];
+    'month_gp_with_fees_cents','month_gp_without_fees_cents','spiff_count','shop_hours',
+    'sales_goal_cents','leave_rate_cents_per_hour'];
   v_key   text;
   v_inner text;
   v_entry jsonb;

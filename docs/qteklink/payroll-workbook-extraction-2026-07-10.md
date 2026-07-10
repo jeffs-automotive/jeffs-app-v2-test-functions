@@ -197,6 +197,32 @@ Common to all: OT paid at 1.5× hourly; PTO/Holiday/Bereavement/Training hours �
     - Spiff sanity (from fixtures): spiff $ = count × $5 exactly; SA tier3 payouts divide to each SA's
       personal tier pct exactly (Zane 3%, Wollman 2%, Denora 1.2%).
 
+### Round-3 decisions (Chris, 2026-07-10 late — SUPERSEDE #3 tier mechanics + Quirk-B interpretation)
+
+22. **SA tier semantics (corrected):** "sales goal" = LAST YEAR'S same-month sales (subtotal = sales −
+    tax). Tier 1 = did NOT beat last year AND GP-with-fees ≥ GP goal 1 (lowest %). Tier 2 = beat last
+    year AND GP-with-fees ≥ GP goal 1. Tier 3 = beat last year AND GP-with-fees ≥ GP goal 2 (highest %).
+    Payout % applies to GP-WITHOUT-fees. GP comparisons are ≥ (Chris's worked example: GPwith exactly
+    125,000 = goal 2 ⇒ tier 3; 123,000 × 1.2% = $1,476). "Beat" on sales stays strictly >.
+    NOTE: "subtotal / sales − tax" per Chris = the backtest-pinned Σ(totalSales − taxes − fees) —
+    Tekmetric's subtotal excludes fee lines; matched the workbook to ~$14/mo across 3 months.
+23. **Sales goal AUTO-PREFILLED** on bonus runs from Tekmetric = prior-year same-month subtotal (mirror
+    has data from 2023-11). Marie never types it. Overridable like other auto values.
+24. **Leave pay for billed-hours employees (technicians + foreman) — Quirk B was POLICY, not typos:**
+    PTO / Holiday / Bereavement are paid at the employee's AVERAGE HOURLY PAY; Training at the regular
+    hourly rate. George's average for this purpose EXCLUDES his monthly bonus.
+    Module definition (needs Chris's confirmation of the window): without-bonus average over the LAST 12
+    COMPLETED runs (Σ base+OT+billed+efficiency pay ÷ Σ clock hours); fallback when no history = the
+    current run's ex-bonus ex-leave rate; always displayed + overridable per entry. FORENSIC NOTE: the
+    hand-typed workbook rates match NO window computable from the sheets (e.g. Williams paid $45.87 vs
+    $48–62 across candidate windows) — presumed external payroll-system figure; flagged to Chris.
+25. **Average hourly pay metric: TWO variants** — with-bonus and without-bonus — for bonus-receiving
+    employees (SAs, office manager, foreman); everyone else shows N/A for the with-bonus column.
+26. **Run-level pay-config edits WRITE THROUGH to the employee record** (GP goals, hourly/billed/salary
+    rates, tier %s, etc.): change it on one payroll and every future payroll prefills the new value.
+    (Interim behavior until the future employee-pages with effective-dated changes.)
+27. Automate everything automatable — standing directive.
+
 ### Remaining open items
 
 - **Mirror ingest scheduling:** promote `sync-ros.mjs` logic to a recurring job (fold into qteklink

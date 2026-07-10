@@ -1,0 +1,277 @@
+/**
+ * Payroll DAL unit tests — the round-3 decision #26 WRITE-THROUGH: an
+ * updatePayrollEntry patch that carries pay_config ALSO merges the keys the edit
+ * CHANGED (diffed against the entry's previous pay_config; the run-scoped rates_w2
+ * never propagates) onto the employee master's CURRENT config via a SEPARATE
+ * qteklink_payroll_upsert_employee call, so both audit trails exist and master
+ * fields edited independently since the run was created are never reverted.
+ * A write-through failure surfaces as "entry saved, but the copy failed" — the
+ * committed entry edit is never misreported as failed.
+ * Mocks the Supabase admin client (settings.test.ts idiom); the heavy compute/ingest
+ * modules are mocked out — this file targets the RPC orchestration only.
+ */
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+const rpcMock = vi.fn();
+const fromMock = vi.fn();
+
+vi.mock("@/lib/supabase/admin", () => ({
+  createSupabaseAdminClient: () => ({ rpc: rpcMock, from: fromMock }),
+}));
+vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn(), captureMessage: vi.fn() }));
+vi.mock("@/lib/dal/notify", () => ({ sendQteklinkEmail: vi.fn() }));
+vi.mock("@/lib/payroll/mirror-ingest", () => ({ runMirrorIngest: vi.fn() }));
+vi.mock("@/lib/dal/payroll-compute", () => ({ buildOpenRunSnapshot: vi.fn(), computePayrollRun: vi.fn() }));
+vi.mock("@/lib/payroll/derive", () => ({ discoverNewCategories: vi.fn(), monthDateRange: vi.fn() }));
+
+import * as Sentry from "@sentry/nextjs";
+import { updatePayrollEntry } from "../payroll";
+
+const ACTOR = { userId: "00000000-0000-4000-8000-0000000000aa", label: "chris@jeffsautomotive.com" };
+const ENTRY_ID = "00000000-0000-4000-8000-00000000e001";
+const EMP_ID = "00000000-0000-4000-8000-00000000a001";
+
+function chain(result: { data: unknown; error: unknown }) {
+  const c: Record<string, unknown> = {};
+  for (const m of ["select", "eq", "in", "is", "order", "limit", "range"]) c[m] = vi.fn(() => c);
+  c.then = (onF: (v: unknown) => unknown) => Promise.resolve(result).then(onF);
+  return c;
+}
+
+const employeeRow = {
+  id: EMP_ID,
+  shop_id: 7476,
+  display_name: "Cantrell, Jeff",
+  role: "technician",
+  tekmetric_employee_id: 501,
+  tekmetric_id_type: "technician",
+  pay_config: {
+    config_version: 1,
+    pto_balance_hours: 0,
+    pto_accrual_hours_per_period: 0,
+    hourly_rate_cents: 2300,
+    billed_rate_cents: 1000,
+  },
+  archived_at: null,
+  created_at: "2026-07-10T00:00:00Z",
+  updated_at: "2026-07-10T00:00:00Z",
+};
+
+function routeTables(
+  over: {
+    role?: string;
+    role_snapshot?: string;
+    archived_at?: string | null;
+    /** The entry row's PREVIOUS pay_config (the diff baseline). Defaults to the run-creation clone. */
+    entryPayConfig?: Record<string, unknown>;
+    /** The employee master's CURRENT pay_config (the merge target). */
+    masterPayConfig?: Record<string, unknown>;
+    /** Simulate the employee fetch failing (a SYSTEM error inside the write-through). */
+    employeesError?: { message: string };
+  } = {},
+) {
+  fromMock.mockImplementation((table: string) => {
+    if (table === "qteklink_payroll_run_employees") {
+      return chain({
+        data: [
+          {
+            id: ENTRY_ID,
+            shop_id: 7476,
+            employee_id: EMP_ID,
+            role_snapshot: over.role_snapshot ?? "technician",
+            pay_config: over.entryPayConfig ?? employeeRow.pay_config,
+          },
+        ],
+        error: null,
+      });
+    }
+    if (table === "qteklink_payroll_employees") {
+      if (over.employeesError) return chain({ data: null, error: over.employeesError });
+      return chain({
+        data: [
+          {
+            ...employeeRow,
+            role: over.role ?? "technician",
+            archived_at: over.archived_at ?? null,
+            pay_config: over.masterPayConfig ?? employeeRow.pay_config,
+          },
+        ],
+        error: null,
+      });
+    }
+    throw new Error(`unexpected table ${table}`);
+  });
+}
+
+function routeRpc(overrides: Record<string, { data: unknown; error: unknown }> = {}) {
+  rpcMock.mockImplementation((fn: string) => {
+    if (fn in overrides) return Promise.resolve(overrides[fn]);
+    if (fn === "qteklink_payroll_upsert_employee") return Promise.resolve({ data: EMP_ID, error: null });
+    return Promise.resolve({ data: null, error: null });
+  });
+}
+
+/** A full run-level technician pay_config incl. the run-scoped rates_w2. */
+const runConfig = {
+  config_version: 1,
+  pto_balance_hours: 12,
+  pto_accrual_hours_per_period: 1.85,
+  hourly_rate_cents: 2500,
+  billed_rate_cents: 1100,
+  rates_w2: { hourly_rate_cents: 2600 },
+};
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  routeTables();
+  routeRpc();
+});
+
+describe("updatePayrollEntry pay_config write-through (round-3 #26)", () => {
+  it("mirrors the pay_config to the employee master WITHOUT rates_w2, via a separate upsert call", async () => {
+    await updatePayrollEntry(7476, ENTRY_ID, { pay_config: runConfig }, ACTOR);
+
+    expect(rpcMock).toHaveBeenCalledWith(
+      "qteklink_payroll_update_entry",
+      expect.objectContaining({ p_run_employee_id: ENTRY_ID, p_actor_label: ACTOR.label }),
+    );
+    expect(rpcMock).toHaveBeenCalledWith("qteklink_payroll_upsert_employee", {
+      p_shop_id: 7476,
+      p_employee_id: EMP_ID,
+      p_display_name: "Cantrell, Jeff",
+      p_role: "technician",
+      p_tekmetric_employee_id: 501,
+      p_pay_config: {
+        config_version: 1,
+        pto_balance_hours: 12,
+        pto_accrual_hours_per_period: 1.85,
+        hourly_rate_cents: 2500,
+        billed_rate_cents: 1100,
+        // NO rates_w2 — run-scoped only, never written through.
+      },
+      p_archived: false,
+      p_actor_user_id: ACTOR.userId,
+      p_actor_label: ACTOR.label,
+    });
+    // The entry patch itself still carries rates_w2 (mid-period change stays run-level).
+    const entryCall = rpcMock.mock.calls.find(([fn]) => fn === "qteklink_payroll_update_entry");
+    expect(entryCall?.[1]?.p_patch?.pay_config?.rates_w2).toEqual({ hourly_rate_cents: 2600 });
+  });
+
+  it("merges ONLY the keys the edit changed — a master field updated since the run was created survives", async () => {
+    // (a) run created: pay_config cloned at hourly 2300; (b) master hourly raised to
+    // 2800 via upsertPayrollEmployee; (c) the run entry is patched for an UNRELATED
+    // field (billed rate) from the run's stale clone. The stale hourly 2300 must NOT
+    // revert the master's 2800 (the lost-update scenario).
+    routeTables({ masterPayConfig: { ...employeeRow.pay_config, hourly_rate_cents: 2800 } });
+    await updatePayrollEntry(
+      7476,
+      ENTRY_ID,
+      { pay_config: { ...employeeRow.pay_config, billed_rate_cents: 1200 } },
+      ACTOR,
+    );
+    expect(rpcMock).toHaveBeenCalledWith(
+      "qteklink_payroll_upsert_employee",
+      expect.objectContaining({
+        p_pay_config: {
+          config_version: 1,
+          pto_balance_hours: 0,
+          pto_accrual_hours_per_period: 0,
+          hourly_rate_cents: 2800, // the independent master edit — NOT the run's stale 2300
+          billed_rate_cents: 1200, // the key this edit actually changed
+        },
+      }),
+    );
+  });
+
+  it("skips the master upsert entirely when only the run-scoped rates_w2 changed (no-op diff)", async () => {
+    await updatePayrollEntry(
+      7476,
+      ENTRY_ID,
+      { pay_config: { ...employeeRow.pay_config, rates_w2: { hourly_rate_cents: 2600 } } },
+      ACTOR,
+    );
+    expect(rpcMock).toHaveBeenCalledWith("qteklink_payroll_update_entry", expect.anything());
+    expect(rpcMock).not.toHaveBeenCalledWith("qteklink_payroll_upsert_employee", expect.anything());
+  });
+
+  it("surfaces a write-through failure as 'entry saved, copy failed' with the business cause", async () => {
+    routeRpc({
+      qteklink_payroll_upsert_employee: {
+        data: null,
+        error: { code: "P0001", message: "pay_config invalid for role" },
+      },
+    });
+    await expect(updatePayrollEntry(7476, ENTRY_ID, { pay_config: runConfig }, ACTOR)).rejects.toMatchObject({
+      name: "QboClientError",
+      kind: "validation",
+      message: expect.stringMatching(
+        /entry was saved.*copying the pay config to the employee record failed.*re-save the same pay config to retry.*pay_config invalid for role/is,
+      ),
+    });
+    // Half-applies are always visible to Chris, not just the caller.
+    expect(vi.mocked(Sentry.captureException)).toHaveBeenCalled();
+  });
+
+  it("states the half-apply WITHOUT leaking internals when the write-through fails on a system error", async () => {
+    routeTables({ employeesError: { message: "boom-internal-table-detail" } });
+    const err = await updatePayrollEntry(7476, ENTRY_ID, { pay_config: runConfig }, ACTOR).then(
+      () => {
+        throw new Error("expected updatePayrollEntry to reject");
+      },
+      (e: unknown) => e as Error,
+    );
+    expect(err).toMatchObject({ name: "QboClientError", kind: "validation" });
+    expect(err.message).toMatch(/entry was saved.*re-save the same pay config to retry/is);
+    expect(err.message).not.toContain("boom-internal-table-detail");
+    expect(vi.mocked(Sentry.captureException)).toHaveBeenCalled();
+  });
+
+  it("preserves the master's archived flag (an archived employee stays archived)", async () => {
+    routeTables({ archived_at: "2026-07-01T00:00:00Z" });
+    await updatePayrollEntry(7476, ENTRY_ID, { pay_config: runConfig }, ACTOR);
+    expect(rpcMock).toHaveBeenCalledWith(
+      "qteklink_payroll_upsert_employee",
+      expect.objectContaining({ p_archived: true }),
+    );
+  });
+
+  it("writes through across a SAME-family role change (shop_support run → office_support master)", async () => {
+    routeTables({ role: "office_support", role_snapshot: "shop_support" });
+    const supportConfig = {
+      config_version: 1,
+      pto_balance_hours: 4,
+      pto_accrual_hours_per_period: 1,
+      hourly_rate_cents: 1700,
+    };
+    await updatePayrollEntry(7476, ENTRY_ID, { pay_config: supportConfig }, ACTOR);
+    expect(rpcMock).toHaveBeenCalledWith(
+      "qteklink_payroll_upsert_employee",
+      expect.objectContaining({ p_role: "office_support", p_pay_config: supportConfig }),
+    );
+  });
+
+  it("SKIPS the write-through (Sentry warning, no upsert) when the role FAMILY diverged", async () => {
+    routeTables({ role: "office_manager" }); // run row is technician-family
+    await updatePayrollEntry(7476, ENTRY_ID, { pay_config: runConfig }, ACTOR);
+    expect(rpcMock).not.toHaveBeenCalledWith("qteklink_payroll_upsert_employee", expect.anything());
+    expect(vi.mocked(Sentry.captureMessage)).toHaveBeenCalledWith(
+      expect.stringContaining("write-through skipped"),
+      expect.objectContaining({ level: "warning" }),
+    );
+  });
+
+  it("does NOT touch the employee master on a patch without pay_config", async () => {
+    await updatePayrollEntry(7476, ENTRY_ID, { clock_hours_w1: 41.5 }, ACTOR);
+    expect(rpcMock).toHaveBeenCalledWith("qteklink_payroll_update_entry", expect.anything());
+    expect(rpcMock).not.toHaveBeenCalledWith("qteklink_payroll_upsert_employee", expect.anything());
+  });
+
+  it("a failed entry update NEVER writes through (fail closed)", async () => {
+    routeRpc({ qteklink_payroll_update_entry: { data: null, error: { code: "P0001", message: "run is completed" } } });
+    await expect(updatePayrollEntry(7476, ENTRY_ID, { pay_config: runConfig }, ACTOR)).rejects.toThrow(
+      /run is completed/,
+    );
+    expect(rpcMock).not.toHaveBeenCalledWith("qteklink_payroll_upsert_employee", expect.anything());
+  });
+});

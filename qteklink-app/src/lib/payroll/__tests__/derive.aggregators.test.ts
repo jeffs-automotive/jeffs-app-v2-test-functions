@@ -15,9 +15,11 @@ import {
   aggregateFeesCents,
   aggregateAuthorizedPartsCostCents,
   aggregateAuthorizedPartsCostQtyWeightedCents,
+  aggregateMonthSubtotalCents,
   aggregateSpiffCountsByServiceWriter,
   newCategoryNames,
   monthDateRange,
+  priorYearMonth,
   roundCents,
   type MirrorJobRow,
   type MirrorLaborRow,
@@ -141,6 +143,32 @@ describe("aggregateFeesCents", () => {
       aggregateFeesCents([ro({ id: 1, fee_total_cents: 12_34 }), ro({ id: 2, fee_total_cents: null })]),
     ).toBe(12_34);
     expect(aggregateFeesCents([])).toBe(0);
+  });
+});
+
+describe("prior-year sales-goal derivation (round-3 #22/#23)", () => {
+  it("priorYearMonth shifts the month exactly one year back", () => {
+    expect(priorYearMonth("2026-06")).toBe("2025-06");
+    expect(priorYearMonth("2026-01")).toBe("2025-01");
+    expect(priorYearMonth("2026-12")).toBe("2025-12");
+  });
+
+  it("priorYearMonth rejects malformed input", () => {
+    expect(() => priorYearMonth("2026-13")).toThrow(/YYYY-MM/);
+    expect(() => priorYearMonth("2026-06-01")).toThrow(/YYYY-MM/);
+  });
+
+  it('subtotal = Σ(total_sales − taxes − fees) — Chris\'s "sales − tax" per the backtest pin', () => {
+    const rows = [
+      ro({ id: 1, total_sales_cents: 100_000, taxes_cents: 6_000, fee_total_cents: 1_500 }), // 92,500
+      ro({ id: 2, total_sales_cents: 50_000, taxes_cents: 3_000, fee_total_cents: 500 }), // 46,500
+      ro({ id: 3, total_sales_cents: null, taxes_cents: null, fee_total_cents: null }), // null-safe → 0
+    ];
+    expect(aggregateMonthSubtotalCents(rows)).toBe(139_000);
+  });
+
+  it("zero rows → 0 (callers key the no-data fallback on provenance roCount, not the value)", () => {
+    expect(aggregateMonthSubtotalCents([])).toBe(0);
   });
 });
 
