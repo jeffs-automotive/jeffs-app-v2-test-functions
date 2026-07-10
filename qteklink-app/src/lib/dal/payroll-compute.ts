@@ -237,8 +237,10 @@ export async function buildOpenRunSnapshot(shopId: number, run: RunDbRow): Promi
     ]);
     month = {
       month: monthKey,
-      // decision #3: sales are PRE-TAX → the minus-taxes candidate (backtest-verified).
-      salesCents: sales.value.totalSalesMinusTaxesCents,
+      // Backtest-pinned (2026-07-10, Apr/May/Jun vs the real workbooks): the sheets' "Month Sales"
+      // = Σ(totalSales − taxes − FEES) — fees are excluded from sales, not just taxes.
+      // Residuals $14–$51/month (fee-vs-sales bucket classification + post-entry RO edits).
+      salesCents: sales.value.totalSalesMinusTaxesCents - fees.value,
       feesCents: fees.value,
       partsCostCents: parts.value,
       shopHours: shopHrs.value,

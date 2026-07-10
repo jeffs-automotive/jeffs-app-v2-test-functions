@@ -450,9 +450,11 @@ if (args.mode === 'backfill') {
     if (!newest) { console.error('empty mirror — run --backfill first'); process.exit(2); }
     sinceDate = new Date(Date.parse(newest) - 24 * 3600 * 1000).toISOString().slice(0, 10);
   }
-  console.log(`incremental since ${sinceDate} (created + updated passes)`);
-  const a = await runPages({ start: sinceDate }, 0, Infinity, 'created-since');
-  const b = await runPages({ updatedDateStart: sinceDate }, 0, Infinity, 'updated-since');
+  // Tekmetric requires ZonedDateTime for date filters (bare YYYY-MM-DD rejected since ~2026-07-10).
+  const sinceZdt = sinceDate.includes('T') ? sinceDate : `${sinceDate}T00:00:00Z`;
+  console.log(`incremental since ${sinceZdt} (created + updated passes)`);
+  const a = await runPages({ start: sinceZdt }, 0, Infinity, 'created-since');
+  const b = await runPages({ updatedDateStart: sinceZdt }, 0, Infinity, 'updated-since');
   totals = { ros: a.ros + b.ros, jobs: a.jobs + b.jobs, concerns: a.concerns + b.concerns };
 }
 

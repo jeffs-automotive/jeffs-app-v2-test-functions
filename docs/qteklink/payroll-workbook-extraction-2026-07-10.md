@@ -177,6 +177,26 @@ Common to all: OT paid at 1.5× hourly; PTO/Holiday/Bereavement/Training hours �
     labor hours vs 1,269.6 hours on declined jobs — unfiltered billed hours would be >2× wrong.
     This closes the round-2 fee-reconciliation mystery (the 241 mismatches were declined-job fees).
 
+21. **BACKTEST RESULTS (2026-07-10 — the phase-3 accuracy gate, run against the freshly-synced mirror):**
+    - **Billed hours: EXACT.** 6-14→6-27 period, per-week per-technician labor-line rollup (authorized
+      filter, posted-date bucketing) matches the workbook to the hundredth for all 6 techs paid on billed
+      hours (Cantrell/Clark/Fuhrer/Trilli/Vasiliou/Williams — Δ 0.00 every week). Snyder (+15.07h) and
+      Stoneback (+43.62h) show 0 in the workbook but real Tekmetric hours — they're not paid on billed
+      hours (Stoneback = Shop Support per Chris; Snyder same treatment), not an attribution error.
+    - **Month sales definition PINNED:** workbook "Month Sales" = Σ(totalSales − taxes − FEES) over ROs
+      posted in month. Residuals: Jun $13.86, Apr $50.36, May $445.70 (May consistent with post-entry RO
+      edits; mirror now more accurate than the hand-transcribed snapshot).
+    - **Fees:** wb implied fees (GPwith−GPwithout) vs Σ feeTotal: Jun Δ$13.86, May Δ$40.21, Apr Δ$51.31 —
+      same bucket-shift items as the sales residual (a few fee items counted as sales in the EOD report).
+    - **GP semantics pinned from data:** GPwith = (sales excl. fees) − parts − laborPay;
+      GPwithout = GPwith − fees. Implied June labor pay $50,764.76 vs fixture-computed tech+foreman+support
+      ≈ $49,657 (crude proration; 6-28 week-2 not yet entered) — closes within 2.2%.
+    - **Vendor drift caught + fixed:** Tekmetric now REQUIRES ZonedDateTime (2026-07-01T00:00:00Z) on
+      start/updatedDateStart/postedDateStart|End — bare YYYY-MM-DD rejected (worked 7/3, broken by 7/10).
+      Fixed in sync-ros.mjs + mirror-ingest.ts (+ tests). Live-probed all three params.
+    - Spiff sanity (from fixtures): spiff $ = count × $5 exactly; SA tier3 payouts divide to each SA's
+      personal tier pct exactly (Zane 3%, Wollman 2%, Denora 1.2%).
+
 ### Remaining open items
 
 - **Mirror ingest scheduling:** promote `sync-ros.mjs` logic to a recurring job (fold into qteklink

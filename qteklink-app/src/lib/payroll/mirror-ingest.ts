@@ -502,13 +502,17 @@ export async function runMirrorIngest(deps: MirrorIngestDeps, opts: MirrorIngest
     // 24h lookback below the newest mirror date, exactly like the script.
     const sinceDate = new Date(Date.parse(newest) - 24 * 3600 * 1000).toISOString().slice(0, 10);
     result.watermark = sinceDate;
+    // Tekmetric requires ZonedDateTime for date filters (bare YYYY-MM-DD rejected since ~2026-07-10).
+    const sinceZdt = `${sinceDate}T00:00:00Z`;
     // Two passes, same as the script: ROs CREATED since + ROs UPDATED since.
-    await runPasses([{ start: sinceDate }, { updatedDateStart: sinceDate }]);
+    await runPasses([{ start: sinceZdt }, { updatedDateStart: sinceZdt }]);
   } else {
     if (!isIsoDate(opts.postedDateStart) || !isIsoDate(opts.postedDateEnd)) {
       throw new Error("mirror-ingest: range mode requires ISO YYYY-MM-DD postedDateStart/postedDateEnd");
     }
-    await runPasses([{ postedDateStart: opts.postedDateStart, postedDateEnd: opts.postedDateEnd }]);
+    await runPasses([
+      { postedDateStart: `${opts.postedDateStart}T00:00:00Z`, postedDateEnd: `${opts.postedDateEnd}T23:59:59Z` },
+    ]);
   }
 
   await flushAlerts(db, deps.shopId, alerts);

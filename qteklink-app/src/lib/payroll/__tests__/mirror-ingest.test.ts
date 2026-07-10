@@ -302,7 +302,11 @@ describe("runMirrorIngest (incremental)", () => {
     // watermark: newest of created/updated (2026-07-09) minus 24h → 2026-07-08
     expect(r.watermark).toBe("2026-07-08");
     // two passes with the script's exact query params
-    expect(queries).toEqual([{ start: "2026-07-08" }, { updatedDateStart: "2026-07-08" }]);
+    // (Tekmetric requires ZonedDateTime for date filters — live-verified 2026-07-10)
+    expect(queries).toEqual([
+      { start: "2026-07-08T00:00:00Z" },
+      { updatedDateStart: "2026-07-08T00:00:00Z" },
+    ]);
     expect(r).toMatchObject({ rosUpserted: 1, pagesFetched: 1, alerts: [] });
     expect(rpcCalls).toEqual([]); // clean run → nothing to persist
 
@@ -388,7 +392,9 @@ describe("runMirrorIngest (range — the per-run refresh action)", () => {
       { mode: "range", postedDateStart: "2026-06-28", postedDateEnd: "2026-07-11" },
     );
 
-    expect(queries).toEqual([{ postedDateStart: "2026-06-28", postedDateEnd: "2026-07-11" }]);
+    expect(queries).toEqual([
+      { postedDateStart: "2026-06-28T00:00:00Z", postedDateEnd: "2026-07-11T23:59:59Z" },
+    ]);
     expect(r.watermark).toBeNull(); // range mode never touches the incremental watermark
     expect(calls.filter((c) => c.op === "select")).toEqual([]); // no watermark query at all
     expect(r).toMatchObject({ rosUpserted: 1, pagesFetched: 1 });

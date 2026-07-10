@@ -202,7 +202,12 @@ async function monthAggregates(month) {
 // ── main ──────────────────────────────────────────────────────────────────────
 const main = async () => {
   const fixture = JSON.parse(readFileSync(FIXTURE_PATH, "utf8"));
-  const label = fixture.period_label ?? fixture.source_workbook?.replace(/\.xlsx$/i, "");
+  // Some workbooks hold a datetime (not the "M-D-YY - M-D-YY" text) in the label cell —
+  // fall back to the workbook filename, which is the canonical period naming.
+  const labelish = fixture.period_label && /\d{1,2}-\d{1,2}-\d{2}\s*-\s*\d{1,2}-\d{1,2}-\d{2}/.test(fixture.period_label)
+    ? fixture.period_label
+    : fixture.source_workbook?.replace(/\.xlsx$/i, "").replace(/\s*new\s*$/i, "").trim();
+  const label = labelish;
   if (!label) throw new Error("fixture has no period_label / source_workbook to derive the period from");
   const [rawStart, rawEnd] = label.split(" - ").map((s) => s.trim());
   const periodStart = fixture.period_start ?? usShortToIso(rawStart);
@@ -230,7 +235,9 @@ const main = async () => {
   const techSheets = sheets.filter((s) => (s.family === "technician" || s.family === "shop_foreman") && s.inputs);
   const map = new Map(); // fixture sheet name → tekmetric technician_id
   if (MAP_ARG) {
-    for (const pair of MAP_ARG.split(",")) {
+    // Entries end in the numeric tech id; sheet names themselves contain commas
+    // ("Cantrell, Jeff=101727,Clark, Matt=102495" → split on a comma only when it follows the id).
+    for (const pair of MAP_ARG.split(/(?<=\d)\s*,\s*(?=[^,=]+(?:,[^,=]+)?=)/)) {
       const eq = pair.lastIndexOf("=");
       if (eq < 1) { console.error(`bad --map entry "${pair}" (want Name=techId)`); process.exit(1); }
       map.set(pair.slice(0, eq).trim(), Number(pair.slice(eq + 1).trim()));
