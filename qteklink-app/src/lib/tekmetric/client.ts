@@ -155,6 +155,126 @@ export async function getRepairOrderNumberById(
   return s || null;
 }
 
+export interface TekmetricEmployee {
+  id: number;
+  email: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  canPerformWork: boolean | null;
+  /** Tekmetric role object — distinguishes technicians from service writers/advisors. */
+  employeeRole: { id: number | null; code: string | null; name: string | null } | null;
+}
+
+interface RawEmployeeRow {
+  id: number;
+  email?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  canPerformWork?: boolean | null;
+  employeeRole?: { id?: number | null; code?: string | null; name?: string | null } | null;
+}
+
+/**
+ * List ALL of a shop's employees (`GET /employees?shop=`) — the payroll Tekmetric-ID picker
+ * (`employeeRole` tells technician vs service writer). Paginates the Spring page envelope
+ * (`content`/`totalPages`/`last`, or a bare array). Throws on any HTTP/auth error.
+ */
+export async function listEmployees(shopId: number, deps: TekmetricDeps = {}): Promise<TekmetricEmployee[]> {
+  const fetchImpl = deps.fetchImpl ?? fetch;
+  const token = deps.token ?? (await getAccessToken(fetchImpl));
+  const out: TekmetricEmployee[] = [];
+
+  const MAX_PAGES = 20; // safety cap (2,000 employees is never real for one shop)
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const url = `${TEKMETRIC_API_BASE}/employees?shop=${shopId}&size=100&page=${page}`;
+    const res = await fetchImpl(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) throw new Error(`tekmetric listEmployees failed: HTTP ${res.status}`);
+    const json = (await res.json()) as
+      | RawEmployeeRow[]
+      | { content?: RawEmployeeRow[]; totalPages?: number; last?: boolean };
+    const content = Array.isArray(json) ? json : (json.content ?? []);
+    for (const e of content) {
+      out.push({
+        id: Number(e.id),
+        email: e.email ?? null,
+        firstName: e.firstName ?? null,
+        lastName: e.lastName ?? null,
+        canPerformWork: e.canPerformWork ?? null,
+        employeeRole: e.employeeRole
+          ? { id: e.employeeRole.id ?? null, code: e.employeeRole.code ?? null, name: e.employeeRole.name ?? null }
+          : null,
+      });
+    }
+    const totalPages = Array.isArray(json) ? undefined : json.totalPages;
+    const last = Array.isArray(json)
+      ? content.length < 100
+      : json.last === true || (totalPages != null && page + 1 >= totalPages);
+    if (content.length === 0 || last) break;
+  }
+  return out;
+}
+
+/** One raw page of `/repair-orders` — full untouched RO payloads, for the mirror ingest. */
+export interface TekmetricRoPage {
+  page: number;
+  /** Raw repair-order payload objects, untouched (the ingest whitelists + maps them). */
+  content: Record<string, unknown>[];
+  totalPages: number | null;
+  last: boolean;
+}
+
+/** Fetch one JSON page with the sync-ros.mjs retry policy: 4 attempts, linear backoff. */
+async function fetchJsonWithRetry(fetchImpl: typeof fetch, token: string, url: string, label: string): Promise<unknown> {
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    try {
+      const res = await fetchImpl(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) throw new Error(`tekmetric ${label} failed: HTTP ${res.status}`);
+      return await res.json();
+    } catch (e) {
+      if (attempt === 4) throw e;
+      await new Promise((r) => setTimeout(r, attempt * 2000));
+    }
+  }
+  throw new Error(`tekmetric ${label}: unreachable retry exit`); // for the type-checker
+}
+
+/**
+ * Page `/repair-orders?shop=` with arbitrary window params (`start` = createdDateStart,
+ * `updatedDateStart`, `postedDateStart`/`postedDateEnd`, …) yielding RAW pages for the
+ * payroll RO-mirror ingest (`src/lib/payroll/mirror-ingest.ts`). Ports the paging + retry
+ * of `scheduler-app/scripts/tekmetric/sync-ros.mjs` (page size 100 from page 0; stop on an
+ * empty page or the envelope's `last`), but calls Tekmetric DIRECTLY via this client's
+ * OAuth (no edge-fn hop). Throws on a page that still fails after retries, and on the
+ * safety cap (silent truncation would quietly starve payroll of ROs).
+ */
+export async function* pageRepairOrders(
+  shopId: number,
+  query: Record<string, string | number>,
+  deps: TekmetricDeps = {},
+): AsyncGenerator<TekmetricRoPage> {
+  const fetchImpl = deps.fetchImpl ?? fetch;
+  const token = deps.token ?? (await getAccessToken(fetchImpl));
+
+  const MAX_PAGES = 500; // 50,000 ROs — beyond any real backfill; guards a runaway paging bug
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const params = new URLSearchParams({ shop: String(shopId), size: "100", page: String(page) });
+    for (const [k, v] of Object.entries(query)) params.set(k, String(v));
+    const url = `${TEKMETRIC_API_BASE}/repair-orders?${params.toString()}`;
+    const json = (await fetchJsonWithRetry(fetchImpl, token, url, "pageRepairOrders")) as
+      | Record<string, unknown>[]
+      | { content?: Record<string, unknown>[]; totalPages?: number; last?: boolean };
+    const content = Array.isArray(json) ? json : (json.content ?? []);
+    if (content.length === 0) return;
+    const totalPages = Array.isArray(json) ? null : (json.totalPages ?? null);
+    const last = Array.isArray(json)
+      ? content.length < 100
+      : json.last === true || (totalPages != null && page + 1 >= totalPages);
+    yield { page, content, totalPages, last };
+    if (last) return;
+  }
+  throw new Error(`tekmetric pageRepairOrders: exceeded ${MAX_PAGES} pages — aborting instead of truncating silently`);
+}
+
 /**
  * Build a display name from a Tekmetric customer. People store first+last; COMMERCIAL
  * customers store the company in `firstName` (lastName blank). Both blank → `Customer #<id>`

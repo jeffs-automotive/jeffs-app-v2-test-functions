@@ -16,6 +16,7 @@ const sweepMock = vi.fn();
 const reduceMock = vi.fn();
 const warmMock = vi.fn();
 const warmRoMock = vi.fn();
+const ingestMock = vi.fn();
 
 vi.mock("@/lib/dal/daily-reconcile", () => ({ runDailyReconciliation: (...a: unknown[]) => reconMock(...a) }));
 vi.mock("@/lib/dal/settings", () => ({ getShopSettings: (...a: unknown[]) => settingsMock(...a) }));
@@ -28,6 +29,7 @@ vi.mock("@/lib/dal/approve-post-day", () => ({
 }));
 vi.mock("@/lib/dal/safety-net", () => ({ runSafetyNet: (...a: unknown[]) => safetyNetMock(...a) }));
 vi.mock("@/lib/dal/posted-day-sweep", () => ({ sweepPostedDays: (...a: unknown[]) => sweepMock(...a) }));
+vi.mock("@/lib/payroll/mirror-ingest", () => ({ runMirrorIngest: (...a: unknown[]) => ingestMock(...a) }));
 vi.mock("@/lib/supabase/admin", () => ({ createSupabaseAdminClient: () => ({ from: fromMock }) }));
 
 import { runNightlySync, listConnectedShops } from "../nightly-sync";
@@ -42,6 +44,7 @@ beforeEach(() => {
   reduceMock.mockResolvedValue({ realmId: REALM, events: 10, payments: 8 });
   warmMock.mockResolvedValue({ customers: 4 });
   warmRoMock.mockResolvedValue({ ros: 3 });
+  ingestMock.mockResolvedValue({ rosUpserted: 12, pagesFetched: 1, alerts: [], watermark: "2026-06-05" });
 });
 
 describe("runNightlySync", () => {
@@ -122,6 +125,25 @@ describe("runNightlySync", () => {
     const r2 = await runNightlySync(7476, { businessDate: "2026-06-06" });
     expect(r2.customersWarmed).toBeNull(); // captured to Sentry, not thrown
     expect(r2.enqueued).toBe(5); // reconcile/sweep result preserved
+  });
+
+  it("runs the payroll RO-mirror incremental ingest; an ingest error is NON-FATAL", async () => {
+    const r = await runNightlySync(7476, { businessDate: "2026-06-06" });
+    expect(ingestMock).toHaveBeenCalledWith({ shopId: 7476 }, { mode: "incremental" });
+    expect(r.mirrorIngest).toEqual({ rosUpserted: 12, pagesFetched: 1, alerts: 0, watermark: "2026-06-05" });
+
+    ingestMock.mockRejectedValueOnce(new Error("tekmetric down"));
+    const r2 = await runNightlySync(7476, { businessDate: "2026-06-06" });
+    expect(r2.mirrorIngest).toBeNull(); // captured to Sentry, not thrown
+    expect(r2.enqueued).toBe(5); // reconcile result preserved — money path never blocked
+  });
+
+  it("runs the mirror ingest even WITHOUT a QBO connection (payroll is Tekmetric-side)", async () => {
+    reconMock.mockResolvedValue({ realmId: null, enqueuedPostings: 0, reviewCount: 0 });
+    const r = await runNightlySync(7476, { businessDate: "2026-06-06" });
+    expect(r.connected).toBe(false);
+    expect(ingestMock).toHaveBeenCalledWith({ shopId: 7476 }, { mode: "incremental" });
+    expect(r.mirrorIngest).toEqual({ rosUpserted: 12, pagesFetched: 1, alerts: 0, watermark: "2026-06-05" });
   });
 
   it("warms the RO-number cache (nightly) so fleet/A-R check payments resolve their RO#; an error is NON-FATAL", async () => {

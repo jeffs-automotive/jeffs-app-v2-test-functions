@@ -5,6 +5,9 @@
  *      the day's payment + CC-fee drafts see the latest state. ISOLATED (own try/catch): a
  *      corrupt payment event degrades the payment side only, never blocks the SALE reconcile.
  *   2. runDailyReconciliation → enqueue postable drafts (pending) + persist review items.
+ *   2b. runMirrorIngest (incremental) → keep the payroll tekmetric_ros* mirror fresh.
+ *      Tekmetric-side only (runs even without a QBO connection). ISOLATED (own try/catch):
+ *      a Tekmetric/mirror problem leaves payroll data one night stale, never blocks posting.
  *   3. AUTO-POST (only when the shop's `auto_post` setting is ON — default off): reuse the
  *      dashboard's planApproveDay → executeApproveDay to approve + LIVE-post the day's clean
  *      drafts. Default-off means nothing posts to QBO unattended unless the shop opts in.
@@ -25,6 +28,7 @@ import { planApproveDay, executeApproveDay } from "@/lib/dal/approve-post-day";
 import { runSafetyNet, type SafetyNetResult } from "@/lib/dal/safety-net";
 import { sweepPostedDays, type SweepResult } from "@/lib/dal/posted-day-sweep";
 import { warmCustomerNamesForRecentDays } from "@/lib/dal/customers";
+import { runMirrorIngest } from "@/lib/payroll/mirror-ingest";
 import { warmRoNumbers } from "@/lib/dal/ro-numbers";
 import type { QboDailyWriteClient } from "@/lib/dal/daily-poster";
 import { toShopLocalDate } from "@/lib/sales/sale-builder";
@@ -42,6 +46,10 @@ export interface NightlyShopResult {
   /** The C4 payment-state projection refresh (events read / payments upserted), or null if it
    *  errored — isolated so a corrupt payment event can't block the SALE reconcile. */
   paymentStateReduced: { events: number; payments: number } | null;
+  /** The payroll Tekmetric RO-mirror incremental ingest (alerts = count; full alert rows are
+   *  persisted to tekmetric_ro_ingest_alerts), or null when it errored — isolated (payroll
+   *  data goes one night stale; the QBO money path is never blocked). */
+  mirrorIngest: { rosUpserted: number; pagesFetched: number; alerts: number; watermark: string | null } | null;
   /** Tekmetric customer names resolved into the cache for the JE-line descriptions (recent
    *  window), or null if it errored — isolated (a name lookup never blocks posting). */
   customersWarmed: number | null;
@@ -109,14 +117,33 @@ export async function runNightlySync(
     autoPosted: 0,
     autoPostFailed: 0,
     paymentStateReduced,
+    mirrorIngest: null,
     customersWarmed: null,
     roNumbersWarmed: null,
     sweep: null,
     safetyNet: null,
   };
+
+  // 2b. Payroll Tekmetric RO-mirror ingest (incremental, watermark-derived — the port of
+  // scheduler-app/scripts/tekmetric/sync-ros.mjs) keeps tekmetric_ros* fresh for the payroll
+  // derivations. Tekmetric-side only (no QBO), so it runs BEFORE the no-connection early
+  // return. NON-FATAL: a Tekmetric/API/mirror problem must never block the reconcile /
+  // auto-post money path — capture + continue (the payroll run UI shows mirror freshness).
+  try {
+    const ingest = await runMirrorIngest({ shopId }, { mode: "incremental" });
+    result.mirrorIngest = {
+      rosUpserted: ingest.rosUpserted,
+      pagesFetched: ingest.pagesFetched,
+      alerts: ingest.alerts.length,
+      watermark: ingest.watermark,
+    };
+  } catch (e) {
+    Sentry.captureException(e, { tags: { qteklink_cron: "payroll-mirror-ingest", shop_id: String(shopId) } });
+  }
+
   if (!recon.realmId) return result; // no connection → reconcile is a no-op; nothing to post
 
-  // 2b. Warm the Tekmetric customer-name cache for a recent window so the JE-line build
+  // 2c. Warm the Tekmetric customer-name cache for a recent window so the JE-line build
   // (getCachedCustomerNames) reads names from the cache — the view/post path NEVER calls
   // Tekmetric (posting is always >= 1 day out, so the nightly cron warms first). Runs BEFORE
   // the auto-post + sweep so those see the names. ISOLATED: a name-fetch problem must not
@@ -128,7 +155,7 @@ export async function runNightlySync(
     Sentry.captureException(e, { tags: { qteklink_cron: "warm-customer-names", shop_id: String(shopId) } });
   }
 
-  // 2c. Warm the Tekmetric RO-number cache (qteklink_ros) so fleet/A-R check payments — whose
+  // 2d. Warm the Tekmetric RO-number cache (qteklink_ros) so fleet/A-R check payments — whose
   // "Payment made by X" webhook carries no RO object and whose sale predates our event capture —
   // resolve their RO# on the Payments tab instead of showing "—". CACHE-ONLY on the view/post
   // path; this nightly fetch is the ONLY Tekmetric call. ISOLATED: a fetch problem never blocks

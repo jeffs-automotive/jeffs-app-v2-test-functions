@@ -1,0 +1,466 @@
+/**
+ * Payroll calc engine — PURE functions, no I/O (contract:
+ * docs/qteklink/payroll-contract.md §calc.ts). Formula source of truth:
+ * docs/qteklink/payroll-workbook-extraction-2026-07-10.md §Pay math
+ * (+ DECISIONS #2/#3/#5/#6/#16/#17), replicated formula-for-formula and locked by
+ * the golden workbook fixtures in __tests__/calc.golden.test.ts.
+ *
+ * Clock-hours semantics (decision #6 — Chris's deliberate change from the workbook's
+ * separate manual-OT entry): the office manager enters TOTAL worked clock hours per
+ * week; `splitClock` derives reg = min(40, total), OT = max(0, total − 40) at 1.5×.
+ * A consequence: OT cannot be granted on a <40-hour week. PTO/Holiday/Bereavement/
+ * Training hours NEVER trigger OT (decision #16) — only worked clock feeds the split.
+ *
+ * Money: integer cents. Each OUTPUT component is rounded half-away-from-zero to cents
+ * from EXACT float math (matching Excel, which sums unrounded floats) — components are
+ * never summed post-rounding. Hours: 2dp. Ratio metrics return null (never Infinity/
+ * NaN) on zero denominators.
+ *
+ * PTO/Hol/Ber/Trn are PAID at the hourly rate (per week, at that week's rate) for the
+ * hourly families (technician, shop_foreman, office_manager, support) and tracked as
+ * HOURS ONLY for the salaried family (service_advisor) — leave-pay fields are null there.
+ *
+ * `rates_w2` (run-level pay_config) applies a mid-period rate change: week 1 always
+ * uses the base fields, week 2 uses the override when present.
+ */
+import type {
+  DerivedInputs,
+  Family,
+  OfficeManagerPayConfig,
+  PayConfigFor,
+  ServiceAdvisorPayConfig,
+  SheetComputation,
+  SheetEntries,
+  ShopForemanPayConfig,
+  SupportPayConfig,
+  TechnicianPayConfig,
+  WeekComputation,
+  WeekSplit,
+} from "./types";
+
+/** Bumped whenever a formula changes; pinned into every run snapshot. */
+export const CALC_VERSION = 1;
+
+// ── Rounding (same semantics as derive.ts's roundCents — kept local so calc.ts
+//    stays free of the fetcher module's import graph) ──────────────────────────
+
+/** Round half AWAY FROM ZERO to an integer (cents). */
+export function roundCents(x: number): number {
+  return Math.sign(x) * Math.round(Math.abs(x));
+}
+
+/** Hours → 2dp (half away from zero; also absorbs float noise like 12.530000000001). */
+export function round2(x: number): number {
+  return roundCents(x * 100) / 100;
+}
+
+function round4(x: number): number {
+  return roundCents(x * 10_000) / 10_000;
+}
+
+const num = (x: number | null | undefined): number => x ?? 0;
+
+// ── The splitter (decision #6) ─────────────────────────────────────────────────
+
+/**
+ * Split one week's TOTAL worked clock hours into regular + overtime:
+ * reg = min(40, total), ot = max(0, total − 40). Pure per-week math — PTO/Holiday/
+ * etc. never enter (decision #16). Both parts are 2dp-rounded so float noise at the
+ * 40-hour boundary can't fabricate phantom OT.
+ */
+export function splitClock(totalClockHours: number): WeekSplit {
+  return {
+    reg: round2(Math.min(40, totalClockHours)),
+    ot: round2(Math.max(0, totalClockHours - 40)),
+  };
+}
+
+export interface ComputeSheetOptions {
+  /**
+   * Explicit per-week reg/OT split, bypassing `splitClock`. This is the seam the
+   * golden tests use: the workbook fixtures carry the OLD manual-OT model (clock =
+   * reg-only + a separate OT entry), so they feed the recorded (clock, ot) pair
+   * straight into the pay formulas. Production callers omit it.
+   */
+  presplit?: { w1: WeekSplit; w2: WeekSplit };
+}
+
+// ── Internal helpers ───────────────────────────────────────────────────────────
+
+interface LeaveHours {
+  pto: number;
+  holiday: number;
+  bereavement: number;
+  training: number;
+}
+
+const LEAVE_KEYS = ["pto", "holiday", "bereavement", "training"] as const;
+
+function leaveHoursForWeek(entries: SheetEntries, week: 1 | 2): LeaveHours {
+  return week === 1
+    ? {
+        pto: num(entries.pto_w1),
+        holiday: num(entries.holiday_w1),
+        bereavement: num(entries.bereavement_w1),
+        training: num(entries.training_w1),
+      }
+    : {
+        pto: num(entries.pto_w2),
+        holiday: num(entries.holiday_w2),
+        bereavement: num(entries.bereavement_w2),
+        training: num(entries.training_w2),
+      };
+}
+
+function resolveSplits(entries: SheetEntries, options?: ComputeSheetOptions): [WeekSplit, WeekSplit] {
+  if (options?.presplit) return [options.presplit.w1, options.presplit.w2];
+  return [splitClock(num(entries.clock_hours_w1)), splitClock(num(entries.clock_hours_w2))];
+}
+
+/** Everything computed for one week of an HOURLY-family sheet, in EXACT (unrounded) cents. */
+interface HourlyWeekExact {
+  reg: number;
+  ot: number;
+  basePay: number;
+  otPay: number;
+  billedHours: number | null;
+  effHours: number | null;
+  billedPay: number | null;
+  effPay: number | null;
+  leavePay: LeaveHours; // pay per category, exact cents
+}
+
+function hourlyWeekExact(
+  hourlyRateCents: number,
+  split: WeekSplit,
+  leave: LeaveHours,
+  billed: { billedRateCents: number; billedHours: number } | null,
+): HourlyWeekExact {
+  const basePay = hourlyRateCents * split.reg;
+  const otPay = hourlyRateCents * 1.5 * split.ot;
+  let billedHours: number | null = null;
+  let effHours: number | null = null;
+  let billedPay: number | null = null;
+  let effPay: number | null = null;
+  if (billed) {
+    billedHours = billed.billedHours;
+    // Workbook: Efficiency = max(0, billed − (clock + OT)) — reg+ot IS total worked clock.
+    effHours = Math.max(0, billed.billedHours - (split.reg + split.ot));
+    billedPay = billed.billedRateCents * billed.billedHours;
+    effPay = hourlyRateCents * effHours;
+  }
+  return {
+    reg: split.reg,
+    ot: split.ot,
+    basePay,
+    otPay,
+    billedHours,
+    effHours,
+    billedPay,
+    effPay,
+    leavePay: {
+      pto: leave.pto * hourlyRateCents,
+      holiday: leave.holiday * hourlyRateCents,
+      bereavement: leave.bereavement * hourlyRateCents,
+      training: leave.training * hourlyRateCents,
+    },
+  };
+}
+
+function weekComputation(w: HourlyWeekExact): WeekComputation {
+  const leave = w.leavePay.pto + w.leavePay.holiday + w.leavePay.bereavement + w.leavePay.training;
+  return {
+    reg_hours: round2(w.reg),
+    ot_hours: round2(w.ot),
+    base_pay_cents: roundCents(w.basePay),
+    ot_pay_cents: roundCents(w.otPay),
+    billed_hours: w.billedHours === null ? null : round2(w.billedHours),
+    efficiency_hours: w.effHours === null ? null : round2(w.effHours),
+    billed_pay_cents: w.billedPay === null ? null : roundCents(w.billedPay),
+    efficiency_pay_cents: w.effPay === null ? null : roundCents(w.effPay),
+    leave_pay_cents: roundCents(leave),
+    total_pay_cents: roundCents(w.basePay + w.otPay + (w.billedPay ?? 0) + (w.effPay ?? 0) + leave),
+  };
+}
+
+/** Shared skeleton for the four hourly families (all but service_advisor). */
+function hourlySheet(
+  family: Family,
+  weeks: [HourlyWeekExact, HourlyWeekExact],
+  extra: {
+    bonusCents: number | null; // exact (unrounded); shop_foreman / office_manager
+    spiffCents: number | null;
+    manualIncentiveCents: number | null; // support echo (null = none entered)
+    incentiveExact: number; // family rollup, exact cents
+    withMetrics: boolean; // technician-family layouts show metrics
+  },
+  leaveHoursTotals: LeaveHours,
+): SheetComputation {
+  const [w1, w2] = weeks;
+  const regHours = w1.reg + w2.reg;
+  const otHours = w1.ot + w2.ot;
+  const totalHours = regHours + otHours;
+  const regTotal = w1.basePay + w1.otPay + w2.basePay + w2.otPay;
+  const leaveTotals = {
+    pto: w1.leavePay.pto + w2.leavePay.pto,
+    holiday: w1.leavePay.holiday + w2.leavePay.holiday,
+    bereavement: w1.leavePay.bereavement + w2.leavePay.bereavement,
+    training: w1.leavePay.training + w2.leavePay.training,
+  };
+  const leaveTotal = LEAVE_KEYS.reduce((s, k) => s + leaveTotals[k], 0);
+  const totalPay = regTotal + extra.incentiveExact + leaveTotal;
+  const billedTotal = w1.billedHours === null && w2.billedHours === null ? null : num(w1.billedHours) + num(w2.billedHours);
+  return {
+    family,
+    week1: weekComputation(w1),
+    week2: weekComputation(w2),
+    reg_hours: round2(regHours),
+    ot_hours: round2(otHours),
+    total_hours: round2(totalHours),
+    pto_hours: round2(leaveHoursTotals.pto),
+    holiday_hours: round2(leaveHoursTotals.holiday),
+    bereavement_hours: round2(leaveHoursTotals.bereavement),
+    training_hours: round2(leaveHoursTotals.training),
+    reg_total_cents: roundCents(regTotal),
+    billed_hours_total: billedTotal === null ? null : round2(billedTotal),
+    bonus_cents: extra.bonusCents === null ? null : roundCents(extra.bonusCents),
+    spiff_cents: extra.spiffCents === null ? null : roundCents(extra.spiffCents),
+    manual_incentive_cents: extra.manualIncentiveCents,
+    incentive_cents: roundCents(extra.incentiveExact),
+    pto_pay_cents: roundCents(leaveTotals.pto),
+    training_pay_cents: roundCents(leaveTotals.training),
+    holiday_pay_cents: roundCents(leaveTotals.holiday),
+    bereavement_pay_cents: roundCents(leaveTotals.bereavement),
+    total_pay_cents: roundCents(totalPay),
+    metrics: extra.withMetrics
+      ? {
+          pay_per_clock_hour_cents: totalHours > 0 ? roundCents(totalPay / totalHours) : null,
+          cost_per_billed_hour_cents:
+            billedTotal !== null && billedTotal > 0 ? roundCents(totalPay / billedTotal) : null,
+          productivity: billedTotal !== null && totalHours > 0 ? round4(billedTotal / totalHours) : null,
+        }
+      : { pay_per_clock_hour_cents: null, cost_per_billed_hour_cents: null, productivity: null },
+  };
+}
+
+function leaveTotalsFromEntries(entries: SheetEntries): LeaveHours {
+  const l1 = leaveHoursForWeek(entries, 1);
+  const l2 = leaveHoursForWeek(entries, 2);
+  return {
+    pto: l1.pto + l2.pto,
+    holiday: l1.holiday + l2.holiday,
+    bereavement: l1.bereavement + l2.bereavement,
+    training: l1.training + l2.training,
+  };
+}
+
+// ── Family implementations ─────────────────────────────────────────────────────
+
+function computeTechnicianFamily(
+  family: "technician" | "shop_foreman",
+  config: TechnicianPayConfig | ShopForemanPayConfig,
+  entries: SheetEntries,
+  derived: DerivedInputs,
+  options?: ComputeSheetOptions,
+): SheetComputation {
+  const [s1, s2] = resolveSplits(entries, options);
+  const hourlyW1 = config.hourly_rate_cents;
+  const hourlyW2 = config.rates_w2?.hourly_rate_cents ?? config.hourly_rate_cents;
+  const billedRateW1 = config.billed_rate_cents;
+  const billedRateW2 = config.rates_w2?.billed_rate_cents ?? config.billed_rate_cents;
+  const w1 = hourlyWeekExact(hourlyW1, s1, leaveHoursForWeek(entries, 1), {
+    billedRateCents: billedRateW1,
+    billedHours: num(derived.billed_hours_w1),
+  });
+  const w2 = hourlyWeekExact(hourlyW2, s2, leaveHoursForWeek(entries, 2), {
+    billedRateCents: billedRateW2,
+    billedHours: num(derived.billed_hours_w2),
+  });
+  // Foreman cliff bonus (extraction §Shop Foreman): pays on ALL shop hours once the
+  // goal is exceeded (shopHours × rate), NOT on the excess. Strictly-greater-than.
+  let bonusExact: number | null = null;
+  if (family === "shop_foreman") {
+    const fc = config as ShopForemanPayConfig;
+    const shopHours = num(derived.shop_hours);
+    bonusExact = shopHours > fc.shop_hour_goal ? shopHours * fc.shop_hour_bonus_cents_per_hour : 0;
+  }
+  const incentiveExact =
+    num(w1.billedPay) + num(w2.billedPay) + num(w1.effPay) + num(w2.effPay) + num(bonusExact);
+  return hourlySheet(
+    family,
+    [w1, w2],
+    {
+      bonusCents: bonusExact,
+      spiffCents: null,
+      manualIncentiveCents: null,
+      incentiveExact,
+      withMetrics: true,
+    },
+    leaveTotalsFromEntries(entries),
+  );
+}
+
+function computeServiceAdvisor(
+  config: ServiceAdvisorPayConfig,
+  entries: SheetEntries,
+  derived: DerivedInputs,
+  options?: ComputeSheetOptions,
+): SheetComputation {
+  const [s1, s2] = resolveSplits(entries, options);
+  const salaryW1 = config.weekly_salary_cents;
+  const salaryW2 = config.rates_w2?.weekly_salary_cents ?? config.weekly_salary_cents;
+  // Spiff (decision #15 rollup happens upstream): spiff_count × spiff_amount_cents.
+  const spiffExact = num(derived.spiff_count) * config.spiff_amount_cents;
+  // Tier bonus (extraction §Service Advisor, decision #3): the TIER qualifies on
+  // sales vs sales goal + GP-WITH-fees vs GP goals; the payout % applies to
+  // GP-WITHOUT-fees. Exact workbook IF-nesting, strict comparisons:
+  //   sales > goal AND gpWith > gp2 → tier3
+  //   sales > goal AND gpWith > gp1 → tier2
+  //   sales ≤ goal AND gpWith > gp1 → tier1
+  //   else 0   (note: sales > goal with gpWith ≤ gp1 pays NOTHING — as the workbook)
+  const sales = num(derived.month_sales_cents);
+  const gpWith = num(derived.month_gp_with_fees_cents);
+  const gpWithout = num(derived.month_gp_without_fees_cents);
+  let bonusExact = 0;
+  if (sales > config.sales_goal_cents && gpWith > config.gp_goal_2_cents) {
+    bonusExact = gpWithout * config.tier3_pct;
+  } else if (sales > config.sales_goal_cents && gpWith > config.gp_goal_1_cents) {
+    bonusExact = gpWithout * config.tier2_pct;
+  } else if (sales <= config.sales_goal_cents && gpWith > config.gp_goal_1_cents) {
+    bonusExact = gpWithout * config.tier1_pct;
+  }
+  const incentiveExact = spiffExact + bonusExact;
+  const regTotal = salaryW1 + salaryW2;
+  const totalPay = regTotal + incentiveExact;
+  const leaveHours = leaveTotalsFromEntries(entries);
+  const week = (sal: number, split: WeekSplit): WeekComputation => ({
+    reg_hours: round2(split.reg),
+    ot_hours: round2(split.ot),
+    base_pay_cents: roundCents(sal),
+    ot_pay_cents: 0, // salaried — OT hours are tracked, never paid (workbook parity)
+    billed_hours: null,
+    efficiency_hours: null,
+    billed_pay_cents: null,
+    efficiency_pay_cents: null,
+    leave_pay_cents: null, // hours-only for salaried
+    total_pay_cents: roundCents(sal),
+  });
+  const regHours = s1.reg + s2.reg;
+  const otHours = s1.ot + s2.ot;
+  return {
+    family: "service_advisor",
+    week1: week(salaryW1, s1),
+    week2: week(salaryW2, s2),
+    reg_hours: round2(regHours),
+    ot_hours: round2(otHours),
+    total_hours: round2(regHours + otHours),
+    pto_hours: round2(leaveHours.pto),
+    holiday_hours: round2(leaveHours.holiday),
+    bereavement_hours: round2(leaveHours.bereavement),
+    training_hours: round2(leaveHours.training),
+    reg_total_cents: roundCents(regTotal),
+    billed_hours_total: null,
+    bonus_cents: roundCents(bonusExact),
+    spiff_cents: roundCents(spiffExact),
+    manual_incentive_cents: null,
+    incentive_cents: roundCents(incentiveExact),
+    pto_pay_cents: null,
+    training_pay_cents: null,
+    holiday_pay_cents: null,
+    bereavement_pay_cents: null,
+    total_pay_cents: roundCents(totalPay),
+    metrics: { pay_per_clock_hour_cents: null, cost_per_billed_hour_cents: null, productivity: null },
+  };
+}
+
+function computeOfficeManager(
+  config: OfficeManagerPayConfig,
+  entries: SheetEntries,
+  derived: DerivedInputs,
+  options?: ComputeSheetOptions,
+): SheetComputation {
+  const [s1, s2] = resolveSplits(entries, options);
+  const hourlyW1 = config.hourly_rate_cents;
+  const hourlyW2 = config.rates_w2?.hourly_rate_cents ?? config.hourly_rate_cents;
+  const w1 = hourlyWeekExact(hourlyW1, s1, leaveHoursForWeek(entries, 1), null);
+  const w2 = hourlyWeekExact(hourlyW2, s2, leaveHoursForWeek(entries, 2), null);
+  // Office-manager bonus (extraction §Office Manager): pays on the EXCESS over the
+  // monthly sales goal (unlike the foreman cliff): (sales − goal)⁺ × pct.
+  const sales = num(derived.month_sales_cents);
+  const bonusExact = sales > config.sales_goal_cents ? (sales - config.sales_goal_cents) * config.bonus_pct : 0;
+  return hourlySheet(
+    "office_manager",
+    [w1, w2],
+    {
+      bonusCents: bonusExact,
+      spiffCents: null,
+      manualIncentiveCents: null,
+      incentiveExact: bonusExact,
+      withMetrics: false,
+    },
+    leaveTotalsFromEntries(entries),
+  );
+}
+
+function computeSupport(
+  config: SupportPayConfig,
+  entries: SheetEntries,
+  options?: ComputeSheetOptions,
+): SheetComputation {
+  const [s1, s2] = resolveSplits(entries, options);
+  const hourlyW1 = config.hourly_rate_cents;
+  const hourlyW2 = config.rates_w2?.hourly_rate_cents ?? config.hourly_rate_cents;
+  const w1 = hourlyWeekExact(hourlyW1, s1, leaveHoursForWeek(entries, 1), null);
+  const w2 = hourlyWeekExact(hourlyW2, s2, leaveHoursForWeek(entries, 2), null);
+  const manual = entries.manual_incentive_cents ?? null;
+  return hourlySheet(
+    "support",
+    [w1, w2],
+    {
+      bonusCents: null,
+      spiffCents: null,
+      manualIncentiveCents: manual,
+      incentiveExact: num(manual),
+      withMetrics: false,
+    },
+    leaveTotalsFromEntries(entries),
+  );
+}
+
+// ── Entry point ────────────────────────────────────────────────────────────────
+
+/**
+ * Compute one employee's pay sheet. Pure: config + manual entries + EFFECTIVE derived
+ * inputs in (override precedence is the DAL's job), SheetComputation out. null/missing
+ * derived values and hour entries are treated as 0 — a non-bonus run simply passes no
+ * month numbers and every bonus computes to 0.
+ */
+export function computeSheet<F extends Family>(
+  family: F,
+  payConfig: PayConfigFor<F>,
+  entries: SheetEntries,
+  derived: DerivedInputs,
+  options?: ComputeSheetOptions,
+): SheetComputation {
+  switch (family) {
+    case "technician":
+    case "shop_foreman":
+      return computeTechnicianFamily(
+        family,
+        payConfig as TechnicianPayConfig | ShopForemanPayConfig,
+        entries,
+        derived,
+        options,
+      );
+    case "service_advisor":
+      return computeServiceAdvisor(payConfig as ServiceAdvisorPayConfig, entries, derived, options);
+    case "office_manager":
+      return computeOfficeManager(payConfig as OfficeManagerPayConfig, entries, derived, options);
+    case "support":
+      return computeSupport(payConfig as SupportPayConfig, entries, options);
+    default: {
+      const exhaustive: never = family;
+      throw new Error(`payroll calc: unknown family ${String(exhaustive)}`);
+    }
+  }
+}
