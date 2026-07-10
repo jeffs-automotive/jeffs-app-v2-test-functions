@@ -15,7 +15,6 @@
 //   Dry-run by default (reports what would change). --apply executes.
 import { createClient } from "@supabase/supabase-js";
 import OAuthClient from "intuit-oauth";
-import { randomUUID } from "node:crypto";
 
 const REALM = "9341455608740708";
 const SHOP_ID = 7476;
@@ -107,10 +106,15 @@ const main = async () => {
 
     // Full replacement with the CURRENT lines verbatim; PrivateNote omitted → cleared.
     const body = { Id: je.Id, SyncToken: je.SyncToken, sparse: false, DocNumber: je.DocNumber, TxnDate: je.TxnDate, Line: je.Line };
+    // Stable per-logical-update requestid (QBO idempotency is the `requestid` QUERY
+    // PARAM, not a header): keyed on the JE + the SyncToken being replaced, so a
+    // retry of THIS update dedupes, while a later re-run against an advanced
+    // SyncToken (changed content) correctly gets a fresh id.
+    const requestid = `qtl-memoclear-${je.Id}-st${je.SyncToken}`;
     try {
-      const res = await fetch(`${baseUrl}/v3/company/${REALM}/journalentry?minorversion=75`, {
+      const res = await fetch(`${baseUrl}/v3/company/${REALM}/journalentry?minorversion=75&requestid=${encodeURIComponent(requestid)}`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}`, Accept: "application/json", "Content-Type": "application/json", "Request-Id": randomUUID() },
+        headers: { Authorization: `Bearer ${token}`, Accept: "application/json", "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
       const text = await res.text();
