@@ -261,6 +261,66 @@ describe("updatePayrollEntry pay_config write-through (round-3 #26)", () => {
     );
   });
 
+  it("never DELETES the round-4 seed keys from the master when the run edit merely omits them", async () => {
+    // Run created AFTER seeding: the entry snapshot carries the seed fields. A
+    // caller then submits a full-replacement pay_config rebuilt from the rate
+    // fields WITHOUT round-tripping the seed keys (plus a real rate change). The
+    // omission must not propagate as a delete — the master keeps its seeds.
+    const seedHistory = [{ period_start: "2026-05-17", work_pay_cents: 234567, clock_hours: 81.25 }];
+    const seededConfig = {
+      ...employeeRow.pay_config,
+      leave_rate_seed_history: seedHistory,
+      leave_rate_seed_cents_per_hour: 3406,
+    };
+    routeTables({ entryPayConfig: seededConfig, masterPayConfig: seededConfig });
+    await updatePayrollEntry(
+      7476,
+      ENTRY_ID,
+      { pay_config: { ...employeeRow.pay_config, billed_rate_cents: 1200 } }, // no seed keys
+      ACTOR,
+    );
+    expect(rpcMock).toHaveBeenCalledWith(
+      "qteklink_payroll_upsert_employee",
+      expect.objectContaining({
+        p_pay_config: {
+          ...seededConfig, // seeds survive
+          billed_rate_cents: 1200, // the key this edit actually changed
+        },
+      }),
+    );
+  });
+
+  it("skips the master upsert entirely when the only diff is the omitted seed keys", async () => {
+    const seededConfig = {
+      ...employeeRow.pay_config,
+      leave_rate_seed_cents_per_hour: 3406,
+    };
+    routeTables({ entryPayConfig: seededConfig, masterPayConfig: seededConfig });
+    await updatePayrollEntry(7476, ENTRY_ID, { pay_config: { ...employeeRow.pay_config } }, ACTOR);
+    expect(rpcMock).toHaveBeenCalledWith("qteklink_payroll_update_entry", expect.anything());
+    expect(rpcMock).not.toHaveBeenCalledWith("qteklink_payroll_upsert_employee", expect.anything());
+  });
+
+  it("still writes a seed-key VALUE change through to the master", async () => {
+    const seededConfig = {
+      ...employeeRow.pay_config,
+      leave_rate_seed_cents_per_hour: 3406,
+    };
+    routeTables({ entryPayConfig: seededConfig, masterPayConfig: seededConfig });
+    await updatePayrollEntry(
+      7476,
+      ENTRY_ID,
+      { pay_config: { ...seededConfig, leave_rate_seed_cents_per_hour: 3500 } },
+      ACTOR,
+    );
+    expect(rpcMock).toHaveBeenCalledWith(
+      "qteklink_payroll_upsert_employee",
+      expect.objectContaining({
+        p_pay_config: { ...seededConfig, leave_rate_seed_cents_per_hour: 3500 },
+      }),
+    );
+  });
+
   it("does NOT touch the employee master on a patch without pay_config", async () => {
     await updatePayrollEntry(7476, ENTRY_ID, { clock_hours_w1: 41.5 }, ACTOR);
     expect(rpcMock).toHaveBeenCalledWith("qteklink_payroll_update_entry", expect.anything());

@@ -223,6 +223,21 @@ Common to all: OT paid at 1.5× hourly; PTO/Holiday/Bereavement/Training hours �
     (Interim behavior until the future employee-pages with effective-dated changes.)
 27. Automate everything automatable — standing directive.
 
+### Round-4 decisions (Chris, 2026-07-10 latest)
+
+28. **Monthly sales INCLUDE fees** (supersedes the fee-excluded NOTE in #22 and the #21 "pinned"
+    definition as a deliberate go-forward change): subtotal = Σ(totalSales − taxes) over posted ROs —
+    fees stay in. Applies everywhere: current month, the prior-year auto sales goal, GP-with-fees base.
+    The historical workbooks matched the fee-EXCLUDED number; the app intentionally differs.
+29. **Leave-rate seeding** (Marie's payroll-system averages): entered via the Chris+Claude script
+    `qteklink-app/scripts/payroll-seed-leave-rates.mjs` — NEVER in-app. Update-only (cannot create
+    employees — app-live-first rule); dry-run default; entries validated against the shop's bi-weekly
+    anchor cadence + no future dates; warns about open runs (they snapshotted pay_config pre-seed).
+    Storage: pay_config.leave_rate_seed_history [{period_start, work_pay_cents, clock_hours}] (≤26) +
+    optional leave_rate_seed_cents_per_hour single-rate fallback. Window = most recent 12 periods across
+    real completed runs ∪ seeds (real run beats same-period seed; old entries age out). Write-through
+    (#26) never deletes seed keys merely absent from a run edit.
+
 ### Remaining open items
 
 - **Mirror ingest scheduling:** promote `sync-ros.mjs` logic to a recurring job (fold into qteklink

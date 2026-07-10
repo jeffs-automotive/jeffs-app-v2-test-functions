@@ -198,3 +198,40 @@ Every mutating RPC writes ≥1 audit row.
   as the split directly; the splitter has separate synthetic tests. Trilli fixture PTO-pay cells may
   reflect workbook quirks — if a golden mismatch traces to a workbook formula bug, EXCLUDE that cell
   with a comment, don't bend the engine.
+
+## Round-4 amendments (2026-07-10 — extraction #24/#28 area; supersede conflicting text above)
+
+- **Monthly sales INCLUDE fees (extraction #28):** month sales = Σ(totalSales − taxes) over ROs
+  posted in month (`totalSalesMinusTaxesCents`) — fees are NOT subtracted. Go-forward decision; the
+  historical workbook sheets matched the fee-excluded number (#21). ALREADY implemented in
+  `derive.ts` / `payroll-compute.ts` / `derive.aggregators.test.ts`.
+- **Leave-rate SEED HISTORY (Chris: Marie's pre-qteklink average-pay figures are seeded via a
+  script run by Chris+Claude, NOT in-app; qteklink runs take over as they accumulate):**
+  - `pay_config` (technician + shop_foreman only) gains two OPTIONAL fields:
+    `leave_rate_seed_cents_per_hour` (int cents ≥ 0 — the single-rate fallback) and
+    `leave_rate_seed_history` (array, max 26 = a year of bi-weekly periods; each entry is EXACTLY
+    `{ period_start: "YYYY-MM-DD" (valid date), work_pay_cents: int ≥ 0, clock_hours: number ≥ 0 }`;
+    unknown entry keys rejected). Validated in the DAL Zod (`LeaveRateSeedEntrySchema`) AND in the
+    SQL validator (`qteklink_payroll_validate_pay_config`: the two keys are allowed for the
+    technician/shop_foreman families only; the rate rides the `_cents_per_hour` numeric rule; the
+    history gets a structural block — array ≤ 26, exact keys, regex + `::date` validity, integer
+    cents, hours ≥ 0).
+  - **Merge window (`mergeLeaveRateWindow`, pure — `src/lib/dal/payroll-leave-rate.ts`):**
+    `fetchLeaveRateHistory` collects PER-EMPLOYEE per-period entries `{periodStart, payCents, hours}`
+    from up to 26 completed runs (more than the 12-window so an employee who missed shop runs isn't
+    starved); the merge unions run entries with the employee's seed entries — a completed-run entry
+    WINS over a seed with the same `period_start` (seeds age out as real runs accumulate) — sorts
+    newest-first, takes 12, and reports `{payCents, hours, runs, seededEntries}`.
+  - **Precedence (`resolveLeaveRate`):** `overrides.leave_rate_cents_per_hour` ('override') →
+    merged window with hours > 0 ('history'; windowRuns + seededEntries in the snapshot provenance
+    `leave_rates` map) → `leave_rate_seed_cents_per_hour` ('seed') → current-run ex-bonus ex-leave
+    ratio ('current_run') → base hourly rate ('base_rate'). `LeaveRateSource` gains `'seed'`
+    (SheetComputation/DerivedInputs/snapshot enums follow).
+  - **Seeding tool:** `qteklink-app/scripts/payroll-seed-leave-rates.mjs` — input JSON
+    `[{ employee, entries?: [{period_start, work_pay_dollars, clock_hours}], seed_rate_dollars_per_hour? }]`
+    (≥ 1 of entries/seed_rate per employee); DRY-RUN by default (resolved match + merged pay_config
+    diff + the average the seeds imply), `--apply` writes via `qteklink_payroll_upsert_employee`
+    (`p_actor_label = 'seed-script (Chris + Claude)'`, `p_actor_user_id = null`). Matches by
+    case-insensitive display_name within `--shop` (default 7476); ambiguous/missing = per-employee
+    error. **UPDATE-ONLY (Chris hard rule): the tool NEVER creates an employee and never touches
+    archived ones.** READ + RPC only (the payroll tables are RPC-write-only).

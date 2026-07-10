@@ -341,6 +341,7 @@ DECLARE
   v_key      text;
   v_val      jsonb;
   v_num      numeric;
+  v_seed     jsonb;
 BEGIN
   IF p_pay_config IS NULL OR jsonb_typeof(p_pay_config) <> 'object' THEN
     RAISE EXCEPTION '%: pay_config must be a JSON object', p_context;
@@ -370,7 +371,14 @@ BEGIN
          WHEN 'office_manager'  THEN ARRAY['hourly_rate_cents','sales_goal_cents','bonus_pct']
          ELSE                        ARRAY['hourly_rate_cents']  -- support
        END;
-  v_allowed := v_required || CASE WHEN p_allow_rates_w2 THEN ARRAY['rates_w2'] ELSE ARRAY[]::text[] END;
+  v_allowed := v_required
+    || CASE WHEN p_allow_rates_w2 THEN ARRAY['rates_w2'] ELSE ARRAY[]::text[] END
+    -- round-4 leave-rate seeds (optional; tech/foreman only). The single rate is
+    -- covered by the numeric loop's _cents_per_hour rule; the history array gets
+    -- the structural block below.
+    || CASE WHEN v_family IN ('technician','shop_foreman')
+            THEN ARRAY['leave_rate_seed_cents_per_hour','leave_rate_seed_history']
+            ELSE ARRAY[]::text[] END;
 
   -- reject unknown top-level keys
   FOR v_key IN SELECT jsonb_object_keys(p_pay_config) LOOP
@@ -393,8 +401,8 @@ BEGIN
 
   -- typed checks: *_cents (incl. _cents_per_hour) integers >= 0; *_pct numeric 0..1; rest numbers
   FOR v_key IN SELECT jsonb_object_keys(p_pay_config) LOOP
-    IF v_key = 'rates_w2' THEN
-      CONTINUE;  -- validated below
+    IF v_key IN ('rates_w2', 'leave_rate_seed_history') THEN
+      CONTINUE;  -- validated below (structured values, not bare numbers)
     END IF;
     v_val := p_pay_config->v_key;
     IF jsonb_typeof(v_val) <> 'number' THEN
@@ -427,6 +435,55 @@ BEGIN
       v_num := (p_pay_config->'rates_w2'->>v_key)::numeric;
       IF v_num < 0 OR v_num <> trunc(v_num) THEN
         RAISE EXCEPTION '%: pay_config.rates_w2.% must be an integer >= 0 (cents)', p_context, v_key;
+      END IF;
+    END LOOP;
+  END IF;
+
+  -- optional round-4 leave-rate seed history (tech/foreman): pre-qteklink per-period
+  -- figures written by scripts/payroll-seed-leave-rates.mjs. Max 26 entries (a year
+  -- of bi-weekly periods); each entry is EXACTLY {period_start, work_pay_cents,
+  -- clock_hours}. A completed run for the same period wins over the seed in the DAL.
+  IF p_pay_config ? 'leave_rate_seed_history' THEN
+    IF jsonb_typeof(p_pay_config->'leave_rate_seed_history') <> 'array' THEN
+      RAISE EXCEPTION '%: pay_config.leave_rate_seed_history must be a JSON array', p_context;
+    END IF;
+    IF jsonb_array_length(p_pay_config->'leave_rate_seed_history') > 26 THEN
+      RAISE EXCEPTION '%: pay_config.leave_rate_seed_history may hold at most 26 entries', p_context;
+    END IF;
+    FOR v_seed IN SELECT jsonb_array_elements(p_pay_config->'leave_rate_seed_history') LOOP
+      IF jsonb_typeof(v_seed) <> 'object' THEN
+        RAISE EXCEPTION '%: leave_rate_seed_history entries must be JSON objects', p_context;
+      END IF;
+      FOR v_key IN SELECT jsonb_object_keys(v_seed) LOOP
+        IF v_key NOT IN ('period_start','work_pay_cents','clock_hours') THEN
+          RAISE EXCEPTION '%: unknown leave_rate_seed_history entry key "%"', p_context, v_key;
+        END IF;
+      END LOOP;
+      IF NOT (v_seed ? 'period_start' AND v_seed ? 'work_pay_cents' AND v_seed ? 'clock_hours') THEN
+        RAISE EXCEPTION '%: leave_rate_seed_history entries require period_start + work_pay_cents + clock_hours', p_context;
+      END IF;
+      IF jsonb_typeof(v_seed->'period_start') <> 'string'
+         OR (v_seed->>'period_start') !~ '^\d{4}-\d{2}-\d{2}$' THEN
+        RAISE EXCEPTION '%: leave_rate_seed_history.period_start must be a YYYY-MM-DD string', p_context;
+      END IF;
+      BEGIN
+        PERFORM (v_seed->>'period_start')::date;
+      EXCEPTION WHEN others THEN
+        RAISE EXCEPTION '%: leave_rate_seed_history.period_start "%" is not a valid date',
+          p_context, v_seed->>'period_start';
+      END;
+      IF jsonb_typeof(v_seed->'work_pay_cents') <> 'number' THEN
+        RAISE EXCEPTION '%: leave_rate_seed_history.work_pay_cents must be a number', p_context;
+      END IF;
+      v_num := (v_seed->>'work_pay_cents')::numeric;
+      IF v_num < 0 OR v_num <> trunc(v_num) THEN
+        RAISE EXCEPTION '%: leave_rate_seed_history.work_pay_cents must be an integer >= 0 (cents)', p_context;
+      END IF;
+      IF jsonb_typeof(v_seed->'clock_hours') <> 'number' THEN
+        RAISE EXCEPTION '%: leave_rate_seed_history.clock_hours must be a number', p_context;
+      END IF;
+      IF (v_seed->>'clock_hours')::numeric < 0 THEN
+        RAISE EXCEPTION '%: leave_rate_seed_history.clock_hours must be >= 0', p_context;
       END IF;
     END LOOP;
   END IF;

@@ -16,10 +16,14 @@
  * snapshot — never recomputed.
  *
  * Round-3 amendments (2026-07-10, extraction #22–#27): tech/foreman PTO/Hol/Ber pay
- * at the avg-hourly-WITHOUT-bonus leave rate (override → last-12-completed-runs
- * snapshot basis → current run ex-bonus ex-leave → base hourly), and the SA sales
- * goal auto-derives from the prior-year same-month subtotal (override →
- * priorYearMonthSubtotalCents → legacy pay_config.sales_goal_cents when 0 ROs).
+ * at the avg-hourly-WITHOUT-bonus leave rate (override → merged 12-period window →
+ * current run ex-bonus ex-leave → base hourly), and the SA sales goal auto-derives
+ * from the prior-year same-month subtotal (override → priorYearMonthSubtotalCents →
+ * legacy pay_config.sales_goal_cents when 0 ROs).
+ * Round-4 (seed history): the leave-rate window merges completed-run entries with
+ * seeded pre-qteklink periods from pay_config.leave_rate_seed_history (a real run
+ * beats a same-period seed); pay_config.leave_rate_seed_cents_per_hour is the
+ * single-rate 'seed' fallback between 'history' and 'current_run'.
  *
  * GP labor allocation note: gp.ts wants per-week totals. Week totals from calc.ts
  * are time-based (base+OT+billed+efficiency+leave); run-level incentive extras
@@ -47,8 +51,9 @@ import { GP_LABOR_ROLES, monthGpFromRuns, type GpRunEmployeePay, type GpRunInput
 import { buildRunSummary, type EmployeeSheet } from "@/lib/payroll/summary";
 import {
   fetchLeaveRateHistory,
+  mergeLeaveRateWindow,
   resolveLeaveRate,
-  type LeaveRateHistory,
+  type LeaveRateEntry,
   type LeaveRateResolution,
 } from "@/lib/dal/payroll-leave-rate";
 import {
@@ -169,7 +174,7 @@ async function gpInputForOpenRun(
   run: RunDbRow,
   tz: string,
   shopHoursByMonth: Map<string, number>,
-  leaveHistory: Map<string, LeaveRateHistory>,
+  leaveHistory: Map<string, LeaveRateEntry[]>,
 ): Promise<GpRunInput> {
   const rows = await fetchRunEntries(run.id);
   const gpRows = rows.filter((r) => (GP_LABOR_ROLES as readonly string[]).includes(r.role_snapshot));
@@ -214,11 +219,18 @@ async function gpInputForOpenRun(
     let effective = applyOverrides(base, overrides);
     let sheet = computeSheet(family, payConfig, entries, effective);
     if (isTechnicianFamily(family)) {
+      // Round-4: merge the run history with the pay_config seed entries (a real
+      // run beats a same-period seed) and thread the single-rate seed fallback.
+      const techConfig = payConfig as TechnicianPayConfig;
       const lr = resolveLeaveRate(
         overrides,
-        leaveHistory.get(r.employee_id),
+        mergeLeaveRateWindow(
+          leaveHistory.get(r.employee_id) ?? [],
+          techConfig.leave_rate_seed_history ?? [],
+        ),
+        techConfig.leave_rate_seed_cents_per_hour ?? null,
         sheet,
-        (payConfig as TechnicianPayConfig).hourly_rate_cents,
+        techConfig.hourly_rate_cents,
       );
       effective = { ...effective, leave_rate_cents_per_hour: lr.rateCents, leave_rate_source: lr.source };
       sheet = computeSheet(family, payConfig, entries, effective);
@@ -288,10 +300,9 @@ export async function buildOpenRunSnapshot(shopId: number, run: RunDbRow): Promi
     ]);
     month = {
       month: monthKey,
-      // Backtest-pinned (2026-07-10, Apr/May/Jun vs the real workbooks): the sheets' "Month Sales"
-      // = Σ(totalSales − taxes − FEES) — fees are excluded from sales, not just taxes.
-      // Residuals $14–$51/month (fee-vs-sales bucket classification + post-entry RO edits).
-      salesCents: sales.value.totalSalesMinusTaxesCents - fees.value,
+      // Round-4 (extraction #28): monthly sales INCLUDE fees = Σ(totalSales − taxes).
+      // Go-forward decision; the historical sheets matched the fee-excluded number (#21).
+      salesCents: sales.value.totalSalesMinusTaxesCents,
       feesCents: fees.value,
       partsCostCents: parts.value,
       shopHours: shopHrs.value,
@@ -354,12 +365,20 @@ export async function buildOpenRunSnapshot(shopId: number, run: RunDbRow): Promi
     if (isTechFamily) {
       // Preliminary sheet (no leave rate) → its base/OT/billed/efficiency components
       // feed the current-run fallback basis; then recompute with the resolved rate.
+      // Round-4: the window merges completed-run history with the pay_config seed
+      // entries (a real run beats a same-period seed); the single-rate seed
+      // fallback slots between 'history' and 'current_run'.
       const prelim = computeSheet(family, payConfig, entries, effective);
+      const techConfig = payConfig as TechnicianPayConfig;
       leaveRate = resolveLeaveRate(
         overrides,
-        leaveHistory.get(r.employee_id),
+        mergeLeaveRateWindow(
+          leaveHistory.get(r.employee_id) ?? [],
+          techConfig.leave_rate_seed_history ?? [],
+        ),
+        techConfig.leave_rate_seed_cents_per_hour ?? null,
         prelim,
-        (payConfig as TechnicianPayConfig).hourly_rate_cents,
+        techConfig.hourly_rate_cents,
       );
       effective = {
         ...effective,
@@ -477,8 +496,9 @@ export async function buildOpenRunSnapshot(shopId: number, run: RunDbRow): Promi
       ro_count: billedW1.provenance.roCount + billedW2.provenance.roCount,
       source: "tekmetric_ros mirror",
       // extra keys allowed by the loose provenance schema:
-      // Round-3 #24: per-employee PTO/Hol/Ber rate + where it came from + how many
-      // completed window runs backed it (technician/shop_foreman only).
+      // Round-3 #24 (+ round-4 seeds): per-employee PTO/Hol/Ber rate + where it came
+      // from + how many completed runs vs seeded pre-qteklink periods backed the
+      // merged window (technician/shop_foreman only).
       leave_rates: Object.fromEntries(
         assembled
           .filter((a) => a.leaveRate !== null)
@@ -488,6 +508,7 @@ export async function buildOpenRunSnapshot(shopId: number, run: RunDbRow): Promi
               rate_cents_per_hour: (a.leaveRate as LeaveRateResolution).rateCents,
               source: (a.leaveRate as LeaveRateResolution).source,
               window_runs: (a.leaveRate as LeaveRateResolution).windowRuns,
+              seeded_entries: (a.leaveRate as LeaveRateResolution).seededEntries,
             },
           ]),
       ),

@@ -210,13 +210,14 @@ export function aggregateFeesCents(ros: MirrorRoRow[]): number {
 }
 
 /**
- * Month "subtotal" (round-3 #22, Chris: "sales − tax" ≡ the backtest-pinned
- * Σ(total_sales − taxes − FEES) — Tekmetric's subtotal excludes fee lines). RO-level
- * totals are Tekmetric's own authorized-only rollups (extraction #20) — no job-level
- * filter applies here.
+ * Month "subtotal" (round-4, extraction #28 — Chris: "monthly sales will INCLUDE fees"):
+ * Σ(total_sales − taxes) over posted ROs. Deliberate go-forward change from the
+ * historical workbooks, whose entries matched the fee-EXCLUDED number (backtest #21).
+ * RO-level totals are Tekmetric's own authorized-only rollups (extraction #20) —
+ * no job-level filter applies here.
  */
 export function aggregateMonthSubtotalCents(ros: MirrorRoRow[]): number {
-  return aggregateSalesCandidates(ros).totalSalesMinusTaxesCents - aggregateFeesCents(ros);
+  return aggregateSalesCandidates(ros).totalSalesMinusTaxesCents;
 }
 
 /** Month parts cost (contract definition): Σ part.cost_cents over AUTHORIZED jobs only. */
@@ -421,9 +422,10 @@ export async function monthSalesPreTaxCents(
 }
 
 /**
- * SAME-month-PREVIOUS-year subtotal = Σ(total_sales − taxes − fees) over ROs posted
- * in that prior-year month (round-3 #22/#23) — the auto-derived service-advisor
- * sales goal ("beat last year"). `month` is the BONUS month ("YYYY-MM"); the
+ * SAME-month-PREVIOUS-year subtotal = Σ(total_sales − taxes), fees INCLUDED
+ * (round-4, extraction #28 — same definition as aggregateMonthSubtotalCents so the
+ * "beat last year" comparison is apples-to-apples) — the auto-derived
+ * service-advisor sales goal (#22/#23). `month` is the BONUS month ("YYYY-MM"); the
  * prior-year month is derived here. A provenance roCount of 0 means "no data" —
  * callers fall back to the legacy pay_config.sales_goal_cents.
  */

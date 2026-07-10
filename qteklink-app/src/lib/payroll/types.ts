@@ -70,9 +70,12 @@ export const RunStatusSchema = z.enum(["open", "completed", "voided"]);
 export type RunStatus = z.infer<typeof RunStatusSchema>;
 
 /** Where a technician/shop-foreman PTO/Holiday/Bereavement rate came from (round-3
- *  decision #24): the last-12-completed-runs basis, the current run's ex-bonus
- *  ex-leave ratio, an explicit override, or the base hourly rate (final fallback). */
-export const LEAVE_RATE_SOURCES = ["history", "current_run", "override", "base_rate"] as const;
+ *  decision #24; round-4 seed history): the merged last-12-periods basis (completed
+ *  runs + seeded pre-qteklink periods), the current run's ex-bonus ex-leave ratio,
+ *  an explicit override, the single-rate seed fallback (round-4:
+ *  pay_config.leave_rate_seed_cents_per_hour), or the base hourly rate (final
+ *  fallback). */
+export const LEAVE_RATE_SOURCES = ["history", "current_run", "override", "seed", "base_rate"] as const;
 export const LeaveRateSourceSchema = z.enum(LEAVE_RATE_SOURCES);
 export type LeaveRateSource = z.infer<typeof LeaveRateSourceSchema>;
 
@@ -98,9 +101,29 @@ const payConfigCommon = z.strictObject({
   rates_w2: RatesW2Schema.optional(),
 });
 
+/** One seeded pre-qteklink pay period for the leave-rate basis (round-4: Marie's
+ *  average-pay figures, written by scripts/payroll-seed-leave-rates.mjs — never
+ *  in-app). A completed qteklink run for the same period_start WINS over the seed
+ *  (mergeLeaveRateWindow in the DAL), so seeds age out as real runs accumulate. */
+export const LeaveRateSeedEntrySchema = z.strictObject({
+  /** The seeded period's start date (ISO YYYY-MM-DD, Sun-anchored like real runs). */
+  period_start: z.iso.date(),
+  /** Σ base + OT + billed + efficiency pay for the period (bonuses/leave excluded). */
+  work_pay_cents: centsInt,
+  /** Σ worked clock hours for the period. */
+  clock_hours: hoursNum,
+});
+export type LeaveRateSeedEntry = z.infer<typeof LeaveRateSeedEntrySchema>;
+
 export const TechnicianPayConfigSchema = payConfigCommon.extend({
   hourly_rate_cents: centsInt,
   billed_rate_cents: centsInt,
+  /** Round-4: single-rate seed fallback — used only when the merged history window
+   *  is empty (source 'seed'); beats the current-run ratio. */
+  leave_rate_seed_cents_per_hour: centsInt.optional(),
+  /** Round-4: seeded pre-qteklink per-period figures feeding the leave-rate basis
+   *  (max 26 = a year of bi-weekly periods; the merge windows to 12 per employee). */
+  leave_rate_seed_history: z.array(LeaveRateSeedEntrySchema).max(26).optional(),
 });
 export type TechnicianPayConfig = z.infer<typeof TechnicianPayConfigSchema>;
 

@@ -96,9 +96,26 @@ export async function upsertPayrollEmployee(
 }
 
 /**
- * Keys whose value differs between the entry's previous and new run pay_config
- * (`rates_w2` excluded — run-scoped, never written through). Pay-config values are
- * JSON scalars apart from rates_w2, so JSON.stringify equality is exact.
+ * Round-4 seed fields that live on the employee MASTER (written by the seeding
+ * script, not the run UI). A run edit that merely OMITS them — e.g. a caller that
+ * reconstructs the entry pay_config from the rate fields without round-tripping the
+ * seed keys — must NEVER delete them from the master (future runs would silently
+ * degrade to 'current_run'/'base_rate' PTO pay). An edit that CHANGES their value
+ * still writes through like any other key.
+ */
+const MASTER_ONLY_DELETE_PROTECTED_KEYS = [
+  "leave_rate_seed_history",
+  "leave_rate_seed_cents_per_hour",
+] as const;
+
+/**
+ * Keys whose value differs between the entry's previous and new run pay_config.
+ * Excluded: `rates_w2` (run-scoped, never written through) and — in the DELETE
+ * direction only (key absent from the new run config) — the round-4 seed keys
+ * (MASTER_ONLY_DELETE_PROTECTED_KEYS). Values are JSON scalars apart from rates_w2
+ * and leave_rate_seed_history (an array of flat entry objects); JSON.stringify
+ * equality is exact for the scalars and reliable for the structured keys (both
+ * sides are JSONB round-trips of the same writer, so key order is stable).
  */
 function changedPayConfigKeys(
   prev: Record<string, unknown>,
@@ -106,13 +123,17 @@ function changedPayConfigKeys(
 ): string[] {
   const keys = new Set([...Object.keys(prev), ...Object.keys(next)]);
   keys.delete("rates_w2");
+  for (const k of MASTER_ONLY_DELETE_PROTECTED_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(next, k)) keys.delete(k);
+  }
   return [...keys].filter((k) => JSON.stringify(prev[k]) !== JSON.stringify(next[k]));
 }
 
 /**
  * Round-3 decision #26 — propagate a run-level pay_config patch to the employee
  * master. Only the keys the run edit actually CHANGED (diffed against the entry's
- * PREVIOUS pay_config, minus the run-scoped `rates_w2`) are merged onto the
+ * PREVIOUS pay_config, minus the run-scoped `rates_w2` and minus deletes of the
+ * round-4 master-only seed keys — see MASTER_ONLY_DELETE_PROTECTED_KEYS) are merged onto the
  * employee's CURRENT master config — replacing the master wholesale would silently
  * revert any master field edited independently since the run was created (lost
  * update), and the stale values would then prefill every future run. Applied via a
