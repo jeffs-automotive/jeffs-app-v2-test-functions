@@ -104,8 +104,15 @@ const main = async () => {
     if (!je.PrivateNote) { tally.clean++; console.log(`clean      ${label}`); continue; }
     if (!APPLY) { tally.cleared++; console.log(`WOULD-CLEAR ${label}: "${je.PrivateNote}"`); continue; }
 
-    // Full replacement with the CURRENT lines verbatim; PrivateNote omitted → cleared.
-    const body = { Id: je.Id, SyncToken: je.SyncToken, sparse: false, DocNumber: je.DocNumber, TxnDate: je.TxnDate, Line: je.Line };
+    // Full replacement echoing the ENTIRE fetched entity (Intuit's documented
+    // full-update idiom) so every updateable field survives — only PrivateNote is
+    // omitted (→ cleared) plus read-only/computed metadata QBO doesn't accept back.
+    const body = { ...je, sparse: false };
+    delete body.PrivateNote;
+    delete body.MetaData;
+    delete body.TotalAmt;
+    delete body.domain;
+    delete body.status;
     // Stable per-logical-update requestid (QBO idempotency is the `requestid` QUERY
     // PARAM, not a header): keyed on the JE + the SyncToken being replaced, so a
     // retry of THIS update dedupes, while a later re-run against an advanced
@@ -118,9 +125,12 @@ const main = async () => {
         body: JSON.stringify(body),
       });
       const text = await res.text();
+      // intuit_tid makes an Intuit-side support escalation possible if a live
+      // write misbehaves — capture it on every update outcome.
+      const tid = res.headers.get("intuit_tid") ?? "?";
       if (!res.ok) {
-        if (text.includes("6540")) { tally.locked++; console.log(`locked     ${label} (in a deposit — QBO forbids edits; rows display from the deposit's copies)`); continue; }
-        throw new Error(`update failed (${res.status}): ${text.slice(0, 300)}`);
+        if (text.includes("6540")) { tally.locked++; console.log(`locked     ${label} (in a deposit — QBO forbids edits; rows display from the deposit's copies) [intuit_tid ${tid}]`); continue; }
+        throw new Error(`update failed (${res.status}) [intuit_tid ${tid}]: ${text.slice(0, 300)}`);
       }
       const updated = JSON.parse(text).JournalEntry;
       if (updated.PrivateNote) throw new Error(`PrivateNote still present after update (SyncToken ${updated.SyncToken})`);
@@ -128,7 +138,7 @@ const main = async () => {
         .update({ qbo_sync_token: String(updated.SyncToken) }).eq("id", r.id);
       if (le) throw new Error(`ledger SyncToken sync failed (QBO IS updated, token now ${updated.SyncToken}): ${le.message}`);
       tally.cleared++;
-      console.log(`CLEARED    ${label} → SyncToken ${updated.SyncToken} (ledger synced)`);
+      console.log(`CLEARED    ${label} → SyncToken ${updated.SyncToken} (ledger synced) [intuit_tid ${tid}]`);
     } catch (e) {
       tally.failed++;
       console.log(`FAIL       ${label}: ${e.message}`);
