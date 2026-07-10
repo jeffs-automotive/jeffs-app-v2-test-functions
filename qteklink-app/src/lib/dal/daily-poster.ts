@@ -234,7 +234,10 @@ export async function postDailyPostingById(
       body = toQboJournalEntry({
         docNumber: je.docNumber,
         txnDate: je.txnDate,
-        privateNote: row.proposed_je?.marker ?? "",
+        // NO privateNote: the QTL marker stays ledger-internal (proposed_je.marker).
+        // The QBO deposit screen shows the JE-level memo for undeposited rows and only
+        // falls back to per-line descriptions when it's absent (verified 2026-07-09);
+        // on updates the omission also clears any previously-posted marker.
         lines: je.lines,
         ...(action === "update" ? { id: liveTarget!.qboJeId, syncToken: liveTarget!.qboSyncToken } : {}),
       });

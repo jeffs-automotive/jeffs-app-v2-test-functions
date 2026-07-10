@@ -12,11 +12,14 @@ const LINES: QboJeLineInput[] = [
 ];
 
 describe("toQboJournalEntry", () => {
-  it("converts cents → dollars and builds the QBO Line shape (create, no Id)", () => {
-    const body = toQboJournalEntry({ docNumber: "RO 152805", txnDate: "2026-05-19", privateNote: "QTL|7476|...", lines: LINES });
+  it("converts cents → dollars and builds the QBO Line shape (create, no Id, no PrivateNote)", () => {
+    const body = toQboJournalEntry({ docNumber: "RO 152805", txnDate: "2026-05-19", lines: LINES });
     expect(body.DocNumber).toBe("RO 152805");
     expect(body.TxnDate).toBe("2026-05-19");
-    expect(body.PrivateNote).toBe("QTL|7476|...");
+    // No JE-level memo by default: the QBO deposit screen shows PrivateNote for
+    // undeposited rows and only falls back to the per-line Description when the
+    // field is ABSENT (verified live 2026-07-09). "PrivateNote" must not exist.
+    expect("PrivateNote" in body).toBe(false);
     expect(body.Id).toBeUndefined();
     const line = (body.Line as Record<string, unknown>[])[0]!;
     expect(line.DetailType).toBe("JournalEntryLineDetail");
@@ -28,6 +31,13 @@ describe("toQboJournalEntry", () => {
     const dr = lines.filter((l) => l.JournalEntryLineDetail.PostingType === "Debit").reduce((a, l) => a + l.Amount, 0);
     const cr = lines.filter((l) => l.JournalEntryLineDetail.PostingType === "Credit").reduce((a, l) => a + l.Amount, 0);
     expect(dr).toBeCloseTo(cr, 2);
+  });
+
+  it("passes an explicit non-empty privateNote through; empty string is omitted like absent", () => {
+    const withNote = toQboJournalEntry({ docNumber: "RO 1", txnDate: "2026-05-19", privateNote: "ops note", lines: LINES });
+    expect(withNote.PrivateNote).toBe("ops note");
+    const emptyNote = toQboJournalEntry({ docNumber: "RO 1", txnDate: "2026-05-19", privateNote: "", lines: LINES });
+    expect("PrivateNote" in emptyNote).toBe(false);
   });
 
   it("drops zero-amount lines", () => {

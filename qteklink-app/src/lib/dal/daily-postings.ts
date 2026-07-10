@@ -22,7 +22,10 @@
  *
  * The source-state hash covers {category, businessDate, docNumber, constituents,
  * per-constituent lines} — membership changes trip it even when totals coincide.
- * requestid + the PrivateNote marker are keyed on (shop, realm, day, category, version).
+ * requestid + the ledger marker are keyed on (shop, realm, day, category, version). The
+ * marker is ledger-internal ONLY (proposed_je.marker) — it is NOT sent to QBO as
+ * PrivateNote: the bank-deposit screen renders the JE-level memo for undeposited rows
+ * and only falls back to per-line descriptions when it's absent (2026-07-09).
  *
  * Fat-DAL: the diff is deterministic; the RPCs own the writes. MULTI-TENANT: realmId is
  * the caller's bound realm; every query scopes shop_id + realm_id. Errors throw.
@@ -73,7 +76,12 @@ export function dailyRequestIdFor(
   return `qtl-${createHash("sha256").update(identity).digest("hex").slice(0, 40)}`;
 }
 
-/** Deterministic PrivateNote marker (crash detection by QBO query). */
+/**
+ * Deterministic ledger marker — stored in proposed_je.marker for audit/traceability
+ * of exactly which (shop, realm, day, category, version) a queued JE belongs to.
+ * NOT sent to QBO (see the module doc + daily-poster); idempotency rides on the
+ * requestid. Name kept for history: it used to be posted as the JE PrivateNote.
+ */
 export function dailyPrivateNoteMarker(
   shopId: number,
   realmId: string,

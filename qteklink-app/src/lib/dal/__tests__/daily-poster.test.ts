@@ -134,9 +134,14 @@ describe("postDailyPostingById", () => {
     expect(r).toEqual({ status: "posted", postingId: "dp-1", qboJeId: "QBO-200", action: "create" });
     expect(client.create).toHaveBeenCalledWith(
       "journalentry",
-      expect.objectContaining({ DocNumber: `QTL-RO-${DATE}`, TxnDate: DATE, PrivateNote: expect.stringContaining("day=2026-06-05|sales") }),
+      expect.objectContaining({ DocNumber: `QTL-RO-${DATE}`, TxnDate: DATE }),
       "qtl-day-req",
     );
+    // The QTL marker stays ledger-internal (proposed_je.marker) — no JE-level memo is
+    // sent to QBO. The bank-deposit screen shows PrivateNote for undeposited rows and
+    // only falls back to per-line descriptions when it is ABSENT (verified 2026-07-09).
+    const sentBody = vi.mocked(client.create).mock.calls[0]![1] as Record<string, unknown>;
+    expect("PrivateNote" in sentBody).toBe(false);
     expect(rpcMock).toHaveBeenCalledWith("qteklink_mark_daily_posted", expect.objectContaining({
       p_id: "dp-1", p_qbo_je_id: "QBO-200", p_qbo_sync_token: "0",
     }));

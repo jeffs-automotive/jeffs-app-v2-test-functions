@@ -23,8 +23,15 @@ export interface QboJeLineInput {
 export interface QboJeInput {
   docNumber: string;
   txnDate: string; // YYYY-MM-DD
-  /** the deterministic idempotency/crash-detection marker (→ PrivateNote). */
-  privateNote: string;
+  /**
+   * Optional JE-level memo (→ PrivateNote). The daily poster sends NONE: the QBO
+   * bank-deposit screen renders PrivateNote for undeposited JE rows and only falls
+   * back to the per-line Description when the field is ABSENT (verified live
+   * 2026-07-09) — a memo here would hide check/card/cash from the deposit screen.
+   * The QTL marker stays ledger-internal (proposed_je.marker); idempotency rides on
+   * the requestid. On a full-replacement update, omission CLEARS any posted memo.
+   */
+  privateNote?: string;
   lines: QboJeLineInput[];
   /** present for an UPDATE (full-replacement correction); absent for a create. */
   id?: string;
@@ -60,9 +67,13 @@ export function toQboJournalEntry(input: QboJeInput): Record<string, unknown> {
   const body: Record<string, unknown> = {
     DocNumber: input.docNumber,
     TxnDate: input.txnDate,
-    PrivateNote: input.privateNote,
     Line: lines,
   };
+  // Only a non-empty memo is ever sent; absence (not "") is what triggers the
+  // deposit screen's fall-back to per-line descriptions.
+  if (input.privateNote) {
+    body.PrivateNote = input.privateNote;
+  }
   if (input.id) {
     // Full-replacement update under SyncToken (NOT a sparse patch — §13). A missing
     // token FAILS CLOSED: guessing one gambles the optimistic lock (the caller must
