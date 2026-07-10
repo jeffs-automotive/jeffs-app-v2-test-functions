@@ -90,7 +90,12 @@ const main = async () => {
   console.log(`${APPLY ? "APPLY" : "DRY-RUN"}: ${latest.size} posted payments/fees JEs to inspect\n`);
 
   const token = await accessToken();
-  const tally = { cleared: 0, locked: 0, clean: 0, failed: 0 };
+  const tally = { cleared: 0, locked: 0, clean: 0, failed: 0, ledger_pending: 0 };
+  // qteklink_daily_postings only accepts writes through its SECURITY DEFINER RPCs —
+  // a direct .update() with the script key is DENIED (discovered live 2026-07-09).
+  // When the token sync is denied, QBO is already updated, so collect the repair SQL
+  // for an elevated role instead of losing the new SyncToken.
+  const ledgerSql = [];
   for (const r of latest.values()) {
     const label = `${r.business_date} ${r.category} v${r.posting_version} (JE ${r.qbo_je_id})`;
     let je;
@@ -134,17 +139,28 @@ const main = async () => {
       }
       const updated = JSON.parse(text).JournalEntry;
       if (updated.PrivateNote) throw new Error(`PrivateNote still present after update (SyncToken ${updated.SyncToken})`);
+      tally.cleared++;
       const { error: le } = await sb.from("qteklink_daily_postings")
         .update({ qbo_sync_token: String(updated.SyncToken) }).eq("id", r.id);
-      if (le) throw new Error(`ledger SyncToken sync failed (QBO IS updated, token now ${updated.SyncToken}): ${le.message}`);
-      tally.cleared++;
-      console.log(`CLEARED    ${label} → SyncToken ${updated.SyncToken} (ledger synced) [intuit_tid ${tid}]`);
+      if (le) {
+        tally.ledger_pending++;
+        ledgerSql.push(`update qteklink_daily_postings set qbo_sync_token = '${updated.SyncToken}' where id = '${r.id}';`);
+        console.log(`CLEARED    ${label} → SyncToken ${updated.SyncToken} — LEDGER SYNC DENIED (${le.message}) [intuit_tid ${tid}]`);
+      } else {
+        console.log(`CLEARED    ${label} → SyncToken ${updated.SyncToken} (ledger synced) [intuit_tid ${tid}]`);
+      }
     } catch (e) {
       tally.failed++;
       console.log(`FAIL       ${label}: ${e.message}`);
     }
   }
-  console.log(`\n${APPLY ? "cleared" : "would clear"}=${tally.cleared} locked=${tally.locked} already-clean=${tally.clean} failed=${tally.failed}`);
-  if (tally.failed > 0) process.exit(1);
+  console.log(`\n${APPLY ? "cleared" : "would clear"}=${tally.cleared} locked=${tally.locked} already-clean=${tally.clean} failed=${tally.failed} ledger_pending=${tally.ledger_pending}`);
+  if (ledgerSql.length > 0) {
+    console.log(`\nQBO IS UPDATED but the ledger SyncToken sync was denied for ${ledgerSql.length} row(s)`);
+    console.log("(qteklink_daily_postings is RPC-write-only). Until this SQL runs with an elevated");
+    console.log("role, corrections to these days will fail closed on a stale token:\n");
+    for (const s of ledgerSql) console.log(s);
+  }
+  if (tally.failed > 0 || tally.ledger_pending > 0) process.exit(1);
 };
 main().catch((e) => { console.error(`FAIL: ${e.message}`); process.exit(1); });
