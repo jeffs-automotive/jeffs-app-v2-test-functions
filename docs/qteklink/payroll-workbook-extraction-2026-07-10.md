@@ -238,6 +238,14 @@ Common to all: OT paid at 1.5× hourly; PTO/Holiday/Bereavement/Training hours �
     real completed runs ∪ seeds (real run beats same-period seed; old entries age out). Write-through
     (#26) never deletes seed keys merely absent from a run edit.
 
+30. **Module shell (Chris, 2026-07-10 evening):** qteklink-app restructures like admin-app — post-login
+    landing at `/` shows the available MODULES as cards (QBO Link, Payroll); each module gets its own
+    tab set. Payroll's tabs = Dashboard, Employees, Settings (runs reachable from the dashboard). QBO
+    Link keeps Dashboard/Approvals/Postings/Mappings/Settings. CONSTRAINT: existing QBO URLs do not
+    move (office-manager emails deep-link /approvals/[date]) — navigation-presentation restructure only.
+31. **Summary shows leave-pay DOLLARS** (Chris): PTO/Training/Holiday/Bereavement pay dollars alongside
+    hours, on screen and on the printed sheet.
+
 ### Remaining open items
 
 - **Mirror ingest scheduling:** promote `sync-ros.mjs` logic to a recurring job (fold into qteklink

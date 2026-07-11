@@ -114,8 +114,8 @@ a real Microsoft login lands on `/login?error=not_allowed` (fail-closed, by desi
 
 1. Incognito → `https://qteklink.jeffsautomotive.com` → should land on `/login`.
 2. **Sign in with Microsoft** → sign in as `chris@jeffsautomotive.com`.
-3. Bounced through `supabase.co/auth/v1/callback` → `qteklink.../auth/callback` → `/dashboard`,
-   showing your email + `admin · shop 7476`.
+3. Bounced through `supabase.co/auth/v1/callback` → `qteklink.../auth/callback` → `/` (the
+   module directory: QBO Link + Payroll cards), showing your email + `admin · shop 7476`.
 4. **Sign out** → back to `/login`.
 5. (Optional) sign in as a NON-allowlisted Microsoft user → `/login?error=not_allowed`.
 
