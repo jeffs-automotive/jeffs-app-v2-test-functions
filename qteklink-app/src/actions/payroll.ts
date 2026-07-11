@@ -19,6 +19,7 @@ import {
   completePayrollRun,
   createPayrollRun,
   discoverAndMergePayrollCategories,
+  listTekmetricEmployees,
   refreshRunTekmetricData,
   syncPayrollRunRoster,
   updatePayrollEntry,
@@ -408,4 +409,41 @@ async function discoverPayrollCategoriesImpl(
 export const discoverPayrollCategoriesAction = wrapQtekAction(
   "payrollDiscoverCategories",
   discoverPayrollCategoriesImpl,
+);
+
+// ── Tekmetric employee picker (read-only; loads on demand from the add/edit form) ──
+
+export type TekmetricEmployeeOption = {
+  id: number;
+  name: string;
+  roleName: string | null;
+};
+type ListTekEmployeesState = QboActionResult<{ employees: TekmetricEmployeeOption[] }>;
+
+async function listTekmetricEmployeesImpl(
+  _prev: ListTekEmployeesState | null,
+  _formData: FormData,
+): Promise<ListTekEmployeesState> {
+  try {
+    const { shopId, role } = await requireQtekUser();
+    if (role !== "admin") return adminRequired();
+    const employees = await listTekmetricEmployees(shopId);
+    return {
+      ok: true,
+      data: {
+        employees: employees.map((e) => ({
+          id: e.id,
+          name: [e.firstName, e.lastName].filter(Boolean).join(" ").replace(/\s+/g, " ").trim() || `#${e.id}`,
+          roleName: e.employeeRole?.name ?? null,
+        })),
+      },
+      timestamp: Date.now(),
+    };
+  } catch (e) {
+    return qboFailure(e);
+  }
+}
+export const listTekmetricEmployeesAction = wrapQtekAction(
+  "payrollListTekmetricEmployees",
+  listTekmetricEmployeesImpl,
 );

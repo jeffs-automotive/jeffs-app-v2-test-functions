@@ -16,7 +16,11 @@
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Save, UserPlus } from "lucide-react";
-import { upsertPayrollEmployeeAction } from "@/actions/payroll";
+import {
+  listTekmetricEmployeesAction,
+  upsertPayrollEmployeeAction,
+  type TekmetricEmployeeOption,
+} from "@/actions/payroll";
 import type { PayrollEmployee } from "@/lib/dal/payroll";
 import {
   ROLES,
@@ -207,9 +211,29 @@ export default function EmployeeForm({
   const [, start] = useTransition();
   const [role, setRole] = useState<Role>(employee?.role ?? "technician");
   const [clientError, setClientError] = useState<string | null>(null);
+  const [tekId, setTekId] = useState<string>(
+    employee?.tekmetricEmployeeId != null ? String(employee.tekmetricEmployeeId) : "",
+  );
+  const [tekOptions, setTekOptions] = useState<TekmetricEmployeeOption[] | null>(null);
+  const [tekLoading, setTekLoading] = useState(false);
+  const [tekError, setTekError] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const onDoneRef = useRef(onDone);
   onDoneRef.current = onDone;
+
+  function loadTekmetricEmployees() {
+    setTekLoading(true);
+    setTekError(null);
+    start(async () => {
+      const res = await listTekmetricEmployeesAction(null, new FormData());
+      setTekLoading(false);
+      if (res?.ok) {
+        setTekOptions([...res.data.employees].sort((a, b) => a.name.localeCompare(b.name)));
+      } else {
+        setTekError(res && !res.ok ? res.message : "Couldn't load the Tekmetric employee list.");
+      }
+    });
+  }
 
   const isEdit = employee !== undefined;
   const family = familyForRole(role);
@@ -286,14 +310,46 @@ export default function EmployeeForm({
       </div>
       <label className={labelCls}>
         Tekmetric employee ID (optional)
-        <Input
-          name="tekmetric_employee_id"
-          inputMode="numeric"
-          pattern="[0-9]*"
-          defaultValue={employee?.tekmetricEmployeeId ?? ""}
-          placeholder="e.g. 123456"
-          className="mt-0.5 w-44"
-        />
+        <span className="mt-0.5 flex items-center gap-2">
+          <Input
+            name="tekmetric_employee_id"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            value={tekId}
+            onChange={(e) => setTekId(e.target.value)}
+            placeholder="e.g. 123456"
+            className="w-44"
+          />
+          {tekOptions === null ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={tekLoading}
+              onClick={loadTekmetricEmployees}
+            >
+              {tekLoading ? "Loading…" : "Pick from Tekmetric"}
+            </Button>
+          ) : (
+            <select
+              aria-label="Tekmetric employee"
+              className={`${selectCls} max-w-72`}
+              value={tekOptions.some((o) => String(o.id) === tekId) ? tekId : ""}
+              onChange={(e) => setTekId(e.target.value)}
+            >
+              <option value="">— pick an employee —</option>
+              {tekOptions.map((o) => (
+                <option key={o.id} value={String(o.id)}>
+                  {o.name}
+                  {o.roleName ? ` — ${o.roleName}` : ""} (#{o.id})
+                </option>
+              ))}
+            </select>
+          )}
+        </span>
+        {tekError !== null && (
+          <span className="mt-0.5 block text-xs font-normal normal-case text-destructive">{tekError}</span>
+        )}
         <span className="mt-0.5 block text-xs font-normal normal-case text-muted-foreground">
           Matched as a {tekTypeLabel} id — derived from the role. Leave blank if this person isn&apos;t
           synced from Tekmetric.

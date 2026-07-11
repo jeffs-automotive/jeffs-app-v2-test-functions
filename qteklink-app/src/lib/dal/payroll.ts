@@ -72,6 +72,10 @@ import type { Family, Overrides, SheetEntries } from "@/lib/payroll/types";
 
 export { DEFAULT_PAYROLL_SETTINGS, getPayrollSettings, computePayrollRun };
 export { listPayrollEmployees, upsertPayrollEmployee };
+// Read-only Tekmetric employee list for the add/edit form's ID picker
+// (GET /employees via the tekmetric client; shop-scoped, no writes).
+export { listEmployees as listTekmetricEmployees } from "@/lib/tekmetric/client";
+export type { TekmetricEmployee } from "@/lib/tekmetric/client";
 export { listPayrollRunsWithSummaries } from "@/lib/dal/payroll-summaries";
 export type { PayrollRunWithSummary } from "@/lib/dal/payroll-summaries";
 export type { PayrollActor, PayrollAlertEmails, PayrollEmployee, PayrollEntryPatch };
