@@ -308,6 +308,54 @@ describe("SummaryView print header", () => {
     expect(screen.getByText(/DRAFT — run not completed/)).toBeInTheDocument();
     expect(screen.queryByText(/for keying into the payroll system/)).not.toBeInTheDocument();
   });
+
+  // Leave-pay DOLLARS beside the hours (extraction #31) — Marie keys the pay
+  // figures from the printout, so the summary must carry both hours and pay.
+  it("renders leave-pay dollars alongside hours for a paid-leave (technician) row", () => {
+    const techLeave: SummaryRow = {
+      ...summaryRow,
+      pto_hours: 8,
+      pto_pay_cents: 20_904, // 8h @ $26.13
+      training_hours: 4,
+      training_pay_cents: 8_400,
+      holiday_hours: 0,
+      holiday_pay_cents: 0,
+      bereavement_hours: 0,
+      bereavement_pay_cents: 0,
+    };
+    render(<SummaryView {...base} rows={[techLeave]} status="completed" completedAt="2026-07-12T14:00:00Z" />);
+    // Hours line + dollar line both present for PTO / Training (each appears in
+    // the row AND the totals footer — a single-row run, so exactly twice).
+    expect(screen.getAllByText("8.0")).toHaveLength(2);
+    expect(screen.getAllByText("$209.04")).toHaveLength(2);
+    expect(screen.getAllByText("$84.00")).toHaveLength(2);
+  });
+
+  it("shows n/a for a salaried row's leave pay (null *_pay_cents) — never $0.00", () => {
+    const salaried: SummaryRow = {
+      ...summaryRow,
+      family: "service_advisor",
+      role: "service_manager",
+      billed_hours: null,
+      billed_pay_cents: null,
+      pto_hours: 8,
+      pto_pay_cents: null, // salaried: hours tracked, no separate leave pay
+      training_hours: 0,
+      training_pay_cents: null,
+      holiday_hours: 0,
+      holiday_pay_cents: null,
+      bereavement_hours: 0,
+      bereavement_pay_cents: null,
+    };
+    render(<SummaryView {...base} rows={[salaried]} status="completed" completedAt="2026-07-12T14:00:00Z" />);
+    // The PTO hours still show (row + footer total); the leave-pay line is the
+    // archival n/a, not a misleading $0.00.
+    expect(screen.getAllByText("8.0")).toHaveLength(2);
+    expect(screen.queryByText("$0.00")).not.toBeInTheDocument();
+    expect(
+      screen.getAllByTitle(/Paid as salary — no separate leave pay/).length,
+    ).toBeGreaterThan(0);
+  });
 });
 
 // ── Mark-complete dialog ───────────────────────────────────────────────────────

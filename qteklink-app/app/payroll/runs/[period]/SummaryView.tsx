@@ -6,6 +6,13 @@
  * never $0.00 for a not-applicable incentive. A totals footer sums each
  * column (display-only server-side addition of the DAL's numbers).
  *
+ * Leave columns (PTO/Training/Holiday/Bereavement) show BOTH the hours AND the
+ * pay dollars (extraction requirement #31 — Marie keys the pay figures from the
+ * printout). The hours read as the primary figure (`font-medium`), the pay in a
+ * muted line below (the runs-card stacked-cell idiom); salaried families carry
+ * null leave pay and render n/a for the dollar line. This is a presentational
+ * projection of the DAL's existing *_pay_cents fields — no math added here.
+ *
  * Print: a self-labeling header (`hidden print:block`) that CARRIES THE RUN
  * STATUS — every on-screen status banner lives in the page's print:hidden
  * chrome, so the paper itself must say whether it's the completed record,
@@ -27,8 +34,43 @@ import { fmtDateLong, fmtHours, NA, periodLabel, ROLE_LABEL } from "../../payrol
 
 const numCell = "px-3 py-2 text-right tabular-nums";
 
-function HoursCell({ hours }: { hours: number }) {
-  return <TableCell className={numCell}>{hours === 0 ? <NA title="No hours" /> : fmtHours(hours)}</TableCell>;
+/**
+ * A leave column cell: hours as the primary figure with the pay dollars stacked
+ * below (the runs-card idiom). Zero hours → a muted em-dash on the hours line;
+ * null pay (salaried family — hours tracked, no leave-pay concept) → "n/a" on
+ * the dollar line. break-inside-avoid keeps the two-line cell whole on paper.
+ */
+function LeaveCell({ hours, payCents }: { hours: number; payCents: number | null }) {
+  return (
+    <TableCell className={`${numCell} align-top break-inside-avoid`}>
+      <div className="font-medium text-foreground">
+        {hours === 0 ? <NA title="No hours" /> : fmtHours(hours)}
+      </div>
+      <div className="text-xs text-muted-foreground">
+        {payCents === null ? (
+          <NA title="Paid as salary — no separate leave pay" />
+        ) : (
+          fmtUsd(payCents)
+        )}
+      </div>
+    </TableCell>
+  );
+}
+
+/**
+ * The footer twin of {@link LeaveCell}: the column's hours total always shows
+ * (it's a sum), and the pay total shows dollars, or n/a when every row in the
+ * column carried null leave pay (all-salaried — never a misleading $0.00).
+ */
+function LeaveTotalCell({ hours, payCents }: { hours: number; payCents: number | null }) {
+  return (
+    <TableCell className={`${numCell} align-top break-inside-avoid`}>
+      <div>{fmtHours(hours)}</div>
+      <div className="text-xs font-normal text-muted-foreground">
+        {payCents === null ? <NA title="No leave pay" /> : fmtUsd(payCents)}
+      </div>
+    </TableCell>
+  );
 }
 
 export function SummaryView({
@@ -57,25 +99,40 @@ export function SummaryView({
       : status === "completed"
         ? `Completed${completedAt ? ` ${fmtDateLong(completedAt)}` : ""} — for keying into the payroll system`
         : "DRAFT — run not completed; numbers may still change";
-  // Display-only footer sums of the DAL's numbers (no pay math).
+  // Display-only footer sums of the DAL's numbers (no pay math). Leave-pay totals
+  // sum only the non-null contributions (salaried families carry null leave pay);
+  // a column whose every row is null stays null → renders n/a, never $0.00.
   const totals = rows.reduce(
     (t, r) => ({
       reg: t.reg + r.reg_hours,
       ot: t.ot + r.ot_hours,
       incentive: r.incentive_cents === null ? t.incentive : (t.incentive ?? 0) + r.incentive_cents,
       pto: t.pto + r.pto_hours,
+      ptoPay: r.pto_pay_cents === null ? t.ptoPay : (t.ptoPay ?? 0) + r.pto_pay_cents,
       training: t.training + r.training_hours,
+      trainingPay:
+        r.training_pay_cents === null ? t.trainingPay : (t.trainingPay ?? 0) + r.training_pay_cents,
       holiday: t.holiday + r.holiday_hours,
+      holidayPay:
+        r.holiday_pay_cents === null ? t.holidayPay : (t.holidayPay ?? 0) + r.holiday_pay_cents,
       bereavement: t.bereavement + r.bereavement_hours,
+      bereavementPay:
+        r.bereavement_pay_cents === null
+          ? t.bereavementPay
+          : (t.bereavementPay ?? 0) + r.bereavement_pay_cents,
     }),
     {
       reg: 0,
       ot: 0,
       incentive: null as number | null,
       pto: 0,
+      ptoPay: null as number | null,
       training: 0,
+      trainingPay: null as number | null,
       holiday: 0,
+      holidayPay: null as number | null,
       bereavement: 0,
+      bereavementPay: null as number | null,
     },
   );
 
@@ -97,10 +154,30 @@ export function SummaryView({
               <TableHead className="px-3 py-2 text-right">Regular hrs</TableHead>
               <TableHead className="px-3 py-2 text-right">OT hrs</TableHead>
               <TableHead className="px-3 py-2 text-right">Incentive</TableHead>
-              <TableHead className="px-3 py-2 text-right">PTO</TableHead>
-              <TableHead className="px-3 py-2 text-right">Training</TableHead>
-              <TableHead className="px-3 py-2 text-right">Holiday</TableHead>
-              <TableHead className="px-3 py-2 text-right">Bereavement</TableHead>
+              <TableHead className="px-3 py-2 text-right">
+                PTO
+                <span className="block text-[10px] font-normal normal-case tracking-normal">
+                  hrs / pay
+                </span>
+              </TableHead>
+              <TableHead className="px-3 py-2 text-right">
+                Training
+                <span className="block text-[10px] font-normal normal-case tracking-normal">
+                  hrs / pay
+                </span>
+              </TableHead>
+              <TableHead className="px-3 py-2 text-right">
+                Holiday
+                <span className="block text-[10px] font-normal normal-case tracking-normal">
+                  hrs / pay
+                </span>
+              </TableHead>
+              <TableHead className="px-3 py-2 text-right">
+                Bereavement
+                <span className="block text-[10px] font-normal normal-case tracking-normal">
+                  hrs / pay
+                </span>
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -121,10 +198,10 @@ export function SummaryView({
                     fmtUsd(r.incentive_cents)
                   )}
                 </TableCell>
-                <HoursCell hours={r.pto_hours} />
-                <HoursCell hours={r.training_hours} />
-                <HoursCell hours={r.holiday_hours} />
-                <HoursCell hours={r.bereavement_hours} />
+                <LeaveCell hours={r.pto_hours} payCents={r.pto_pay_cents} />
+                <LeaveCell hours={r.training_hours} payCents={r.training_pay_cents} />
+                <LeaveCell hours={r.holiday_hours} payCents={r.holiday_pay_cents} />
+                <LeaveCell hours={r.bereavement_hours} payCents={r.bereavement_pay_cents} />
               </TableRow>
             ))}
           </TableBody>
@@ -136,10 +213,10 @@ export function SummaryView({
               <TableCell className={numCell}>
                 {totals.incentive === null ? <NA title="No incentives" /> : fmtUsd(totals.incentive)}
               </TableCell>
-              <TableCell className={numCell}>{fmtHours(totals.pto)}</TableCell>
-              <TableCell className={numCell}>{fmtHours(totals.training)}</TableCell>
-              <TableCell className={numCell}>{fmtHours(totals.holiday)}</TableCell>
-              <TableCell className={numCell}>{fmtHours(totals.bereavement)}</TableCell>
+              <LeaveTotalCell hours={totals.pto} payCents={totals.ptoPay} />
+              <LeaveTotalCell hours={totals.training} payCents={totals.trainingPay} />
+              <LeaveTotalCell hours={totals.holiday} payCents={totals.holidayPay} />
+              <LeaveTotalCell hours={totals.bereavement} payCents={totals.bereavementPay} />
             </TableRow>
           </TableFooter>
         </Table>

@@ -7,7 +7,7 @@
  */
 import type { RunSnapshot } from "@/lib/payroll/types";
 import { Badge } from "@/components/ui/badge";
-import { AutoValue, fmtHours, NA, ROLE_LABEL } from "../../payroll-ui";
+import { AutoValue, fmtHours, NA, ProvenanceLegend, ROLE_LABEL } from "../../payroll-ui";
 import { fmtUsd } from "@/lib/format";
 
 const thCls =
@@ -25,8 +25,10 @@ const HOUR_COLS = [
 
 export function EntryGridReadOnly({ snapshot }: { snapshot: RunSnapshot }) {
   return (
-    <div className="overflow-x-auto rounded-lg border border-border shadow-xs">
-      <table className="w-full caption-bottom text-sm">
+    <div className="space-y-2">
+      <ProvenanceLegend />
+      <div className="overflow-x-auto rounded-lg border border-border shadow-xs">
+        <table className="w-full caption-bottom text-sm">
         <thead className="bg-muted">
           <tr className="border-b border-border">
             <th scope="col" className={`${thCls} sticky left-0 z-10 bg-muted shadow-[1px_0_0_var(--border)]`}>
@@ -121,7 +123,8 @@ export function EntryGridReadOnly({ snapshot }: { snapshot: RunSnapshot }) {
             });
           })}
         </tbody>
-      </table>
+        </table>
+      </div>
     </div>
   );
 }

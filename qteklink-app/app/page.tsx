@@ -76,7 +76,11 @@ export default async function ModuleDirectoryPage() {
         </div>
       </PageHeader>
 
-      <section aria-label="Modules" className="mt-8 grid gap-6 sm:grid-cols-2">
+      <p className="mt-8 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        Modules
+      </p>
+
+      <section aria-label="Modules" className="mt-2 grid gap-6 sm:grid-cols-2">
         <ModuleCard
           href="/dashboard"
           icon={ArrowRightLeft}
@@ -116,7 +120,7 @@ function ModuleCard({
     >
       <Card className="h-full shadow-xs transition-all group-hover:shadow-md group-hover:ring-foreground/25 motion-safe:group-hover:-translate-y-0.5">
         <CardHeader>
-          <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
             <Icon className="size-5" aria-hidden="true" />
           </div>
           <CardTitle className="mt-2 flex items-center gap-1 text-lg">

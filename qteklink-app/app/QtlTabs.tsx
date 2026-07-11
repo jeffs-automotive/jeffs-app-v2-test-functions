@@ -18,7 +18,8 @@
  */
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutGrid } from "lucide-react";
+import { ArrowRightLeft, LayoutGrid, Wallet } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
 import ThemeToggle from "./ThemeToggle";
 
 interface Tab {
@@ -60,6 +61,7 @@ export default function QtlTabs() {
 
   const isPayroll = pathname === "/payroll" || pathname.startsWith("/payroll/");
   const moduleLabel = isPayroll ? "Payroll" : "QBO Link";
+  const ModuleIcon = isPayroll ? Wallet : ArrowRightLeft;
   const tabs = isPayroll ? PAYROLL_TABS : QBO_TABS;
 
   return (
@@ -67,15 +69,21 @@ export default function QtlTabs() {
       <div className="mx-auto flex max-w-5xl items-center gap-2 px-4 py-2">
         <nav aria-label={`${moduleLabel} navigation`} className="min-w-0 flex-1 overflow-x-auto">
           <div className="mx-auto flex w-fit min-w-max items-center rounded-lg border border-border bg-card p-1 shadow-xs">
+            {/* "Modules" reads as up/out, not a peer tab. On narrow screens the
+                label collapses to the icon (sr-only text keeps the accessible
+                name) to preserve horizontal room for the tab pills. */}
             <Link
               href="/"
               className="flex min-h-9 items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:px-4"
             >
-              <LayoutGrid className="size-4" aria-hidden="true" />
-              Modules
+              <LayoutGrid className="size-4 shrink-0" aria-hidden="true" />
+              <span className="sr-only sm:not-sr-only">Modules</span>
             </Link>
-            <span aria-hidden="true" className="mx-1 h-5 w-px shrink-0 bg-border" />
-            <span className="whitespace-nowrap px-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <Separator orientation="vertical" className="mx-1 h-5 shrink-0 self-center" />
+            {/* Active-module marker: burgundy (~8.9:1 on the translucent bar)
+                with its own module icon so the current module is unmistakable. */}
+            <span className="flex items-center gap-1.5 whitespace-nowrap px-2 text-xs font-semibold uppercase tracking-wide text-primary">
+              <ModuleIcon className="size-3.5 shrink-0" aria-hidden="true" />
               {moduleLabel}
             </span>
             {tabs.map((t) => {
