@@ -511,24 +511,20 @@ export async function spiffCountsByServiceWriter(
 
 /**
  * New-category catcher (decision #15): distinct `job_category_name` values in the
- * mirror not yet in the known set. Scans ALL jobs (not authorized-only — a category
- * first seen on a declined job is still an observed category to configure).
+ * mirror not yet in the known set. ALL jobs, not authorized-only — a category
+ * first seen on a declined job is still an observed category to configure.
+ *
+ * Uses the `qteklink_payroll_distinct_job_categories` RPC (recursive index
+ * skip-scan, ~2ms). The previous client-side paging over every categorized job
+ * row hit the Postgres statement timeout (57014) on its first page — live
+ * failure 2026-07-11, migration 20260711140000.
  */
 export async function discoverNewCategories(shopId: number, knownNames: string[]): Promise<string[]> {
   const admin = createSupabaseAdminClient();
-  const observed = new Set<string>();
-  for (let from = 0; ; from += PAGE) {
-    const { data, error } = await admin
-      .from("tekmetric_ro_jobs")
-      .select("job_category_name")
-      .eq("shop_id", shopId)
-      .not("job_category_name", "is", null)
-      .order("id", { ascending: true })
-      .range(from, from + PAGE - 1);
-    if (error) throw new Error(`payroll derive: category discovery fetch failed: ${error.message}`);
-    const rows = (data ?? []) as { job_category_name: string | null }[];
-    for (const r of rows) if (r.job_category_name != null) observed.add(r.job_category_name);
-    if (rows.length < PAGE) break;
-  }
-  return newCategoryNames([...observed], knownNames);
+  const { data, error } = await admin.rpc("qteklink_payroll_distinct_job_categories", {
+    p_shop_id: shopId,
+  });
+  if (error) throw new Error(`payroll derive: category discovery fetch failed: ${error.message}`);
+  const observed = (data ?? []) as string[];
+  return newCategoryNames(observed, knownNames);
 }
