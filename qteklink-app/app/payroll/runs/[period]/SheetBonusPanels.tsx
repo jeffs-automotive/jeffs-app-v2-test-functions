@@ -136,6 +136,22 @@ function pct(v: number | null): string {
   return v === null ? "—" : `${Math.round(v * 10000) / 100}%`;
 }
 
+/** Round-5 #36: the month-sales definition wording (after fees). */
+const MONTH_SALES_SOURCE =
+  "From Tekmetric — repair orders posted in the bonus month, totals minus taxes and fees";
+
+/** Round-5 #38: GP-with-fees provenance per composition source (pre-#38
+ *  snapshots have no source label and keep the legacy prorated-labor wording). */
+function gpWithFeesSource(gpSource: string | null): string {
+  if (gpSource === "qbo_tech_cost") {
+    return "Derived — Tekmetric − QuickBooks tech cost: month sales (incl. fees) − parts cost − QuickBooks 6010 technician cost";
+  }
+  if (gpSource === "computed") {
+    return "Derived — computed fallback (QuickBooks was unavailable): month sales (incl. fees) − parts cost − prorated labor pay";
+  }
+  return "Derived — month sales − parts cost − prorated labor pay";
+}
+
 function ResultLine({ items }: { items: { label: string; cents: number | null }[] }) {
   return (
     <p className="mt-3 border-t border-primary/20 pt-3 text-sm">
@@ -155,11 +171,29 @@ function ResultLine({ items }: { items: { label: string; cents: number | null }[
 
 export function BonusMonthCard({ month, prov }: { month: string; prov: MonthProvenanceView }) {
   const rows: { label: string; cents?: number | null; hours?: number | null; source: string }[] = [
-    { label: "Month sales (less tax)", cents: prov.salesCents, source: "From Tekmetric — repair orders posted in the month, totals minus taxes" },
-    { label: "GP with fees", cents: prov.gpWithFeesCents, source: "Derived — month sales − parts cost − prorated labor pay" },
+    { label: "Month sales (less tax & fees)", cents: prov.salesCents, source: "From Tekmetric — repair orders posted in the month, totals minus taxes and fees" },
+    { label: "GP with fees", cents: prov.gpWithFeesCents, source: gpWithFeesSource(prov.gpSource) },
     { label: "GP without fees", cents: prov.gpWithoutFeesCents, source: "Derived — GP with fees − shop fees" },
-    { label: "Parts cost", cents: prov.partsCostCents, source: "From Tekmetric — authorized-job parts cost for the month" },
-    { label: "Labor pay (prorated)", cents: prov.laborPayProratedCents, source: "Derived — shop labor pay prorated across runs overlapping the month" },
+    { label: "Parts cost", cents: prov.partsCostCents, source: "From Tekmetric — authorized-job parts cost for the month (cost × qty, rounded per line) + sublets" },
+    // #38: the tech-cost line itemizes with provenance when the QBO composition
+    // ran; the prorated-labor line renders only for the computed path (incl.
+    // pre-#38 snapshots, whose GP really was labor-prorated).
+    ...(prov.gpSource === "qbo_tech_cost"
+      ? [
+          {
+            label: "Technician cost (QBO 6010)",
+            cents: prov.qboTechCostCents,
+            source: `From QuickBooks — the P&L cost-of-goods row for account ${prov.qboTechCostAccount ?? "6010 Technicians"} over the bonus month`,
+          },
+        ]
+      : [
+          {
+            label: "Labor pay (prorated)",
+            cents: prov.laborPayProratedCents,
+            source:
+              "Derived — shop labor pay prorated across runs overlapping the month (the computed GP fallback)",
+          },
+        ]),
     { label: "Shop billed hours", hours: prov.shopHours, source: "From Tekmetric — all technician labor hours posted in the month" },
   ];
   return (
@@ -225,7 +259,7 @@ export function ServiceAdvisorBonusPanel({ ctx }: { ctx: SheetCtx }) {
     e.overrides.sales_goal_cents !== undefined
       ? "Manual override"
       : monthProv.salesGoalSource === "prior_year_subtotal"
-        ? "Auto — prior-year same-month sales (less tax)"
+        ? "Auto — prior-year same-month sales (less tax & fees)"
         : "From pay config — no prior-year Tekmetric data for the month";
   const sales = e.derived.month_sales_cents;
   const gpWith = e.derived.month_gp_with_fees_cents;
@@ -242,7 +276,7 @@ export function ServiceAdvisorBonusPanel({ ctx }: { ctx: SheetCtx }) {
           label="Month sales"
           cents={sales}
           overrideKey="month_sales_cents"
-          source="From Tekmetric — repair orders posted in the bonus month, totals minus taxes"
+          source={MONTH_SALES_SOURCE}
         />
         <div className="min-w-0">
           <dt className="truncate text-xs text-muted-foreground">Sales goal</dt>
@@ -275,7 +309,7 @@ export function ServiceAdvisorBonusPanel({ ctx }: { ctx: SheetCtx }) {
           label="GP with fees"
           cents={gpWith}
           overrideKey="month_gp_with_fees_cents"
-          source="Derived — month sales − parts cost − prorated labor pay"
+          source={gpWithFeesSource(monthProv.gpSource)}
           allowNegative
         />
         <AutoMoney
@@ -366,7 +400,7 @@ export function OfficeManagerBonusPanel({ ctx }: { ctx: SheetCtx }) {
           label="Month sales"
           cents={sales}
           overrideKey="month_sales_cents"
-          source="From Tekmetric — repair orders posted in the bonus month, totals minus taxes"
+          source={MONTH_SALES_SOURCE}
         />
       </dl>
       {sales != null && salesGoal !== null && (
@@ -391,7 +425,16 @@ export function OfficeManagerBonusPanel({ ctx }: { ctx: SheetCtx }) {
 export function ForemanBonusPanel({ ctx }: { ctx: SheetCtx }) {
   const { e } = ctx;
   const pc = e.pay_config;
-  const goal = pcNum(pc, "shop_hour_goal");
+  const fallbackGoal = pcNum(pc, "shop_hour_goal");
+  // Round-5 #32: the goal auto-derives from prior-year same-month shop hours
+  // (override → prior-year → legacy pay_config fallback — the DAL resolved it;
+  // this is display of the effective server number, never recomputed pay).
+  const goal = e.derived.shop_hour_goal ?? e.sheet.shop_hour_goal ?? fallbackGoal;
+  const goalOv = e.overrides.shop_hour_goal;
+  const goalSource =
+    e.derived.shop_hour_goal != null
+      ? "Auto — total shop billed hours for the same month LAST YEAR (beat last year to earn the bonus)"
+      : "From pay config — no prior-year Tekmetric data for the month";
   const perHour = pcNum(pc, "shop_hour_bonus_cents_per_hour");
   const shopHours = e.derived.shop_hours;
   const ov = e.overrides.shop_hours;
@@ -424,18 +467,48 @@ export function ForemanBonusPanel({ ctx }: { ctx: SheetCtx }) {
             />
           </dd>
         </div>
+        <div className="min-w-0">
+          <dt className="truncate text-xs text-muted-foreground">Shop-hour goal (last year)</dt>
+          <dd className="mt-0.5 inline-flex items-center gap-0.5">
+            {goal == null ? (
+              <NA title="No shop-hour goal available" />
+            ) : (
+              <AutoValue
+                source={goalSource}
+                label={`${e.display_name} shop-hour goal`}
+                valueText={fmtHours(goal)}
+                overridden={goalOv !== undefined}
+                overrideNote={goalOv?.note}
+                className="text-sm font-semibold"
+              >
+                {fmtHours(goal)}
+              </AutoValue>
+            )}
+            <Override
+              ctx={ctx}
+              overrideKey="shop_hour_goal"
+              label="shop-hour goal"
+              unit="hours"
+              autoDisplay={goal == null ? undefined : fmtHours(goal)}
+            />
+          </dd>
+        </div>
       </dl>
-      {shopHours != null && goal !== null && (
+      {shopHours != null && goal != null && (
         <div className="mt-2">
-          <BeatLine met={shopHours >= goal}>
-            {fmtHours(shopHours)} hrs vs goal {fmtHours(goal)} hrs
+          <BeatLine met={shopHours > goal}>
+            {fmtHours(shopHours)} hrs vs goal {fmtHours(goal)} hrs{" "}
+            {shopHours > goal ? "— beat" : "— not beat"}
           </BeatLine>
         </div>
       )}
       <GoalsList
         ctx={ctx}
         items={[
-          { label: "Shop-hour goal", value: goal === null ? "—" : `${fmtHours(goal)} hrs` },
+          {
+            label: "Fallback goal (pay config)",
+            value: fallbackGoal === null ? "—" : `${fmtHours(fallbackGoal)} hrs`,
+          },
           { label: "Per hour over goal", value: perHour === null ? "—" : `${fmtUsd(perHour)}/hr` },
         ]}
       />

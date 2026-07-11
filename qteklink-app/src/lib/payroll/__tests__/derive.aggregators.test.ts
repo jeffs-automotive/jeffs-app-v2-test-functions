@@ -14,7 +14,7 @@ import {
   aggregateSalesCandidates,
   aggregateFeesCents,
   aggregateAuthorizedPartsCostCents,
-  aggregateAuthorizedPartsCostQtyWeightedCents,
+  aggregateSubletCostCents,
   aggregateMonthSubtotalCents,
   aggregateSpiffCountsByServiceWriter,
   newCategoryNames,
@@ -25,6 +25,7 @@ import {
   type MirrorLaborRow,
   type MirrorPartRow,
   type MirrorRoRow,
+  type MirrorSubletItemRow,
   type SpiffCategoryConfig,
 } from "../derive";
 
@@ -158,13 +159,19 @@ describe("prior-year sales-goal derivation (round-3 #22/#23)", () => {
     expect(() => priorYearMonth("2026-06-01")).toThrow(/YYYY-MM/);
   });
 
-  it("subtotal = Σ(total_sales − taxes), fees INCLUDED (round-4, extraction #28)", () => {
+  it("subtotal = Σ(total_sales − taxes − FEES), after fees (round-5, extraction #36 — reverses #28)", () => {
     const rows = [
-      ro({ id: 1, total_sales_cents: 100_000, taxes_cents: 6_000, fee_total_cents: 1_500 }), // 94,000
-      ro({ id: 2, total_sales_cents: 50_000, taxes_cents: 3_000, fee_total_cents: 500 }), // 47,000
+      ro({ id: 1, total_sales_cents: 100_000, taxes_cents: 6_000, fee_total_cents: 1_500 }), // 92,500
+      ro({ id: 2, total_sales_cents: 50_000, taxes_cents: 3_000, fee_total_cents: 500 }), // 46,500
       ro({ id: 3, total_sales_cents: null, taxes_cents: null, fee_total_cents: null }), // null-safe → 0
     ];
-    expect(aggregateMonthSubtotalCents(rows)).toBe(141_000);
+    expect(aggregateMonthSubtotalCents(rows)).toBe(139_000);
+  });
+
+  it("the fee-INCLUSIVE figure survives as the internal GP base (#38): subtotal + fees", () => {
+    const rows = [ro({ id: 1, total_sales_cents: 100_000, taxes_cents: 6_000, fee_total_cents: 1_500 })];
+    expect(aggregateSalesCandidates(rows).totalSalesMinusTaxesCents).toBe(94_000);
+    expect(aggregateMonthSubtotalCents(rows)).toBe(94_000 - 1_500);
   });
 
   it("zero rows → 0 (callers key the no-data fallback on provenance roCount, not the value)", () => {
@@ -172,34 +179,75 @@ describe("prior-year sales-goal derivation (round-3 #22/#23)", () => {
   });
 });
 
-describe("parts cost aggregators", () => {
+describe("parts cost (decision #37 — Σ round(cost × qty) per line, authorized jobs only)", () => {
+  const AUTH_JOB: MirrorJobRow[] = [{ id: 10, ro_id: 1, authorized: true, job_category_name: null }];
   const parts: MirrorPartRow[] = [
-    { id: 1, job_id: 10, cost_cents: 10_00, quantity: 2 },
-    { id: 2, job_id: 10, cost_cents: 5_00, quantity: null }, // qty null → 1
+    { id: 1, job_id: 10, cost_cents: 10_00, quantity: 2 }, // 2,000
+    { id: 2, job_id: 10, cost_cents: 5_00, quantity: null }, // qty null → 1 → 500
     { id: 3, job_id: 11, cost_cents: 999_99, quantity: 1 }, // declined parent job
     { id: 4, job_id: 12, cost_cents: 999_99, quantity: 1 }, // null-flag parent job
-    { id: 5, job_id: 10, cost_cents: null, quantity: 3 }, // null cost
+    { id: 5, job_id: 10, cost_cents: null, quantity: 3 }, // null cost → 0
   ];
 
-  it("contract definition: Σ cost_cents on authorized jobs only", () => {
-    expect(aggregateAuthorizedPartsCostCents(JOBS, parts)).toBe(15_00);
+  it("#37 definition: Σ round(cost × qty) on authorized jobs only (declined + null-flag excluded)", () => {
+    expect(aggregateAuthorizedPartsCostCents(JOBS, parts)).toBe(25_00);
   });
 
-  it("qty-weighted candidate: Σ round(cost × qty) on authorized jobs only", () => {
-    expect(aggregateAuthorizedPartsCostQtyWeightedCents(JOBS, parts)).toBe(25_00);
-  });
-
-  it("qty-weighted rounds half away from zero on fractional quantities", () => {
-    const j: MirrorJobRow[] = [{ id: 10, ro_id: 1, authorized: true, job_category_name: null }];
-    // 333 × 1.5 = 499.5 → 500
+  it("fractional quantities round PER LINE, half away from zero: 1725¢ × 0.5 → 863", () => {
     expect(
-      aggregateAuthorizedPartsCostQtyWeightedCents(j, [{ id: 1, job_id: 10, cost_cents: 333, quantity: 1.5 }]),
-    ).toBe(500);
+      aggregateAuthorizedPartsCostCents(AUTH_JOB, [{ id: 1, job_id: 10, cost_cents: 1725, quantity: 0.5 }]),
+    ).toBe(863);
+  });
+
+  it("rounding is per LINE, not on the total: two 862.5¢ lines → 863 + 863 = 1726", () => {
+    expect(
+      aggregateAuthorizedPartsCostCents(AUTH_JOB, [
+        { id: 1, job_id: 10, cost_cents: 1725, quantity: 0.5 },
+        { id: 2, job_id: 10, cost_cents: 1725, quantity: 0.5 },
+      ]),
+    ).toBe(1726);
   });
 
   it("zero data → 0", () => {
     expect(aggregateAuthorizedPartsCostCents([], [])).toBe(0);
-    expect(aggregateAuthorizedPartsCostQtyWeightedCents([], [])).toBe(0);
+  });
+});
+
+describe("sublet cost (decision #37 — RO-level sublet items, no authorized flag)", () => {
+  it("Σ item cost_cents, null-safe", () => {
+    const items: MirrorSubletItemRow[] = [
+      { id: 1, sublet_id: 50, cost_cents: 29_000 }, // the June $290.00
+      { id: 2, sublet_id: 50, cost_cents: null },
+      { id: 3, sublet_id: 51, cost_cents: 1_25 },
+    ];
+    expect(aggregateSubletCostCents(items)).toBe(29_125);
+  });
+
+  it("zero data → 0", () => {
+    expect(aggregateSubletCostCents([])).toBe(0);
+  });
+});
+
+describe("#37 component split (parts table vs sublet — the June proof structure)", () => {
+  it("month parts cost composes the two halves: parts(+tires+batteries) + sublet items", () => {
+    // Synthetic mini-June: the parts TABLE carries parts + tires + batteries
+    // (all qty-weighted per line); sublets ride separately at item cost.
+    const jobs: MirrorJobRow[] = [
+      { id: 10, ro_id: 1, authorized: true, job_category_name: null },
+      { id: 11, ro_id: 1, authorized: false, job_category_name: null }, // declined — excluded
+    ];
+    const parts: MirrorPartRow[] = [
+      { id: 1, job_id: 10, cost_cents: 5_343_456, quantity: 1 }, // "parts"
+      { id: 2, job_id: 10, cost_cents: 659_580, quantity: 2 }, // "tires" → 1,319,160
+      { id: 3, job_id: 10, cost_cents: 245_474, quantity: 1 }, // "batteries"
+      { id: 4, job_id: 11, cost_cents: 999_999, quantity: 1 }, // declined — excluded
+    ];
+    const subletItems: MirrorSubletItemRow[] = [{ id: 1, sublet_id: 9, cost_cents: 29_000 }];
+    const partsHalf = aggregateAuthorizedPartsCostCents(jobs, parts);
+    const subletHalf = aggregateSubletCostCents(subletItems);
+    expect(partsHalf).toBe(6_908_090); // $69,080.90 — the parts-table half
+    expect(subletHalf).toBe(29_000); // $290.00 — the sublet half
+    expect(partsHalf + subletHalf).toBe(6_937_090); // $69,370.90 — decision #37's June total
   });
 });
 

@@ -8,9 +8,10 @@
  * override.value beats the derived number key-by-key; the RAW overrides object is
  * kept in the snapshot next to the EFFECTIVE inputs as provenance. Two passes:
  * non-service-advisor sheets first (they never need GP), then the bonus month's GP
- * (labor pay prorated over every run overlapping the month — completed runs from
- * their frozen snapshots, other open runs computed live, voided skipped), then the
- * service-advisor sheets that consume it.
+ * (#38: sales incl fees − parts − QBO 6010 tech cost; on a QBO failure the labeled
+ * fallback prorates labor pay over every run overlapping the month — completed runs
+ * from their frozen snapshots, other open runs computed live, voided skipped), then
+ * the service-advisor sheets that consume it.
  *
  * Read-path rule: completed/voided runs render EXCLUSIVELY from the frozen
  * snapshot — never recomputed.
@@ -24,36 +25,45 @@
  * seeded pre-qteklink periods from pay_config.leave_rate_seed_history (a real run
  * beats a same-period seed); pay_config.leave_rate_seed_cents_per_hour is the
  * single-rate 'seed' fallback between 'history' and 'current_run'.
- *
- * GP labor allocation note: gp.ts wants per-week totals. Week totals from calc.ts
- * are time-based (base+OT+billed+efficiency+leave); run-level incentive extras
- * (foreman monthly bonus, support manual incentive) are split 50/50 across the two
- * weeks so Σ weeks ≈ sheet total — consistent with the decision #17 approximation.
+ * Round-5 (#32): the shop-foreman hour goal auto-derives from prior-year same-month
+ * shop billed hours, mirroring the SA sales goal (override → prior-year (roCount>0)
+ * → legacy pay_config.shop_hour_goal); derived only for bonus runs with a foreman
+ * on the roster; goal + source ride DerivedInputs/SheetComputation/snapshot.
+ * Round-5 (#36/#37/#38): month sales display AFTER fees (Σ totalSales − taxes −
+ * fees — reverses #28; the prior-year auto goal follows); parts cost = per-line
+ * round(cost × qty) over authorized jobs + RO-level sublet items; and the GP
+ * composition is PRIMARILY sales(incl fees, internal) − parts − QBO 6010
+ * technician cost (source 'qbo_tech_cost'), with the prorated-labor computation
+ * kept ONLY as the labeled fallback when the QBO fetch throws. The composition
+ * root (resolveMonthGp) + the GP-labor input builders + applyOverrides live in
+ * ./payroll-compute-gp.ts (~500-line file policy).
  */
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getShopSettings } from "@/lib/dal/settings";
 import { addDaysIso } from "@/lib/format";
-import { z } from "zod";
 import { CALC_VERSION, computeSheet } from "@/lib/payroll/calc";
 import {
   billedHoursByTechnician,
-  monthDateRange,
   monthFeesCents,
   monthPartsCostCents,
   monthSalesPreTaxCents,
   priorYearMonthSubtotalCents,
-  roundCents,
+  priorYearShopBilledHours,
   shopBilledHours,
   spiffCountsByServiceWriter,
   type DeriveProvenance,
 } from "@/lib/payroll/derive";
-import { GP_LABOR_ROLES, monthGpFromRuns, type GpRunEmployeePay, type GpRunInput } from "@/lib/payroll/gp";
+import { GP_LABOR_ROLES, type MonthGpSource } from "@/lib/payroll/gp";
+import {
+  applyOverrides,
+  gpPayFromSheet,
+  isTechnicianFamily,
+  resolveMonthGp,
+} from "@/lib/dal/payroll-compute-gp";
 import { buildRunSummary, type EmployeeSheet } from "@/lib/payroll/summary";
 import {
   fetchLeaveRateHistory,
   mergeLeaveRateWindow,
   resolveLeaveRate,
-  type LeaveRateEntry,
   type LeaveRateResolution,
 } from "@/lib/dal/payroll-leave-rate";
 import {
@@ -80,178 +90,36 @@ import {
   normalizeOverrides,
   runFromRow,
   sheetEntriesFromRow,
-  RUN_COLS,
   type EntryDbRow,
   type PayrollRun,
   type RunDbRow,
 } from "@/lib/dal/payroll-shared";
 
-// ── Override precedence + GP helpers ───────────────────────────────────────────
-
-/** override.value beats the derived number, key by key (provenance = the raw overrides
- *  object, which the snapshot keeps verbatim next to the effective inputs). */
-function applyOverrides(base: DerivedInputs, overrides: Overrides): DerivedInputs {
-  return {
-    billed_hours_w1: overrides.billed_hours_w1?.value ?? base.billed_hours_w1,
-    billed_hours_w2: overrides.billed_hours_w2?.value ?? base.billed_hours_w2,
-    month_sales_cents: overrides.month_sales_cents?.value ?? base.month_sales_cents,
-    month_gp_with_fees_cents: overrides.month_gp_with_fees_cents?.value ?? base.month_gp_with_fees_cents,
-    month_gp_without_fees_cents:
-      overrides.month_gp_without_fees_cents?.value ?? base.month_gp_without_fees_cents,
-    spiff_count: overrides.spiff_count?.value ?? base.spiff_count,
-    shop_hours: overrides.shop_hours?.value ?? base.shop_hours,
-    sales_goal_cents: overrides.sales_goal_cents?.value ?? base.sales_goal_cents,
-    leave_rate_cents_per_hour:
-      overrides.leave_rate_cents_per_hour?.value ?? base.leave_rate_cents_per_hour,
-    // Not overridable by shape ({value, note} carries numbers only): resolveLeaveRate
-    // owns the source and already reports 'override' when the override key is set.
-    leave_rate_source: base.leave_rate_source,
-  };
-}
-
-const isTechnicianFamily = (family: Family): family is "technician" | "shop_foreman" =>
-  family === "technician" || family === "shop_foreman";
-
-/**
- * Per-week GP pay from a computed sheet: calc.ts week totals are time-based
- * (base+OT+billed+efficiency+leave); run-level incentive extras (foreman bonus,
- * manual incentive — anything in incentive_cents that is not already week-allocated
- * billed/efficiency pay) are split 50/50 so Σ weeks ≈ the sheet total.
- */
-function gpPayFromSheet(role: string, sheet: SheetComputation): GpRunEmployeePay {
-  const inWeeks =
-    (sheet.week1.billed_pay_cents ?? 0) +
-    (sheet.week1.efficiency_pay_cents ?? 0) +
-    (sheet.week2.billed_pay_cents ?? 0) +
-    (sheet.week2.efficiency_pay_cents ?? 0);
-  const extras = sheet.incentive_cents - inWeeks;
-  const extrasW1 = roundCents(extras / 2);
-  return {
-    role,
-    totalPayW1Cents: sheet.week1.total_pay_cents + extrasW1,
-    totalPayW2Cents: sheet.week2.total_pay_cents + (extras - extrasW1),
-  };
-}
-
-/** Minimal tolerant read of a frozen snapshot for GP purposes (older snapshot
- *  versions may add fields; we only need role + week totals + incentive). */
-const GpSnapshotEmployeeSchema = z.object({
-  role: z.string(),
-  sheet: z.object({
-    incentive_cents: z.number(),
-    week1: z.object({
-      total_pay_cents: z.number(),
-      billed_pay_cents: z.number().nullable(),
-      efficiency_pay_cents: z.number().nullable(),
-    }),
-    week2: z.object({
-      total_pay_cents: z.number(),
-      billed_pay_cents: z.number().nullable(),
-      efficiency_pay_cents: z.number().nullable(),
-    }),
-  }),
-});
-
-function gpInputFromSnapshot(run: RunDbRow): GpRunInput {
-  const snap = run.snapshot as { employees?: unknown[] } | null;
-  const employees = Array.isArray(snap?.employees) ? snap.employees : [];
-  return {
-    status: run.status,
-    periodStart: run.period_start,
-    employees: employees.map((e) => {
-      const parsed = GpSnapshotEmployeeSchema.parse(e);
-      return gpPayFromSheet(parsed.role, parsed.sheet as SheetComputation);
-    }),
-  };
-}
-
-/** Live GP-role pay for ANOTHER open run overlapping the month (its own billed-hours
- *  derivation + overrides; foreman shop hours only when that run is a bonus run).
- *  Tech/foreman leave pay uses the leave-rate basis (round-3 #24) so the per-week
- *  totals feeding gp.ts include leave at the same rates the run itself would pay. */
-async function gpInputForOpenRun(
-  shopId: number,
-  run: RunDbRow,
-  tz: string,
-  shopHoursByMonth: Map<string, number>,
-  leaveHistory: Map<string, LeaveRateEntry[]>,
-): Promise<GpRunInput> {
-  const rows = await fetchRunEntries(run.id);
-  const gpRows = rows.filter((r) => (GP_LABOR_ROLES as readonly string[]).includes(r.role_snapshot));
-  if (gpRows.length === 0) return { status: run.status, periodStart: run.period_start, employees: [] };
-
-  const employees = await fetchEmployeesByIds(shopId, gpRows.map((r) => r.employee_id));
-  const w2Start = addDaysIso(run.period_start, 7);
-  const [billedW1, billedW2] = await Promise.all([
-    billedHoursByTechnician(shopId, run.period_start, addDaysIso(run.period_start, 6), { tz }),
-    billedHoursByTechnician(shopId, w2Start, run.period_end, { tz }),
-  ]);
-  let shopHours: number | null = null;
-  if (run.bonus_period && run.bonus_month) {
-    const month = run.bonus_month.slice(0, 7);
-    if (!shopHoursByMonth.has(month)) {
-      shopHoursByMonth.set(month, (await shopBilledHours(shopId, month, { tz })).value);
-    }
-    shopHours = shopHoursByMonth.get(month) ?? null;
-  }
-
-  const gpEmployees: GpRunEmployeePay[] = [];
-  for (const r of gpRows) {
-    const role = RoleSchema.parse(r.role_snapshot);
-    const family = familyForRole(role);
-    const payConfig = parsePayConfig(family, r.pay_config);
-    const emp = employees.get(r.employee_id);
-    const tmId = emp?.tekmetricIdType === "technician" ? emp.tekmetricEmployeeId : null;
-    const base: DerivedInputs = {
-      billed_hours_w1: tmId !== null ? (billedW1.value.get(tmId) ?? 0) : null,
-      billed_hours_w2: tmId !== null ? (billedW2.value.get(tmId) ?? 0) : null,
-      month_sales_cents: null,
-      month_gp_with_fees_cents: null,
-      month_gp_without_fees_cents: null,
-      spiff_count: null,
-      shop_hours: family === "shop_foreman" ? shopHours : null,
-      sales_goal_cents: null,
-      leave_rate_cents_per_hour: null, // resolved below for tech/foreman
-      leave_rate_source: null,
-    };
-    const overrides = normalizeOverrides(r.overrides, `entry ${r.id}`);
-    const entries = sheetEntriesFromRow(r);
-    let effective = applyOverrides(base, overrides);
-    let sheet = computeSheet(family, payConfig, entries, effective);
-    if (isTechnicianFamily(family)) {
-      // Round-4: merge the run history with the pay_config seed entries (a real
-      // run beats a same-period seed) and thread the single-rate seed fallback.
-      const techConfig = payConfig as TechnicianPayConfig;
-      const lr = resolveLeaveRate(
-        overrides,
-        mergeLeaveRateWindow(
-          leaveHistory.get(r.employee_id) ?? [],
-          techConfig.leave_rate_seed_history ?? [],
-        ),
-        techConfig.leave_rate_seed_cents_per_hour ?? null,
-        sheet,
-        techConfig.hourly_rate_cents,
-      );
-      effective = { ...effective, leave_rate_cents_per_hour: lr.rateCents, leave_rate_source: lr.source };
-      sheet = computeSheet(family, payConfig, entries, effective);
-    }
-    gpEmployees.push(gpPayFromSheet(role, sheet));
-  }
-  return { status: run.status, periodStart: run.period_start, employees: gpEmployees };
-}
-
 // ── The snapshot builder ───────────────────────────────────────────────────────
 
 interface MonthDerivations {
   month: string;
+  /** Round-5 #36 (reverses #28): the DISPLAY/tier month sales =
+   *  Σ(totalSales − taxes − FEES) — the backtest-pinned original. */
   salesCents: number;
+  /** Round-5 #38: the INTERNAL GP base = Σ(totalSales − taxes), fees still in.
+   *  Never displayed as "month sales". */
+  salesInclFeesCents: number;
   feesCents: number;
   partsCostCents: number;
   shopHours: number;
   spiffCounts: Map<number, number>;
   gpWithFeesCents: number;
   gpWithoutFeesCents: number;
-  laborPayProratedCents: number;
+  /** Round-5 #38: which composition produced the GP figures —
+   *  'qbo_tech_cost' (primary) or 'computed' (the labeled fallback). */
+  gpSource: MonthGpSource;
+  /** QBO P&L COGS 6010 for the month; null on the computed fallback. */
+  qboTechCostCents: number | null;
+  qboTechCostAccountLabel: string | null;
+  /** Prorated GP labor pay — computed ONLY on the fallback path (#38);
+   *  null when the QBO tech-cost composition was used. */
+  laborPayProratedCents: number | null;
   provenance: DeriveProvenance;
   /** Round-3 #22/#23: prior-year same-month subtotal (raw) + the SA sales goal it
    *  yields — null when the prior-year month had 0 posted ROs (no data → calc falls
@@ -259,6 +127,13 @@ interface MonthDerivations {
   priorYearSubtotalCents: number;
   salesGoalCents: number | null;
   salesGoalProvenance: DeriveProvenance;
+  /** Round-5 #32: prior-year same-month TOTAL SHOP HOURS + the foreman goal it
+   *  yields. Derived only when a foreman is on the roster (all null otherwise);
+   *  goal null when the prior-year month had 0 posted ROs (no data → calc falls
+   *  back to the legacy pay_config.shop_hour_goal). */
+  priorYearShopHours: number | null;
+  shopHourGoal: number | null;
+  shopHourGoalProvenance: DeriveProvenance | null;
 }
 
 /**
@@ -290,26 +165,36 @@ export async function buildOpenRunSnapshot(shopId: number, run: RunDbRow): Promi
   let month: MonthDerivations | null = null;
   if (run.bonus_period && run.bonus_month) {
     const monthKey = run.bonus_month.slice(0, 7);
-    const [sales, fees, parts, shopHrs, spiffs, priorYear] = await Promise.all([
+    // Round-5 #32: derive the foreman's prior-year hour goal only when a foreman
+    // is actually on this run's roster.
+    const hasForeman = rows.some((r) => r.role_snapshot === "shop_foreman");
+    const [sales, fees, parts, shopHrs, spiffs, priorYear, priorYearShopHrs] = await Promise.all([
       monthSalesPreTaxCents(shopId, monthKey, { tz }),
       monthFeesCents(shopId, monthKey, { tz }),
       monthPartsCostCents(shopId, monthKey, { tz }),
       shopBilledHours(shopId, monthKey, { tz }),
       spiffCountsByServiceWriter(shopId, monthKey, settings.spiff_categories, { tz }),
       priorYearMonthSubtotalCents(shopId, monthKey, { tz }),
+      hasForeman ? priorYearShopBilledHours(shopId, monthKey, { tz }) : Promise.resolve(null),
     ]);
     month = {
       month: monthKey,
-      // Round-4 (extraction #28): monthly sales INCLUDE fees = Σ(totalSales − taxes).
-      // Go-forward decision; the historical sheets matched the fee-excluded number (#21).
-      salesCents: sales.value.totalSalesMinusTaxesCents,
+      // Round-5 #36 (reverses #28): month sales display AFTER FEES =
+      // Σ(totalSales − taxes − fees) — the backtest-pinned original (June
+      // 2026 = $273,061.13). Feeds the bonus panels + the SA tier's sales side.
+      salesCents: sales.value.totalSalesMinusTaxesCents - fees.value,
+      // Round-5 #38: the fee-INCLUSIVE subtotal stays as the INTERNAL GP base.
+      salesInclFeesCents: sales.value.totalSalesMinusTaxesCents,
       feesCents: fees.value,
       partsCostCents: parts.value,
       shopHours: shopHrs.value,
       spiffCounts: spiffs.value,
-      gpWithFeesCents: 0, // filled below once labor pay is known
+      gpWithFeesCents: 0, // filled below by the #38 GP composition
       gpWithoutFeesCents: 0,
-      laborPayProratedCents: 0,
+      gpSource: "qbo_tech_cost", // resolved below (falls to 'computed' on a QBO failure)
+      qboTechCostCents: null,
+      qboTechCostAccountLabel: null,
+      laborPayProratedCents: null, // fallback path only (#38)
       provenance: sales.provenance,
       // Round-3 #22/#23: the SA sales goal auto-prefills from the prior-year
       // same-month subtotal; 0 posted ROs in that month = no data → null → calc
@@ -317,6 +202,13 @@ export async function buildOpenRunSnapshot(shopId: number, run: RunDbRow): Promi
       priorYearSubtotalCents: priorYear.value,
       salesGoalCents: priorYear.provenance.roCount > 0 ? priorYear.value : null,
       salesGoalProvenance: priorYear.provenance,
+      // Round-5 #32: the foreman hour goal auto-derives from prior-year same-month
+      // shop hours (mirroring the SA sales goal); 0 posted ROs in that month = no
+      // data → null → calc falls back to the legacy pay_config.shop_hour_goal.
+      priorYearShopHours: priorYearShopHrs?.value ?? null,
+      shopHourGoal:
+        priorYearShopHrs && priorYearShopHrs.provenance.roCount > 0 ? priorYearShopHrs.value : null,
+      shopHourGoalProvenance: priorYearShopHrs?.provenance ?? null,
     };
   }
 
@@ -350,6 +242,11 @@ export async function buildOpenRunSnapshot(shopId: number, run: RunDbRow): Promi
           ? (month.spiffCounts.get(writerId) ?? 0)
           : null,
       shop_hours: family === "shop_foreman" && month ? month.shopHours : null,
+      // Round-5 #32: the auto-derived foreman hour goal (null = no prior-year data
+      // → calc falls back to the legacy pay_config.shop_hour_goal).
+      shop_hour_goal: family === "shop_foreman" && month ? month.shopHourGoal : null,
+      shop_hour_goal_source:
+        family === "shop_foreman" && month && month.shopHourGoal !== null ? "prior_year" : null,
       // Round-3 #23: the auto-derived SA sales goal (office_manager keeps its fixed
       // pay_config.sales_goal_cents — never derived).
       sales_goal_cents: family === "service_advisor" && month ? month.salesGoalCents : null,
@@ -392,45 +289,32 @@ export async function buildOpenRunSnapshot(shopId: number, run: RunDbRow): Promi
     return { row: r, role, family, entries, overrides, effective, sheet, leaveRate };
   });
 
-  // ── Month GP (needs pass-1 GP-role sheets of THIS run + every other overlapping run) ──
+  // ── Month GP (round-5 #38): QBO 6010 technician cost is THE composition;
+  //    the prorated-labor path (pass-1 GP-role sheets of THIS run + every other
+  //    overlapping run) runs ONLY as the labeled fallback when the QBO fetch
+  //    throws (resolveMonthGp owns the single sanctioned catch). ──
   if (month) {
-    const { start: monthStart, end: monthEnd } = monthDateRange(month.month);
-    const admin = createSupabaseAdminClient();
-    const { data, error } = await admin
-      .from("qteklink_payroll_runs")
-      .select(RUN_COLS)
-      .eq("shop_id", shopId)
-      .neq("status", "voided")
-      .neq("id", run.id)
-      .lte("period_start", monthEnd)
-      .gte("period_end", monthStart);
-    if (error) throw new Error(`payroll DAL: overlapping runs fetch failed: ${error.message}`);
-    const others = (data ?? []) as RunDbRow[];
-
-    const currentInput: GpRunInput = {
-      status: "open",
-      periodStart: run.period_start,
-      employees: assembled
+    const resolution = await resolveMonthGp({
+      shopId,
+      run,
+      month: month.month,
+      tz,
+      salesInclFeesCents: month.salesInclFeesCents,
+      partsCostCents: month.partsCostCents,
+      feesCents: month.feesCents,
+      shopHours: month.shopHours,
+      shopHourGoal: month.shopHourGoal,
+      leaveHistory,
+      currentRunGpEmployees: assembled
         .filter((a) => (GP_LABOR_ROLES as readonly string[]).includes(a.role) && a.sheet !== null)
         .map((a) => gpPayFromSheet(a.role, a.sheet as SheetComputation)),
-    };
-    const shopHoursByMonth = new Map<string, number>([[month.month, month.shopHours]]);
-    const gpInputs: GpRunInput[] = [currentInput];
-    for (const other of others) {
-      gpInputs.push(
-        other.status === "completed"
-          ? gpInputFromSnapshot(other)
-          : await gpInputForOpenRun(shopId, other, tz, shopHoursByMonth, leaveHistory),
-      );
-    }
-    const gp = monthGpFromRuns(gpInputs, month.month, {
-      monthSalesCents: month.salesCents,
-      monthPartsCostCents: month.partsCostCents,
-      monthFeesCents: month.feesCents,
     });
-    month.gpWithFeesCents = gp.gpWithFeesCents;
-    month.gpWithoutFeesCents = gp.gpWithoutFeesCents;
-    month.laborPayProratedCents = gp.laborPayProratedCents;
+    month.gpWithFeesCents = resolution.gpWithFeesCents;
+    month.gpWithoutFeesCents = resolution.gpWithoutFeesCents;
+    month.gpSource = resolution.gpSource;
+    month.qboTechCostCents = resolution.qboTechCostCents;
+    month.qboTechCostAccountLabel = resolution.qboTechCostAccountLabel;
+    month.laborPayProratedCents = resolution.laborPayProratedCents;
   }
 
   // ── Pass 2: the service-advisor sheets (consume sales + GP + spiffs) ──
@@ -515,10 +399,19 @@ export async function buildOpenRunSnapshot(shopId: number, run: RunDbRow): Promi
       ...(month
         ? {
             month_ro_count: month.provenance.roCount,
+            // Round-5 #36: the DISPLAY month sales (after fees). The
+            // fee-inclusive internal GP base rides alongside for audit.
             month_sales_cents: month.salesCents,
+            month_sales_incl_fees_cents: month.salesInclFeesCents,
             month_fees_cents: month.feesCents,
             month_parts_cost_cents: month.partsCostCents,
             month_shop_billed_hours: month.shopHours,
+            // Round-5 #38: GP composition provenance — the source label, the
+            // QBO 6010 tech cost (null on fallback), and the prorated labor
+            // pay (null unless the computed fallback ran).
+            month_gp_source: month.gpSource,
+            month_qbo_tech_cost_cents: month.qboTechCostCents,
+            month_qbo_tech_cost_account: month.qboTechCostAccountLabel,
             month_labor_pay_prorated_cents: month.laborPayProratedCents,
             month_gp_with_fees_cents: month.gpWithFeesCents,
             month_gp_without_fees_cents: month.gpWithoutFeesCents,
@@ -532,6 +425,25 @@ export async function buildOpenRunSnapshot(shopId: number, run: RunDbRow): Promi
               date_range: month.salesGoalProvenance.dateRange,
               as_of: month.salesGoalProvenance.asOf,
             },
+            // Round-5 #32: the auto-derived foreman hour goal + its provenance
+            // (not_derived = no foreman on the roster, derivation skipped).
+            month_shop_hour_goal: month.shopHourGoal,
+            month_shop_hour_goal_source:
+              month.shopHourGoalProvenance === null
+                ? "not_derived"
+                : month.shopHourGoal === null
+                  ? "pay_config_fallback"
+                  : "prior_year_shop_hours",
+            ...(month.shopHourGoalProvenance
+              ? {
+                  month_shop_hour_goal_prior_year: {
+                    shop_hours: month.priorYearShopHours,
+                    ro_count: month.shopHourGoalProvenance.roCount,
+                    date_range: month.shopHourGoalProvenance.dateRange,
+                    as_of: month.shopHourGoalProvenance.asOf,
+                  },
+                }
+              : {}),
           }
         : {}),
     },

@@ -286,15 +286,21 @@ export function NotApplicable({ reason }: { reason: string }) {
 // ── Loose-provenance safe readers (derived_provenance allows extra keys) ───────
 
 export interface MonthProvenanceView {
+  /** Round-5 #36: DISPLAY month sales = Σ(totalSales − taxes − fees). */
   salesCents: number | null;
   gpWithFeesCents: number | null;
   gpWithoutFeesCents: number | null;
   partsCostCents: number | null;
+  /** Fallback-path only (#38); null when the QBO tech-cost composition ran. */
   laborPayProratedCents: number | null;
   shopHours: number | null;
   roCount: number | null;
   salesGoalCents: number | null;
   salesGoalSource: string | null;
+  /** Round-5 #38: 'qbo_tech_cost' | 'computed' | null (pre-#38 snapshots). */
+  gpSource: string | null;
+  qboTechCostCents: number | null;
+  qboTechCostAccount: string | null;
 }
 
 function numAt(obj: Record<string, unknown>, key: string): number | null {
@@ -315,6 +321,10 @@ export function readMonthProvenance(p: DerivedProvenance): MonthProvenanceView {
     roCount: numAt(rec, "month_ro_count"),
     salesGoalCents: numAt(rec, "month_sales_goal_cents"),
     salesGoalSource: typeof rec["month_sales_goal_source"] === "string" ? rec["month_sales_goal_source"] : null,
+    gpSource: typeof rec["month_gp_source"] === "string" ? rec["month_gp_source"] : null,
+    qboTechCostCents: numAt(rec, "month_qbo_tech_cost_cents"),
+    qboTechCostAccount:
+      typeof rec["month_qbo_tech_cost_account"] === "string" ? rec["month_qbo_tech_cost_account"] : null,
   };
 }
 

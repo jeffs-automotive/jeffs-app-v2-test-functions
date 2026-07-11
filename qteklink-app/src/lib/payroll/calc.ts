@@ -37,6 +37,7 @@ import type {
   SheetComputation,
   SheetEntries,
   ShopForemanPayConfig,
+  ShopHourGoalSource,
   SupportPayConfig,
   TechnicianPayConfig,
   WeekComputation,
@@ -46,8 +47,16 @@ import type {
 /** Bumped whenever a formula changes; pinned into every run snapshot.
  *  v2 (2026-07-10 round-3 amendments): SA tier ladder reordered to the beat-last-year
  *  semantics with ≥ GP comparisons (#22), and technician/shop_foreman PTO/Holiday/
- *  Bereavement pay moved to the avg-hourly leave-rate basis (#24). */
-export const CALC_VERSION = 2;
+ *  Bereavement pay moved to the avg-hourly leave-rate basis (#24).
+ *  v3 (2026-07-11 round-5 #32): the shop-foreman hour goal consumes the DAL-derived
+ *  prior-year same-month shop hours (override → prior-year → pay_config fallback);
+ *  the sheet echoes the effective goal + its source.
+ *  v4 (2026-07-11 round-5 #36/#37/#38 — formula-INPUT changes, pinned like v3):
+ *  month sales (current + the prior-year auto goal) display AFTER fees; parts
+ *  cost = per-line round(cost × qty) over authorized jobs + sublet items; GP =
+ *  sales(incl fees, internal) − parts − QBO 6010 technician cost, with the
+ *  computed prorated-labor path only as the labeled fallback when QBO fails. */
+export const CALC_VERSION = 4;
 
 // ── Rounding (same semantics as derive.ts's roundCents — kept local so calc.ts
 //    stays free of the fetcher module's import graph) ──────────────────────────
@@ -206,6 +215,8 @@ function hourlySheet(
     withMetrics: boolean; // technician-family layouts show metrics
     leaveRateCents: number | null; // round-3 #24 — technician/shop_foreman only
     leaveRateSource: LeaveRateSource | null;
+    shopHourGoal: number | null; // round-5 #32 — shop_foreman only
+    shopHourGoalSource: ShopHourGoalSource | null;
   },
   leaveHoursTotals: LeaveHours,
 ): SheetComputation {
@@ -237,6 +248,8 @@ function hourlySheet(
     reg_total_cents: roundCents(regTotal),
     billed_hours_total: billedTotal === null ? null : round2(billedTotal),
     bonus_cents: extra.bonusCents === null ? null : roundCents(extra.bonusCents),
+    shop_hour_goal: extra.shopHourGoal,
+    shop_hour_goal_source: extra.shopHourGoalSource,
     spiff_cents: extra.spiffCents === null ? null : roundCents(extra.spiffCents),
     manual_incentive_cents: extra.manualIncentiveCents,
     incentive_cents: roundCents(extra.incentiveExact),
@@ -304,12 +317,21 @@ function computeTechnicianFamily(
     leaveRate ?? hourlyW2,
   );
   // Foreman cliff bonus (extraction §Shop Foreman): pays on ALL shop hours once the
-  // goal is exceeded (shopHours × rate), NOT on the excess. Strictly-greater-than.
+  // goal is exceeded (shopHours × rate), NOT on the excess. Strictly-greater-than —
+  // round-5 #32 keeps it (beating last year by ≥ 0.01h at 2dp ≡ strict >). The goal
+  // itself is the DAL-derived prior-year same-month shop hours (override already
+  // applied upstream); pay_config.shop_hour_goal is the legacy fallback when the
+  // derivation had no data (or on non-bonus runs, where the bonus is 0 anyway).
   let bonusExact: number | null = null;
+  let shopHourGoal: number | null = null;
+  let shopHourGoalSource: ShopHourGoalSource | null = null;
   if (family === "shop_foreman") {
     const fc = config as ShopForemanPayConfig;
+    shopHourGoal = derived.shop_hour_goal ?? fc.shop_hour_goal;
+    shopHourGoalSource =
+      derived.shop_hour_goal != null ? (derived.shop_hour_goal_source ?? "prior_year") : "config";
     const shopHours = num(derived.shop_hours);
-    bonusExact = shopHours > fc.shop_hour_goal ? shopHours * fc.shop_hour_bonus_cents_per_hour : 0;
+    bonusExact = shopHours > shopHourGoal ? shopHours * fc.shop_hour_bonus_cents_per_hour : 0;
   }
   const incentiveExact =
     num(w1.billedPay) + num(w2.billedPay) + num(w1.effPay) + num(w2.effPay) + num(bonusExact);
@@ -324,6 +346,8 @@ function computeTechnicianFamily(
       withMetrics: true,
       leaveRateCents: leaveRate,
       leaveRateSource: leaveSource,
+      shopHourGoal,
+      shopHourGoalSource,
     },
     leaveTotalsFromEntries(entries),
   );
@@ -397,6 +421,8 @@ function computeServiceAdvisor(
     reg_total_cents: roundCents(regTotal),
     billed_hours_total: null,
     bonus_cents: roundCents(bonusExact),
+    shop_hour_goal: null,
+    shop_hour_goal_source: null,
     spiff_cents: roundCents(spiffExact),
     manual_incentive_cents: null,
     incentive_cents: roundCents(incentiveExact),
@@ -437,6 +463,8 @@ function computeOfficeManager(
       withMetrics: false,
       leaveRateCents: null,
       leaveRateSource: null,
+      shopHourGoal: null,
+      shopHourGoalSource: null,
     },
     leaveTotalsFromEntries(entries),
   );
@@ -464,6 +492,8 @@ function computeSupport(
       withMetrics: false,
       leaveRateCents: null,
       leaveRateSource: null,
+      shopHourGoal: null,
+      shopHourGoalSource: null,
     },
     leaveTotalsFromEntries(entries),
   );

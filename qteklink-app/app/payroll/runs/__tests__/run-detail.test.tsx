@@ -18,11 +18,12 @@ vi.mock("next/navigation", () => ({
 }));
 
 const updateEntryMock = vi.fn();
+const updateRunMock = vi.fn();
 const completeMock = vi.fn();
 const voidMock = vi.fn();
 vi.mock("@/actions/payroll", () => ({
   updatePayrollEntryAction: (...args: unknown[]) => updateEntryMock(...args),
-  updatePayrollRunAction: vi.fn(),
+  updatePayrollRunAction: (...args: unknown[]) => updateRunMock(...args),
   completePayrollRunAction: (...args: unknown[]) => completeMock(...args),
   voidPayrollRunAction: (...args: unknown[]) => voidMock(...args),
   refreshPayrollTekmetricDataAction: vi.fn(),
@@ -37,6 +38,7 @@ import type {
   WeekComputation,
 } from "@/lib/payroll/types";
 import { AutoValue, RunStatusBadge } from "../../payroll-ui";
+import { BonusToggle } from "../[period]/BonusToggle";
 import { EntryGrid } from "../[period]/EntryGrid";
 import { SummaryView } from "../[period]/SummaryView";
 import { VoidCloneButton } from "../[period]/VoidCloneButton";
@@ -76,6 +78,8 @@ const sheet = (over: Partial<SheetComputation> = {}): SheetComputation => ({
   reg_total_cents: 216_879,
   billed_hours_total: 70,
   bonus_cents: null,
+  shop_hour_goal: null,
+  shop_hour_goal_source: null,
   spiff_cents: null,
   manual_incentive_cents: null,
   incentive_cents: 70_000,
@@ -221,6 +225,53 @@ describe("EntryGrid", () => {
     render(<EntryGrid entries={[entry]} computed={{ [EMP_ID]: snapshotEmployee }} canEdit={false} />);
     expect(screen.queryByLabelText(/Cantrell week 1 clock hours/i)).not.toBeInTheDocument();
     expect(screen.getByText("Cantrell")).toBeInTheDocument();
+  });
+});
+
+// ── Bonus month picker (round-5 #33) ───────────────────────────────────────────
+
+describe("BonusToggle month picker", () => {
+  const baseProps = {
+    runId: RUN_ID,
+    bonusPeriod: true,
+    bonusMonth: "2026-06-01",
+    periodStart: "2026-06-28",
+    canEdit: true,
+  };
+
+  it("shows the auto month + the pay-date helper text when the slider is on", () => {
+    render(<BonusToggle {...baseProps} />);
+    expect(screen.getByText("June 2026")).toBeInTheDocument();
+    expect(screen.getByText(/Auto: the month before this run's pay date/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Bonus month")).toHaveValue("2026-06");
+  });
+
+  it("dispatches ONLY {run_id, bonus_month} when a different month is applied, then refreshes", async () => {
+    updateRunMock.mockResolvedValue({ ok: true, data: { updated: true }, timestamp: 1 });
+    render(<BonusToggle {...baseProps} />);
+
+    const apply = screen.getByRole("button", { name: /change month/i });
+    expect(apply).toBeDisabled(); // untouched = current month, nothing to apply
+
+    fireEvent.change(screen.getByLabelText("Bonus month"), { target: { value: "2026-05" } });
+    expect(apply).toBeEnabled();
+    fireEvent.click(apply);
+
+    await waitFor(() => expect(updateRunMock).toHaveBeenCalledTimes(1));
+    const fd = updateRunMock.mock.calls[0]?.[1] as FormData;
+    expect(fd.get("run_id")).toBe(RUN_ID);
+    expect(fd.get("bonus_month")).toBe("2026-05-01"); // first-of-month date
+    expect(fd.get("bonus_period")).toBeNull(); // the picker never touches the slider
+    await waitFor(() => expect(refreshMock).toHaveBeenCalled());
+  });
+
+  it("hides the picker when the slider is off or the viewer can't edit", () => {
+    const { rerender } = render(
+      <BonusToggle {...baseProps} bonusPeriod={false} bonusMonth={null} />,
+    );
+    expect(screen.queryByLabelText("Bonus month")).not.toBeInTheDocument();
+    rerender(<BonusToggle {...baseProps} canEdit={false} />);
+    expect(screen.queryByLabelText("Bonus month")).not.toBeInTheDocument();
   });
 });
 

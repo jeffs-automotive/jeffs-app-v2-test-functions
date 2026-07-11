@@ -25,7 +25,7 @@ vi.mock("@/lib/dal/payroll-compute", () => ({ buildOpenRunSnapshot: vi.fn(), com
 vi.mock("@/lib/payroll/derive", () => ({ discoverNewCategories: vi.fn(), monthDateRange: vi.fn() }));
 
 import * as Sentry from "@sentry/nextjs";
-import { updatePayrollEntry } from "../payroll";
+import { updatePayrollEntry, updatePayrollRun } from "../payroll";
 
 const ACTOR = { userId: "00000000-0000-4000-8000-0000000000aa", label: "chris@jeffsautomotive.com" };
 const ENTRY_ID = "00000000-0000-4000-8000-00000000e001";
@@ -333,5 +333,85 @@ describe("updatePayrollEntry pay_config write-through (round-3 #26)", () => {
       /run is completed/,
     );
     expect(rpcMock).not.toHaveBeenCalledWith("qteklink_payroll_upsert_employee", expect.anything());
+  });
+});
+
+// ── updatePayrollRun patch shaping (round-5 #33: bonus_period + explicit bonus_month) ──
+
+describe("updatePayrollRun patch shaping (round-5 #33)", () => {
+  const RUN_ID = "00000000-0000-4000-8000-00000000f001";
+
+  beforeEach(() => {
+    fromMock.mockImplementation((table: string) => {
+      if (table === "qteklink_payroll_runs") {
+        return chain({
+          data: [
+            {
+              id: RUN_ID,
+              shop_id: 7476,
+              period_start: "2026-06-28",
+              period_end: "2026-07-11",
+              status: "open",
+              bonus_period: false,
+              bonus_month: null,
+              snapshot: null,
+              completed_at: null,
+              completed_by_label: null,
+              voided_at: null,
+              voided_by_label: null,
+              void_reason: null,
+              cloned_from_run_id: null,
+              created_at: "2026-07-10T00:00:00Z",
+              updated_at: "2026-07-10T00:00:00Z",
+            },
+          ],
+          error: null,
+        });
+      }
+      throw new Error(`unexpected table ${table}`);
+    });
+  });
+
+  function runPatchSentToRpc(): Record<string, unknown> | undefined {
+    const call = rpcMock.mock.calls.find(([fn]) => fn === "qteklink_payroll_update_run");
+    return call?.[1]?.p_patch as Record<string, unknown> | undefined;
+  }
+
+  it("an explicit month pick sends ONLY bonus_month (never an implied bonus_period=false)", async () => {
+    await updatePayrollRun(7476, RUN_ID, { bonusMonth: "2026-06-01" }, ACTOR);
+    expect(runPatchSentToRpc()).toEqual({ bonus_month: "2026-06-01" });
+  });
+
+  it("the slider toggle sends ONLY bonus_period", async () => {
+    await updatePayrollRun(7476, RUN_ID, { bonusPeriod: true }, ACTOR);
+    expect(runPatchSentToRpc()).toEqual({ bonus_period: true });
+  });
+
+  it("both keys travel together when both are provided", async () => {
+    await updatePayrollRun(7476, RUN_ID, { bonusPeriod: true, bonusMonth: "2026-05-01" }, ACTOR);
+    expect(runPatchSentToRpc()).toEqual({ bonus_period: true, bonus_month: "2026-05-01" });
+  });
+
+  it("rejects a non-first-of-month bonus month BEFORE any fetch or RPC", async () => {
+    await expect(
+      updatePayrollRun(7476, RUN_ID, { bonusMonth: "2026-06-15" }, ACTOR),
+    ).rejects.toMatchObject({
+      name: "QboClientError",
+      message: expect.stringMatching(/first day of a month/),
+    });
+    expect(rpcMock).not.toHaveBeenCalled();
+    expect(fromMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a malformed bonus month (not a real date)", async () => {
+    await expect(updatePayrollRun(7476, RUN_ID, { bonusMonth: "2026-13-01" }, ACTOR)).rejects.toThrow(
+      /first day of a month/,
+    );
+    expect(rpcMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects an empty patch", async () => {
+    await expect(updatePayrollRun(7476, RUN_ID, {}, ACTOR)).rejects.toThrow(/Nothing to update/);
+    expect(rpcMock).not.toHaveBeenCalled();
   });
 });

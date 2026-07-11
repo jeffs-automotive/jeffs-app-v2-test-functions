@@ -219,12 +219,24 @@ async function updatePayrollRunImpl(_prev: UpdateRunState | null, formData: Form
       return invalid("bonus_period must be a boolean.");
     }
 
-    await updatePayrollRun(
-      shopId,
-      id.data,
-      { bonusPeriod: bonusRaw === "on" || bonusRaw === "true" },
-      { userId, label: email },
-    );
+    // Only the submitted fields enter the patch: the toggle sends bonus_period,
+    // the month picker (round-5 #33) sends bonus_month — never both implied.
+    const patch: { bonusPeriod?: boolean; bonusMonth?: string } = {};
+    if (bonusRaw !== null) patch.bonusPeriod = bonusRaw === "on" || bonusRaw === "true";
+    const monthRaw = formData.get("bonus_month");
+    if (monthRaw !== null) {
+      const month = z
+        .string()
+        .regex(/^\d{4}-\d{2}-01$/, "The bonus month must be a YYYY-MM-01 date.")
+        .safeParse(monthRaw);
+      if (!month.success) return invalid(month.error.issues[0]?.message ?? "Invalid bonus month.");
+      patch.bonusMonth = month.data;
+    }
+    if (patch.bonusPeriod === undefined && patch.bonusMonth === undefined) {
+      return invalid("Nothing to update.");
+    }
+
+    await updatePayrollRun(shopId, id.data, patch, { userId, label: email });
     return { ok: true, data: { updated: true }, timestamp: Date.now() };
   } catch (e) {
     return qboFailure(e);

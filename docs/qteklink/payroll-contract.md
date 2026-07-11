@@ -92,7 +92,8 @@ Common: `{ "config_version": 1, "pto_balance_hours": number, "pto_accrual_hours_
 
 ## overrides JSONB (run_employees) — every key optional; shape `{ "value": number, "note": string }`
 `billed_hours_w1, billed_hours_w2, month_sales_cents, month_gp_with_fees_cents,
-month_gp_without_fees_cents, spiff_count, shop_hours, sales_goal_cents, leave_rate_cents_per_hour`
+month_gp_without_fees_cents, spiff_count, shop_hours, sales_goal_cents, leave_rate_cents_per_hour,
+shop_hour_goal` (round-5 #32)
 
 ## Round-3 amendments (2026-07-10 late — extraction doc #22–27; supersede conflicting text above)
 
@@ -137,8 +138,11 @@ qteklink_payroll_update_entry(p_run_employee_id uuid, p_patch jsonb, p_actor_use
   p_actor_label text) RETURNS void            -- whitelisted keys: the hour columns, manual_incentive_cents,
                                               -- overrides, pay_config; open runs only; audits old→new per key
 qteklink_payroll_update_run(p_run_id uuid, p_patch jsonb, p_actor_user_id uuid, p_actor_label text)
-  RETURNS void                                -- whitelisted: bonus_period (bool; derives+stores bonus_month
-                                              -- = date_trunc month of period_start - 1 month); open only
+  RETURNS void                                -- whitelisted: bonus_period (bool) + bonus_month (round-5 #33
+                                              -- explicit first-of-month date; only while bonus is/becoming on;
+                                              -- wins over derivation). Slider ON derives bonus_month =
+                                              -- date_trunc month of PERIOD_END - 1 month (the pay date);
+                                              -- a re-sent ON keeps an explicit pick; OFF nulls it. Open only
 qteklink_payroll_issue_confirm_token(p_run_id uuid, p_action_kind text, p_scope_hash text,
   p_actor_user_id uuid, p_actor_label text) RETURNS TABLE(token_id uuid, expires_at timestamptz)
 qteklink_payroll_complete_run(p_run_id uuid, p_dry_run boolean, p_confirm_token uuid,
@@ -235,3 +239,76 @@ Every mutating RPC writes ≥1 audit row.
     case-insensitive display_name within `--shop` (default 7476); ambiguous/missing = per-employee
     error. **UPDATE-ONLY (Chris hard rule): the tool NEVER creates an employee and never touches
     archived ones.** READ + RPC only (the payroll tables are RPC-write-only).
+
+## Round-5 amendments (2026-07-11 — extraction #32/#33; supersede conflicting text above)
+
+- **Foreman shop-hour goal auto-derives (#32):** goal = PRIOR-YEAR same-month TOTAL SHOP BILLED
+  HOURS (`priorYearShopBilledHours(shopId, month)` in derive.ts — priorYearMonth + the
+  shopBilledHours rollup; roCount 0 = no data), mirroring the SA sales-goal pattern. Precedence:
+  `overrides.shop_hour_goal` ('override') → prior-year derivation ('prior_year', roCount > 0) →
+  legacy `pay_config.shop_hour_goal` ('config'). Derived only for bonus runs with a foreman on the
+  roster (incl. other open runs feeding GP labor proration). calc keeps the STRICT `>` cliff
+  (beating last year by ≥ 0.01h at 2dp ≡ strict >); the sheet + DerivedInputs + snapshot carry
+  `shop_hour_goal` + `shop_hour_goal_source` ('override' | 'prior_year' | 'config') for
+  provenance. CALC_VERSION → 3.
+- **Bonus month derives from the PAY DATE (#33, bug fix):** update_run's derivation is
+  `date_trunc('month', period_END) - 1 month` — the 6/28–7/11 run is paid in July ⇒ June (the old
+  period_start rule wrongly gave May). NEW patch key `bonus_month` (explicit first-of-month date,
+  the office-manager escape hatch): validated (string, real date, first of month), only while
+  bonus_period is true/becoming true, wins over derivation, never clobbered by an idempotent
+  bonus_period=true re-send; clearing the slider still nulls it. Migration
+  `20260711160000_qteklink_payroll_bonus_month_paydate.sql` — which also ships a guarded one-time
+  data correction: open bonus runs whose stored bonus_month still matches the OLD period_start
+  derivation (the live 6/28–7/11 run: May) are re-derived from period_end (June) + audited
+  (`run_updated`, actor `migration:20260711160000`), because the new derivation only fires on an
+  OFF→ON transition and an idempotent re-send keeps the stored month (explicit picks can't exist
+  pre-migration, so the matched shape is provably machine-derived).
+
+## Round-6 amendments (2026-07-11 — extraction #36/#37/#38; supersede conflicting text above)
+
+- **Month sales display AFTER FEES (#36 — REVERSES the round-4 #28 amendment):** month sales
+  (the bonus panels' current month AND the prior-year auto sales goal #22/#23) =
+  Σ(totalSales − taxes − FEES) over posted ROs — the original backtest-pinned (#21) subtotal
+  (June 2026 = $273,061.13). `aggregateMonthSubtotalCents` + `priorYearMonthSubtotalCents`
+  subtract fees again; payroll-compute's `month.salesCents` follows. The fee-INCLUSIVE
+  Σ(totalSales − taxes) figure survives ONLY as the internal GP base
+  (`month.salesInclFeesCents`, snapshot key `month_sales_incl_fees_cents`) — never displayed as
+  "month sales".
+- **Parts cost formula (#37, pinned penny-exact vs Chris's June breakdown):**
+  `monthPartsCostCents` = Σ round(part.cost_cents × coalesce(quantity, 1)) over AUTHORIZED jobs
+  (PER-LINE rounding, half away from zero; tires + batteries live in the parts table)
+  + Σ tekmetric_ro_sublet_items.cost_cents joined through tekmetric_ro_sublets on ROs posted in
+  the month (sublets are RO-level; no authorized flag in the pinned formula). June:
+  69,080.90 + 290.00 = $69,370.90 exactly. The old un-weighted Σ cost_cents variant AND the
+  separate "qty-weighted candidate" export are REMOVED — #37 IS the definition
+  (`aggregateAuthorizedPartsCostCents` is qty-weighted per line; `aggregateSubletCostCents` is
+  the sublet half).
+- **GP composition (#38 — SUPERSEDES #35's direct-QBO-GP):** QBO supplies ONLY the technician
+  cost; sales/parts stay Tekmetric. Per bonus month, gp_with_fees precedence:
+  `overrides.month_gp_with_fees_cents` (per-employee, wins) →
+  `monthSalesInclFees − monthPartsCost(#37) − QBO 6010 tech cost` (source `qbo_tech_cost`) →
+  the pre-#38 computed path with prorated labor (source `computed`) — the labeled fallback ONLY
+  when the QBO fetch throws: caught once in payroll-compute (the single sanctioned catch),
+  `Sentry.captureException` with the `shop_id` tag, then fall back (the fallback also feeds the
+  fee-INCLUSIVE sales base, never the #36 display value).
+  `gp_without_fees = gp_with_fees − monthFees` on every path (override still wins per employee).
+  June acceptance: 286,290.76 − 69,370.90 − 48,740.72 = **168,179.14** with fees;
+  − 13,229.63 = **154,949.51** without.
+- **QBO technician-cost fetch (`src/lib/qbo/reports.ts`):**
+  `qboMonthTechnicianCostCents(shopId, month)` → realm via `resolveRealmForShop` →
+  `GET /v3/company/{realm}/reports/ProfitAndLoss?start_date&end_date&accounting_method=Accrual`
+  (Accrual pinned explicitly — the June proof's basis; no prior report idiom existed) via the
+  existing QboClient (token refresh, 429/5xx retry, typed Faults) → PURE parser
+  `parsePnlTechnicianCostCents` walks the Rows tree and matches the row by the qbo_accounts
+  mirror id for acct_num '6010' (used only when the lookup yields exactly one account) AND/OR
+  the label (`^6010(\s|$)` or contains "Technicians") — the two flavors must agree on ONE row;
+  NO hardcoded QBO account id (a re-mapped chart still matches). Absent/ambiguous row,
+  disagreeing matches, missing/non-numeric amount, empty tree, DB error on the mirror lookup,
+  or no connection → THROW with clear text (no silent fallback inside the fetcher).
+- **Snapshot/UI provenance:** new keys `month_gp_source` ('qbo_tech_cost' | 'computed'),
+  `month_qbo_tech_cost_cents` (+ `month_qbo_tech_cost_account`), `month_sales_incl_fees_cents`;
+  `month_labor_pay_prorated_cents` is null unless the computed fallback ran. The bonus-month
+  card itemizes the tech-cost line ("Technician cost (QBO 6010)") when the QBO path ran and
+  shows the prorated-labor line only otherwise; the GP-with-fees AutoValue wording is
+  "Tekmetric − QuickBooks tech cost" / "computed fallback"; month-sales wording is
+  "totals minus taxes and fees". CALC_VERSION → 4 (formula-input change, pinned like v3).

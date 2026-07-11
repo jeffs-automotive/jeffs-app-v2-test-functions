@@ -7,8 +7,12 @@
 --     validation (required keys per family, *_cents integers >= 0, *_pct 0..1,
 --     unknown keys rejected, rates_w2 employee-side rejected); tm-id partial unique
 --   - create_run: anchor cadence, duplicate period, archived exclusion, roster clone
---   - update_run: bonus slider derives + stores bonus_month; bonus-month partial
---     unique collides through the RPC [23505]; whitelisting
+--   - update_run: bonus slider derives + stores bonus_month from the PAY DATE
+--     (first of period_end's month - 1 month, round-5 #33 — 6/28-7/11 pays in
+--     July => June); explicit first-of-month bonus_month patch accepted (wins
+--     over derivation, malformed/off-slider rejected, never clobbered by an
+--     idempotent re-send); bonus-month partial unique collides through the RPC
+--     [23505]; whitelisting; January pay date derives prior-year December
 --   - update_entry: key whitelisting, per-key audit, overrides shape validation,
 --     rates_w2 allowed run-side, table CHECKs surface [23514], locked-run rejection
 --   - sync_run_roster: adds actives, removes ONLY entry-less archived rows, open-only
@@ -191,15 +195,56 @@ SELECT is((SELECT count(*)::int FROM public.qteklink_payroll_audit_log
            WHERE action='entry_updated' AND run_employee_id=(SELECT v FROM _ids WHERE k='reA_tech1')), 4,
   'entry edits audited old->new PER KEY (2 hours + overrides + pay_config = 4 rows)');
 
--- ─── update_run: bonus slider + whitelisting ──────────────────────────────
+-- round-5 #32: shop_hour_goal joins the overrides whitelist (the foreman goal is
+-- auto-derived from prior-year shop hours and must be overridable per run). The
+-- RPC replaces overrides WHOLE, so the earlier billed_hours_w1 override rides along.
+SELECT lives_ok($$ SELECT public.qteklink_payroll_update_entry((SELECT v FROM _ids WHERE k='reA_tech1'),
+  '{"overrides": {"billed_hours_w1": {"value": 38.5, "note": "from workbook"},
+                  "shop_hour_goal": {"value": 1180.25, "note": "use adjusted 2025 June hours"}}}'::jsonb,
+  NULL, 'marie@jeffsautomotive.com') $$, 'shop_hour_goal override accepted (round-5 #32 whitelist)');
+SELECT is((SELECT overrides->'shop_hour_goal'->>'value' FROM public.qteklink_payroll_run_employees WHERE id=(SELECT v FROM _ids WHERE k='reA_tech1')),
+  '1180.25', 'shop_hour_goal override stored');
+
+-- ─── update_run: bonus slider + pay-date derivation + explicit month ──────
 SELECT lives_ok($$ SELECT public.qteklink_payroll_update_run((SELECT v FROM _ids WHERE k='runA'),
   '{"bonus_period": true}'::jsonb, NULL, 'chris@jeffsautomotive.com') $$, 'bonus slider ON accepted');
 SELECT is((SELECT bonus_month::text FROM public.qteklink_payroll_runs WHERE id=(SELECT v FROM _ids WHERE k='runA')),
-  '2026-05-01', 'bonus_month derived = first of (period_start month - 1)');
+  '2026-06-01', 'bonus_month derived from the PAY DATE = first of (period_end month - 1): 6/28-7/11 pays in July => June (round-5 #33)');
+
+-- explicit office-manager month pick (round-5 #33): wins over the derivation,
+-- survives an idempotent slider re-send, and every malformed shape RAISEs.
+SELECT lives_ok($$ SELECT public.qteklink_payroll_update_run((SELECT v FROM _ids WHERE k='runA'),
+  '{"bonus_month": "2026-04-01"}'::jsonb, NULL, 'marie@jeffsautomotive.com') $$,
+  'explicit first-of-month bonus_month accepted while the slider is on');
+SELECT is((SELECT bonus_month::text FROM public.qteklink_payroll_runs WHERE id=(SELECT v FROM _ids WHERE k='runA')),
+  '2026-04-01', 'explicit bonus_month stored (wins over the derivation)');
+SELECT lives_ok($$ SELECT public.qteklink_payroll_update_run((SELECT v FROM _ids WHERE k='runA'),
+  '{"bonus_period": true}'::jsonb, NULL, 'chris@jeffsautomotive.com') $$, 'idempotent bonus_period=true re-send accepted');
+SELECT is((SELECT bonus_month::text FROM public.qteklink_payroll_runs WHERE id=(SELECT v FROM _ids WHERE k='runA')),
+  '2026-04-01', 'a re-sent ON slider keeps the explicit month (no re-derivation clobber)');
+SELECT throws_ok($$ SELECT public.qteklink_payroll_update_run((SELECT v FROM _ids WHERE k='runA'),
+  '{"bonus_month": "2026-04-15"}'::jsonb, NULL, 'pgtap') $$, 'P0001', NULL, 'mid-month bonus_month rejected (must be the first of a month)');
+SELECT throws_ok($$ SELECT public.qteklink_payroll_update_run((SELECT v FROM _ids WHERE k='runA'),
+  '{"bonus_month": "not-a-date"}'::jsonb, NULL, 'pgtap') $$, 'P0001', NULL, 'malformed bonus_month string rejected');
+SELECT throws_ok($$ SELECT public.qteklink_payroll_update_run((SELECT v FROM _ids WHERE k='runA'),
+  '{"bonus_month": "2026-13-01"}'::jsonb, NULL, 'pgtap') $$, 'P0001', NULL, 'impossible calendar month rejected');
+SELECT throws_ok($$ SELECT public.qteklink_payroll_update_run((SELECT v FROM _ids WHERE k='runA'),
+  '{"bonus_month": 42}'::jsonb, NULL, 'pgtap') $$, 'P0001', NULL, 'non-string bonus_month rejected');
+SELECT throws_ok($$ SELECT public.qteklink_payroll_update_run((SELECT v FROM _ids WHERE k='runA'),
+  '{"bonus_period": false, "bonus_month": "2026-04-01"}'::jsonb, NULL, 'pgtap') $$,
+  'P0001', NULL, 'bonus_month rejected while the slider is turning OFF in the same patch');
+
 SELECT lives_ok($$ SELECT public.qteklink_payroll_update_run((SELECT v FROM _ids WHERE k='runA'),
   '{"bonus_period": false}'::jsonb, NULL, 'chris@jeffsautomotive.com') $$, 'bonus slider OFF accepted');
 SELECT ok((SELECT bonus_month IS NULL FROM public.qteklink_payroll_runs WHERE id=(SELECT v FROM _ids WHERE k='runA')),
-  'bonus_month cleared with the slider');
+  'bonus_month cleared with the slider (explicit pick included)');
+SELECT throws_ok($$ SELECT public.qteklink_payroll_update_run((SELECT v FROM _ids WHERE k='runA'),
+  '{"bonus_month": "2026-04-01"}'::jsonb, NULL, 'pgtap') $$, 'P0001', NULL, 'bonus_month rejected while the slider is off');
+SELECT lives_ok($$ SELECT public.qteklink_payroll_update_run((SELECT v FROM _ids WHERE k='runA'),
+  '{"bonus_period": true}'::jsonb, NULL, 'chris@jeffsautomotive.com') $$, 'slider back ON after a clear');
+SELECT is((SELECT bonus_month::text FROM public.qteklink_payroll_runs WHERE id=(SELECT v FROM _ids WHERE k='runA')),
+  '2026-06-01', 'turning the slider back on re-derives the pay-date month (the cleared explicit pick is gone)');
+SELECT public.qteklink_payroll_update_run((SELECT v FROM _ids WHERE k='runA'), '{"bonus_period": false}'::jsonb, NULL, 'chris@jeffsautomotive.com') AS _;
 SELECT throws_ok($$ SELECT public.qteklink_payroll_update_run((SELECT v FROM _ids WHERE k='runA'),
   '{"status": "completed"}'::jsonb, NULL, 'pgtap') $$, 'P0001', NULL, 'update_run rejects non-whitelisted keys');
 SELECT throws_ok($$ SELECT public.qteklink_payroll_update_run((SELECT v FROM _ids WHERE k='runA'),
@@ -245,15 +290,26 @@ SELECT is((SELECT count(*)::int FROM public.qteklink_payroll_run_employees WHERE
 SELECT throws_ok($$ SELECT public.qteklink_payroll_sync_run_roster(gen_random_uuid(), NULL, 'pgtap') $$,
   'P0001', NULL, 'sync on an unknown run rejected');
 
--- ─── bonus-month collision through the RPC (two runs, same prior month) ───
+-- ─── bonus-month collision through the RPC (two runs, same derived month) ─
+-- Pay-date derivation: 7/26-8/8 AND 8/9-8/22 both END in August => both derive July.
 INSERT INTO _ids VALUES ('runC', public.qteklink_payroll_create_run(7476, '2026-08-09'::date, NULL, 'chris@jeffsautomotive.com'));
-INSERT INTO _ids VALUES ('runD', public.qteklink_payroll_create_run(7476, '2026-08-23'::date, NULL, 'chris@jeffsautomotive.com'));
+INSERT INTO _ids VALUES ('runD', public.qteklink_payroll_create_run(7476, '2026-07-26'::date, NULL, 'chris@jeffsautomotive.com'));
 SELECT lives_ok($$ SELECT public.qteklink_payroll_update_run((SELECT v FROM _ids WHERE k='runC'),
-  '{"bonus_period": true}'::jsonb, NULL, 'chris@jeffsautomotive.com') $$, 'first August run takes the July bonus month');
+  '{"bonus_period": true}'::jsonb, NULL, 'chris@jeffsautomotive.com') $$, 'first run PAID in August takes the July bonus month');
+SELECT is((SELECT bonus_month::text FROM public.qteklink_payroll_runs WHERE id=(SELECT v FROM _ids WHERE k='runC')),
+  '2026-07-01', 'runC (8/9-8/22, paid in August) derives July');
 SELECT throws_ok($$ SELECT public.qteklink_payroll_update_run((SELECT v FROM _ids WHERE k='runD'),
   '{"bonus_period": true}'::jsonb, NULL, 'pgtap') $$, '23505', NULL,
-  'second bonus run for the same month rejected (partial unique via RPC)');
+  'second bonus run deriving the same month rejected (partial unique via RPC)');
 SELECT public.qteklink_payroll_update_run((SELECT v FROM _ids WHERE k='runC'), '{"bonus_period": false}'::jsonb, NULL, 'chris@jeffsautomotive.com') AS _;
+
+-- ─── New-Year straddle: a run PAID in January pays prior-year December ────
+INSERT INTO _ids VALUES ('runNY', public.qteklink_payroll_create_run(7476, '2026-12-27'::date, NULL, 'chris@jeffsautomotive.com'));
+SELECT lives_ok($$ SELECT public.qteklink_payroll_update_run((SELECT v FROM _ids WHERE k='runNY'),
+  '{"bonus_period": true}'::jsonb, NULL, 'chris@jeffsautomotive.com') $$, 'New-Year-straddling run takes the slider');
+SELECT is((SELECT bonus_month::text FROM public.qteklink_payroll_runs WHERE id=(SELECT v FROM _ids WHERE k='runNY')),
+  '2026-12-01', 'period_end 2027-01-09 (paid in January) derives prior-year December');
+SELECT public.qteklink_payroll_update_run((SELECT v FROM _ids WHERE k='runNY'), '{"bonus_period": false}'::jsonb, NULL, 'chris@jeffsautomotive.com') AS _;
 
 -- ─── complete_run: the Pattern S token dance ──────────────────────────────
 INSERT INTO _txt VALUES ('hashA',
@@ -340,6 +396,8 @@ SELECT throws_ok($$ SELECT public.qteklink_payroll_update_entry((SELECT v FROM _
   '{"clock_hours_w1": 12}'::jsonb, NULL, 'pgtap') $$, 'P0001', NULL, 'update_entry rejected on a completed run');
 SELECT throws_ok($$ SELECT public.qteklink_payroll_update_run((SELECT v FROM _ids WHERE k='runA'),
   '{"bonus_period": false}'::jsonb, NULL, 'pgtap') $$, 'P0001', NULL, 'update_run rejected on a completed run');
+SELECT throws_ok($$ SELECT public.qteklink_payroll_update_run((SELECT v FROM _ids WHERE k='runA'),
+  '{"bonus_month": "2026-06-01"}'::jsonb, NULL, 'pgtap') $$, 'P0001', NULL, 'bonus_month patch rejected on a completed run');
 SELECT throws_ok($$ SELECT public.qteklink_payroll_sync_run_roster((SELECT v FROM _ids WHERE k='runA'), NULL, 'pgtap') $$,
   'P0001', NULL, 'sync_run_roster rejected on a completed run');
 
@@ -377,7 +435,7 @@ SELECT is((SELECT snapshot->>'note' FROM public.qteklink_payroll_runs WHERE id=(
   'pgtap', 'the voided run''s snapshot is untouched (frozen record)');
 SELECT is((SELECT status || '/' || period_start::text || '/' || period_end::text || '/' || bonus_period::text || '/' || bonus_month::text
            FROM public.qteklink_payroll_runs WHERE id=(SELECT v FROM _ids WHERE k='cloneA')),
-  'open/2026-06-28/2026-07-11/true/2026-05-01', 'clone: open, same period, slider state copied');
+  'open/2026-06-28/2026-07-11/true/2026-06-01', 'clone: open, same period, slider state (pay-date month) copied');
 SELECT is((SELECT cloned_from_run_id FROM public.qteklink_payroll_runs WHERE id=(SELECT v FROM _ids WHERE k='cloneA')),
   (SELECT v FROM _ids WHERE k='runA'), 'clone lineage set (cloned_from_run_id)');
 SELECT is((SELECT count(*)::int FROM public.qteklink_payroll_run_employees WHERE run_id=(SELECT v FROM _ids WHERE k='cloneA')),

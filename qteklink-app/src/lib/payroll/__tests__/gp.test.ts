@@ -14,6 +14,7 @@ import {
   laborPayProratedCents,
   monthGpCents,
   monthGpFromRuns,
+  monthGpFromTechCost,
   type GpRunInput,
 } from "../gp";
 
@@ -160,6 +161,54 @@ describe("monthGpCents", () => {
     });
     expect(gp.gpWithFeesCents).toBe(0);
     expect(gp.gpWithoutFeesCents).toBe(0);
+  });
+});
+
+describe("monthGpFromTechCost (decision #38 — THE primary GP composition)", () => {
+  it("lands the June 2026 acceptance numbers exactly (extraction doc #38)", () => {
+    const gp = monthGpFromTechCost({
+      monthSalesInclFeesCents: 28_629_076, // $286,290.76 — Σ(totalSales − taxes), fees IN
+      monthPartsCostCents: 6_937_090, // $69,370.90 — decision #37
+      qboTechCostCents: 4_874_072, // $48,740.72 — QBO P&L COGS "6010 Technicians"
+      monthFeesCents: 1_322_963, // $13,229.63 — Σ mirror feeTotal
+    });
+    expect(gp.gpWithFeesCents).toBe(16_817_914); // $168,179.14
+    expect(gp.gpWithoutFeesCents).toBe(15_494_951); // $154,949.51
+  });
+
+  it("uses the fee-INCLUSIVE sales base — feeding the #36 after-fees display value would double-count", () => {
+    const withFeesBase = monthGpFromTechCost({
+      monthSalesInclFeesCents: 28_629_076,
+      monthPartsCostCents: 6_937_090,
+      qboTechCostCents: 4_874_072,
+      monthFeesCents: 1_322_963,
+    });
+    const afterFeesBase = monthGpFromTechCost({
+      monthSalesInclFeesCents: 28_629_076 - 1_322_963, // WRONG base (the display value)
+      monthPartsCostCents: 6_937_090,
+      qboTechCostCents: 4_874_072,
+      monthFeesCents: 1_322_963,
+    });
+    expect(withFeesBase.gpWithFeesCents - afterFeesBase.gpWithFeesCents).toBe(1_322_963);
+  });
+
+  it("zero inputs → zeros; GP can go negative (int math, no floor)", () => {
+    expect(
+      monthGpFromTechCost({
+        monthSalesInclFeesCents: 0,
+        monthPartsCostCents: 0,
+        qboTechCostCents: 0,
+        monthFeesCents: 0,
+      }),
+    ).toEqual({ gpWithFeesCents: 0, gpWithoutFeesCents: 0 });
+    expect(
+      monthGpFromTechCost({
+        monthSalesInclFeesCents: 1_000,
+        monthPartsCostCents: 2_000,
+        qboTechCostCents: 500,
+        monthFeesCents: 100,
+      }),
+    ).toEqual({ gpWithFeesCents: -1_500, gpWithoutFeesCents: -1_600 });
   });
 });
 

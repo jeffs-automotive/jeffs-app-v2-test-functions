@@ -246,6 +246,64 @@ Common to all: OT paid at 1.5× hourly; PTO/Holiday/Bereavement/Training hours �
 31. **Summary shows leave-pay DOLLARS** (Chris): PTO/Training/Holiday/Bereavement pay dollars alongside
     hours, on screen and on the printed sheet.
 
+### Round-5 decisions (Chris, 2026-07-11)
+
+32. **Foreman (George) shop-hour goal = LAST YEAR same-month shop hours, auto from Tekmetric** (like the
+    SA sales goal): bonus pays when this month's shop hours beat last year's by ≥ 0.01 (strict > at 2dp).
+    pay_config.shop_hour_goal becomes legacy fallback (no prior-year data); overridable per run.
+33. **Bonus month derives from the PAY DATE, not period start:** run 6/28–7/11 is paid in July ⇒ bonus
+    month = June (was wrongly deriving May from period_start). Rule: bonus_month = month of period_end
+    − 1 month. FALLBACK: office manager can explicitly pick the bonus month on the run (app auto-chooses;
+    the picker is the escape hatch).
+34. **QBO P&L GP test (2026-07-11, June live data) — WORKS:**
+    - QBO June GP = **$172,863.37** (income $286,852.25 − COGS $113,988.88; COGS INCLUDES
+      `6010 Technicians` $48,740.72 — the payroll expense our app-side GP lacked).
+    - vs workbook GP-with-fees $171,090.87 → Δ $1,772.50 (1.0%). NOTE: QBO GP includes $577.62
+      non-shop income (interest+misc).
+    - June QTL-FEE (CC-processing) JEs from our ledger: **$7,101.34** (28 fee days) →
+      QBO GP − CC fees = $165,762.03.
+    - **FEES AMBIGUITY (needs Chris):** the workbook's "GP without fees" subtracted RO FEE-LINE REVENUE
+      (~$13.2k: shop supplies 409 + hazmat 411 + TPP 413 = $12,802.82 in QBO income accounts) — NOT the
+      CC-processing fees ($7,101.34) our QTL-FEE JEs carry. Candidates for the go-forward bonus base:
+      (a) QBO GP − CC-fee JEs = $165,762.03; (b) QBO GP − RO-fee income = $160,060.55; (c) both = $152,959.21.
+      Workbook's old number was $157,875.10 (different baseline).
+    - Integration path when adopted: qteklink already holds QBO OAuth — server-side
+      `GET /v3/company/{realm}/reports/ProfitAndLoss?start_date&end_date`, parse GrossProfit; fee JE
+      totals from qteklink_daily_postings.
+
+35. **GP SOURCE = QBO P&L (Chris, 2026-07-11, supersedes the fee ambiguity in #34):** NOT the CC fees.
+    "Fees" = the Tekmetric RO fee lines (the `kind='fee'` constituents in our daily SALES JEs — shop
+    supplies/hazmat/disposal/TPP etc.) ≡ the already-pinned `monthFeesCents` (Σ mirror feeTotal).
+    Bonus GP inputs become: **GP-with-fees = QBO P&L Gross Profit for the bonus month** (COGS already
+    contains technician payroll, e.g. June `6010 Technicians` $48,740.72);
+    **GP-without-fees = QBO GP − monthFeesCents**.
+    June proof: $172,863.37 − $13,229.63 = **$159,633.74** (workbook's manual method said $157,875.10;
+    Δ ≈ 1% is the QBO-vs-EOD baseline difference, accepted).
+    Implementation: server-side `GET /v3/company/{realm}/reports/ProfitAndLoss` via qteklink's existing
+    QBO client; computed sales−parts−labor GP remains only as the provenance-labeled fallback when QBO
+    is unreachable; overrides still win. Tier check's SALES side stays the Tekmetric subtotal (#28).
+
+36. **Month sales displays AFTER FEES (Chris 2026-07-11 — REVERSES #28):** the bonus panel's month
+    sales (current AND the auto prior-year goal) = Σ(totalSales − taxes − fees) — the original
+    backtest-pinned subtotal. June = $273,061.13.
+37. **PARTS COST FORMULA (pinned penny-exact vs Chris's June breakdown):**
+    `Σ round(part.cost_cents × quantity)` over AUTHORIZED jobs (per-line rounding; tires + batteries live
+    in the parts table) **+ Σ sublet item cost_cents** (RO-level sublets, posted ROs).
+    June: 69,080.90 + 290.00 = **$69,370.90** — matches Chris's parts 53,434.56 / tires 13,191.60 /
+    batteries 2,454.74 / sublet 290.00 exactly. The old Σ cost_cents (un-weighted, no sublets) was
+    $51,219.36 — $18,151.54 understated. GP-before-labor proof: 286,290.76 − 69,370.90 = 216,919.86
+    (with fees) ✓; − mirror fees 13,229.63 = 203,690.23 vs Chris's EOD-based 203,704.09 (Δ13.86 = the
+    known #21 fee-classification quirk).
+
+38. **TECH COST FROM QBO — final GP composition (Chris 2026-07-11, SUPERSEDES #35's direct-QBO-GP):**
+    QBO supplies ONLY the technician cost (the P&L COGS row `6010 Technicians`); sales/parts stay
+    Tekmetric (penny-exact per #36/#37). Confirmed via explicit A/B (double-count risk surfaced):
+    **GP_with_fees = monthSales(incl fees, internal) − partsCost(#37) − QBO 6010 tech cost**;
+    **GP_without_fees = GP_with_fees − monthFees**. June: 216,919.86 − 48,740.72 = **$168,179.14** with;
+    − mirror fees 13,229.63 = **$154,949.51** without (Chris's EOD-fee version: $154,963.37).
+    The QBO P&L fetch (#35 plumbing) stays — parse target becomes the 6010 row, not GrossProfit;
+    the app-computed labor proration remains only as the labeled fallback when QBO is unreachable.
+
 ### Remaining open items
 
 - **Mirror ingest scheduling:** promote `sync-ros.mjs` logic to a recurring job (fold into qteklink

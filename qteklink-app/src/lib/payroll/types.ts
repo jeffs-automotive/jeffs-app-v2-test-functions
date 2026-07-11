@@ -79,6 +79,14 @@ export const LEAVE_RATE_SOURCES = ["history", "current_run", "override", "seed",
 export const LeaveRateSourceSchema = z.enum(LEAVE_RATE_SOURCES);
 export type LeaveRateSource = z.infer<typeof LeaveRateSourceSchema>;
 
+/** Where the shop-foreman hour goal came from (round-5 decision #32, mirroring the
+ *  SA sales-goal pattern): an explicit per-run override, the auto-derived prior-year
+ *  same-month shop billed hours, or the legacy pay_config.shop_hour_goal fallback
+ *  (derivation had no data / non-bonus run). */
+export const SHOP_HOUR_GOAL_SOURCES = ["override", "prior_year", "config"] as const;
+export const ShopHourGoalSourceSchema = z.enum(SHOP_HOUR_GOAL_SOURCES);
+export type ShopHourGoalSource = z.infer<typeof ShopHourGoalSourceSchema>;
+
 // ── PayConfig (config_version: 1) — contract §pay_config JSONB ────────────────
 
 const centsInt = z.number().int().min(0);
@@ -211,6 +219,8 @@ export const OverridesSchema = z.strictObject({
   sales_goal_cents: overrideOf(z.number().int().min(0)).optional(),
   /** technician/shop_foreman (round-3 #24): beats the computed leave-rate basis. */
   leave_rate_cents_per_hour: overrideOf(z.number().int().min(0)).optional(),
+  /** shop_foreman (round-5 #32): beats the auto-derived prior-year shop-hour goal. */
+  shop_hour_goal: overrideOf(hoursNum).optional(),
 });
 export type Overrides = z.infer<typeof OverridesSchema>;
 
@@ -246,6 +256,11 @@ export const DerivedInputsSchema = z.strictObject({
   month_gp_without_fees_cents: z.number().int().nullish(),
   spiff_count: z.number().int().min(0).nullish(),
   shop_hours: hoursNum.nullish(),
+  /** shop_foreman hour goal (round-5 #32): the auto-derived prior-year same-month
+   *  shop billed hours (override already applied); null → calc falls back to the
+   *  legacy pay_config.shop_hour_goal. Ignored by every other family. */
+  shop_hour_goal: hoursNum.nullish(),
+  shop_hour_goal_source: ShopHourGoalSourceSchema.nullish(),
   /** SA-family sales goal (round-3 #22/#23): the auto-derived prior-year same-month
    *  subtotal (override already applied); null → calc falls back to the legacy
    *  pay_config.sales_goal_cents. Ignored by every other family. */
@@ -304,6 +319,12 @@ export const SheetComputationSchema = z.strictObject({
   /** Monthly bonus (foreman cliff / SA tier / office-mgr excess); null where the
    *  family has no bonus concept (technician, support). */
   bonus_cents: z.number().int().nullable(),
+  /** shop_foreman only (round-5 #32): the effective hour goal the bonus was judged
+   *  against + where it came from (override / prior-year derivation / legacy
+   *  pay_config); null for every other family. Defaulted so frozen snapshots
+   *  written before the goal derivation existed still parse. */
+  shop_hour_goal: hoursNum.nullable().default(null),
+  shop_hour_goal_source: ShopHourGoalSourceSchema.nullable().default(null),
   /** SA only: spiff_count × spiff_amount_cents. */
   spiff_cents: z.number().int().nullable(),
   /** Support only: echo of the entry (null = none entered → "n/a"). */

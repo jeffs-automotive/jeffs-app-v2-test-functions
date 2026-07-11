@@ -63,6 +63,19 @@ export interface MirrorPartRow {
   quantity: number | null;
 }
 
+/** RO-level sublet (decision #37 — the join hop between ROs and sublet items;
+ *  no authorized flag plays a role in the pinned parts-cost formula). */
+export interface MirrorSubletRow {
+  id: number;
+  ro_id: number;
+}
+
+export interface MirrorSubletItemRow {
+  id: number;
+  sublet_id: number;
+  cost_cents: number | null;
+}
+
 /** Spiff category config (settings `payroll.spiff_categories` — extra keys like
  *  `first_seen`/`is_new` are carried by settings, not needed here). */
 export interface SpiffCategoryConfig {
@@ -210,42 +223,46 @@ export function aggregateFeesCents(ros: MirrorRoRow[]): number {
 }
 
 /**
- * Month "subtotal" (round-4, extraction #28 — Chris: "monthly sales will INCLUDE fees"):
- * Σ(total_sales − taxes) over posted ROs. Deliberate go-forward change from the
- * historical workbooks, whose entries matched the fee-EXCLUDED number (backtest #21).
+ * Month "subtotal" (round-5, extraction #36 — REVERSES #28): month sales display
+ * AFTER FEES = Σ(total_sales − taxes − fees) over posted ROs — the original
+ * backtest-pinned (#21) definition (June 2026 = $273,061.13). Used for the bonus
+ * panels' month sales AND the prior-year auto sales goal (#22/#23), so the "beat
+ * last year" comparison stays apples-to-apples. The fee-INCLUSIVE figure
+ * (`totalSalesMinusTaxesCents`) remains the INTERNAL GP base per #38.
  * RO-level totals are Tekmetric's own authorized-only rollups (extraction #20) —
  * no job-level filter applies here.
  */
 export function aggregateMonthSubtotalCents(ros: MirrorRoRow[]): number {
-  return aggregateSalesCandidates(ros).totalSalesMinusTaxesCents;
-}
-
-/** Month parts cost (contract definition): Σ part.cost_cents over AUTHORIZED jobs only. */
-export function aggregateAuthorizedPartsCostCents(jobs: MirrorJobRow[], parts: MirrorPartRow[]): number {
-  const authorized = authorizedJobIds(jobs);
-  let total = 0;
-  for (const p of parts) {
-    if (!authorized.has(p.job_id)) continue; // aggregator-side INVARIANT #1
-    total += p.cost_cents ?? 0;
-  }
-  return total;
+  return aggregateSalesCandidates(ros).totalSalesMinusTaxesCents - aggregateFeesCents(ros);
 }
 
 /**
- * Quantity-weighted parts-cost candidate: Σ round(cost_cents × quantity) over
- * authorized jobs (quantity null → 1). NOT the contract definition — exported so the
- * backtest can report whether the mirror's `cost_cents` is per-unit or extended.
+ * Month parts cost, the PARTS-TABLE half (decision #37, pinned penny-exact vs
+ * Chris's June breakdown): Σ round(cost_cents × quantity) over AUTHORIZED jobs —
+ * rounded PER LINE, half away from zero; quantity null → 1. Tires and batteries
+ * live in the parts table too. June 2026: $69,080.90 (the old un-weighted
+ * Σ cost_cents was $18,151.54 understated — removed). The RO-level sublet half
+ * is {@link aggregateSubletCostCents}; {@link monthPartsCostCents} composes both.
  */
-export function aggregateAuthorizedPartsCostQtyWeightedCents(
-  jobs: MirrorJobRow[],
-  parts: MirrorPartRow[],
-): number {
+export function aggregateAuthorizedPartsCostCents(jobs: MirrorJobRow[], parts: MirrorPartRow[]): number {
   const authorized = authorizedJobIds(jobs);
   let total = 0;
   for (const p of parts) {
     if (!authorized.has(p.job_id)) continue; // aggregator-side INVARIANT #1
     total += roundCents((p.cost_cents ?? 0) * (p.quantity ?? 1));
   }
+  return total;
+}
+
+/**
+ * Month parts cost, the SUBLET half (decision #37): Σ sublet-item cost_cents over
+ * ROs posted in the month. Sublets are RO-LEVEL — no authorized flag applies in
+ * the pinned formula (the June penny-proof summed ALL sublet items on posted ROs:
+ * $290.00). Null-safe.
+ */
+export function aggregateSubletCostCents(items: MirrorSubletItemRow[]): number {
+  let total = 0;
+  for (const it of items) total += it.cost_cents ?? 0;
   return total;
 }
 
@@ -358,17 +375,25 @@ async function fetchAuthorizedJobs(roIds: number[]): Promise<MirrorJobRow[]> {
   return out;
 }
 
-async function fetchChildrenForJobs<T>(table: string, cols: string, jobIds: number[]): Promise<T[]> {
-  if (jobIds.length === 0) return [];
+/** Chunked + paged child fetch keyed on an arbitrary FK column (job_id for labor/
+ *  parts, ro_id for sublets, sublet_id for sublet items — each hop rides its
+ *  mirror index). */
+async function fetchChildrenByKey<T>(
+  table: string,
+  cols: string,
+  keyCol: string,
+  ids: number[],
+): Promise<T[]> {
+  if (ids.length === 0) return [];
   const admin = createSupabaseAdminClient();
   const out: T[] = [];
-  for (let i = 0; i < jobIds.length; i += ID_CHUNK) {
-    const chunk = jobIds.slice(i, i + ID_CHUNK);
+  for (let i = 0; i < ids.length; i += ID_CHUNK) {
+    const chunk = ids.slice(i, i + ID_CHUNK);
     for (let from = 0; ; from += PAGE) {
       const { data, error } = await admin
         .from(table)
         .select(cols)
-        .in("job_id", chunk)
+        .in(keyCol, chunk)
         .order("id", { ascending: true })
         .range(from, from + PAGE - 1);
       if (error) throw new Error(`payroll derive: ${table} fetch failed: ${error.message}`);
@@ -398,9 +423,10 @@ export async function billedHoursByTechnician(
   const tz = await resolveTz(shopId, opts.tz);
   const ros = await fetchPostedRos(shopId, start, end, tz);
   const jobs = await fetchAuthorizedJobs(ros.map((r) => r.id));
-  const labor = await fetchChildrenForJobs<MirrorLaborRow>(
+  const labor = await fetchChildrenByKey<MirrorLaborRow>(
     "tekmetric_ro_job_labor",
     "id, job_id, technician_id, hours",
+    "job_id",
     jobs.map((j) => j.id),
   );
   return { value: aggregateBilledHoursByTechnician(jobs, labor), provenance: provenanceFor(ros, start, end) };
@@ -422,8 +448,8 @@ export async function monthSalesPreTaxCents(
 }
 
 /**
- * SAME-month-PREVIOUS-year subtotal = Σ(total_sales − taxes), fees INCLUDED
- * (round-4, extraction #28 — same definition as aggregateMonthSubtotalCents so the
+ * SAME-month-PREVIOUS-year subtotal = Σ(total_sales − taxes − fees), AFTER FEES
+ * (round-5, extraction #36 — same definition as aggregateMonthSubtotalCents so the
  * "beat last year" comparison is apples-to-apples) — the auto-derived
  * service-advisor sales goal (#22/#23). `month` is the BONUS month ("YYYY-MM"); the
  * prior-year month is derived here. A provenance roCount of 0 means "no data" —
@@ -453,7 +479,16 @@ export async function monthFeesCents(
   return { value: aggregateFeesCents(ros), provenance: provenanceFor(ros, start, end) };
 }
 
-/** Month parts cost = Σ authorized-job part cost_cents over ROs posted in the month. */
+/**
+ * Month parts cost (decision #37, pinned penny-exact vs Chris's June breakdown):
+ *   Σ round(part.cost_cents × quantity) over AUTHORIZED jobs (per-line rounding;
+ *   tires + batteries live in the parts table)
+ * + Σ sublet-item cost_cents (RO-level sublets — joined through
+ *   tekmetric_ro_sublets so both hops ride the mirror's indexes; no authorized
+ *   flag in the pinned formula)
+ * over ROs posted in the month. June 2026: 69,080.90 + 290.00 = $69,370.90 —
+ * matches parts 53,434.56 / tires 13,191.60 / batteries 2,454.74 / sublet 290.00.
+ */
 export async function monthPartsCostCents(
   shopId: number,
   month: string,
@@ -463,12 +498,28 @@ export async function monthPartsCostCents(
   const tz = await resolveTz(shopId, opts.tz);
   const ros = await fetchPostedRos(shopId, start, end, tz);
   const jobs = await fetchAuthorizedJobs(ros.map((r) => r.id));
-  const parts = await fetchChildrenForJobs<MirrorPartRow>(
+  const parts = await fetchChildrenByKey<MirrorPartRow>(
     "tekmetric_ro_job_parts",
     "id, job_id, cost_cents, quantity",
+    "job_id",
     jobs.map((j) => j.id),
   );
-  return { value: aggregateAuthorizedPartsCostCents(jobs, parts), provenance: provenanceFor(ros, start, end) };
+  const sublets = await fetchChildrenByKey<MirrorSubletRow>(
+    "tekmetric_ro_sublets",
+    "id, ro_id",
+    "ro_id",
+    ros.map((r) => r.id),
+  );
+  const subletItems = await fetchChildrenByKey<MirrorSubletItemRow>(
+    "tekmetric_ro_sublet_items",
+    "id, sublet_id, cost_cents",
+    "sublet_id",
+    sublets.map((s) => s.id),
+  );
+  return {
+    value: aggregateAuthorizedPartsCostCents(jobs, parts) + aggregateSubletCostCents(subletItems),
+    provenance: provenanceFor(ros, start, end),
+  };
 }
 
 /** Total shop billed hours for the month (foreman bonus input, decision #4). */
@@ -481,9 +532,37 @@ export async function shopBilledHours(
   const tz = await resolveTz(shopId, opts.tz);
   const ros = await fetchPostedRos(shopId, start, end, tz);
   const jobs = await fetchAuthorizedJobs(ros.map((r) => r.id));
-  const labor = await fetchChildrenForJobs<MirrorLaborRow>(
+  const labor = await fetchChildrenByKey<MirrorLaborRow>(
     "tekmetric_ro_job_labor",
     "id, job_id, technician_id, hours",
+    "job_id",
+    jobs.map((j) => j.id),
+  );
+  return { value: aggregateShopBilledHours(jobs, labor), provenance: provenanceFor(ros, start, end) };
+}
+
+/**
+ * SAME-month-PREVIOUS-year total shop billed hours — the auto-derived shop-foreman
+ * hour goal (round-5 decision #32, mirroring the SA sales-goal pattern #22/#23).
+ * `month` is the BONUS month ("YYYY-MM"); the prior-year month is derived here.
+ * Same rollup as {@link shopBilledHours} (authorized jobs, null-technician lines
+ * included — it's a shop total). A provenance roCount of 0 means "no data" —
+ * callers fall back to the legacy pay_config.shop_hour_goal.
+ */
+export async function priorYearShopBilledHours(
+  shopId: number,
+  month: string,
+  opts: DeriveOpts = {},
+): Promise<Derived<number>> {
+  const target = priorYearMonth(month);
+  const { start, end } = monthDateRange(target);
+  const tz = await resolveTz(shopId, opts.tz);
+  const ros = await fetchPostedRos(shopId, start, end, tz);
+  const jobs = await fetchAuthorizedJobs(ros.map((r) => r.id));
+  const labor = await fetchChildrenByKey<MirrorLaborRow>(
+    "tekmetric_ro_job_labor",
+    "id, job_id, technician_id, hours",
+    "job_id",
     jobs.map((j) => j.id),
   );
   return { value: aggregateShopBilledHours(jobs, labor), provenance: provenanceFor(ros, start, end) };

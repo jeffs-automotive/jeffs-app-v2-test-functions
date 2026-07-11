@@ -4,16 +4,21 @@
  * BonusToggle — the bonus-period control band (design spec §3, "Bonus-period
  * control"): an accessible labeled checkbox styled as a switch, wired to the
  * existing updatePayrollRunAction (admin, open runs — the action re-enforces).
- * When ON the band tints burgundy and names the month being paid. Includes the
- * SOFT second-run-of-month warning: bonus runs normally land in the month's
- * second pay period, so toggling ON a run that starts in the first half of its
- * month shows a non-blocking heads-up (display heuristic only — the server
- * owns the real uniqueness rule).
+ * When ON the band tints burgundy, names the month being paid (auto = the month
+ * before this run's PAY DATE — round-5 #33), and offers the admin month picker
+ * (the office-manager escape hatch: submits {bonus_month: "YYYY-MM-01"}; the
+ * server validates first-of-month + bonus-on and owns the derivation).
+ * Includes the SOFT second-run-of-month warning: bonus runs normally land in
+ * the month's second pay period, so toggling ON a run that starts in the first
+ * half of its month shows a non-blocking heads-up (display heuristic only —
+ * the server owns the real uniqueness rule).
  */
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle } from "lucide-react";
 import { updatePayrollRunAction } from "@/actions/payroll";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { monthLabel } from "../../payroll-ui";
 import { useState } from "react";
 
@@ -33,14 +38,21 @@ export function BonusToggle({
   const router = useRouter();
   const [pending, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
+  // The month picker's draft ("YYYY-MM"); empty = untouched (shows the current month).
+  const [monthDraft, setMonthDraft] = useState("");
 
   // Soft warning heuristic: a bonus run normally lands in the SECOND pay period
   // of the month; a period starting on day 1–14 is likely the first.
   const dayOfMonth = Number(periodStart.slice(8, 10));
   const likelyFirstPeriod = dayOfMonth <= 14;
 
+  const currentMonthValue = bonusMonth ? bonusMonth.slice(0, 7) : "";
+  const draftValid = /^\d{4}-(0[1-9]|1[0-2])$/.test(monthDraft);
+  const draftChanged = draftValid && monthDraft !== currentMonthValue;
+
   function toggle(next: boolean) {
     setErr(null);
+    setMonthDraft("");
     start(async () => {
       const fd = new FormData();
       fd.set("run_id", runId);
@@ -48,6 +60,25 @@ export function BonusToggle({
       const res = await updatePayrollRunAction(null, fd);
       if (res.ok) router.refresh();
       else setErr(res.message);
+    });
+  }
+
+  // Round-5 #33: the explicit office-manager month pick — submits ONLY
+  // bonus_month (the server keeps the slider on and validates first-of-month).
+  function applyMonth() {
+    if (!draftChanged) return;
+    setErr(null);
+    start(async () => {
+      const fd = new FormData();
+      fd.set("run_id", runId);
+      fd.set("bonus_month", `${monthDraft}-01`);
+      const res = await updatePayrollRunAction(null, fd);
+      if (res.ok) {
+        setMonthDraft("");
+        router.refresh();
+      } else {
+        setErr(res.message);
+      }
     });
   }
 
@@ -91,6 +122,37 @@ export function BonusToggle({
           {pending && <span className="ml-2 text-muted-foreground">Saving…</span>}
         </span>
       </label>
+      {bonusPeriod && canEdit && (
+        <div className="mt-3 border-t border-primary/20 pt-3">
+          <label className="flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Bonus month
+            <Input
+              type="month"
+              value={monthDraft === "" ? currentMonthValue : monthDraft}
+              onChange={(e) => setMonthDraft(e.target.value)}
+              disabled={pending}
+              aria-label="Bonus month"
+              className="h-8 w-40 text-sm"
+            />
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={!draftChanged || pending}
+              loading={pending && draftChanged}
+              loadingText="Saving…"
+              onClick={applyMonth}
+            >
+              Change month
+            </Button>
+          </label>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Auto: the month before this run&apos;s pay date. Pick a different month only when
+            payroll needs it — the app re-derives the auto month whenever the slider is
+            switched back on.
+          </p>
+        </div>
+      )}
       {bonusPeriod && likelyFirstPeriod && (
         <p className="mt-2 flex items-start gap-1.5 text-xs text-amber-800 dark:text-amber-300">
           <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />

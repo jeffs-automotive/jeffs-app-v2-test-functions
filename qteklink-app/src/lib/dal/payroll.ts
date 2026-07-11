@@ -345,18 +345,37 @@ export async function updatePayrollEntry(
   }
 }
 
-/** Patch the run itself — bonus_period only (the RPC derives + stores bonus_month). */
+/**
+ * Patch the run itself — bonus_period and/or an explicit bonus_month (round-5 #33:
+ * the office-manager escape hatch; first-of-month date). Only the keys present in
+ * the patch are sent — the RPC derives the auto month (month before the pay date,
+ * i.e. period_end − 1 month) when the slider turns ON without an explicit pick,
+ * validates the explicit month, and re-enforces open-run-only.
+ */
 export async function updatePayrollRun(
   shopId: number,
   runId: string,
-  patch: { bonusPeriod: boolean },
+  patch: { bonusPeriod?: boolean; bonusMonth?: string },
   actor: PayrollActor,
 ): Promise<void> {
+  const jsonPatch: Record<string, unknown> = {};
+  if (patch.bonusPeriod !== undefined) jsonPatch.bonus_period = patch.bonusPeriod;
+  if (patch.bonusMonth !== undefined) {
+    if (!isIsoDate(patch.bonusMonth) || !patch.bonusMonth.endsWith("-01")) {
+      throw new QboClientError("The bonus month must be the first day of a month (YYYY-MM-01).", {
+        kind: "validation",
+      });
+    }
+    jsonPatch.bonus_month = patch.bonusMonth;
+  }
+  if (Object.keys(jsonPatch).length === 0) {
+    throw new QboClientError("Nothing to update.", { kind: "validation" });
+  }
   await fetchRunGuarded(shopId, runId);
   const admin = createSupabaseAdminClient();
   const { error } = await admin.rpc("qteklink_payroll_update_run", {
     p_run_id: runId,
-    p_patch: { bonus_period: patch.bonusPeriod },
+    p_patch: jsonPatch,
     p_actor_user_id: actor.userId,
     p_actor_label: actor.label,
   });
