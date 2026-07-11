@@ -72,6 +72,8 @@ import type { Family, Overrides, SheetEntries } from "@/lib/payroll/types";
 
 export { DEFAULT_PAYROLL_SETTINGS, getPayrollSettings, computePayrollRun };
 export { listPayrollEmployees, upsertPayrollEmployee };
+export { listPayrollRunsWithSummaries } from "@/lib/dal/payroll-summaries";
+export type { PayrollRunWithSummary } from "@/lib/dal/payroll-summaries";
 export type { PayrollActor, PayrollAlertEmails, PayrollEmployee, PayrollEntryPatch };
 export type { PayrollHourKey, PayrollRun, PayrollRunComputation, PayrollSettings };
 export type { UpsertPayrollEmployeeInput };
