@@ -23,7 +23,7 @@ import type { SnapshotEmployee } from "@/lib/payroll/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { AutoValue, fmtHours, NA, ProvenanceLegend, ROLE_LABEL } from "./run-ui";
+import { AutoValue, fmtHours, NA, ProvenanceLegend, ROLE_LABEL } from "../../payroll-ui";
 import { OverrideEditor } from "./OverrideEditor";
 
 const HOUR_FIELDS = [
@@ -239,7 +239,13 @@ function EntryRowGroup({
           })}
           <td className="px-2 py-2 text-right">
             {week ? (
-              <AutoValue source="Auto: clock hours over 40 this week">{fmtHours(week.ot_hours)}</AutoValue>
+              <AutoValue
+                source="Auto: clock hours over 40 this week"
+                label={`${entry.displayName} week ${wk} overtime hours`}
+                valueText={fmtHours(week.ot_hours)}
+              >
+                {fmtHours(week.ot_hours)}
+              </AutoValue>
             ) : (
               <NA title="Computed after save" />
             )}
@@ -250,6 +256,8 @@ function EntryRowGroup({
                 {billed !== null ? (
                   <AutoValue
                     source={`From Tekmetric — labor lines posted week ${wk} of this period`}
+                    label={`${entry.displayName} week ${wk} billed hours`}
+                    valueText={fmtHours(billed)}
                     overridden={billedOverride !== undefined}
                     overrideNote={billedOverride?.note}
                   >

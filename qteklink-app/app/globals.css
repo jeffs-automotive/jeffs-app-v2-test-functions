@@ -96,6 +96,23 @@ body {
   --input: oklch(0.88 0.007 70);
   --ring: oklch(0.55 0.16 8);
   --radius: 0.5rem;
+
+  /* Payroll data-provenance + archival state tokens (qteklink-payroll spec).
+   * Self-contained additions for two things the base ramp doesn't express:
+   *   --color-auto*   = auto-tracked (Tekmetric-sourced) numbers — a distinct
+   *                     indigo hue from burgundy so "this came from Tekmetric"
+   *                     reads at a glance; also the "cloned-from" provenance
+   *                     banner. auto-ink on auto-bg = 8.88:1 (WCAG AA).
+   *   --color-voided* = the voided/superseded run — cool slate archival grey,
+   *                     clearly not completed (emerald) and not an error (red).
+   *                     voided-ink on voided-bg = 9.45:1 (WCAG AA).
+   * Border tokens are UI rules only (≥3:1 vs --card), never text. */
+  --color-auto: oklch(0.45 0.16 275);
+  --color-auto-bg: oklch(0.965 0.02 275);
+  --color-auto-border: oklch(0.86 0.05 275);
+  --color-voided: oklch(0.37 0.03 255);
+  --color-voided-bg: oklch(0.96 0.005 255);
+  --color-voided-border: oklch(0.87 0.02 255);
 }
 
 /*---break---
@@ -129,6 +146,16 @@ body {
   --border: oklch(1 0 0 / 12%);
   --input: oklch(1 0 0 / 18%);
   --ring: oklch(0.68 0.15 10);
+
+  /* Dark parity for the payroll provenance/archival tokens (spec pins).
+   *   auto-ink indigo-300 on indigo-950 = 8.02:1; voided-ink slate-300 on
+   *   slate-900 = 12.02:1 — both clear WCAG AA. Border tokens stay UI-rule-only. */
+  --color-auto: oklch(0.80 0.10 280);
+  --color-auto-bg: oklch(0.28 0.03 275);
+  --color-auto-border: oklch(0.42 0.05 275);
+  --color-voided: oklch(0.83 0.03 255);
+  --color-voided-bg: oklch(0.26 0.01 255);
+  --color-voided-border: oklch(0.40 0.02 255);
 }
 
 /*---break---
@@ -149,5 +176,38 @@ body {
   h3 {
     @apply font-heading;
     letter-spacing: -0.01em;
+  }
+}
+
+/*---break---
+ */
+
+/**
+ * Print (qteklink-payroll spec) — the cross-cutting rules the per-element
+ * `print:` variants can't express. The payroll run Summary is the print target
+ * (Marie keys the totals into the external payroll system from paper), so the
+ * designed status/provenance tints must survive and rows must never split.
+ */
+@media print {
+  /* Keep the designed status/provenance tints on paper (browsers strip
+     backgrounds by default). */
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  /* Never split a run/employee summary row across a page; repeat the header. */
+  .print-keep,
+  table,
+  thead,
+  tr {
+    break-inside: avoid;
+  }
+  thead {
+    display: table-header-group;
+  }
+  /* Force the light ledger even if the screen was in dark mode when printing. */
+  :root,
+  .dark {
+    color-scheme: light;
   }
 }

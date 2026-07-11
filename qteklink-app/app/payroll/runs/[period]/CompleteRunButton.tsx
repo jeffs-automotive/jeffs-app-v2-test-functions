@@ -27,7 +27,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { fmtAsOf, fmtHours, fmtShortDate } from "./run-ui";
+import { fmtAsOf, fmtHours, fmtShortDate } from "../../payroll-ui";
 
 export function CompleteRunButton({
   runId,

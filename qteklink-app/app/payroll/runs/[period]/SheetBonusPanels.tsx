@@ -17,7 +17,7 @@ import {
   monthLabel,
   NA,
   type MonthProvenanceView,
-} from "./run-ui";
+} from "../../payroll-ui";
 import { GoalsEditor } from "./GoalsEditor";
 import type { OverrideKey } from "./OverrideEditor";
 import { Override, pcNum, type SheetCtx } from "./sheet-shared";
@@ -76,6 +76,8 @@ function AutoMoney({
         ) : (
           <AutoValue
             source={source}
+            label={label}
+            valueText={fmtUsdSigned(cents)}
             overridden={ov !== undefined}
             overrideNote={ov?.note}
             className="text-sm font-semibold"
@@ -180,14 +182,24 @@ export function BonusMonthCard({ month, prov }: { month: string; prov: MonthProv
               <dd className="mt-0.5">
                 {r.cents !== undefined ? (
                   r.cents !== null ? (
-                    <AutoValue source={r.source} className="text-sm font-semibold">
+                    <AutoValue
+                      source={r.source}
+                      label={r.label}
+                      valueText={fmtUsdSigned(r.cents)}
+                      className="text-sm font-semibold"
+                    >
                       {fmtUsdSigned(r.cents)}
                     </AutoValue>
                   ) : (
                     <NA title="Not derived for this run" />
                   )
                 ) : r.hours != null ? (
-                  <AutoValue source={r.source} className="text-sm font-semibold">
+                  <AutoValue
+                    source={r.source}
+                    label={r.label}
+                    valueText={fmtHours(r.hours)}
+                    className="text-sm font-semibold"
+                  >
                     {fmtHours(r.hours)}
                   </AutoValue>
                 ) : (
@@ -240,6 +252,8 @@ export function ServiceAdvisorBonusPanel({ ctx }: { ctx: SheetCtx }) {
             ) : (
               <AutoValue
                 source={salesGoalSource}
+                label={`${e.display_name} sales goal`}
+                valueText={fmtUsd(salesGoal)}
                 overridden={e.overrides.sales_goal_cents !== undefined}
                 overrideNote={e.overrides.sales_goal_cents?.note}
                 className="text-sm font-semibold"
@@ -280,6 +294,8 @@ export function ServiceAdvisorBonusPanel({ ctx }: { ctx: SheetCtx }) {
             ) : (
               <AutoValue
                 source="From Tekmetric — counted spiff-category jobs on this writer's ROs in the bonus month"
+                label={`${e.display_name} counted spiff jobs`}
+                valueText={String(e.derived.spiff_count)}
                 overridden={e.overrides.spiff_count !== undefined}
                 overrideNote={e.overrides.spiff_count?.note}
                 className="text-sm font-semibold"
@@ -390,6 +406,8 @@ export function ForemanBonusPanel({ ctx }: { ctx: SheetCtx }) {
             ) : (
               <AutoValue
                 source="From Tekmetric — all technician labor hours posted in the bonus month"
+                label={`${e.display_name} shop billed hours`}
+                valueText={fmtHours(shopHours)}
                 overridden={ov !== undefined}
                 overrideNote={ov?.note}
                 className="text-sm font-semibold"

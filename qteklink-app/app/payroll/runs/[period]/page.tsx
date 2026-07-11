@@ -33,7 +33,7 @@ import { SheetsView } from "./SheetsView";
 import { SummaryView } from "./SummaryView";
 import { SyncRosterButton } from "./SyncRosterButton";
 import { VoidCloneButton } from "./VoidCloneButton";
-import { fmtAsOf, fmtDateLong, monthLabel, periodLabel, RunStatusBadge } from "./run-ui";
+import { fmtAsOf, fmtDateLong, monthLabel, periodLabel, RunStatusBadge } from "../../payroll-ui";
 
 export const dynamic = "force-dynamic"; // open runs recompute on every view
 
@@ -116,13 +116,19 @@ export default async function RunDetailPage({
       className={cn(
         "mx-auto max-w-6xl px-6 py-8",
         isCompleted && "bg-muted/20",
-        isVoided && "bg-slate-50/40 dark:bg-slate-900/30",
+        isVoided && "bg-[color:var(--color-voided-bg)]/40",
       )}
     >
       <div className="print:hidden">
         <PageHeader
           title={
-            <span className={isVoided ? "line-through decoration-1 decoration-slate-400" : undefined}>
+            <span
+              className={
+                isVoided
+                  ? "line-through decoration-1 decoration-[color:var(--color-voided-border)]"
+                  : undefined
+              }
+            >
               Payroll · {label}
             </span>
           }
@@ -170,7 +176,7 @@ export default async function RunDetailPage({
 
         {isVoided && (
           <section className="mt-4 space-y-1">
-            <div className="flex items-center gap-2 rounded-lg border border-slate-300 bg-slate-100 p-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+            <div className="flex items-center gap-2 rounded-lg border border-[color:var(--color-voided-border)] bg-[color:var(--color-voided-bg)] p-3 text-sm text-[color:var(--color-voided)]">
               <Ban className="size-4 shrink-0" aria-hidden="true" />
               <p>
                 <span className="font-semibold">
@@ -199,7 +205,7 @@ export default async function RunDetailPage({
         )}
 
         {clonedFrom && (
-          <section className="mt-4 flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-800 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300">
+          <section className="mt-4 flex items-center gap-2 rounded-lg border border-[color:var(--color-auto-border)] bg-[color:var(--color-auto-bg)] p-3 text-sm text-[color:var(--color-auto)]">
             <GitBranch className="size-4 shrink-0" aria-hidden="true" />
             <p>
               Cloned from a voided run{" "}

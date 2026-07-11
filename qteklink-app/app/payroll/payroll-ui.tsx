@@ -1,15 +1,23 @@
 /**
- * Run-detail shared presentational pieces — formatters + the provenance/status
- * vocabulary for /payroll/runs/[period] (design spec §3 + addendum §3). Purely
+ * payroll-ui — the single page-local shared presentational vocabulary for the
+ * whole /payroll module (dashboard + employees + run detail + settings).
+ * Consolidates what used to live in three duplicated files (app/payroll/ui.tsx,
+ * app/payroll/RunStatusBadge.tsx, app/payroll/runs/[period]/run-ui.tsx) so the
+ * provenance + lock/void system is defined in exactly one place. Purely
  * presentational: no data fetching, no actions, no state. Server AND client
  * components import from here (no "use client" — it compiles for both).
  *
  * Provenance system (the spec's core treatment): AutoValue renders a
- * Tekmetric-sourced number as an indigo chip with a glyph + a source tooltip +
- * sr-only "from Tekmetric" (color never carries the meaning alone); an
- * overridden value swaps to plain ink + an "overridden" outline badge whose
- * title carries the note. Hand-keyed values are plain foreground text — the
- * chip/no-chip contrast IS the auto-vs-manual distinction.
+ * Tekmetric-sourced number as an indigo (--color-auto) chip with a glyph + a
+ * source tooltip + an accessible name that names the source ("… from Tekmetric")
+ * so color never carries the meaning alone; an overridden value swaps to plain
+ * ink + an "overridden" outline badge whose title carries the note. Hand-keyed
+ * values are plain foreground text — the chip/no-chip contrast IS the
+ * auto-vs-manual distinction.
+ *
+ * Colors that carry state come from the module tokens in globals.css:
+ *   --color-auto* — auto/provenance (indigo); also the "cloned-from" banner.
+ *   --color-voided* — the archival/superseded (slate) run state.
  */
 import type { ReactNode } from "react";
 import { Ban, Link2, Lock, PencilLine, PenLine } from "lucide-react";
@@ -25,9 +33,19 @@ import type {
 
 // ── Formatters (display-only; money always arrives as integer cents) ──────────
 
-/** Hours for display: 1–2 decimals ("40.0", "3.75"). */
+/** Hours for display: 1–2 decimals ("40.0", "3.75"). Run-detail default. */
 export function fmtHours(h: number): string {
   return h.toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 2 });
+}
+
+/** Hours pinned to exactly one decimal ("40.0", "3.8"). Dashboard roster idiom. */
+export function fmtHoursFixed1(h: number): string {
+  return h.toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
+
+/** Hours with up to two decimals, no forced minimum — for accrual rates (1.54 hrs/period). */
+export function fmtHours2(h: number): string {
+  return h.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
 /** ISO YYYY-MM-DD → "6-28-26" (the task's M-D-YY period label format). */
@@ -39,6 +57,13 @@ export function fmtShortDate(iso: string): string {
 /** "6-28-26 – 7-11-26". */
 export function periodLabel(start: string, end: string): string {
   return `${fmtShortDate(start)} – ${fmtShortDate(end)}`;
+}
+
+/** "2026" or "2026–27" when a period straddles New Year. */
+export function periodYears(startIso: string, endIso: string): string {
+  const y1 = startIso.slice(0, 4);
+  const y2 = endIso.slice(0, 4);
+  return y1 === y2 ? y1 : `${y1}–${y2.slice(2)}`;
 }
 
 /** ISO timestamp → "June 28, 2026" (banner dates). */
@@ -70,6 +95,8 @@ export function monthLabel(isoDate: string): string {
   });
 }
 
+// ── Role / family / leave-rate labels ─────────────────────────────────────────
+
 export const ROLE_LABEL: Record<Role, string> = {
   general_manager: "General Manager",
   service_manager: "Service Manager",
@@ -80,6 +107,9 @@ export const ROLE_LABEL: Record<Role, string> = {
   shop_support: "Shop Support",
   office_support: "Office Support",
 };
+
+/** String-keyed alias for callers that hold a raw role string (dashboard roster). */
+export const ROLE_LABELS: Record<string, string> = ROLE_LABEL;
 
 export const FAMILY_LABEL: Record<Family, string> = {
   service_advisor: "Service advisor sheet — salary, GP-tier bonus & spiffs",
@@ -98,6 +128,15 @@ export const LEAVE_RATE_SOURCE_LABEL: Record<LeaveRateSource, string> = {
   base_rate: "base hourly rate",
 };
 
+// ── Table idiom constants (the breakdown page's shared treatment) ─────────────
+
+/** The breakdown page's right-aligned numeric-cell idiom. */
+export const numCell = "px-3 py-2 text-right tabular-nums";
+
+/** The breakdown page's table-header treatment. */
+export const headerCls =
+  "bg-muted text-xs uppercase tracking-wide text-muted-foreground [&_th]:h-auto [&_th]:px-3 [&_th]:py-2";
+
 // ── Status badge (local to payroll — the shared StatusBadge is SnapshotColumn-typed) ──
 
 const RUN_STATUS: Record<RunStatus, { label: string; cls: string; Icon: typeof Lock }> = {
@@ -113,7 +152,7 @@ const RUN_STATUS: Record<RunStatus, { label: string; cls: string; Icon: typeof L
   },
   voided: {
     label: "Voided",
-    cls: "border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300",
+    cls: "border-[color:var(--color-voided-border)] bg-[color:var(--color-voided-bg)] text-[color:var(--color-voided)]",
     Icon: Ban,
   },
 };
@@ -131,14 +170,23 @@ export function RunStatusBadge({ status }: { status: RunStatus }) {
 // ── The provenance chip ────────────────────────────────────────────────────────
 
 /**
- * AutoValue — an auto-tracked (Tekmetric/derived) number. Indigo chip + glyph +
- * source tooltip + sr-only "from Tekmetric". When overridden: plain ink,
- * PencilLine glyph, and an "overridden" badge whose title carries the note.
- * NEVER mutates — any override affordance is a sibling the caller renders.
+ * AutoValue — an auto-tracked (Tekmetric/derived) number. Indigo (--color-auto)
+ * chip + glyph + source tooltip + an accessible name naming the provenance. When
+ * overridden: plain ink, PencilLine glyph, and an "overridden" badge whose title
+ * carries the note. NEVER mutates — any override affordance is a sibling the
+ * caller renders.
+ *
+ * Accessible-name API (spec §Shared primitives #1 + addendum a11y): pass `label`
+ * (what the number is, e.g. "Billed hours") + `valueText` (the value read aloud,
+ * e.g. "42.5") to get an explicit aria-label "Billed hours 42.5, from Tekmetric"
+ * — provenance in the accessible name, not color alone. Without them the visible
+ * children plus an sr-only "from Tekmetric" still carry the provenance.
  */
 export function AutoValue({
   children,
   source,
+  label,
+  valueText,
   overridden = false,
   overrideNote,
   className,
@@ -146,14 +194,28 @@ export function AutoValue({
   children: ReactNode;
   /** Tooltip naming the source + the window it was bucketed to. */
   source: string;
+  /** What the number is (e.g. "Billed hours") — composed into the accessible name. */
+  label?: string;
+  /** The value read aloud (e.g. "42.5") — composed into the accessible name. */
+  valueText?: string;
   overridden?: boolean;
   /** Shown as the overridden badge's title (the override's note). */
   overrideNote?: string;
   className?: string;
 }) {
+  // Explicit accessible name when the caller names the number + value; the
+  // provenance ("from Tekmetric" / "overridden") is always part of it.
+  const ariaLabel =
+    label !== undefined && valueText !== undefined
+      ? `${label} ${valueText}, ${overridden ? "manually overridden" : "from Tekmetric"}`
+      : undefined;
+
   if (overridden) {
     return (
-      <span className={cn("inline-flex items-center gap-1 tabular-nums text-foreground", className)}>
+      <span
+        className={cn("inline-flex items-center gap-1 tabular-nums text-foreground", className)}
+        aria-label={ariaLabel}
+      >
         <PencilLine className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
         {children}
         <Badge
@@ -170,10 +232,11 @@ export function AutoValue({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-md bg-indigo-50 px-1.5 py-0.5 tabular-nums text-indigo-800 ring-1 ring-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 dark:ring-indigo-800",
+        "inline-flex items-center gap-1 rounded-md bg-[color:var(--color-auto-bg)] px-1.5 py-0.5 tabular-nums text-[color:var(--color-auto)] ring-1 ring-[color:var(--color-auto-border)]",
         className,
       )}
       title={source}
+      aria-label={ariaLabel}
     >
       <Link2 className="size-3 shrink-0" aria-hidden="true" />
       {children}
@@ -187,7 +250,7 @@ export function ProvenanceLegend() {
   return (
     <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
       <span className="inline-flex items-center gap-1">
-        <span className="inline-flex items-center gap-1 rounded-md bg-indigo-50 px-1.5 py-0.5 text-indigo-800 ring-1 ring-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 dark:ring-indigo-800">
+        <span className="inline-flex items-center gap-1 rounded-md bg-[color:var(--color-auto-bg)] px-1.5 py-0.5 text-[color:var(--color-auto)] ring-1 ring-[color:var(--color-auto-border)]">
           <Link2 className="size-3" aria-hidden="true" />
           12.3
         </span>
@@ -207,6 +270,15 @@ export function NA({ title = "Not applicable for this role" }: { title?: string 
   return (
     <span className="text-muted-foreground" title={title} aria-label={title}>
       —
+    </span>
+  );
+}
+
+/** "n/a" with the reason in title + accessible name — never a misleading $0.00. */
+export function NotApplicable({ reason }: { reason: string }) {
+  return (
+    <span className="text-muted-foreground" title={reason} aria-label={`n/a — ${reason}`}>
+      n/a
     </span>
   );
 }

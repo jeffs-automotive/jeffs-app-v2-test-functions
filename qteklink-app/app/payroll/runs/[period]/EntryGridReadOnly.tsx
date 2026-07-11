@@ -7,7 +7,7 @@
  */
 import type { RunSnapshot } from "@/lib/payroll/types";
 import { Badge } from "@/components/ui/badge";
-import { AutoValue, fmtHours, NA, ROLE_LABEL } from "./run-ui";
+import { AutoValue, fmtHours, NA, ROLE_LABEL } from "../../payroll-ui";
 import { fmtUsd } from "@/lib/format";
 
 const thCls =
@@ -76,7 +76,13 @@ export function EntryGridReadOnly({ snapshot }: { snapshot: RunSnapshot }) {
                     );
                   })}
                   <td className={numTd}>
-                    <AutoValue source="Auto: clock hours over 40 this week">{fmtHours(week.ot_hours)}</AutoValue>
+                    <AutoValue
+                      source="Auto: clock hours over 40 this week"
+                      label={`${e.display_name} week ${wk} overtime hours`}
+                      valueText={fmtHours(week.ot_hours)}
+                    >
+                      {fmtHours(week.ot_hours)}
+                    </AutoValue>
                   </td>
                   <td className={numTd}>
                     {isTech ? (
@@ -85,6 +91,8 @@ export function EntryGridReadOnly({ snapshot }: { snapshot: RunSnapshot }) {
                       ) : (
                         <AutoValue
                           source={`From Tekmetric — labor lines posted week ${wk} of this period`}
+                          label={`${e.display_name} week ${wk} billed hours`}
+                          valueText={fmtHours(billed)}
                           overridden={billedOv !== undefined}
                           overrideNote={billedOv?.note}
                         >

@@ -26,7 +26,7 @@ import {
   readLeaveRateProvenance,
   readMonthProvenance,
   ROLE_LABEL,
-} from "./run-ui";
+} from "../../payroll-ui";
 import { Override, pcNum, type SheetCtx } from "./sheet-shared";
 import {
   BonusMonthCard,
@@ -95,7 +95,11 @@ function WeekTable({ ctx, tech }: { ctx: SheetCtx; tech: boolean }) {
     {
       label: "OT hours (auto)",
       render: (wk) => (
-        <AutoValue source="Auto: clock hours over 40 this week">
+        <AutoValue
+          source="Auto: clock hours over 40 this week"
+          label={`${e.display_name} week ${wk} overtime hours`}
+          valueText={fmtHours((wk === 1 ? s.week1 : s.week2).ot_hours)}
+        >
           {fmtHours((wk === 1 ? s.week1 : s.week2).ot_hours)}
         </AutoValue>
       ),
@@ -115,6 +119,8 @@ function WeekTable({ ctx, tech }: { ctx: SheetCtx; tech: boolean }) {
               ) : (
                 <AutoValue
                   source={`From Tekmetric — labor lines posted week ${wk} of this period`}
+                  label={`${e.display_name} week ${wk} billed hours`}
+                  valueText={fmtHours(billed)}
                   overridden={ov !== undefined}
                   overrideNote={ov?.note}
                 >
@@ -139,7 +145,13 @@ function WeekTable({ ctx, tech }: { ctx: SheetCtx; tech: boolean }) {
           return v == null ? (
             <NA title="No efficiency component for this week" />
           ) : (
-            <AutoValue source="Derived — billed hours beyond clocked hours">{fmtHours(v)}</AutoValue>
+            <AutoValue
+              source="Derived — billed hours beyond clocked hours"
+              label={`${e.display_name} week ${wk} efficiency hours`}
+              valueText={fmtHours(v)}
+            >
+              {fmtHours(v)}
+            </AutoValue>
           );
         },
       },
@@ -194,6 +206,8 @@ function LeaveRateLine({ ctx }: { ctx: SheetCtx }) {
       PTO/Holiday/Bereavement paid at
       <AutoValue
         source={`Leave rate basis: ${LEAVE_RATE_SOURCE_LABEL[s.leave_rate_source]}${windowNote}`}
+        label={`${ctx.e.display_name} leave rate`}
+        valueText={`${fmtUsd(s.leave_rate_cents_per_hour)} per hour`}
         overridden={ov !== undefined}
         overrideNote={ov?.note}
       >

@@ -23,7 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { fmtDateLong, fmtHours, NA, periodLabel, ROLE_LABEL } from "./run-ui";
+import { fmtDateLong, fmtHours, NA, periodLabel, ROLE_LABEL } from "../../payroll-ui";
 
 const numCell = "px-3 py-2 text-right tabular-nums";
 
@@ -89,7 +89,7 @@ export function SummaryView({
         <p className="text-sm text-muted-foreground">Shop {shopId}</p>
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-border shadow-xs print:rounded-none print:border-0 print:shadow-none">
+      <div className="print-keep overflow-hidden rounded-lg border border-border shadow-xs print:rounded-none print:border-0 print:shadow-none">
         <Table>
           <TableHeader className="bg-muted text-xs uppercase tracking-wide text-muted-foreground [&_th]:h-auto [&_th]:text-muted-foreground">
             <TableRow className="hover:bg-transparent">

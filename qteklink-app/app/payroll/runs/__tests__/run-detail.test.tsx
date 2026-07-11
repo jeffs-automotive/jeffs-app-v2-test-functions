@@ -36,7 +36,7 @@ import type {
   SummaryRow,
   WeekComputation,
 } from "@/lib/payroll/types";
-import { AutoValue, RunStatusBadge } from "../[period]/run-ui";
+import { AutoValue, RunStatusBadge } from "../../payroll-ui";
 import { EntryGrid } from "../[period]/EntryGrid";
 import { SummaryView } from "../[period]/SummaryView";
 import { VoidCloneButton } from "../[period]/VoidCloneButton";

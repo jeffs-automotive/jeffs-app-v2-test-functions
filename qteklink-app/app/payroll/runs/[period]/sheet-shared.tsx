@@ -7,7 +7,7 @@
  */
 import type { Overrides, SnapshotEmployee } from "@/lib/payroll/types";
 import { OverrideEditor, type OverrideKey } from "./OverrideEditor";
-import type { MonthProvenanceView } from "./run-ui";
+import type { MonthProvenanceView } from "../../payroll-ui";
 
 export interface SheetCtx {
   e: SnapshotEmployee;

@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
-import RunStatusBadge from "../RunStatusBadge";
+import { RunStatusBadge } from "../payroll-ui";
 
 describe("RunStatusBadge", () => {
   it("renders a text label for every status", () => {
@@ -20,7 +20,9 @@ describe("RunStatusBadge", () => {
   it("voided recedes to the slate archival tint (not emerald, not red)", () => {
     render(<RunStatusBadge status="voided" />);
     const badge = screen.getByText("Voided");
-    expect(badge.className).toContain("text-slate-700");
-    expect(badge.className).toContain("bg-slate-100");
+    // The archival slate now comes from the --color-voided* tokens (globals.css)
+    // rather than raw slate-* utilities — same "archival grey, not emerald/red".
+    expect(badge.className).toContain("text-[color:var(--color-voided)]");
+    expect(badge.className).toContain("bg-[color:var(--color-voided-bg)]");
   });
 });

@@ -32,7 +32,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { fmtHours, fmtHours2, headerCls, NotApplicable, numCell, ROLE_LABELS } from "./ui";
+import {
+  fmtHoursFixed1 as fmtHours,
+  fmtHours2,
+  headerCls,
+  NotApplicable,
+  numCell,
+  ROLE_LABELS,
+} from "./payroll-ui";
 
 interface PayView {
   kind: "hourly" | "salary";

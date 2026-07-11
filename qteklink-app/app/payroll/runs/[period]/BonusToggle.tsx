@@ -14,7 +14,7 @@ import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle } from "lucide-react";
 import { updatePayrollRunAction } from "@/actions/payroll";
-import { monthLabel } from "./run-ui";
+import { monthLabel } from "../../payroll-ui";
 import { useState } from "react";
 
 export function BonusToggle({

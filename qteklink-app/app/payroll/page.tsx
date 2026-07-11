@@ -39,10 +39,16 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import EmployeesCard from "./EmployeesCard";
-import RunStatusBadge from "./RunStatusBadge";
 import StartRunButton from "./StartRunButton";
 import { fmtPeriodRange, nextOnCadencePeriodStart, todayIsoUtc } from "./period";
-import { fmtHours, headerCls, NotApplicable, numCell, periodYears } from "./ui";
+import {
+  fmtHoursFixed1,
+  headerCls,
+  NotApplicable,
+  numCell,
+  periodYears,
+  RunStatusBadge,
+} from "./payroll-ui";
 
 export const dynamic = "force-dynamic"; // roster, averages + run statuses must always be current
 
@@ -103,7 +109,7 @@ function HoursPayCell({ hours, payCents, muted }: { hours: number; payCents: num
       <div className={cn("font-medium", muted ? "text-muted-foreground" : "text-foreground")}>
         {fmtUsd(payCents)}
       </div>
-      <div className="text-xs text-muted-foreground">{fmtHours(hours)} h</div>
+      <div className="text-xs text-muted-foreground">{fmtHoursFixed1(hours)} h</div>
     </TableCell>
   );
 }
@@ -111,7 +117,7 @@ function HoursPayCell({ hours, payCents, muted }: { hours: number; payCents: num
 function HoursOnlyCell({ hours }: { hours: number }) {
   return (
     <TableCell className={numCell}>
-      {hours > 0 ? fmtHours(hours) : <span className="text-muted-foreground">—</span>}
+      {hours > 0 ? fmtHoursFixed1(hours) : <span className="text-muted-foreground">—</span>}
     </TableCell>
   );
 }
@@ -126,14 +132,14 @@ function RunRow({ v }: { v: RunRowView }) {
     ? `/payroll/runs/${v.run.periodStart}?run=${v.run.id}`
     : `/payroll/runs/${v.run.periodStart}`;
   return (
-    <TableRow className={voided ? "bg-slate-50/60 text-muted-foreground dark:bg-slate-900/20" : undefined}>
+    <TableRow className={voided ? "bg-[color:var(--color-voided-bg)]/50 text-muted-foreground" : undefined}>
       <TableCell className={cn("px-3 py-2", v.run.bonusPeriod && "border-l-2 border-primary")}>
         <div className="flex items-center gap-2">
           <Link
             href={href}
             className={cn(
               "font-medium underline-offset-4 hover:underline",
-              voided ? "line-through decoration-slate-400" : "text-foreground",
+              voided ? "line-through decoration-[color:var(--color-voided-border)]" : "text-foreground",
             )}
           >
             {label}
