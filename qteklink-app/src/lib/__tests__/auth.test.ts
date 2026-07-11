@@ -22,6 +22,13 @@ vi.mock("next/navigation", () => ({
     throw new Error(`NEXT_REDIRECT:${url}`);
   }),
 }));
+// The unauth bounce reads x-qtl-pathname (set by middleware) to build ?next=.
+const mockHeaderStore = new Map<string, string>();
+vi.mock("next/headers", () => ({
+  headers: vi.fn(async () => ({
+    get: (name: string) => mockHeaderStore.get(name.toLowerCase()) ?? null,
+  })),
+}));
 
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "../supabase/server";
@@ -68,6 +75,7 @@ function setResolver(rows: unknown, error: unknown = null) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockHeaderStore.clear();
 });
 
 describe("requireQtekUser", () => {
@@ -81,6 +89,25 @@ describe("requireQtekUser", () => {
     setSession(null, { message: "boom" });
     await expect(requireQtekUser()).rejects.toThrow("NEXT_REDIRECT:/login");
   });
+
+  it("carries the intended destination as ?next= (deep link survives login)", async () => {
+    setSession(null);
+    mockHeaderStore.set("x-qtl-pathname", "/approvals/2026-07-03");
+    await expect(requireQtekUser()).rejects.toThrow("NEXT_REDIRECT:/login?next=");
+    expect(redirect).toHaveBeenCalledWith(
+      `/login?next=${encodeURIComponent("/approvals/2026-07-03")}`,
+    );
+  });
+
+  it.each(["//evil.com", "/", "/login?error=x", "/auth/callback", "https://evil.com"])(
+    "never threads unsafe next %s",
+    async (path) => {
+      setSession(null);
+      mockHeaderStore.set("x-qtl-pathname", path);
+      await expect(requireQtekUser()).rejects.toThrow("NEXT_REDIRECT:/login");
+      expect(redirect).toHaveBeenCalledWith("/login");
+    },
+  );
 
   it("resolves the allowlist by the validated user id (not user_metadata)", async () => {
     setSession(mockUser());

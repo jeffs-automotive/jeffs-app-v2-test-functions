@@ -9,7 +9,7 @@ import { useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 
-export default function LoginButton() {
+export default function LoginButton({ next }: { next?: string | null }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,7 +25,11 @@ export default function LoginButton() {
           // profile` are the standard OIDC scopes. The Entra object id (oid)
           // used for the allowlist is a default claim — no extra scope needed.
           scopes: "email openid profile",
-          redirectTo: `${window.location.origin}/auth/callback`,
+          // The callback validates ?next (relative-path-only) and lands there
+          // after the session exchange — deep links survive the login round-trip.
+          redirectTo: `${window.location.origin}/auth/callback${
+            next ? `?next=${encodeURIComponent(next)}` : ""
+          }`,
         },
       });
       if (oauthError) {

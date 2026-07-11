@@ -33,23 +33,37 @@ export const dynamic = "force-dynamic"; // hints (QBO connection, roster count) 
 export default async function ModuleDirectoryPage() {
   const { email, role, shopId } = await requireQtekUser();
 
+  // The two hints load concurrently; a rejected read reports to Sentry and its
+  // hint is omitted — the landing page never pays serial round-trips or 500s.
+  const [coaRes, rosterRes] = await Promise.allSettled([
+    getCoaSummary(shopId),
+    listPayrollEmployees(shopId), // active-only by default
+  ]);
+
   let qboHint: string | null = null;
-  try {
-    const coa = await getCoaSummary(shopId);
-    qboHint = coa.realmId ? "QuickBooks connected" : "QuickBooks not connected";
-  } catch (error) {
-    Sentry.captureException(error, {
-      tags: { qteklink_surface: "module_directory", qteklink_hint: "qbo_connection" },
+  if (coaRes.status === "fulfilled") {
+    qboHint = coaRes.value.realmId ? "QuickBooks connected" : "QuickBooks not connected";
+  } else {
+    Sentry.captureException(coaRes.reason, {
+      tags: {
+        qteklink_surface: "module_directory",
+        qteklink_hint: "qbo_connection",
+        shop_id: String(shopId),
+      },
     });
   }
 
   let payrollHint: string | null = null;
-  try {
-    const active = await listPayrollEmployees(shopId); // active-only by default
-    payrollHint = `${active.length} active employee${active.length === 1 ? "" : "s"}`;
-  } catch (error) {
-    Sentry.captureException(error, {
-      tags: { qteklink_surface: "module_directory", qteklink_hint: "payroll_roster" },
+  if (rosterRes.status === "fulfilled") {
+    const n = rosterRes.value.length;
+    payrollHint = `${n} active employee${n === 1 ? "" : "s"}`;
+  } else {
+    Sentry.captureException(rosterRes.reason, {
+      tags: {
+        qteklink_surface: "module_directory",
+        qteklink_hint: "payroll_roster",
+        shop_id: String(shopId),
+      },
     });
   }
 

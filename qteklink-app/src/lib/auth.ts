@@ -28,6 +28,7 @@
  *   - Server Action: same call FIRST in the action body (it throws on reject).
  */
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { createSupabaseServerClient } from "./supabase/server";
 import { createSupabaseAdminClient } from "./supabase/admin";
 
@@ -81,7 +82,18 @@ export async function requireQtekUser(): Promise<QtekSession> {
   } = await supabase.auth.getUser();
 
   if (error || !user) {
-    redirect("/login");
+    // Carry the intended destination through login (middleware forwards the
+    // request path as x-qtl-pathname; the auth callback validates ?next).
+    // Relative-path-only guard mirrors the callback's open-redirect check.
+    const path = (await headers()).get("x-qtl-pathname");
+    const isSafeNext =
+      path !== null &&
+      path.startsWith("/") &&
+      !path.startsWith("//") &&
+      path !== "/" &&
+      !path.startsWith("/login") &&
+      !path.startsWith("/auth");
+    redirect(isSafeNext ? `/login?next=${encodeURIComponent(path)}` : "/login");
   }
 
   const allowed = await resolveAllowedUser(user.id);

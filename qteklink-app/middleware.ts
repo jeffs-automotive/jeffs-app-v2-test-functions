@@ -20,7 +20,19 @@ import {
 } from "@/lib/supabase/resolve-keys";
 
 export async function middleware(request: NextRequest) {
-  let response = NextResponse.next({ request });
+  // Forward the request path+query to server components (x-qtl-pathname) so
+  // requireQtekUser()'s unauthenticated bounce can carry a ?next= deep link
+  // (office-manager emails link straight to /approvals/[date]).
+  const pathWithSearch = request.nextUrl.pathname + request.nextUrl.search;
+  const forwardHeaders = () => {
+    // Re-snapshot request.headers each time so refreshed auth cookies
+    // (request.cookies.set updates the underlying cookie header) survive.
+    const h = new Headers(request.headers);
+    h.set("x-qtl-pathname", pathWithSearch);
+    return h;
+  };
+
+  let response = NextResponse.next({ request: { headers: forwardHeaders() } });
 
   const url = resolveSupabaseUrl();
   const publishableKey = resolvePublishableKey();
@@ -39,7 +51,7 @@ export async function middleware(request: NextRequest) {
         cookiesToSet.forEach(({ name, value }) =>
           request.cookies.set(name, value),
         );
-        response = NextResponse.next({ request });
+        response = NextResponse.next({ request: { headers: forwardHeaders() } });
         cookiesToSet.forEach(({ name, value, options }) =>
           response.cookies.set(name, value, options),
         );

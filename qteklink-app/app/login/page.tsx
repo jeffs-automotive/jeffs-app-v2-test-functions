@@ -10,7 +10,14 @@
 import LoginButton from "./LoginButton";
 
 interface LoginPageProps {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; next?: string }>;
+}
+
+/** Relative-path-only guard — mirrors the auth-callback's open-redirect check. */
+function safeNext(raw: string | undefined): string | null {
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//")) return null;
+  if (raw === "/" || raw.startsWith("/login") || raw.startsWith("/auth")) return null;
+  return raw;
 }
 
 const ERROR_COPY: Record<string, string> = {
@@ -26,10 +33,11 @@ const ERROR_COPY: Record<string, string> = {
 };
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
-  const { error } = await searchParams;
+  const { error, next } = await searchParams;
   const errorMessage = error
     ? (ERROR_COPY[error] ?? "Sign-in failed. Please try again.")
     : null;
+  const nextPath = safeNext(next);
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -50,7 +58,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           </div>
         )}
 
-        <LoginButton />
+        <LoginButton next={nextPath} />
 
         <p className="text-center text-xs text-muted-foreground">
           Restricted to authorized Jeff&apos;s Automotive staff.
