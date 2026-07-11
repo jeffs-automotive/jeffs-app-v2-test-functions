@@ -1950,6 +1950,300 @@ export type Database = {
         }
         Relationships: []
       }
+      qteklink_payroll_audit_log: {
+        Row: {
+          action: string
+          actor_label: string
+          actor_user_id: string | null
+          created_at: string
+          detail: Json
+          employee_id: string | null
+          id: number
+          run_employee_id: string | null
+          run_id: string | null
+          shop_id: number
+        }
+        Insert: {
+          action: string
+          actor_label: string
+          actor_user_id?: string | null
+          created_at?: string
+          detail?: Json
+          employee_id?: string | null
+          id?: number
+          run_employee_id?: string | null
+          run_id?: string | null
+          shop_id: number
+        }
+        Update: {
+          action?: string
+          actor_label?: string
+          actor_user_id?: string | null
+          created_at?: string
+          detail?: Json
+          employee_id?: string | null
+          id?: number
+          run_employee_id?: string | null
+          run_id?: string | null
+          shop_id?: number
+        }
+        Relationships: []
+      }
+      qteklink_payroll_confirm_tokens: {
+        Row: {
+          action_kind: string
+          consumed_at: string | null
+          created_at: string
+          expires_at: string
+          id: string
+          run_id: string
+          scope_hash: string
+          shop_id: number
+        }
+        Insert: {
+          action_kind: string
+          consumed_at?: string | null
+          created_at?: string
+          expires_at: string
+          id?: string
+          run_id: string
+          scope_hash: string
+          shop_id: number
+        }
+        Update: {
+          action_kind?: string
+          consumed_at?: string | null
+          created_at?: string
+          expires_at?: string
+          id?: string
+          run_id?: string
+          scope_hash?: string
+          shop_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qteklink_payroll_confirm_tokens_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "qteklink_payroll_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      qteklink_payroll_employees: {
+        Row: {
+          archived_at: string | null
+          created_at: string
+          created_by_label: string | null
+          display_name: string
+          id: string
+          pay_config: Json
+          role: string
+          shop_id: number
+          tekmetric_employee_id: number | null
+          tekmetric_id_type: string | null
+          updated_at: string
+          updated_by_label: string | null
+        }
+        Insert: {
+          archived_at?: string | null
+          created_at?: string
+          created_by_label?: string | null
+          display_name: string
+          id?: string
+          pay_config: Json
+          role: string
+          shop_id: number
+          tekmetric_employee_id?: number | null
+          tekmetric_id_type?: string | null
+          updated_at?: string
+          updated_by_label?: string | null
+        }
+        Update: {
+          archived_at?: string | null
+          created_at?: string
+          created_by_label?: string | null
+          display_name?: string
+          id?: string
+          pay_config?: Json
+          role?: string
+          shop_id?: number
+          tekmetric_employee_id?: number | null
+          tekmetric_id_type?: string | null
+          updated_at?: string
+          updated_by_label?: string | null
+        }
+        Relationships: []
+      }
+      qteklink_payroll_run_employees: {
+        Row: {
+          bereavement_w1: number | null
+          bereavement_w2: number | null
+          clock_hours_w1: number | null
+          clock_hours_w2: number | null
+          created_at: string
+          employee_id: string
+          holiday_w1: number | null
+          holiday_w2: number | null
+          id: string
+          manual_incentive_cents: number | null
+          overrides: Json
+          pay_config: Json
+          pto_w1: number | null
+          pto_w2: number | null
+          role_snapshot: string
+          run_id: string
+          shop_id: number
+          training_w1: number | null
+          training_w2: number | null
+          updated_at: string
+        }
+        Insert: {
+          bereavement_w1?: number | null
+          bereavement_w2?: number | null
+          clock_hours_w1?: number | null
+          clock_hours_w2?: number | null
+          created_at?: string
+          employee_id: string
+          holiday_w1?: number | null
+          holiday_w2?: number | null
+          id?: string
+          manual_incentive_cents?: number | null
+          overrides?: Json
+          pay_config: Json
+          pto_w1?: number | null
+          pto_w2?: number | null
+          role_snapshot: string
+          run_id: string
+          shop_id: number
+          training_w1?: number | null
+          training_w2?: number | null
+          updated_at?: string
+        }
+        Update: {
+          bereavement_w1?: number | null
+          bereavement_w2?: number | null
+          clock_hours_w1?: number | null
+          clock_hours_w2?: number | null
+          created_at?: string
+          employee_id?: string
+          holiday_w1?: number | null
+          holiday_w2?: number | null
+          id?: string
+          manual_incentive_cents?: number | null
+          overrides?: Json
+          pay_config?: Json
+          pto_w1?: number | null
+          pto_w2?: number | null
+          role_snapshot?: string
+          run_id?: string
+          shop_id?: number
+          training_w1?: number | null
+          training_w2?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qteklink_payroll_run_employees_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "qteklink_payroll_employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "qteklink_payroll_run_employees_employee_shop_fk"
+            columns: ["employee_id", "shop_id"]
+            isOneToOne: false
+            referencedRelation: "qteklink_payroll_employees"
+            referencedColumns: ["id", "shop_id"]
+          },
+          {
+            foreignKeyName: "qteklink_payroll_run_employees_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "qteklink_payroll_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "qteklink_payroll_run_employees_run_shop_fk"
+            columns: ["run_id", "shop_id"]
+            isOneToOne: false
+            referencedRelation: "qteklink_payroll_runs"
+            referencedColumns: ["id", "shop_id"]
+          },
+        ]
+      }
+      qteklink_payroll_runs: {
+        Row: {
+          bonus_month: string | null
+          bonus_period: boolean
+          cloned_from_run_id: string | null
+          completed_at: string | null
+          completed_by_label: string | null
+          completed_by_user_id: string | null
+          created_at: string
+          id: string
+          period_end: string
+          period_start: string
+          shop_id: number
+          snapshot: Json | null
+          status: string
+          updated_at: string
+          void_reason: string | null
+          voided_at: string | null
+          voided_by_label: string | null
+          voided_by_user_id: string | null
+        }
+        Insert: {
+          bonus_month?: string | null
+          bonus_period?: boolean
+          cloned_from_run_id?: string | null
+          completed_at?: string | null
+          completed_by_label?: string | null
+          completed_by_user_id?: string | null
+          created_at?: string
+          id?: string
+          period_end: string
+          period_start: string
+          shop_id: number
+          snapshot?: Json | null
+          status?: string
+          updated_at?: string
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by_label?: string | null
+          voided_by_user_id?: string | null
+        }
+        Update: {
+          bonus_month?: string | null
+          bonus_period?: boolean
+          cloned_from_run_id?: string | null
+          completed_at?: string | null
+          completed_by_label?: string | null
+          completed_by_user_id?: string | null
+          created_at?: string
+          id?: string
+          period_end?: string
+          period_start?: string
+          shop_id?: number
+          snapshot?: Json | null
+          status?: string
+          updated_at?: string
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by_label?: string | null
+          voided_by_user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qteklink_payroll_runs_cloned_from_run_id_fkey"
+            columns: ["cloned_from_run_id"]
+            isOneToOne: false
+            referencedRelation: "qteklink_payroll_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       qteklink_postings: {
         Row: {
           approved_at: string | null
@@ -2274,6 +2568,7 @@ export type Database = {
           date_change_alert_emails: string | null
           day_correction_alert_emails: string | null
           office_manager_email: string | null
+          payroll: Json | null
           realm_id: string
           sales_tax_rate_bps: number
           settle_window_minutes: number
@@ -2289,6 +2584,7 @@ export type Database = {
           date_change_alert_emails?: string | null
           day_correction_alert_emails?: string | null
           office_manager_email?: string | null
+          payroll?: Json | null
           realm_id: string
           sales_tax_rate_bps?: number
           settle_window_minutes?: number
@@ -2304,6 +2600,7 @@ export type Database = {
           date_change_alert_emails?: string | null
           day_correction_alert_emails?: string | null
           office_manager_email?: string | null
+          payroll?: Json | null
           realm_id?: string
           sales_tax_rate_bps?: number
           settle_window_minutes?: number
@@ -4657,6 +4954,109 @@ export type Database = {
         }
         Returns: boolean
       }
+      qteklink_payroll_complete_run: {
+        Args: {
+          p_actor_label: string
+          p_actor_user_id: string
+          p_confirm_token: string
+          p_dry_run: boolean
+          p_run_id: string
+          p_snapshot: Json
+          p_state_hash: string
+        }
+        Returns: Json
+      }
+      qteklink_payroll_create_run: {
+        Args: {
+          p_actor_label: string
+          p_actor_user_id: string
+          p_period_start: string
+          p_shop_id: number
+        }
+        Returns: string
+      }
+      qteklink_payroll_issue_confirm_token: {
+        Args: {
+          p_action_kind: string
+          p_actor_label: string
+          p_actor_user_id: string
+          p_run_id: string
+          p_scope_hash: string
+        }
+        Returns: {
+          expires_at: string
+          token_id: string
+        }[]
+      }
+      qteklink_payroll_state_hash: {
+        Args: { p_run_id: string }
+        Returns: string
+      }
+      qteklink_payroll_sync_run_roster: {
+        Args: {
+          p_actor_label: string
+          p_actor_user_id: string
+          p_run_id: string
+        }
+        Returns: Json
+      }
+      qteklink_payroll_update_entry: {
+        Args: {
+          p_actor_label: string
+          p_actor_user_id: string
+          p_patch: Json
+          p_run_employee_id: string
+        }
+        Returns: undefined
+      }
+      qteklink_payroll_update_run: {
+        Args: {
+          p_actor_label: string
+          p_actor_user_id: string
+          p_patch: Json
+          p_run_id: string
+        }
+        Returns: undefined
+      }
+      qteklink_payroll_upsert_employee: {
+        Args: {
+          p_actor_label: string
+          p_actor_user_id: string
+          p_archived: boolean
+          p_display_name: string
+          p_employee_id: string
+          p_pay_config: Json
+          p_role: string
+          p_shop_id: number
+          p_tekmetric_employee_id: number
+        }
+        Returns: string
+      }
+      qteklink_payroll_validate_overrides: {
+        Args: { p_context: string; p_overrides: Json }
+        Returns: undefined
+      }
+      qteklink_payroll_validate_pay_config: {
+        Args: {
+          p_allow_rates_w2: boolean
+          p_context: string
+          p_pay_config: Json
+          p_role: string
+        }
+        Returns: undefined
+      }
+      qteklink_payroll_void_run: {
+        Args: {
+          p_actor_label: string
+          p_actor_user_id: string
+          p_confirm_token: string
+          p_dry_run: boolean
+          p_reason: string
+          p_run_id: string
+          p_state_hash: string
+        }
+        Returns: Json
+      }
       qteklink_record_manual_payment: {
         Args: {
           p_amount_cents: number
@@ -4862,6 +5262,7 @@ export type Database = {
           p_auto_post: boolean
           p_date_change_alert_emails?: string
           p_day_correction_alert_emails?: string
+          p_payroll?: Json
           p_realm_id: string
           p_sales_tax_rate_bps: number
           p_settle_window_minutes: number

@@ -7,12 +7,13 @@
  * client-side search filter. Saving submits the FULL category array to the
  * settings action (its existing contract); rows the admin touched submit with
  * is_new: false so the "new" badge clears once reviewed. Category discovery
- * itself happens in the nightly ingest / run refresh — never here.
+ * runs in the nightly ingest / run refresh; the "Check for new" button triggers
+ * the same discovery on demand.
  */
 import { useActionState, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight, Save, Search, Sparkles, Tags } from "lucide-react";
-import { updatePayrollSettingsAction } from "@/actions/payroll";
+import { ChevronRight, RefreshCw, Save, Search, Sparkles, Tags } from "lucide-react";
+import { discoverPayrollCategoriesAction, updatePayrollSettingsAction } from "@/actions/payroll";
 import type { SpiffCategory } from "@/lib/payroll/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,7 +31,19 @@ type RowVal = { counted: boolean; multiplier: number };
 export default function SpiffCategoriesCard({ categories }: { categories: SpiffCategory[] }) {
   const router = useRouter();
   const [state, dispatch, pending] = useActionState(updatePayrollSettingsAction, null);
+  // "Check now" runs the same discovery the nightly ingest performs (new
+  // categories land with is_new: true and surface in the New group on refresh).
+  const [discoverState, discoverDispatch, discovering] = useActionState(
+    discoverPayrollCategoriesAction,
+    null,
+  );
   const [, start] = useTransition();
+
+  useEffect(() => {
+    if (discoverState?.ok) {
+      router.refresh();
+    }
+  }, [discoverState?.timestamp, discoverState?.ok, router]);
   const [edits, setEdits] = useState<Record<string, RowVal>>({});
   const [touched, setTouched] = useState<Set<string>>(() => new Set());
   const [search, setSearch] = useState("");
@@ -147,9 +160,31 @@ export default function SpiffCategoriesCard({ categories }: { categories: SpiffC
           Pick which Tekmetric job categories count toward the service-writer spiff, and how many
           spiffs each job in that category is worth.
         </CardDescription>
-        <CardAction>
+        <CardAction className="flex items-center gap-2">
           <Badge variant="secondary">{countedNow} counted</Badge>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={discovering}
+            onClick={() => start(() => discoverDispatch(new FormData()))}
+          >
+            <RefreshCw className={discovering ? "size-3.5 animate-spin motion-reduce:animate-none" : "size-3.5"} aria-hidden="true" />
+            {discovering ? "Checking…" : "Check for new"}
+          </Button>
         </CardAction>
+        {discoverState !== null && !discoverState.ok && (
+          <p role="alert" className="text-xs text-destructive">
+            {discoverState.message}
+          </p>
+        )}
+        {discoverState?.ok && (
+          <p className="text-xs text-muted-foreground">
+            {discoverState.data.added.length === 0
+              ? "No new categories found."
+              : `Found ${discoverState.data.added.length} new categor${discoverState.data.added.length === 1 ? "y" : "ies"} — see the New group.`}
+          </p>
+        )}
       </CardHeader>
       <CardContent>
         {categories.length === 0 ? (
