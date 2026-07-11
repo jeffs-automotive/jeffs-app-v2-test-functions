@@ -37,7 +37,10 @@ SELECT has_trigger('public', 'qteklink_payroll_audit_log', 'qteklink_payroll_aud
 
 -- ─── Seed (direct, as the owner role — payroll has no qbo_connections FK) ─
 INSERT INTO public.qteklink_payroll_employees (id, shop_id, display_name, role, pay_config)
-VALUES ('33333333-3333-4333-8333-333333333301', 7476, 'Direct Tech', 'technician', '{}'::jsonb);
+VALUES ('33333333-3333-4333-8333-333333333301', 7476, 'Direct Tech', 'technician', '{}'::jsonb),
+       -- second employee: used ONLY by the composite-FK test below, so its (run_id, employee_id)
+       -- pair is fresh and the UNIQUE(run_id, employee_id) can't fire before the FK does
+       ('33333333-3333-4333-8333-333333333302', 7476, 'Direct Tech Two', 'technician', '{}'::jsonb);
 
 INSERT INTO public.qteklink_payroll_runs (id, shop_id, period_start, period_end, status)
 VALUES ('aaaaaaaa-1111-4111-8111-aaaaaaaaaa01', 7476, '2026-06-28', '2026-07-11', 'open');
@@ -105,10 +108,11 @@ SELECT lives_ok($$
           '{}'::jsonb, now(), 'chris@jeffsautomotive.com', now(), 'chris@jeffsautomotive.com', 'dup bonus test') $$,
   'a VOIDED bonus run for the same month is admitted (partial unique ignores voided)');
 
--- composite shop-tie FKs
+-- composite shop-tie FKs (fresh (run, employee) pair — employee ...02 has no entry row yet,
+-- so the UNIQUE(run_id, employee_id) can't preempt the FK error we're asserting)
 SELECT throws_ok($$
   INSERT INTO public.qteklink_payroll_run_employees (run_id, shop_id, employee_id, role_snapshot, pay_config)
-  VALUES ('aaaaaaaa-1111-4111-8111-aaaaaaaaaa01', 9999, '33333333-3333-4333-8333-333333333301', 'technician', '{}'::jsonb) $$,
+  VALUES ('aaaaaaaa-1111-4111-8111-aaaaaaaaaa01', 9999, '33333333-3333-4333-8333-333333333302', 'technician', '{}'::jsonb) $$,
   '23503', NULL, 'entry row whose shop_id matches neither its run nor its employee is FK-rejected');
 
 -- ─── The immutability wall (owner-level direct writes → trigger P0001) ───
