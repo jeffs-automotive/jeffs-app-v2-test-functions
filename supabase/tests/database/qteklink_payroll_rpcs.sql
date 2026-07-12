@@ -50,7 +50,12 @@ SELECT has_function('public', 'qteklink_payroll_update_entries', ARRAY['uuid','j
 SELECT has_function('public', 'qteklink_payroll_apply_entry_patch', 'apply_entry_patch helper exists (the ONE validator both paths share)');
 SELECT has_function('public', 'qteklink_payroll_update_run', ARRAY['uuid','jsonb','uuid','text'], 'update_run signature');
 SELECT has_function('public', 'qteklink_payroll_issue_confirm_token', ARRAY['uuid','text','text','uuid','text'], 'issue_confirm_token signature');
-SELECT has_function('public', 'qteklink_payroll_complete_run', ARRAY['uuid','boolean','uuid','text','jsonb','uuid','text'], 'complete_run signature');
+-- round-11 §4 (20260712200000): complete_run was DROP-then-recreated with a
+-- trailing p_pto_entries jsonb DEFAULT NULL (8-param — the old 7-param form is
+-- gone, never an overload); void_run keeps its 7-param signature (its reversals
+-- are derived from the ledger). Existing positional 7-arg complete_run calls
+-- keep resolving via the DEFAULT.
+SELECT has_function('public', 'qteklink_payroll_complete_run', ARRAY['uuid','boolean','uuid','text','jsonb','uuid','text','jsonb'], 'complete_run signature (round-11: trailing p_pto_entries jsonb)');
 SELECT has_function('public', 'qteklink_payroll_void_run', ARRAY['uuid','text','boolean','uuid','text','uuid','text'], 'void_run signature');
 SELECT has_column('public', 'qteklink_settings', 'payroll', 'qteklink_settings.payroll jsonb key exists');
 -- round-7 #40/#41 live-snapshot substrate (20260711200000)
