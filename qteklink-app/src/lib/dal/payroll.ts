@@ -91,6 +91,9 @@ export type { PayrollRunWithSummary } from "@/lib/dal/payroll-summaries";
 // Round-7 #42: the dry-run check (live Tekmetric re-fetch → fresh recompute → diff).
 export { dryRunPayrollRefresh } from "@/lib/dal/payroll-dry-run";
 export type { PayrollDryRunResult } from "@/lib/dal/payroll-dry-run";
+// Round-8 #43: the entry grid's ONE-Save atomic batch.
+export { updatePayrollEntriesBatch } from "@/lib/dal/payroll-entries-batch";
+export type { PayrollEntryBatchPatch } from "@/lib/dal/payroll-entries-batch";
 export type { PayrollActor, PayrollAlertEmails, PayrollEmployee, PayrollEntryPatch };
 export type { PayrollHourKey, PayrollRun, PayrollRunComputation, PayrollSettings };
 export type { UpsertPayrollEmployeeInput };

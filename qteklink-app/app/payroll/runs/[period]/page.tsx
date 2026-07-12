@@ -130,7 +130,7 @@ export default async function RunDetailPage({
         }
       />
     ) : isOpen ? (
-      <EntryGrid entries={detail.entries} computed={computedByEmployee} canEdit={canEdit} />
+      <EntryGrid runId={run.id} entries={detail.entries} computed={computedByEmployee} canEdit={canEdit} />
     ) : (
       <EntryGridReadOnly snapshot={snapshot} />
     );

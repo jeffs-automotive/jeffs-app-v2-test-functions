@@ -463,3 +463,77 @@ Every mutating RPC writes ≥1 audit row.
     Cancel/close stays on the pay sheet with the same refreshed numbers. Tests:
     `__tests__/DryRunButton.test.tsx` + `payroll-dry-run.test.ts` +
     `dry-run-diff.test.ts` + the mirror-ingest range-pass tests.
+
+## Round-8 amendments (2026-07-11 — extraction #43; supersede conflicting text above)
+
+- **#43 BATCH RPC (migration `20260711220000_qteklink_payroll_batch_entries.sql`):**
+  `qteklink_payroll_update_entries(p_run_id uuid, p_patches jsonb, p_actor_user_id
+  uuid, p_actor_label text) RETURNS jsonb` — `{updated: n}`. `p_patches` = a JSON
+  ARRAY of `{run_employee_id, patch}` (exactly those two keys per element); each
+  `patch` uses EXACTLY the update_entry whitelist semantics. ALL rows apply in ONE
+  transaction (the plpgsql body): any invalid patch RAISEs and rolls back
+  EVERYTHING — values AND audit rows (the non-atomic-multi-write invariant,
+  pgTAP-proven). The open-run guard (`FOR KEY SHARE` against complete/void's
+  `FOR UPDATE`) is taken ONCE on the run row, not per row; every row must belong
+  to `p_run_id` (cross-run smuggling RAISEs). Empty/non-array batches RAISE.
+  Usual grant idiom (REVOKE PUBLIC/anon/authenticated; GRANT service_role).
+
+- **ONE VALIDATOR (single-validator note):** the per-row validate/apply/audit body
+  of `qteklink_payroll_update_entry` was extracted into the internal helper
+  `qteklink_payroll_apply_entry_patch(p_row qteklink_payroll_run_employees,
+  p_patch jsonb, p_actor_user_id uuid, p_actor_label text, p_fn text,
+  p_batch_id uuid)` (REVOKE-only, like the two validators), and `update_entry`
+  was RE-CREATED in 20260711220000 to delegate to it — single and batch share one
+  code path; there is NO forked validation logic. `p_fn` prefixes the error
+  messages; `p_batch_id` is NULL on the single path. Per-row audit is preserved:
+  the same `entry_updated` action + per-key `{key, old, new}` detail, PLUS
+  `detail.batch_id` (one uuid per batch call) linking a batch's audit rows.
+
+- **DAL `updatePayrollEntriesBatch(shopId, runId, patches[], actor)`**
+  (`src/lib/dal/payroll-entries-batch.ts`, re-exported from `@/lib/dal/payroll`):
+  Zod-validates each patch with the SAME value rules as the single path, calls the
+  RPC ONCE, then ONE `refreshLiveSnapshotAfterMutation` (mark shop-wide stale +
+  recompute THIS run — the round-7 #41 hook; it runs even if the RPC's return
+  body is malformed, since the batch committed). Batchable keys = the grid's
+  fields ONLY (the ten hour columns + `manual_incentive_cents`); `pay_config` and
+  `overrides` are REJECTED with a validation error — they keep their single-entry
+  editors (`pay_config` carries the round-3 #26 write-through, which must never
+  silently fork into a batch path without it). Thin action
+  `updatePayrollEntriesAction` (admin gate; FormData `run_id` + `patches` JSON
+  array; strict element shape).
+
+- **GRID SAVE MODEL (`app/payroll/runs/[period]/EntryGrid.tsx`):** per-row/per-cell
+  submission is GONE. Cells edit LOCAL state (an `edits` map of ONLY the touched
+  cells; a cell edited back to the server value stops counting as dirty); the
+  existing per-cell range validation (0–120 hours, $0–50,000 incentive) stays
+  local at save time, now prefixed with the employee name. ONE sticky footer Save
+  bar under the table: "Save N changes", disabled when pristine or pending,
+  submits ONLY dirty rows' changed keys. Success → clear ALL dirty state +
+  `router.refresh()` (the server already ran the ONE recompute); failure → keep
+  ALL dirty state (nothing was applied — atomic) + the error shows prominently in
+  the bar (`role="alert"`). Dirty cells get an amber ring + `data-dirty`;
+  the footer carries the unsaved-count indicator. Read-only/locked grids
+  (`canEdit=false` / EntryGridReadOnly) are unaffected — no inputs, no Save bar.
+
+- **LEAVE GUARD:** (a) `beforeunload` when dirty (EntryGrid); (b) the round-7
+  client-side tab switch is gated: `unsaved-entries.ts` (module-singleton
+  registry — EntryGrid writes the dirty count, zeroes on unmount/save) +
+  RunViewTabs reads it IMPERATIVELY inside its plain-left-click handler, between
+  its `preventDefault()` and `selectView(...)`: leaving the ENTRY tab with
+  unsaved cells requires `window.confirm` (cancel stays). HOW the <a> click path
+  is intercepted: the tab pills are real `<a href>` deep links whose plain-click
+  path already preventDefaults for the client switch — the guard slots into that
+  exact branch; modified/middle clicks keep native behavior (a new tab never
+  destroys this page's state) and the DryRunButton Accept (sheets → summary)
+  bypasses it by design. NOTE: panels stay mounted (#41), so the edits SURVIVE a
+  confirmed switch — the confirm is a you-haven't-saved checkpoint, not a
+  data-loss barrier (the wording says so).
+
+- **Tests:** pgTAP (qteklink_payroll_rpcs.sql — happy batch with shared batch_id,
+  one-bad-row full rollback, cross-run RAISE, completed-run RAISE, empty/shape
+  RAISEs, anon denied); DAL `payroll-entries-batch.test.ts` (one RPC call, one
+  recompute, key rejections, P0001 surfacing, commit-then-malformed-body still
+  refreshes); RTL `run-detail.test.tsx` (dirty tracking across rows, ONE batch
+  action with changed-keys-only patches, failure keeps dirty + shows error,
+  pending/pristine/read-only button states) + `RunViewTabs.test.tsx` (#43 leave
+  guard: cancel stays, OK proceeds, pristine/non-entry switches never prompt).

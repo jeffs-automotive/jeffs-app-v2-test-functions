@@ -8,6 +8,12 @@
  * summary and — when the Tekmetric mirror is older than the period end — a
  * required freshness acknowledgment checkbox before Confirm unlocks.
  *
+ * UNSAVED-ENTRIES BLOCK: the completion snapshot is built server-side from
+ * SAVED state only, so typed-but-unsaved grid cells would be silently excluded
+ * from the frozen payroll record (and the completed-alert emails). The dialog
+ * reads the #43 unsaved-entries registry when it opens (and re-checks at
+ * confirm) and BLOCKS completion until the grid is saved or cleared.
+ *
  * Composes the Dialog primitives directly (ConfirmDialog has no input slot)
  * with the same visual language: amber circle + AlertTriangle, outline Cancel,
  * primary Confirm, close-guard while pending. On success the page refreshes
@@ -28,6 +34,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { fmtAsOf, fmtHours, fmtShortDate } from "../../payroll-ui";
+import { getUnsavedEntryCount } from "./unsaved-entries";
 
 export function CompleteRunButton({
   runId,
@@ -54,6 +61,10 @@ export function CompleteRunButton({
   const [open, setOpen] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // Typed-but-unsaved grid cells (the #43 registry, read when the dialog
+  // opens). Non-zero BLOCKS completion: the frozen snapshot only sees SAVED
+  // state, so completing now would silently leave those hours out.
+  const [unsaved, setUnsaved] = useState(0);
 
   function handleOpenChange(next: boolean) {
     if (pending && !next) return;
@@ -61,10 +72,16 @@ export function CompleteRunButton({
     if (next) {
       setAcknowledged(false);
       setErr(null);
+      setUnsaved(getUnsavedEntryCount());
     }
   }
 
   function confirm() {
+    // Belt-and-braces re-check at the moment of truth (the count was captured
+    // at dialog-open; block if the grid is dirty NOW).
+    const unsavedNow = getUnsavedEntryCount();
+    setUnsaved(unsavedNow);
+    if (unsavedNow > 0) return;
     setErr(null);
     start(async () => {
       const fd = new FormData();
@@ -117,6 +134,22 @@ export function CompleteRunButton({
             </div>
           </dl>
 
+          {unsaved > 0 && (
+            <div
+              role="alert"
+              className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300"
+            >
+              <p>
+                <span className="font-semibold">
+                  The entry grid has {unsaved} unsaved {unsaved === 1 ? "change" : "changes"}
+                </span>{" "}
+                — the totals above don&apos;t include {unsaved === 1 ? "it" : "them"}, and
+                completing now would leave {unsaved === 1 ? "it" : "them"} out of the frozen
+                payroll record. Save (or clear) your changes on the entry grid first.
+              </p>
+            </div>
+          )}
+
           {stale && (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
               <p>
@@ -148,7 +181,7 @@ export function CompleteRunButton({
               type="button"
               loading={pending}
               loadingText="Locking…"
-              disabled={pending || (stale && !acknowledged)}
+              disabled={pending || unsaved > 0 || (stale && !acknowledged)}
               onClick={confirm}
             >
               Mark complete

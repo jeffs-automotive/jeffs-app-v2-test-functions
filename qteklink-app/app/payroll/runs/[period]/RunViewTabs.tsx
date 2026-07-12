@@ -25,11 +25,23 @@
  * survive a peek at the pay sheets. The #42 DryRunButton mounts at the bottom
  * of the pay-sheets panel; its Accept switches to the Summary tab through the
  * same selectView.
+ *
+ * ROUND-8 #43 LEAVE GUARD — how the tab switch is intercepted: the tab pills
+ * are real <a href> elements whose plain-left-click path preventDefault()s and
+ * calls selectView. The guard slots INTO that click handler, between
+ * preventDefault and selectView: when the user is leaving the ENTRY tab and
+ * the entry grid has unsaved cells (read imperatively at click time from the
+ * unsaved-entries module registry — EntryGrid writes it, no subscription
+ * needed), a window.confirm gates the switch. Cancel = stay on the grid.
+ * Modified/middle clicks keep native behavior (a new tab never destroys this
+ * page's state), and the DryRunButton's Accept goes straight through
+ * selectView (the user is on the sheets tab, not leaving the grid).
  */
 import { useState } from "react";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { DryRunButton } from "./DryRunButton";
+import { getUnsavedEntryCount, UNSAVED_ENTRIES_CONFIRM } from "./unsaved-entries";
 
 export type RunView = "entry" | "sheets" | "summary";
 
@@ -91,6 +103,10 @@ export function RunViewTabs({
           <a
             key={t.key}
             href={hrefFor(t.key)}
+            // Opts the pills OUT of useUnsavedNavGuard's route-leave confirm:
+            // a tab switch keeps every panel (and the dirty cells) mounted, and
+            // the click handler below runs its own #43 confirm.
+            data-run-view-tab=""
             aria-current={view === t.key ? "page" : undefined}
             onClick={(e) => {
               // Modified/middle clicks keep native link behavior (new tab = a
@@ -98,6 +114,17 @@ export function RunViewTabs({
               if (e.defaultPrevented || e.button !== 0) return;
               if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
               e.preventDefault();
+              // #43 leave guard: leaving the entry grid with unsaved cells
+              // needs a confirm (the edits survive — panels stay mounted —
+              // but the user must know they haven't saved).
+              if (
+                view === "entry" &&
+                t.key !== "entry" &&
+                getUnsavedEntryCount() > 0 &&
+                !window.confirm(UNSAVED_ENTRIES_CONFIRM)
+              ) {
+                return;
+              }
               selectView(t.key);
             }}
             className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${

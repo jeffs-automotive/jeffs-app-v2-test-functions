@@ -15,6 +15,11 @@
 --     [23505]; whitelisting; January pay date derives prior-year December
 --   - update_entry: key whitelisting, per-key audit, overrides shape validation,
 --     rates_w2 allowed run-side, table CHECKs surface [23514], locked-run rejection
+--   - update_entries (round-8 #43, 20260711220000): ONE atomic batch — happy path
+--     applies + audits every row with a SHARED detail.batch_id; one bad row rolls
+--     back ALL rows (values + audit rows prove untouched); a row from another run
+--     RAISEs (cross-run smuggling); empty/non-array batches RAISE; completed-run
+--     rejection; same single validator as update_entry (the shared helper)
 --   - sync_run_roster: adds actives, removes ONLY entry-less archived rows, open-only
 --   - complete_run: dry-run state hash, stale-hash abort, token scope binding,
 --     single-use, expiry, cross-run rejection, snapshot required, final lock
@@ -40,6 +45,9 @@ SELECT has_function('public', 'qteklink_payroll_upsert_employee', ARRAY['integer
 SELECT has_function('public', 'qteklink_payroll_create_run', ARRAY['integer','date','uuid','text'], 'create_run signature');
 SELECT has_function('public', 'qteklink_payroll_sync_run_roster', ARRAY['uuid','uuid','text'], 'sync_run_roster signature');
 SELECT has_function('public', 'qteklink_payroll_update_entry', ARRAY['uuid','jsonb','uuid','text'], 'update_entry signature');
+-- round-8 #43 batch RPC (20260711220000) + the shared per-row validator helper
+SELECT has_function('public', 'qteklink_payroll_update_entries', ARRAY['uuid','jsonb','uuid','text'], 'update_entries signature');
+SELECT has_function('public', 'qteklink_payroll_apply_entry_patch', 'apply_entry_patch helper exists (the ONE validator both paths share)');
 SELECT has_function('public', 'qteklink_payroll_update_run', ARRAY['uuid','jsonb','uuid','text'], 'update_run signature');
 SELECT has_function('public', 'qteklink_payroll_issue_confirm_token', ARRAY['uuid','text','text','uuid','text'], 'issue_confirm_token signature');
 SELECT has_function('public', 'qteklink_payroll_complete_run', ARRAY['uuid','boolean','uuid','text','jsonb','uuid','text'], 'complete_run signature');
@@ -323,6 +331,101 @@ SELECT is((SELECT bonus_month::text FROM public.qteklink_payroll_runs WHERE id=(
   '2026-12-01', 'period_end 2027-01-09 (paid in January) derives prior-year December');
 SELECT public.qteklink_payroll_update_run((SELECT v FROM _ids WHERE k='runNY'), '{"bonus_period": false}'::jsonb, NULL, 'chris@jeffsautomotive.com') AS _;
 
+-- ─── update_entries: the round-8 #43 atomic batch ─────────────────────────
+-- Rows used: reA_tech1 (already keyed), plus gm1 + dup_new2's runA rows. The
+-- happy-path patches deliberately avoid the fields the void-and-clone section
+-- asserts later (clock/pto/overrides/rates_w2 on reA_tech1 stay untouched).
+INSERT INTO _ids
+SELECT 'reA_gm1', re.id FROM public.qteklink_payroll_run_employees re
+WHERE re.run_id=(SELECT v FROM _ids WHERE k='runA') AND re.employee_id=(SELECT v FROM _ids WHERE k='gm1');
+INSERT INTO _ids
+SELECT 'reA_dup2', re.id FROM public.qteklink_payroll_run_employees re
+WHERE re.run_id=(SELECT v FROM _ids WHERE k='runA') AND re.employee_id=(SELECT v FROM _ids WHERE k='dup_new2');
+INSERT INTO _ids
+SELECT 'reC_tech1', re.id FROM public.qteklink_payroll_run_employees re
+WHERE re.run_id=(SELECT v FROM _ids WHERE k='runC') AND re.employee_id=(SELECT v FROM _ids WHERE k='tech1');
+
+-- happy batch: 3 rows in ONE call → all applied, {updated: 3}
+INSERT INTO _txt VALUES ('batch1',
+  (public.qteklink_payroll_update_entries(
+     (SELECT v FROM _ids WHERE k='runA'),
+     jsonb_build_array(
+       jsonb_build_object('run_employee_id', (SELECT v FROM _ids WHERE k='reA_tech1'), 'patch', '{"training_w1": 2}'::jsonb),
+       jsonb_build_object('run_employee_id', (SELECT v FROM _ids WHERE k='reA_gm1'),   'patch', '{"clock_hours_w1": 40, "pto_w2": 4}'::jsonb),
+       jsonb_build_object('run_employee_id', (SELECT v FROM _ids WHERE k='reA_dup2'),  'patch', '{"manual_incentive_cents": 2500}'::jsonb)
+     ), NULL, 'marie@jeffsautomotive.com'))::text);
+SELECT is(((SELECT v FROM _txt WHERE k='batch1')::jsonb)->>'updated', '3', 'batch returns {updated: 3}');
+SELECT is((SELECT training_w1::text FROM public.qteklink_payroll_run_employees WHERE id=(SELECT v FROM _ids WHERE k='reA_tech1')),
+  '2.00', 'batch row 1 applied (training_w1)');
+SELECT is((SELECT clock_hours_w1::text || '/' || pto_w2::text FROM public.qteklink_payroll_run_employees WHERE id=(SELECT v FROM _ids WHERE k='reA_gm1')),
+  '40.00/4.00', 'batch row 2 applied (two keys)');
+SELECT is((SELECT manual_incentive_cents::text FROM public.qteklink_payroll_run_employees WHERE id=(SELECT v FROM _ids WHERE k='reA_dup2')),
+  '2500', 'batch row 3 applied (manual_incentive_cents)');
+-- per-row audit preserved: same entry_updated per-key old->new shape, PLUS one
+-- SHARED batch_id across all four key rows (1 + 2 + 1 keys).
+SELECT is((SELECT count(*)::int FROM public.qteklink_payroll_audit_log
+           WHERE action='entry_updated' AND run_id=(SELECT v FROM _ids WHERE k='runA') AND detail ? 'batch_id'), 4,
+  'batch audited per key (1+2+1 = 4 rows carrying batch_id)');
+SELECT is((SELECT count(DISTINCT detail->>'batch_id')::int FROM public.qteklink_payroll_audit_log
+           WHERE action='entry_updated' AND run_id=(SELECT v FROM _ids WHERE k='runA') AND detail ? 'batch_id'), 1,
+  'all four audit rows share ONE batch_id');
+SELECT is((SELECT detail->>'key' || '/' || (detail->'old')::text || '/' || (detail->'new')::text
+           FROM public.qteklink_payroll_audit_log
+           WHERE action='entry_updated' AND run_employee_id=(SELECT v FROM _ids WHERE k='reA_dup2') AND detail ? 'batch_id'),
+  'manual_incentive_cents/null/2500', 'batch audit detail keeps the single-update {key, old, new} shape');
+
+-- one bad row rolls back ALL (atomic): capture pre-state, attempt a 2-row batch
+-- whose second row is invalid, prove NOTHING moved (values + audit row counts).
+INSERT INTO _txt VALUES ('audit_n_before',
+  (SELECT count(*)::text FROM public.qteklink_payroll_audit_log WHERE action='entry_updated'));
+SELECT throws_ok($$ SELECT public.qteklink_payroll_update_entries(
+  (SELECT v FROM _ids WHERE k='runA'),
+  jsonb_build_array(
+    jsonb_build_object('run_employee_id', (SELECT v FROM _ids WHERE k='reA_tech1'), 'patch', '{"training_w2": 3}'::jsonb),
+    jsonb_build_object('run_employee_id', (SELECT v FROM _ids WHERE k='reA_gm1'),   'patch', '{"clock_hours_w1": "forty"}'::jsonb)
+  ), NULL, 'pgtap') $$, 'P0001', NULL, 'one invalid row aborts the whole batch');
+SELECT ok((SELECT training_w2 IS NULL FROM public.qteklink_payroll_run_employees WHERE id=(SELECT v FROM _ids WHERE k='reA_tech1')),
+  'the VALID first row was rolled back too (training_w2 untouched)');
+SELECT is((SELECT clock_hours_w1::text FROM public.qteklink_payroll_run_employees WHERE id=(SELECT v FROM _ids WHERE k='reA_gm1')),
+  '40.00', 'the invalid row itself is untouched');
+SELECT is((SELECT count(*)::text FROM public.qteklink_payroll_audit_log WHERE action='entry_updated'),
+  (SELECT v FROM _txt WHERE k='audit_n_before'), 'no audit rows survive the rolled-back batch');
+
+-- cross-run smuggling: a row from runC inside a runA batch RAISEs and rolls
+-- back the batch's valid rows.
+SELECT throws_ok($$ SELECT public.qteklink_payroll_update_entries(
+  (SELECT v FROM _ids WHERE k='runA'),
+  jsonb_build_array(
+    jsonb_build_object('run_employee_id', (SELECT v FROM _ids WHERE k='reA_tech1'), 'patch', '{"holiday_w1": 1}'::jsonb),
+    jsonb_build_object('run_employee_id', (SELECT v FROM _ids WHERE k='reC_tech1'), 'patch', '{"holiday_w1": 1}'::jsonb)
+  ), NULL, 'pgtap') $$, 'P0001', NULL, 'a row belonging to ANOTHER run rejects the batch (no cross-run smuggling)');
+SELECT ok((SELECT holiday_w1 IS NULL FROM public.qteklink_payroll_run_employees WHERE id=(SELECT v FROM _ids WHERE k='reA_tech1')),
+  'the cross-run batch applied nothing (valid row rolled back)');
+SELECT ok((SELECT holiday_w1 IS NULL FROM public.qteklink_payroll_run_employees WHERE id=(SELECT v FROM _ids WHERE k='reC_tech1')),
+  'the smuggled other-run row is untouched');
+
+-- batch shape validation
+SELECT throws_ok($$ SELECT public.qteklink_payroll_update_entries((SELECT v FROM _ids WHERE k='runA'),
+  '[]'::jsonb, NULL, 'pgtap') $$, 'P0001', NULL, 'empty batch rejected');
+SELECT throws_ok($$ SELECT public.qteklink_payroll_update_entries((SELECT v FROM _ids WHERE k='runA'),
+  '{"run_employee_id": "x"}'::jsonb, NULL, 'pgtap') $$, 'P0001', NULL, 'non-array p_patches rejected');
+SELECT throws_ok($$ SELECT public.qteklink_payroll_update_entries((SELECT v FROM _ids WHERE k='runA'),
+  jsonb_build_array(jsonb_build_object('run_employee_id', (SELECT v FROM _ids WHERE k='reA_tech1'),
+                                       'patch', '{"training_w1": 1}'::jsonb, 'surprise', 1)),
+  NULL, 'pgtap') $$, 'P0001', NULL, 'unexpected batch element key rejected');
+SELECT throws_ok($$ SELECT public.qteklink_payroll_update_entries((SELECT v FROM _ids WHERE k='runA'),
+  '[{"run_employee_id": "not-a-uuid", "patch": {"training_w1": 1}}]'::jsonb,
+  NULL, 'pgtap') $$, 'P0001', NULL, 'malformed run_employee_id rejected');
+SELECT throws_ok($$ SELECT public.qteklink_payroll_update_entries((SELECT v FROM _ids WHERE k='runA'),
+  jsonb_build_array(jsonb_build_object('run_employee_id', (SELECT v FROM _ids WHERE k='reA_tech1'), 'patch', '{}'::jsonb)),
+  NULL, 'pgtap') $$, 'P0001', NULL, 'empty per-row patch rejected (the shared validator)');
+SELECT throws_ok($$ SELECT public.qteklink_payroll_update_entries((SELECT v FROM _ids WHERE k='runA'),
+  jsonb_build_array(jsonb_build_object('run_employee_id', (SELECT v FROM _ids WHERE k='reA_tech1'), 'patch', '{"ot_hours_w1": 2}'::jsonb)),
+  NULL, 'pgtap') $$, 'P0001', NULL, 'non-whitelisted key rejected through the batch (same validator as update_entry)');
+SELECT throws_ok($$ SELECT public.qteklink_payroll_update_entries(gen_random_uuid(),
+  '[{"run_employee_id": "00000000-0000-4000-8000-000000000001", "patch": {"training_w1": 1}}]'::jsonb,
+  NULL, 'pgtap') $$, 'P0001', NULL, 'unknown run rejected');
+
 -- ─── complete_run: the Pattern S token dance ──────────────────────────────
 INSERT INTO _txt VALUES ('hashA',
   (public.qteklink_payroll_complete_run((SELECT v FROM _ids WHERE k='runA'), true, NULL, NULL, NULL, NULL, 'chris@jeffsautomotive.com'))->>'state_hash');
@@ -406,6 +509,11 @@ SELECT throws_ok($$ SELECT public.qteklink_payroll_complete_run((SELECT v FROM _
 -- completed run is locked against every open-run RPC
 SELECT throws_ok($$ SELECT public.qteklink_payroll_update_entry((SELECT v FROM _ids WHERE k='reA_tech1'),
   '{"clock_hours_w1": 12}'::jsonb, NULL, 'pgtap') $$, 'P0001', NULL, 'update_entry rejected on a completed run');
+SELECT throws_ok($$ SELECT public.qteklink_payroll_update_entries((SELECT v FROM _ids WHERE k='runA'),
+  jsonb_build_array(jsonb_build_object('run_employee_id', (SELECT v FROM _ids WHERE k='reA_tech1'), 'patch', '{"training_w1": 1}'::jsonb)),
+  NULL, 'pgtap') $$, 'P0001', NULL, 'update_entries (batch) rejected on a completed run');
+SELECT is((SELECT training_w1::text FROM public.qteklink_payroll_run_employees WHERE id=(SELECT v FROM _ids WHERE k='reA_tech1')),
+  '2.00', 'the completed run''s entry values are untouched by the rejected batch');
 SELECT throws_ok($$ SELECT public.qteklink_payroll_update_run((SELECT v FROM _ids WHERE k='runA'),
   '{"bonus_period": false}'::jsonb, NULL, 'pgtap') $$, 'P0001', NULL, 'update_run rejected on a completed run');
 SELECT throws_ok($$ SELECT public.qteklink_payroll_update_run((SELECT v FROM _ids WHERE k='runA'),
@@ -546,6 +654,7 @@ SELECT throws_ok($$ SELECT public.qteklink_payroll_upsert_employee(7476, NULL, '
 SELECT throws_ok($$ SELECT public.qteklink_payroll_create_run(7476, '2026-06-28'::date, NULL, 'x') $$, '42501', NULL, 'anon cannot create_run');
 SELECT throws_ok($$ SELECT public.qteklink_payroll_sync_run_roster(gen_random_uuid(), NULL, 'x') $$, '42501', NULL, 'anon cannot sync_run_roster');
 SELECT throws_ok($$ SELECT public.qteklink_payroll_update_entry(gen_random_uuid(), '{}'::jsonb, NULL, 'x') $$, '42501', NULL, 'anon cannot update_entry');
+SELECT throws_ok($$ SELECT public.qteklink_payroll_update_entries(gen_random_uuid(), '[]'::jsonb, NULL, 'x') $$, '42501', NULL, 'anon cannot update_entries');
 SELECT throws_ok($$ SELECT public.qteklink_payroll_update_run(gen_random_uuid(), '{}'::jsonb, NULL, 'x') $$, '42501', NULL, 'anon cannot update_run');
 SELECT throws_ok($$ SELECT * FROM public.qteklink_payroll_issue_confirm_token(gen_random_uuid(), 'complete_run', 'h', NULL, 'x') $$, '42501', NULL, 'anon cannot issue_confirm_token');
 SELECT throws_ok($$ SELECT public.qteklink_payroll_complete_run(gen_random_uuid(), true, NULL, NULL, NULL, NULL, 'x') $$, '42501', NULL, 'anon cannot complete_run');

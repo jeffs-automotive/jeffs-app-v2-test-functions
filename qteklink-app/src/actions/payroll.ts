@@ -23,6 +23,7 @@ import {
   listTekmetricEmployees,
   refreshRunTekmetricData,
   syncPayrollRunRoster,
+  updatePayrollEntriesBatch,
   updatePayrollEntry,
   updatePayrollRun,
   updatePayrollSettings,
@@ -206,6 +207,66 @@ async function updatePayrollEntryImpl(_prev: UpdateEntryState | null, formData: 
   }
 }
 export const updatePayrollEntryAction = wrapQtekAction("payrollUpdateEntry", updatePayrollEntryImpl);
+
+// ── Round-8 #43: the entry grid's ONE-Save atomic batch ────────────────────────
+
+/** Batch patches carry ONLY the grid's fields (hours + manual incentive) — the
+ *  pay_config / overrides editors keep their single-entry action (the DAL rejects
+ *  them in a batch too; this schema just fails earlier with a cleaner message). */
+const EntryBatchRowPatchSchema = EntryPatchSchema.omit({ overrides: true, pay_config: true });
+const EntryBatchSchema = z
+  .array(
+    z
+      .object({
+        run_employee_id: z.string().uuid("Each batch row needs a valid entry id."),
+        patch: EntryBatchRowPatchSchema,
+      })
+      .strict(),
+  )
+  .min(1, "Nothing to update.");
+
+type UpdateEntriesState = QboActionResult<{ updated: number }>;
+
+async function updatePayrollEntriesImpl(
+  _prev: UpdateEntriesState | null,
+  formData: FormData,
+): Promise<UpdateEntriesState> {
+  try {
+    const { shopId, role, userId, email } = await requireQtekUser();
+    if (role !== "admin") return adminRequired();
+
+    const runId = uuidField("run id").safeParse(formData.get("run_id"));
+    if (!runId.success) return invalid(runId.error.issues[0]?.message ?? "Invalid run id.");
+
+    const raw = formData.get("patches");
+    if (typeof raw !== "string" || raw.trim().length === 0) return invalid("Nothing to update.");
+    let parsedJson: unknown;
+    try {
+      parsedJson = JSON.parse(raw);
+    } catch {
+      return invalid("patches is not valid JSON.");
+    }
+    const patches = EntryBatchSchema.safeParse(parsedJson);
+    if (!patches.success) return invalid(patches.error.issues[0]?.message ?? "Invalid entry patches.");
+    if (patches.data.some((p) => Object.keys(p.patch).length === 0)) {
+      return invalid("Nothing to update for one of the rows.");
+    }
+
+    const { updated } = await updatePayrollEntriesBatch(
+      shopId,
+      runId.data,
+      patches.data.map((p) => ({
+        runEmployeeId: p.run_employee_id,
+        patch: p.patch as PayrollEntryPatch,
+      })),
+      { userId, label: email },
+    );
+    return { ok: true, data: { updated }, timestamp: Date.now() };
+  } catch (e) {
+    return qboFailure(e);
+  }
+}
+export const updatePayrollEntriesAction = wrapQtekAction("payrollUpdateEntries", updatePayrollEntriesImpl);
 
 type UpdateRunState = QboActionResult<{ updated: true }>;
 

@@ -3,10 +3,11 @@
  * defines (spec §Verification): the three RunStatusBadge states, the AutoValue
  * provenance treatment (from-Tekmetric vs overridden), the entry grid's
  * caller-composed aria-labels + changed-keys-only patch dispatch, the
- * void-and-clone dialog's required-reason gating, and the mark-complete
- * dialog's stale-mirror acknowledgment gating. Actions are mocked at the
- * module boundary — these are wiring tests, not business-math tests (the DAL
- * owns the math; calc has its own golden suite).
+ * void-and-clone dialog's required-reason gating, and the entry grid's #43
+ * route-leave guard wiring. Actions are mocked at the module boundary — these
+ * are wiring tests, not business-math tests (the DAL owns the math; calc has
+ * its own golden suite). The mark-complete dialog's suite lives in
+ * [period]/__tests__/CompleteRunButton.test.tsx.
  */
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -18,11 +19,13 @@ vi.mock("next/navigation", () => ({
 }));
 
 const updateEntryMock = vi.fn();
+const updateEntriesMock = vi.fn();
 const updateRunMock = vi.fn();
 const completeMock = vi.fn();
 const voidMock = vi.fn();
 vi.mock("@/actions/payroll", () => ({
   updatePayrollEntryAction: (...args: unknown[]) => updateEntryMock(...args),
+  updatePayrollEntriesAction: (...args: unknown[]) => updateEntriesMock(...args),
   updatePayrollRunAction: (...args: unknown[]) => updateRunMock(...args),
   completePayrollRunAction: (...args: unknown[]) => completeMock(...args),
   voidPayrollRunAction: (...args: unknown[]) => voidMock(...args),
@@ -42,10 +45,11 @@ import { BonusToggle } from "../[period]/BonusToggle";
 import { EntryGrid } from "../[period]/EntryGrid";
 import { SummaryView } from "../[period]/SummaryView";
 import { VoidCloneButton } from "../[period]/VoidCloneButton";
-import { CompleteRunButton } from "../[period]/CompleteRunButton";
+import { getUnsavedEntryCount, setUnsavedEntryCount } from "../[period]/unsaved-entries";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  setUnsavedEntryCount(0); // the #43 registry is module-scoped — reset between tests
 });
 
 // ── Fixtures ───────────────────────────────────────────────────────────────────
@@ -129,6 +133,20 @@ const entry: PayrollRunEntry = {
   updatedAt: "2026-07-10T00:00:00Z",
 };
 
+// A second roster row (support family) for the cross-row batch tests.
+const EMP2_ID = "44444444-4444-4444-8444-444444444444";
+const ENTRY2_ID = "55555555-5555-4555-8555-555555555555";
+const entry2: PayrollRunEntry = {
+  ...entry,
+  id: ENTRY2_ID,
+  employeeId: EMP2_ID,
+  displayName: "Daniele",
+  roleSnapshot: "shop_support",
+  family: "support",
+  tekmetricEmployeeId: null,
+  tekmetricIdType: null,
+};
+
 const snapshotEmployee: SnapshotEmployee = {
   employee_id: EMP_ID,
   display_name: "Cantrell",
@@ -186,44 +204,166 @@ describe("AutoValue", () => {
   });
 });
 
-// ── EntryGrid wiring ───────────────────────────────────────────────────────────
+// ── EntryGrid wiring (round-8 #43: ONE Save, atomic batch) ─────────────────────
 
 describe("EntryGrid", () => {
+  function renderGrid(over: Partial<Parameters<typeof EntryGrid>[0]> = {}) {
+    return render(
+      <EntryGrid
+        runId={RUN_ID}
+        entries={[entry, entry2]}
+        computed={{ [EMP_ID]: snapshotEmployee }}
+        canEdit
+        {...over}
+      />,
+    );
+  }
+
   it("renders caller-composed aria-labels for every entry cell", () => {
-    render(<EntryGrid entries={[entry]} computed={{ [EMP_ID]: snapshotEmployee }} canEdit />);
+    renderGrid();
     expect(screen.getByLabelText(/Cantrell week 1 clock hours/i)).toHaveValue("42");
     expect(screen.getByLabelText(/Cantrell week 2 pto hours/i)).toBeInTheDocument();
   });
 
-  it("dispatches ONLY the changed keys as the entry patch, then refreshes", async () => {
-    updateEntryMock.mockResolvedValue({ ok: true, data: { updated: true }, timestamp: 1 });
-    render(<EntryGrid entries={[entry]} computed={{ [EMP_ID]: snapshotEmployee }} canEdit />);
+  it("tracks dirty cells across rows: Save counts them, the indicator + registry follow", () => {
+    renderGrid();
+    // Pristine: disabled plain Save, no unsaved count.
+    expect(screen.getByRole("button", { name: /^save$/i })).toBeDisabled();
+    expect(screen.getByTestId("unsaved-indicator")).toHaveTextContent(/no unsaved changes/i);
 
-    fireEvent.change(screen.getByLabelText(/Cantrell week 1 pto hours/i), {
-      target: { value: "8" },
+    fireEvent.change(screen.getByLabelText(/Cantrell week 1 pto hours/i), { target: { value: "8" } });
+    fireEvent.change(screen.getByLabelText(/Daniele week 2 clock hours/i), { target: { value: "38" } });
+
+    expect(screen.getByRole("button", { name: /save 2 changes/i })).toBeEnabled();
+    expect(screen.getByTestId("unsaved-indicator")).toHaveTextContent("2 unsaved changes");
+    expect(getUnsavedEntryCount()).toBe(2); // the RunViewTabs leave guard reads this
+    expect(screen.getByLabelText(/Cantrell week 1 pto hours/i)).toHaveAttribute("data-dirty");
+
+    // Editing a cell BACK to the server value un-dirties it.
+    fireEvent.change(screen.getByLabelText(/Cantrell week 1 pto hours/i), { target: { value: "" } });
+    expect(screen.getByRole("button", { name: /save 1 change$/i })).toBeEnabled();
+    expect(getUnsavedEntryCount()).toBe(1);
+  });
+
+  it("guards in-app route-leaves while dirty: internal link clicks confirm, cancel stays", () => {
+    // The route-leave guard (soft navs fire no beforeunload and skip the tab
+    // pills' confirm) — wiring test; the hook's full matrix lives in
+    // use-unsaved-nav-guard.test.tsx.
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const swallow = (e: Event) => e.preventDefault(); // jsdom can't navigate
+    document.addEventListener("click", swallow);
+    try {
+      render(
+        <div>
+          <a href="/payroll">Back to payroll</a>
+          <EntryGrid runId={RUN_ID} entries={[entry, entry2]} computed={{ [EMP_ID]: snapshotEmployee }} canEdit />
+        </div>,
+      );
+      const back = screen.getByText("Back to payroll");
+
+      // Pristine: the guard is INACTIVE — no prompt.
+      fireEvent.click(back);
+      expect(confirmSpy).not.toHaveBeenCalled();
+
+      // Dirty: the click prompts with the LEAVE copy; cancel blocks the nav
+      // and every typed value survives.
+      fireEvent.change(screen.getByLabelText(/Cantrell week 1 pto hours/i), { target: { value: "8" } });
+      expect(fireEvent.click(back)).toBe(false); // default prevented = nav blocked
+      expect(confirmSpy).toHaveBeenCalledTimes(1);
+      expect(String(confirmSpy.mock.calls[0]?.[0])).toMatch(/will be LOST if you leave/);
+      expect(screen.getByLabelText(/Cantrell week 1 pto hours/i)).toHaveValue("8");
+
+      // Edited BACK to the server value: pristine again — the guard detaches.
+      fireEvent.change(screen.getByLabelText(/Cantrell week 1 pto hours/i), { target: { value: "" } });
+      fireEvent.click(back);
+      expect(confirmSpy).toHaveBeenCalledTimes(1); // no new prompt
+    } finally {
+      document.removeEventListener("click", swallow);
+      confirmSpy.mockRestore();
+    }
+  });
+
+  it("dispatches ONE batch action carrying only the changed keys per row, then refreshes", async () => {
+    updateEntriesMock.mockResolvedValue({ ok: true, data: { updated: 2 }, timestamp: 1 });
+    renderGrid();
+
+    fireEvent.change(screen.getByLabelText(/Cantrell week 1 pto hours/i), { target: { value: "8" } });
+    fireEvent.change(screen.getByLabelText(/Daniele manual incentive dollars/i), {
+      target: { value: "25.00" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+    fireEvent.click(screen.getByRole("button", { name: /save 2 changes/i }));
 
-    await waitFor(() => expect(updateEntryMock).toHaveBeenCalledTimes(1));
-    const fd = updateEntryMock.mock.calls[0]?.[1] as FormData;
-    expect(fd.get("run_employee_id")).toBe(ENTRY_ID);
-    expect(JSON.parse(String(fd.get("patch")))).toEqual({ pto_w1: 8 });
+    await waitFor(() => expect(updateEntriesMock).toHaveBeenCalledTimes(1));
+    const fd = updateEntriesMock.mock.calls[0]?.[1] as FormData;
+    expect(fd.get("run_id")).toBe(RUN_ID);
+    expect(JSON.parse(String(fd.get("patches")))).toEqual([
+      { run_employee_id: ENTRY_ID, patch: { pto_w1: 8 } },
+      { run_employee_id: ENTRY2_ID, patch: { manual_incentive_cents: 2500 } },
+    ]);
+    await waitFor(() => expect(refreshMock).toHaveBeenCalled());
+    // The per-row action is GONE from the save path (#43).
+    expect(updateEntryMock).not.toHaveBeenCalled();
+    // Dirty state cleared after the atomic commit (waitFor: the transition's
+    // pending state may still hold the "Saving…" label for a beat).
+    await waitFor(() => expect(screen.getByRole("button", { name: /^save$/i })).toBeDisabled());
+    expect(getUnsavedEntryCount()).toBe(0);
+  });
+
+  it("keeps ALL dirty state and surfaces the error when the atomic batch fails", async () => {
+    updateEntriesMock.mockResolvedValue({
+      ok: false,
+      reason: "validation",
+      message: "run is completed — entries are locked",
+      timestamp: 1,
+    });
+    renderGrid();
+
+    fireEvent.change(screen.getByLabelText(/Cantrell week 1 pto hours/i), { target: { value: "8" } });
+    fireEvent.change(screen.getByLabelText(/Daniele week 2 clock hours/i), { target: { value: "38" } });
+    fireEvent.click(screen.getByRole("button", { name: /save 2 changes/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/entries are locked/i);
+    // NOTHING was applied (atomic) — every dirty cell survives for a retry.
+    expect(screen.getByLabelText(/Cantrell week 1 pto hours/i)).toHaveValue("8");
+    expect(screen.getByLabelText(/Daniele week 2 clock hours/i)).toHaveValue("38");
+    // waitFor: the alert can render a beat before the transition's pending
+    // state releases the button back to its "Save 2 changes" label.
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /save 2 changes/i })).toBeEnabled(),
+    );
+    expect(getUnsavedEntryCount()).toBe(2);
+    expect(refreshMock).not.toHaveBeenCalled();
+  });
+
+  it("disables Save while the batch is in flight", async () => {
+    let resolveAction: (v: unknown) => void = () => {};
+    updateEntriesMock.mockImplementation(() => new Promise((r) => (resolveAction = r)));
+    renderGrid();
+
+    fireEvent.change(screen.getByLabelText(/Cantrell week 1 pto hours/i), { target: { value: "8" } });
+    fireEvent.click(screen.getByRole("button", { name: /save 1 change$/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /saving/i })).toBeDisabled(),
+    );
+    resolveAction({ ok: true, data: { updated: 1 }, timestamp: 1 });
     await waitFor(() => expect(refreshMock).toHaveBeenCalled());
   });
 
   it("rejects out-of-range hours locally with an explicit error (no dispatch)", async () => {
-    render(<EntryGrid entries={[entry]} computed={{ [EMP_ID]: snapshotEmployee }} canEdit />);
+    renderGrid();
     fireEvent.change(screen.getByLabelText(/Cantrell week 1 clock hours/i), {
       target: { value: "200" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+    fireEvent.click(screen.getByRole("button", { name: /save 1 change$/i }));
     expect(await screen.findByText(/must be a number from 0 to 120/i)).toBeInTheDocument();
-    expect(updateEntryMock).not.toHaveBeenCalled();
+    expect(updateEntriesMock).not.toHaveBeenCalled();
   });
 
-  it("read-only (non-admin) mode renders static values, not inputs", () => {
-    render(<EntryGrid entries={[entry]} computed={{ [EMP_ID]: snapshotEmployee }} canEdit={false} />);
+  it("read-only (non-admin / locked) mode renders static values — no inputs, no Save button", () => {
+    renderGrid({ canEdit: false });
     expect(screen.queryByLabelText(/Cantrell week 1 clock hours/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /save/i })).not.toBeInTheDocument();
     expect(screen.getByText("Cantrell")).toBeInTheDocument();
   });
 });
@@ -410,53 +550,5 @@ describe("SummaryView print header", () => {
 });
 
 // ── Mark-complete dialog ───────────────────────────────────────────────────────
-
-describe("CompleteRunButton", () => {
-  const baseProps = {
-    runId: RUN_ID,
-    employeeCount: 9,
-    totalPayCents: 1_234_500,
-    totalHours: 720,
-    dataAsOf: "2026-07-08T04:00:00Z",
-    periodEnd: "2026-07-11",
-  };
-
-  it("gates Confirm behind the freshness acknowledgment when the mirror is stale", async () => {
-    completeMock.mockResolvedValue({ ok: true, data: { completed: true }, timestamp: 1 });
-    render(<CompleteRunButton {...baseProps} stale />);
-
-    fireEvent.click(screen.getByRole("button", { name: /mark payroll complete/i }));
-    const confirm = await screen.findByRole("button", { name: /^mark complete$/i });
-    expect(confirm).toBeDisabled();
-    expect(screen.getByText(/before this period ended/i)).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("checkbox"));
-    expect(confirm).toBeEnabled();
-    fireEvent.click(confirm);
-    await waitFor(() => expect(completeMock).toHaveBeenCalledTimes(1));
-    const fd = completeMock.mock.calls[0]?.[1] as FormData;
-    expect(fd.get("run_id")).toBe(RUN_ID);
-    await waitFor(() => expect(refreshMock).toHaveBeenCalled());
-  });
-
-  it("needs no acknowledgment when the mirror is fresh", async () => {
-    render(<CompleteRunButton {...baseProps} stale={false} />);
-    fireEvent.click(screen.getByRole("button", { name: /mark payroll complete/i }));
-    const confirm = await screen.findByRole("button", { name: /^mark complete$/i });
-    expect(confirm).toBeEnabled();
-    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
-  });
-
-  it("surfaces an action failure inside the dialog (no silent failure)", async () => {
-    completeMock.mockResolvedValue({
-      ok: false,
-      reason: "validation",
-      message: "The run changed while you were reviewing — check the numbers and try again.",
-      timestamp: 1,
-    });
-    render(<CompleteRunButton {...baseProps} stale={false} />);
-    fireEvent.click(screen.getByRole("button", { name: /mark payroll complete/i }));
-    fireEvent.click(await screen.findByRole("button", { name: /^mark complete$/i }));
-    expect(await screen.findByText(/check the numbers and try again/i)).toBeInTheDocument();
-  });
-});
+// Extracted to [period]/__tests__/CompleteRunButton.test.tsx (incl. the #43
+// unsaved-entries completion block) to keep this file under the 500-line policy.

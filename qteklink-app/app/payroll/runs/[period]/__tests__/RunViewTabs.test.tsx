@@ -12,7 +12,11 @@
  *     printable and plain `hidden` when the run is empty (placeholder never prints);
  *   - the #42 dry-run affordance mounts under the pay sheets and its Accept
  *     switches to the Summary tab (the DryRunButton itself is stubbed here —
- *     its own contract lives in DryRunButton.test.tsx).
+ *     its own contract lives in DryRunButton.test.tsx);
+ *   - the round-8 #43 LEAVE GUARD: leaving the ENTRY tab while the entry grid
+ *     has unsaved cells (the unsaved-entries registry) is gated behind a
+ *     window.confirm — cancel stays, OK proceeds, pristine/other-tab switches
+ *     never prompt.
  */
 import { describe, expect, it, vi, beforeEach, afterEach, type MockInstance } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
@@ -26,6 +30,7 @@ vi.mock("../DryRunButton", () => ({
 }));
 
 import { RunViewTabs, type RunView } from "../RunViewTabs";
+import { setUnsavedEntryCount } from "../unsaved-entries";
 
 function panel(name: string): HTMLElement {
   const el = document.querySelector(`[data-run-panel="${name}"]`);
@@ -57,6 +62,7 @@ beforeEach(() => {
 
 afterEach(() => {
   replaceState.mockRestore();
+  setUnsavedEntryCount(0); // the #43 registry is module-scoped — never leak between tests
 });
 
 describe("RunViewTabs (#41 instant tabs)", () => {
@@ -147,5 +153,68 @@ describe("RunViewTabs (#41 instant tabs)", () => {
   it("no dry-run affordance when the page passes null (viewer, or a locked run)", () => {
     renderTabs({ initialView: "sheets" });
     expect(screen.queryByRole("button", { name: "Dry run (stub)" })).not.toBeInTheDocument();
+  });
+});
+
+// ── Round-8 #43: the unsaved-entries leave guard on the client-side switch ────
+
+describe("RunViewTabs leave guard (#43)", () => {
+  it("confirms before leaving the entry tab with unsaved cells — cancel STAYS put", () => {
+    setUnsavedEntryCount(2);
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    try {
+      renderTabs();
+      fireEvent.click(screen.getByRole("link", { name: "Pay sheets" }));
+
+      expect(confirmSpy).toHaveBeenCalledTimes(1);
+      expect(String(confirmSpy.mock.calls[0]?.[0])).toMatch(/unsaved entry changes/i);
+      // Still on the entry tab: no panel switch, no URL sync.
+      expect(panel("entry").className).not.toMatch(/(^| )hidden( |$)/);
+      expect(screen.getByRole("link", { name: "Entry grid" })).toHaveAttribute("aria-current", "page");
+      expect(replaceState).not.toHaveBeenCalled();
+    } finally {
+      confirmSpy.mockRestore();
+    }
+  });
+
+  it("OK proceeds with the switch (the edits survive — panels stay mounted)", () => {
+    setUnsavedEntryCount(1);
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    try {
+      renderTabs();
+      fireEvent.click(screen.getByRole("link", { name: "Pay sheets" }));
+
+      expect(confirmSpy).toHaveBeenCalledTimes(1);
+      expect(panel("sheets").className).not.toMatch(/(^| )hidden( |$)/);
+      expect(screen.getByText("ENTRY PANEL")).toBeInTheDocument(); // still mounted
+      expect(String(replaceState.mock.calls.at(-1)?.[2])).toContain("view=sheets");
+    } finally {
+      confirmSpy.mockRestore();
+    }
+  });
+
+  it("never prompts when the grid is pristine", () => {
+    const confirmSpy = vi.spyOn(window, "confirm");
+    try {
+      renderTabs();
+      fireEvent.click(screen.getByRole("link", { name: "Summary" }));
+      expect(confirmSpy).not.toHaveBeenCalled();
+      expect(panel("summary").className).toBe("mt-6");
+    } finally {
+      confirmSpy.mockRestore();
+    }
+  });
+
+  it("never prompts when switching between NON-entry tabs (the grid was already left)", () => {
+    setUnsavedEntryCount(3);
+    const confirmSpy = vi.spyOn(window, "confirm");
+    try {
+      renderTabs({ initialView: "sheets" });
+      fireEvent.click(screen.getByRole("link", { name: "Summary" }));
+      expect(confirmSpy).not.toHaveBeenCalled();
+      expect(panel("summary").className).toBe("mt-6");
+    } finally {
+      confirmSpy.mockRestore();
+    }
   });
 });
