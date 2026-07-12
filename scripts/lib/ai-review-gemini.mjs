@@ -1,16 +1,19 @@
 /**
- * Gemini 2.5 Pro REST caller for ai-review.mjs.
+ * Gemini 3.5 Flash REST caller for ai-review.mjs.
  *
  * Mirrors the pattern in `scripts/gemini-audit-scheduler-app.mjs` but
  * generic: takes a system instruction + user message, returns the
  * model's markdown response. No file-walking, no hardcoded prompts.
  *
- * Model pinned to `gemini-2.5-pro` (verified current 2026-05-25 via
- * ai.google.dev/gemini-api/docs/models). Gemini 3 series exists in
- * preview but 2.5 Pro is the recommended stable for code review.
+ * Model pinned to `gemini-3.5-flash` (verified current 2026-07-10 via
+ * ai.google.dev/gemini-api/docs/models). It is Google's recommended
+ * stable for coding/agentic tasks and beats `gemini-3.1-pro-preview`
+ * on the coding benchmarks (SWE-Bench Pro, Terminal-Bench); the 3.x
+ * Pro tier is still preview-only. Replaces `gemini-2.5-pro`
+ * (pinned 2026-05-25, now demoted on the models page).
  */
 
-const MODEL = "gemini-2.5-pro";
+const MODEL = "gemini-3.5-flash";
 const API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 
 /**

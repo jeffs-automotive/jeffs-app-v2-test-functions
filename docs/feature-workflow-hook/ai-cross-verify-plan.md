@@ -20,11 +20,11 @@ This feature builds a **generic** version: arbitrary file list + a brief "what w
 
 | # | Decision |
 |---|---|
-| D1 | **Both models always, in parallel** (Gemini 2.5 Pro + GPT-5.5). Cost ~$0.10-1 per review depending on file count. Two perspectives surface disagreements that hint at real issues. |
+| D1 | **Both models always, in parallel** (Gemini 3.5 Flash + GPT-5.6 Terra since 2026-07-12). Cost ~$0.10-1 per review depending on file count. Two perspectives surface disagreements that hint at real issues. |
 | D2 | **New `/feature-cross-verify` slash command + standalone CLI script.** No hook auto-trigger. Outputs findings as artifacts; Chris reads + decides. Doesn't block phase transitions. |
 | D3 | **Files-as-CLI-args + findings to `.claude/work/ai-review-{ISO}.md`**. Shell-friendly invocation; output is an artifact Chris can link from the feature marker. |
 | D4 | **Non-prescriptive prompt** — system instruction is "fresh eyes, flag what matters." Don't bias the reviewer toward what we already think. User message just supplies "what we're doing" + file contents. |
-| D5 | **Models pinned** to verified-current strings: `gemini-2.5-pro` + `gpt-5.5-2026-04-23`. Update by editing the script when newer versions ship. |
+| D5 | **Models pinned** to verified-current strings: `gemini-3.5-flash` (2026-07-10; was `gemini-2.5-pro`) + `gpt-5.6-terra` (2026-07-12; was `gpt-5.5-2026-04-23` — GPT-5.6 Terra GA 2026-07-09, half the price, ≥5.5 on published coding benchmarks). Update by editing the script when newer versions ship. |
 
 ---
 

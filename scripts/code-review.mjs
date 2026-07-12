@@ -32,11 +32,12 @@
  *                                [--out-dir <dir>] [--model <id>] <file1> <file2> ...
  *
  * Env:
- *   OPENAI_API_KEY           API key (falls back to prod .env.local, same as ai-review).
- *   CODE_REVIEW_MODEL        Model id (default: gpt-5.5-2026-04-23).
- *   CODE_REVIEW_MAX_TURNS    Per-job agent loop cap (default: 30).
- *   CODE_REVIEW_MAX_RETRIES  Per-job retries on error/malformed output (default: 2).
- *   CODE_REVIEW_CONCURRENCY  Max parallel model calls (default: 4).
+ *   OPENAI_API_KEY                 API key (falls back to prod .env.local, same as ai-review).
+ *   CODE_REVIEW_MODEL              Model id (default: gpt-5.6-terra; rollback: gpt-5.5-2026-04-23).
+ *   CODE_REVIEW_REASONING_EFFORT   Reasoning effort (default: max; terra set: none|low|medium|high|xhigh|max).
+ *   CODE_REVIEW_MAX_TURNS          Per-job agent loop cap (default: 30).
+ *   CODE_REVIEW_MAX_RETRIES        Per-job retries on error/malformed output (default: 2).
+ *   CODE_REVIEW_CONCURRENCY        Max parallel model calls (default: 4).
  *
  * Exit codes:
  *   0 - all selected jobs ran (findings, including blockers, are NOT a failure)
@@ -67,16 +68,20 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "..");
 
 const SCHEMA_VERSION = "code-review-2.0";
-const MODEL = process.env.CODE_REVIEW_MODEL || "gpt-5.5-2026-04-23";
+// gpt-5.6-terra: GA 2026-07-09, half GPT-5.5's price, ≥ 5.5 on all published coding
+// benchmarks (Chris's swap decision 2026-07-12). Rollback: CODE_REVIEW_MODEL=gpt-5.5-2026-04-23.
+const MODEL = process.env.CODE_REVIEW_MODEL || "gpt-5.6-terra";
 const MAX_TURNS = Number(process.env.CODE_REVIEW_MAX_TURNS) || 30;
 const MAX_RETRIES = Number.isFinite(Number(process.env.CODE_REVIEW_MAX_RETRIES))
   ? Number(process.env.CODE_REVIEW_MAX_RETRIES)
   : 2;
 const CONCURRENCY = Number(process.env.CODE_REVIEW_CONCURRENCY) || 4;
-// gpt-5.5 reasoning models: ModelSettings.reasoning.effort (none|minimal|low|medium|high|xhigh).
-// Official guidance: keep at medium (the default) — higher effort under open-ended tool
-// access can cause OVERTHINKING/over-flagging. Treat as a last-mile knob.
-const REASONING_EFFORT = process.env.CODE_REVIEW_REASONING_EFFORT || "medium";
+// gpt-5.6-terra reasoning: ModelSettings.reasoning.effort (none|low|medium|high|xhigh|max —
+// `minimal` was a 5.5-era value, removed on the 5.6 family). Default is MAX per Chris's
+// 2026-07-12 directive (highest effort on terra). If max-effort reviews over-flag (the older
+// GPT-codex lineage measured higher FP rates than Claude — docs.bswen.com 2026-03-05) or run
+// slow, step down via CODE_REVIEW_REASONING_EFFORT (medium was the pre-2026-07-12 tuning).
+const REASONING_EFFORT = process.env.CODE_REVIEW_REASONING_EFFORT || "max";
 // NOTE: a separate critic/verifier second pass is deliberately NOT built yet. The
 // primary defenses are (1) the in-prompt self-verification loop in SHARED_PREAMBLE and
 // (2) the evidence_line runner gate in validateFinding. Add an LLM-as-critic pass only

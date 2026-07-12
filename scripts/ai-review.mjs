@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * ai-review.mjs — non-prescriptive cross-verify a plan or build with
- * Gemini 2.5 Pro + GPT-5.5 in parallel. Findings written to a markdown
+ * Gemini 3.5 Flash + GPT-5.6 Terra in parallel. Findings written to a markdown
  * artifact under .claude/work/.
  *
  * Usage:
