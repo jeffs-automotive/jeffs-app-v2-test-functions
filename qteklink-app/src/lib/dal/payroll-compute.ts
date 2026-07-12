@@ -29,14 +29,21 @@
  * shop billed hours, mirroring the SA sales goal (override → prior-year (roCount>0)
  * → legacy pay_config.shop_hour_goal); derived only for bonus runs with a foreman
  * on the roster; goal + source ride DerivedInputs/SheetComputation/snapshot.
- * Round-5 (#36/#37/#38): month sales display AFTER fees (Σ totalSales − taxes −
- * fees — reverses #28; the prior-year auto goal follows); parts cost = per-line
- * round(cost × qty) over authorized jobs + RO-level sublet items; and the GP
- * composition is PRIMARILY sales(incl fees, internal) − parts − QBO 6010
- * technician cost (source 'qbo_tech_cost'), with the prorated-labor computation
- * kept ONLY as the labeled fallback when the QBO fetch throws. The composition
- * root (resolveMonthGp) + the GP-labor input builders + applyOverrides live in
+ * Round-5 (#37/#38): parts cost = per-line round(cost × qty) over authorized
+ * jobs + RO-level sublet items; and the GP composition is PRIMARILY
+ * sales(incl fees, internal) − parts − QBO 6010 technician cost (source
+ * 'qbo_tech_cost'), with the prorated-labor computation kept ONLY as the
+ * labeled fallback when the QBO fetch throws. The composition root
+ * (resolveMonthGp) + the GP-labor input builders + applyOverrides live in
  * ./payroll-compute-gp.ts (~500-line file policy).
+ * Round-9 (#45 — supersedes the round-5 #36 after-fees display): month sales
+ * (display + SA tier check + the prior-year auto goal) = Σ(totalSales − taxes),
+ * FEES IN — the #28 number restored; the with/without-fees split is GP-only
+ * (#38 unchanged). `month.salesCents` and `month.salesInclFeesCents` are now
+ * EQUAL by design: both snapshot keys are kept (old frozen snapshots stay
+ * parseable, the dry-run diff keys stay stable) rather than collapsed to one.
+ * Round-9 (#46): the snapshot carries a run-level `summary_totals` block
+ * (summary.ts) — the totals card's server-computed numbers.
  */
 import { getShopSettings } from "@/lib/dal/settings";
 import { addDaysIso } from "@/lib/format";
@@ -97,11 +104,13 @@ import {
 
 interface MonthDerivations {
   month: string;
-  /** Round-5 #36 (reverses #28): the DISPLAY/tier month sales =
-   *  Σ(totalSales − taxes − FEES) — the backtest-pinned original. */
+  /** Round-9 #45 (supersedes #36; restores #28): the DISPLAY/tier month sales =
+   *  Σ(totalSales − taxes) — fees stay IN. June 2026 = $286,290.76. */
   salesCents: number;
-  /** Round-5 #38: the INTERNAL GP base = Σ(totalSales − taxes), fees still in.
-   *  Never displayed as "month sales". */
+  /** Round-5 #38: the GP base = Σ(totalSales − taxes), fees in. Since round-9
+   *  #45 this EQUALS `salesCents` — kept as its own field/key (not collapsed)
+   *  so pre-#45 frozen snapshots (where the two differ) parse unchanged and the
+   *  dry-run diff keys stay stable. */
   salesInclFeesCents: number;
   feesCents: number;
   partsCostCents: number;
@@ -193,11 +202,11 @@ export async function buildOpenRunSnapshot(
     ]);
     month = {
       month: monthKey,
-      // Round-5 #36 (reverses #28): month sales display AFTER FEES =
-      // Σ(totalSales − taxes − fees) — the backtest-pinned original (June
-      // 2026 = $273,061.13). Feeds the bonus panels + the SA tier's sales side.
-      salesCents: sales.value.totalSalesMinusTaxesCents - fees.value,
-      // Round-5 #38: the fee-INCLUSIVE subtotal stays as the INTERNAL GP base.
+      // Round-9 #45 (supersedes #36; restores #28): month sales = Σ(totalSales −
+      // taxes), FEES IN (June 2026 = $286,290.76). Feeds the bonus panels + the
+      // SA tier's sales side; the prior-year auto goal uses the same definition.
+      salesCents: sales.value.totalSalesMinusTaxesCents,
+      // Round-5 #38 GP base — EQUAL to salesCents since #45 (see MonthDerivations).
       salesInclFeesCents: sales.value.totalSalesMinusTaxesCents,
       feesCents: fees.value,
       partsCostCents: parts.value,
@@ -364,7 +373,8 @@ export async function buildOpenRunSnapshot(
     }))
     .sort((x, y) => x.display_name.localeCompare(y.display_name));
 
-  const summary = buildRunSummary(
+  // Round-9 #46: the rows AND the run-level totals block both ride the snapshot.
+  const { rows: summary, totals: summaryTotals } = buildRunSummary(
     snapshotEmployees.map(
       (e): EmployeeSheet => ({
         employee_id: e.employee_id,
@@ -391,6 +401,7 @@ export async function buildOpenRunSnapshot(
     },
     employees: snapshotEmployees,
     summary,
+    summary_totals: summaryTotals,
     derived_provenance: {
       as_of: asOfCandidates.sort().pop() as string,
       period_start: run.period_start,
@@ -418,8 +429,9 @@ export async function buildOpenRunSnapshot(
       ...(month
         ? {
             month_ro_count: month.provenance.roCount,
-            // Round-5 #36: the DISPLAY month sales (after fees). The
-            // fee-inclusive internal GP base rides alongside for audit.
+            // Round-9 #45: the DISPLAY month sales = Σ(totalSales − taxes),
+            // fees in. The GP-base key rides alongside, EQUAL since #45 —
+            // kept for old-snapshot parseability + stable dry-run diff keys.
             month_sales_cents: month.salesCents,
             month_sales_incl_fees_cents: month.salesInclFeesCents,
             month_fees_cents: month.feesCents,

@@ -176,7 +176,7 @@ describe("monthGpFromTechCost (decision #38 — THE primary GP composition)", ()
     expect(gp.gpWithoutFeesCents).toBe(15_494_951); // $154,949.51
   });
 
-  it("uses the fee-INCLUSIVE sales base — feeding the #36 after-fees display value would double-count", () => {
+  it("uses the fee-INCLUSIVE sales base — an after-fees base would double-count fees once GP-without subtracts them again (#45: the display value now shares the fee-inclusive definition)", () => {
     const withFeesBase = monthGpFromTechCost({
       monthSalesInclFeesCents: 28_629_076,
       monthPartsCostCents: 6_937_090,
@@ -184,7 +184,7 @@ describe("monthGpFromTechCost (decision #38 — THE primary GP composition)", ()
       monthFeesCents: 1_322_963,
     });
     const afterFeesBase = monthGpFromTechCost({
-      monthSalesInclFeesCents: 28_629_076 - 1_322_963, // WRONG base (the display value)
+      monthSalesInclFeesCents: 28_629_076 - 1_322_963, // WRONG base (fees pre-subtracted)
       monthPartsCostCents: 6_937_090,
       qboTechCostCents: 4_874_072,
       monthFeesCents: 1_322_963,

@@ -233,17 +233,19 @@ export function aggregateFeesCents(ros: MirrorRoRow[]): number {
 }
 
 /**
- * Month "subtotal" (round-5, extraction #36 — REVERSES #28): month sales display
- * AFTER FEES = Σ(total_sales − taxes − fees) over posted ROs — the original
- * backtest-pinned (#21) definition (June 2026 = $273,061.13). Used for the bonus
- * panels' month sales AND the prior-year auto sales goal (#22/#23), so the "beat
- * last year" comparison stays apples-to-apples. The fee-INCLUSIVE figure
- * (`totalSalesMinusTaxesCents`) remains the INTERNAL GP base per #38.
+ * Month "subtotal" (round-9, extraction #45 — SUPERSEDES #36, restoring the #28
+ * sales number): month sales = Σ(total_sales − taxes) over posted ROs — FEES
+ * STAY IN (June 2026 = $286,290.76). The with/without-fees split is GP-ONLY
+ * (#38, unchanged). Used for the bonus panels' month sales, the SA tier's
+ * "beat last year" check, AND the prior-year auto sales goal (#22/#23), so the
+ * comparison stays apples-to-apples. Since #45 this is IDENTICAL to the GP
+ * sales base (`totalSalesMinusTaxesCents`) by design — both snapshot keys are
+ * kept, equal, for auditability (payroll-compute.ts documents the pick).
  * RO-level totals are Tekmetric's own authorized-only rollups (extraction #20) —
  * no job-level filter applies here.
  */
 export function aggregateMonthSubtotalCents(ros: MirrorRoRow[]): number {
-  return aggregateSalesCandidates(ros).totalSalesMinusTaxesCents - aggregateFeesCents(ros);
+  return aggregateSalesCandidates(ros).totalSalesMinusTaxesCents;
 }
 
 /**
@@ -509,8 +511,8 @@ export async function monthSalesPreTaxCents(
 }
 
 /**
- * SAME-month-PREVIOUS-year subtotal = Σ(total_sales − taxes − fees), AFTER FEES
- * (round-5, extraction #36 — same definition as aggregateMonthSubtotalCents so the
+ * SAME-month-PREVIOUS-year subtotal = Σ(total_sales − taxes), FEES IN
+ * (round-9, extraction #45 — same definition as aggregateMonthSubtotalCents so the
  * "beat last year" comparison is apples-to-apples) — the auto-derived
  * service-advisor sales goal (#22/#23). `month` is the BONUS month ("YYYY-MM"); the
  * prior-year month is derived here. A provenance roCount of 0 means "no data" —

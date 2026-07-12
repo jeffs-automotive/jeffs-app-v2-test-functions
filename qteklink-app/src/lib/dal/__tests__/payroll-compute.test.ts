@@ -1,10 +1,12 @@
 /**
- * buildOpenRunSnapshot GP-composition tests (round-5 #36/#38): the precedence
- * chain override > qbo_tech_cost > computed, the #36 after-fees month sales,
- * and the single sanctioned catch (QBO failure → Sentry with shop_id tag →
- * labeled 'computed' fallback). Fetchers are module-mocked; the calc engine,
- * override precedence, snapshot assembly + strict RunSnapshotSchema parse all
- * run REAL — the assertions read the frozen-shape snapshot itself.
+ * buildOpenRunSnapshot GP-composition tests (round-5 #38 + round-9 #45): the
+ * precedence chain override > qbo_tech_cost > computed, the #45 fee-INCLUSIVE
+ * month sales (Σ totalSales − taxes — supersedes #36; both snapshot sales keys
+ * ride equal), and the single sanctioned catch (QBO failure → Sentry with
+ * shop_id tag → labeled 'computed' fallback). Fetchers are module-mocked; the
+ * calc engine, override precedence, snapshot assembly + strict
+ * RunSnapshotSchema parse all run REAL — the assertions read the frozen-shape
+ * snapshot itself.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as Sentry from "@sentry/nextjs";
@@ -185,7 +187,7 @@ beforeEach(() => {
   );
   vi.mocked(fetchLeaveRateHistory).mockResolvedValue(new Map());
   vi.mocked(billedHoursByTechnician).mockResolvedValue(derived(new Map<number, number>(), 5));
-  // June 2026 real figures (extraction #36/#37/#38):
+  // June 2026 real figures (extraction #45/#37/#38):
   vi.mocked(monthSalesPreTaxCents).mockResolvedValue(
     derived({ totalSalesCents: 30_000_000, totalSalesMinusTaxesCents: 28_629_076 }),
   );
@@ -202,13 +204,14 @@ beforeEach(() => {
   });
 });
 
-describe("buildOpenRunSnapshot — GP composition (#38) + month sales (#36)", () => {
-  it("primary path: sales(incl fees) − parts − QBO 6010 tech cost, source 'qbo_tech_cost'; month sales display AFTER fees", async () => {
+describe("buildOpenRunSnapshot — GP composition (#38) + month sales (#45)", () => {
+  it("primary path: sales(incl fees) − parts − QBO 6010 tech cost, source 'qbo_tech_cost'; month sales = Σ(totalSales − taxes), fees IN", async () => {
     const snapshot = await buildOpenRunSnapshot(SHOP_ID, run);
     const prov = snapshot.derived_provenance as Record<string, unknown>;
 
-    // #36: display sales = 28,629,076 − 1,322,963; the internal base rides alongside.
-    expect(prov.month_sales_cents).toBe(27_306_113);
+    // #45 (supersedes #36; restores #28): display sales = 28,629,076 ($286,290.76,
+    // June acceptance) — EQUAL to the GP-base key, which is kept for auditability.
+    expect(prov.month_sales_cents).toBe(28_629_076);
     expect(prov.month_sales_incl_fees_cents).toBe(28_629_076);
 
     // #38 June acceptance: 286,290.76 − 69,370.90 − 48,740.72 = 168,179.14; − fees = 154,949.51.
@@ -221,7 +224,7 @@ describe("buildOpenRunSnapshot — GP composition (#38) + month sales (#36)", ()
 
     // The SA sheet consumed the composed values (override-free).
     const sa = snapshot.employees[0];
-    expect(sa?.derived.month_sales_cents).toBe(27_306_113);
+    expect(sa?.derived.month_sales_cents).toBe(28_629_076);
     expect(sa?.derived.month_gp_with_fees_cents).toBe(16_817_914);
     expect(sa?.derived.month_gp_without_fees_cents).toBe(15_494_951);
     expect(sa?.derived.spiff_count).toBe(3);

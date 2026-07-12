@@ -136,9 +136,9 @@ function pct(v: number | null): string {
   return v === null ? "—" : `${Math.round(v * 10000) / 100}%`;
 }
 
-/** Round-5 #36: the month-sales definition wording (after fees). */
+/** Round-9 #45: the month-sales definition wording (fees stay in). */
 const MONTH_SALES_SOURCE =
-  "From Tekmetric — repair orders posted in the bonus month, totals minus taxes and fees";
+  "From Tekmetric — repair orders posted in the bonus month, totals minus taxes";
 
 /** Round-5 #38: GP-with-fees provenance per composition source (pre-#38
  *  snapshots have no source label and keep the legacy prorated-labor wording). */
@@ -171,7 +171,7 @@ function ResultLine({ items }: { items: { label: string; cents: number | null }[
 
 export function BonusMonthCard({ month, prov }: { month: string; prov: MonthProvenanceView }) {
   const rows: { label: string; cents?: number | null; hours?: number | null; source: string }[] = [
-    { label: "Month sales (less tax & fees)", cents: prov.salesCents, source: "From Tekmetric — repair orders posted in the month, totals minus taxes and fees" },
+    { label: "Month sales (less tax)", cents: prov.salesCents, source: "From Tekmetric — repair orders posted in the month, totals minus taxes" },
     { label: "GP with fees", cents: prov.gpWithFeesCents, source: gpWithFeesSource(prov.gpSource) },
     { label: "GP without fees", cents: prov.gpWithoutFeesCents, source: "Derived — GP with fees − shop fees" },
     { label: "Parts cost", cents: prov.partsCostCents, source: "From Tekmetric — authorized-job parts cost for the month (cost × qty, rounded per line) + sublets" },
@@ -259,7 +259,7 @@ export function ServiceAdvisorBonusPanel({ ctx }: { ctx: SheetCtx }) {
     e.overrides.sales_goal_cents !== undefined
       ? "Manual override"
       : monthProv.salesGoalSource === "prior_year_subtotal"
-        ? "Auto — prior-year same-month sales (less tax & fees)"
+        ? "Auto — prior-year same-month sales (less tax)"
         : "From pay config — no prior-year Tekmetric data for the month";
   const sales = e.derived.month_sales_cents;
   const gpWith = e.derived.month_gp_with_fees_cents;

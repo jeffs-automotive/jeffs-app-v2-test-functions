@@ -3,7 +3,7 @@
  * composition (round-5 decision #38, docs/qteklink/payroll-workbook-
  * extraction-2026-07-10.md): QBO supplies ONLY the technician cost — the P&L
  * COGS row for account "6010 Technicians" — while sales/parts stay Tekmetric
- * (#36/#37).
+ * (#45/#37).
  *
  * Shape: a PURE parser over the report's Rows tree (unit-testable; THROWS with
  * clear text on every surprise — NO silent fallback in here; the payroll DAL

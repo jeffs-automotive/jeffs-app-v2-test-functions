@@ -161,19 +161,19 @@ describe("prior-year sales-goal derivation (round-3 #22/#23)", () => {
     expect(() => priorYearMonth("2026-06-01")).toThrow(/YYYY-MM/);
   });
 
-  it("subtotal = Σ(total_sales − taxes − FEES), after fees (round-5, extraction #36 — reverses #28)", () => {
+  it("subtotal = Σ(total_sales − taxes), FEES STAY IN (round-9, extraction #45 — supersedes #36, restores #28)", () => {
     const rows = [
-      ro({ id: 1, total_sales_cents: 100_000, taxes_cents: 6_000, fee_total_cents: 1_500 }), // 92,500
-      ro({ id: 2, total_sales_cents: 50_000, taxes_cents: 3_000, fee_total_cents: 500 }), // 46,500
+      ro({ id: 1, total_sales_cents: 100_000, taxes_cents: 6_000, fee_total_cents: 1_500 }), // 94,000 (fees NOT subtracted)
+      ro({ id: 2, total_sales_cents: 50_000, taxes_cents: 3_000, fee_total_cents: 500 }), // 47,000
       ro({ id: 3, total_sales_cents: null, taxes_cents: null, fee_total_cents: null }), // null-safe → 0
     ];
-    expect(aggregateMonthSubtotalCents(rows)).toBe(139_000);
+    expect(aggregateMonthSubtotalCents(rows)).toBe(141_000);
   });
 
-  it("the fee-INCLUSIVE figure survives as the internal GP base (#38): subtotal + fees", () => {
+  it("#45: the subtotal is IDENTICAL to the GP sales base (#38) — the with/without-fees split is GP-only", () => {
     const rows = [ro({ id: 1, total_sales_cents: 100_000, taxes_cents: 6_000, fee_total_cents: 1_500 })];
     expect(aggregateSalesCandidates(rows).totalSalesMinusTaxesCents).toBe(94_000);
-    expect(aggregateMonthSubtotalCents(rows)).toBe(94_000 - 1_500);
+    expect(aggregateMonthSubtotalCents(rows)).toBe(94_000);
   });
 
   it("zero rows → 0 (callers key the no-data fallback on provenance roCount, not the value)", () => {

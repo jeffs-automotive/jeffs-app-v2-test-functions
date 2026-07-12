@@ -28,6 +28,13 @@
  *    leave-rate implementation is locked by calc.leave.test.ts; these golden replays
  *    supply no leave rate, so leave falls back to hours × hourly rate (which the
  *    5-17 + 5-31 workbooks match).
+ *  - Quirk C (round-9 decision #44 — the efficiency guard): ONE fixture week (Clark
+ *    5-17 w2: clock 0, billed 2) is exactly the phantom-efficiency case the guard
+ *    exists for — the workbook paid 2h × $22.66 = $45.32 efficiency on a week with
+ *    ZERO worked clock (he was on PTO/holiday). Decision #44 deliberately supersedes
+ *    the workbook here: a week pays NO efficiency unless its worked clock hours are
+ *    strictly > 1. The affected cells are SKIPPED (policy change, not an engine bug);
+ *    the guard itself is locked by calc.efficiency-guard.test.ts.
  *  Every SKIPS entry must be consumed; a stale entry fails the last test.
  */
 import { readdirSync, readFileSync } from "node:fs";
@@ -93,7 +100,17 @@ const QUIRK_A_AUBE =
 const quirkB = (cell: string, rate: string, hourly: string) =>
   `Quirk B (round-3 decision #24 — avg-hourly leave-pay POLICY): ${cell} pays @ $${rate}/hr vs the $${hourly} base hourly — the cell reflects the PTO/Hol/Ber-at-average-hourly-rate policy with an external (payroll-system) basis rate not reproducible from workbook data, so it cannot be asserted here; the engine's leave-rate basis is locked by calc.leave.test.ts instead`;
 
+const QUIRK_C_CLARK =
+  "Quirk C (round-9 decision #44 — efficiency guard): Clark 5-17 w2 has clock 0 + billed 2 — the workbook paid $45.32 phantom efficiency on a zero-clock week; #44 pays NO efficiency unless the week's worked clock hours are strictly > 1, deliberately superseding the workbook. Guard locked by calc.efficiency-guard.test.ts";
+
 const SKIPS: Record<string, string> = {
+  // ---- Quirk C — workbook-5-17-26-5-30-26.json :: Clark, Matt (zero-clock w2 efficiency) ----
+  "workbook-5-17-26-5-30-26.json::Clark, Matt::eff_w2": QUIRK_C_CLARK,
+  "workbook-5-17-26-5-30-26.json::Clark, Matt::eff_pay_w2": QUIRK_C_CLARK,
+  "workbook-5-17-26-5-30-26.json::Clark, Matt::incentive": QUIRK_C_CLARK,
+  "workbook-5-17-26-5-30-26.json::Clark, Matt::total_pay": QUIRK_C_CLARK,
+  "workbook-5-17-26-5-30-26.json::Clark, Matt::pay_per_clock": QUIRK_C_CLARK,
+  "workbook-5-17-26-5-30-26.json::Clark, Matt::cost_per_billed": QUIRK_C_CLARK,
   // ---- Quirk A — workbook-5-3-26-5-16-26.json :: Williams, Charles (rate cells E7/Q7) ----
   "workbook-5-3-26-5-16-26.json::Williams, Charles::hourly_pay_w1": QUIRK_A_WILLIAMS,
   "workbook-5-3-26-5-16-26.json::Williams, Charles::hourly_pay_w2": QUIRK_A_WILLIAMS,

@@ -7,7 +7,9 @@
  * route-leave guard wiring. Actions are mocked at the module boundary — these
  * are wiring tests, not business-math tests (the DAL owns the math; calc has
  * its own golden suite). The mark-complete dialog's suite lives in
- * [period]/__tests__/CompleteRunButton.test.tsx.
+ * [period]/__tests__/CompleteRunButton.test.tsx; the SummaryView + round-9 #46
+ * totals-card suite lives in [period]/__tests__/SummaryView.test.tsx (both
+ * extracted for the ~500-line file policy).
  */
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -37,13 +39,11 @@ import type { PayrollRunEntry } from "@/lib/dal/payroll";
 import type {
   SheetComputation,
   SnapshotEmployee,
-  SummaryRow,
   WeekComputation,
 } from "@/lib/payroll/types";
 import { AutoValue, RunStatusBadge } from "../../payroll-ui";
 import { BonusToggle } from "../[period]/BonusToggle";
 import { EntryGrid } from "../[period]/EntryGrid";
-import { SummaryView } from "../[period]/SummaryView";
 import { VoidCloneButton } from "../[period]/VoidCloneButton";
 import { getUnsavedEntryCount, setUnsavedEntryCount } from "../[period]/unsaved-entries";
 
@@ -444,110 +444,9 @@ describe("VoidCloneButton", () => {
   });
 });
 
-// ── Summary print header (the paper must self-describe its run status) ────────
-
-const summaryRow: SummaryRow = {
-  employee_id: EMP_ID,
-  display_name: "Cantrell",
-  role: "technician",
-  family: "technician",
-  reg_hours: 80,
-  ot_hours: 2,
-  reg_pay_cents: 216_879,
-  ot_pay_cents: 7_839,
-  billed_hours: 70,
-  billed_pay_cents: 70_000,
-  incentive_cents: 70_000,
-  bonus_cents: null,
-  spiff_cents: null,
-  pto_hours: 0,
-  pto_pay_cents: null,
-  training_hours: 0,
-  training_pay_cents: null,
-  holiday_hours: 0,
-  holiday_pay_cents: null,
-  bereavement_hours: 0,
-  bereavement_pay_cents: null,
-  total_pay_cents: 294_718,
-};
-
-describe("SummaryView print header", () => {
-  const base = {
-    rows: [summaryRow],
-    shopId: 7476,
-    periodStart: "2026-06-28",
-    periodEnd: "2026-07-11",
-  };
-
-  it("labels a completed run's sheet as the keyable record with its completion date", () => {
-    render(<SummaryView {...base} status="completed" completedAt="2026-07-12T14:00:00Z" />);
-    expect(
-      screen.getByText(/Completed .*— for keying into the payroll system/),
-    ).toBeInTheDocument();
-  });
-
-  it("labels a voided run's sheet as an archival copy — never as keyable", () => {
-    render(<SummaryView {...base} status="voided" completedAt="2026-07-12T14:00:00Z" />);
-    expect(
-      screen.getByText(/VOIDED — archival copy, do not key into the payroll system/),
-    ).toBeInTheDocument();
-    expect(screen.queryByText(/for keying into the payroll system/)).not.toBeInTheDocument();
-  });
-
-  it("labels an open run's sheet as a draft — never as keyable", () => {
-    render(<SummaryView {...base} status="open" completedAt={null} />);
-    expect(screen.getByText(/DRAFT — run not completed/)).toBeInTheDocument();
-    expect(screen.queryByText(/for keying into the payroll system/)).not.toBeInTheDocument();
-  });
-
-  // Leave-pay DOLLARS beside the hours (extraction #31) — Marie keys the pay
-  // figures from the printout, so the summary must carry both hours and pay.
-  it("renders leave-pay dollars alongside hours for a paid-leave (technician) row", () => {
-    const techLeave: SummaryRow = {
-      ...summaryRow,
-      pto_hours: 8,
-      pto_pay_cents: 20_904, // 8h @ $26.13
-      training_hours: 4,
-      training_pay_cents: 8_400,
-      holiday_hours: 0,
-      holiday_pay_cents: 0,
-      bereavement_hours: 0,
-      bereavement_pay_cents: 0,
-    };
-    render(<SummaryView {...base} rows={[techLeave]} status="completed" completedAt="2026-07-12T14:00:00Z" />);
-    // Hours line + dollar line both present for PTO / Training (each appears in
-    // the row AND the totals footer — a single-row run, so exactly twice).
-    expect(screen.getAllByText("8.0")).toHaveLength(2);
-    expect(screen.getAllByText("$209.04")).toHaveLength(2);
-    expect(screen.getAllByText("$84.00")).toHaveLength(2);
-  });
-
-  it("shows n/a for a salaried row's leave pay (null *_pay_cents) — never $0.00", () => {
-    const salaried: SummaryRow = {
-      ...summaryRow,
-      family: "service_advisor",
-      role: "service_manager",
-      billed_hours: null,
-      billed_pay_cents: null,
-      pto_hours: 8,
-      pto_pay_cents: null, // salaried: hours tracked, no separate leave pay
-      training_hours: 0,
-      training_pay_cents: null,
-      holiday_hours: 0,
-      holiday_pay_cents: null,
-      bereavement_hours: 0,
-      bereavement_pay_cents: null,
-    };
-    render(<SummaryView {...base} rows={[salaried]} status="completed" completedAt="2026-07-12T14:00:00Z" />);
-    // The PTO hours still show (row + footer total); the leave-pay line is the
-    // archival n/a, not a misleading $0.00.
-    expect(screen.getAllByText("8.0")).toHaveLength(2);
-    expect(screen.queryByText("$0.00")).not.toBeInTheDocument();
-    expect(
-      screen.getAllByTitle(/Paid as salary — no separate leave pay/).length,
-    ).toBeGreaterThan(0);
-  });
-});
+// ── Summary view + round-9 #46 totals card ─────────────────────────────────────
+// Extracted to [period]/__tests__/SummaryView.test.tsx (print header, leave
+// hours+dollars cells, the totals card + removed TOTAL row) — 500-line policy.
 
 // ── Mark-complete dialog ───────────────────────────────────────────────────────
 // Extracted to [period]/__tests__/CompleteRunButton.test.tsx (incl. the #43

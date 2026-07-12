@@ -284,7 +284,9 @@ export interface ResolveMonthGpOpts {
   /** The bonus month ("YYYY-MM"). */
   month: string;
   tz: string;
-  /** #38 internal GP base — Σ(totalSales − taxes), fees IN (NOT the #36 display value). */
+  /** #38 GP base — Σ(totalSales − taxes), fees IN (since round-9 #45 this is
+   *  ALSO the displayed month sales; pre-#45 snapshots displayed an after-fees
+   *  figure instead). */
   salesInclFeesCents: number;
   partsCostCents: number;
   feesCents: number;
@@ -389,7 +391,7 @@ export async function resolveMonthGp(opts: ResolveMonthGpOpts): Promise<MonthGpR
     );
   }
   // GP-with-fees keeps fee revenue IN — the fallback feeds the fee-INCLUSIVE
-  // subtotal (#38), never the #36 after-fees display value.
+  // subtotal (#38; since round-9 #45 identical to the displayed month sales).
   const fallback = monthGpFromRuns(gpInputs, month, {
     monthSalesCents: opts.salesInclFeesCents,
     monthPartsCostCents: opts.partsCostCents,

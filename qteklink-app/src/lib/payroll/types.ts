@@ -384,6 +384,42 @@ export const SummaryRowSchema = z.strictObject({
 });
 export type SummaryRow = z.infer<typeof SummaryRowSchema>;
 
+// ── Run-level totals block (round-9 decision #46; built by summary.ts) ─────────
+
+/**
+ * The run-level TOTALS block (round-9 #46 — replaces the summary table's TOTAL
+ * row). Server-computed by summary.ts from the summary rows and stored on the
+ * snapshot; the UI renders the totals card ONLY when the block exists — it never
+ * computes money client-side. Older frozen snapshots predate the block (the
+ * snapshot key is optional), so completed/voided runs from before the feature
+ * show a "totals unavailable" note instead.
+ *
+ * n/a semantics: the nullable pay categories (incentive + the four leave pays)
+ * and billed hours are null when EVERY row carried null — rendered "n/a", never
+ * $0.00; a null component inside a mixed column counts as 0.
+ */
+export const RunTotalsSchema = z.strictObject({
+  /** Grand total pay across every employee. */
+  total_pay_cents: z.number().int(),
+  reg_pay_cents: z.number().int(),
+  ot_pay_cents: z.number().int(),
+  incentive_pay_cents: z.number().int().nullable(),
+  pto_pay_cents: z.number().int().nullable(),
+  holiday_pay_cents: z.number().int().nullable(),
+  bereavement_pay_cents: z.number().int().nullable(),
+  training_pay_cents: z.number().int().nullable(),
+  reg_hours: hoursNum,
+  ot_hours: hoursNum,
+  pto_hours: hoursNum,
+  holiday_hours: hoursNum,
+  bereavement_hours: hoursNum,
+  training_hours: hoursNum,
+  billed_hours: hoursNum.nullable(),
+  /** total_pay ÷ total clock hours (reg + OT); null on a zero denominator. */
+  cost_per_clock_hour_cents: z.number().int().nullable(),
+});
+export type RunTotals = z.infer<typeof RunTotalsSchema>;
+
 // ── RunSnapshot v1 (written EXACTLY once by qteklink_payroll_complete_run) ─────
 
 /** Settings `payroll.spiff_categories[]` entry (contract §settings). */
@@ -456,6 +492,10 @@ export const RunSnapshotSchema = z.strictObject({
   }),
   employees: z.array(SnapshotEmployeeSchema),
   summary: z.array(SummaryRowSchema),
+  /** Round-9 #46: run-level totals (the totals card). OPTIONAL for backward
+   *  compatibility — frozen snapshots completed before the feature lack it and
+   *  must keep parsing; the UI renders the card only when present. */
+  summary_totals: RunTotalsSchema.optional(),
   derived_provenance: DerivedProvenanceSchema,
   /** The spiff-category set (settings.payroll.spiff_categories) used for spiff counts. */
   spiff_categories: z.array(SpiffCategorySchema),

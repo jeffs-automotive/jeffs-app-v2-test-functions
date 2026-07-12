@@ -337,6 +337,23 @@ Common to all: OT paid at 1.5× hourly; PTO/Holiday/Bereavement/Training hours �
     live-snapshot store. Unsaved-changes indicator + leave-guard. Implements as round-8 immediately
     after round-7 lands (the entry grid is being rebuilt in-flight there).
 
+### Round-9 decisions (Chris, 2026-07-11 late)
+
+44. **Efficiency pay requires clock hours > 1** (guards the inflated-efficiency case: near-zero clock +
+    billed hours → huge phantom efficiency). Implemented per WEEK: week's efficiency = 0 unless that
+    week's clock hours > 1. (Interpretation flagged to Chris: per-week, matching the formula's grain.)
+    **Addendum (Chris): PTO/holiday/bereavement/training hours NEVER enter the efficiency calculation** —
+    not in the billed−clock formula (efficiency compares against WORKED clock only) and not toward the
+    >1 threshold (leave hours cannot rescue it: clock 0.5 + PTO 39.5 ⇒ zero efficiency). Test-asserted.
+45. **Monthly sales = total sales − tax, FEES STAY IN (supersedes #36; restores #28's sales number):**
+    the with-fees/without-fees split applies to GP ONLY (#38 unchanged). Month sales display + SA tier
+    check + prior-year auto goal all use Σ(totalSales − taxes). June = $286,290.76.
+46. **Payroll TOTALS card at the bottom of the Summary page** (replaces the summary table's TOTAL line):
+    grand total pay; total reg-hour pay / OT pay / incentive pay; total PTO / holiday / bereavement /
+    training PAY; total reg / OT / PTO / holiday / bereavement / training / billed HOURS; total cost per
+    clock hour (= total pay ÷ total clock hours, n/a on zero). Server-computed (summary.ts → snapshot),
+    prints with the sheet.
+
 ### Remaining open items
 
 - **Mirror ingest scheduling:** promote `sync-ros.mjs` logic to a recurring job (fold into qteklink

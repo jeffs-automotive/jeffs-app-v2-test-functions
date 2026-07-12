@@ -12,8 +12,9 @@
  *   GP with fees    = monthSales(incl fees) − monthPartsCost − laborPayProrated
  *   GP without fees = GP with fees − monthFees
  * (SA tier QUALIFIES on GP-with-fees; the payout % applies to GP-WITHOUT-fees.
- * The sales figure feeding GP keeps fee revenue IN — it is NOT the #36
- * after-fees display value.)
+ * The sales figure feeding GP keeps fee revenue IN — since round-9 #45 the
+ * displayed month sales uses the same fee-inclusive definition, so the two
+ * coincide; the with/without-fees split remains GP-only.)
  *
  * laborPayProrated — "technician pay" in GP (decision #2) = total pay of the
  * technician + shop_foreman + shop_support roles ONLY (decision #1 — office_support
@@ -131,8 +132,8 @@ export function monthGpCents(inputs: MonthGpInputs): MonthGp {
 export type MonthGpSource = "qbo_tech_cost" | "computed";
 
 export interface MonthGpTechCostInputs {
-  /** Σ(totalSales − taxes) — fees INCLUDED. The INTERNAL GP base (#38), NOT the
-   *  #36 after-fees display value. */
+  /** Σ(totalSales − taxes) — fees INCLUDED. The GP base (#38); since round-9
+   *  #45 the displayed month sales is the same fee-inclusive figure. */
   monthSalesInclFeesCents: number;
   /** Decision #37 parts cost (per-line round(cost × qty) + sublet items). */
   monthPartsCostCents: number;
@@ -143,7 +144,7 @@ export interface MonthGpTechCostInputs {
 
 /**
  * Decision #38 — THE GP composition (supersedes #35's direct-QBO-GP): QBO
- * supplies ONLY the technician cost; sales/parts stay Tekmetric (#36/#37).
+ * supplies ONLY the technician cost; sales/parts stay Tekmetric (#45/#37).
  *   GP with fees    = monthSales(incl fees) − partsCost − QBO 6010 tech cost
  *   GP without fees = GP with fees − monthFees
  * June 2026 proof: 286,290.76 − 69,370.90 − 48,740.72 = $168,179.14 with fees;

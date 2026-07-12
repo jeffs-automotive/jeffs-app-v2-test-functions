@@ -537,3 +537,60 @@ Every mutating RPC writes ≥1 audit row.
   action with changed-keys-only patches, failure keeps dirty + shows error,
   pending/pristine/read-only button states) + `RunViewTabs.test.tsx` (#43 leave
   guard: cancel stays, OK proceeds, pristine/non-entry switches never prompt).
+
+## Round-9 amendments (2026-07-11 late — extraction #44/#45/#46; supersede conflicting text above)
+
+- **#44 EFFICIENCY GUARD (calc.ts):** per WEEK, efficiency hours/pay = 0 unless
+  that week's WORKED clock hours (reg + derived OT) are STRICTLY > 1 — the guard
+  against the inflated-efficiency case (near-zero clock + real billed hours →
+  phantom efficiency = billed − ~0). Technician + shop_foreman families (the
+  only ones with an efficiency concept); billed PAY is untouched; exactly 1.00
+  clock hour still pays none; the presplit (golden) seam is guarded identically.
+  **CALC_VERSION → 5** (with #45; the live-snapshot read-through recomputes open
+  runs on the version drift — that is how #44/#45/#46 roll out to the open run).
+  Locked by `calc.efficiency-guard.test.ts` (clock 0 / 0.5 / 1.0 / 1.01 /
+  normal / per-week independence / presplit / foreman). GOLDEN NOTE: exactly one
+  real workbook week hits the guard — Clark 5-17 w2 (clock 0, billed 2, $45.32
+  efficiency hand-paid) — documented as **Quirk C** SKIP entries in
+  `calc.golden.test.ts` (#44 deliberately supersedes the workbook there; the
+  engine was NOT bent, the fixture was NOT edited).
+
+- **#45 MONTH SALES REVERT (supersedes the round-6 #36 amendment; restores the
+  #28 sales number):** month sales — the bonus panels' display, the SA tier's
+  "beat last year" side, AND the prior-year auto sales goal (#22/#23) — =
+  **Σ(totalSales − taxes) over posted ROs, FEES STAY IN** (June 2026 =
+  $286,290.76). The with/without-fees split applies to GP ONLY (#38 unchanged:
+  GP_with = salesInclFees − parts(#37) − QBO 6010 tech cost; GP_without = GP_with
+  − monthFees; June: 286,290.76 − 69,370.90 − 48,740.72 = 168,179.14 with;
+  − 13,229.63 = 154,949.51 without). Implementation:
+  `aggregateMonthSubtotalCents` + `priorYearMonthSubtotalCents` no longer
+  subtract fees; payroll-compute's `month.salesCents` now EQUALS
+  `month.salesInclFeesCents` — **both snapshot keys are kept, equal** (the
+  documented pick: pre-#45 frozen snapshots, where the two differ, keep parsing
+  and display as stored; the dry-run diff keys `month_sales_cents` /
+  `month_sales_incl_fees_cents` stay stable) rather than collapsing to one key.
+  UI wording drops "& fees" ("Month sales (less tax)" / "totals minus taxes").
+
+- **#46 RUN TOTALS CARD (replaces the summary table's TOTAL footer row —
+  approved contract change):** `buildRunSummary` now returns `{ rows, totals }`;
+  the new `buildRunTotals(rows)` (summary.ts, pure) produces the run-level
+  block: `total_pay_cents` (grand total); `reg_pay/ot_pay/incentive_pay` +
+  `pto_pay/holiday_pay/bereavement_pay/training_pay` (cents; n/a-safe — null
+  components count 0, an ALL-null category stays null → "n/a", never $0.00);
+  hours `reg/ot/pto/holiday/bereavement/training` (2dp-settled) + `billed`
+  (nullable like the pay categories); `cost_per_clock_hour_cents` = total pay ÷
+  (reg + OT) clock hours, null on a zero denominator. Schema:
+  `RunTotalsSchema` (types.ts); the snapshot gains **`summary_totals`
+  (OPTIONAL)** — backward-compatible: frozen snapshots completed before the
+  feature lack it and still parse. UI: `PayrollTotalsCard`
+  (`app/payroll/runs/[period]/PayrollTotalsCard.tsx`, mounted by SummaryView
+  AFTER the table, inside the printable region, break-inside-avoid) — qteklink
+  card idiom, grouped Pay / Hours / Metrics, tabular-nums, dollars $X,XXX.XX,
+  hours 2dp. The card renders ONLY when the block exists — the UI computes
+  NOTHING client-side; an old frozen run shows a subtle "totals unavailable —
+  completed before the totals feature" note (an open run missing the block —
+  transient only — renders nothing; the CALC_VERSION-5 recompute backfills it).
+  Tests: `summary.test.ts` (totals math: mixed/all-null categories, zero-clock
+  null cost, empty run, 2dp settling) + `SummaryView.test.tsx` (grouped card
+  values, tfoot GONE, old-snapshot note, open-run silence; the SummaryView
+  suites moved there from run-detail.test.tsx — 500-line policy).

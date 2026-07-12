@@ -55,8 +55,15 @@ import type {
  *  month sales (current + the prior-year auto goal) display AFTER fees; parts
  *  cost = per-line round(cost × qty) over authorized jobs + sublet items; GP =
  *  sales(incl fees, internal) − parts − QBO 6010 technician cost, with the
- *  computed prorated-labor path only as the labeled fallback when QBO fails. */
-export const CALC_VERSION = 4;
+ *  computed prorated-labor path only as the labeled fallback when QBO fails.
+ *  v5 (2026-07-11 round-9 #44/#45): per-week efficiency guard — a week pays NO
+ *  efficiency hours/pay unless its worked clock hours are STRICTLY > 1 (#44,
+ *  technician + shop_foreman); and month sales (display + SA tier check + the
+ *  prior-year auto goal) revert to the fee-INCLUSIVE Σ(totalSales − taxes)
+ *  (#45 — supersedes #36, restores the #28 sales number; the with/without-fees
+ *  split stays GP-only per #38). The v5 recompute also backfills the round-9
+ *  #46 summary-totals block into open runs' live snapshots. */
+export const CALC_VERSION = 5;
 
 // ── Rounding (same semantics as derive.ts's roundCents — kept local so calc.ts
 //    stays free of the fetcher module's import graph) ──────────────────────────
@@ -165,7 +172,12 @@ function hourlyWeekExact(
   if (billed) {
     billedHours = billed.billedHours;
     // Workbook: Efficiency = max(0, billed − (clock + OT)) — reg+ot IS total worked clock.
-    effHours = Math.max(0, billed.billedHours - (split.reg + split.ot));
+    // Round-9 #44 EFFICIENCY GUARD (per WEEK, matching the formula's grain): a week
+    // pays NO efficiency unless its worked clock hours are STRICTLY > 1 — near-zero
+    // clock + real billed hours would otherwise fabricate huge phantom efficiency
+    // (billed − ~0). Exactly 1.00 clock hour still pays none; billed pay is untouched.
+    const workedClock = split.reg + split.ot;
+    effHours = workedClock > 1 ? Math.max(0, billed.billedHours - workedClock) : 0;
     billedPay = billed.billedRateCents * billed.billedHours;
     effPay = hourlyRateCents * effHours;
   }

@@ -286,7 +286,9 @@ export function NotApplicable({ reason }: { reason: string }) {
 // ── Loose-provenance safe readers (derived_provenance allows extra keys) ───────
 
 export interface MonthProvenanceView {
-  /** Round-5 #36: DISPLAY month sales = Σ(totalSales − taxes − fees). */
+  /** Round-9 #45: DISPLAY month sales = Σ(totalSales − taxes) — fees stay in.
+   *  (Pre-#45 frozen snapshots carry the old after-fees figure; display it as
+   *  stored — frozen runs are never recomputed.) */
   salesCents: number | null;
   gpWithFeesCents: number | null;
   gpWithoutFeesCents: number | null;

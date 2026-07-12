@@ -146,6 +146,9 @@ export default async function RunDetailPage({
   const summaryPanel = summaryPrintable ? (
     <SummaryView
       rows={snapshot.summary}
+      // Round-9 #46: the server-computed totals block; null on frozen snapshots
+      // completed before the feature (the card then shows the unavailable note).
+      totals={snapshot.summary_totals ?? null}
       shopId={shopId}
       periodStart={run.periodStart}
       periodEnd={run.periodEnd}

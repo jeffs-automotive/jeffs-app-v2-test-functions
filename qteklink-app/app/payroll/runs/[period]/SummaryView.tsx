@@ -3,8 +3,13 @@
  * §3c). One row per employee from the DAL's summary rows (frozen snapshot for
  * completed/voided runs): Regular hrs, OT hrs, Incentive, PTO, Training,
  * Holiday, Bereavement — n/a (muted em-dash) where a column doesn't apply,
- * never $0.00 for a not-applicable incentive. A totals footer sums each
- * column (display-only server-side addition of the DAL's numbers).
+ * never $0.00 for a not-applicable incentive.
+ *
+ * Round-9 #46: the table's TOTAL footer row is GONE — the run-level totals now
+ * render as the PayrollTotalsCard at the BOTTOM of the page, fed EXCLUSIVELY
+ * by the snapshot's server-computed `summary_totals` block (nothing is summed
+ * client-side; old frozen snapshots without the block show a note instead).
+ * The card sits inside this printable region, after the table.
  *
  * Leave columns (PTO/Training/Holiday/Bereavement) show BOTH the hours AND the
  * pay dollars (extraction requirement #31 — Marie keys the pay figures from the
@@ -20,17 +25,17 @@
  * sheet into the external payroll system). Rows carry break-inside-avoid.
  */
 import { fmtUsd } from "@/lib/format";
-import type { RunStatus, SummaryRow } from "@/lib/payroll/types";
+import type { RunStatus, RunTotals, SummaryRow } from "@/lib/payroll/types";
 import {
   Table,
   TableBody,
   TableCell,
-  TableFooter,
   TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
 import { fmtDateLong, fmtHours, NA, periodLabel, ROLE_LABEL } from "../../payroll-ui";
+import { PayrollTotalsCard } from "./PayrollTotalsCard";
 
 const numCell = "px-3 py-2 text-right tabular-nums";
 
@@ -57,24 +62,9 @@ function LeaveCell({ hours, payCents }: { hours: number; payCents: number | null
   );
 }
 
-/**
- * The footer twin of {@link LeaveCell}: the column's hours total always shows
- * (it's a sum), and the pay total shows dollars, or n/a when every row in the
- * column carried null leave pay (all-salaried — never a misleading $0.00).
- */
-function LeaveTotalCell({ hours, payCents }: { hours: number; payCents: number | null }) {
-  return (
-    <TableCell className={`${numCell} align-top break-inside-avoid`}>
-      <div>{fmtHours(hours)}</div>
-      <div className="text-xs font-normal text-muted-foreground">
-        {payCents === null ? <NA title="No leave pay" /> : fmtUsd(payCents)}
-      </div>
-    </TableCell>
-  );
-}
-
 export function SummaryView({
   rows,
+  totals,
   shopId,
   periodStart,
   periodEnd,
@@ -82,6 +72,9 @@ export function SummaryView({
   completedAt,
 }: {
   rows: SummaryRow[];
+  /** snapshot.summary_totals (round-9 #46) — null on pre-#46 frozen snapshots;
+   *  the totals card renders only when present (no client-side substitute). */
+  totals: RunTotals | null;
   shopId: number;
   periodStart: string;
   periodEnd: string;
@@ -99,42 +92,6 @@ export function SummaryView({
       : status === "completed"
         ? `Completed${completedAt ? ` ${fmtDateLong(completedAt)}` : ""} — for keying into the payroll system`
         : "DRAFT — run not completed; numbers may still change";
-  // Display-only footer sums of the DAL's numbers (no pay math). Leave-pay totals
-  // sum only the non-null contributions (salaried families carry null leave pay);
-  // a column whose every row is null stays null → renders n/a, never $0.00.
-  const totals = rows.reduce(
-    (t, r) => ({
-      reg: t.reg + r.reg_hours,
-      ot: t.ot + r.ot_hours,
-      incentive: r.incentive_cents === null ? t.incentive : (t.incentive ?? 0) + r.incentive_cents,
-      pto: t.pto + r.pto_hours,
-      ptoPay: r.pto_pay_cents === null ? t.ptoPay : (t.ptoPay ?? 0) + r.pto_pay_cents,
-      training: t.training + r.training_hours,
-      trainingPay:
-        r.training_pay_cents === null ? t.trainingPay : (t.trainingPay ?? 0) + r.training_pay_cents,
-      holiday: t.holiday + r.holiday_hours,
-      holidayPay:
-        r.holiday_pay_cents === null ? t.holidayPay : (t.holidayPay ?? 0) + r.holiday_pay_cents,
-      bereavement: t.bereavement + r.bereavement_hours,
-      bereavementPay:
-        r.bereavement_pay_cents === null
-          ? t.bereavementPay
-          : (t.bereavementPay ?? 0) + r.bereavement_pay_cents,
-    }),
-    {
-      reg: 0,
-      ot: 0,
-      incentive: null as number | null,
-      pto: 0,
-      ptoPay: null as number | null,
-      training: 0,
-      trainingPay: null as number | null,
-      holiday: 0,
-      holidayPay: null as number | null,
-      bereavement: 0,
-      bereavementPay: null as number | null,
-    },
-  );
 
   return (
     <div>
@@ -205,22 +162,12 @@ export function SummaryView({
               </TableRow>
             ))}
           </TableBody>
-          <TableFooter className="bg-transparent">
-            <TableRow className="border-t-2 border-border font-semibold hover:bg-transparent">
-              <TableCell className="px-3 py-2">Totals</TableCell>
-              <TableCell className={numCell}>{fmtHours(totals.reg)}</TableCell>
-              <TableCell className={numCell}>{fmtHours(totals.ot)}</TableCell>
-              <TableCell className={numCell}>
-                {totals.incentive === null ? <NA title="No incentives" /> : fmtUsd(totals.incentive)}
-              </TableCell>
-              <LeaveTotalCell hours={totals.pto} payCents={totals.ptoPay} />
-              <LeaveTotalCell hours={totals.training} payCents={totals.trainingPay} />
-              <LeaveTotalCell hours={totals.holiday} payCents={totals.holidayPay} />
-              <LeaveTotalCell hours={totals.bereavement} payCents={totals.bereavementPay} />
-            </TableRow>
-          </TableFooter>
         </Table>
       </div>
+
+      {/* Round-9 #46: the run-level totals card — server-computed numbers only,
+          printed with the sheet (after the table, inside the printable region). */}
+      <PayrollTotalsCard totals={totals} status={status} />
     </div>
   );
 }

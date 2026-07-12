@@ -1,8 +1,9 @@
 /**
  * summary.ts tests — per-run summary rows (requirement #6: Reg/OT/Incentive/PTO/Trn/
- * Hol/Ber with "n/a" (null) where inapplicable) and the dashboard aggregates
- * (requirement #7: last-12-COMPLETED-runs window, voided + open runs excluded,
- * null-safe average hourly pay per decision #9).
+ * Hol/Ber with "n/a" (null) where inapplicable), the round-9 #46 run-level TOTALS
+ * block (n/a-safe category sums + the zero-denominator-null cost per clock hour),
+ * and the dashboard aggregates (requirement #7: last-12-COMPLETED-runs window,
+ * voided + open runs excluded, null-safe average hourly pay per decision #9).
  *
  * Rows are built from REAL computeSheet output (no hand-rolled SheetComputations) so
  * the row mapping is proven against the engine's actual shape.
@@ -15,6 +16,7 @@ import {
   avgHourlyPayCents,
   avgHourlyWithoutBonusCents,
   buildRunSummary,
+  buildRunTotals,
   employeeHourlyAverages,
   lastCompletedRuns,
   WITH_BONUS_FAMILIES,
@@ -86,7 +88,7 @@ const SHEETS: EmployeeSheet[] = [
 ];
 
 describe("buildRunSummary", () => {
-  const rows = buildRunSummary(SHEETS);
+  const { rows, totals } = buildRunSummary(SHEETS);
   const byName = new Map(rows.map((r) => [r.display_name, r]));
 
   it("emits one row per employee, sorted by display name", () => {
@@ -129,6 +131,90 @@ describe("buildRunSummary", () => {
     expect(r.spiff_cents).toBe(19_500); // 39 × $5
     expect(r.bonus_cents).toBe(309_257); // tier3: 2% × $154,628.54 → round half away from zero
     expect(r.incentive_cents).toBe(19_500 + 309_257);
+  });
+
+  it("the round-9 #46 totals block rides along and matches the rows' sums", () => {
+    expect(totals).toEqual(buildRunTotals(rows));
+    expect(totals.total_pay_cents).toBe(rows.reduce((s, r) => s + r.total_pay_cents, 0));
+  });
+});
+
+// ── Round-9 #46: the run-level totals block ────────────────────────────────────
+
+describe("buildRunTotals (round-9 #46)", () => {
+  it("sums pay + hours across synthetic rows and derives cost per clock hour", () => {
+    const t = buildRunTotals([
+      row({
+        reg_hours: 40,
+        ot_hours: 2,
+        reg_pay_cents: 100_000,
+        ot_pay_cents: 7_500,
+        billed_hours: 45,
+        billed_pay_cents: 45_000,
+        incentive_cents: 45_000,
+        pto_hours: 8,
+        pto_pay_cents: 20_000,
+        total_pay_cents: 172_500,
+      }),
+      row({
+        reg_hours: 38,
+        ot_hours: 0,
+        reg_pay_cents: 60_800,
+        ot_pay_cents: 0,
+        holiday_hours: 8,
+        holiday_pay_cents: 12_800,
+        total_pay_cents: 73_600,
+      }),
+    ]);
+    expect(t.total_pay_cents).toBe(246_100);
+    expect(t.reg_pay_cents).toBe(160_800);
+    expect(t.ot_pay_cents).toBe(7_500);
+    expect(t.incentive_pay_cents).toBe(45_000); // null row counts 0, mixed column sums
+    expect(t.pto_pay_cents).toBe(20_000);
+    expect(t.holiday_pay_cents).toBe(12_800);
+    expect(t.reg_hours).toBe(78);
+    expect(t.ot_hours).toBe(2);
+    expect(t.pto_hours).toBe(8);
+    expect(t.holiday_hours).toBe(8);
+    expect(t.billed_hours).toBe(45); // null row counts 0 in a mixed column
+    // 246,100 ÷ 80 clock hours = 3,076.25 → round half away from zero.
+    expect(t.cost_per_clock_hour_cents).toBe(3_076);
+  });
+
+  it("an ALL-null category stays null (renders n/a, never $0.00); mixed columns count nulls as 0", () => {
+    const t = buildRunTotals([row({}), row({})]); // every nullable field null
+    expect(t.incentive_pay_cents).toBeNull();
+    expect(t.pto_pay_cents).toBeNull();
+    expect(t.holiday_pay_cents).toBeNull();
+    expect(t.bereavement_pay_cents).toBeNull();
+    expect(t.training_pay_cents).toBeNull();
+    expect(t.billed_hours).toBeNull();
+    // The never-null columns still sum.
+    expect(t.reg_pay_cents).toBe(200_000);
+    expect(t.total_pay_cents).toBe(200_000);
+  });
+
+  it("zero clock hours → cost per clock hour null, never Infinity/NaN (the pay still sums)", () => {
+    const t = buildRunTotals([row({ reg_hours: 0, ot_hours: 0, total_pay_cents: 50_000 })]);
+    expect(t.cost_per_clock_hour_cents).toBeNull();
+    expect(t.total_pay_cents).toBe(50_000);
+  });
+
+  it("empty run → zeros, null categories, null cost per clock hour", () => {
+    const t = buildRunTotals([]);
+    expect(t.total_pay_cents).toBe(0);
+    expect(t.reg_hours).toBe(0);
+    expect(t.incentive_pay_cents).toBeNull();
+    expect(t.billed_hours).toBeNull();
+    expect(t.cost_per_clock_hour_cents).toBeNull();
+  });
+
+  it("hours settle back to 2dp (float-noise accumulation)", () => {
+    const t = buildRunTotals([
+      row({ reg_hours: 0.1, ot_hours: 0 }),
+      row({ reg_hours: 0.2, ot_hours: 0 }),
+    ]);
+    expect(t.reg_hours).toBe(0.3); // NOT 0.30000000000000004
   });
 });
 

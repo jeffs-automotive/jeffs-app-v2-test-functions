@@ -1,9 +1,11 @@
 /**
- * Payroll summary layer — per-run summary rows (extraction requirement #6) and the
- * dashboard aggregates (requirement #7): the last-12-completed-runs card and the
- * null-safe average hourly pay (decision #9: clock-hours denominator, last-12 window),
- * plus the two per-employee variants (round-3 decision #25): WITHOUT-bonus for
- * everyone and WITH-bonus for the bonus families only (SA/office_manager/shop_foreman).
+ * Payroll summary layer — per-run summary rows (extraction requirement #6), the
+ * run-level TOTALS block (round-9 decision #46 — the summary page's totals card,
+ * server-computed and stored on the snapshot), and the dashboard aggregates
+ * (requirement #7): the last-12-completed-runs card and the null-safe average
+ * hourly pay (decision #9: clock-hours denominator, last-12 window), plus the two
+ * per-employee variants (round-3 decision #25): WITHOUT-bonus for everyone and
+ * WITH-bonus for the bonus families only (SA/office_manager/shop_foreman).
  * Contract: docs/qteklink/payroll-contract.md §summary.ts.
  *
  * PURE — rows in, rows/aggregates out. Voided runs are EXCLUDED from every aggregate
@@ -14,7 +16,7 @@
  * (or zero runs) has avg_hourly_pay_cents = null — never Infinity/NaN.
  */
 import { round2, roundCents } from "./calc";
-import type { Family, Role, RunStatus, SheetComputation, SummaryRow } from "./types";
+import type { Family, Role, RunStatus, RunTotals, SheetComputation, SummaryRow } from "./types";
 
 /** One employee's computed sheet plus identity — the DAL assembles these per run. */
 export interface EmployeeSheet {
@@ -27,16 +29,24 @@ export interface EmployeeSheet {
 
 const TECH_FAMILIES: readonly Family[] = ["technician", "shop_foreman"];
 
+/** buildRunSummary's result: the per-employee rows + the run-level totals block
+ *  (round-9 #46) — both ride the snapshot. */
+export interface RunSummary {
+  rows: SummaryRow[];
+  totals: RunTotals;
+}
+
 /**
- * Build the per-run summary rows (one per employee, sorted by display name).
- * Column applicability per family:
+ * Build the per-run summary: the rows (one per employee, sorted by display name)
+ * plus the run-level TOTALS block (round-9 #46 — see {@link buildRunTotals}).
+ * Row column applicability per family:
  *   - billed hours/pay: technician + shop_foreman only (null elsewhere);
  *   - incentive: null ("n/a") ONLY for a support row with no manual incentive entered —
  *     every other family always has a numeric incentive (0 when nothing was earned);
  *   - leave pay: null for the salaried family (hours still tracked).
  */
-export function buildRunSummary(sheets: EmployeeSheet[]): SummaryRow[] {
-  return sheets
+export function buildRunSummary(sheets: EmployeeSheet[]): RunSummary {
+  const rows = sheets
     .map((e): SummaryRow => {
       const s = e.sheet;
       const isTech = TECH_FAMILIES.includes(e.family);
@@ -71,6 +81,75 @@ export function buildRunSummary(sheets: EmployeeSheet[]): SummaryRow[] {
       };
     })
     .sort((a, b) => a.display_name.localeCompare(b.display_name));
+  return { rows, totals: buildRunTotals(rows) };
+}
+
+/** Null-safe category sum: null components count 0, but an ALL-null category
+ *  stays null → renders "n/a", never $0.00 (round-9 #46). */
+function addNullable(acc: number | null, v: number | null): number | null {
+  return v === null ? acc : (acc ?? 0) + v;
+}
+
+/**
+ * The run-level TOTALS block (round-9 decision #46 — replaces the summary
+ * table's TOTAL row): grand total pay; reg/OT/incentive pay; the four leave
+ * pays (n/a-safe); reg/OT/PTO/Holiday/Bereavement/Training/billed hours; and
+ * cost per clock hour = total pay ÷ (reg + OT) hours, null on a zero
+ * denominator (never Infinity/NaN). Pure display aggregation of the rows'
+ * numbers — no pay math. Hours settle back to 2dp (float noise).
+ */
+export function buildRunTotals(rows: SummaryRow[]): RunTotals {
+  let totalPay = 0;
+  let regPay = 0;
+  let otPay = 0;
+  let incentivePay: number | null = null;
+  let ptoPay: number | null = null;
+  let holidayPay: number | null = null;
+  let bereavementPay: number | null = null;
+  let trainingPay: number | null = null;
+  let regHours = 0;
+  let otHours = 0;
+  let ptoHours = 0;
+  let holidayHours = 0;
+  let bereavementHours = 0;
+  let trainingHours = 0;
+  let billedHours: number | null = null;
+  for (const r of rows) {
+    totalPay += r.total_pay_cents;
+    regPay += r.reg_pay_cents;
+    otPay += r.ot_pay_cents;
+    incentivePay = addNullable(incentivePay, r.incentive_cents);
+    ptoPay = addNullable(ptoPay, r.pto_pay_cents);
+    holidayPay = addNullable(holidayPay, r.holiday_pay_cents);
+    bereavementPay = addNullable(bereavementPay, r.bereavement_pay_cents);
+    trainingPay = addNullable(trainingPay, r.training_pay_cents);
+    regHours += r.reg_hours;
+    otHours += r.ot_hours;
+    ptoHours += r.pto_hours;
+    holidayHours += r.holiday_hours;
+    bereavementHours += r.bereavement_hours;
+    trainingHours += r.training_hours;
+    billedHours = addNullable(billedHours, r.billed_hours);
+  }
+  const clockHours = round2(regHours + otHours);
+  return {
+    total_pay_cents: totalPay,
+    reg_pay_cents: regPay,
+    ot_pay_cents: otPay,
+    incentive_pay_cents: incentivePay,
+    pto_pay_cents: ptoPay,
+    holiday_pay_cents: holidayPay,
+    bereavement_pay_cents: bereavementPay,
+    training_pay_cents: trainingPay,
+    reg_hours: round2(regHours),
+    ot_hours: round2(otHours),
+    pto_hours: round2(ptoHours),
+    holiday_hours: round2(holidayHours),
+    bereavement_hours: round2(bereavementHours),
+    training_hours: round2(trainingHours),
+    billed_hours: billedHours === null ? null : round2(billedHours),
+    cost_per_clock_hour_cents: clockHours > 0 ? roundCents(totalPay / clockHours) : null,
+  };
 }
 
 // ── Dashboard aggregates (last-12-completed-runs card) ─────────────────────────
