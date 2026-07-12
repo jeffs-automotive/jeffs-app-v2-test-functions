@@ -22,6 +22,22 @@ vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn(), captureMessage: vi
 vi.mock("@/lib/dal/notify", () => ({ sendQteklinkEmail: vi.fn() }));
 vi.mock("@/lib/payroll/mirror-ingest", () => ({ runMirrorIngest: vi.fn() }));
 vi.mock("@/lib/dal/payroll-compute", () => ({ buildOpenRunSnapshot: vi.fn() }));
+// Round-11 (plan §4): the completion PTO-entry assembly + the post-response email
+// fan-out live in payroll-completion.ts (their own tests cover the internals) —
+// mocked at the boundary so THIS suite targets completePayrollRun's RPC
+// orchestration: that the confirm call carries the assembled p_pto_entries, the
+// DRY-RUN call carries NONE, and the fan-out fires via after().
+vi.mock("@/lib/dal/payroll-completion", () => ({
+  assembleCompletionPtoEntries: vi.fn(),
+  runCompletionEmailFanout: vi.fn(),
+}));
+// Next 15 after(): run the post-response callback synchronously so the test can
+// assert the fan-out fired (the real runtime defers it past the response).
+vi.mock("next/server", () => ({
+  after: (cb: () => unknown | Promise<unknown>) => {
+    void Promise.resolve().then(cb);
+  },
+}));
 // The round-7 #40/#41 live-snapshot substrate — mocked wholesale: THIS file targets
 // the RPC orchestration in payroll.ts (the substrate has its own payroll-live.test.ts).
 vi.mock("@/lib/dal/payroll-live", () => ({
@@ -36,6 +52,10 @@ vi.mock("@/lib/payroll/derive", () => ({ discoverNewCategories: vi.fn(), monthDa
 import * as Sentry from "@sentry/nextjs";
 import { buildOpenRunSnapshot } from "@/lib/dal/payroll-compute";
 import { refreshLiveSnapshotAfterMutation } from "@/lib/dal/payroll-live";
+import {
+  assembleCompletionPtoEntries,
+  runCompletionEmailFanout,
+} from "@/lib/dal/payroll-completion";
 import { completePayrollRun, updatePayrollEntry, updatePayrollRun } from "../payroll";
 
 const ACTOR = { userId: "00000000-0000-4000-8000-0000000000aa", label: "chris@jeffsautomotive.com" };
@@ -472,6 +492,11 @@ describe("completePayrollRun never reads the live snapshot (round-7 #40)", () =>
   const RUN_ID = "00000000-0000-4000-8000-00000000f002";
   const LIVE_CACHE = { snapshot_version: 1, note: "STALE-DISPLAY-CACHE" };
   const FRESH = { snapshot_version: 1, note: "FRESH-COMPLETION-COMPUTE" };
+  // Round-11 §4: the engine's ledger payloads the DAL threads into the confirm RPC.
+  const PTO_ENTRIES = [
+    { employee_id: EMP_ID, kind: "accrual", hours: 3.08, boundary_year: null },
+    { employee_id: EMP_ID, kind: "usage", hours: -8, boundary_year: null },
+  ];
 
   beforeEach(() => {
     fromMock.mockImplementation((table: string) => {
@@ -524,6 +549,13 @@ describe("completePayrollRun never reads the live snapshot (round-7 #40)", () =>
       return Promise.resolve({ data: null, error: null });
     });
     vi.mocked(buildOpenRunSnapshot).mockResolvedValue(FRESH as never);
+    // The completion PTO-entry assembly is boundary-mocked; its internals have their
+    // own tests. Default: return the two payloads the confirm call must carry.
+    vi.mocked(assembleCompletionPtoEntries).mockResolvedValue({
+      entries: PTO_ENTRIES as never,
+      warnings: [],
+    });
+    vi.mocked(runCompletionEmailFanout).mockResolvedValue(undefined as never);
   });
 
   it("freezes the FRESH no-memo compute, never the stored live snapshot", async () => {
@@ -545,5 +577,84 @@ describe("completePayrollRun never reads the live snapshot (round-7 #40)", () =>
     expect(rpcMock).not.toHaveBeenCalledWith("qteklink_payroll_store_live_snapshot", expect.anything());
     expect(rpcMock).not.toHaveBeenCalledWith("qteklink_payroll_mark_open_runs_stale", expect.anything());
     expect(vi.mocked(refreshLiveSnapshotAfterMutation)).not.toHaveBeenCalled();
+  });
+
+  // ── Round-11 (plan §4): p_pto_entries threading + the DRY-RUN byte-identity. ──
+
+  it("passes the assembled p_pto_entries into the CONFIRM call (built from the fresh snapshot)", async () => {
+    await completePayrollRun(7476, RUN_ID, ACTOR);
+
+    // The assembly ran against the FRESH completion snapshot (single-source, §4).
+    expect(vi.mocked(assembleCompletionPtoEntries)).toHaveBeenCalledWith(7476, FRESH);
+
+    const confirm = rpcMock.mock.calls.find(
+      ([fn, args]) => fn === "qteklink_payroll_complete_run" && args?.p_dry_run === false,
+    );
+    // Exactly the engine's payloads ride into the ONE completion transaction.
+    expect(confirm?.[1]?.p_pto_entries).toEqual(PTO_ENTRIES);
+  });
+
+  it("the DRY-RUN call carries NO p_pto_entries — the Pattern-S hash/token flow stays byte-identical (C5/C12/C32)", async () => {
+    await completePayrollRun(7476, RUN_ID, ACTOR);
+
+    const dry = rpcMock.mock.calls.find(
+      ([fn, args]) => fn === "qteklink_payroll_complete_run" && args?.p_dry_run === true,
+    );
+    expect(dry).toBeDefined();
+    // No PTO key on the preview — PTO is advisory-display only + NOT in the state hash.
+    expect(dry?.[1]).not.toHaveProperty("p_pto_entries");
+  });
+
+  it("assembles the entries BEFORE issuing the single-use token (a build failure wastes no token)", async () => {
+    await completePayrollRun(7476, RUN_ID, ACTOR);
+    const assembleOrder = vi.mocked(assembleCompletionPtoEntries).mock.invocationCallOrder[0]!;
+    const tokenCall = rpcMock.mock.calls.findIndex(([fn]) => fn === "qteklink_payroll_issue_confirm_token");
+    // The token RPC is invoked; assembly's call order precedes the confirm/token RPCs.
+    expect(tokenCall).toBeGreaterThanOrEqual(0);
+    const tokenOrder = rpcMock.mock.invocationCallOrder[tokenCall]!;
+    expect(assembleOrder).toBeLessThan(tokenOrder);
+  });
+
+  it("returns { completed: true } as soon as the confirm RPC commits", async () => {
+    await expect(completePayrollRun(7476, RUN_ID, ACTOR)).resolves.toEqual({ completed: true });
+  });
+
+  it("fires the email fan-out POST-RESPONSE via after() with the fresh snapshot (never synchronously into the money path)", async () => {
+    await completePayrollRun(7476, RUN_ID, ACTOR);
+    // after() is mocked to microtask-defer; flush the queue.
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(vi.mocked(runCompletionEmailFanout)).toHaveBeenCalledWith(
+      7476,
+      FRESH,
+      expect.stringContaining("Payroll run completed"),
+      expect.arrayContaining([expect.stringContaining("Pay period: 2026-06-28 to 2026-07-11")]),
+    );
+    // The completed-run alert is no longer sent synchronously here — it rides the
+    // fan-out (sendPayrollAlert is invoked INSIDE runCompletionEmailFanout, which
+    // is mocked), so the synchronous path issues no alert settings read/send.
+    expect(rpcMock).not.toHaveBeenCalledWith("qteklink_payroll_log_email", expect.anything());
+  });
+
+  it("a FAILED confirm RPC never assembles a completion + never fires the fan-out", async () => {
+    rpcMock.mockImplementation((fn: string, args: Record<string, unknown>) => {
+      if (fn === "qteklink_payroll_complete_run") {
+        return Promise.resolve(
+          args.p_dry_run === true
+            ? { data: { state_hash: "hash-1" }, error: null }
+            : { data: null, error: { code: "P0001", message: "stale state hash" } },
+        );
+      }
+      if (fn === "qteklink_payroll_issue_confirm_token") {
+        return Promise.resolve({
+          data: [{ token_id: "00000000-0000-4000-8000-00000000c001", expires_at: "2026-07-11T00:05:00Z" }],
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: null, error: null });
+    });
+    await expect(completePayrollRun(7476, RUN_ID, ACTOR)).rejects.toThrow(/stale state hash/);
+    await Promise.resolve();
+    expect(vi.mocked(runCompletionEmailFanout)).not.toHaveBeenCalled();
   });
 });

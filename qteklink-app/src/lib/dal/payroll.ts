@@ -25,6 +25,7 @@
  * surfaces as QboClientError(kind: validation) so actions show the business message.
  */
 import * as Sentry from "@sentry/nextjs";
+import { after } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { QboClientError } from "@/lib/qbo/errors";
 import { isIsoDate } from "@/lib/format";
@@ -63,6 +64,7 @@ import {
 } from "@/lib/dal/payroll-shared";
 import { buildOpenRunSnapshot } from "@/lib/dal/payroll-compute";
 import { issueConfirmToken, sendPayrollAlert, stateHashFrom } from "@/lib/dal/payroll-confirm";
+import { assembleCompletionPtoEntries, runCompletionEmailFanout } from "@/lib/dal/payroll-completion";
 import {
   computePayrollRun,
   markPayrollOpenRunsStale,
@@ -94,11 +96,83 @@ export type { PayrollDryRunResult } from "@/lib/dal/payroll-dry-run";
 // Round-8 #43: the entry grid's ONE-Save atomic batch.
 export { updatePayrollEntriesBatch } from "@/lib/dal/payroll-entries-batch";
 export type { PayrollEntryBatchPatch } from "@/lib/dal/payroll-entries-batch";
+// Round-11 (plan §2a/§2b/§3): PTO ledger reads, projections, initial/adjustment +
+// employee-profile writes, and the completion entry builder + email fan-out.
+export {
+  getPtoBalance,
+  getPtoBalances,
+  getPtoLedger,
+  getPtoRolloverLedger,
+  projectRunPto,
+  ptoFieldsFromEmployee,
+  adjustPto,
+  seedInitialBalance,
+  updateEmployeeProfile,
+  archiveEmployee,
+  unarchiveEmployee,
+} from "@/lib/dal/payroll-pto";
+export type {
+  AdjustPtoResult,
+  EmployeeProfilePatch,
+  EmployeePtoProjection,
+  PtoLedgerEntry,
+  PtoLedgerKind,
+  PtoProjectionInput,
+} from "@/lib/dal/payroll-pto";
+export {
+  computeCompletionPtoEntries,
+  completionInputFrom,
+  detectMissingPersonalEmails,
+  renderAndSendPaySummaries,
+  resendFailedPaySummaries,
+  sendNegativeBalanceAlerts,
+} from "@/lib/dal/payroll-pto-completion";
+export type {
+  CompletionPtoEntries,
+  CompletionPtoInput,
+  MissingEmailEmployee,
+  NegativeAlertResult,
+  NegativeBalanceEmployee,
+  PaySummarySendResult,
+} from "@/lib/dal/payroll-pto-completion";
+// Round-11 (plan §4): the completion PTO-entry assembly + the post-response
+// email fan-out (the after() workload) — split from THIS file per the ~500-line
+// policy; completePayrollRun below calls into them.
+export { assembleCompletionPtoEntries, runCompletionEmailFanout } from "@/lib/dal/payroll-completion";
+export type { CompletionPtoPayload } from "@/lib/dal/payroll-completion";
 export type { PayrollActor, PayrollAlertEmails, PayrollEmployee, PayrollEntryPatch };
 export type { PayrollHourKey, PayrollRun, PayrollRunComputation, PayrollSettings };
 export type { UpsertPayrollEmployeeInput };
 
 // ── Settings write + new-category discovery ────────────────────────────────────
+
+/**
+ * PTO tenure-tier shape guard — mirrors the SQL validator (migration
+ * 20260712200000): entries sorted ascending by UNIQUE min_years, and a
+ * non-empty ladder MUST start at min_years 0. Empty = valid unconfigured.
+ * Validated DAL-side too so the user sees a clean message before the RPC.
+ */
+export function assertPtoTenureTiers(tiers: PayrollSettings["pto_tenure_tiers"]): void {
+  if (tiers.length === 0) return;
+  for (const tier of tiers) {
+    if (!Number.isInteger(tier.min_years) || tier.min_years < 0) {
+      throw new QboClientError("Each PTO tier's minimum years must be a whole number ≥ 0.", { kind: "validation" });
+    }
+    if (!(tier.hours_per_period >= 0)) {
+      throw new QboClientError("Each PTO tier's hours per period must be a number ≥ 0.", { kind: "validation" });
+    }
+  }
+  if (tiers[0]!.min_years !== 0) {
+    throw new QboClientError("The PTO tiers must start with a 0-years tier.", { kind: "validation" });
+  }
+  for (let i = 1; i < tiers.length; i += 1) {
+    if (tiers[i]!.min_years <= tiers[i - 1]!.min_years) {
+      throw new QboClientError("The PTO tiers must be sorted ascending by unique minimum years.", {
+        kind: "validation",
+      });
+    }
+  }
+}
 
 /**
  * Partial-update the payroll settings object: read-modify-write of the WHOLE
@@ -118,11 +192,33 @@ export async function updatePayrollSettings(
       patch.anchor_period_start !== undefined ? patch.anchor_period_start : current.anchor_period_start,
     spiff_categories: patch.spiff_categories !== undefined ? patch.spiff_categories : current.spiff_categories,
     alert_emails: patch.alert_emails !== undefined ? patch.alert_emails : current.alert_emails,
+    // Round-11 PTO keys: each carried through the whole-object rebuild so a patch
+    // touching only ONE field never wipes the others (the whole-replace-wipe guard,
+    // C1 family). Required-on-the-interface ⇒ tsc fails this literal if a key is
+    // dropped.
+    pto_tenure_tiers:
+      patch.pto_tenure_tiers !== undefined ? patch.pto_tenure_tiers : current.pto_tenure_tiers,
+    pto_rollover_cap_hours:
+      patch.pto_rollover_cap_hours !== undefined ? patch.pto_rollover_cap_hours : current.pto_rollover_cap_hours,
+    pto_adjustment_alert_emails:
+      patch.pto_adjustment_alert_emails !== undefined
+        ? patch.pto_adjustment_alert_emails
+        : current.pto_adjustment_alert_emails,
+    pto_negative_alert_admin_emails:
+      patch.pto_negative_alert_admin_emails !== undefined
+        ? patch.pto_negative_alert_admin_emails
+        : current.pto_negative_alert_admin_emails,
   };
   if (next.anchor_period_start !== null && !isIsoDate(next.anchor_period_start)) {
     throw new QboClientError("The payroll anchor date must be an ISO date (YYYY-MM-DD).", { kind: "validation" });
   }
   z.array(SpiffCategorySchema).parse(next.spiff_categories);
+  assertPtoTenureTiers(next.pto_tenure_tiers);
+  if (next.pto_rollover_cap_hours !== null && !(next.pto_rollover_cap_hours >= 0)) {
+    throw new QboClientError("The PTO rollover cap must be a number ≥ 0 (or empty for unlimited).", {
+      kind: "validation",
+    });
+  }
 
   const admin = createSupabaseAdminClient();
   const { error } = await admin.rpc("qteklink_upsert_settings", {
@@ -437,6 +533,15 @@ export async function updatePayrollRun(
  * Round-7 #40 INVARIANT: completion NEVER reads the live snapshot (the #41 display
  * cache) — the frozen snapshot is ALWAYS built fresh right here, with a live
  * QBO tech-cost fetch (no memo). Asserted by payroll.test.ts.
+ *
+ * Round-11 (plan §4): the pure engine's accrual/usage/rollover_forfeit ledger
+ * rows ride INTO the confirm RPC as p_pto_entries — a SEPARATE ledger RPC call
+ * would be a separate transaction and NOT atomic (C5/C12/C32). The DRY-RUN branch
+ * passes NO p_pto_entries so the hash/token Pattern-S flow stays byte-identical;
+ * only the confirm call carries them. The action returns `{ completed: true }`
+ * the instant confirm commits; the per-employee pay-summary + negative-balance
+ * email fan-out runs POST-RESPONSE via Next 15 after() — sequential, never-throw
+ * (C15/C26/C27), so a shared-Resend-key 429 can't stall the response.
  */
 export async function completePayrollRun(
   shopId: number,
@@ -459,6 +564,10 @@ export async function completePayrollRun(
     p_snapshot: null,
     p_actor_user_id: actor.userId,
     p_actor_label: actor.label,
+    // Dry-run branch deliberately carries NO p_pto_entries — the Pattern-S
+    // preview flow is byte-identical to the pre-round-11 hash/token dance
+    // (PTO is advisory-display only and is NOT part of the state hash, so an
+    // adjustment cannot invalidate an in-flight completion preview; N3/C16).
   });
   if (dryErr) throwRpc("qteklink_payroll_complete_run", dryErr);
   const stateHash = stateHashFrom(dryData, "qteklink_payroll_complete_run");
@@ -476,6 +585,14 @@ export async function completePayrollRun(
   }
   const snapshot = await buildOpenRunSnapshot(shopId, freshRun);
 
+  // Round-11 §4: the engine's ledger payloads (accrual/usage/rollover_forfeit),
+  // computed from the FROZEN snapshot's per-employee paid PTO hours + the master
+  // profile columns + each employee's rollover ledger. Zero PTO configuration ⇒
+  // an empty array ⇒ the confirm RPC writes no ledger rows and completion is
+  // byte-identical to today (C14). Built BEFORE the token so a build failure
+  // aborts cleanly without consuming a single-use token.
+  const { entries: ptoEntries } = await assembleCompletionPtoEntries(shopId, snapshot);
+
   const tokenId = await issueConfirmToken(runId, "complete_run", stateHash, actor);
 
   const { data, error } = await admin.rpc("qteklink_payroll_complete_run", {
@@ -486,25 +603,36 @@ export async function completePayrollRun(
     p_snapshot: snapshot,
     p_actor_user_id: actor.userId,
     p_actor_label: actor.label,
+    // The confirm call carries the ledger payloads: the RPC inserts them + the
+    // pay-summary email-log pre-inserts inside the ONE completion transaction,
+    // BEFORE the status flip, under the shop ledger advisory lock (C5/C12/C32).
+    p_pto_entries: ptoEntries,
   });
   if (error) throwRpc("qteklink_payroll_complete_run", error);
   if ((data as { completed?: unknown } | null)?.completed !== true) {
     throw new Error("qteklink_payroll_complete_run did not confirm completion");
   }
 
-  await sendPayrollAlert(
-    shopId,
-    "completed",
-    `Payroll run completed — ${run.period_start} to ${run.period_end}`,
-    [
-      `Pay period: ${run.period_start} to ${run.period_end}`,
-      freshRun.bonus_period ? `Bonus period: yes (month ${freshRun.bonus_month ?? "?"})` : "Bonus period: no",
-      `Completed by: ${actor.label}`,
-      `Completed at: ${new Date().toISOString()}`,
-      "",
-      "The run is now locked read-only in QTekLink (Payroll tab).",
-    ],
-  );
+  // The confirm committed — return to the caller immediately. The whole email
+  // workload (the completed-run alert + per-employee pay summaries + negative-
+  // balance alerts) runs POST-RESPONSE via Next 15 after(): sequential (shared
+  // Resend key) and never-throw (a bounce must not undo the completion).
+  const alertLines = [
+    `Pay period: ${run.period_start} to ${run.period_end}`,
+    freshRun.bonus_period ? `Bonus period: yes (month ${freshRun.bonus_month ?? "?"})` : "Bonus period: no",
+    `Completed by: ${actor.label}`,
+    `Completed at: ${new Date().toISOString()}`,
+    "",
+    "The run is now locked read-only in QTekLink (Payroll tab).",
+  ];
+  after(async () => {
+    await runCompletionEmailFanout(
+      shopId,
+      snapshot,
+      `Payroll run completed — ${run.period_start} to ${run.period_end}`,
+      alertLines,
+    );
+  });
   return { completed: true };
 }
 

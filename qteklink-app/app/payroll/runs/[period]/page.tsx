@@ -44,6 +44,12 @@ import { VoidCloneButton } from "./VoidCloneButton";
 import { fmtAsOf, fmtDateLong, monthLabel, periodLabel, RunStatusBadge } from "../../payroll-ui";
 
 export const dynamic = "force-dynamic"; // open runs recompute on every view
+// Round-11 (plan §4): the completeRunAction runs on this segment; its post-response
+// pay-summary + negative-balance email fan-out (Next 15 after()) executes AFTER the
+// response and needs headroom on the shared Resend key (sequential sends). 120s
+// mirrors the mirror-apply route (app/api/payroll/mirror-apply/route.ts) — the
+// in-repo precedent for this payroll workload.
+export const maxDuration = 120;
 
 export default async function RunDetailPage({
   params,

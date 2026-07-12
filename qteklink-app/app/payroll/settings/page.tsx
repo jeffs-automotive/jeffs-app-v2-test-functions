@@ -74,6 +74,14 @@ export default async function PayrollSettingsPage() {
                 <dt className="inline font-medium">Payroll completed alerts go to:</dt>{" "}
                 <dd className="inline">{payroll.alert_emails.completed.join(", ") || "not set"}</dd>
               </div>
+              <div>
+                <dt className="inline font-medium">PTO adjustment alerts go to:</dt>{" "}
+                <dd className="inline">{payroll.pto_adjustment_alert_emails.join(", ") || "not set"}</dd>
+              </div>
+              <div>
+                <dt className="inline font-medium">PTO negative-balance alerts go to:</dt>{" "}
+                <dd className="inline">{payroll.pto_negative_alert_admin_emails.join(", ") || "not set"}</dd>
+              </div>
             </dl>
           </CardContent>
         </Card>

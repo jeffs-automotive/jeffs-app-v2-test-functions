@@ -366,10 +366,26 @@ const emailListField = (which: string) =>
     )
     .optional();
 
+/** One PTO tenure-tier entry (plan §2d). The ladder-level invariants (sorted,
+ *  unique min_years, must-include-0-when-non-empty) are enforced by the DAL's
+ *  assertPtoTenureTiers + the SQL validator — this just shapes each element. */
+const PtoTenureTierField = z
+  .object({
+    min_years: z.number().int().min(0),
+    hours_per_period: z.number().min(0),
+  })
+  .strict();
+
 const SettingsFieldsSchema = z.object({
   anchorPeriodStart: isoDateField("Anchor period start").optional(),
   voidCloneAlertEmails: emailListField("Void alert"),
   completedAlertEmails: emailListField("Completed alert"),
+  // Round-11 PTO alert lists — INDEPENDENT top-level payroll keys (plan §10.1,
+  // C25). Unlike the legacy void_clone/completed pair, these do NOT travel
+  // together: a tiers/rollover save carries no email field; an email-list save
+  // carries no tiers. Each is its own optional whole-replace patch below.
+  ptoAdjustmentAlertEmails: emailListField("PTO adjustment alert"),
+  ptoNegativeAlertAdminEmails: emailListField("PTO negative-balance alert"),
 });
 
 type UpdateSettingsState = QboActionResult<{ payroll: PayrollSettings }>;
@@ -388,6 +404,14 @@ async function updatePayrollSettingsImpl(
         formData.get("void_clone_alert_emails") == null ? undefined : String(formData.get("void_clone_alert_emails")),
       completedAlertEmails:
         formData.get("completed_alert_emails") == null ? undefined : String(formData.get("completed_alert_emails")),
+      ptoAdjustmentAlertEmails:
+        formData.get("pto_adjustment_alert_emails") == null
+          ? undefined
+          : String(formData.get("pto_adjustment_alert_emails")),
+      ptoNegativeAlertAdminEmails:
+        formData.get("pto_negative_alert_admin_emails") == null
+          ? undefined
+          : String(formData.get("pto_negative_alert_admin_emails")),
     });
     if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? "Invalid payroll settings.");
 
@@ -405,10 +429,44 @@ async function updatePayrollSettingsImpl(
       spiffCategories = cats.data;
     }
 
+    // Round-11 PTO tiers — a JSON array like spiff_categories (the tiers editor
+    // submits it). Absent field = leave unchanged; the DAL re-validates the
+    // sorted/unique/0-tier ladder (assertPtoTenureTiers) before the RPC.
+    let ptoTenureTiers: z.infer<typeof PtoTenureTierField>[] | undefined;
+    const tiersRaw = formData.get("pto_tenure_tiers");
+    if (tiersRaw !== null && String(tiersRaw).trim().length > 0) {
+      let json: unknown;
+      try {
+        json = JSON.parse(String(tiersRaw));
+      } catch {
+        return invalid("pto_tenure_tiers is not valid JSON.");
+      }
+      const tiers = z.array(PtoTenureTierField).safeParse(json);
+      if (!tiers.success) return invalid(tiers.error.issues[0]?.message ?? "Invalid PTO tiers.");
+      ptoTenureTiers = tiers.data;
+    }
+
+    // Round-11 rollover cap — empty string clears it to null (unlimited); any
+    // other value must be a number ≥ 0. Absent field = leave unchanged.
+    let ptoRolloverCapHours: number | null | undefined;
+    const capRaw = formData.get("pto_rollover_cap_hours");
+    if (capRaw !== null) {
+      const capStr = String(capRaw).trim();
+      if (capStr.length === 0) {
+        ptoRolloverCapHours = null;
+      } else {
+        const cap = z.coerce.number().min(0).safeParse(capStr);
+        if (!cap.success) return invalid("The PTO rollover cap must be a number ≥ 0 (or empty for unlimited).");
+        ptoRolloverCapHours = cap.data;
+      }
+    }
+
     const toList = (v: string | undefined) =>
       v === undefined ? undefined : v.split(",").map((e) => e.trim()).filter(Boolean);
     const voidList = toList(parsed.data.voidCloneAlertEmails);
     const completedList = toList(parsed.data.completedAlertEmails);
+    const ptoAdjustmentList = toList(parsed.data.ptoAdjustmentAlertEmails);
+    const ptoNegativeList = toList(parsed.data.ptoNegativeAlertAdminEmails);
 
     const patch: Partial<PayrollSettings> = {};
     if (parsed.data.anchorPeriodStart !== undefined) patch.anchor_period_start = parsed.data.anchorPeriodStart;
@@ -421,6 +479,13 @@ async function updatePayrollSettingsImpl(
       }
       patch.alert_emails = { void_clone: voidList, completed: completedList };
     }
+    // The two PTO alert lists are INDEPENDENT top-level keys (C25) — each its own
+    // whole-replace patch; they do NOT travel together with each other or with the
+    // legacy pair.
+    if (ptoTenureTiers !== undefined) patch.pto_tenure_tiers = ptoTenureTiers;
+    if (ptoRolloverCapHours !== undefined) patch.pto_rollover_cap_hours = ptoRolloverCapHours;
+    if (ptoAdjustmentList !== undefined) patch.pto_adjustment_alert_emails = ptoAdjustmentList;
+    if (ptoNegativeList !== undefined) patch.pto_negative_alert_admin_emails = ptoNegativeList;
     if (Object.keys(patch).length === 0) return invalid("Nothing to update.");
 
     const payroll = await updatePayrollSettings(shopId, patch);

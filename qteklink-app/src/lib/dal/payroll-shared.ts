@@ -25,6 +25,7 @@ import {
   type SheetEntries,
   type SpiffCategory,
 } from "@/lib/payroll/types";
+import type { PtoTenureTier } from "@/lib/payroll/pto";
 
 // ── Public shapes (re-exported by payroll.ts) ──────────────────────────────────
 
@@ -46,6 +47,22 @@ export interface PayrollEmployee {
   archivedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  // ── Round-11 profile columns (plan §2a) — READ-ONLY here. All writes go
+  //    through qteklink_payroll_update_employee_profile (a later track); the
+  //    legacy upsert/write-through/flipArchived paths stay byte-untouched.
+  workEmail: string | null;
+  personalEmail: string | null;
+  personalPhone: string | null;
+  workPhone: string | null;
+  address: string | null;
+  /** Tenure anchor for PTO eligibility + tier lookup (ISO date). */
+  startDate: string | null;
+  /** Set via the archive modal; cleared on unarchive (ISO date). */
+  terminationDate: string | null;
+  /** Waives the 6-full-period wait (decision #55). */
+  ptoGrandfathered: boolean;
+  /** Overrides start_date for TIER lookup only (ISO date). */
+  ptoTenureCreditDate: string | null;
 }
 
 export interface PayrollRun {
@@ -99,13 +116,38 @@ export interface PayrollSettings {
   anchor_period_start: string | null;
   spiff_categories: SpiffCategory[];
   alert_emails: PayrollAlertEmails;
+  /**
+   * Round-11 PTO settings (plan §2d — TOP-LEVEL keys, NOT nested in alert_emails).
+   * ALL FOUR are REQUIRED (non-optional) so tsc structurally forces every
+   * whole-object settings rebuild site to carry them — an optional key would
+   * compile and let the whole-replace write silently WIPE the PTO configuration
+   * (the C1/C10/C17/C28/C31 collision six reviewers independently flagged).
+   */
+  /** Tenure-tiered accrual rates (sorted, unique min_years, must include 0 when
+   *  non-empty). Empty = unconfigured (accrual 0, no rows — C14). */
+  pto_tenure_tiers: PtoTenureTier[];
+  /** Calendar-year carryover cap; null = unlimited (no forfeits). */
+  pto_rollover_cap_hours: number | null;
+  /** Recipients for the PTO adjustment/initial-balance alert. */
+  pto_adjustment_alert_emails: string[];
+  /** Recipients for the negative-balance admin alert. */
+  pto_negative_alert_admin_emails: string[];
 }
 
 export const DEFAULT_PAYROLL_SETTINGS: PayrollSettings = {
   anchor_period_start: null,
   spiff_categories: [],
   alert_emails: { void_clone: [], completed: [] },
+  pto_tenure_tiers: [],
+  pto_rollover_cap_hours: null,
+  pto_adjustment_alert_emails: [],
+  pto_negative_alert_admin_emails: [],
 };
+
+const PtoTenureTierSchema = z.object({
+  min_years: z.number().int().min(0),
+  hours_per_period: z.number().min(0),
+});
 
 const PayrollSettingsDbSchema = z.object({
   anchor_period_start: z.string().nullish(),
@@ -116,6 +158,13 @@ const PayrollSettingsDbSchema = z.object({
       completed: z.array(z.string()).nullish(),
     })
     .nullish(),
+  // The PTO keys are absent from every settings row written before this migration
+  // — .nullish() so an unconfigured (or NO-PTO-keys, production-shaped) object
+  // normalizes cleanly to the defaults rather than throwing.
+  pto_tenure_tiers: z.array(PtoTenureTierSchema).nullish(),
+  pto_rollover_cap_hours: z.number().nullish(),
+  pto_adjustment_alert_emails: z.array(z.string()).nullish(),
+  pto_negative_alert_admin_emails: z.array(z.string()).nullish(),
 });
 
 function normalizePayrollSettings(raw: unknown): PayrollSettings {
@@ -128,6 +177,10 @@ function normalizePayrollSettings(raw: unknown): PayrollSettings {
       void_clone: parsed.alert_emails?.void_clone ?? [],
       completed: parsed.alert_emails?.completed ?? [],
     },
+    pto_tenure_tiers: parsed.pto_tenure_tiers ?? [],
+    pto_rollover_cap_hours: parsed.pto_rollover_cap_hours ?? null,
+    pto_adjustment_alert_emails: parsed.pto_adjustment_alert_emails ?? [],
+    pto_negative_alert_admin_emails: parsed.pto_negative_alert_admin_emails ?? [],
   };
 }
 
@@ -312,10 +365,20 @@ export interface EmployeeDbRow {
   archived_at: string | null;
   created_at: string;
   updated_at: string;
+  // Round-11 profile columns (plan §2a) — read surface only.
+  work_email: string | null;
+  personal_email: string | null;
+  personal_phone: string | null;
+  work_phone: string | null;
+  address: string | null;
+  start_date: string | null;
+  termination_date: string | null;
+  pto_grandfathered: boolean;
+  pto_tenure_credit_date: string | null;
 }
 
 export const EMPLOYEE_COLS =
-  "id, shop_id, display_name, role, tekmetric_employee_id, tekmetric_id_type, pay_config, archived_at, created_at, updated_at";
+  "id, shop_id, display_name, role, tekmetric_employee_id, tekmetric_id_type, pay_config, archived_at, created_at, updated_at, work_email, personal_email, personal_phone, work_phone, address, start_date, termination_date, pto_grandfathered, pto_tenure_credit_date";
 
 export function employeeFromRow(r: EmployeeDbRow): PayrollEmployee {
   return {
@@ -329,6 +392,15 @@ export function employeeFromRow(r: EmployeeDbRow): PayrollEmployee {
     archivedAt: r.archived_at,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+    workEmail: r.work_email,
+    personalEmail: r.personal_email,
+    personalPhone: r.personal_phone,
+    workPhone: r.work_phone,
+    address: r.address,
+    startDate: r.start_date,
+    terminationDate: r.termination_date,
+    ptoGrandfathered: r.pto_grandfathered,
+    ptoTenureCreditDate: r.pto_tenure_credit_date,
   };
 }
 

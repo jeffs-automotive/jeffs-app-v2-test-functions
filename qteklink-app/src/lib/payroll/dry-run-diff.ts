@@ -50,11 +50,38 @@ export interface PayrollDryRunDiff {
   changed: boolean;
 }
 
+/**
+ * One employee's projected PTO for the previewed run (round-11 plan §4 dry-run
+ * contract). Structural mirror of the DAL's EmployeePtoProjection — kept inline
+ * here so this pure lib module carries no DAL import (the DAL builds the objects).
+ */
+export interface DryRunPtoProjection {
+  employeeId: string;
+  displayName: string;
+  currentBalanceHours: number;
+  accrualHours: number;
+  /** Positive magnitude of the paid-PTO decrement (0 = none). */
+  usageHours: number;
+  /** current + accrual − usage (plan §3). */
+  projectedBalanceHours: number;
+}
+
 /** What the dry-run DAL returns to the action/UI. */
 export interface PayrollDryRunResult {
   diff: PayrollDryRunDiff;
   /** ROs the live Tekmetric re-fetch touched (period + updated-since + bonus passes). */
   rosChecked: number;
+  /**
+   * Round-11 (plan §4/§10.4): per-employee PTO projections for the previewed run
+   * — a NEW OPTIONAL SIBLING of `diff`, computed DAL-side from the ledger + the
+   * pto.ts engine + entered PTO hours. The modal renders this section OUTSIDE the
+   * `changed` conditional (both branches — a deficit warning can co-render with
+   * "no Tekmetric differences"). PTO is DELIBERATELY NOT part of `diff`, its
+   * `changed` flag, or any existing diff key (C16/C21); it also never enters
+   * RunSnapshot ⇒ no CALC_VERSION bump (N3). Absent (undefined) when PTO is
+   * unconfigured / nothing to show — the modal simply omits the section.
+   */
+  pto?: DryRunPtoProjection[];
 }
 
 // ── The structural snapshot view the builder needs (RunSnapshot satisfies it) ──

@@ -19,6 +19,11 @@ export interface SendEmailInput {
   to: string[];
   subject: string;
   text: string;
+  /** Optional pre-rendered HTML (payroll pay summaries, plan §5.7 — ADDITIVE).
+   *  `text` stays required exactly as before; the four legacy alert paths send
+   *  {to, subject, text} and that contract is unchanged. Omitted/undefined ⇒ the
+   *  edge fn sends plain text only. */
+  html?: string;
 }
 
 /** POST to the qteklink-email edge fn. Returns true on a 2xx. Never throws. */
@@ -43,7 +48,15 @@ export async function sendQteklinkEmail(input: SendEmailInput): Promise<boolean>
         Authorization: `Bearer ${key}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ to, subject: input.subject, text: input.text }),
+      // `html` is ADDITIVE-only (plan §5.7): forwarded ONLY when the caller
+      // supplies a non-empty string — the legacy {to, subject, text} body is
+      // byte-identical otherwise (the edge fn's legacy contract test asserts this).
+      body: JSON.stringify({
+        to,
+        subject: input.subject,
+        text: input.text,
+        ...(typeof input.html === "string" && input.html.length > 0 ? { html: input.html } : {}),
+      }),
     });
     if (!res.ok) {
       const body = await res.text();

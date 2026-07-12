@@ -29,13 +29,25 @@
 import { QboClientError } from "@/lib/qbo/errors";
 import { monthDateRange } from "@/lib/payroll/derive";
 import { runMirrorIngest } from "@/lib/payroll/mirror-ingest";
-import { buildDryRunDiff, type PayrollDryRunResult } from "@/lib/payroll/dry-run-diff";
-import { fetchRunGuarded } from "@/lib/dal/payroll-shared";
+import {
+  buildDryRunDiff,
+  type DryRunPtoProjection,
+  type PayrollDryRunResult,
+} from "@/lib/payroll/dry-run-diff";
+import type { RunSnapshot } from "@/lib/payroll/types";
+import { fetchEmployeesByIds, getPayrollSettings, fetchRunGuarded } from "@/lib/dal/payroll-shared";
 import {
   getOrComputeLiveSnapshot,
   markPayrollOpenRunsStale,
   recomputeAndStoreLiveSnapshot,
 } from "@/lib/dal/payroll-live";
+import {
+  getPtoBalances,
+  getPtoRolloverLedger,
+  projectRunPto,
+  ptoFieldsFromEmployee,
+  type PtoProjectionInput,
+} from "@/lib/dal/payroll-pto";
 
 export type { PayrollDryRunResult };
 
@@ -88,8 +100,63 @@ export async function dryRunPayrollRefresh(
   }
 
   // (d) The structured diff (before/after both parsed RunSnapshots).
+  // (e) Round-11 (plan §4): the PTO projection — a NEW OPTIONAL SIBLING of the
+  //     diff. buildDryRunDiff + PayrollDryRunDiff + `changed` + every existing
+  //     diff key stay BYTE-IDENTICAL (C16/C21); PTO rides alongside, never
+  //     inside, the diff, and nothing PTO enters the snapshot (N3).
   return {
     diff: buildDryRunDiff(before, after),
     rosChecked: period.rosUpserted + bonusRosUpserted,
+    pto: await projectPtoForDryRun(shopId, after),
   };
+}
+
+/**
+ * Compute the per-employee PTO projections for the previewed run (plan §4 dry-run
+ * contract). Reads the AFTER snapshot's per-employee paid PTO hours (sheet.pto_hours),
+ * each employee's current ledger balance + rollover ledger, and the profile columns,
+ * then threads them through the pure pto.ts engine (projectRunPto). Returns
+ * `undefined` for an empty roster (the modal omits the section); otherwise the
+ * per-employee projections (an empty-ish/zero projection still renders so a
+ * deficit can surface next to "no Tekmetric differences"). Never mutates the
+ * snapshot and never enters the diff.
+ */
+async function projectPtoForDryRun(
+  shopId: number,
+  after: RunSnapshot,
+): Promise<DryRunPtoProjection[] | undefined> {
+  const employeeIds = after.employees.map((e) => e.employee_id);
+  if (employeeIds.length === 0) return undefined;
+
+  const [{ payroll: settings }, masters, balances, rolloverByEmployee] = await Promise.all([
+    getPayrollSettings(shopId),
+    fetchEmployeesByIds(shopId, employeeIds),
+    getPtoBalances(shopId, employeeIds),
+    getPtoRolloverLedger(shopId, employeeIds),
+  ]);
+
+  const inputs: PtoProjectionInput[] = [];
+  for (const snapEmp of after.employees) {
+    const master = masters.get(snapEmp.employee_id);
+    if (master === undefined) continue; // defensive — the snapshot is built from masters
+    inputs.push({
+      employee: ptoFieldsFromEmployee(master),
+      displayName: snapEmp.display_name,
+      snapshotPtoHours: snapEmp.sheet.pto_hours,
+      currentBalanceHours: balances.get(snapEmp.employee_id) ?? 0,
+      rolloverLedger: rolloverByEmployee.get(snapEmp.employee_id) ?? [],
+    });
+  }
+  if (inputs.length === 0) return undefined;
+
+  const { projections } = projectRunPto(
+    inputs,
+    {
+      anchor_period_start: settings.anchor_period_start,
+      pto_tenure_tiers: settings.pto_tenure_tiers,
+      pto_rollover_cap_hours: settings.pto_rollover_cap_hours,
+    },
+    { period_start: after.run.period_start, period_end: after.run.period_end },
+  );
+  return projections;
 }
