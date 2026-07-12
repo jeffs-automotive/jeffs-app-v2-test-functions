@@ -396,6 +396,36 @@ Common to all: OT paid at 1.5× hourly; PTO/Holiday/Bereavement/Training hours �
     window, so #50 → #51 changes nothing today; the behavioral difference appears mid-week when work
     finishes before posting — it no longer shows until posted). CALC_VERSION 8 → 9.
 
+### Round-11 decisions (Chris, 2026-07-12 — PTO + employee management; plan doc:
+### payroll-pto-employee-mgmt-plan-2026-07-12.md)
+
+52. **Employee management enhancement:** add work email + personal email (pay summaries + employee
+    alerts → PERSONAL email; work email stored for later use), address, personal phone, work phone,
+    start date. Termination date is captured by a modal on the ARCHIVE action (not a bare field).
+53. **Individual pay-summary emails on completion** (clean HTML v1, one message per employee, personal
+    email). Missing email → completion modal: go back and add it, or skip (skips recorded). **STRICT
+    wrong-recipient protection** (Chris: "super important") — layered design in plan §5: isolated
+    per-employee render, single-source id binding, send-time invariant check, UNIQUE
+    (run, employee, kind) email log, name-led subject/body, regression tests.
+54. **PTO accrual is tenure-tiered**, tiers + rates configured in settings; accrual added and usage
+    subtracted at each payroll COMPLETION (append-only ledger). Sick days are folded into the tier
+    rates numerically — the app tracks PTO only.
+55. **Waiting period = 6 FULL payroll periods** (a partial hire period does NOT count; first accrual on
+    the 7th full period). Per-employee **grandfather option** (waive the wait; optional tenure-credit
+    date so acquired-company hires keep seniority for tier lookup).
+56. **Tier crossing:** the new rate applies on the first pay period after the anniversary
+    (years-of-service measured at period_start).
+57. **Rollover:** calendar-year (Jan–Dec) cap set in settings; applied on the first run whose period
+    END lands in the new year (pay-date convention, same as bonus month).
+58. **Balances on the employees page + Adjust modal** (signed hours, REQUIRED reason → ledger; alert
+    email to a settings list). The ledger doubles as an easy per-employee activity page.
+59. **Negative balances allowed.** Projected-negative warning surfaces in the DRY RUN (and re-stated at
+    completion); on completion the employee (personal email) + a settings-configured admin list are
+    alerted with the deficit.
+60. **Deferred/asides:** anyone with qteklink access can do anything (security roles later); PII stored
+    plaintext v1 (revisit with roles); balances seeded via initial-balance adjustments as of the LAST
+    pay period; accrual begins with app usage — NO retroactive accrual.
+
 ### Remaining open items
 
 - **Alert emails** (void/clone + completed notifications): the ONE settings item Chris hasn't entered
