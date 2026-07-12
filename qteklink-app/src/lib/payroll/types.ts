@@ -417,6 +417,10 @@ export const RunTotalsSchema = z.strictObject({
   billed_hours: hoursNum.nullable(),
   /** total_pay ÷ total clock hours (reg + OT); null on a zero denominator. */
   cost_per_clock_hour_cents: z.number().int().nullable(),
+  /** Round-9 addendum: total_pay ÷ total billed hours (ALL pay, same numerator as
+   *  cost per clock hour); null on zero/absent billed hours. `.default(null)` so
+   *  snapshots stored before this key still parse (renders "n/a" until recompute). */
+  cost_per_billed_hour_cents: z.number().int().nullable().default(null),
 });
 export type RunTotals = z.infer<typeof RunTotalsSchema>;
 

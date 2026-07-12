@@ -179,6 +179,8 @@ describe("buildRunTotals (round-9 #46)", () => {
     expect(t.billed_hours).toBe(45); // null row counts 0 in a mixed column
     // 246,100 ÷ 80 clock hours = 3,076.25 → round half away from zero.
     expect(t.cost_per_clock_hour_cents).toBe(3_076);
+    // Round-9 addendum: ALL pay ÷ total billed hours — 246,100 ÷ 45 = 5,468.89 → 5,469.
+    expect(t.cost_per_billed_hour_cents).toBe(5_469);
   });
 
   it("an ALL-null category stays null (renders n/a, never $0.00); mixed columns count nulls as 0", () => {
@@ -189,6 +191,8 @@ describe("buildRunTotals (round-9 #46)", () => {
     expect(t.bereavement_pay_cents).toBeNull();
     expect(t.training_pay_cents).toBeNull();
     expect(t.billed_hours).toBeNull();
+    // No billed hours anywhere → cost per billed hour n/a, never Infinity.
+    expect(t.cost_per_billed_hour_cents).toBeNull();
     // The never-null columns still sum.
     expect(t.reg_pay_cents).toBe(200_000);
     expect(t.total_pay_cents).toBe(200_000);
@@ -207,6 +211,7 @@ describe("buildRunTotals (round-9 #46)", () => {
     expect(t.incentive_pay_cents).toBeNull();
     expect(t.billed_hours).toBeNull();
     expect(t.cost_per_clock_hour_cents).toBeNull();
+    expect(t.cost_per_billed_hour_cents).toBeNull();
   });
 
   it("hours settle back to 2dp (float-noise accumulation)", () => {

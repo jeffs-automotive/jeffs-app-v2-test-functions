@@ -594,3 +594,16 @@ Every mutating RPC writes ≥1 audit row.
   null cost, empty run, 2dp settling) + `SummaryView.test.tsx` (grouped card
   values, tfoot GONE, old-snapshot note, open-run silence; the SummaryView
   suites moved there from run-detail.test.tsx — 500-line policy).
+
+- **#47 COST PER BILLED HOUR (round-9 addendum, Chris verbatim: "Include all
+  pay in this like you would the cost per clock hour"):** `buildRunTotals`
+  gains `cost_per_billed_hour_cents` = **total pay (ALL pay — same numerator
+  as cost per clock hour)** ÷ total billed hours; null (never Infinity) when
+  billed hours are null or zero. `RunTotalsSchema` adds the key with
+  `.default(null)` so `summary_totals` blocks stored before the key still
+  parse (they render "n/a" until recompute). CALC_VERSION bumped **5 → 6** so
+  open runs recompute on next view and backfill the metric. UI: a second
+  Metrics item on `PayrollTotalsCard` ("Cost per billed hour", `$X.XX/hr`,
+  n/a-titled "No billed hours in this run"). Tests: summary.test.ts
+  (246,100 ÷ 45 → 5,469¢; all-null → null; empty run → null) +
+  SummaryView.test.tsx ($42.10/hr from the base row; salaried-only run → n/a).

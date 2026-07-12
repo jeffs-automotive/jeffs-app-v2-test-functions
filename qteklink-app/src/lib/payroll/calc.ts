@@ -62,8 +62,10 @@ import type {
  *  prior-year auto goal) revert to the fee-INCLUSIVE Σ(totalSales − taxes)
  *  (#45 — supersedes #36, restores the #28 sales number; the with/without-fees
  *  split stays GP-only per #38). The v5 recompute also backfills the round-9
- *  #46 summary-totals block into open runs' live snapshots. */
-export const CALC_VERSION = 5;
+ *  #46 summary-totals block into open runs' live snapshots.
+ *  v6: totals gain cost_per_billed_hour_cents (round-9 addendum — the bump
+ *  forces the live-snapshot recompute that backfills the new metric). */
+export const CALC_VERSION = 6;
 
 // ── Rounding (same semantics as derive.ts's roundCents — kept local so calc.ts
 //    stays free of the fetcher module's import graph) ──────────────────────────

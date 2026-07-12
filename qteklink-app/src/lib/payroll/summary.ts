@@ -149,6 +149,10 @@ export function buildRunTotals(rows: SummaryRow[]): RunTotals {
     training_hours: round2(trainingHours),
     billed_hours: billedHours === null ? null : round2(billedHours),
     cost_per_clock_hour_cents: clockHours > 0 ? roundCents(totalPay / clockHours) : null,
+    // Round-9 addendum (Chris): ALL pay ÷ total billed hours — same numerator as
+    // cost per clock hour; null (never Infinity) when the run has no billed hours.
+    cost_per_billed_hour_cents:
+      billedHours !== null && billedHours > 0 ? roundCents(totalPay / billedHours) : null,
   };
 }
 

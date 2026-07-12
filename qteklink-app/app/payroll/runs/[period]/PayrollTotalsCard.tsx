@@ -127,6 +127,13 @@ export function PayrollTotalsCard({
               <>{fmtUsd(totals.cost_per_clock_hour_cents)}/hr</>
             )}
           </Item>
+          <Item label="Cost per billed hour">
+            {totals.cost_per_billed_hour_cents === null ? (
+              <NA title="No billed hours in this run" />
+            ) : (
+              <>{fmtUsd(totals.cost_per_billed_hour_cents)}/hr</>
+            )}
+          </Item>
         </Group>
       </CardContent>
     </Card>

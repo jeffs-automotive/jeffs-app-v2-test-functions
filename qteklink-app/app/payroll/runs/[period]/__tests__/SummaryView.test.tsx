@@ -127,6 +127,8 @@ describe("SummaryView leave cells", () => {
     ).toBeGreaterThan(0);
     expect(screen.getByTitle("No PTO pay in this run")).toBeInTheDocument();
     expect(screen.getByTitle("No billed-hours employees in this run")).toBeInTheDocument();
+    // No billed hours anywhere → cost per billed hour is n/a, never $∞ or $0.00.
+    expect(screen.getByTitle("No billed hours in this run")).toBeInTheDocument();
   });
 });
 
@@ -158,6 +160,8 @@ describe("PayrollTotalsCard (round-9 #46)", () => {
     expect(screen.getAllByText("70.0").length).toBeGreaterThanOrEqual(1);
     // Metrics: 294,718 ÷ 82 clock hours = 3,594¢ → $35.94/hr.
     expect(screen.getByText("$35.94/hr")).toBeInTheDocument();
+    // Cost per billed hour (round-9 addendum): 294,718 ÷ 70 billed = 4,210¢ → $42.10/hr.
+    expect(screen.getByText("$42.10/hr")).toBeInTheDocument();
   });
 
   it("an all-null pay category renders n/a in the card, never $0.00", () => {

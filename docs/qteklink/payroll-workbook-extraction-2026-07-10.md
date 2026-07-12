@@ -353,6 +353,10 @@ Common to all: OT paid at 1.5× hourly; PTO/Holiday/Bereavement/Training hours �
     training PAY; total reg / OT / PTO / holiday / bereavement / training / billed HOURS; total cost per
     clock hour (= total pay ÷ total clock hours, n/a on zero). Server-computed (summary.ts → snapshot),
     prints with the sheet.
+47. **Total cost per billed hour on the totals card** (Chris verbatim: "Include all pay in this like you
+    would the cost per clock hour"): = total pay (ALL pay, same numerator as #46's clock metric) ÷ total
+    billed hours; n/a when the run has no billed hours (never Infinity/$0.00). CALC_VERSION 5 → 6 so open
+    runs backfill it on next view; pre-#47 snapshot blocks parse via `.default(null)`.
 
 ### Remaining open items
 
