@@ -1,12 +1,13 @@
 /**
- * buildOpenRunSnapshot GP-composition tests (round-5 #38 + round-9 #45): the
- * precedence chain override > qbo_tech_cost > computed, the #45 fee-INCLUSIVE
- * month sales (Σ totalSales − taxes — supersedes #36; both snapshot sales keys
- * ride equal), and the single sanctioned catch (QBO failure → Sentry with
- * shop_id tag → labeled 'computed' fallback). Fetchers are module-mocked; the
- * calc engine, override precedence, snapshot assembly + strict
- * RunSnapshotSchema parse all run REAL — the assertions read the frozen-shape
- * snapshot itself.
+ * buildOpenRunSnapshot GP-composition tests (round-5 #38 + round-9 #45 +
+ * round-10 #49): the precedence chain override > qbo_tech_cost > computed, the
+ * #45 fee-INCLUSIVE month sales (Σ totalSales − taxes — supersedes #36; both
+ * snapshot sales keys ride equal), the #49 office-manager bonus base
+ * (fees-EXCLUDED sales for her family ONLY), and the single sanctioned catch
+ * (QBO failure → Sentry with shop_id tag → labeled 'computed' fallback).
+ * Fetchers are module-mocked; the calc engine, override precedence, snapshot
+ * assembly + strict RunSnapshotSchema parse all run REAL — the assertions read
+ * the frozen-shape snapshot itself.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as Sentry from "@sentry/nextjs";
@@ -276,6 +277,86 @@ describe("buildOpenRunSnapshot — GP composition (#38) + month sales (#45)", ()
     const prov = snapshot.derived_provenance as Record<string, unknown>;
     expect(typeof prov.month_qbo_tech_cost_fetched_at).toBe("string");
     expect(prov.month_qbo_tech_cost_realm_id).toBe("R123");
+  });
+});
+
+// ── Round-10 #49: the office-manager bonus base excludes fees ──────────────────
+
+describe("buildOpenRunSnapshot — office-manager bonus base (#49)", () => {
+  const OM_ID = "3f2a1b0c-9d8e-4f7a-b6c5-d4e3f2a1b0c9";
+  const omPayConfig = {
+    config_version: 1,
+    pto_balance_hours: 0,
+    pto_accrual_hours_per_period: 0,
+    hourly_rate_cents: 2_600,
+    sales_goal_cents: 25_000_000,
+    bonus_pct: 0.01,
+  };
+  const omEntry: EntryDbRow = {
+    ...saEntry(),
+    id: "1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f",
+    employee_id: OM_ID,
+    role_snapshot: "office_manager",
+    pay_config: omPayConfig,
+  };
+
+  const omEmployee = {
+    id: OM_ID,
+    shopId: SHOP_ID,
+    displayName: "Marie Aube",
+    role: "office_manager",
+    tekmetricEmployeeId: 901,
+    tekmetricIdType: "service_writer",
+    payConfig: omPayConfig,
+    archivedAt: null,
+    createdAt: "2026-06-01T00:00:00Z",
+    updatedAt: "2026-06-01T00:00:00Z",
+  };
+
+  it("the OM sheet consumes sales − fees while the SA sheet keeps the fee-inclusive #45 figure", async () => {
+    vi.mocked(fetchRunEntries).mockResolvedValue([saEntry(), omEntry]);
+    vi.mocked(fetchEmployeesByIds).mockResolvedValue(
+      new Map<string, unknown>([
+        [
+          EMPLOYEE_ID,
+          {
+            ...omEmployee,
+            id: EMPLOYEE_ID,
+            displayName: "James Wollman",
+            role: "service_manager",
+            tekmetricEmployeeId: 900,
+            payConfig: saPayConfig,
+          },
+        ],
+        [OM_ID, omEmployee],
+      ]) as never,
+    );
+
+    const snapshot = await buildOpenRunSnapshot(SHOP_ID, run);
+    const om = snapshot.employees.find((e) => e.family === "office_manager");
+    const sa = snapshot.employees.find((e) => e.family === "service_advisor");
+    const prov = snapshot.derived_provenance as Record<string, unknown>;
+
+    // Her effective input: 28,629,076 − 1,322,963 = 27,306,113 (fees OUT).
+    expect(om?.derived.month_sales_cents).toBe(27_306_113);
+    // Her bonus: (27,306,113 − 25,000,000) × 1% = 23,061.13 → 23,061.
+    expect(om?.sheet.bonus_cents).toBe(23_061);
+    // The SA tier check + the run-level display definition stay fee-INCLUSIVE (#45).
+    expect(sa?.derived.month_sales_cents).toBe(28_629_076);
+    expect(prov.month_sales_cents).toBe(28_629_076);
+  });
+
+  it("a month_sales_cents override on her entry still beats the fees-out derivation", async () => {
+    vi.mocked(fetchRunEntries).mockResolvedValue([
+      { ...omEntry, overrides: { month_sales_cents: { value: 26_000_000, note: "hand-checked" } } },
+    ]);
+    vi.mocked(fetchEmployeesByIds).mockResolvedValue(new Map([[OM_ID, omEmployee]]) as never);
+
+    const snapshot = await buildOpenRunSnapshot(SHOP_ID, run);
+    const om = snapshot.employees[0];
+    expect(om?.derived.month_sales_cents).toBe(26_000_000);
+    // (26,000,000 − 25,000,000) × 1% = 10,000.
+    expect(om?.sheet.bonus_cents).toBe(10_000);
   });
 });
 

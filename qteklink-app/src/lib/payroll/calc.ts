@@ -64,8 +64,13 @@ import type {
  *  split stays GP-only per #38). The v5 recompute also backfills the round-9
  *  #46 summary-totals block into open runs' live snapshots.
  *  v6: totals gain cost_per_billed_hour_cents (round-9 addendum — the bump
- *  forces the live-snapshot recompute that backfills the new metric). */
-export const CALC_VERSION = 6;
+ *  forces the live-snapshot recompute that backfills the new metric).
+ *  v7 (2026-07-12 round-10 #49 — a formula-INPUT change like v4): the
+ *  office-manager bonus base = month sales BEFORE fees (the DAL feeds
+ *  sales − fees as her effective month_sales_cents); SA tier check, display,
+ *  and the prior-year auto goal stay fee-inclusive per #45. The engine below
+ *  is unchanged — the bump rolls the corrected input into live snapshots. */
+export const CALC_VERSION = 7;
 
 // ── Rounding (same semantics as derive.ts's roundCents — kept local so calc.ts
 //    stays free of the fetcher module's import graph) ──────────────────────────
@@ -464,6 +469,9 @@ function computeOfficeManager(
   const w2 = hourlyWeekExact(hourlyW2, s2, leaveHoursForWeek(entries, 2), null);
   // Office-manager bonus (extraction §Office Manager): pays on the EXCESS over the
   // monthly sales goal (unlike the foreman cliff): (sales − goal)⁺ × pct.
+  // Round-10 #49: the DAL feeds this family month sales BEFORE fees
+  // (sales − fees) as the effective month_sales_cents — fees-out is HER base
+  // only; the SA tier/display definition stays fee-inclusive (#45).
   const sales = num(derived.month_sales_cents);
   const bonusExact = sales > config.sales_goal_cents ? (sales - config.sales_goal_cents) * config.bonus_pct : 0;
   return hourlySheet(

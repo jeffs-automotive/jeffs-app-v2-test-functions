@@ -615,7 +615,25 @@ Every mutating RPC writes ≥1 audit row.
   snapshot since round 2): no math, no schema change, no CALC_VERSION bump; old
   frozen snapshots render it. Never n/a — a $0.00 total is real matching
   information. Same round, CONFIRMED by Chris: the office-manager bonus base
-  stays on fees-IN monthly sales (resolves the #45 flag; no code change).
+  stays on fees-IN monthly sales — RETRACTED same day, superseded by #49.
   Tests: SummaryView.test.tsx (two-row distinct totals + the card shows their
   sum, not either figure; the one-row totals-card assertion now expects the
   grand total exactly twice — row column + card).
+
+- **#49 OFFICE-MANAGER BONUS BASE = SALES BEFORE FEES (round-10, 2026-07-12 —
+  Chris corrected the same-day fees-in confirmation):** pass-1 assembly
+  (payroll-compute.ts) feeds the office_manager family
+  `month.salesCents − month.feesCents` as her EFFECTIVE `month_sales_cents`;
+  the service_advisor family (tier check), the run-level display/provenance
+  key, and the prior-year auto goal all keep the fee-INCLUSIVE #45 figure.
+  calc.ts is untouched (computeOfficeManager still reads
+  `derived.month_sales_cents` — the DAL owns per-family input resolution);
+  the per-entry `month_sales_cents` override still beats the derivation.
+  **CALC_VERSION 6 → 7** (a formula-INPUT change like v4) so the live-snapshot
+  version-drift recompute rolls the corrected base into open runs. UI: her
+  bonus panel's AutoMoney label is "Month sales (less fees)" with a
+  fees-excluded source string (OM_MONTH_SALES_SOURCE); the SA panel + the
+  BonusMonthCard wording are unchanged. Tests: payroll-compute.test.ts #49
+  suite — mixed SA+OM roster (OM 27,306,113 = 28,629,076 − 1,322,963, bonus
+  23,061 @ goal 25,000,000 / 1%; SA + provenance stay 28,629,076) and the
+  override-beats-derivation case.

@@ -44,6 +44,10 @@
  * parseable, the dry-run diff keys stay stable) rather than collapsed to one.
  * Round-9 (#46): the snapshot carries a run-level `summary_totals` block
  * (summary.ts) — the totals card's server-computed numbers.
+ * Round-10 (#49): the office-manager bonus base = month sales BEFORE fees —
+ * pass 1 feeds her family `month.salesCents − month.feesCents` as the
+ * effective month_sales_cents (override still beats it); every other consumer
+ * of month sales (SA tier, display, prior-year goal) stays fee-inclusive (#45).
  */
 import { getShopSettings } from "@/lib/dal/settings";
 import { addDaysIso } from "@/lib/format";
@@ -258,8 +262,15 @@ export async function buildOpenRunSnapshot(
     const base: DerivedInputs = {
       billed_hours_w1: isTechFamily && techId !== null ? (billedW1.value.get(techId) ?? 0) : null,
       billed_hours_w2: isTechFamily && techId !== null ? (billedW2.value.get(techId) ?? 0) : null,
+      // Round-10 #49: the office manager's bonus base is month sales BEFORE fees
+      // (sales − fees) — HER effective input only; the SA tier check keeps the
+      // fee-inclusive #45 figure (as does the display/goal definition).
       month_sales_cents:
-        (family === "office_manager" || family === "service_advisor") && month ? month.salesCents : null,
+        family === "office_manager" && month
+          ? month.salesCents - month.feesCents
+          : family === "service_advisor" && month
+            ? month.salesCents
+            : null,
       month_gp_with_fees_cents: null, // pass 2
       month_gp_without_fees_cents: null, // pass 2
       spiff_count:

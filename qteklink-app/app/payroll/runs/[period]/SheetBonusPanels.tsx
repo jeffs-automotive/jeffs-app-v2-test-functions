@@ -140,6 +140,10 @@ function pct(v: number | null): string {
 const MONTH_SALES_SOURCE =
   "From Tekmetric — repair orders posted in the bonus month, totals minus taxes";
 
+/** Round-10 #49: the office-manager bonus base excludes shop fees. */
+const OM_MONTH_SALES_SOURCE =
+  "From Tekmetric — repair orders posted in the bonus month, totals minus taxes and shop fees";
+
 /** Round-5 #38: GP-with-fees provenance per composition source (pre-#38
  *  snapshots have no source label and keep the legacy prorated-labor wording). */
 function gpWithFeesSource(gpSource: string | null): string {
@@ -391,16 +395,18 @@ export function OfficeManagerBonusPanel({ ctx }: { ctx: SheetCtx }) {
   const { e } = ctx;
   const pc = e.pay_config;
   const salesGoal = pcNum(pc, "sales_goal_cents");
+  // Round-10 #49: her effective input is the fees-EXCLUDED month sales (the DAL
+  // feeds sales − fees) — the label + source say so; the pencil still overrides it.
   const sales = e.derived.month_sales_cents;
   return (
     <BonusPanelShell title="Bonus — monthly sales over goal">
       <dl className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-3">
         <AutoMoney
           ctx={ctx}
-          label="Month sales"
+          label="Month sales (less fees)"
           cents={sales}
           overrideKey="month_sales_cents"
-          source={MONTH_SALES_SOURCE}
+          source={OM_MONTH_SALES_SOURCE}
         />
       </dl>
       {sales != null && salesGoal !== null && (

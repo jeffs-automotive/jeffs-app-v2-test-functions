@@ -360,13 +360,20 @@ Common to all: OT paid at 1.5× hourly; PTO/Holiday/Bereavement/Training hours �
 
 ### Round-10 decisions (Chris, 2026-07-12)
 
-- **CONFIRMED: office-manager (Marie) bonus base = monthly sales WITH fees** — resolves the flag raised
-  under #45; the shipped fees-in implementation stands, no code change.
+- ~~CONFIRMED: office-manager (Marie) bonus base = monthly sales WITH fees~~ — **RETRACTED by Chris
+  same day ("I made a mistake"); superseded by #49.**
 48. **Per-employee TOTAL column on the summary table** (right-most, emphasized): the row's grand total
     pay so Marie can match each employee against the external payroll system. Pure display of the
     snapshot's existing `total_pay_cents` — no math, no schema/CALC_VERSION change; old frozen snapshots
     render it (the field has been in every snapshot since round 2). Never n/a ($0.00 total is real
     matching information).
+49. **Office-manager (Marie) bonus base = monthly sales BEFORE fees** (Chris, correcting the earlier
+    same-day confirmation): her family's effective `month_sales_cents` = sales(#45) − fees; her bonus
+    stays (base − goal)⁺ × pct. HER base only — the SA tier check, the month-sales display, and the
+    prior-year auto goal all stay fee-INCLUSIVE per #45. Fed at the DAL assembly layer (pass 1);
+    calc engine unchanged; per-entry `month_sales_cents` override still beats it. Her bonus panel
+    label reads "Month sales (less fees)". CALC_VERSION 6 → 7 rolls the corrected input into the open
+    run's live snapshot on next view. June effect: base 286,290.76 → 273,061.13 (−$13,229.63).
 
 ### Remaining open items
 
