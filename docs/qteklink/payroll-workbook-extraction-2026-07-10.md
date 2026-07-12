@@ -374,6 +374,17 @@ Common to all: OT paid at 1.5× hourly; PTO/Holiday/Bereavement/Training hours �
     calc engine unchanged; per-entry `month_sales_cents` override still beats it. Her bonus panel
     label reads "Month sales (less fees)". CALC_VERSION 6 → 7 rolls the corrected input into the open
     run's live snapshot on next view. June effect: base 286,290.76 → 273,061.13 (−$13,229.63).
+50. **HOURS bucket by POSTED date when posted, COMPLETED date otherwise (supersedes #39's
+    pure-completed basis).** Root cause of Clark's ±1.00 week swap (NOT a timezone issue — mirror
+    verified identical to the live Tekmetric API): RO 153870 (Clark 1.0h) completed Fri 7/3 5:08 PM ET
+    but posted Mon 7/6; the Tekmetric report shows it in the POSTED week. Round-7's exact match held
+    only because no RO straddled a week boundary then — this RO revealed the report's true rule.
+    Full-window sweep: exactly TWO straddlers (153870 + 152158: Snyder 0.3h completed 5/28, posted
+    7/10 — no pay effect, Snyder isn't billed-paid). Hybrid basis verified against the mirror:
+    Clark w1 35.35 / w2 64.60 EXACT (Chris's numbers). Applied consistently to per-tech billed hours,
+    the foreman month shop total, and the prior-year hour goal; completed-but-unposted ROs still count
+    when performed (#39's point survives). Money derivations unchanged (posted, penny-exact).
+    CALC_VERSION 7 → 8. Chris chose posted-basis over keep-completed when offered both.
 
 ### Remaining open items
 

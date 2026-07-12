@@ -69,8 +69,13 @@ import type {
  *  office-manager bonus base = month sales BEFORE fees (the DAL feeds
  *  sales − fees as her effective month_sales_cents); SA tier check, display,
  *  and the prior-year auto goal stay fee-inclusive per #45. The engine below
- *  is unchanged — the bump rolls the corrected input into live snapshots. */
-export const CALC_VERSION = 7;
+ *  is unchanged — the bump rolls the corrected input into live snapshots.
+ *  v8 (2026-07-12 round-10 #50 — input change, engine unchanged): HOURS
+ *  derivations (per-tech billed, shop total, prior-year goal) rebucket ROs by
+ *  POSTED date when posted / COMPLETED date otherwise (supersedes the #39
+ *  pure-completed basis) — matches the Tekmetric hours report (RO 153870:
+ *  Clark w1 35.35 / w2 64.60). The bump re-derives open runs' live snapshots. */
+export const CALC_VERSION = 8;
 
 // ── Rounding (same semantics as derive.ts's roundCents — kept local so calc.ts
 //    stays free of the fetcher module's import graph) ──────────────────────────

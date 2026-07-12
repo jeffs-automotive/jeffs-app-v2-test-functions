@@ -637,3 +637,21 @@ Every mutating RPC writes ≥1 audit row.
   suite — mixed SA+OM roster (OM 27,306,113 = 28,629,076 − 1,322,963, bonus
   23,061 @ goal 25,000,000 / 1%; SA + provenance stay 28,629,076) and the
   override-beats-derivation case.
+
+- **#50 HOURS BASIS = POSTED WHEN POSTED, ELSE COMPLETED (round-10,
+  2026-07-12 — supersedes the #39 pure-completed basis):** `derive.ts` gains
+  the pure `rosInLocalRangeHoursBasis` (bucket by `posted_date ?? completed_date`,
+  shop-local) + the `fetchHoursBasisRos` fetcher (two disjoint exact-filtered
+  branches — posted-in-range ∪ unposted-completed-in-range — with the pure
+  filter re-applied as defense in depth; `fetchRosByLocalDate` gains an
+  `unpostedOnly` flag; `fetchCompletedRos` is deleted). Consumers switched:
+  `billedHoursByTechnician`, `shopBilledHours`, `priorYearShopBilledHours`.
+  Money derivations untouched (posted basis, penny-exact). Root cause: RO
+  153870 (Clark 1.0h, completed Fri 7/3, posted Mon 7/6) — the Tekmetric hours
+  report buckets posted ROs by posted date; mirror-vs-live-API verified
+  identical (NOT timezone). Acceptance: Clark w1 35.35 / w2 64.60 exact from
+  the live mirror; only-other straddler RO 152158 (Snyder 0.3h, not
+  billed-paid). **CALC_VERSION 7 → 8.** Tests: derive.aggregators.test.ts
+  `rosInLocalRangeHoursBasis` suite (153870 week-2 case, unposted-completed
+  counts, stale-posted counts in posted week, posted-after-window excluded,
+  evening-boundary shop-local conversion, both-null excluded).
