@@ -132,6 +132,36 @@ describe("SummaryView leave cells", () => {
   });
 });
 
+// ── Round-10 #48: per-employee Total column ────────────────────────────────────
+
+describe("SummaryView per-employee Total column (round-10 #48)", () => {
+  it("every row shows its own grand total — Marie's payroll-system matching figure", () => {
+    const second: SummaryRow = {
+      ...summaryRow,
+      employee_id: "8d0f7780-8536-51ef-a55c-f18fd2f01bf8",
+      display_name: "Aube",
+      role: "office_manager",
+      family: "office_manager",
+      billed_hours: null,
+      billed_pay_cents: null,
+      total_pay_cents: 187_501,
+    };
+    render(
+      <SummaryView
+        {...baseProps([summaryRow, second])}
+        status="completed"
+        completedAt="2026-07-12T14:00:00Z"
+      />,
+    );
+    expect(screen.getByText("Total")).toBeInTheDocument();
+    // Distinct per-row totals render once each in the table (the totals card
+    // shows their SUM, $4,822.19 — not either individual figure).
+    expect(screen.getByText("$2,947.18")).toBeInTheDocument();
+    expect(screen.getByText("$1,875.01")).toBeInTheDocument();
+    expect(screen.getByText("$4,822.19")).toBeInTheDocument();
+  });
+});
+
 // ── Round-9 #46: the totals card replaces the table's TOTAL row ────────────────
 
 describe("PayrollTotalsCard (round-9 #46)", () => {
@@ -150,8 +180,9 @@ describe("PayrollTotalsCard (round-9 #46)", () => {
     expect(screen.getByText("Pay")).toBeInTheDocument();
     expect(screen.getByText("Hours")).toBeInTheDocument();
     expect(screen.getByText("Metrics")).toBeInTheDocument();
-    // Pay: grand total + components (one row → totals mirror the row).
-    expect(screen.getByText("$2,947.18")).toBeInTheDocument(); // total pay
+    // Pay: grand total + components (one row → totals mirror the row; the grand
+    // total also appears in the row's #48 Total column, hence exactly twice).
+    expect(screen.getAllByText("$2,947.18")).toHaveLength(2); // total pay
     expect(screen.getByText("$2,168.79")).toBeInTheDocument(); // regular pay
     expect(screen.getByText("$78.39")).toBeInTheDocument(); // OT pay
     expect(screen.getAllByText("$700.00").length).toBeGreaterThanOrEqual(1); // incentive (also the row cell)

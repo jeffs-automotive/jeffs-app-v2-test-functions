@@ -358,8 +358,22 @@ Common to all: OT paid at 1.5× hourly; PTO/Holiday/Bereavement/Training hours �
     billed hours; n/a when the run has no billed hours (never Infinity/$0.00). CALC_VERSION 5 → 6 so open
     runs backfill it on next view; pre-#47 snapshot blocks parse via `.default(null)`.
 
+### Round-10 decisions (Chris, 2026-07-12)
+
+- **CONFIRMED: office-manager (Marie) bonus base = monthly sales WITH fees** — resolves the flag raised
+  under #45; the shipped fees-in implementation stands, no code change.
+48. **Per-employee TOTAL column on the summary table** (right-most, emphasized): the row's grand total
+    pay so Marie can match each employee against the external payroll system. Pure display of the
+    snapshot's existing `total_pay_cents` — no math, no schema/CALC_VERSION change; old frozen snapshots
+    render it (the field has been in every snapshot since round 2). Never n/a ($0.00 total is real
+    matching information).
+
 ### Remaining open items
 
+- **Alert emails** (void/clone + completed notifications): the ONE settings item Chris hasn't entered
+  yet (2026-07-12 — employees, anchor, spiff categories all done).
+- **PTO portion = the next feature phase** (Chris, 2026-07-12: "After this is finished we should be
+  set and can start working on the pto portion").
 - **Mirror ingest scheduling:** promote `sync-ros.mjs` logic to a recurring job (fold into qteklink
   nightly cron — in plan). Mirror currently fresh only to 2026-07-02.
 - Phase-3 backtest: per-technician billed-hours attribution vs filled workbooks (job.technician_id vs

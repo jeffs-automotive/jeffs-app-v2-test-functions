@@ -607,3 +607,15 @@ Every mutating RPC writes ≥1 audit row.
   n/a-titled "No billed hours in this run"). Tests: summary.test.ts
   (246,100 ÷ 45 → 5,469¢; all-null → null; empty run → null) +
   SummaryView.test.tsx ($42.10/hr from the base row; salaried-only run → n/a).
+
+- **#48 PER-EMPLOYEE TOTAL COLUMN (round-10, 2026-07-12):** the summary table
+  gains a right-most emphasized "Total" column rendering each row's
+  `total_pay_cents` — Marie's per-employee matching figure against the external
+  payroll system. Pure presentation of the snapshot's existing field (in every
+  snapshot since round 2): no math, no schema change, no CALC_VERSION bump; old
+  frozen snapshots render it. Never n/a — a $0.00 total is real matching
+  information. Same round, CONFIRMED by Chris: the office-manager bonus base
+  stays on fees-IN monthly sales (resolves the #45 flag; no code change).
+  Tests: SummaryView.test.tsx (two-row distinct totals + the card shows their
+  sum, not either figure; the one-row totals-card assertion now expects the
+  grand total exactly twice — row column + card).

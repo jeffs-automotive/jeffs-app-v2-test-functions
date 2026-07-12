@@ -18,6 +18,11 @@
  * null leave pay and render n/a for the dollar line. This is a presentational
  * projection of the DAL's existing *_pay_cents fields — no math added here.
  *
+ * Round-10 #48: a per-employee TOTAL column (right-most, emphasized) — the
+ * row's grand total pay, so Marie can match each employee against the external
+ * payroll system. Never n/a (a $0.00 total is real information when matching),
+ * and like everything else here it is the snapshot's total_pay_cents verbatim.
+ *
  * Print: a self-labeling header (`hidden print:block`) that CARRIES THE RUN
  * STATUS — every on-screen status banner lives in the page's print:hidden
  * chrome, so the paper itself must say whether it's the completed record,
@@ -135,6 +140,7 @@ export function SummaryView({
                   hrs / pay
                 </span>
               </TableHead>
+              <TableHead className="px-3 py-2 text-right">Total</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -159,6 +165,9 @@ export function SummaryView({
                 <LeaveCell hours={r.training_hours} payCents={r.training_pay_cents} />
                 <LeaveCell hours={r.holiday_hours} payCents={r.holiday_pay_cents} />
                 <LeaveCell hours={r.bereavement_hours} payCents={r.bereavement_pay_cents} />
+                <TableCell className={`${numCell} font-semibold text-foreground`}>
+                  {fmtUsd(r.total_pay_cents)}
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
