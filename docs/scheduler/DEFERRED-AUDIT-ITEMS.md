@@ -1678,7 +1678,7 @@ returns 503 with `resend_not_configured` if missing.
 
 ## Content / MD docs
 
-### MD-2 · `exhaust_system_testing` not linked to Tekmetric canned_job (NEW 2026-05-21)
+### MD-2 · `exhaust_system_testing` not linked to Tekmetric canned_job (NEW 2026-05-21) — **OBSOLETE 2026-07-12: the MD-upload surface was deleted 2026-07-02; canned-job links are managed in the /schedulerconfig webforms. Re-open there if still unlinked.**
 
 - **What** — the new `exhaust_system_testing` testing_services row
   (added 2026-05-21 via migration
@@ -1703,7 +1703,7 @@ returns 503 with `resend_not_configured` if missing.
   appointment-sync hardening pass).
 - **Source** — 2026-05-21 exhaust catalog gap fix.
 
-### MD-1 · `docs/chat-instructions/scheduler/templates/closed-dates.md` lists 9 holidays NOT in DB (NEW 2026-05-18; format verified 2026-05-19)
+### MD-1 · closed-dates template lists 9 holidays NOT in DB (NEW 2026-05-18) — **OBSOLETE 2026-07-12: the template file + MD-upload surface were deleted 2026-07-02; closed dates are managed in the /schedulerconfig webforms. If the 9 holidays are still missing from DB, re-open as a webforms data task.**
 
 - **What** — `docs/chat-instructions/scheduler/templates/closed-dates.md` lists 9 explicit
   holidays (memorial-day, independence-day, labor-day,

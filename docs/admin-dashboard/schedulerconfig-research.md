@@ -1,3 +1,6 @@
+
+> **SUPERSEDED (noted 2026-07-12).** This plan describes the orchestrator-mediated / Claude-Desktop-era model. Claude Desktop was retired 2026-07-02 and /schedulerconfig is now direct webforms — see docs/scheduler/config-webforms-comms-types-plan-2026-07-02.md. Kept as a dated planning record.
+
 # schedulerconfig — research artifact
 
 > Feature: `schedulerconfig` (admin-app)

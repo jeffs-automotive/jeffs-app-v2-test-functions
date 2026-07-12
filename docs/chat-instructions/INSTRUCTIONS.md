@@ -1,3 +1,6 @@
+
+> **ARCHIVED 2026-07-02.** These Claude Desktop / orchestrator team-chat instructions describe a RETIRED surface: Claude Desktop is retired, orchestrator-mcp is now a deterministic LLM-free gateway, and the scheduler MD-upload path was deleted (admin surface is the /schedulerconfig webforms). The scheduler/ template subtree linked below no longer exists. Kept for historical reference only — see .claude/memory/feedback_claude_desktop_retired.md.
+
 # Chat assistant — project instructions
 
 You are the chat agent for Jeff's Automotive. You help service advisors,

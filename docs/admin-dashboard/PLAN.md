@@ -1,3 +1,6 @@
+
+> **SUPERSEDED (noted 2026-07-12).** This plan describes the orchestrator-mediated / Claude-Desktop-era model. Claude Desktop was retired 2026-07-02 and /schedulerconfig is now direct webforms — see docs/scheduler/config-webforms-comms-types-plan-2026-07-02.md. Kept as a dated planning record.
+
 # Admin dashboard — implementation plan
 
 > **Status:** Phases A–F ✅ SHIPPED — keytags page + the full schedulerconfig tabbed UI (D/E/F landed as ONE tabbed page, not per-route pages). Phase G PARTIAL: Sentry source-maps ✅, **automated tests still missing**. NEW workstream folded in: QBO integration (`qbo-api-client` paused at approved plan). See **"Current state (reconciled 2026-05-31)"** below — that section, not the §5 phase list, is the source of truth.
