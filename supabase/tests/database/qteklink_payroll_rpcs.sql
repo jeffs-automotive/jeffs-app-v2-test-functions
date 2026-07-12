@@ -19,6 +19,11 @@
 --   - complete_run: dry-run state hash, stale-hash abort, token scope binding,
 --     single-use, expiry, cross-run rejection, snapshot required, final lock
 --   - void_run: completed-only, kind-bound token, void-and-clone row integrity
+--   - live snapshot (round-7 #40/#41, 20260711200000): store on OPEN only
+--     (completed RAISEs), stale-flag semantics, the lost-invalidation race guard
+--     (mark stamps invalidated_at on every open run; a store whose compute began
+--     before the mark keeps stale=true), and NEITHER RPC moves updated_at / the
+--     Pattern S state hash
 --   - anon denied on every RPC
 --
 -- Runs as the BYPASSRLS migration role. Run with: supabase test db
@@ -40,6 +45,13 @@ SELECT has_function('public', 'qteklink_payroll_issue_confirm_token', ARRAY['uui
 SELECT has_function('public', 'qteklink_payroll_complete_run', ARRAY['uuid','boolean','uuid','text','jsonb','uuid','text'], 'complete_run signature');
 SELECT has_function('public', 'qteklink_payroll_void_run', ARRAY['uuid','text','boolean','uuid','text','uuid','text'], 'void_run signature');
 SELECT has_column('public', 'qteklink_settings', 'payroll', 'qteklink_settings.payroll jsonb key exists');
+-- round-7 #40/#41 live-snapshot substrate (20260711200000)
+SELECT has_function('public', 'qteklink_payroll_store_live_snapshot', ARRAY['uuid','jsonb','timestamptz','timestamptz'], 'store_live_snapshot signature');
+SELECT has_function('public', 'qteklink_payroll_mark_open_runs_stale', ARRAY['integer'], 'mark_open_runs_stale signature');
+SELECT has_column('public', 'qteklink_payroll_runs', 'live_snapshot', 'runs.live_snapshot column exists');
+SELECT has_column('public', 'qteklink_payroll_runs', 'live_snapshot_at', 'runs.live_snapshot_at column exists');
+SELECT has_column('public', 'qteklink_payroll_runs', 'live_snapshot_stale', 'runs.live_snapshot_stale column exists');
+SELECT has_column('public', 'qteklink_payroll_runs', 'live_snapshot_invalidated_at', 'runs.live_snapshot_invalidated_at column exists');
 
 -- ─── Seed: connection + payroll anchor via the extended settings upsert ──
 INSERT INTO public.qbo_connections (realm_id, shop_id, access_token_expires_at, refresh_token_expires_at)
@@ -401,6 +413,82 @@ SELECT throws_ok($$ SELECT public.qteklink_payroll_update_run((SELECT v FROM _id
 SELECT throws_ok($$ SELECT public.qteklink_payroll_sync_run_roster((SELECT v FROM _ids WHERE k='runA'), NULL, 'pgtap') $$,
   'P0001', NULL, 'sync_run_roster rejected on a completed run');
 
+-- ─── live snapshot (round-7 #40/#41): store on open only; mark-stale flips open ──
+-- runA is COMPLETED here; runC/runD/runNY are OPEN. Neither RPC may move the
+-- Pattern S state hash or updated_at (a display-cache write must never
+-- invalidate an in-flight complete/void preview).
+INSERT INTO _txt VALUES ('lhashC', public.qteklink_payroll_state_hash((SELECT v FROM _ids WHERE k='runC')));
+INSERT INTO _txt VALUES ('lupdC', (SELECT updated_at::text FROM public.qteklink_payroll_runs WHERE id=(SELECT v FROM _ids WHERE k='runC')));
+SELECT ok((SELECT live_snapshot_stale FROM public.qteklink_payroll_runs WHERE id=(SELECT v FROM _ids WHERE k='runC')),
+  'live_snapshot_stale defaults to true (no snapshot stored yet)');
+SELECT lives_ok($$ SELECT public.qteklink_payroll_store_live_snapshot((SELECT v FROM _ids WHERE k='runC'),
+  '{"snapshot_version":1,"note":"live-pgtap"}'::jsonb, '2026-07-11T12:00:00Z'::timestamptz, now()) $$,
+  'store_live_snapshot accepted on an OPEN run');
+SELECT is((SELECT (live_snapshot->>'note') || '/' || live_snapshot_stale::text || '/' || live_snapshot_at::text
+           FROM public.qteklink_payroll_runs WHERE id=(SELECT v FROM _ids WHERE k='runC')),
+  'live-pgtap/false/' || '2026-07-11T12:00:00Z'::timestamptz::text,
+  'live snapshot + computed_at stored; stale cleared');
+SELECT is((SELECT updated_at::text FROM public.qteklink_payroll_runs WHERE id=(SELECT v FROM _ids WHERE k='runC')),
+  (SELECT v FROM _txt WHERE k='lupdC'), 'store_live_snapshot does NOT bump updated_at');
+SELECT is(public.qteklink_payroll_state_hash((SELECT v FROM _ids WHERE k='runC')),
+  (SELECT v FROM _txt WHERE k='lhashC'), 'store_live_snapshot does NOT move the Pattern S state hash');
+SELECT throws_ok($$ SELECT public.qteklink_payroll_store_live_snapshot((SELECT v FROM _ids WHERE k='runA'),
+  '{"snapshot_version":1}'::jsonb, now(), now()) $$, 'P0001', NULL,
+  'store_live_snapshot RAISEs on a COMPLETED run (frozen snapshot governs)');
+SELECT ok((SELECT live_snapshot IS NULL FROM public.qteklink_payroll_runs WHERE id=(SELECT v FROM _ids WHERE k='runA')),
+  'the completed run''s live_snapshot stays untouched (NULL)');
+SELECT throws_ok($$ SELECT public.qteklink_payroll_store_live_snapshot(gen_random_uuid(),
+  '{"snapshot_version":1}'::jsonb, now(), now()) $$, 'P0001', NULL, 'store_live_snapshot RAISEs on an unknown run');
+SELECT throws_ok($$ SELECT public.qteklink_payroll_store_live_snapshot((SELECT v FROM _ids WHERE k='runC'),
+  NULL, now(), now()) $$, 'P0001', NULL, 'store_live_snapshot rejects a NULL snapshot');
+SELECT throws_ok($$ SELECT public.qteklink_payroll_store_live_snapshot((SELECT v FROM _ids WHERE k='runC'),
+  '[1,2]'::jsonb, now(), now()) $$, 'P0001', NULL, 'store_live_snapshot rejects a non-object snapshot');
+SELECT throws_ok($$ SELECT public.qteklink_payroll_store_live_snapshot((SELECT v FROM _ids WHERE k='runC'),
+  '{"snapshot_version":1}'::jsonb, now(), NULL) $$, 'P0001', NULL,
+  'store_live_snapshot rejects a NULL p_compute_started_at (the race guard is mandatory)');
+
+-- mark-stale: flips ONLY open runs (count = newly invalidated, i.e. fresh -> stale)
+-- and stamps live_snapshot_invalidated_at on EVERY open run (even already-stale —
+-- the lost-invalidation race guard). Fresh open runs right now: runC (stale=false
+-- after the store); runD/runNY are open but already stale (default) — so exactly
+-- 1 flips.
+SELECT ok((SELECT live_snapshot_invalidated_at IS NULL FROM public.qteklink_payroll_runs WHERE id=(SELECT v FROM _ids WHERE k='runC')),
+  'live_snapshot_invalidated_at starts NULL (never marked)');
+SELECT is(public.qteklink_payroll_mark_open_runs_stale(7476), 1,
+  'mark_open_runs_stale flips exactly the ONE fresh open run');
+SELECT ok((SELECT live_snapshot_stale FROM public.qteklink_payroll_runs WHERE id=(SELECT v FROM _ids WHERE k='runC')),
+  'the stored-fresh open run is stale again after mark');
+SELECT ok((SELECT live_snapshot_invalidated_at IS NOT NULL FROM public.qteklink_payroll_runs WHERE id=(SELECT v FROM _ids WHERE k='runC')),
+  'mark stamps live_snapshot_invalidated_at');
+SELECT ok((SELECT live_snapshot_invalidated_at IS NOT NULL FROM public.qteklink_payroll_runs WHERE id=(SELECT v FROM _ids WHERE k='runD')),
+  'mark stamps invalidated_at on ALREADY-STALE open runs too (the race guard substrate)');
+SELECT is((SELECT live_snapshot->>'note' FROM public.qteklink_payroll_runs WHERE id=(SELECT v FROM _ids WHERE k='runC')),
+  'live-pgtap', 'mark-stale keeps the cached snapshot itself (only the flag flips)');
+SELECT is(public.qteklink_payroll_mark_open_runs_stale(7476), 0,
+  'a second mark newly-invalidates nothing (count counts fresh -> stale only)');
+SELECT throws_ok($$ SELECT public.qteklink_payroll_mark_open_runs_stale(0) $$, 'P0001', NULL,
+  'mark_open_runs_stale rejects a non-positive shop id');
+SELECT is((SELECT updated_at::text FROM public.qteklink_payroll_runs WHERE id=(SELECT v FROM _ids WHERE k='runC')),
+  (SELECT v FROM _txt WHERE k='lupdC'), 'mark_open_runs_stale does NOT bump updated_at either');
+
+-- the lost-invalidation race: a store whose compute began BEFORE the mark
+-- (invalidated_at = the mark's now()) stores the snapshot but must NOT clear the
+-- stale flag — the mark fired for mirror data that snapshot cannot contain.
+SELECT lives_ok($$ SELECT public.qteklink_payroll_store_live_snapshot((SELECT v FROM _ids WHERE k='runC'),
+  '{"snapshot_version":1,"note":"raced-compute"}'::jsonb, now(), now() - interval '1 minute') $$,
+  'a store from a compute that began BEFORE the mark is accepted');
+SELECT is((SELECT (live_snapshot->>'note') || '/' || live_snapshot_stale::text
+           FROM public.qteklink_payroll_runs WHERE id=(SELECT v FROM _ids WHERE k='runC')),
+  'raced-compute/true',
+  'the raced store keeps stale=TRUE while still storing the snapshot (invalidation never lost)');
+SELECT lives_ok($$ SELECT public.qteklink_payroll_store_live_snapshot((SELECT v FROM _ids WHERE k='runC'),
+  '{"snapshot_version":1,"note":"post-mark-compute"}'::jsonb, now(), now()) $$,
+  'a store from a compute that began AT/AFTER the mark is accepted');
+SELECT is((SELECT (live_snapshot->>'note') || '/' || live_snapshot_stale::text
+           FROM public.qteklink_payroll_runs WHERE id=(SELECT v FROM _ids WHERE k='runC')),
+  'post-mark-compute/false',
+  'a compute that began after the last mark clears the stale flag as before');
+
 -- ─── void_run: completed-only + kind-bound token + void-and-clone ─────────
 SELECT throws_ok($$ SELECT public.qteklink_payroll_void_run((SELECT v FROM _ids WHERE k='runC'),
   'nope', true, NULL, NULL, NULL, 'pgtap') $$, 'P0001', NULL, 'void_run rejected on an OPEN run');
@@ -462,6 +550,8 @@ SELECT throws_ok($$ SELECT public.qteklink_payroll_update_run(gen_random_uuid(),
 SELECT throws_ok($$ SELECT * FROM public.qteklink_payroll_issue_confirm_token(gen_random_uuid(), 'complete_run', 'h', NULL, 'x') $$, '42501', NULL, 'anon cannot issue_confirm_token');
 SELECT throws_ok($$ SELECT public.qteklink_payroll_complete_run(gen_random_uuid(), true, NULL, NULL, NULL, NULL, 'x') $$, '42501', NULL, 'anon cannot complete_run');
 SELECT throws_ok($$ SELECT public.qteklink_payroll_void_run(gen_random_uuid(), 'x', true, NULL, NULL, NULL, 'x') $$, '42501', NULL, 'anon cannot void_run');
+SELECT throws_ok($$ SELECT public.qteklink_payroll_store_live_snapshot(gen_random_uuid(), '{}'::jsonb, now(), now()) $$, '42501', NULL, 'anon cannot store_live_snapshot');
+SELECT throws_ok($$ SELECT public.qteklink_payroll_mark_open_runs_stale(7476) $$, '42501', NULL, 'anon cannot mark_open_runs_stale');
 RESET ROLE;
 
 SELECT * FROM finish();

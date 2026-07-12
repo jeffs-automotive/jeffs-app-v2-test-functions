@@ -19,6 +19,7 @@ import {
   completePayrollRun,
   createPayrollRun,
   discoverAndMergePayrollCategories,
+  dryRunPayrollRefresh,
   listTekmetricEmployees,
   refreshRunTekmetricData,
   syncPayrollRunRoster,
@@ -27,6 +28,7 @@ import {
   updatePayrollSettings,
   upsertPayrollEmployee,
   voidPayrollRun,
+  type PayrollDryRunResult,
   type PayrollEntryPatch,
   type PayrollRefreshResult,
   type PayrollSettings,
@@ -402,6 +404,29 @@ export const refreshPayrollTekmetricDataAction = wrapQtekAction(
   "payrollRefreshTekmetricData",
   refreshPayrollTekmetricDataImpl,
 );
+
+/**
+ * Round-7 #42 dry run: live Tekmetric re-fetch for the period (+ bonus month)
+ * → fresh recompute (committed) → structured before/after diff for the modal.
+ * Admin + open runs only (the DAL re-enforces open-run-only).
+ */
+type DryRunState = QboActionResult<PayrollDryRunResult>;
+
+async function dryRunPayrollImpl(_prev: DryRunState | null, formData: FormData): Promise<DryRunState> {
+  try {
+    const { shopId, role } = await requireQtekUser();
+    if (role !== "admin") return adminRequired();
+
+    const id = uuidField("run id").safeParse(formData.get("run_id"));
+    if (!id.success) return invalid(id.error.issues[0]?.message ?? "Invalid run id.");
+
+    const data = await dryRunPayrollRefresh(shopId, id.data);
+    return { ok: true, data, timestamp: Date.now() };
+  } catch (e) {
+    return qboFailure(e);
+  }
+}
+export const dryRunPayrollAction = wrapQtekAction("payrollDryRun", dryRunPayrollImpl);
 
 type DiscoverState = QboActionResult<{ added: string[] }>;
 

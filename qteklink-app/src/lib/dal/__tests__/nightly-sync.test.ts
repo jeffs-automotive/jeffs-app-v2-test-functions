@@ -17,6 +17,8 @@ const reduceMock = vi.fn();
 const warmMock = vi.fn();
 const warmRoMock = vi.fn();
 const ingestMock = vi.fn();
+const markStaleMock = vi.fn();
+const recomputeStaleMock = vi.fn();
 
 vi.mock("@/lib/dal/daily-reconcile", () => ({ runDailyReconciliation: (...a: unknown[]) => reconMock(...a) }));
 vi.mock("@/lib/dal/settings", () => ({ getShopSettings: (...a: unknown[]) => settingsMock(...a) }));
@@ -30,6 +32,10 @@ vi.mock("@/lib/dal/approve-post-day", () => ({
 vi.mock("@/lib/dal/safety-net", () => ({ runSafetyNet: (...a: unknown[]) => safetyNetMock(...a) }));
 vi.mock("@/lib/dal/posted-day-sweep", () => ({ sweepPostedDays: (...a: unknown[]) => sweepMock(...a) }));
 vi.mock("@/lib/payroll/mirror-ingest", () => ({ runMirrorIngest: (...a: unknown[]) => ingestMock(...a) }));
+vi.mock("@/lib/dal/payroll-live", () => ({
+  markPayrollOpenRunsStale: (...a: unknown[]) => markStaleMock(...a),
+  recomputeStaleOpenRuns: (...a: unknown[]) => recomputeStaleMock(...a),
+}));
 vi.mock("@/lib/supabase/admin", () => ({ createSupabaseAdminClient: () => ({ from: fromMock }) }));
 
 import { runNightlySync, listConnectedShops } from "../nightly-sync";
@@ -45,6 +51,8 @@ beforeEach(() => {
   warmMock.mockResolvedValue({ customers: 4 });
   warmRoMock.mockResolvedValue({ ros: 3 });
   ingestMock.mockResolvedValue({ rosUpserted: 12, pagesFetched: 1, alerts: [], watermark: "2026-06-05" });
+  markStaleMock.mockResolvedValue(1);
+  recomputeStaleMock.mockResolvedValue({ recomputedRunIds: ["r1"], debouncedRunIds: [] });
 });
 
 describe("runNightlySync", () => {
@@ -136,6 +144,25 @@ describe("runNightlySync", () => {
     const r2 = await runNightlySync(7476, { businessDate: "2026-06-06" });
     expect(r2.mirrorIngest).toBeNull(); // captured to Sentry, not thrown
     expect(r2.enqueued).toBe(5); // reconcile result preserved — money path never blocked
+  });
+
+  it("marks open payroll runs stale + recomputes their live snapshots FRESH after the ingest (round-7 #40/#41)", async () => {
+    const r = await runNightlySync(7476, { businessDate: "2026-06-06" });
+    expect(markStaleMock).toHaveBeenCalledWith(7476);
+    // The nightly never reuses the < 6h QBO memo and ignores the 60s debounce.
+    expect(recomputeStaleMock).toHaveBeenCalledWith(7476, { freshQbo: true });
+    expect(r.payrollSnapshots).toEqual({ markedStale: 1, recomputed: 1, debounced: 0 });
+    // Runs AFTER the ingest so the recompute reads the refreshed mirror.
+    expect(Math.min(...ingestMock.mock.invocationCallOrder)).toBeLessThan(
+      Math.min(...markStaleMock.mock.invocationCallOrder),
+    );
+  });
+
+  it("a live-snapshot recompute error is NON-FATAL (runs stay stale; money path preserved)", async () => {
+    recomputeStaleMock.mockRejectedValueOnce(new Error("qbo down"));
+    const r = await runNightlySync(7476, { businessDate: "2026-06-06" });
+    expect(r.payrollSnapshots).toBeNull(); // captured to Sentry, not thrown
+    expect(r.enqueued).toBe(5); // reconcile result preserved
   });
 
   it("runs the mirror ingest even WITHOUT a QBO connection (payroll is Tekmetric-side)", async () => {

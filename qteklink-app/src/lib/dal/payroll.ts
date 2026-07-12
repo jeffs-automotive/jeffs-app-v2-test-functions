@@ -4,6 +4,9 @@
  * engine (src/lib/payroll/*). Split per the ~500-line file policy:
  *   - payroll-shared.ts     — row shapes, coercers, guarded fetchers, settings READ;
  *   - payroll-compute.ts    — run computation assembly + the RunSnapshot v1 builder;
+ *   - payroll-live.ts       — the round-7 #40/#41 LIVE-snapshot substrate (the
+ *                             read-through computePayrollRun, mark-stale/store,
+ *                             webhook mirror-apply, the < 6h QBO memo);
  *   - payroll-leave-rate.ts — the tech/foreman leave-rate basis (round-3 #24);
  *   - payroll-employees.ts  — employees CRUD + the pay_config write-through (#26);
  *   - THIS file             — runs list/detail/create/roster/patches, settings write
@@ -23,7 +26,6 @@
  */
 import * as Sentry from "@sentry/nextjs";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { sendQteklinkEmail } from "@/lib/dal/notify";
 import { QboClientError } from "@/lib/qbo/errors";
 import { isIsoDate } from "@/lib/format";
 import { z } from "zod";
@@ -59,7 +61,15 @@ import {
   type PayrollSettings,
   type RunDbRow,
 } from "@/lib/dal/payroll-shared";
-import { buildOpenRunSnapshot, computePayrollRun, type PayrollRunComputation } from "@/lib/dal/payroll-compute";
+import { buildOpenRunSnapshot } from "@/lib/dal/payroll-compute";
+import { issueConfirmToken, sendPayrollAlert, stateHashFrom } from "@/lib/dal/payroll-confirm";
+import {
+  computePayrollRun,
+  markPayrollOpenRunsStale,
+  recomputeAndStoreLiveSnapshot,
+  refreshLiveSnapshotAfterMutation,
+  type PayrollRunComputation,
+} from "@/lib/dal/payroll-live";
 import {
   listPayrollEmployees,
   upsertPayrollEmployee,
@@ -78,6 +88,9 @@ export { listEmployees as listTekmetricEmployees } from "@/lib/tekmetric/client"
 export type { TekmetricEmployee } from "@/lib/tekmetric/client";
 export { listPayrollRunsWithSummaries } from "@/lib/dal/payroll-summaries";
 export type { PayrollRunWithSummary } from "@/lib/dal/payroll-summaries";
+// Round-7 #42: the dry-run check (live Tekmetric re-fetch → fresh recompute → diff).
+export { dryRunPayrollRefresh } from "@/lib/dal/payroll-dry-run";
+export type { PayrollDryRunResult } from "@/lib/dal/payroll-dry-run";
 export type { PayrollActor, PayrollAlertEmails, PayrollEmployee, PayrollEntryPatch };
 export type { PayrollHourKey, PayrollRun, PayrollRunComputation, PayrollSettings };
 export type { UpsertPayrollEmployeeInput };
@@ -122,6 +135,20 @@ export async function updatePayrollSettings(
     p_payroll: next,
   });
   if (error) throwRpc("qteklink_upsert_settings", error);
+  // Round-7 #41: spiff-category edits (multiplier/counted/name) change service-
+  // advisor spiff PAY on open runs — invalidate the live-snapshot cache like every
+  // other post-commit mutation hook (this direct settings write was the one gap in
+  // the invalidation matrix). The settings write already COMMITTED, so a mark
+  // failure must not misreport the save as failed: capture + continue (the same
+  // sanctioned idiom as refreshLiveSnapshotAfterMutation; the next webhook/edit/
+  // nightly mark re-covers it).
+  try {
+    await markPayrollOpenRunsStale(shopId);
+  } catch (e) {
+    Sentry.captureException(e, {
+      tags: { qteklink_action: "payroll-settings-invalidate", shop_id: String(shopId) },
+    });
+  }
   return next;
 }
 
@@ -246,6 +273,9 @@ export async function syncPayrollRunRoster(
   });
   if (error) throwRpc("qteklink_payroll_sync_run_roster", error);
   const result = (data ?? {}) as { added?: string[]; removed?: string[] };
+  // Round-7 #41: the roster change invalidates the live snapshot — recompute inline
+  // (capture-not-throw inside; the stale flag guarantees a later recompute on failure).
+  await refreshLiveSnapshotAfterMutation(shopId, runId);
   return { added: result.added ?? [], removed: result.removed ?? [] };
 }
 
@@ -266,7 +296,7 @@ export async function updatePayrollEntry(
   const admin = createSupabaseAdminClient();
   const { data, error } = await admin
     .from("qteklink_payroll_run_employees")
-    .select("id, shop_id, employee_id, role_snapshot, pay_config")
+    .select("id, run_id, shop_id, employee_id, role_snapshot, pay_config")
     .eq("id", runEmployeeId)
     .eq("shop_id", shopId)
     .limit(1);
@@ -274,6 +304,7 @@ export async function updatePayrollEntry(
   const row = (data ?? [])[0] as
     | {
         id: string;
+        run_id: string;
         shop_id: number;
         employee_id: string;
         role_snapshot: string;
@@ -310,6 +341,11 @@ export async function updatePayrollEntry(
     p_actor_label: actor.label,
   });
   if (rpcErr) throwRpc("qteklink_payroll_update_entry", rpcErr);
+
+  // Round-7 #41: the committed entry edit invalidates the live snapshot — recompute
+  // THIS run inline (reads the fresh rows). Runs BEFORE the write-through below so a
+  // write-through failure still refreshed the cache. Capture-not-throw inside.
+  await refreshLiveSnapshotAfterMutation(shopId, row.run_id);
 
   // Round-3 decision #26: a run-level pay_config edit WRITES THROUGH to the employee
   // master (only the keys the edit changed — diffed against the entry's previous
@@ -380,61 +416,13 @@ export async function updatePayrollRun(
     p_actor_label: actor.label,
   });
   if (error) throwRpc("qteklink_payroll_update_run", error);
+  // Round-7 #41: the bonus toggle/month change reshapes the whole derivation —
+  // recompute the live snapshot inline (capture-not-throw inside; stale flag backstops).
+  await refreshLiveSnapshotAfterMutation(shopId, runId);
 }
 
 // ── Complete / void orchestration (Pattern S, all server-side) ─────────────────
-
-interface TokenRow {
-  token_id: string;
-  expires_at: string;
-}
-
-async function issueConfirmToken(
-  runId: string,
-  actionKind: "complete_run" | "void_run",
-  scopeHash: string,
-  actor: PayrollActor,
-): Promise<string> {
-  const admin = createSupabaseAdminClient();
-  const { data, error } = await admin.rpc("qteklink_payroll_issue_confirm_token", {
-    p_run_id: runId,
-    p_action_kind: actionKind,
-    p_scope_hash: scopeHash,
-    p_actor_user_id: actor.userId,
-    p_actor_label: actor.label,
-  });
-  if (error) throwRpc("qteklink_payroll_issue_confirm_token", error);
-  const row = (Array.isArray(data) ? data[0] : data) as TokenRow | undefined;
-  if (!row || typeof row.token_id !== "string") {
-    throw new Error("qteklink_payroll_issue_confirm_token returned no token");
-  }
-  return row.token_id;
-}
-
-function stateHashFrom(data: unknown, fn: string): string {
-  const hash = (data as { state_hash?: unknown } | null)?.state_hash;
-  if (typeof hash !== "string" || hash.length === 0) {
-    throw new Error(`${fn} dry run returned no state_hash`);
-  }
-  return hash;
-}
-
-/** Payroll alert email via the notify idiom. NEVER throws into the caller: by the
- *  time this runs the complete/void already committed — a failed settings read or
- *  send must not make the action look failed. Captured to Sentry instead. */
-async function sendPayrollAlert(
-  shopId: number,
-  list: keyof PayrollAlertEmails,
-  subject: string,
-  lines: string[],
-): Promise<void> {
-  try {
-    const { payroll } = await getPayrollSettings(shopId);
-    await sendQteklinkEmail({ to: payroll.alert_emails[list], subject, text: lines.join("\n") });
-  } catch (e) {
-    Sentry.captureException(e, { tags: { surface: "qteklink-payroll-alert", alert_list: list } });
-  }
-}
+// Token/hash helpers + the alert sender live in ./payroll-confirm.ts (file policy).
 
 /**
  * Complete an open run — the full Pattern S dance in one server-side call:
@@ -442,6 +430,10 @@ async function sendPayrollAlert(
  * never client-supplied), then issue a single-use token bound to the hash and
  * confirm. Ordering matters: the confirm RPC recomputes the hash in-transaction and
  * aborts on any drift after the dry-run — a mid-build edit can never freeze stale.
+ *
+ * Round-7 #40 INVARIANT: completion NEVER reads the live snapshot (the #41 display
+ * cache) — the frozen snapshot is ALWAYS built fresh right here, with a live
+ * QBO tech-cost fetch (no memo). Asserted by payroll.test.ts.
  */
 export async function completePayrollRun(
   shopId: number,
@@ -594,6 +586,9 @@ export interface PayrollRefreshResult {
  * "Refresh Tekmetric data" for one OPEN run: range-mode mirror ingest over the run's
  * period (posted-date window), plus the bonus month when the slider is on, then the
  * new-category catcher. Never touches the incremental watermark (range mode).
+ * Round-7 #40/#41: the refreshed mirror invalidates every open run's live snapshot;
+ * THIS run recomputes immediately with a FRESH QBO tech-cost fetch (never the < 6h
+ * memo) — failures propagate (the user asked; a half-refresh must be visible).
  */
 export async function refreshRunTekmetricData(shopId: number, runId: string): Promise<PayrollRefreshResult> {
   const run = await fetchRunGuarded(shopId, runId);
@@ -612,5 +607,7 @@ export async function refreshRunTekmetricData(shopId: number, runId: string): Pr
     bonusMonth = await runMirrorIngest({ shopId }, { mode: "range", postedDateStart: start, postedDateEnd: end });
   }
   const { added } = await discoverAndMergePayrollCategories(shopId);
+  await markPayrollOpenRunsStale(shopId);
+  await recomputeAndStoreLiveSnapshot(shopId, runId, { freshQbo: true });
   return { period, bonusMonth, newCategories: added };
 }

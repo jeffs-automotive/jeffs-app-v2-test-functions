@@ -7,9 +7,11 @@
  * The /payroll dashboard needs each recent run's per-employee SummaryRow set (the
  * last-12-runs card + the per-employee hourly averages). Read-path rule (plan §calc
  * engine): completed/voided runs render EXCLUSIVELY from the frozen snapshot —
- * never recomputed; open runs compute live via buildOpenRunSnapshot. The pure
- * aggregation (windowing, averages, exclusion of voided runs) stays in
- * src/lib/payroll/summary.ts — this module only fetches and shapes the rows.
+ * never recomputed; open runs read through the round-7 #41 LIVE snapshot
+ * (getOrComputeLiveSnapshot — served from the display cache when fresh, computed
+ * once + stored when stale). The pure aggregation (windowing, averages, exclusion
+ * of voided runs) stays in src/lib/payroll/summary.ts — this module only fetches
+ * and shapes the rows.
  *
  * MULTI-TENANT: shop-scoped query. No silent failures: the Supabase call checks
  * `error`, and a completed/voided run without a snapshot summary (impossible per
@@ -18,7 +20,7 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { z } from "zod";
 import { SummaryRowSchema, type SummaryRow } from "@/lib/payroll/types";
-import { buildOpenRunSnapshot } from "@/lib/dal/payroll-compute";
+import { getOrComputeLiveSnapshot } from "@/lib/dal/payroll-live";
 import { RUN_COLS, runFromRow, type PayrollRun, type RunDbRow } from "@/lib/dal/payroll-shared";
 
 export interface PayrollRunWithSummary {
@@ -51,8 +53,8 @@ export async function listPayrollRunsWithSummaries(
   const out: PayrollRunWithSummary[] = [];
   for (const row of (data ?? []) as RunDbRow[]) {
     if (row.status === "open") {
-      // Live compute (open runs only) — same assembly the run detail page uses.
-      const snapshot = await buildOpenRunSnapshot(shopId, row);
+      // Read-through (#41): the same live-snapshot cache the run detail page uses.
+      const snapshot = await getOrComputeLiveSnapshot(shopId, row);
       out.push({ run: runFromRow(row), rows: snapshot.summary });
       continue;
     }

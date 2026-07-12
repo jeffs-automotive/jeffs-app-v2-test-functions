@@ -21,6 +21,10 @@
 // Clean cutover (plan §9): no historical backfill — this table simply starts
 // empty and fills going forward.
 //
+// Round-7 #40 (payroll): after a NEW RO-family event is stored, its id is
+// fire-and-forget POSTed to the qteklink-app /api/payroll/mirror-apply route
+// (see notifyPayrollMirrorApply below) — the webhook 200 never waits on it.
+//
 // raw_body carries customer PII (payerName, ccLast4, customerId) → it lands ONLY
 // in the service_role-only qteklink_events table; structured logs include only
 // non-PII ids, and Sentry events are scrubbed by withSentryScope's beforeSend.
@@ -195,6 +199,54 @@ async function resolveRealmForShop(shopId: number): Promise<{ realmId: string | 
   return { realmId: typeof data === "string" && data.length > 0 ? data : null, error: null };
 }
 
+// ─── Payroll mirror-apply notify (round-7 #40) ──────────────────────────────
+// After an RO-family event is DURABLY stored, fire-and-forget POST its id to the
+// qteklink-app route /api/payroll/mirror-apply, which applies the raw_body JSONB
+// into the tekmetric_ros* mirror (single-sourced TS mappers) and recomputes the
+// open payroll runs' live snapshots (debounced). The webhook 200 is NEVER blocked
+// on it — failures are Sentry-captured + logged, and the nightly ingest + dry-run
+// remain the reconciliation backstops for missed notifies.
+// Config (Supabase fn secrets): QTL_MIRROR_APPLY_URL (the route URL) +
+// QTL_MIRROR_APPLY_SECRET (must equal the app's PAYROLL_MIRROR_APPLY_SECRET).
+const RO_MIRROR_EVENT_KINDS = new Set([
+  "ro_created", "ro_status_updated", "ro_posted", "ro_unposted", "ro_sent_to_ar", "ro_work_approved",
+]);
+
+function notifyPayrollMirrorApply(eventId: string, eventKind: string): void {
+  const url = Deno.env.get("QTL_MIRROR_APPLY_URL");
+  const secret = Deno.env.get("QTL_MIRROR_APPLY_SECRET");
+  if (!url || !secret) {
+    // Not configured (visible, not silent) — the nightly ingest still reconciles.
+    console.log(JSON.stringify({
+      level: "info", surface: "qteklink-webhook",
+      msg: "payroll mirror-apply notify skipped — QTL_MIRROR_APPLY_URL/SECRET not set",
+      event_kind: eventKind,
+    }));
+    return;
+  }
+  const notify = fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${secret}` },
+    body: JSON.stringify({ event_ids: [eventId] }),
+  })
+    .then(async (res) => {
+      if (!res.ok) {
+        const text = (await res.text().catch(() => "")).slice(0, 300);
+        throw new Error(`payroll mirror-apply notify got ${res.status}: ${text}`);
+      }
+    })
+    .catch((e: unknown) => {
+      // Best-effort by design — but never silent: fn logs + Sentry (the background
+      // capture may miss the per-request flush, so the console line is the floor).
+      console.error("qteklink-webhook: payroll mirror-apply notify failed:", String(e));
+      Sentry.captureException(e instanceof Error ? e : new Error(String(e)));
+    });
+  // Supabase Edge Runtime: keep the isolate alive past the response for the
+  // background POST; fall back to a floating (caught) promise elsewhere (tests).
+  const runtime = (globalThis as { EdgeRuntime?: { waitUntil(p: Promise<unknown>): void } }).EdgeRuntime;
+  if (runtime && typeof runtime.waitUntil === "function") runtime.waitUntil(notify);
+}
+
 // ─── Entrypoint (exported test seam) ──────────────────────────────────────────
 export async function handler(req: Request): Promise<Response> {
   if (req.method !== "POST") return json(405, { error: "Use POST" });
@@ -298,6 +350,14 @@ export async function handler(req: Request): Promise<Response> {
     // Tekmetric retries (the durable-before-200 contract; no silent drop).
     Sentry.captureException(new Error(`qteklink-webhook: insert failed (${insertErr.code}): ${insertErr.message}`));
     return json(503, { ok: false, stored: false, error: "store_failed" });
+  }
+
+  // Round-7 #40: a freshly-stored RO-family event drives the payroll mirror —
+  // fire-and-forget (the 200 below never waits on it). Duplicates never reach here
+  // (23505 returned above); payment events don't touch the RO mirror.
+  const storedId = inserted?.id;
+  if (typeof storedId === "string" && RO_MIRROR_EVENT_KINDS.has(eventKind)) {
+    notifyPayrollMirrorApply(storedId, eventKind);
   }
 
   return json(200, { ok: true, stored: true, id: inserted?.id ?? null, event_kind: eventKind });

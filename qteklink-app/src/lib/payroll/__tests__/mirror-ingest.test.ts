@@ -407,4 +407,32 @@ describe("runMirrorIngest (range — the per-run refresh action)", () => {
       runMirrorIngest({ shopId: SHOP, db, pageRos: pager }, { mode: "range", postedDateStart: "junk", postedDateEnd: "2026-07-11" }),
     ).rejects.toThrow(/ISO YYYY-MM-DD/);
   });
+
+  it("round-7 #42: updatedDateStart adds a SECOND updated-since pass (dry-run) — supported params only", async () => {
+    const { db } = makeDbMock({ created: null, updated: null });
+    const { pager, queries } = onePagePager([sampleRo()]);
+
+    const r = await runMirrorIngest(
+      { shopId: SHOP, db, pageRos: pager },
+      { mode: "range", postedDateStart: "2026-06-28", postedDateEnd: "2026-07-11", updatedDateStart: "2026-06-28" },
+    );
+
+    expect(queries).toEqual([
+      { postedDateStart: "2026-06-28T00:00:00Z", postedDateEnd: "2026-07-11T23:59:59Z" },
+      { updatedDateStart: "2026-06-28T00:00:00Z" },
+    ]);
+    expect(r.watermark).toBeNull();
+    expect(r).toMatchObject({ rosUpserted: 1 }); // the pager yields on the first pass only
+  });
+
+  it("rejects a non-ISO updatedDateStart (never an un-validated param into the query string)", async () => {
+    const { db } = makeDbMock({ created: null, updated: null });
+    const { pager } = onePagePager([]);
+    await expect(
+      runMirrorIngest(
+        { shopId: SHOP, db, pageRos: pager },
+        { mode: "range", postedDateStart: "2026-06-28", postedDateEnd: "2026-07-11", updatedDateStart: "junk" },
+      ),
+    ).rejects.toThrow(/updatedDateStart must be ISO/);
+  });
 });

@@ -12,6 +12,9 @@ import * as Sentry from "@sentry/nextjs";
 const { adminQueryMock } = vi.hoisted(() => ({ adminQueryMock: vi.fn() }));
 
 vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn() }));
+// Only consulted by the round-7 #41 memo-validity check (reusableTechCostMemo) —
+// the no-memo paths never touch it.
+vi.mock("@/lib/dal/realm", () => ({ resolveRealmForShop: vi.fn() }));
 vi.mock("@/lib/supabase/admin", () => ({
   createSupabaseAdminClient: vi.fn(() => ({
     from: (table: string) => {
@@ -71,7 +74,9 @@ import {
   type EntryDbRow,
   type RunDbRow,
 } from "@/lib/dal/payroll-shared";
+import { resolveRealmForShop } from "@/lib/dal/realm";
 import { buildOpenRunSnapshot } from "@/lib/dal/payroll-compute";
+import type { QboTechCostMemo } from "@/lib/dal/payroll-compute-gp";
 
 // ── Fixtures ───────────────────────────────────────────────────────────────────
 
@@ -88,6 +93,9 @@ const run: RunDbRow = {
   bonus_period: true,
   bonus_month: "2026-06-01",
   snapshot: null,
+  live_snapshot: null,
+  live_snapshot_at: null,
+  live_snapshot_stale: true,
   completed_at: null,
   completed_by_label: null,
   voided_at: null,
@@ -258,5 +266,59 @@ describe("buildOpenRunSnapshot — GP composition (#38) + month sales (#36)", ()
     expect(sa?.derived.month_gp_with_fees_cents).toBe(12_345); // override wins on the sheet
     expect(prov.month_gp_source).toBe("qbo_tech_cost"); // the month-level derivation is untouched
     expect(prov.month_gp_with_fees_cents).toBe(16_817_914);
+  });
+
+  it("a fresh fetch stamps the round-7 #41 memo provenance (fetched_at + realm)", async () => {
+    const snapshot = await buildOpenRunSnapshot(SHOP_ID, run);
+    const prov = snapshot.derived_provenance as Record<string, unknown>;
+    expect(typeof prov.month_qbo_tech_cost_fetched_at).toBe("string");
+    expect(prov.month_qbo_tech_cost_realm_id).toBe("R123");
+  });
+});
+
+// ── Round-7 #41: the < 6h QBO tech-cost memo ──────────────────────────────────
+
+describe("buildOpenRunSnapshot — QBO tech-cost memo reuse (#41)", () => {
+  const memo = (over: Partial<QboTechCostMemo> = {}): QboTechCostMemo => ({
+    month: "2026-06",
+    valueCents: 4_874_072,
+    accountLabel: "6010 Technicians (memo)",
+    fetchedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(), // 1h old
+    realmId: "R123",
+    ...over,
+  });
+
+  it("a fresh (realm, month) memo replaces the live QBO fetch and carries its own fetched_at", async () => {
+    vi.mocked(resolveRealmForShop).mockResolvedValue("R123");
+    const m = memo();
+    const snapshot = await buildOpenRunSnapshot(SHOP_ID, run, { qboTechCostMemo: m });
+    const prov = snapshot.derived_provenance as Record<string, unknown>;
+
+    expect(vi.mocked(qboMonthTechnicianCostCents)).not.toHaveBeenCalled();
+    expect(prov.month_gp_source).toBe("qbo_tech_cost");
+    expect(prov.month_qbo_tech_cost_cents).toBe(4_874_072);
+    expect(prov.month_qbo_tech_cost_account).toBe("6010 Technicians (memo)");
+    expect(prov.month_qbo_tech_cost_fetched_at).toBe(m.fetchedAt); // the ORIGINAL fetch time
+    expect(prov.month_qbo_tech_cost_realm_id).toBe("R123");
+    expect(prov.month_gp_with_fees_cents).toBe(16_817_914); // same composition as a fresh fetch
+  });
+
+  it("an EXPIRED memo (>= 6h) is ignored — fresh fetch", async () => {
+    vi.mocked(resolveRealmForShop).mockResolvedValue("R123");
+    const stale = memo({ fetchedAt: new Date(Date.now() - 7 * 60 * 60 * 1000).toISOString() });
+    await buildOpenRunSnapshot(SHOP_ID, run, { qboTechCostMemo: stale });
+    expect(vi.mocked(qboMonthTechnicianCostCents)).toHaveBeenCalledWith(SHOP_ID, "2026-06");
+  });
+
+  it("a memo from a DIFFERENT realm is ignored — fresh fetch (per-(realm, month) pinning)", async () => {
+    vi.mocked(resolveRealmForShop).mockResolvedValue("R999");
+    await buildOpenRunSnapshot(SHOP_ID, run, { qboTechCostMemo: memo() });
+    expect(vi.mocked(qboMonthTechnicianCostCents)).toHaveBeenCalled();
+  });
+
+  it("a memo for a DIFFERENT month is ignored — fresh fetch (no realm lookup needed)", async () => {
+    await buildOpenRunSnapshot(SHOP_ID, run, { qboTechCostMemo: memo({ month: "2026-05" }) });
+    expect(vi.mocked(resolveRealmForShop)).not.toHaveBeenCalled();
+    expect(vi.mocked(qboMonthTechnicianCostCents)).toHaveBeenCalled();
   });
 });

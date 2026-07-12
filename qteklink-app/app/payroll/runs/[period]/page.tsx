@@ -5,11 +5,18 @@
  * lineage run via `?run=<uuid>`. Three `?view=` tabs: Entry grid / Pay sheets /
  * Summary (print target).
  *
- * Read-path rule (hard): OPEN runs compute live server-side on every request
- * (force-dynamic — save then re-render, no client business math); COMPLETED and
- * VOIDED runs render exclusively from the frozen snapshot via the DAL. The
- * Pattern S complete/void dances run server-side inside their actions; the
- * dialogs here are the human confirmation surfaces.
+ * Round-7 #41 INSTANT TABS: this ONE server render carries ALL THREE tabs'
+ * content (a single computePayrollRun read — the stored live snapshot for open
+ * runs); switching tabs is purely client-side in RunViewTabs (history.replaceState
+ * URL sync, no server round-trip). Deep links (?view=summary) still land
+ * correctly here on first render. Entry-grid SAVES keep their server round-trip
+ * (they must recompute).
+ *
+ * Read-path rule (hard): OPEN runs read through the stored live snapshot
+ * (recompute-on-stale — payroll-live.ts); COMPLETED and VOIDED runs render
+ * exclusively from the frozen snapshot via the DAL. The Pattern S complete/void
+ * dances run server-side inside their actions; the dialogs here are the human
+ * confirmation surfaces.
  */
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -29,6 +36,7 @@ import { EntryGrid } from "./EntryGrid";
 import { EntryGridReadOnly } from "./EntryGridReadOnly";
 import { PrintButton } from "./PrintButton";
 import { RefreshTekmetricButton } from "./RefreshTekmetricButton";
+import { RunViewTabs, type RunView } from "./RunViewTabs";
 import { SheetsView } from "./SheetsView";
 import { SummaryView } from "./SummaryView";
 import { SyncRosterButton } from "./SyncRosterButton";
@@ -36,13 +44,6 @@ import { VoidCloneButton } from "./VoidCloneButton";
 import { fmtAsOf, fmtDateLong, monthLabel, periodLabel, RunStatusBadge } from "../../payroll-ui";
 
 export const dynamic = "force-dynamic"; // open runs recompute on every view
-
-type View = "entry" | "sheets" | "summary";
-const TABS: { key: View; label: string }[] = [
-  { key: "entry", label: "Entry grid" },
-  { key: "sheets", label: "Pay sheets" },
-  { key: "summary", label: "Summary" },
-];
 
 export default async function RunDetailPage({
   params,
@@ -55,7 +56,7 @@ export default async function RunDetailPage({
   const { period } = await params;
   if (!isIsoDate(period)) notFound();
   const sp = await searchParams;
-  const view: View = sp.view === "sheets" || sp.view === "summary" ? sp.view : "entry";
+  const view: RunView = sp.view === "sheets" || sp.view === "summary" ? sp.view : "entry";
   const runParam = typeof sp.run === "string" ? sp.run : undefined;
 
   // All runs sharing this period: at most one non-voided (the DB's partial
@@ -106,10 +107,54 @@ export default async function RunDetailPage({
     ? allRuns.find((r) => r.id === run.clonedFromRunId)
     : undefined;
 
-  const hrefFor = (v: View) =>
-    `/payroll/runs/${period}?view=${v}${runParam ? `&run=${runParam}` : ""}`;
-
   const label = periodLabel(run.periodStart, run.periodEnd);
+
+  // ── The three tab panels — ALL server-rendered in this one pass (#41); the
+  //    client RunViewTabs only toggles their visibility. ──
+  const entryPanel =
+    snapshot.employees.length === 0 ? (
+      <EmptyState
+        icon={Users}
+        title="No active employees to pay"
+        subtext={
+          <span className="inline-flex flex-col items-center gap-2">
+            <span>
+              Add people on the{" "}
+              <Link href="/payroll/employees" className="font-medium text-primary underline underline-offset-2">
+                employees page
+              </Link>
+              , then pull them into this run.
+            </span>
+            {canEdit && <SyncRosterButton runId={run.id} />}
+          </span>
+        }
+      />
+    ) : isOpen ? (
+      <EntryGrid entries={detail.entries} computed={computedByEmployee} canEdit={canEdit} />
+    ) : (
+      <EntryGridReadOnly snapshot={snapshot} />
+    );
+
+  const sheetsPanel =
+    snapshot.employees.length === 0 ? (
+      <EmptyState icon={Inbox} title="Nothing to show yet" subtext="This run has no employees." />
+    ) : (
+      <SheetsView snapshot={snapshot} entryIdByEmployee={entryIdByEmployee} editable={canEdit} />
+    );
+
+  const summaryPrintable = snapshot.summary.length > 0;
+  const summaryPanel = summaryPrintable ? (
+    <SummaryView
+      rows={snapshot.summary}
+      shopId={shopId}
+      periodStart={run.periodStart}
+      periodEnd={run.periodEnd}
+      status={run.status}
+      completedAt={run.completedAt}
+    />
+  ) : (
+    <EmptyState icon={Inbox} title="Nothing to summarize yet" subtext="This run has no employees." />
+  );
 
   return (
     <main
@@ -258,81 +303,28 @@ export default async function RunDetailPage({
           )}
         </div>
 
-        {/* ── Tabs ── */}
-        <nav className="mt-6 flex gap-2" aria-label="Run views">
-          {TABS.map((t) => (
-            <Link
-              key={t.key}
-              href={hrefFor(t.key)}
-              aria-current={view === t.key ? "page" : undefined}
-              className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
-                view === t.key
-                  ? "border border-transparent bg-primary/10 font-semibold text-primary"
-                  : "border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
-              }`}
-            >
-              {t.label}
-            </Link>
-          ))}
-        </nav>
-
-        {/* ── Tab content (summary renders below, outside print:hidden) ── */}
-        <section className="mt-6">
-          {view === "entry" &&
-            (snapshot.employees.length === 0 ? (
-              <EmptyState
-                icon={Users}
-                title="No active employees to pay"
-                subtext={
-                  <span className="inline-flex flex-col items-center gap-2">
-                    <span>
-                      Add people on the{" "}
-                      <Link href="/payroll/employees" className="font-medium text-primary underline underline-offset-2">
-                        employees page
-                      </Link>
-                      , then pull them into this run.
-                    </span>
-                    {canEdit && <SyncRosterButton runId={run.id} />}
-                  </span>
-                }
-              />
-            ) : isOpen ? (
-              <EntryGrid entries={detail.entries} computed={computedByEmployee} canEdit={canEdit} />
-            ) : (
-              <EntryGridReadOnly snapshot={snapshot} />
-            ))}
-
-          {view === "sheets" &&
-            (snapshot.employees.length === 0 ? (
-              <EmptyState icon={Inbox} title="Nothing to show yet" subtext="This run has no employees." />
-            ) : (
-              <SheetsView
-                snapshot={snapshot}
-                entryIdByEmployee={entryIdByEmployee}
-                editable={canEdit}
-              />
-            ))}
-        </section>
       </div>
 
-      {/* Summary: on-screen as its tab; ALWAYS in the DOM for print (the print
-          header inside SummaryView labels the sheet). */}
-      <section className={view === "summary" ? "mt-6" : "hidden print:block"}>
-        {snapshot.summary.length === 0 ? (
-          view === "summary" ? (
-            <EmptyState icon={Inbox} title="Nothing to summarize yet" subtext="This run has no employees." />
-          ) : null
-        ) : (
-          <SummaryView
-            rows={snapshot.summary}
-            shopId={shopId}
-            periodStart={run.periodStart}
-            periodEnd={run.periodEnd}
-            status={run.status}
-            completedAt={run.completedAt}
-          />
-        )}
-      </section>
+      {/* ── Tabs + panels (#41): client-side switching, one server render.
+            The #42 dry-run button rides the pay-sheets panel (admin, open). ── */}
+      <RunViewTabs
+        initialView={view}
+        period={period}
+        runParam={runParam}
+        entryPanel={entryPanel}
+        sheetsPanel={sheetsPanel}
+        summaryPanel={summaryPanel}
+        summaryPrintable={summaryPrintable}
+        dryRun={
+          canEdit
+            ? {
+                runId: run.id,
+                roCount: snapshot.derived_provenance.ro_count,
+                locked: !isOpen,
+              }
+            : null
+        }
+      />
     </main>
   );
 }

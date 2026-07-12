@@ -304,6 +304,39 @@ Common to all: OT paid at 1.5× hourly; PTO/Holiday/Bereavement/Training hours �
     The QBO P&L fetch (#35 plumbing) stays — parse target becomes the 6010 row, not GrossProfit;
     the app-computed labor proration remains only as the labeled fallback when QBO is unreachable.
 
+### Round-7 decisions (Chris, 2026-07-11 — live-numbers architecture)
+
+39. **Billed-hours basis → RO COMPLETED date (shop-local)** for per-tech billed hours + the foreman's
+    shop total (+ the prior-year goal, same basis for apples-to-apples). PROOF: Chris's Tekmetric report
+    screenshots (6/28–7/4 + 7/5–7/11) reproduce EXACTLY under completed-date bucketing (w2: Trilli 55.05,
+    Fuhrer 49.43, Vasiliou 45.90, Stoneback 11.87 — posted-basis was under by the completed-not-yet-posted
+    work). Money rollups (sales, fees, parts, GP, spiffs) STAY posted-basis (accounting side,
+    backtested penny-exact). Rationale: matches the report Marie reconciles against; credits work when
+    performed; converges with posted once periods settle.
+40. **Webhook-driven mirror + auto-recompute (Chris: "we receive webhooks with the jsonB and should use
+    them... automatic, as the day goes")**: RO webhook payloads apply into the tekmetric_ros* mirror
+    (single-sourced TS mappers — no duplicated mapping logic), affected OPEN runs marked stale and
+    recomputed debounced into a stored LIVE SNAPSHOT. Backstops: nightly ingest, dry-run button, manual
+    refresh. Completion (Pattern S) ALWAYS recomputes fresh in-transaction — the live snapshot is
+    display-only and can never freeze stale money.
+41. **Instant tabs:** run tabs (entry grid / pay sheets / summary) read the stored live snapshot and
+    switch client-side — no per-tab recompute (was 10–20s: full derivation chain + live QBO P&L call per
+    tab switch). Entry edits recompute inline for that run; QBO tech-cost cached per (realm, month) in
+    the snapshot, refreshed by dry-run/nightly/manual.
+42. **DRY-RUN button** (bottom of the pay sheet page): live-fetches ALL period-touched ROs from Tekmetric
+    (paged list endpoint — API TESTED 2026-07-11: NO batch-by-ids param exists (unknown params silently
+    ignored — returns the full 148k dataset; guard against this), no completedDate filter; page size
+    hard-capped at 100 → a period = ~4 posted-range pages + updated-since pages), applies to the mirror,
+    recomputes, and diffs vs the previous numbers → modal listing every difference + ACCEPT → commits the
+    refreshed snapshot and navigates to the Summary tab.
+
+43. **ONE SAVE BUTTON on the entry grid (Chris, 2026-07-11)** — not per-employee. The grid collects all
+    dirty cells client-side; a single Save submits them as ONE ATOMIC batch (new
+    `qteklink_payroll_update_entries(run_id, patches[])` RPC — all rows in one transaction, per the
+    non-atomic-multi-write invariant; per-row validation/audit preserved) followed by ONE recompute +
+    live-snapshot store. Unsaved-changes indicator + leave-guard. Implements as round-8 immediately
+    after round-7 lands (the entry grid is being rebuilt in-flight there).
+
 ### Remaining open items
 
 - **Mirror ingest scheduling:** promote `sync-ros.mjs` logic to a recurring job (fold into qteklink

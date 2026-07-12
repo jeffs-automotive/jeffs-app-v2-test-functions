@@ -21,6 +21,14 @@
  * Money: integer cents throughout (BIGINT cents in the mirror). Hours: 2dp.
  * Every derived result carries provenance { roCount, dateRange, asOf }.
  *
+ * BUCKETING BASES (round-7 decision #39): HOURS derivations (per-tech billed hours,
+ * the foreman's shop total, and the prior-year shop-hour goal) bucket ROs by their
+ * COMPLETED date (shop-local) — including completed-but-not-yet-posted ROs — because
+ * that reproduces the Tekmetric report Marie reconciles against and credits work when
+ * performed. MONEY derivations (sales, fees, parts, GP inputs, spiffs) stay on the
+ * POSTED date (the accounting side, backtested penny-exact). Both are TIMESTAMPTZ
+ * converted via toShopLocalDate.
+ *
  * MULTI-TENANT: every RO query is scoped by shop_id; child tables (jobs, labor,
  * parts) are scoped through their shop-filtered parent RO ids.
  */
@@ -39,6 +47,8 @@ export interface MirrorRoRow {
   taxes_cents: number | null;
   fee_total_cents: number | null;
   posted_date: string | null;
+  /** TIMESTAMPTZ — the #39 hours-bucketing basis (null until Tekmetric marks the RO complete). */
+  completed_date: string | null;
   synced_at: string | null;
 }
 
@@ -313,7 +323,8 @@ const PAGE = 1000;
 const ID_CHUNK = 100;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-const RO_COLS = "id, service_writer_id, total_sales_cents, taxes_cents, fee_total_cents, posted_date, synced_at";
+const RO_COLS =
+  "id, service_writer_id, total_sales_cents, taxes_cents, fee_total_cents, posted_date, completed_date, synced_at";
 
 async function resolveTz(shopId: number, tz: string | undefined): Promise<string> {
   if (tz) return tz;
@@ -321,11 +332,42 @@ async function resolveTz(shopId: number, tz: string | undefined): Promise<string
   return settings.shopTimezone;
 }
 
+/** The two RO date columns derivations bucket on (round-7 decision #39). */
+export type RoDateBasis = "posted_date" | "completed_date";
+
 /**
- * ROs POSTED (shop-local) within [start, end] inclusive. Queries a generous ±1-day
- * UTC window, then filters exactly by shop-local posted date (the safety-net idiom).
+ * PURE exact-bucketing half of the fetchers (exported for the boundary unit tests):
+ * keep only ROs whose `basis` timestamp falls on a shop-LOCAL calendar date within
+ * [start, end] inclusive. The evening boundary is the whole point — e.g. completed
+ * 2026-07-04T23:30 ET arrives as 2026-07-05T03:30:00Z and MUST bucket to 7/4.
  */
-async function fetchPostedRos(shopId: number, start: string, end: string, tz: string): Promise<MirrorRoRow[]> {
+export function rosInLocalRange(
+  ros: MirrorRoRow[],
+  basis: RoDateBasis,
+  start: string,
+  end: string,
+  tz: string,
+): MirrorRoRow[] {
+  return ros.filter((r) => {
+    const iso = r[basis];
+    if (iso == null) return false;
+    const local = toShopLocalDate(iso, tz);
+    return local >= start && local <= end;
+  });
+}
+
+/**
+ * ROs whose `basis` date (shop-local) falls within [start, end] inclusive. Queries a
+ * generous ±1-day UTC window, then filters exactly by the shop-local date via
+ * {@link rosInLocalRange} (the safety-net idiom).
+ */
+async function fetchRosByLocalDate(
+  shopId: number,
+  basis: RoDateBasis,
+  start: string,
+  end: string,
+  tz: string,
+): Promise<MirrorRoRow[]> {
   const startIso = new Date(Date.parse(`${start}T00:00:00Z`) - DAY_MS).toISOString();
   const endIso = new Date(Date.parse(`${end}T00:00:00Z`) + 2 * DAY_MS).toISOString();
   const admin = createSupabaseAdminClient();
@@ -335,9 +377,9 @@ async function fetchPostedRos(shopId: number, start: string, end: string, tz: st
       .from("tekmetric_ros")
       .select(RO_COLS)
       .eq("shop_id", shopId)
-      .not("posted_date", "is", null)
-      .gte("posted_date", startIso)
-      .lt("posted_date", endIso)
+      .not(basis, "is", null)
+      .gte(basis, startIso)
+      .lt(basis, endIso)
       .order("id", { ascending: true })
       .range(from, from + PAGE - 1);
     if (error) throw new Error(`payroll derive: tekmetric_ros fetch failed: ${error.message}`);
@@ -345,10 +387,21 @@ async function fetchPostedRos(shopId: number, start: string, end: string, tz: st
     out.push(...rows);
     if (rows.length < PAGE) break;
   }
-  return out.filter((r) => {
-    const local = toShopLocalDate(r.posted_date as string, tz);
-    return local >= start && local <= end;
-  });
+  return rosInLocalRange(out, basis, start, end, tz);
+}
+
+/** ROs POSTED (shop-local) within [start, end] — the MONEY basis (#39). */
+async function fetchPostedRos(shopId: number, start: string, end: string, tz: string): Promise<MirrorRoRow[]> {
+  return fetchRosByLocalDate(shopId, "posted_date", start, end, tz);
+}
+
+/**
+ * ROs COMPLETED (shop-local) within [start, end] — the HOURS basis (round-7 #39).
+ * Deliberately ignores posted_date entirely: completed-but-NOT-yet-posted ROs are
+ * included (that is the point — the Tekmetric report credits work when performed).
+ */
+async function fetchCompletedRos(shopId: number, start: string, end: string, tz: string): Promise<MirrorRoRow[]> {
+  return fetchRosByLocalDate(shopId, "completed_date", start, end, tz);
 }
 
 /** Authorized jobs for a set of RO ids — `.eq("authorized", true)` is the SQL half of INVARIANT #1. */
@@ -408,8 +461,16 @@ async function fetchChildrenByKey<T>(
 // ── Composed derivations (contract §derive.ts) ────────────────────────────────
 
 /**
- * Billed hours per technician_id over ROs posted within [start, end] (inclusive
- * shop-local ISO dates — a pay period is Sun..Sat ×2). Decision #7.
+ * Billed hours per technician_id over ROs COMPLETED within [start, end] (inclusive
+ * shop-local ISO dates — a pay period is Sun..Sat ×2). Decision #7 attribution
+ * (labor-line technician_id, authorized jobs) on the round-7 #39 COMPLETED-date
+ * basis — completed-but-not-yet-posted ROs count; posted-but-not-in-window do not.
+ *
+ * ACCEPTANCE REFERENCE (#39, Chris's Tekmetric report screenshots 2026-07-11):
+ * for the 6/28–7/11 run, week 2 (7/5–7/11) must reproduce EXACTLY
+ *   Trilli 55.05 / Fuhrer 49.43 / Vasiliou 45.90 / Stoneback 11.87
+ * under completed-date bucketing (the posted basis was under by the
+ * completed-not-yet-posted work).
  */
 export async function billedHoursByTechnician(
   shopId: number,
@@ -421,7 +482,7 @@ export async function billedHoursByTechnician(
     throw new Error(`payroll derive: billedHoursByTechnician needs ISO dates, got "${start}".."${end}"`);
   }
   const tz = await resolveTz(shopId, opts.tz);
-  const ros = await fetchPostedRos(shopId, start, end, tz);
+  const ros = await fetchCompletedRos(shopId, start, end, tz);
   const jobs = await fetchAuthorizedJobs(ros.map((r) => r.id));
   const labor = await fetchChildrenByKey<MirrorLaborRow>(
     "tekmetric_ro_job_labor",
@@ -522,7 +583,11 @@ export async function monthPartsCostCents(
   };
 }
 
-/** Total shop billed hours for the month (foreman bonus input, decision #4). */
+/**
+ * Total shop billed hours for the month (foreman bonus input, decision #4) — ROs
+ * COMPLETED in the month (round-7 #39; the same basis as per-tech billed hours so
+ * the foreman's total ties to the report Marie reconciles against).
+ */
 export async function shopBilledHours(
   shopId: number,
   month: string,
@@ -530,7 +595,7 @@ export async function shopBilledHours(
 ): Promise<Derived<number>> {
   const { start, end } = monthDateRange(month);
   const tz = await resolveTz(shopId, opts.tz);
-  const ros = await fetchPostedRos(shopId, start, end, tz);
+  const ros = await fetchCompletedRos(shopId, start, end, tz);
   const jobs = await fetchAuthorizedJobs(ros.map((r) => r.id));
   const labor = await fetchChildrenByKey<MirrorLaborRow>(
     "tekmetric_ro_job_labor",
@@ -546,8 +611,9 @@ export async function shopBilledHours(
  * hour goal (round-5 decision #32, mirroring the SA sales-goal pattern #22/#23).
  * `month` is the BONUS month ("YYYY-MM"); the prior-year month is derived here.
  * Same rollup as {@link shopBilledHours} (authorized jobs, null-technician lines
- * included — it's a shop total). A provenance roCount of 0 means "no data" —
- * callers fall back to the legacy pay_config.shop_hour_goal.
+ * included — it's a shop total) on the SAME round-7 #39 COMPLETED-date basis, so
+ * the goal comparison stays apples-to-apples. A provenance roCount of 0 means
+ * "no data" — callers fall back to the legacy pay_config.shop_hour_goal.
  */
 export async function priorYearShopBilledHours(
   shopId: number,
@@ -557,7 +623,7 @@ export async function priorYearShopBilledHours(
   const target = priorYearMonth(month);
   const { start, end } = monthDateRange(target);
   const tz = await resolveTz(shopId, opts.tz);
-  const ros = await fetchPostedRos(shopId, start, end, tz);
+  const ros = await fetchCompletedRos(shopId, start, end, tz);
   const jobs = await fetchAuthorizedJobs(ros.map((r) => r.id));
   const labor = await fetchChildrenByKey<MirrorLaborRow>(
     "tekmetric_ro_job_labor",

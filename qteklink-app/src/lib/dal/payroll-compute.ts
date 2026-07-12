@@ -58,6 +58,7 @@ import {
   gpPayFromSheet,
   isTechnicianFamily,
   resolveMonthGp,
+  type QboTechCostMemo,
 } from "@/lib/dal/payroll-compute-gp";
 import { buildRunSummary, type EmployeeSheet } from "@/lib/payroll/summary";
 import {
@@ -85,13 +86,10 @@ import {
 import {
   fetchEmployeesByIds,
   fetchRunEntries,
-  fetchRunGuarded,
   getPayrollSettings,
   normalizeOverrides,
-  runFromRow,
   sheetEntriesFromRow,
   type EntryDbRow,
-  type PayrollRun,
   type RunDbRow,
 } from "@/lib/dal/payroll-shared";
 
@@ -117,6 +115,11 @@ interface MonthDerivations {
   /** QBO P&L COGS 6010 for the month; null on the computed fallback. */
   qboTechCostCents: number | null;
   qboTechCostAccountLabel: string | null;
+  /** Round-7 #41: when the tech cost was ACTUALLY fetched (memo freshness clock)
+   *  + the realm it came from — both ride the live snapshot's provenance so the
+   *  next debounced/inline recompute can reuse the value when < 6h old. */
+  qboTechCostFetchedAt: string | null;
+  qboTechCostRealmId: string | null;
   /** Prorated GP labor pay — computed ONLY on the fallback path (#38);
    *  null when the QBO tech-cost composition was used. */
   laborPayProratedCents: number | null;
@@ -136,13 +139,24 @@ interface MonthDerivations {
   shopHourGoalProvenance: DeriveProvenance | null;
 }
 
+export interface BuildOpenRunSnapshotOpts {
+  /** Round-7 #41: reuse a previously-fetched QBO tech cost (< 6h, same realm+month)
+   *  instead of a live P&L call. Passed by the DEBOUNCED/inline recompute paths
+   *  (payroll-live.ts); dry-run / nightly / manual refresh / completion pass none. */
+  qboTechCostMemo?: QboTechCostMemo | null;
+}
+
 /**
  * Build the live RunSnapshot for an OPEN run. Two passes: the non-service-advisor
  * sheets first (they never need GP), then month GP (labor pay prorated over every
  * run overlapping the bonus month — completed from snapshots, open computed live,
  * voided skipped), then the service-advisor sheets that consume it.
  */
-export async function buildOpenRunSnapshot(shopId: number, run: RunDbRow): Promise<RunSnapshot> {
+export async function buildOpenRunSnapshot(
+  shopId: number,
+  run: RunDbRow,
+  opts: BuildOpenRunSnapshotOpts = {},
+): Promise<RunSnapshot> {
   const [{ payroll: settings }, shopSettings] = await Promise.all([
     getPayrollSettings(shopId),
     getShopSettings(shopId),
@@ -194,6 +208,8 @@ export async function buildOpenRunSnapshot(shopId: number, run: RunDbRow): Promi
       gpSource: "qbo_tech_cost", // resolved below (falls to 'computed' on a QBO failure)
       qboTechCostCents: null,
       qboTechCostAccountLabel: null,
+      qboTechCostFetchedAt: null,
+      qboTechCostRealmId: null,
       laborPayProratedCents: null, // fallback path only (#38)
       provenance: sales.provenance,
       // Round-3 #22/#23: the SA sales goal auto-prefills from the prior-year
@@ -308,12 +324,15 @@ export async function buildOpenRunSnapshot(shopId: number, run: RunDbRow): Promi
       currentRunGpEmployees: assembled
         .filter((a) => (GP_LABOR_ROLES as readonly string[]).includes(a.role) && a.sheet !== null)
         .map((a) => gpPayFromSheet(a.role, a.sheet as SheetComputation)),
+      qboTechCostMemo: opts.qboTechCostMemo ?? null,
     });
     month.gpWithFeesCents = resolution.gpWithFeesCents;
     month.gpWithoutFeesCents = resolution.gpWithoutFeesCents;
     month.gpSource = resolution.gpSource;
     month.qboTechCostCents = resolution.qboTechCostCents;
     month.qboTechCostAccountLabel = resolution.qboTechCostAccountLabel;
+    month.qboTechCostFetchedAt = resolution.qboTechCostFetchedAt;
+    month.qboTechCostRealmId = resolution.qboTechCostRealmId;
     month.laborPayProratedCents = resolution.laborPayProratedCents;
   }
 
@@ -412,6 +431,10 @@ export async function buildOpenRunSnapshot(shopId: number, run: RunDbRow): Promi
             month_gp_source: month.gpSource,
             month_qbo_tech_cost_cents: month.qboTechCostCents,
             month_qbo_tech_cost_account: month.qboTechCostAccountLabel,
+            // Round-7 #41: the memo the NEXT debounced/inline recompute reuses
+            // (< 6h, same realm+month) — extractQboTechCostMemo (payroll-live.ts).
+            month_qbo_tech_cost_fetched_at: month.qboTechCostFetchedAt,
+            month_qbo_tech_cost_realm_id: month.qboTechCostRealmId,
             month_labor_pay_prorated_cents: month.laborPayProratedCents,
             month_gp_with_fees_cents: month.gpWithFeesCents,
             month_gp_without_fees_cents: month.gpWithoutFeesCents,
@@ -454,20 +477,6 @@ export async function buildOpenRunSnapshot(shopId: number, run: RunDbRow): Promi
   return RunSnapshotSchema.parse(snapshot);
 }
 
-export interface PayrollRunComputation {
-  run: PayrollRun;
-  snapshot: RunSnapshot;
-}
-
-/**
- * The run's computed sheets + summary. Read-path rule (plan §calc engine): OPEN runs
- * compute live from mirror + entries; COMPLETED/VOIDED runs render exclusively from
- * the frozen snapshot — never recomputed.
- */
-export async function computePayrollRun(shopId: number, runId: string): Promise<PayrollRunComputation> {
-  const run = await fetchRunGuarded(shopId, runId);
-  if (run.status !== "open") {
-    return { run: runFromRow(run), snapshot: RunSnapshotSchema.parse(run.snapshot) };
-  }
-  return { run: runFromRow(run), snapshot: await buildOpenRunSnapshot(shopId, run) };
-}
+// computePayrollRun (the read path) lives in ./payroll-live.ts since round-7 #41:
+// open runs read through the stored live snapshot (display cache) and only
+// recompute when it is stale/absent. THIS module stays the pure-ish builder.

@@ -44,6 +44,7 @@ import {
   type MonthGpSource,
 } from "@/lib/payroll/gp";
 import { qboMonthTechnicianCostCents } from "@/lib/qbo/reports";
+import { resolveRealmForShop } from "@/lib/dal/realm";
 import {
   mergeLeaveRateWindow,
   resolveLeaveRate,
@@ -252,9 +253,30 @@ export interface MonthGpResolution {
   gpSource: MonthGpSource;
   qboTechCostCents: number | null;
   qboTechCostAccountLabel: string | null;
+  /** Round-7 #41: when the tech cost was ACTUALLY fetched from QBO — the memo's
+   *  freshness clock (== now on a fresh fetch; carried through on a memo reuse). */
+  qboTechCostFetchedAt: string | null;
+  /** The realm the tech cost was fetched from — pins the memo to (realm, month). */
+  qboTechCostRealmId: string | null;
   /** Only computed on the fallback path; null when QBO supplied the tech cost. */
   laborPayProratedCents: number | null;
 }
+
+/** Round-7 #41: a previously-fetched QBO 6010 tech cost carried inside the live
+ *  snapshot — reused by DEBOUNCED/inline recomputes when < 6h old, so tab-switch
+ *  and edit recomputes never block on a live QBO P&L call. Dry-run / nightly /
+ *  manual refresh pass NO memo (always fetch fresh). */
+export interface QboTechCostMemo {
+  /** The bonus month ("YYYY-MM") the value was fetched for. */
+  month: string;
+  valueCents: number;
+  accountLabel: string;
+  /** ISO timestamp of the ORIGINAL QBO fetch. */
+  fetchedAt: string;
+  realmId: string;
+}
+
+export const QBO_TECH_COST_MEMO_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 
 export interface ResolveMonthGpOpts {
   shopId: number;
@@ -272,6 +294,25 @@ export interface ResolveMonthGpOpts {
   leaveHistory: Map<string, LeaveRateEntry[]>;
   /** THIS run's GP-role per-week pay (from the pass-1 sheets) for the fallback. */
   currentRunGpEmployees: GpRunEmployeePay[];
+  /** Round-7 #41: reuse this previously-fetched tech cost instead of a live QBO
+   *  call — honored only when the (realm, month) match and it is < 6h old. */
+  qboTechCostMemo?: QboTechCostMemo | null;
+}
+
+/** Memo validity (round-7 #41): same month, < 6h old, and the shop still resolves
+ *  to the SAME realm the value was fetched from (one cheap DB read vs a full QBO
+ *  P&L fetch). Invalid/expired → null → fetch fresh. */
+async function reusableTechCostMemo(
+  shopId: number,
+  month: string,
+  memo: QboTechCostMemo | null | undefined,
+): Promise<QboTechCostMemo | null> {
+  if (!memo || memo.month !== month) return null;
+  const ageMs = Date.now() - Date.parse(memo.fetchedAt);
+  if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs >= QBO_TECH_COST_MEMO_MAX_AGE_MS) return null;
+  const realmId = await resolveRealmForShop(shopId);
+  if (realmId !== memo.realmId) return null;
+  return memo;
 }
 
 /** The #38 GP composition: QBO 6010 tech cost primary; the prorated-labor path
@@ -280,7 +321,18 @@ export async function resolveMonthGp(opts: ResolveMonthGpOpts): Promise<MonthGpR
   const { shopId, run, month, tz } = opts;
   let gp: MonthGp;
   try {
-    const tech = await qboMonthTechnicianCostCents(shopId, month);
+    const memo = await reusableTechCostMemo(shopId, month, opts.qboTechCostMemo);
+    const tech = memo
+      ? { valueCents: memo.valueCents, accountLabel: memo.accountLabel, fetchedAt: memo.fetchedAt, realmId: memo.realmId }
+      : await (async () => {
+          const fresh = await qboMonthTechnicianCostCents(shopId, month);
+          return {
+            valueCents: fresh.valueCents,
+            accountLabel: fresh.accountLabel,
+            fetchedAt: new Date().toISOString(),
+            realmId: fresh.realmId,
+          };
+        })();
     gp = monthGpFromTechCost({
       monthSalesInclFeesCents: opts.salesInclFeesCents,
       monthPartsCostCents: opts.partsCostCents,
@@ -293,6 +345,8 @@ export async function resolveMonthGp(opts: ResolveMonthGpOpts): Promise<MonthGpR
       gpSource: "qbo_tech_cost",
       qboTechCostCents: tech.valueCents,
       qboTechCostAccountLabel: tech.accountLabel,
+      qboTechCostFetchedAt: tech.fetchedAt,
+      qboTechCostRealmId: tech.realmId,
       laborPayProratedCents: null,
     };
   } catch (e) {
@@ -347,6 +401,8 @@ export async function resolveMonthGp(opts: ResolveMonthGpOpts): Promise<MonthGpR
     gpSource: "computed",
     qboTechCostCents: null,
     qboTechCostAccountLabel: null,
+    qboTechCostFetchedAt: null,
+    qboTechCostRealmId: null,
     laborPayProratedCents: fallback.laborPayProratedCents,
   };
 }

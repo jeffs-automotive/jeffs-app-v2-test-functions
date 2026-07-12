@@ -20,6 +20,7 @@ import {
   newCategoryNames,
   monthDateRange,
   priorYearMonth,
+  rosInLocalRange,
   roundCents,
   type MirrorJobRow,
   type MirrorLaborRow,
@@ -38,6 +39,7 @@ const ro = (over: Partial<MirrorRoRow> = {}): MirrorRoRow => ({
   taxes_cents: 0,
   fee_total_cents: 0,
   posted_date: "2026-06-15T14:00:00Z",
+  completed_date: null,
   synced_at: "2026-07-01T00:00:00Z",
   ...over,
 });
@@ -308,6 +310,46 @@ describe("newCategoryNames", () => {
 
   it("zero data → empty", () => {
     expect(newCategoryNames([], [])).toEqual([]);
+  });
+});
+
+describe("rosInLocalRange — the #39 shop-local date bucketing (basis-parameterized)", () => {
+  const TZ = "America/New_York";
+
+  it("buckets the evening boundary to the SHOP-LOCAL day: completed 7/4 23:30 ET = 7/5 03:30Z → 7/4", () => {
+    // The round-7 #39 acceptance case: an RO completed Saturday evening (week-1's
+    // last day, 2026-07-04T23:30 ET) arrives in UTC as 2026-07-05T03:30:00Z. A
+    // naive UTC bucket would push it into week 2 — it MUST land in week 1 (…7/4).
+    const evening = ro({ id: 1, completed_date: "2026-07-05T03:30:00Z", posted_date: null });
+    const week1 = rosInLocalRange([evening], "completed_date", "2026-06-28", "2026-07-04", TZ);
+    const week2 = rosInLocalRange([evening], "completed_date", "2026-07-05", "2026-07-11", TZ);
+    expect(week1.map((r) => r.id)).toEqual([1]);
+    expect(week2).toEqual([]);
+  });
+
+  it("includes completed-but-NOT-posted ROs on the completed basis (the #39 point)", () => {
+    const unposted = ro({ id: 2, completed_date: "2026-07-06T15:00:00Z", posted_date: null });
+    expect(rosInLocalRange([unposted], "completed_date", "2026-07-05", "2026-07-11", TZ).length).toBe(1);
+    // …while the posted basis excludes the same row (null basis date → out).
+    expect(rosInLocalRange([unposted], "posted_date", "2026-07-05", "2026-07-11", TZ)).toEqual([]);
+  });
+
+  it("the two bases bucket the SAME RO independently (completed 6/30, posted 7/2)", () => {
+    const straddler = ro({
+      id: 3,
+      completed_date: "2026-06-30T20:00:00Z",
+      posted_date: "2026-07-02T14:00:00Z",
+    });
+    expect(rosInLocalRange([straddler], "completed_date", "2026-06-01", "2026-06-30", TZ).length).toBe(1);
+    expect(rosInLocalRange([straddler], "posted_date", "2026-06-01", "2026-06-30", TZ)).toEqual([]);
+    expect(rosInLocalRange([straddler], "posted_date", "2026-07-01", "2026-07-31", TZ).length).toBe(1);
+  });
+
+  it("range ends are inclusive on both sides (shop-local calendar dates)", () => {
+    const first = ro({ id: 4, completed_date: "2026-06-28T12:00:00Z" });
+    const last = ro({ id: 5, completed_date: "2026-07-04T12:00:00Z" });
+    const out = rosInLocalRange([first, last], "completed_date", "2026-06-28", "2026-07-04", TZ);
+    expect(out.map((r) => r.id)).toEqual([4, 5]);
   });
 });
 

@@ -21,8 +21,13 @@
  * Modes:
  *   - `{ mode: 'incremental' }` — the nightly path: two passes (created-since + updated-since,
  *     because `updatedDate` stays null until an RO changes).
- *   - `{ mode: 'range', postedDateStart, postedDateEnd }` — the future per-run "Refresh
- *     Tekmetric data" action: posted-date window only. Reads NO watermark and stores none.
+ *   - `{ mode: 'range', postedDateStart, postedDateEnd, updatedDateStart? }` — the per-run
+ *     "Refresh Tekmetric data" action (posted-date window only) and, with `updatedDateStart`,
+ *     the round-7 #42 dry-run (posted window PLUS an updated-since pass — catches
+ *     completed-but-unposted ROs the #39 hours basis buckets). Reads NO watermark and stores
+ *     none. Tekmetric API contract (tested 2026-07-11): page size hard-capped at 100, NO
+ *     batch-by-ids param, and UNKNOWN params are SILENTLY IGNORED (returning the full
+ *     dataset) — only postedDateStart/postedDateEnd/updatedDateStart/start may be passed.
  *     CAVEAT (derived watermark): rows it upserts can carry created/updated dates newer than
  *     the incremental frontier, which raises the DERIVED max — the nightly's 24h lookback is
  *     the mitigation; a stored per-mode watermark is the fix if this ever bites.
@@ -353,7 +358,10 @@ async function chunkedWrite(
   }
 }
 
-async function upsertPage(
+/** Exported for the round-7 #40 webhook mirror-apply path (payroll-live.ts), which
+ *  applies webhook RO payloads through THESE SAME mappers — single-sourced, never
+ *  duplicated in Deno/SQL. */
+export async function upsertPage(
   db: MirrorDb,
   shopId: number,
   ros: RawObj[],
@@ -430,7 +438,16 @@ async function readWatermark(db: MirrorDb, shopId: number): Promise<{ created: s
 
 export type MirrorIngestOpts =
   | { mode: "incremental" }
-  | { mode: "range"; postedDateStart: string; postedDateEnd: string };
+  | {
+      mode: "range";
+      postedDateStart: string;
+      postedDateEnd: string;
+      /** Round-7 #42 (dry-run): add a second pass fetching ROs UPDATED since this
+       *  date — the posted window alone misses completed-but-unposted ROs, which the
+       *  #39 hours basis buckets. ONLY a Tekmetric-supported param may go here
+       *  (unknown params are silently ignored → the full 148k dataset). */
+      updatedDateStart?: string;
+    };
 
 export interface MirrorIngestDeps {
   shopId: number;
@@ -450,8 +467,9 @@ export interface MirrorIngestResult {
 }
 
 /** Persist the run's alerts via the SECURITY DEFINER RPC. A flush failure must not discard
- *  the ingest result (the alerts are still returned to the caller) — capture + continue. */
-async function flushAlerts(db: MirrorDb, shopId: number, alerts: AlertCollector): Promise<void> {
+ *  the ingest result (the alerts are still returned to the caller) — capture + continue.
+ *  Exported for the #40 webhook mirror-apply path (payroll-live.ts). */
+export async function flushAlerts(db: MirrorDb, shopId: number, alerts: AlertCollector): Promise<void> {
   for (const a of alerts.list()) {
     try {
       const { error } = await db.rpc("record_tekmetric_ingest_alert", {
@@ -510,8 +528,15 @@ export async function runMirrorIngest(deps: MirrorIngestDeps, opts: MirrorIngest
     if (!isIsoDate(opts.postedDateStart) || !isIsoDate(opts.postedDateEnd)) {
       throw new Error("mirror-ingest: range mode requires ISO YYYY-MM-DD postedDateStart/postedDateEnd");
     }
+    if (opts.updatedDateStart !== undefined && !isIsoDate(opts.updatedDateStart)) {
+      throw new Error("mirror-ingest: range mode updatedDateStart must be ISO YYYY-MM-DD");
+    }
     await runPasses([
       { postedDateStart: `${opts.postedDateStart}T00:00:00Z`, postedDateEnd: `${opts.postedDateEnd}T23:59:59Z` },
+      // Round-7 #42: the updated-since pass (dry-run) — completed-but-unposted ROs.
+      ...(opts.updatedDateStart !== undefined
+        ? [{ updatedDateStart: `${opts.updatedDateStart}T00:00:00Z` }]
+        : []),
     ]);
   }
 

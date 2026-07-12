@@ -193,6 +193,11 @@ export interface RunDbRow {
   bonus_period: boolean;
   bonus_month: string | null;
   snapshot: unknown;
+  /** Round-7 #40/#41 DISPLAY CACHE (open runs): the last computed RunSnapshot.
+   *  Meaningless once completed/voided — the frozen `snapshot` governs there. */
+  live_snapshot: unknown;
+  live_snapshot_at: string | null;
+  live_snapshot_stale: boolean;
   completed_at: string | null;
   completed_by_label: string | null;
   voided_at: string | null;
@@ -204,7 +209,7 @@ export interface RunDbRow {
 }
 
 export const RUN_COLS =
-  "id, shop_id, period_start, period_end, status, bonus_period, bonus_month, snapshot, completed_at, completed_by_label, voided_at, voided_by_label, void_reason, cloned_from_run_id, created_at, updated_at";
+  "id, shop_id, period_start, period_end, status, bonus_period, bonus_month, snapshot, live_snapshot, live_snapshot_at, live_snapshot_stale, completed_at, completed_by_label, voided_at, voided_by_label, void_reason, cloned_from_run_id, created_at, updated_at";
 
 export function runFromRow(r: RunDbRow): PayrollRun {
   return {

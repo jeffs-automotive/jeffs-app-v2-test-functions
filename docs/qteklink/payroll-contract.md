@@ -305,10 +305,161 @@ Every mutating RPC writes ≥1 audit row.
   NO hardcoded QBO account id (a re-mapped chart still matches). Absent/ambiguous row,
   disagreeing matches, missing/non-numeric amount, empty tree, DB error on the mirror lookup,
   or no connection → THROW with clear text (no silent fallback inside the fetcher).
-- **Snapshot/UI provenance:** new keys `month_gp_source` ('qbo_tech_cost' | 'computed'),
+- **Snapshot/UI provenance (round-6):** new keys `month_gp_source` ('qbo_tech_cost' | 'computed'),
   `month_qbo_tech_cost_cents` (+ `month_qbo_tech_cost_account`), `month_sales_incl_fees_cents`;
   `month_labor_pay_prorated_cents` is null unless the computed fallback ran. The bonus-month
   card itemizes the tech-cost line ("Technician cost (QBO 6010)") when the QBO path ran and
   shows the prorated-labor line only otherwise; the GP-with-fees AutoValue wording is
   "Tekmetric − QuickBooks tech cost" / "computed fallback"; month-sales wording is
   "totals minus taxes and fees". CALC_VERSION → 4 (formula-input change, pinned like v3).
+
+## Round-7 amendments (2026-07-11 — extraction #39–#42; supersede conflicting text above)
+
+- **#39 HOURS basis = RO COMPLETED date (shop-local):** `billedHoursByTechnician`,
+  `shopBilledHours`, and `priorYearShopBilledHours` bucket ROs by `completed_date`
+  (TIMESTAMPTZ → `toShopLocalDate`), INCLUDING completed-but-not-yet-posted ROs
+  (`fetchCompletedRos` in derive.ts; pure exact-bucketing filter `rosInLocalRange`
+  is exported + boundary-tested: completed 2026-07-04T23:30 ET = 7/5 03:30Z buckets
+  to 7/4). Money rollups (sales/fees/parts/GP inputs/spiffs) STAY posted-basis.
+  Acceptance (comment-pinned in derive.ts): 6/28–7/11 w2 Trilli 55.05 / Fuhrer
+  49.43 / Vasiliou 45.90 / Stoneback 11.87. `MirrorRoRow`/RO_COLS gain
+  `completed_date`; migration 20260711200000 adds the
+  `tekmetric_ros (shop_id, completed_date)` index.
+
+- **#40/#41 LIVE snapshot (display cache; migration
+  `20260711200000_qteklink_payroll_live_snapshot.sql`):** `qteklink_payroll_runs`
+  gains `live_snapshot jsonb`, `live_snapshot_at timestamptz`,
+  `live_snapshot_stale boolean not null default true`,
+  `live_snapshot_invalidated_at timestamptz` (the lost-invalidation race guard).
+  Two RPCs (usual grant idiom):
+  - `qteklink_payroll_store_live_snapshot(p_run_id uuid, p_snapshot jsonb,
+    p_computed_at timestamptz, p_compute_started_at timestamptz)` — OPEN runs only
+    (RAISEs otherwise; FOR NO KEY UPDATE serializes against complete/void). Stores
+    the snapshot ALWAYS, but clears stale ONLY when `live_snapshot_invalidated_at`
+    is not newer than `p_compute_started_at` (captured just before
+    buildOpenRunSnapshot): a mark landing mid-recompute (mirror reads + a QBO P&L
+    call span seconds) re-marked the run for data the snapshot cannot contain, so
+    it stays stale for the next trigger. `p_compute_started_at` is REQUIRED
+    (RAISEs on NULL). NEVER bumps `updated_at` (the Pattern S state hash covers
+    it — a display-cache write must not invalidate an in-flight preview; pgTAP
+    asserts hash + updated_at unmoved, plus both race branches).
+  - `qteklink_payroll_mark_open_runs_stale(p_shop_id int) RETURNS int` — sets
+    stale=true AND stamps `live_snapshot_invalidated_at=now()` on EVERY open run
+    (already-stale runs re-stamped — required by the race guard); returns runs
+    newly invalidated (fresh→stale).
+  - DOCUMENTED DEPARTURE: neither RPC writes an audit row (display cache, not
+    business state — webhook-driven recomputes would flood the audit log).
+
+- **#40 webhook → mirror → recompute pipeline:**
+  - `qteklink-webhook` edge fn: after a NEW RO-family event
+    (`ro_created|ro_status_updated|ro_posted|ro_unposted|ro_sent_to_ar|ro_work_approved`)
+    is durably stored, fire-and-forget POST `{event_ids:[id]}` to the app route —
+    the 200 never waits on it; failures log + Sentry-capture; nightly ingest +
+    dry-run are the backstops. Config: fn secrets `QTL_MIRROR_APPLY_URL` +
+    `QTL_MIRROR_APPLY_SECRET`; unset = notify skipped with a structured log.
+  - `app/api/payroll/mirror-apply/route.ts` (POST; `Authorization: Bearer
+    ${PAYROLL_MIRROR_APPLY_SECRET}` — the CRON_SECRET idiom; body
+    `{event_ids: uuid[] (1..100)}`): loads the events' `raw_body` from
+    qteklink_events (ordered by `received_at` ASC), applies FULL RO payloads
+    (numeric `data.id` + `data.jobs` ARRAY — partial payloads are SKIPPED, never
+    run through the delete-then-insert child sync) via the SAME mirror-ingest
+    mappers (`upsertPage`/`flushAlerts` now exported; payload-only, no Tekmetric
+    call), marks the shop's open runs stale, recomputes them DEBOUNCED (skip when
+    `live_snapshot_at` < 60s old — stays stale for the next trigger). Per-shop
+    failures isolated + reported.
+  - **Payload recency guards** (payload-based writes are the only mirror path
+    that can regress — the nightly API ingest always fetches current): (a) per-RO
+    DEDUPE within a batch keeping the NEWEST payload (`updatedDate`; ties/absent
+    fall to received_at order) — duplicate ids in one upsert are a Postgres 21000
+    + duplicate child PKs after the delete-then-insert (the RO would read ZERO
+    until the nightly heals); (b) a payload whose `updatedDate` is strictly OLDER
+    than the mirror row's `updated_date` is dropped (unordered fire-and-forget
+    notifies must never regress posted/completed dates or money). Dropped payloads
+    count in `MirrorApplyShopResult.payloadsStale`; the runs are still marked
+    stale.
+  - `src/lib/dal/payroll-live.ts` owns the substrate: read-through
+    `computePayrollRun` (open runs: fresh cache → serve; stale/absent/unparseable/
+    older-CALC_VERSION → compute once + store + serve; store failure on the read
+    path is Sentry-captured and the computed snapshot still returns — the stale
+    flag backstops), `recomputeAndStoreLiveSnapshot`, `recomputeStaleOpenRuns`,
+    `refreshLiveSnapshotAfterMutation`, `applyMirrorEventsAndRecompute`,
+    `markPayrollOpenRunsStale`, `extractQboTechCostMemo`.
+  - **Mutations recompute INLINE:** `updatePayrollEntry` / `updatePayrollRun` /
+    `syncPayrollRunRoster` call `refreshLiveSnapshotAfterMutation` after the RPC
+    commits (mark shop-wide stale + recompute THAT run; capture-not-throw — the
+    committed edit is never misreported, the stale flag guarantees a later
+    recompute). `refreshRunTekmetricData` + the nightly (`runNightlySync` step
+    2b-2) mark-stale + recompute with `freshQbo` (no memo, no debounce);
+    failures in the manual refresh PROPAGATE, the nightly isolates
+    (`payrollSnapshots` result field). `updatePayrollSettings` (the direct
+    settings-page write, incl. `discoverAndMergePayrollCategories`) marks the
+    shop's open runs stale after the settings RPC commits (spiff-category edits
+    change SA spiff pay; capture-not-throw — the committed save is never
+    misreported).
+  - **Completion NEVER reads the live snapshot:** `completePayrollRun` keeps its
+    fresh no-memo `buildOpenRunSnapshot` + in-transaction hash (asserted by
+    payroll.test.ts); completed/voided runs render exclusively from the frozen
+    `snapshot`. The dashboard summaries (`listPayrollRunsWithSummaries`) read
+    through the same cache for open runs.
+
+- **#41 QBO tech-cost memo:** the month tech cost rides the snapshot provenance
+  (`month_qbo_tech_cost_fetched_at` + `month_qbo_tech_cost_realm_id` join the
+  round-6 keys). `resolveMonthGp` accepts `qboTechCostMemo` and reuses it ONLY when
+  (realm, month) match and it is < 6h old (`QBO_TECH_COST_MEMO_MAX_AGE_MS`;
+  realm re-checked via `resolveRealmForShop` — one DB read vs a P&L fetch); the
+  memo'd `fetched_at` carries through so age accrues from the ORIGINAL fetch.
+  Debounced/inline/read-through recomputes pass the memo; dry-run / nightly /
+  manual refresh / completion always fetch fresh.
+
+- **#41 INSTANT TABS (`app/payroll/runs/[period]`):** ONE server render computes
+  everything (a single `computePayrollRun` live-snapshot read) and carries ALL
+  THREE tab panels; `RunViewTabs` (client, `app/payroll/runs/[period]/RunViewTabs.tsx`)
+  toggles panel visibility — tab switches make NO navigation / router.refresh /
+  server round-trip. `?view=` stays in sync via native `history.replaceState`
+  (App-Router shallow update); the tab pills remain real `<a href>` deep links
+  (middle/ctrl-click = fresh server render; the server still resolves `?view=`
+  for first-render landing). Preserved contracts: nav `aria-label="Run views"` +
+  `aria-current="page"`, the summary panel ALWAYS in the DOM for print (`hidden
+  print:block` when inactive; a placeholder-only empty run never prints), entry
+  + sheets panels `print:hidden`, completed/voided runs still render the frozen
+  snapshot. All panels stay mounted, so unsaved entry-grid edits survive tab
+  peeks; entry-grid SAVES keep their server round-trip (they must recompute).
+  RTL contract: `app/payroll/runs/[period]/__tests__/RunViewTabs.test.tsx`.
+
+- **#42 DRY RUN (bottom of the pay-sheets tab; admin, open runs only):**
+  - DAL `dryRunPayrollRefresh(shopId, runId)` (`src/lib/dal/payroll-dry-run.ts`,
+    re-exported from `@/lib/dal/payroll`): (a) BEFORE = `getOrComputeLiveSnapshot`
+    (what the screen shows), (b) LIVE Tekmetric re-fetch via range-mode mirror
+    ingest — the period's posted window PLUS `updatedDateStart = period_start`
+    (a SECOND pass; catches completed-but-unposted ROs the #39 hours basis
+    buckets) PLUS the bonus month's posted window when the slider is on,
+    (c) `markPayrollOpenRunsStale` (shop-wide) then
+    `recomputeAndStoreLiveSnapshot(…, { freshQbo: true })` — the refreshed
+    snapshot is COMMITTED here (fresh QBO 6010 fetch, never the memo), (d) the
+    structured diff. Open-run-only (validation error otherwise); a completion
+    racing the recompute surfaces as a validation error (the mirror refresh
+    stands, the run is untouched). Failures PROPAGATE — the user asked.
+  - `MirrorIngestOpts` range mode gains optional `updatedDateStart` (ISO-validated).
+    Tekmetric API contract (tested 2026-07-11): page size hard-capped at 100, NO
+    batch-by-ids param, unknown params SILENTLY IGNORED (would return the full
+    148k dataset) — only supported filters are ever passed.
+  - Diff builder `buildDryRunDiff(before, after)` (`src/lib/payroll/dry-run-diff.ts`,
+    PURE): per-tech billed hours w1/w2 (EFFECTIVE inputs — an overridden value
+    diffs as unchanged), month derivations (sales / fees / parts cost / GP with +
+    without fees / QBO tech cost / shop hours) + per-SA spiff counts, and
+    per-employee total-pay deltas — ONLY changed fields (null↔number counts),
+    plus before/after `as_of` stamps and a `changed` flag. Employees matched by
+    employee_id; a missing side reports null (roster drift never crashes).
+  - Action `dryRunPayrollAction` (`src/actions/payroll.ts`): admin-gated thin
+    wrapper → `QboActionResult<PayrollDryRunResult>` (`{ diff, rosChecked }`).
+  - UI `DryRunButton` (`app/payroll/runs/[period]/DryRunButton.tsx`), mounted by
+    RunViewTabs under the sheets panel: pending = "Checking N repair orders…"
+    (N = the snapshot's `ro_count`); success opens the qteklink Dialog listing
+    the diff GROUPED (per-tech hours / month numbers / pay totals; tabular-nums,
+    old → new, delta colored green-up/red-down), empty state "Everything is up
+    to date — no differences."; HONESTY: the numbers are already live when the
+    modal opens (`router.refresh()` re-renders the page underneath; the subtext
+    says so) — Accept only acknowledges + client-switches to the Summary tab,
+    Cancel/close stays on the pay sheet with the same refreshed numbers. Tests:
+    `__tests__/DryRunButton.test.tsx` + `payroll-dry-run.test.ts` +
+    `dry-run-diff.test.ts` + the mirror-ingest range-pass tests.

@@ -29,6 +29,7 @@ import { runSafetyNet, type SafetyNetResult } from "@/lib/dal/safety-net";
 import { sweepPostedDays, type SweepResult } from "@/lib/dal/posted-day-sweep";
 import { warmCustomerNamesForRecentDays } from "@/lib/dal/customers";
 import { runMirrorIngest } from "@/lib/payroll/mirror-ingest";
+import { markPayrollOpenRunsStale, recomputeStaleOpenRuns } from "@/lib/dal/payroll-live";
 import { warmRoNumbers } from "@/lib/dal/ro-numbers";
 import type { QboDailyWriteClient } from "@/lib/dal/daily-poster";
 import { toShopLocalDate } from "@/lib/sales/sale-builder";
@@ -50,6 +51,11 @@ export interface NightlyShopResult {
    *  persisted to tekmetric_ro_ingest_alerts), or null when it errored — isolated (payroll
    *  data goes one night stale; the QBO money path is never blocked). */
   mirrorIngest: { rosUpserted: number; pagesFetched: number; alerts: number; watermark: string | null } | null;
+  /** Round-7 #40/#41: after the ingest, every open payroll run is marked stale and
+   *  recomputed into its stored live snapshot (fresh QBO tech-cost fetch — the nightly
+   *  never reuses the < 6h memo). null when it errored — isolated (the runs simply stay
+   *  stale and the next read/webhook recomputes). */
+  payrollSnapshots: { markedStale: number; recomputed: number; debounced: number } | null;
   /** Tekmetric customer names resolved into the cache for the JE-line descriptions (recent
    *  window), or null if it errored — isolated (a name lookup never blocks posting). */
   customersWarmed: number | null;
@@ -118,6 +124,7 @@ export async function runNightlySync(
     autoPostFailed: 0,
     paymentStateReduced,
     mirrorIngest: null,
+    payrollSnapshots: null,
     customersWarmed: null,
     roNumbersWarmed: null,
     sweep: null,
@@ -139,6 +146,24 @@ export async function runNightlySync(
     };
   } catch (e) {
     Sentry.captureException(e, { tags: { qteklink_cron: "payroll-mirror-ingest", shop_id: String(shopId) } });
+  }
+
+  // 2b-2. Round-7 #40/#41: the nightly is a reconciliation backstop for the webhook
+  // pipeline — mark every open payroll run stale (the mirror just moved, and even a
+  // failed ingest above leaves freshness unknown) and recompute the stored live
+  // snapshots with a FRESH QBO tech-cost fetch (the nightly never reuses the < 6h
+  // memo, and its refresh ignores the 60s debounce). NON-FATAL: a recompute problem
+  // leaves the runs stale (the next read/webhook recomputes) — capture + continue.
+  try {
+    const markedStale = await markPayrollOpenRunsStale(shopId);
+    const { recomputedRunIds, debouncedRunIds } = await recomputeStaleOpenRuns(shopId, { freshQbo: true });
+    result.payrollSnapshots = {
+      markedStale,
+      recomputed: recomputedRunIds.length,
+      debounced: debouncedRunIds.length,
+    };
+  } catch (e) {
+    Sentry.captureException(e, { tags: { qteklink_cron: "payroll-live-snapshots", shop_id: String(shopId) } });
   }
 
   if (!recon.realmId) return result; // no connection → reconcile is a no-op; nothing to post

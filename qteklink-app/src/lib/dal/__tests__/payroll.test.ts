@@ -21,15 +21,27 @@ vi.mock("@/lib/supabase/admin", () => ({
 vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn(), captureMessage: vi.fn() }));
 vi.mock("@/lib/dal/notify", () => ({ sendQteklinkEmail: vi.fn() }));
 vi.mock("@/lib/payroll/mirror-ingest", () => ({ runMirrorIngest: vi.fn() }));
-vi.mock("@/lib/dal/payroll-compute", () => ({ buildOpenRunSnapshot: vi.fn(), computePayrollRun: vi.fn() }));
+vi.mock("@/lib/dal/payroll-compute", () => ({ buildOpenRunSnapshot: vi.fn() }));
+// The round-7 #40/#41 live-snapshot substrate — mocked wholesale: THIS file targets
+// the RPC orchestration in payroll.ts (the substrate has its own payroll-live.test.ts).
+vi.mock("@/lib/dal/payroll-live", () => ({
+  computePayrollRun: vi.fn(),
+  getOrComputeLiveSnapshot: vi.fn(),
+  markPayrollOpenRunsStale: vi.fn(),
+  recomputeAndStoreLiveSnapshot: vi.fn(),
+  refreshLiveSnapshotAfterMutation: vi.fn(),
+}));
 vi.mock("@/lib/payroll/derive", () => ({ discoverNewCategories: vi.fn(), monthDateRange: vi.fn() }));
 
 import * as Sentry from "@sentry/nextjs";
-import { updatePayrollEntry, updatePayrollRun } from "../payroll";
+import { buildOpenRunSnapshot } from "@/lib/dal/payroll-compute";
+import { refreshLiveSnapshotAfterMutation } from "@/lib/dal/payroll-live";
+import { completePayrollRun, updatePayrollEntry, updatePayrollRun } from "../payroll";
 
 const ACTOR = { userId: "00000000-0000-4000-8000-0000000000aa", label: "chris@jeffsautomotive.com" };
 const ENTRY_ID = "00000000-0000-4000-8000-00000000e001";
 const EMP_ID = "00000000-0000-4000-8000-00000000a001";
+const RUN_ID_FOR_ENTRY = "00000000-0000-4000-8000-00000000f009";
 
 function chain(result: { data: unknown; error: unknown }) {
   const c: Record<string, unknown> = {};
@@ -76,6 +88,7 @@ function routeTables(
         data: [
           {
             id: ENTRY_ID,
+            run_id: RUN_ID_FOR_ENTRY,
             shop_id: 7476,
             employee_id: EMP_ID,
             role_snapshot: over.role_snapshot ?? "technician",
@@ -334,6 +347,31 @@ describe("updatePayrollEntry pay_config write-through (round-3 #26)", () => {
     );
     expect(rpcMock).not.toHaveBeenCalledWith("qteklink_payroll_upsert_employee", expect.anything());
   });
+
+  // ── round-7 #41: the inline live-snapshot recompute hook ──
+  it("refreshes the run's live snapshot after a committed entry patch (round-7 #41)", async () => {
+    await updatePayrollEntry(7476, ENTRY_ID, { clock_hours_w1: 41.5 }, ACTOR);
+    expect(vi.mocked(refreshLiveSnapshotAfterMutation)).toHaveBeenCalledWith(7476, RUN_ID_FOR_ENTRY);
+  });
+
+  it("the recompute hook runs BEFORE the write-through — a half-apply still refreshed the cache", async () => {
+    routeRpc({
+      qteklink_payroll_upsert_employee: {
+        data: null,
+        error: { code: "P0001", message: "pay_config invalid for role" },
+      },
+    });
+    await expect(updatePayrollEntry(7476, ENTRY_ID, { pay_config: runConfig }, ACTOR)).rejects.toThrow(
+      /entry was saved/,
+    );
+    expect(vi.mocked(refreshLiveSnapshotAfterMutation)).toHaveBeenCalledWith(7476, RUN_ID_FOR_ENTRY);
+  });
+
+  it("a FAILED entry RPC never triggers the recompute hook (nothing committed)", async () => {
+    routeRpc({ qteklink_payroll_update_entry: { data: null, error: { code: "P0001", message: "run is completed" } } });
+    await expect(updatePayrollEntry(7476, ENTRY_ID, { clock_hours_w1: 1 }, ACTOR)).rejects.toThrow();
+    expect(vi.mocked(refreshLiveSnapshotAfterMutation)).not.toHaveBeenCalled();
+  });
 });
 
 // ── updatePayrollRun patch shaping (round-5 #33: bonus_period + explicit bonus_month) ──
@@ -413,5 +451,99 @@ describe("updatePayrollRun patch shaping (round-5 #33)", () => {
   it("rejects an empty patch", async () => {
     await expect(updatePayrollRun(7476, RUN_ID, {}, ACTOR)).rejects.toThrow(/Nothing to update/);
     expect(rpcMock).not.toHaveBeenCalled();
+  });
+
+  it("refreshes the live snapshot after a committed run patch (round-7 #41)", async () => {
+    await updatePayrollRun(7476, RUN_ID, { bonusPeriod: true }, ACTOR);
+    expect(vi.mocked(refreshLiveSnapshotAfterMutation)).toHaveBeenCalledWith(7476, RUN_ID);
+  });
+
+  it("a FAILED run RPC never triggers the recompute hook", async () => {
+    routeRpc({ qteklink_payroll_update_run: { data: null, error: { code: "P0001", message: "run is completed" } } });
+    await expect(updatePayrollRun(7476, RUN_ID, { bonusPeriod: true }, ACTOR)).rejects.toThrow(/run is completed/);
+    expect(vi.mocked(refreshLiveSnapshotAfterMutation)).not.toHaveBeenCalled();
+  });
+});
+
+// ── completePayrollRun: the round-7 #40 invariant — completion NEVER reads the
+//    live snapshot; the frozen snapshot is always a fresh no-memo compute. ──
+
+describe("completePayrollRun never reads the live snapshot (round-7 #40)", () => {
+  const RUN_ID = "00000000-0000-4000-8000-00000000f002";
+  const LIVE_CACHE = { snapshot_version: 1, note: "STALE-DISPLAY-CACHE" };
+  const FRESH = { snapshot_version: 1, note: "FRESH-COMPLETION-COMPUTE" };
+
+  beforeEach(() => {
+    fromMock.mockImplementation((table: string) => {
+      if (table === "qteklink_payroll_runs") {
+        return chain({
+          data: [
+            {
+              id: RUN_ID,
+              shop_id: 7476,
+              period_start: "2026-06-28",
+              period_end: "2026-07-11",
+              status: "open",
+              bonus_period: false,
+              bonus_month: null,
+              snapshot: null,
+              // A fresh-looking live snapshot sits RIGHT THERE — completion must ignore it.
+              live_snapshot: LIVE_CACHE,
+              live_snapshot_at: new Date().toISOString(),
+              live_snapshot_stale: false,
+              completed_at: null,
+              completed_by_label: null,
+              voided_at: null,
+              voided_by_label: null,
+              void_reason: null,
+              cloned_from_run_id: null,
+              created_at: "2026-07-10T00:00:00Z",
+              updated_at: "2026-07-10T00:00:00Z",
+            },
+          ],
+          error: null,
+        });
+      }
+      throw new Error(`unexpected table ${table}`);
+    });
+    rpcMock.mockImplementation((fn: string, args: Record<string, unknown>) => {
+      if (fn === "qteklink_payroll_complete_run") {
+        return Promise.resolve(
+          args.p_dry_run === true
+            ? { data: { state_hash: "hash-1" }, error: null }
+            : { data: { completed: true }, error: null },
+        );
+      }
+      if (fn === "qteklink_payroll_issue_confirm_token") {
+        return Promise.resolve({
+          data: [{ token_id: "00000000-0000-4000-8000-00000000c001", expires_at: "2026-07-11T00:05:00Z" }],
+          error: null,
+        });
+      }
+      // qbo_resolve_realm_for_shop (the alert's settings read) and anything else.
+      return Promise.resolve({ data: null, error: null });
+    });
+    vi.mocked(buildOpenRunSnapshot).mockResolvedValue(FRESH as never);
+  });
+
+  it("freezes the FRESH no-memo compute, never the stored live snapshot", async () => {
+    await completePayrollRun(7476, RUN_ID, ACTOR);
+
+    // Fresh compute, NO memo third argument (exactly two args = no cached QBO reuse).
+    expect(vi.mocked(buildOpenRunSnapshot)).toHaveBeenCalledWith(
+      7476,
+      expect.objectContaining({ id: RUN_ID, status: "open" }),
+    );
+
+    const confirm = rpcMock.mock.calls.find(
+      ([fn, args]) => fn === "qteklink_payroll_complete_run" && args?.p_dry_run === false,
+    );
+    expect(confirm?.[1]?.p_snapshot).toBe(FRESH); // the fresh compute is what freezes
+    expect(confirm?.[1]?.p_snapshot).not.toEqual(LIVE_CACHE);
+
+    // And the completion path never touches the live-snapshot substrate.
+    expect(rpcMock).not.toHaveBeenCalledWith("qteklink_payroll_store_live_snapshot", expect.anything());
+    expect(rpcMock).not.toHaveBeenCalledWith("qteklink_payroll_mark_open_runs_stale", expect.anything());
+    expect(vi.mocked(refreshLiveSnapshotAfterMutation)).not.toHaveBeenCalled();
   });
 });
