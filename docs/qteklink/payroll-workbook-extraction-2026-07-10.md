@@ -385,6 +385,16 @@ Common to all: OT paid at 1.5× hourly; PTO/Holiday/Bereavement/Training hours �
     the foreman month shop total, and the prior-year hour goal; completed-but-unposted ROs still count
     when performed (#39's point survives). Money derivations unchanged (posted, penny-exact).
     CALC_VERSION 7 → 8. Chris chose posted-basis over keep-completed when offered both.
+    **Superseded same day by #51 (the completed fallback is gone too).**
+51. **HOURS ARE POSTED-ONLY — NO completed-date fallback (Chris verbatim: "we only count billed hours
+    and sales as posted. We dont use completed status… I dont want this to be a fallback"; supersedes
+    #39 AND #50's hybrid):** every derivation — hours AND money — buckets by POSTED date, shop-local;
+    an unposted RO counts nowhere until it posts, then counts in whichever period the posted date
+    lands. Completed status is now unused by ALL rollup logic (the mirror still stores completed_date
+    as a column; `fetchHoursBasisRos`/`rosInLocalRangeHoursBasis` deleted). Verified: posted-only
+    reproduces Clark w1 35.35 / w2 64.60 exactly (zero completed-but-unposted ROs in the current
+    window, so #50 → #51 changes nothing today; the behavioral difference appears mid-week when work
+    finishes before posting — it no longer shows until posted). CALC_VERSION 8 → 9.
 
 ### Remaining open items
 

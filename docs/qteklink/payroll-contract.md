@@ -655,3 +655,19 @@ Every mutating RPC writes ≥1 audit row.
   `rosInLocalRangeHoursBasis` suite (153870 week-2 case, unposted-completed
   counts, stale-posted counts in posted week, posted-after-window excluded,
   evening-boundary shop-local conversion, both-null excluded).
+  **SUPERSEDED same day by #51.**
+
+- **#51 HOURS ARE POSTED-ONLY — NO COMPLETED FALLBACK (round-10, 2026-07-12 —
+  supersedes #39 and #50; Chris: "we only count billed hours and sales as
+  posted… I dont want this to be a fallback"):** `billedHoursByTechnician`,
+  `shopBilledHours`, and `priorYearShopBilledHours` now use `fetchPostedRos` —
+  the SAME posted-date shop-local basis as every money derivation. The #50
+  artifacts (`fetchHoursBasisRos`, `rosInLocalRangeHoursBasis`, the
+  `unpostedOnly` fetch flag) are DELETED; completed status is unused by all
+  rollup logic (the mirror still stores `completed_date` for audit).
+  An unposted RO counts nowhere until it posts. Verified: posted-only
+  reproduces Clark w1 35.35 / w2 64.60 exactly (zero completed-but-unposted
+  ROs in the current window). **CALC_VERSION 8 → 9.** Tests: the #50 suite
+  replaced with a #51 posted-only suite on `rosInLocalRange("posted_date")`
+  (153870 → week 2; unposted-completed counts NOWHERE; stale-posted counts in
+  its posted week; evening-boundary shop-local conversion).

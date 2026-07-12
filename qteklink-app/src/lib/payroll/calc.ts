@@ -74,8 +74,13 @@ import type {
  *  derivations (per-tech billed, shop total, prior-year goal) rebucket ROs by
  *  POSTED date when posted / COMPLETED date otherwise (supersedes the #39
  *  pure-completed basis) — matches the Tekmetric hours report (RO 153870:
- *  Clark w1 35.35 / w2 64.60). The bump re-derives open runs' live snapshots. */
-export const CALC_VERSION = 8;
+ *  Clark w1 35.35 / w2 64.60). The bump re-derives open runs' live snapshots.
+ *  v9 (2026-07-12 round-10 #51 — input change, engine unchanged): HOURS
+ *  derivations go POSTED-ONLY — the #50 completed-date fallback for unposted
+ *  ROs is REMOVED per Chris ("we only count billed hours and sales as posted;
+ *  I don't want this to be a fallback"). Completed status is now unused by
+ *  every rollup; an unposted RO counts nowhere until it posts. */
+export const CALC_VERSION = 9;
 
 // ── Rounding (same semantics as derive.ts's roundCents — kept local so calc.ts
 //    stays free of the fetcher module's import graph) ──────────────────────────

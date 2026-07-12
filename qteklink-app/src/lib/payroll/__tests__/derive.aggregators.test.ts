@@ -21,7 +21,6 @@ import {
   monthDateRange,
   priorYearMonth,
   rosInLocalRange,
-  rosInLocalRangeHoursBasis,
   roundCents,
   type MirrorJobRow,
   type MirrorLaborRow,
@@ -328,10 +327,10 @@ describe("rosInLocalRange — the #39 shop-local date bucketing (basis-parameter
     expect(week2).toEqual([]);
   });
 
-  it("includes completed-but-NOT-posted ROs on the completed basis (the #39 point)", () => {
+  it("a null basis date excludes the row on that basis (generic helper — #51 fetchers only ever pass posted_date)", () => {
     const unposted = ro({ id: 2, completed_date: "2026-07-06T15:00:00Z", posted_date: null });
     expect(rosInLocalRange([unposted], "completed_date", "2026-07-05", "2026-07-11", TZ).length).toBe(1);
-    // …while the posted basis excludes the same row (null basis date → out).
+    // The ACTIVE basis (#51 posted-only) excludes the same row: null posted → out.
     expect(rosInLocalRange([unposted], "posted_date", "2026-07-05", "2026-07-11", TZ)).toEqual([]);
   });
 
@@ -354,7 +353,7 @@ describe("rosInLocalRange — the #39 shop-local date bucketing (basis-parameter
   });
 });
 
-describe("rosInLocalRangeHoursBasis — the round-10 #50 HOURS basis (posted, else completed)", () => {
+describe("the round-10 #51 POSTED-only hours basis (rosInLocalRange on posted_date)", () => {
   const TZ = "America/New_York";
 
   it("the RO 153870 case: completed Fri 7/3 (w1) but posted Mon 7/6 → buckets to WEEK 2", () => {
@@ -364,13 +363,15 @@ describe("rosInLocalRangeHoursBasis — the round-10 #50 HOURS basis (posted, el
       completed_date: "2026-07-03T21:08:59Z",
       posted_date: "2026-07-06T12:48:17Z",
     });
-    expect(rosInLocalRangeHoursBasis([weekender], "2026-06-28", "2026-07-04", TZ)).toEqual([]);
-    expect(rosInLocalRangeHoursBasis([weekender], "2026-07-05", "2026-07-11", TZ).map((r) => r.id)).toEqual([1]);
+    expect(rosInLocalRange([weekender], "posted_date", "2026-06-28", "2026-07-04", TZ)).toEqual([]);
+    expect(
+      rosInLocalRange([weekender], "posted_date", "2026-07-05", "2026-07-11", TZ).map((r) => r.id),
+    ).toEqual([1]);
   });
 
-  it("completed-but-NOT-posted ROs still count when performed (the #39 point survives)", () => {
+  it("completed-but-NOT-posted ROs count NOWHERE — no completed fallback (#51 removes the #50 hybrid)", () => {
     const unposted = ro({ id: 2, completed_date: "2026-07-06T15:00:00Z", posted_date: null });
-    expect(rosInLocalRangeHoursBasis([unposted], "2026-07-05", "2026-07-11", TZ).length).toBe(1);
+    expect(rosInLocalRange([unposted], "posted_date", "2026-07-05", "2026-07-11", TZ)).toEqual([]);
   });
 
   it("a stale RO completed months earlier counts in its POSTED week (the RO 152158 case)", () => {
@@ -379,16 +380,7 @@ describe("rosInLocalRangeHoursBasis — the round-10 #50 HOURS basis (posted, el
       completed_date: "2026-05-28T15:00:00Z",
       posted_date: "2026-07-10T15:00:00Z",
     });
-    expect(rosInLocalRangeHoursBasis([stale], "2026-07-05", "2026-07-11", TZ).length).toBe(1);
-  });
-
-  it("completed in-window but posted AFTER it → excluded (it will count in the posted window)", () => {
-    const postedLater = ro({
-      id: 4,
-      completed_date: "2026-07-10T15:00:00Z",
-      posted_date: "2026-07-13T15:00:00Z",
-    });
-    expect(rosInLocalRangeHoursBasis([postedLater], "2026-07-05", "2026-07-11", TZ)).toEqual([]);
+    expect(rosInLocalRange([stale], "posted_date", "2026-07-05", "2026-07-11", TZ).length).toBe(1);
   });
 
   it("the posted timestamp converts shop-local at the evening boundary (posted 7/4 23:30 ET = 7/5 03:30Z → w1)", () => {
@@ -397,14 +389,10 @@ describe("rosInLocalRangeHoursBasis — the round-10 #50 HOURS basis (posted, el
       completed_date: "2026-07-04T18:00:00Z",
       posted_date: "2026-07-05T03:30:00Z",
     });
-    expect(rosInLocalRangeHoursBasis([evening], "2026-06-28", "2026-07-04", TZ).map((r) => r.id)).toEqual([5]);
-    expect(rosInLocalRangeHoursBasis([evening], "2026-07-05", "2026-07-11", TZ)).toEqual([]);
-  });
-
-  it("neither date → excluded", () => {
     expect(
-      rosInLocalRangeHoursBasis([ro({ id: 6, completed_date: null, posted_date: null })], "2026-07-05", "2026-07-11", TZ),
-    ).toEqual([]);
+      rosInLocalRange([evening], "posted_date", "2026-06-28", "2026-07-04", TZ).map((r) => r.id),
+    ).toEqual([5]);
+    expect(rosInLocalRange([evening], "posted_date", "2026-07-05", "2026-07-11", TZ)).toEqual([]);
   });
 });
 
