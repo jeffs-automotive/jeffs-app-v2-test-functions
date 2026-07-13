@@ -62,6 +62,7 @@ import {
   type NegativeBalanceEmployee,
 } from "@/lib/dal/payroll-pto-completion";
 import { sendPayrollAlert } from "@/lib/dal/payroll-confirm";
+import { renderRunSummaryEmail } from "@/lib/payroll/pay-summary-email";
 
 /** The p_pto_entries payload + the non-blocking warnings the completion result
  *  can surface (grandfathered-with-no-dates, etc. — C14, never a throw). */
@@ -223,8 +224,18 @@ export async function runCompletionEmailFanout(
   const runId = snapshot.run.run_id;
   const period = { periodStart: snapshot.run.period_start, periodEnd: snapshot.run.period_end };
 
-  // 1. The completed-run alert (sendPayrollAlert already never-throws).
-  await sendPayrollAlert(shopId, "completed", alertSubject, alertLines);
+  // 1. The completed-run alert (sendPayrollAlert already never-throws). Chris
+  //    2026-07-12: this alert carries the WHOLE run's summary — the Summary
+  //    page's two blocks (per-employee table + Run totals card), styled like the
+  //    individual pay summaries. HTML from the frozen snapshot; the alertLines
+  //    metadata rides as the text fallback + the html footer.
+  const runSummary = renderRunSummaryEmail({
+    period,
+    rows: snapshot.summary ?? [],
+    totals: snapshot.summary_totals ?? null,
+    metaLines: alertLines,
+  });
+  await sendPayrollAlert(shopId, "completed", alertSubject, runSummary.text.split("\n"), runSummary.html);
 
   // 2. Per-employee pay summaries (renderAndSendPaySummaries never throws — it
   //    finalizes each pre-inserted pending row through the atomic claim RPC).

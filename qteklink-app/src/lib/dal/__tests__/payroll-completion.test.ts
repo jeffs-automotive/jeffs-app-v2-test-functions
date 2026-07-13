@@ -177,9 +177,20 @@ describe("assembleCompletionPtoEntries", () => {
 });
 
 describe("runCompletionEmailFanout", () => {
-  it("sends the completed-run alert, then the pay summaries — sequentially", async () => {
+  it("sends the completed-run alert with the run-summary HTML, then the pay summaries — sequentially", async () => {
     await runCompletionEmailFanout(SHOP_ID, snapshot([snapEmp(EMP_A, 0)]), "Payroll run completed", ["line"]);
-    expect(vi.mocked(sendPayrollAlert)).toHaveBeenCalledWith(SHOP_ID, "completed", "Payroll run completed", ["line"]);
+    // Chris 2026-07-12: the completed alert now carries the run-summary HTML (the
+    // Summary page's two blocks). Subject unchanged; text is the summary text (the
+    // metadata rides as the fallback footer); html contains the run summary.
+    expect(vi.mocked(sendPayrollAlert)).toHaveBeenCalledWith(
+      SHOP_ID,
+      "completed",
+      "Payroll run completed",
+      expect.any(Array),
+      expect.stringContaining("Payroll summary"),
+    );
+    // the metadata line survives in the text fallback
+    expect(vi.mocked(sendPayrollAlert).mock.calls[0]![3]).toContain("line");
     expect(vi.mocked(renderAndSendPaySummaries)).toHaveBeenCalledWith(SHOP_ID, expect.objectContaining({ run: expect.any(Object) }));
     // ordering: alert before summaries
     const alertOrder = vi.mocked(sendPayrollAlert).mock.invocationCallOrder[0]!;

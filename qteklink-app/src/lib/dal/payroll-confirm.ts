@@ -58,10 +58,13 @@ export async function sendPayrollAlert(
   list: keyof PayrollAlertEmails,
   subject: string,
   lines: string[],
+  html?: string,
 ): Promise<void> {
   try {
     const { payroll } = await getPayrollSettings(shopId);
-    await sendQteklinkEmail({ to: payroll.alert_emails[list], subject, text: lines.join("\n") });
+    // `html` is additive (the completed alert carries the run-summary HTML); the
+    // text stays required (the edge fn's contract) as the fallback.
+    await sendQteklinkEmail({ to: payroll.alert_emails[list], subject, text: lines.join("\n"), html });
   } catch (e) {
     Sentry.captureException(e, { tags: { surface: "qteklink-payroll-alert", alert_list: list } });
   }

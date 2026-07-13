@@ -26,7 +26,7 @@
  */
 import { fmtUsd } from "@/lib/format";
 import { buildRunSummary, type EmployeeSheet } from "./summary";
-import type { SummaryRow } from "./types";
+import type { RunTotals, SummaryRow } from "./types";
 
 // ── Contract shapes (plan §5) ──────────────────────────────────────────────────
 
@@ -233,4 +233,182 @@ export function renderPaySummaryEmail(
     text: renderText(name, fmtPeriodRange(period, "body"), lines, row.total_pay_cents),
     html: renderHtml(name, fmtPeriodRange(period, "body"), lines, row.total_pay_cents),
   };
+}
+
+// ── Run-level summary email (the "completed" alert, Chris 2026-07-12) ────────────
+// The completed-run alert to the settings `completed` list carries the WHOLE run's
+// summary — the two blocks from the Summary page (the per-employee table + the
+// Run totals card), styled like the individual pay summaries. It is a RUN-LEVEL
+// admin summary (every employee in one message to the admin list) — distinct from
+// the per-employee pay summaries, so no §5 per-recipient binding applies here.
+
+/** Number → a compact hours string ("80", "55.05"). */
+function h(n: number): string {
+  return String(n);
+}
+const DASH = "—";
+function moneyOrDash(cents: number | null): string {
+  return cents === null ? DASH : fmtUsd(cents);
+}
+function hoursOrDash(n: number | null): string {
+  return n === null ? DASH : h(n);
+}
+
+export interface RunSummaryEmailInput {
+  period: PaySummaryPeriod;
+  /** snapshot.summary — one row per employee (already sorted by the DAL). */
+  rows: SummaryRow[];
+  /** snapshot.summary_totals — the Run totals card block (null on old snapshots). */
+  totals: RunTotals | null;
+  /** Completion metadata lines (completed by/at, bonus, "locked read-only"). */
+  metaLines: string[];
+  shopId?: number;
+}
+
+/** A short role label for the email (no client ROLE_LABEL import — pure lib). */
+function roleLabel(role: string): string {
+  return role.replace(/_/g, " ");
+}
+
+function runText(input: RunSummaryEmailInput): string {
+  const periodLine = fmtPeriodRange(input.period, "body");
+  const out: string[] = [`Payroll summary — pay period ${periodLine}`, ""];
+  for (const r of input.rows) {
+    const bits = [
+      `Reg ${h(r.reg_hours)}h`,
+      r.ot_hours > 0 ? `OT ${h(r.ot_hours)}h` : null,
+      r.incentive_cents !== null ? `Incentive ${fmtUsd(r.incentive_cents)}` : null,
+    ].filter((b): b is string => b !== null);
+    out.push(`${r.display_name} (${roleLabel(r.role)}) — Total ${fmtUsd(r.total_pay_cents)}  [${bits.join(", ")}]`);
+  }
+  const t = input.totals;
+  if (t) {
+    out.push("", "Run totals:", `  Total pay: ${fmtUsd(t.total_pay_cents)}`);
+    out.push(`  Regular pay: ${fmtUsd(t.reg_pay_cents)}   Overtime pay: ${fmtUsd(t.ot_pay_cents)}   Incentive: ${moneyOrDash(t.incentive_pay_cents)}`);
+    out.push(`  Regular hrs: ${h(t.reg_hours)}   OT hrs: ${h(t.ot_hours)}   Billed hrs: ${hoursOrDash(t.billed_hours)}`);
+    out.push(`  Cost per clock hour: ${t.cost_per_clock_hour_cents === null ? DASH : `${fmtUsd(t.cost_per_clock_hour_cents)}/hr`}   Cost per billed hour: ${t.cost_per_billed_hour_cents === null ? DASH : `${fmtUsd(t.cost_per_billed_hour_cents)}/hr`}`);
+  }
+  if (input.metaLines.length > 0) out.push("", ...input.metaLines);
+  return out.join("\n");
+}
+
+const TH = `font-family:${FONT};font-size:11px;line-height:14px;color:#8a8177;text-transform:uppercase;letter-spacing:0.03em;padding:6px 8px;text-align:right;`;
+const TD = `font-family:${FONT};font-size:13px;line-height:18px;color:#26211b;padding:6px 8px;text-align:right;white-space:nowrap;`;
+
+function runTableHtml(rows: SummaryRow[]): string {
+  const head =
+    `<tr>` +
+    `<th style="${TH}text-align:left;">Employee</th>` +
+    `<th style="${TH}">Reg hrs</th><th style="${TH}">OT hrs</th><th style="${TH}">Incentive</th>` +
+    `<th style="${TH}">PTO</th><th style="${TH}">Training</th><th style="${TH}">Holiday</th>` +
+    `<th style="${TH}">Bereave.</th><th style="${TH}">Total</th>` +
+    `</tr>`;
+  const leaveCell = (hours: number, payCents: number | null): string => {
+    const top = hours === 0 ? DASH : h(hours);
+    const bottom = payCents === null ? DASH : fmtUsd(payCents);
+    return `<td style="${TD}"><div>${escapeHtml(top)}</div><div style="color:#8a8177;font-size:11px;">${escapeHtml(bottom)}</div></td>`;
+  };
+  const body = rows
+    .map(
+      (r) =>
+        `<tr style="border-top:1px solid #eee7dd;">` +
+        `<td style="${TD}text-align:left;white-space:normal;"><span style="font-weight:600;">${escapeHtml(r.display_name)}</span> <span style="color:#8a8177;font-size:11px;">${escapeHtml(roleLabel(r.role))}</span></td>` +
+        `<td style="${TD}">${escapeHtml(h(r.reg_hours))}</td>` +
+        `<td style="${TD}">${r.ot_hours === 0 ? DASH : escapeHtml(h(r.ot_hours))}</td>` +
+        `<td style="${TD}">${r.incentive_cents === null ? DASH : escapeHtml(fmtUsd(r.incentive_cents))}</td>` +
+        leaveCell(r.pto_hours, r.pto_pay_cents) +
+        leaveCell(r.training_hours, r.training_pay_cents) +
+        leaveCell(r.holiday_hours, r.holiday_pay_cents) +
+        leaveCell(r.bereavement_hours, r.bereavement_pay_cents) +
+        `<td style="${TD}font-weight:700;">${escapeHtml(fmtUsd(r.total_pay_cents))}</td>` +
+        `</tr>`,
+    )
+    .join("");
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">${head}${body}</table>`;
+}
+
+function totalsGroupHtml(title: string, items: Array<[string, string]>): string {
+  const cells = items
+    .map(
+      ([label, value]) =>
+        `<td style="font-family:${FONT};padding:6px 10px 6px 0;vertical-align:top;">` +
+        `<div style="font-size:11px;color:#8a8177;">${escapeHtml(label)}</div>` +
+        `<div style="font-size:14px;font-weight:600;color:#26211b;white-space:nowrap;">${escapeHtml(value)}</div>` +
+        `</td>`,
+    )
+    .join("");
+  return (
+    `<div style="font-family:${FONT};font-size:11px;text-transform:uppercase;letter-spacing:0.04em;color:#8a8177;padding:12px 0 2px;">${escapeHtml(title)}</div>` +
+    `<table role="presentation" cellpadding="0" cellspacing="0"><tr>${cells}</tr></table>`
+  );
+}
+
+function runTotalsHtml(t: RunTotals): string {
+  const pay = totalsGroupHtml("Pay", [
+    ["Total pay", fmtUsd(t.total_pay_cents)],
+    ["Regular pay", fmtUsd(t.reg_pay_cents)],
+    ["Overtime pay", fmtUsd(t.ot_pay_cents)],
+    ["Incentive", moneyOrDash(t.incentive_pay_cents)],
+    ["PTO pay", moneyOrDash(t.pto_pay_cents)],
+    ["Holiday pay", moneyOrDash(t.holiday_pay_cents)],
+    ["Bereavement pay", moneyOrDash(t.bereavement_pay_cents)],
+    ["Training pay", moneyOrDash(t.training_pay_cents)],
+  ]);
+  const hours = totalsGroupHtml("Hours", [
+    ["Regular", h(t.reg_hours)],
+    ["Overtime", h(t.ot_hours)],
+    ["PTO", h(t.pto_hours)],
+    ["Holiday", h(t.holiday_hours)],
+    ["Bereavement", h(t.bereavement_hours)],
+    ["Training", h(t.training_hours)],
+    ["Billed", hoursOrDash(t.billed_hours)],
+  ]);
+  const metrics = totalsGroupHtml("Metrics", [
+    ["Cost per clock hour", t.cost_per_clock_hour_cents === null ? DASH : `${fmtUsd(t.cost_per_clock_hour_cents)}/hr`],
+    ["Cost per billed hour", t.cost_per_billed_hour_cents === null ? DASH : `${fmtUsd(t.cost_per_billed_hour_cents)}/hr`],
+  ]);
+  return pay + hours + metrics;
+}
+
+function runHtml(input: RunSummaryEmailInput): string {
+  const periodLine = fmtPeriodRange(input.period, "body");
+  const table = input.rows.length > 0
+    ? runTableHtml(input.rows)
+    : `<div style="font-family:${FONT};font-size:14px;color:#6b6257;">No employees on this run.</div>`;
+  const totals = input.totals ? runTotalsHtml(input.totals) : "";
+  const meta = input.metaLines.length > 0
+    ? `<tr><td style="padding:4px 32px 24px;"><div style="font-family:${FONT};font-size:12px;line-height:18px;color:#8a8177;">${input.metaLines.map((l) => escapeHtml(l)).join("<br>")}</div></td></tr>`
+    : "";
+  return (
+    `<!DOCTYPE html>` +
+    `<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Payroll summary</title></head>` +
+    `<body style="margin:0;padding:0;background:#f4f2ee;">` +
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f2ee;"><tr><td align="center" style="padding:24px 12px;">` +
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:720px;background:#ffffff;border:1px solid #e3ded6;">` +
+    `<tr><td style="padding:28px 32px 0;">` +
+    `<div style="font-family:${FONT};font-size:20px;line-height:26px;font-weight:700;color:#26211b;">Payroll summary</div>` +
+    `<div style="font-family:${FONT};font-size:14px;line-height:20px;color:#6b6257;padding-top:4px;">Pay period ${escapeHtml(periodLine)}</div>` +
+    `</td></tr>` +
+    `<tr><td style="padding:16px 32px 0;"><div style="height:3px;background:#96003C;font-size:0;line-height:0;">&nbsp;</div></td></tr>` +
+    // Card 1 — the per-employee summary table.
+    `<tr><td style="padding:16px 20px 4px;">${table}</td></tr>` +
+    // Card 2 — the Run totals card.
+    (totals
+      ? `<tr><td style="padding:8px 32px 8px;"><div style="border-top:1px solid #e3ded6;padding-top:8px;"><div style="font-family:${FONT};font-size:15px;font-weight:700;color:#26211b;">Run totals</div>${totals}</div></td></tr>`
+      : "") +
+    meta +
+    `</table>` +
+    `</td></tr></table>` +
+    `</body></html>`
+  );
+}
+
+/**
+ * Render the run-level "completed" summary email (Chris 2026-07-12): the Summary
+ * page's two blocks — the per-employee table + the Run totals card — in the
+ * individual pay-summary style, for the settings `completed` alert list. Pure;
+ * returns text (fallback) + html, both non-empty.
+ */
+export function renderRunSummaryEmail(input: RunSummaryEmailInput): { text: string; html: string } {
+  return { text: runText(input), html: runHtml(input) };
 }

@@ -18,10 +18,12 @@ import { computeSheet } from "../calc";
 import {
   assertBinding,
   renderPaySummaryEmail,
+  renderRunSummaryEmail,
   type PaySummaryEmployee,
   type PaySummaryPeriod,
   type PaySummaryRecipient,
 } from "../pay-summary-email";
+import { buildRunSummary } from "../summary";
 
 // ── Fixtures (real engine output) ──────────────────────────────────────────────
 
@@ -261,5 +263,62 @@ describe("html document", () => {
     const { html } = renderPaySummaryEmail(TECH, recipientFor(TECH), PERIOD);
     expect(html).toContain("background:#96003C");
     expect(html).toContain("-apple-system");
+  });
+});
+
+// ── The run-level "completed" summary email (Chris 2026-07-12) ──────────────────
+
+describe("renderRunSummaryEmail (the completed-run alert — Summary page's two blocks)", () => {
+  const { rows, totals } = buildRunSummary([TECH, SUPPORT, ADVISOR]);
+  const META = ["Completed by: chris@jeffsautomotive.com", "The run is now locked read-only in QTekLink."];
+
+  it("renders the per-employee TABLE (card 1): every employee's name, role, and total", () => {
+    const { html } = renderRunSummaryEmail({ period: PERIOD, rows, totals, metaLines: META });
+    for (const r of rows) {
+      expect(html).toContain(r.display_name);
+      expect(html).toContain(fmtUsd(r.total_pay_cents));
+    }
+    // column headers present
+    expect(html).toContain("Employee");
+    expect(html).toContain("Total");
+  });
+
+  it("renders the Run totals CARD (card 2): the grand total + grouped labels", () => {
+    const { html } = renderRunSummaryEmail({ period: PERIOD, rows, totals, metaLines: META });
+    expect(html).toContain("Run totals");
+    expect(html).toContain("Total pay");
+    expect(html).toContain("Cost per clock hour");
+    expect(html).toContain("Cost per billed hour");
+    expect(html).toContain(fmtUsd(totals.total_pay_cents));
+  });
+
+  it("styled like the individual summaries: burgundy rule, system fonts, self-contained", () => {
+    const { html } = renderRunSummaryEmail({ period: PERIOD, rows, totals, metaLines: META });
+    expect(html).toContain("background:#96003C");
+    expect(html).toContain("-apple-system");
+    expect(html).not.toContain("<img");
+    expect(html).not.toContain("http");
+  });
+
+  it("carries the metadata footer + a non-empty text fallback (the edge fn requires text)", () => {
+    const { html, text } = renderRunSummaryEmail({ period: PERIOD, rows, totals, metaLines: META });
+    expect(html).toContain("Completed by: chris@jeffsautomotive.com");
+    expect(text.length).toBeGreaterThan(0);
+    expect(text).toContain("Payroll summary");
+    expect(text).toContain("Completed by: chris@jeffsautomotive.com");
+  });
+
+  it("empty roster → a 'no employees' note, no crash, still non-empty text + html", () => {
+    const { html, text } = renderRunSummaryEmail({ period: PERIOD, rows: [], totals: null, metaLines: [] });
+    expect(html).toContain("No employees on this run.");
+    expect(html).toContain("Payroll summary");
+    expect(text.length).toBeGreaterThan(0);
+  });
+
+  it("escapes employee names in the table", () => {
+    const spicy = buildRunSummary([{ ...TECH, display_name: `A & <B>` }]);
+    const { html } = renderRunSummaryEmail({ period: PERIOD, rows: spicy.rows, totals: spicy.totals, metaLines: [] });
+    expect(html).toContain("A &amp; &lt;B&gt;");
+    expect(html).not.toContain("<B>");
   });
 });
