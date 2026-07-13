@@ -266,6 +266,8 @@ export default function EmployeeForm({
     start_date: employee?.startDate ?? "",
     pto_grandfathered: employee?.ptoGrandfathered ?? false,
     pto_tenure_credit_date: employee?.ptoTenureCreditDate ?? "",
+    // Round-12: full-time defaults ON (DB default true) for a new/unset employee.
+    full_time: employee?.fullTime ?? true,
   };
 
   useEffect(() => {
@@ -312,6 +314,9 @@ export default function EmployeeForm({
     }
     if (values.pto_grandfathered !== profileDefaults.pto_grandfathered) {
       patch.pto_grandfathered = values.pto_grandfathered;
+    }
+    if (values.full_time !== profileDefaults.full_time) {
+      patch.full_time = values.full_time;
     }
     return patch;
   }

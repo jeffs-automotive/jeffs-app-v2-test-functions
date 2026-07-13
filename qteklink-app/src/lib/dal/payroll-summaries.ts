@@ -35,6 +35,11 @@ export interface PayrollRunWithSummary {
  * Feed the result to the pure summary.ts aggregators (lastCompletedRuns /
  * employeeHourlyAverages / aggregateLastCompletedRuns) for windows + averages —
  * they exclude voided/open runs from every aggregate themselves.
+ *
+ * Round-12: the per-employee dashboard averages roll the last 26 COMPLETED runs
+ * (summary.ts DASHBOARD_WINDOW), so the default fetch is 60 — comfortably above 26
+ * so the completed window survives interleaved voided/open rows. The dashboard page
+ * passes an explicit limit; this default is the floor for any other caller.
  */
 export async function listPayrollRunsWithSummaries(
   shopId: number,
@@ -47,7 +52,7 @@ export async function listPayrollRunsWithSummaries(
     .eq("shop_id", shopId)
     .order("period_start", { ascending: false })
     .order("created_at", { ascending: false })
-    .limit(opts.limit ?? 12);
+    .limit(opts.limit ?? 60);
   if (error) throw new Error(`listPayrollRunsWithSummaries failed: ${error.message}`);
 
   const out: PayrollRunWithSummary[] = [];

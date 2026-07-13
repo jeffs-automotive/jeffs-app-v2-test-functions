@@ -299,7 +299,7 @@ describe("updatePayrollEntry pay_config write-through (round-3 #26)", () => {
     // caller then submits a full-replacement pay_config rebuilt from the rate
     // fields WITHOUT round-tripping the seed keys (plus a real rate change). The
     // omission must not propagate as a delete — the master keeps its seeds.
-    const seedHistory = [{ period_start: "2026-05-17", work_pay_cents: 234567, clock_hours: 81.25 }];
+    const seedHistory = [{ period_start: "2026-05-17", avg_hourly_pay_cents: 2885 }];
     const seededConfig = {
       ...employeeRow.pay_config,
       leave_rate_seed_history: seedHistory,

@@ -78,6 +78,12 @@ export interface PtoEmployeeFields {
   pto_grandfathered: boolean;
   /** Overrides start_date for TIER lookup ONLY (acquired-company seniority). */
   pto_tenure_credit_date: string | null;
+  /** Round-12 full-time flag (DB default true). Gates ACCRUAL only: false ⇒
+   *  accrual_hours 0 and NO accrual row, regardless of tenure/tiers/grandfather.
+   *  Does NOT flip `eligible` (which stays tenure/archive eligibility) and does
+   *  NOT gate USAGE (C37 — a part-timer with paid PTO hours still decrements).
+   *  REQUIRED (no default) so tsc forces every mapping site to supply it. */
+  full_time: boolean;
 }
 
 export interface PtoRunPeriod {
@@ -179,6 +185,13 @@ export function tierHoursForYears(
  * The tenure BASIS is `pto_tenure_credit_date ?? start_date` — the credit date
  * shifts the tier lookup only, never eligibility. The new tier rate lands on the
  * first pay period whose period_start is on/after the anniversary (#56).
+ *
+ * Round-12 full-time gate (§B2): accrual is written ONLY when `full_time` is
+ * EXPLICITLY true. A part-timer (false) returns `accrual_hours: 0` and yields no
+ * accrual row — but `eligible` is left UNCHANGED (it still means tenure/archive
+ * eligibility, surfaced in projections) and USAGE is never touched here (C37).
+ * The check is a strict `=== true` (never `?? true`) — the field is REQUIRED, so
+ * the caller must decide; a live mid-cycle flip changes that run's accrual.
  */
 export function computeAccrual(
   employee: PtoEmployeeFields,
@@ -220,6 +233,10 @@ export function computeAccrual(
       },
     ]);
   }
+  // Round-12 full-time gate (§B2): a part-timer accrues zero — no accrual row —
+  // but stays tenure-`eligible`. Strict `=== true` (the field is REQUIRED; never
+  // `?? true`). USAGE is unaffected (gated downstream in buildEmployeeRunPtoEntries).
+  if (employee.full_time !== true) return { eligible: true, accrual_hours: 0, warnings: [] };
   const accrual = tierHoursForYears(settings.pto_tenure_tiers, yearsOfServiceAt(basis, periodStart));
   return { eligible: true, accrual_hours: accrual, warnings: [] };
 }

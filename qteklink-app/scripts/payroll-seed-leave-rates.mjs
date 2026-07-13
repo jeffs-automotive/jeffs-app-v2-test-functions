@@ -4,9 +4,11 @@
 // period_start WINS over its seed in mergeLeaveRateWindow).
 //
 // Writes pay_config.leave_rate_seed_history (per-period {period_start,
-// work_pay_cents, clock_hours}, max 26) and/or pay_config.leave_rate_seed_cents_per_hour
-// (the single-rate 'seed' fallback) onto EXISTING technician / shop_foreman
-// employees via the qteklink_payroll_upsert_employee RPC.
+// avg_hourly_pay_cents}, max 26 — round-12: each period carries its already-averaged
+// hourly RATE, since the basis is now the MEAN of per-period rates over the rolling-26
+// window) and/or pay_config.leave_rate_seed_cents_per_hour (the single-rate 'seed'
+// fallback) onto EXISTING technician / shop_foreman employees via the
+// qteklink_payroll_upsert_employee RPC.
 //
 // HARD RULE (Chris): this tool UPDATES existing employees only — it NEVER creates
 // an employee (p_employee_id is always the matched id) and never touches archived ones.
@@ -23,7 +25,7 @@
 //
 // Input JSON (array; entries and seed_rate both optional per employee, >=1 required):
 //   [{ "employee": "Cantrell, Jeff",
-//      "entries": [{ "period_start": "2026-05-17", "work_pay_dollars": 2345.67, "clock_hours": 81.25 }],
+//      "entries": [{ "period_start": "2026-05-17", "avg_hourly_pay_dollars": 28.85 }],
 //      "seed_rate_dollars_per_hour": 34.06 }]
 //
 // Run (from qteklink-app/):
@@ -86,8 +88,9 @@ function isValidIsoDate(s) {
 // ((period_start - anchor) % 14 = 0). A seed off that cadence (or future-dated)
 // NEVER matches a completed run's period_start, so it is never superseded — once
 // the real run for the same real-world period completes, BOTH occupy window slots
-// and the period's pay/hours are double-counted in the leave-rate average. Seeds
-// must therefore sit on the SAME cadence, strictly in the past.
+// and the period's RATE is counted twice in the mean-of-per-period-rates leave-rate
+// average (round-12). Seeds must therefore sit on the SAME cadence, strictly in the
+// past.
 const DAY_MS = 86_400_000;
 const dayNum = (iso) => Date.parse(`${iso}T00:00:00Z`) / DAY_MS;
 const isoFromDayNum = (n) => new Date(n * DAY_MS).toISOString().slice(0, 10);
@@ -165,14 +168,15 @@ function parseItem(item, idx) {
       const ectx = `${ctx} (${employee}) entries[${j}]`;
       if (e === null || typeof e !== "object" || Array.isArray(e)) throw new Error(`${ectx}: must be an object`);
       for (const key of Object.keys(e)) {
-        if (!["period_start", "work_pay_dollars", "clock_hours"].includes(key)) throw new Error(`${ectx}: unknown key "${key}"`);
+        if (!["period_start", "avg_hourly_pay_dollars"].includes(key)) throw new Error(`${ectx}: unknown key "${key}"`);
       }
       if (!isValidIsoDate(e.period_start)) throw new Error(`${ectx}: period_start must be a valid YYYY-MM-DD date (got ${JSON.stringify(e.period_start)})`);
       if (seen.has(e.period_start)) throw new Error(`${ectx}: duplicate period_start ${e.period_start}`);
       seen.add(e.period_start);
-      if (!isFiniteNum(e.work_pay_dollars) || e.work_pay_dollars < 0) throw new Error(`${ectx}: work_pay_dollars must be a number >= 0`);
-      if (!isFiniteNum(e.clock_hours) || e.clock_hours < 0) throw new Error(`${ectx}: clock_hours must be a number >= 0`);
-      return { period_start: e.period_start, work_pay_cents: dollarsToCents(e.work_pay_dollars), clock_hours: e.clock_hours };
+      // Round-12: each period carries its already-averaged hourly RATE (the mean-of-
+      // per-period-rates basis), not a work_pay/clock_hours pair.
+      if (!isFiniteNum(e.avg_hourly_pay_dollars) || e.avg_hourly_pay_dollars < 0) throw new Error(`${ectx}: avg_hourly_pay_dollars must be a number >= 0`);
+      return { period_start: e.period_start, avg_hourly_pay_cents: dollarsToCents(e.avg_hourly_pay_dollars) };
     });
   }
   return { employee: employee.trim(), seedEntries, seedRateCents };
@@ -264,11 +268,13 @@ const main = async () => {
     if (it.seedEntries !== null) {
       console.log(`  leave_rate_seed_history: ${Array.isArray(oldHistory) ? `${oldHistory.length} existing entr(ies) REPLACED by` : "(none) →"} ${it.seedEntries.length} entr(ies)`);
       for (const e of it.seedEntries) {
-        console.log(`    ${e.period_start}  work_pay ${usd(e.work_pay_cents)}  clock ${e.clock_hours.toFixed(2)} h`);
+        console.log(`    ${e.period_start}  avg_hourly_pay ${usd(e.avg_hourly_pay_cents)}/h`);
       }
-      const pay = it.seedEntries.reduce((s, e) => s + e.work_pay_cents, 0);
-      const hours = it.seedEntries.reduce((s, e) => s + e.clock_hours, 0);
-      console.log(`  → seeds imply avg ${hours > 0 ? `${usd(Math.round(pay / hours))}/h` : "n/a (0 clock hours — the history alone will never satisfy the basis)"} over ${it.seedEntries.length} period(s)`);
+      // Round-12: the basis is the MEAN of the per-period rates, so the preview is
+      // the arithmetic mean of the seeded rates (rounded once), matching the DAL's
+      // mergeLeaveRateWindow.
+      const mean = Math.round(it.seedEntries.reduce((s, e) => s + e.avg_hourly_pay_cents, 0) / it.seedEntries.length);
+      console.log(`  → seeds imply avg ${usd(mean)}/h (mean of ${it.seedEntries.length} per-period rate(s))`);
     } else {
       console.log(`  leave_rate_seed_history: unchanged (${Array.isArray(oldHistory) ? `${oldHistory.length} existing entr(ies)` : "none"})`);
     }

@@ -148,8 +148,8 @@ export const seedInitialBalanceAction = wrapQtekAction("payrollSeedInitialBalanc
  * authority (unknown keys RAISE server-side; emails/dates cast). strictObject so a
  * typo'd key fails LOUD in the action rather than being silently dropped. Every
  * field is optional; `.nullable()` on the clearable columns preserves the JSON-null
- * = CLEAR semantic end-to-end. pto_grandfathered is a boolean (NOT NULL column —
- * no null form).
+ * = CLEAR semantic end-to-end. pto_grandfathered + full_time are booleans (NOT NULL
+ * columns — no null form).
  */
 const nullableStr = (label: string, max = 500) =>
   z.string().trim().max(max, `${label} is too long.`).nullable();
@@ -180,6 +180,7 @@ const EmployeeProfilePatchSchema = z
     termination_date: nullableDate("The termination date"),
     pto_grandfathered: z.boolean(),
     pto_tenure_credit_date: nullableDate("The tenure-credit date"),
+    full_time: z.boolean(),
   })
   .partial();
 

@@ -60,6 +60,10 @@ SELECT has_column('public', 'qteklink_payroll_employees', 'termination_date', 'e
 SELECT has_column('public', 'qteklink_payroll_employees', 'pto_grandfathered', 'employees.pto_grandfathered column exists');
 SELECT has_column('public', 'qteklink_payroll_employees', 'pto_tenure_credit_date', 'employees.pto_tenure_credit_date column exists');
 SELECT col_not_null('public', 'qteklink_payroll_employees', 'pto_grandfathered', 'pto_grandfathered is NOT NULL');
+-- round-12: full_time column (default true; the full-time PTO-accrual gate)
+SELECT has_column('public', 'qteklink_payroll_employees', 'full_time', 'employees.full_time column exists (round-12)');
+SELECT col_not_null('public', 'qteklink_payroll_employees', 'full_time', 'full_time is NOT NULL');
+SELECT col_default_is('public', 'qteklink_payroll_employees', 'full_time', 'true', 'full_time DEFAULTs true (round-12: default full time)');
 
 SELECT has_table('public', 'qteklink_payroll_pto_ledger', 'pto_ledger table exists');
 SELECT has_table('public', 'qteklink_payroll_email_log', 'email_log table exists');
@@ -103,14 +107,15 @@ INSERT INTO _ids VALUES ('e1', public.qteklink_payroll_upsert_employee(7476, NUL
   false, NULL, 'chris@jeffsautomotive.com'));
 SELECT ok(TRUE, 'a config that STILL carries the legacy pto_* keys is accepted (allowed forever)');
 
--- patch all nine columns + archive in ONE call
+-- patch all ten profile columns (round-12 adds full_time) + archive in ONE call.
+-- full_time is flipped to FALSE here (DEFAULT is true) to prove the write arm.
 SELECT lives_ok($$ SELECT public.qteklink_payroll_update_employee_profile(7476, (SELECT v FROM _ids WHERE k='e1'),
-  '{"work_email":"w@x.com","personal_email":"p@x.com","personal_phone":"555-1","work_phone":"555-2","address":"1 Main St","start_date":"2019-05-01","termination_date":"2026-01-01","pto_grandfathered":true,"pto_tenure_credit_date":"2015-01-01"}'::jsonb,
-  true, 'chris@jeffsautomotive.com') $$, 'profile patch (all nine cols + archive) accepted');
-SELECT is((SELECT work_email||'/'||personal_email||'/'||personal_phone||'/'||work_phone||'/'||address||'/'||start_date::text||'/'||termination_date::text||'/'||pto_grandfathered::text||'/'||pto_tenure_credit_date::text||'/'||(archived_at IS NOT NULL)::text
+  '{"work_email":"w@x.com","personal_email":"p@x.com","personal_phone":"555-1","work_phone":"555-2","address":"1 Main St","start_date":"2019-05-01","termination_date":"2026-01-01","pto_grandfathered":true,"pto_tenure_credit_date":"2015-01-01","full_time":false}'::jsonb,
+  true, 'chris@jeffsautomotive.com') $$, 'profile patch (all ten cols + archive) accepted');
+SELECT is((SELECT work_email||'/'||personal_email||'/'||personal_phone||'/'||work_phone||'/'||address||'/'||start_date::text||'/'||termination_date::text||'/'||pto_grandfathered::text||'/'||pto_tenure_credit_date::text||'/'||full_time::text||'/'||(archived_at IS NOT NULL)::text
            FROM public.qteklink_payroll_employees WHERE id=(SELECT v FROM _ids WHERE k='e1')),
-  'w@x.com/p@x.com/555-1/555-2/1 Main St/2019-05-01/2026-01-01/true/2015-01-01/true',
-  'all nine columns + archived_at stamped exactly as patched');
+  'w@x.com/p@x.com/555-1/555-2/1 Main St/2019-05-01/2026-01-01/true/2015-01-01/false/true',
+  'all ten columns + archived_at stamped exactly as patched (full_time flipped to false)');
 
 -- unknown key RAISEs
 SELECT throws_ok($$ SELECT public.qteklink_payroll_update_employee_profile(7476, (SELECT v FROM _ids WHERE k='e1'),
@@ -124,6 +129,12 @@ SELECT throws_ok($$ SELECT public.qteklink_payroll_update_employee_profile(7476,
 -- pto_grandfathered NOT NULL: JSON null RAISEs (does not clear)
 SELECT throws_ok($$ SELECT public.qteklink_payroll_update_employee_profile(7476, (SELECT v FROM _ids WHERE k='e1'),
   '{"pto_grandfathered":null}'::jsonb, NULL, 'pgtap') $$, 'P0001', NULL, 'JSON null on the NOT-NULL pto_grandfathered rejected');
+-- full_time NOT NULL: JSON null RAISEs (does not clear) — round-12, same guard as pto_grandfathered
+SELECT throws_ok($$ SELECT public.qteklink_payroll_update_employee_profile(7476, (SELECT v FROM _ids WHERE k='e1'),
+  '{"full_time":null}'::jsonb, NULL, 'pgtap') $$, 'P0001', NULL, 'JSON null on the NOT-NULL full_time rejected (round-12)');
+-- full_time must be a JSON boolean, not a string
+SELECT throws_ok($$ SELECT public.qteklink_payroll_update_employee_profile(7476, (SELECT v FROM _ids WHERE k='e1'),
+  '{"full_time":"yes"}'::jsonb, NULL, 'pgtap') $$, 'P0001', NULL, 'a non-boolean full_time rejected (round-12)');
 -- nothing-to-update (empty patch, no p_archived) RAISEs
 SELECT throws_ok($$ SELECT public.qteklink_payroll_update_employee_profile(7476, (SELECT v FROM _ids WHERE k='e1'),
   '{}'::jsonb, NULL, 'pgtap') $$, 'P0001', NULL, 'empty patch + NULL p_archived rejected');
@@ -141,14 +152,14 @@ SELECT throws_ok($$ SELECT public.qteklink_payroll_update_employee_profile(8888,
 -- ── the load-bearing regression lock: the LEGACY 9-arg upsert against the
 -- fully-populated row leaves EVERY new column byte-identical (C2/C3/C18/C24/C30).
 INSERT INTO _txt VALUES ('profile_before',
-  (SELECT work_email||'|'||personal_email||'|'||personal_phone||'|'||work_phone||'|'||address||'|'||start_date::text||'|'||termination_date::text||'|'||pto_grandfathered::text||'|'||pto_tenure_credit_date::text
+  (SELECT work_email||'|'||personal_email||'|'||personal_phone||'|'||work_phone||'|'||address||'|'||start_date::text||'|'||termination_date::text||'|'||pto_grandfathered::text||'|'||pto_tenure_credit_date::text||'|'||full_time::text
    FROM public.qteklink_payroll_employees WHERE id=(SELECT v FROM _ids WHERE k='e1')));
 SELECT public.qteklink_payroll_upsert_employee(7476, (SELECT v FROM _ids WHERE k='e1'), 'Full Profile', 'technician', 9102,
   '{"config_version":1,"hourly_rate_cents":2400,"billed_rate_cents":1100}'::jsonb, true, NULL, 'chris@jeffsautomotive.com') AS _;
-SELECT is((SELECT work_email||'|'||personal_email||'|'||personal_phone||'|'||work_phone||'|'||address||'|'||start_date::text||'|'||termination_date::text||'|'||pto_grandfathered::text||'|'||pto_tenure_credit_date::text
+SELECT is((SELECT work_email||'|'||personal_email||'|'||personal_phone||'|'||work_phone||'|'||address||'|'||start_date::text||'|'||termination_date::text||'|'||pto_grandfathered::text||'|'||pto_tenure_credit_date::text||'|'||full_time::text
            FROM public.qteklink_payroll_employees WHERE id=(SELECT v FROM _ids WHERE k='e1')),
   (SELECT v FROM _txt WHERE k='profile_before'),
-  'the legacy 9-arg upsert leaves every NEW profile column byte-identical');
+  'the legacy 9-arg upsert leaves every NEW profile column (incl. round-12 full_time) byte-identical');
 SELECT is((SELECT pay_config->>'hourly_rate_cents' FROM public.qteklink_payroll_employees WHERE id=(SELECT v FROM _ids WHERE k='e1')),
   '2400', 'the legacy upsert still updates the fields it OWNS (pay_config)');
 
@@ -174,6 +185,21 @@ SELECT public.qteklink_payroll_update_employee_profile(7476, (SELECT v FROM _ids
   '{"address":"3 Main"}'::jsonb, NULL, 'chris@jeffsautomotive.com') AS _;
 SELECT ok((SELECT pto_grandfathered FROM public.qteklink_payroll_employees WHERE id=(SELECT v FROM _ids WHERE k='e1')),
   'an address-only patch leaves pto_grandfathered untouched (absent = keep)');
+-- round-12 full_time patch semantics: the all-cols patch above set e1 full_time=false;
+-- the address-only patch must have LEFT it false (absent = keep).
+SELECT ok((SELECT NOT full_time FROM public.qteklink_payroll_employees WHERE id=(SELECT v FROM _ids WHERE k='e1')),
+  'an address-only patch leaves full_time untouched (absent = keep, still false from the all-cols patch)');
+-- flip full_time back to true (present = write) and confirm
+SELECT public.qteklink_payroll_update_employee_profile(7476, (SELECT v FROM _ids WHERE k='e1'),
+  '{"full_time":true}'::jsonb, NULL, 'chris@jeffsautomotive.com') AS _;
+SELECT ok((SELECT full_time FROM public.qteklink_payroll_employees WHERE id=(SELECT v FROM _ids WHERE k='e1')),
+  'a full_time:true patch writes the flag back to true (present = write)');
+-- a freshly-upserted employee lands full_time = true by DEFAULT (the legacy
+-- upsert's fixed column list excludes full_time, so it can never wipe it).
+INSERT INTO _ids VALUES ('eft', public.qteklink_payroll_upsert_employee(7476, NULL, 'Default FullTime', 'technician', 9104,
+  '{"config_version":1,"hourly_rate_cents":2000,"billed_rate_cents":800}'::jsonb, true, NULL, 'chris@jeffsautomotive.com'));
+SELECT ok((SELECT full_time FROM public.qteklink_payroll_employees WHERE id=(SELECT v FROM _ids WHERE k='eft')),
+  'a new employee (via the byte-untouched upsert) lands full_time = true by DEFAULT (round-12)');
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- §2b — adjust_pto: running balance under the shop lock, reason gate, bounds
@@ -300,6 +326,50 @@ SELECT throws_ok($$ SELECT public.qteklink_upsert_settings(7476, 'realm-A', NULL
 SELECT throws_ok($$ SELECT public.qteklink_upsert_settings(7476, 'realm-A', NULL, NULL, NULL, NULL, NULL, NULL, NULL,
   '{"pto_negative_alert_admin_emails":["  "]}'::jsonb) $$,
   'P0001', NULL, 'blank alert email rejected');
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Round-12 — validate_pay_config: leave_rate_seed_history rate-only shape
+-- (EXACTLY {period_start, avg_hourly_pay_cents}); the OLD {work_pay_cents,
+-- clock_hours} shape is REJECTED. Driven through the validator directly (called
+-- here as the migration/superuser role, matching the upsert's internal PERFORM).
+-- ═══════════════════════════════════════════════════════════════════════════
+-- the NEW rate-only shape is accepted (one + max-26 entries)
+SELECT lives_ok($$ SELECT public.qteklink_payroll_validate_pay_config('technician',
+  '{"config_version":1,"hourly_rate_cents":2300,"billed_rate_cents":1000,"leave_rate_seed_history":[{"period_start":"2026-06-14","avg_hourly_pay_cents":3450}]}'::jsonb,
+  false, 'pgtap') $$, 'round-12: leave_rate_seed_history {period_start, avg_hourly_pay_cents} accepted');
+-- an avg_hourly_pay_cents of 0 is a valid rate (>= 0)
+SELECT lives_ok($$ SELECT public.qteklink_payroll_validate_pay_config('technician',
+  '{"config_version":1,"hourly_rate_cents":2300,"billed_rate_cents":1000,"leave_rate_seed_history":[{"period_start":"2026-06-14","avg_hourly_pay_cents":0}]}'::jsonb,
+  false, 'pgtap') $$, 'round-12: avg_hourly_pay_cents = 0 is a valid rate');
+-- the shop_foreman family also carries the seed history (same rate-only shape)
+SELECT lives_ok($$ SELECT public.qteklink_payroll_validate_pay_config('shop_foreman',
+  '{"config_version":1,"hourly_rate_cents":2600,"billed_rate_cents":1100,"shop_hour_goal":600,"shop_hour_bonus_cents_per_hour":100,"leave_rate_seed_history":[{"period_start":"2026-06-14","avg_hourly_pay_cents":4100}]}'::jsonb,
+  false, 'pgtap') $$, 'round-12: shop_foreman leave_rate_seed_history rate shape accepted');
+-- the OLD {work_pay_cents, clock_hours} shape is REJECTED (unknown entry keys)
+SELECT throws_ok($$ SELECT public.qteklink_payroll_validate_pay_config('technician',
+  '{"config_version":1,"hourly_rate_cents":2300,"billed_rate_cents":1000,"leave_rate_seed_history":[{"period_start":"2026-06-14","work_pay_cents":120000,"clock_hours":80}]}'::jsonb,
+  false, 'pgtap') $$, 'P0001', NULL, 'round-12: the OLD {work_pay_cents, clock_hours} seed shape is REJECTED');
+-- a missing avg_hourly_pay_cents RAISEs
+SELECT throws_ok($$ SELECT public.qteklink_payroll_validate_pay_config('technician',
+  '{"config_version":1,"hourly_rate_cents":2300,"billed_rate_cents":1000,"leave_rate_seed_history":[{"period_start":"2026-06-14"}]}'::jsonb,
+  false, 'pgtap') $$, 'P0001', NULL, 'round-12: a seed entry missing avg_hourly_pay_cents rejected');
+-- a non-integer / negative avg_hourly_pay_cents RAISEs
+SELECT throws_ok($$ SELECT public.qteklink_payroll_validate_pay_config('technician',
+  '{"config_version":1,"hourly_rate_cents":2300,"billed_rate_cents":1000,"leave_rate_seed_history":[{"period_start":"2026-06-14","avg_hourly_pay_cents":34.5}]}'::jsonb,
+  false, 'pgtap') $$, 'P0001', NULL, 'round-12: a non-integer avg_hourly_pay_cents rejected');
+SELECT throws_ok($$ SELECT public.qteklink_payroll_validate_pay_config('technician',
+  '{"config_version":1,"hourly_rate_cents":2300,"billed_rate_cents":1000,"leave_rate_seed_history":[{"period_start":"2026-06-14","avg_hourly_pay_cents":-1}]}'::jsonb,
+  false, 'pgtap') $$, 'P0001', NULL, 'round-12: a negative avg_hourly_pay_cents rejected');
+-- a bad period_start still RAISEs (shape guard preserved)
+SELECT throws_ok($$ SELECT public.qteklink_payroll_validate_pay_config('technician',
+  '{"config_version":1,"hourly_rate_cents":2300,"billed_rate_cents":1000,"leave_rate_seed_history":[{"period_start":"06/14/2026","avg_hourly_pay_cents":3450}]}'::jsonb,
+  false, 'pgtap') $$, 'P0001', NULL, 'round-12: a malformed period_start rejected');
+-- the <=26 cap is preserved (27 rate entries RAISE)
+SELECT throws_ok($$ SELECT public.qteklink_payroll_validate_pay_config('technician',
+  jsonb_build_object('config_version',1,'hourly_rate_cents',2300,'billed_rate_cents',1000,
+    'leave_rate_seed_history',
+    (SELECT jsonb_agg(jsonb_build_object('period_start','2026-06-14','avg_hourly_pay_cents',3450)) FROM generate_series(1,27))),
+  false, 'pgtap') $$, 'P0001', NULL, 'round-12: >26 seed entries still rejected (cap preserved)');
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- §4 + §5 — completion PTO writes, the pay_summary rail, the full void cycle

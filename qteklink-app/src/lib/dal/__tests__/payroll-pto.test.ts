@@ -98,6 +98,7 @@ function empFields(over: Partial<PtoEmployeeFields> = {}): PtoEmployeeFields {
     termination_date: null,
     pto_grandfathered: false,
     pto_tenure_credit_date: null,
+    full_time: true, // round-12 default (DB default true)
     ...over,
   };
 }
@@ -302,15 +303,15 @@ describe("projectRunPto — current + accrual − usage through the real engine"
 });
 
 describe("ptoFieldsFromEmployee — read-surface → engine shape", () => {
-  it("maps archivedAt→archived and the profile date columns", () => {
+  it("maps archivedAt→archived, the profile date columns, and full_time", () => {
     const f = ptoFieldsFromEmployee({
       id: EMP_A, displayName: "Matt", archivedAt: "2026-01-01T00:00:00Z",
       startDate: "2020-01-01", terminationDate: "2026-01-01", ptoGrandfathered: true,
-      ptoTenureCreditDate: "2018-01-01",
+      ptoTenureCreditDate: "2018-01-01", fullTime: false,
     } as PayrollEmployee);
     expect(f).toMatchObject({
       archived: true, start_date: "2020-01-01", termination_date: "2026-01-01",
-      pto_grandfathered: true, pto_tenure_credit_date: "2018-01-01",
+      pto_grandfathered: true, pto_tenure_credit_date: "2018-01-01", full_time: false,
     });
   });
 });

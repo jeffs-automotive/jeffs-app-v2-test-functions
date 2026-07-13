@@ -92,6 +92,7 @@ function master(id: string, over: Partial<PayrollEmployee> = {}): PayrollEmploye
     terminationDate: null,
     ptoGrandfathered: false,
     ptoTenureCreditDate: null,
+    fullTime: true,
     ...over,
   };
 }

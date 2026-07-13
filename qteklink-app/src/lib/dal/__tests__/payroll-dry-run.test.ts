@@ -159,6 +159,7 @@ function master(over: Partial<PayrollEmployee> = {}): PayrollEmployee {
     terminationDate: null,
     ptoGrandfathered: false,
     ptoTenureCreditDate: null,
+    fullTime: true,
     ...over,
   };
 }

@@ -1,9 +1,10 @@
 /**
  * EmployeesCard (server component, page-local to /payroll) — one row per ACTIVE
  * employee: pay basis (hourly rate OR weekly salary), billed rate (n/a for
- * non-billed roles), the two last-12-completed-runs hourly averages (without
- * bonus for everyone; with bonus only for the SA / office-manager / foreman
- * families), and the LEDGER PTO balance (the single balance truth — plan §2b/C22;
+ * non-billed roles), the two rolling-26-completed-runs hourly averages (round-12:
+ * the MEAN of per-run rates over the last 26 completed runs — without bonus for
+ * everyone; with bonus only for the SA / office-manager / foreman families), and
+ * the LEDGER PTO balance (the single balance truth — plan §2b/C22;
  * the tier engine owns accrual rates now, so the old "accrues X hrs/period"
  * sub-line and the pay_config pto_* reads are gone).
  * Archived employees stay out of the way behind a collapsed <details>.
@@ -78,10 +79,13 @@ interface EmployeeRowView {
 
 function employeeRowView(
   emp: PayrollEmployee,
-  rowsByEmployee: Map<string, SummaryRow[]>,
+  rowsByEmployee: Map<string, SummaryRow[][]>,
   ptoBalances: Map<string, number>,
 ): EmployeeRowView {
   const family = familyForRole(emp.role);
+  // Per-employee-per-run groups: one inner array per completed run (round-12), so
+  // the averages are a mean of per-run rates. An absent employee (no completed runs)
+  // gets an empty group list → both averages resolve to null ("n/a").
   const averages = employeeHourlyAverages(family, rowsByEmployee.get(emp.id) ?? []);
   return {
     emp,
@@ -133,7 +137,7 @@ function EmployeeRow({ v, archived }: { v: EmployeeRowView; archived: boolean })
       </TableCell>
       <TableCell
         className={numCell}
-        title="Last 12 completed runs — pay excluding bonuses, spiffs and manual incentives ÷ clock hours"
+        title="Rolling 26 completed runs — mean of each run's (pay excluding bonuses, spiffs and manual incentives ÷ clock hours)"
       >
         {v.avgWithoutBonusCents !== null ? (
           `${fmtUsd(v.avgWithoutBonusCents)}/hr`
@@ -143,7 +147,7 @@ function EmployeeRow({ v, archived }: { v: EmployeeRowView; archived: boolean })
       </TableCell>
       <TableCell
         className={numCell}
-        title="Last 12 completed runs — total pay including bonuses and spiffs ÷ clock hours"
+        title="Rolling 26 completed runs — mean of each run's (total pay including bonuses and spiffs ÷ clock hours)"
       >
         {v.avgWithBonusCents !== null ? (
           `${fmtUsd(v.avgWithBonusCents)}/hr`
@@ -170,8 +174,9 @@ export default function EmployeesCard({
 }: {
   active: PayrollEmployee[];
   archived: PayrollEmployee[];
-  /** Per-employee SummaryRows from the last-12-COMPLETED-runs window. */
-  rowsByEmployee: Map<string, SummaryRow[]>;
+  /** Per-employee-per-run SummaryRow groups from the rolling-26-COMPLETED-runs window
+   *  (round-12): one inner array per run, so the averages mean the per-run rates. */
+  rowsByEmployee: Map<string, SummaryRow[][]>;
   /** Per-employee LEDGER PTO balance (the single balance truth — plan §2b);
    *  an unseeded employee is absent from the map and renders 0. */
   ptoBalances: Map<string, number>;

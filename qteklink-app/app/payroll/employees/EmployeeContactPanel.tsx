@@ -17,7 +17,8 @@ import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { labelCls } from "./payroll-ui";
 
-/** The nine editable profile columns (plan §2a) — the shape the parent diffs. */
+/** The editable profile columns (plan §2a + round-12 full_time) — the shape the
+ *  parent diffs. */
 export interface ProfileValues {
   work_email: string;
   personal_email: string;
@@ -27,13 +28,17 @@ export interface ProfileValues {
   start_date: string;
   pto_grandfathered: boolean;
   pto_tenure_credit_date: string;
+  /** Round-12: full-time flag (default true). Gates PTO accrual only. */
+  full_time: boolean;
 }
 
 /**
  * Read the panel's current values off a FormData (the profile fields the parent
- * form submits). Grandfather is a checkbox ⇒ "on"/absent; the date/text fields
- * are plain strings (blank = the user wants it cleared). termination_date is NOT
- * here — it's captured by the Archive modal, never this panel.
+ * form submits). Grandfather + full-time are checkboxes ⇒ "on"/absent; the
+ * date/text fields are plain strings (blank = the user wants it cleared).
+ * termination_date is NOT here — it's captured by the Archive modal, never this
+ * panel. Both checkboxes are CONTROLLED (their state carries the row default), so
+ * an absent value here means the box is unchecked (full_time ⇒ part-time).
  */
 export function readProfileValues(fd: FormData): ProfileValues {
   const str = (name: string) => String(fd.get(name) ?? "").trim();
@@ -46,6 +51,7 @@ export function readProfileValues(fd: FormData): ProfileValues {
     start_date: str("start_date"),
     pto_grandfathered: fd.get("pto_grandfathered") === "on",
     pto_tenure_credit_date: str("pto_tenure_credit_date"),
+    full_time: fd.get("full_time") === "on",
   };
 }
 
@@ -96,6 +102,7 @@ export default function EmployeeContactPanel({
   values: ProfileValues;
 }) {
   const [grandfathered, setGrandfathered] = useState(values.pto_grandfathered);
+  const [fullTime, setFullTime] = useState(values.full_time);
 
   return (
     <>
@@ -167,6 +174,22 @@ export default function EmployeeContactPanel({
           the roster.
         </p>
         <div className="mt-3 space-y-3">
+          <label className="flex items-start gap-2 text-sm text-foreground">
+            <input
+              type="checkbox"
+              name="full_time"
+              checked={fullTime}
+              onChange={(e) => setFullTime(e.target.checked)}
+              className="mt-0.5 size-4 shrink-0 accent-primary"
+            />
+            <span>
+              Full-time (accrues PTO)
+              <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
+                On by default. Turn off for a part-time employee — they stop accruing PTO, but any
+                paid PTO they take still draws down their balance.
+              </span>
+            </span>
+          </label>
           <label className="flex items-start gap-2 text-sm text-foreground">
             <input
               type="checkbox"

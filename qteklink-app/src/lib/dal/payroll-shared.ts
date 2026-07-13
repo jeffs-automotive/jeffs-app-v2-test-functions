@@ -63,6 +63,10 @@ export interface PayrollEmployee {
   ptoGrandfathered: boolean;
   /** Overrides start_date for TIER lookup only (ISO date). */
   ptoTenureCreditDate: string | null;
+  /** Round-12 full-time flag (DB default true). Gates PTO ACCRUAL only — a
+   *  part-timer (false) accrues zero regardless of tenure; USAGE is unaffected.
+   *  NOT NULL in the DB; the profile RPC is its only writer. */
+  fullTime: boolean;
 }
 
 export interface PayrollRun {
@@ -375,10 +379,11 @@ export interface EmployeeDbRow {
   termination_date: string | null;
   pto_grandfathered: boolean;
   pto_tenure_credit_date: string | null;
+  full_time: boolean;
 }
 
 export const EMPLOYEE_COLS =
-  "id, shop_id, display_name, role, tekmetric_employee_id, tekmetric_id_type, pay_config, archived_at, created_at, updated_at, work_email, personal_email, personal_phone, work_phone, address, start_date, termination_date, pto_grandfathered, pto_tenure_credit_date";
+  "id, shop_id, display_name, role, tekmetric_employee_id, tekmetric_id_type, pay_config, archived_at, created_at, updated_at, work_email, personal_email, personal_phone, work_phone, address, start_date, termination_date, pto_grandfathered, pto_tenure_credit_date, full_time";
 
 export function employeeFromRow(r: EmployeeDbRow): PayrollEmployee {
   return {
@@ -401,6 +406,7 @@ export function employeeFromRow(r: EmployeeDbRow): PayrollEmployee {
     terminationDate: r.termination_date,
     ptoGrandfathered: r.pto_grandfathered,
     ptoTenureCreditDate: r.pto_tenure_credit_date,
+    fullTime: r.full_time,
   };
 }
 

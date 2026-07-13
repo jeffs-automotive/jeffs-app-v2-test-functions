@@ -59,6 +59,7 @@ function emp(over: Partial<PtoEmployeeFields> = {}): PtoEmployeeFields {
     termination_date: null,
     pto_grandfathered: false,
     pto_tenure_credit_date: null,
+    full_time: true, // round-12 default (DB default true) — keeps the matrix accruing
     ...over,
   };
 }
@@ -196,6 +197,70 @@ describe("computeAccrual — eligibility", () => {
     expect(r.eligible).toBe(false);
     expect(r.accrual_hours).toBe(0);
     expect(r.warnings).toEqual([]);
+  });
+});
+
+// ── Full-time accrual gate (round-12 §B2) ──────────────────────────────────────
+
+describe("computeAccrual — full-time gate (round-12)", () => {
+  it("part-time + tenure-eligible: accrual 0, NO row, but `eligible` stays true", () => {
+    // Same long-tenured, fully-eligible employee — only full_time flips off.
+    const ft = computeAccrual(emp(), settings(), "2026-06-28");
+    expect(ft.eligible).toBe(true);
+    expect(ft.accrual_hours).toBe(6.16); // full-timer accrues the 5-yr tier
+
+    const pt = computeAccrual(emp({ full_time: false }), settings(), "2026-06-28");
+    expect(pt.eligible).toBe(true); // eligibility (tenure/archive) is UNCHANGED
+    expect(pt.accrual_hours).toBe(0); // the gate zeroes accrual only
+    expect(pt.warnings).toEqual([]);
+  });
+
+  it("part-time gate applies even when grandfathered (waived wait ≠ accrual)", () => {
+    const pt = computeAccrual(
+      emp({ start_date: "2026-07-01", pto_grandfathered: true, full_time: false }),
+      settings(),
+      "2026-07-12",
+    );
+    expect(pt.eligible).toBe(true);
+    expect(pt.accrual_hours).toBe(0);
+  });
+
+  it("part-time is decided by an EXPLICIT boolean — never `?? true`", () => {
+    // The field is required; a false must gate. (A `?? true` bug would accrue.)
+    expect(computeAccrual(emp({ full_time: false }), settings(), "2026-08-09").accrual_hours).toBe(0);
+    expect(computeAccrual(emp({ full_time: true }), settings(), "2026-08-09").accrual_hours).toBe(6.16);
+  });
+
+  it("full-time gate does NOT gate USAGE — a part-timer with paid PTO still decrements (C37)", () => {
+    const r = buildEmployeeRunPtoEntries(
+      { employee: emp({ full_time: false }), snapshot_pto_hours: 8, ledger_entries: [] },
+      settings(),
+      { period_start: "2026-06-28", period_end: "2026-07-11" },
+    );
+    expect(r.eligible).toBe(true); // tenure-eligible, just part-time
+    expect(r.accrual_hours).toBe(0); // no accrual
+    expect(r.entries).toEqual([
+      { employee_id: r.employee_id, kind: "usage", hours: -8, boundary_year: null },
+    ]);
+  });
+
+  it("part-time + archived/terminated/NULL-start: usage still written, accrual still 0", () => {
+    const run = { period_start: "2026-06-28", period_end: "2026-07-11" };
+    for (const over of [
+      { archived: true } as const,
+      { termination_date: "2026-06-01" } as const,
+      { start_date: null } as const,
+    ]) {
+      const r = buildEmployeeRunPtoEntries(
+        { employee: emp({ ...over, full_time: false }), snapshot_pto_hours: 4.5, ledger_entries: [] },
+        settings(),
+        run,
+      );
+      expect(r.accrual_hours).toBe(0);
+      expect(r.entries).toEqual([
+        { employee_id: r.employee_id, kind: "usage", hours: -4.5, boundary_year: null },
+      ]);
+    }
   });
 });
 

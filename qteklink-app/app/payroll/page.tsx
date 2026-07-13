@@ -22,7 +22,7 @@ import {
   type PayrollRun,
   type PayrollRunWithSummary,
 } from "@/lib/dal/payroll";
-import { lastCompletedRuns, type RunForAggregation } from "@/lib/payroll/summary";
+import { DASHBOARD_WINDOW, lastCompletedRuns, type RunForAggregation } from "@/lib/payroll/summary";
 import type { SummaryRow } from "@/lib/payroll/types";
 import { addDaysIso, fmtUsd } from "@/lib/format";
 import { PageHeader, IdentityBlock } from "@/components/PageHeader";
@@ -214,9 +214,11 @@ export default async function PayrollPage() {
   const [{ payroll: settings }, employees, runsWithRows] = await Promise.all([
     getPayrollSettings(shopId),
     listPayrollEmployees(shopId, { includeArchived: true }),
-    // 40 > the 12-run card so the completed-runs window survives interleaved
-    // open/voided rows (voided runs never count toward the 12).
-    listPayrollRunsWithSummaries(shopId, { limit: 40 }),
+    // 60 > the rolling-26 window so the completed-runs window survives interleaved
+    // open/voided rows (voided/open runs never count toward the 26). Round-12: the
+    // per-employee dashboard averages now roll 26 completed runs (was 12), so the
+    // fetch is raised to keep ≥26 completed runs available after exclusions.
+    listPayrollRunsWithSummaries(shopId, { limit: 60 }),
   ]);
 
   const activeEmployees = employees.filter((e) => e.archivedAt === null);
@@ -230,8 +232,11 @@ export default async function PayrollPage() {
     employees.map((e) => e.id),
   );
 
-  // Per-employee last-12-COMPLETED-runs window (pure summary.ts exports own the
-  // filtering — voided/open runs never reach an average).
+  // Per-employee last-COMPLETED-runs window (round-12: the rolling-26 mean-of-per-run
+  // -rates; pure summary.ts exports own the filtering — voided/open runs never reach
+  // an average). The averages are a MEAN of per-RUN rates, so run identity must be
+  // preserved: rowsByEmployee groups the employee's rows BY RUN (one inner array per
+  // run) — flattening across runs would collapse the per-run rates the mean needs.
   const completedWindow = lastCompletedRuns(
     runsWithRows.map(
       (r): RunForAggregation => ({
@@ -240,14 +245,22 @@ export default async function PayrollPage() {
         rows: r.rows,
       }),
     ),
-    12,
+    DASHBOARD_WINDOW,
   );
-  const rowsByEmployee = new Map<string, SummaryRow[]>();
+  const rowsByEmployee = new Map<string, SummaryRow[][]>();
   for (const run of completedWindow) {
+    // Bucket this run's rows by employee, then push each employee's per-run group
+    // (keeps each run as one element so the mean-of-per-run-rates can rate it once).
+    const perRunByEmployee = new Map<string, SummaryRow[]>();
     for (const row of run.rows) {
-      const list = rowsByEmployee.get(row.employee_id) ?? [];
+      const list = perRunByEmployee.get(row.employee_id) ?? [];
       list.push(row);
-      rowsByEmployee.set(row.employee_id, list);
+      perRunByEmployee.set(row.employee_id, list);
+    }
+    for (const [employeeId, runRows] of perRunByEmployee) {
+      const groups = rowsByEmployee.get(employeeId) ?? [];
+      groups.push(runRows);
+      rowsByEmployee.set(employeeId, groups);
     }
   }
 

@@ -62,6 +62,7 @@ const baseEmployee: PayrollEmployee = {
   terminationDate: null,
   ptoGrandfathered: false,
   ptoTenureCreditDate: null,
+  fullTime: true,
 };
 
 beforeEach(() => {
@@ -142,5 +143,35 @@ describe("EmployeeForm — round-11 changes", () => {
     submitViaSaveButton(/save changes/i);
     await waitFor(() => expect(upsertMock).toHaveBeenCalledTimes(1));
     expect(profileMock).not.toHaveBeenCalled();
+  });
+
+  it("renders the full-time toggle checked by default and patches full_time:false when unchecked", async () => {
+    render(<EmployeeForm employee={baseEmployee} onDone={() => {}} />);
+    const fullTime = screen.getByRole("checkbox", { name: /full-time/i });
+    expect(fullTime).toBeChecked(); // baseEmployee.fullTime === true
+
+    // Flip a full-timer off → the patch carries ONLY full_time:false.
+    fireEvent.click(fullTime);
+    expect(fullTime).not.toBeChecked();
+    submitViaSaveButton(/save changes/i);
+
+    await waitFor(() => expect(profileMock).toHaveBeenCalledTimes(1));
+    const profileFd = profileMock.mock.calls[0]?.[1] as FormData;
+    const patch = JSON.parse(String(profileFd.get("patch"))) as Record<string, unknown>;
+    expect(patch).toEqual({ full_time: false });
+  });
+
+  it("a part-time employee renders the toggle unchecked; re-checking patches full_time:true", async () => {
+    render(<EmployeeForm employee={{ ...baseEmployee, fullTime: false }} onDone={() => {}} />);
+    const fullTime = screen.getByRole("checkbox", { name: /full-time/i });
+    expect(fullTime).not.toBeChecked();
+
+    fireEvent.click(fullTime);
+    submitViaSaveButton(/save changes/i);
+
+    await waitFor(() => expect(profileMock).toHaveBeenCalledTimes(1));
+    const profileFd = profileMock.mock.calls[0]?.[1] as FormData;
+    const patch = JSON.parse(String(profileFd.get("patch"))) as Record<string, unknown>;
+    expect(patch).toEqual({ full_time: true });
   });
 });

@@ -1,11 +1,16 @@
 /**
- * Leave-rate SEED HISTORY tests (round-4; docs/qteklink/payroll-contract.md
- * §Round-4 amendments): mergeLeaveRateWindow unions completed-run entries with
- * pay_config seed entries (a real run WINS over a seed with the same period_start),
- * newest-12 window; resolveLeaveRate precedence override → history (merged window)
- * → seed (single-rate fallback) → current_run → base_rate, reporting windowRuns +
- * seededEntries. Plus the new optional technician/shop_foreman pay_config fields
- * (leave_rate_seed_cents_per_hour + leave_rate_seed_history, strict entries).
+ * Leave-rate ROLLING-26 MEAN tests (round-3 #24 + round-4 seeds + round-12
+ * mean-of-per-period-rates; docs/qteklink/payroll-contract.md §Round-4 amendments +
+ * payroll-rolling-avg-fulltime-plan-2026-07-12.md §A): mergeLeaveRateWindow unions
+ * completed-run per-period RATE entries with pay_config seed RATE entries (a real
+ * run WINS over a seed with the same period_start — including a zero-hours run whose
+ * null rate evicts the seed and contributes nothing), newest-26 window, and returns
+ * the ARITHMETIC MEAN of the contributing per-period rates (meanRateCents = null
+ * when no windowed period had a finite rate). resolveLeaveRate precedence override →
+ * history (mean of the window) → seed (single-rate fallback) → current_run →
+ * base_rate, reporting windowRuns + seededEntries. Plus the new technician/
+ * shop_foreman pay_config seed fields (leave_rate_seed_cents_per_hour +
+ * leave_rate_seed_history, strict {period_start, avg_hourly_pay_cents} entries).
  * Pure functions — the Supabase admin client is mocked out for import safety only.
  */
 import { describe, expect, it, vi } from "vitest";
@@ -22,61 +27,88 @@ import {
   type TechnicianPayConfig,
 } from "@/lib/payroll/types";
 
-const run = (periodStart: string, payCents: number, hours: number): LeaveRateEntry => ({
+/** A completed-run per-period rate entry (round-12). rateCents null = the run had
+ *  zero worked hours → no finite rate for that period. */
+const run = (periodStart: string, rateCents: number | null): LeaveRateEntry => ({
   periodStart,
-  payCents,
-  hours,
+  rateCents,
 });
-const seed = (period_start: string, work_pay_cents: number, clock_hours: number): LeaveRateSeedEntry => ({
+/** A seed carries the period's already-averaged hourly rate (round-12). */
+const seed = (period_start: string, avg_hourly_pay_cents: number): LeaveRateSeedEntry => ({
   period_start,
-  work_pay_cents,
-  clock_hours,
+  avg_hourly_pay_cents,
 });
 
 /** 14-day cadence periods, newest LAST (2026-01-04 + i×14d). */
 const period = (i: number) =>
   new Date(Date.parse("2026-01-04T00:00:00Z") + i * 14 * 86_400_000).toISOString().slice(0, 10);
 
-describe("mergeLeaveRateWindow (round-4)", () => {
+describe("mergeLeaveRateWindow (round-12 mean of per-period rates)", () => {
   it("a completed-run entry WINS over a seed entry with the same period_start", () => {
     const merged = mergeLeaveRateWindow(
-      [run("2026-06-28", 100_000, 40)],
-      [seed("2026-06-28", 999_999, 99), seed("2026-06-14", 50_000, 25)],
+      [run("2026-06-28", 3000)],
+      [seed("2026-06-28", 9999), seed("2026-06-14", 2000)],
     );
-    // 2026-06-28 comes from the RUN (the seed's 999,999/99 is superseded).
-    expect(merged).toEqual({ payCents: 150_000, hours: 65, runs: 1, seededEntries: 1 });
+    // 2026-06-28 comes from the RUN (the seed's 9999 is superseded); the mean is of
+    // the run rate (3000) and the surviving seed rate (2000) → 2500.
+    expect(merged).toEqual({ meanRateCents: 2500, runs: 1, seededEntries: 1 });
   });
 
-  it("windows to 12 periods, dropping the OLDEST beyond the window", () => {
-    // 13 seed periods, 1,000 cents / 1 h each — the oldest (index 0) must fall out.
-    const seeds = Array.from({ length: 13 }, (_, i) => seed(period(i), 1_000, 1));
+  it("means the per-period rates — rounding once at the end (half away from zero)", () => {
+    // 3 rates: 2000, 2001, 2001 → sum 6002 / 3 = 2000.666… → 2001.
+    const merged = mergeLeaveRateWindow(
+      [run("2026-06-28", 2000)],
+      [seed("2026-06-14", 2001), seed("2026-05-31", 2001)],
+    );
+    expect(merged).toEqual({ meanRateCents: 2001, runs: 1, seededEntries: 2 });
+  });
+
+  it("windows to 26 periods, dropping the OLDEST beyond the window", () => {
+    // 27 seed periods; the newest 26 survive, the oldest (index 0) falls out. Give
+    // the oldest a wildly different rate to prove it is excluded from the mean.
+    const seeds = [
+      seed(period(0), 999_999), // oldest — must be dropped
+      ...Array.from({ length: 26 }, (_, i) => seed(period(i + 1), 2000)),
+    ];
     const merged = mergeLeaveRateWindow([], seeds);
-    expect(merged).toEqual({ payCents: 12_000, hours: 12, runs: 0, seededEntries: 12 });
-    // The survivor set is the NEWEST 12: dropping the newest instead would change
-    // nothing here (uniform entries), so prove it via a marked oldest entry.
-    const marked = mergeLeaveRateWindow([], [seed(period(0), 777_777, 777), ...seeds.slice(1)]);
-    expect(marked.payCents).toBe(12_000); // the marked oldest was dropped
-    expect(marked.hours).toBe(12);
+    // Survivors are the 26 uniform 2000 rates; the 999,999 outlier was evicted.
+    expect(merged).toEqual({ meanRateCents: 2000, runs: 0, seededEntries: 26 });
   });
 
-  it("seeds-only: sums the seeds, runs = 0", () => {
-    const merged = mergeLeaveRateWindow([], [seed("2026-05-03", 80_000, 40), seed("2026-05-17", 90_000, 45)]);
-    expect(merged).toEqual({ payCents: 170_000, hours: 85, runs: 0, seededEntries: 2 });
+  it("seeds-only: means the seed rates, runs = 0", () => {
+    const merged = mergeLeaveRateWindow([], [seed("2026-05-03", 2000), seed("2026-05-17", 3000)]);
+    expect(merged).toEqual({ meanRateCents: 2500, runs: 0, seededEntries: 2 });
   });
 
   it("mixed unsorted runs + seeds sort newest-first before the window is cut", () => {
     // window=2: only the two NEWEST periods survive regardless of input order.
     const merged = mergeLeaveRateWindow(
-      [run("2026-05-03", 1, 1), run("2026-06-28", 200, 20)], // unsorted: old first
-      [seed("2026-06-14", 100, 10), seed("2026-01-04", 999, 99)],
+      [run("2026-05-03", 100), run("2026-06-28", 4000)], // unsorted: old first
+      [seed("2026-06-14", 2000), seed("2026-01-04", 9999)],
       2,
     );
-    // Survivors: 2026-06-28 (run) + 2026-06-14 (seed).
-    expect(merged).toEqual({ payCents: 300, hours: 30, runs: 1, seededEntries: 1 });
+    // Survivors: 2026-06-28 (run 4000) + 2026-06-14 (seed 2000) → mean 3000.
+    expect(merged).toEqual({ meanRateCents: 3000, runs: 1, seededEntries: 1 });
   });
 
-  it("empty inputs → an empty window (hours 0 falls through in resolveLeaveRate)", () => {
-    expect(mergeLeaveRateWindow([], [])).toEqual({ payCents: 0, hours: 0, runs: 0, seededEntries: 0 });
+  it("a zero-hours run (null rate) evicts the same-period seed AND contributes no rate", () => {
+    // The run for 2026-06-28 had 0 worked hours (rate null). It still beats the seed
+    // for that period (real-beats-seed), so that period drops out of the mean; only
+    // the 2026-06-14 seed rate remains.
+    const merged = mergeLeaveRateWindow(
+      [run("2026-06-28", null)],
+      [seed("2026-06-28", 9999), seed("2026-06-14", 2000)],
+    );
+    expect(merged).toEqual({ meanRateCents: 2000, runs: 1, seededEntries: 1 });
+  });
+
+  it("a window with ONLY null-rate runs → meanRateCents null (falls through in resolveLeaveRate)", () => {
+    const merged = mergeLeaveRateWindow([run("2026-06-28", null), run("2026-06-14", null)], []);
+    expect(merged).toEqual({ meanRateCents: null, runs: 2, seededEntries: 0 });
+  });
+
+  it("empty inputs → an empty window (meanRateCents null falls through in resolveLeaveRate)", () => {
+    expect(mergeLeaveRateWindow([], [])).toEqual({ meanRateCents: null, runs: 0, seededEntries: 0 });
   });
 });
 
@@ -94,11 +126,8 @@ const prelimWorked = computeSheet("technician", techConfig, { clock_hours_w1: 40
 /** Current-run prelim with 0 worked hours (leave only) → no current-run basis. */
 const prelimIdle = computeSheet("technician", techConfig, { pto_w1: 8 }, {});
 
-describe("resolveLeaveRate precedence (round-3 #24 + round-4 'seed')", () => {
-  const merged = mergeLeaveRateWindow(
-    [run("2026-06-28", 120_000, 40)],
-    [seed("2026-06-14", 90_000, 40)],
-  );
+describe("resolveLeaveRate precedence (round-3 #24 + round-4 'seed' + round-12 mean)", () => {
+  const merged = mergeLeaveRateWindow([run("2026-06-28", 3000)], [seed("2026-06-14", 2250)]);
 
   it("override beats the merged window, the seed rate, and everything else", () => {
     const r = resolveLeaveRate(
@@ -111,9 +140,9 @@ describe("resolveLeaveRate precedence (round-3 #24 + round-4 'seed')", () => {
     expect(r).toEqual({ rateCents: 4321, source: "override", windowRuns: 1, seededEntries: 1 });
   });
 
-  it("merged window with hours → 'history', averaging runs AND seeds, both counts reported", () => {
+  it("merged window with a finite mean → 'history', averaging runs AND seed rates, both counts reported", () => {
     const r = resolveLeaveRate({}, merged, 3406, prelimWorked, 2000);
-    // (120,000 + 90,000) ÷ (40 + 40) = 2,625 — seeds are part of the basis.
+    // mean(3000, 2250) = 2625 — the seed rate is part of the basis.
     expect(r).toEqual({ rateCents: 2625, source: "history", windowRuns: 1, seededEntries: 1 });
   });
 
@@ -122,10 +151,10 @@ describe("resolveLeaveRate precedence (round-3 #24 + round-4 'seed')", () => {
     expect(r).toEqual({ rateCents: 3406, source: "seed", windowRuns: 0, seededEntries: 0 });
   });
 
-  it("a zero-hours window falls through to 'seed' too", () => {
-    const zeroHours = mergeLeaveRateWindow([], [seed("2026-06-14", 0, 0)]);
-    const r = resolveLeaveRate({}, zeroHours, 3406, prelimWorked, 2000);
-    expect(r).toEqual({ rateCents: 3406, source: "seed", windowRuns: 0, seededEntries: 1 });
+  it("a null-mean window (only zero-hours runs) falls through to 'seed' too", () => {
+    const nullMean = mergeLeaveRateWindow([run("2026-06-14", null)], []);
+    const r = resolveLeaveRate({}, nullMean, 3406, prelimWorked, 2000);
+    expect(r).toEqual({ rateCents: 3406, source: "seed", windowRuns: 1, seededEntries: 0 });
   });
 
   it("no seed rate → 'current_run' ratio from the prelim sheet", () => {
@@ -145,13 +174,13 @@ describe("resolveLeaveRate precedence (round-3 #24 + round-4 'seed')", () => {
 
 // ── pay_config seed fields (types.ts) ──────────────────────────────────────────
 
-describe("technician/shop_foreman pay_config seed fields (round-4)", () => {
+describe("technician/shop_foreman pay_config seed fields (round-12 rate shape)", () => {
   const seededConfig = {
     ...techConfig,
     leave_rate_seed_cents_per_hour: 3406,
     leave_rate_seed_history: [
-      { period_start: "2026-05-17", work_pay_cents: 234_567, clock_hours: 81.25 },
-      { period_start: "2026-05-31", work_pay_cents: 250_000, clock_hours: 80 },
+      { period_start: "2026-05-17", avg_hourly_pay_cents: 2885 },
+      { period_start: "2026-05-31", avg_hourly_pay_cents: 3125 },
     ],
   };
 
@@ -169,22 +198,27 @@ describe("technician/shop_foreman pay_config seed fields (round-4)", () => {
     expect(TechnicianPayConfigSchema.parse(techConfig)).toEqual(techConfig);
   });
 
-  it("rejects unknown entry keys (strict entries)", () => {
+  it("rejects unknown entry keys (strict entries) — incl. the retired weighted-model keys", () => {
     const bad = {
       ...techConfig,
-      leave_rate_seed_history: [
-        { period_start: "2026-05-17", work_pay_cents: 1, clock_hours: 1, bonus_cents: 5 },
-      ],
+      leave_rate_seed_history: [{ period_start: "2026-05-17", avg_hourly_pay_cents: 1, bonus_cents: 5 }],
     };
     expect(() => TechnicianPayConfigSchema.parse(bad)).toThrow(/bonus_cents/);
+    // The old {work_pay_cents, clock_hours} shape is now rejected outright.
+    const legacy = {
+      ...techConfig,
+      leave_rate_seed_history: [{ period_start: "2026-05-17", work_pay_cents: 1, clock_hours: 1 }],
+    };
+    expect(() => TechnicianPayConfigSchema.parse(legacy)).toThrow();
   });
 
-  it("rejects a malformed period_start, non-integer cents, negative hours, and >26 entries", () => {
-    const entry = { period_start: "2026-05-17", work_pay_cents: 1, clock_hours: 1 };
+  it("rejects a malformed period_start, non-integer/negative cents, a missing rate, and >26 entries", () => {
+    const entry = { period_start: "2026-05-17", avg_hourly_pay_cents: 1 };
     const withHistory = (history: unknown) => ({ ...techConfig, leave_rate_seed_history: history });
     expect(() => TechnicianPayConfigSchema.parse(withHistory([{ ...entry, period_start: "2026-13-01" }]))).toThrow();
-    expect(() => TechnicianPayConfigSchema.parse(withHistory([{ ...entry, work_pay_cents: 10.5 }]))).toThrow();
-    expect(() => TechnicianPayConfigSchema.parse(withHistory([{ ...entry, clock_hours: -1 }]))).toThrow();
+    expect(() => TechnicianPayConfigSchema.parse(withHistory([{ ...entry, avg_hourly_pay_cents: 10.5 }]))).toThrow();
+    expect(() => TechnicianPayConfigSchema.parse(withHistory([{ ...entry, avg_hourly_pay_cents: -1 }]))).toThrow();
+    expect(() => TechnicianPayConfigSchema.parse(withHistory([{ period_start: "2026-05-17" }]))).toThrow();
     expect(() =>
       TechnicianPayConfigSchema.parse(withHistory(Array.from({ length: 27 }, () => ({ ...entry })))),
     ).toThrow(/26/);

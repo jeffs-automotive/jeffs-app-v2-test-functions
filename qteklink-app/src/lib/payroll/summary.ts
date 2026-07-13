@@ -2,11 +2,21 @@
  * Payroll summary layer — per-run summary rows (extraction requirement #6), the
  * run-level TOTALS block (round-9 decision #46 — the summary page's totals card,
  * server-computed and stored on the snapshot), and the dashboard aggregates
- * (requirement #7): the last-12-completed-runs card and the null-safe average
- * hourly pay (decision #9: clock-hours denominator, last-12 window), plus the two
- * per-employee variants (round-3 decision #25): WITHOUT-bonus for everyone and
- * WITH-bonus for the bonus families only (SA/office_manager/shop_foreman).
+ * (requirement #7): the shop-wide last-runs card and the null-safe average hourly
+ * pay, plus the two per-EMPLOYEE variants (round-3 decision #25): WITHOUT-bonus for
+ * everyone and WITH-bonus for the bonus families only (SA/office_manager/shop_foreman).
  * Contract: docs/qteklink/payroll-contract.md §summary.ts.
+ *
+ * Round-12 (2026-07-12): the per-EMPLOYEE dashboard averages switch from weighted
+ * (Σpay ÷ Σhours over a flattened rowset, last 12) to the MEAN OF PER-RUN RATES over
+ * the last {@link DASHBOARD_WINDOW} = 26 completed runs — each run contributes one
+ * rate, and the rates are averaged (matching the leave-rate model's rolling-26
+ * mean-of-rates method; docs/qteklink/payroll-rolling-avg-fulltime-plan-2026-07-12.md
+ * §A3). The per-run numerator is UNCHANGED (total_pay − bonus − spiff − manual, i.e.
+ * leave-INCLUSIVE) — only the aggregation (mean of per-run rates) and the window (26)
+ * change; the "without bonus" figure is NOT the same NUMBER as the leave rate (which
+ * excludes leave pay), only the same METHOD. The SHOP-WIDE last-runs card
+ * ({@link aggregateLastCompletedRuns}) stays WEIGHTED over its own 12-run window.
  *
  * PURE — rows in, rows/aggregates out. Voided runs are EXCLUDED from every aggregate
  * (round-2 decision #18); open runs are excluded from the "completed" window too (the
@@ -156,7 +166,14 @@ export function buildRunTotals(rows: SummaryRow[]): RunTotals {
   };
 }
 
-// ── Dashboard aggregates (last-12-completed-runs card) ─────────────────────────
+// ── Dashboard aggregates (last-completed-runs card + per-employee rolling-26) ───
+
+/**
+ * The rolling window for the per-EMPLOYEE dashboard averages (round-12): the last 26
+ * completed runs, one rate each, meaned. A year of bi-weekly periods. The shop-wide
+ * card ({@link aggregateLastCompletedRuns}) keeps its own explicit 12-run window.
+ */
+export const DASHBOARD_WINDOW = 26;
 
 /** A run's summary rows + enough metadata to window/order. Completed runs read rows
  *  from the frozen snapshot; open/voided runs are filtered out here regardless. */
@@ -231,28 +248,64 @@ export function avgHourlyWithoutBonusCents(rows: SummaryRow[]): number | null {
 }
 
 export interface EmployeeHourlyAverages {
-  /** Every employee (null only when the window has no rows / zero clock hours). */
+  /** Every employee (null only when NO run in the window has clock hours). */
   avg_hourly_without_bonus_cents: number | null;
   /** Non-null ONLY for the bonus families (SA / office_manager / shop_foreman). */
   avg_hourly_with_bonus_cents: number | null;
 }
 
 /**
- * The dashboard's two per-employee hourly averages (round-3 decision #25), over the
- * employee's rows from the last-12-COMPLETED-runs window (callers window via
- * {@link lastCompletedRuns}). `family` is the employee's CURRENT family — it gates
- * the with-bonus column, not the row math.
+ * The MEAN of one rate per run (round-12): apply `rateFn` to each run's row group,
+ * drop the runs that yield null (zero clock hours in that run — e.g. a run the
+ * employee was on leave for), and arithmetic-mean the surviving per-run rates,
+ * rounding once at the end (half-away-from-zero). null when NO run contributed a
+ * rate. Each `rateFn` already rounds its per-run rate to integer cents, so this is
+ * a mean-of-rounded-rates — the same rolling method the leave rate uses.
  */
-export function employeeHourlyAverages(family: Family, rows: SummaryRow[]): EmployeeHourlyAverages {
+export function meanOfPerRunRates(
+  runsRows: SummaryRow[][],
+  rateFn: (rows: SummaryRow[]) => number | null,
+): number | null {
+  let sum = 0;
+  let count = 0;
+  for (const runRows of runsRows) {
+    const rate = rateFn(runRows);
+    if (rate === null) continue;
+    sum += rate;
+    count += 1;
+  }
+  return count > 0 ? roundCents(sum / count) : null;
+}
+
+/**
+ * The dashboard's two per-employee hourly averages (round-3 decision #25, round-12
+ * rolling-26 method): the MEAN of per-RUN rates over the employee's last-26-COMPLETED
+ * -runs groups (callers group per run via {@link lastCompletedRuns} → per-employee-
+ * per-run; the window is {@link DASHBOARD_WINDOW}). Each element of `runsRows` is the
+ * employee's rows within ONE run (normally a single row). `family` is the employee's
+ * CURRENT family — it gates the with-bonus column, not the row math.
+ *   - without bonus: mean of per-run {@link avgHourlyWithoutBonusCents};
+ *   - with bonus: mean of per-run {@link avgHourlyPayCents}, bonus-families only.
+ * The per-run numerator is UNCHANGED (leave-inclusive) — only the aggregation
+ * (mean of per-run rates) + the window (26) differ from the old weighted-12 figure.
+ */
+export function employeeHourlyAverages(
+  family: Family,
+  runsRows: SummaryRow[][],
+): EmployeeHourlyAverages {
   return {
-    avg_hourly_without_bonus_cents: avgHourlyWithoutBonusCents(rows),
-    avg_hourly_with_bonus_cents: WITH_BONUS_FAMILIES.includes(family) ? avgHourlyPayCents(rows) : null,
+    avg_hourly_without_bonus_cents: meanOfPerRunRates(runsRows, avgHourlyWithoutBonusCents),
+    avg_hourly_with_bonus_cents: WITH_BONUS_FAMILIES.includes(family)
+      ? meanOfPerRunRates(runsRows, avgHourlyPayCents)
+      : null,
   };
 }
 
 /** The most recent `limit` COMPLETED runs (period_start descending). Voided and open
- *  runs never count. Exported so the dashboard can window per-employee rows too. */
-export function lastCompletedRuns(runs: RunForAggregation[], limit = 12): RunForAggregation[] {
+ *  runs never count. Exported so the dashboard can window per-employee rows too.
+ *  Default = the per-employee {@link DASHBOARD_WINDOW} (26); the shop-wide card passes
+ *  its own explicit 12. */
+export function lastCompletedRuns(runs: RunForAggregation[], limit = DASHBOARD_WINDOW): RunForAggregation[] {
   return runs
     .filter((r) => r.status === "completed")
     .sort((a, b) => b.period_start.localeCompare(a.period_start))

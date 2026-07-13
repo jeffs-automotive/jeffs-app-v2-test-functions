@@ -216,6 +216,14 @@ describe("updateEmployeeProfileAction — patch semantics + session shop", () =>
     expect(updateEmployeeProfileMock.mock.calls[0]![2]).toEqual({ pto_grandfathered: true });
   });
 
+  it("passes full_time as a boolean (round-12; NOT NULL column)", async () => {
+    await updateEmployeeProfileAction(
+      null,
+      fd({ employee_id: EMP, patch: JSON.stringify({ full_time: false }) }),
+    );
+    expect(updateEmployeeProfileMock.mock.calls[0]![2]).toEqual({ full_time: false });
+  });
+
   it("rejects an unknown patch key (strictObject) before the DAL", async () => {
     const r = await updateEmployeeProfileAction(
       null,

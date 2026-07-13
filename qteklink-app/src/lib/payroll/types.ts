@@ -118,14 +118,17 @@ const payConfigCommon = z.strictObject({
 /** One seeded pre-qteklink pay period for the leave-rate basis (round-4: Marie's
  *  average-pay figures, written by scripts/payroll-seed-leave-rates.mjs — never
  *  in-app). A completed qteklink run for the same period_start WINS over the seed
- *  (mergeLeaveRateWindow in the DAL), so seeds age out as real runs accumulate. */
+ *  (mergeLeaveRateWindow in the DAL), so seeds age out as real runs accumulate.
+ *  Round-12: the basis is now the MEAN of per-period RATES over the rolling-26
+ *  window, so a seed carries the period's already-averaged rate (integer cents/h),
+ *  NOT the {work_pay_cents, clock_hours} pair the weighted-Σ model used. */
 export const LeaveRateSeedEntrySchema = z.strictObject({
   /** The seeded period's start date (ISO YYYY-MM-DD, Sun-anchored like real runs). */
   period_start: z.iso.date(),
-  /** Σ base + OT + billed + efficiency pay for the period (bonuses/leave excluded). */
-  work_pay_cents: centsInt,
-  /** Σ worked clock hours for the period. */
-  clock_hours: hoursNum,
+  /** The period's average hourly pay in integer cents — (reg + OT + incentive pay)
+   *  ÷ (reg + OT hours) for that period, the one rate this period contributes to the
+   *  rolling-26 mean (round-12). */
+  avg_hourly_pay_cents: centsInt,
 });
 export type LeaveRateSeedEntry = z.infer<typeof LeaveRateSeedEntrySchema>;
 

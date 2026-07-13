@@ -296,6 +296,7 @@ export function ptoFieldsFromEmployee(e: PayrollEmployee): PtoEmployeeFields {
     termination_date: e.terminationDate,
     pto_grandfathered: e.ptoGrandfathered,
     pto_tenure_credit_date: e.ptoTenureCreditDate,
+    full_time: e.fullTime,
   };
 }
 
@@ -380,10 +381,11 @@ export async function seedInitialBalance(
 
 // ── Writes: employee profile (patch semantics) + archive/unarchive ──────────────
 
-/** The nine editable profile columns (plan §2a). Patch semantics:
+/** The editable profile columns (plan §2a + round-12 full_time). Patch semantics:
  *  - a key PRESENT with a value → write it;
  *  - a key PRESENT with `null` → CLEAR it (nullable columns only; pto_grandfathered
- *    is NOT NULL, so a boolean is required — null there RAISEs in the RPC);
+ *    AND full_time are NOT NULL, so a boolean is required — null there RAISEs in
+ *    the RPC, hence no `| null`);
  *  - a key ABSENT (undefined) → LEAVE UNCHANGED.
  *  We translate `undefined` → omit from the JSON patch, and `null` → JSON null. */
 export interface EmployeeProfilePatch {
@@ -396,6 +398,7 @@ export interface EmployeeProfilePatch {
   termination_date?: string | null;
   pto_grandfathered?: boolean;
   pto_tenure_credit_date?: string | null;
+  full_time?: boolean;
 }
 
 const PROFILE_PATCH_KEYS: readonly (keyof EmployeeProfilePatch)[] = [
@@ -408,6 +411,7 @@ const PROFILE_PATCH_KEYS: readonly (keyof EmployeeProfilePatch)[] = [
   "termination_date",
   "pto_grandfathered",
   "pto_tenure_credit_date",
+  "full_time",
 ];
 
 /** Build the SQL p_patch JSONB: absent (undefined) keys are OMITTED (=keep);
