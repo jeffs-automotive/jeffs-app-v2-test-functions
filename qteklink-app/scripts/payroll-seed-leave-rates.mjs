@@ -20,8 +20,15 @@
 // Guardrails (round-4 review findings): every entry period_start must sit on the
 // shop's payroll.anchor_period_start bi-weekly cadence (same rule as
 // qteklink_payroll_create_run) AND be in the past — otherwise it would never be
-// superseded by the real run for that period. Both modes also warn about
-// pre-existing OPEN runs (they snapshotted entry pay_config BEFORE the seeds).
+// superseded by the real run for that period.
+//
+// Round-13 (reach OPEN runs): an already-OPEN run snapshotted each employee's
+// pay_config into its entry rows at creation, and live compute reads the leave-rate
+// seeds from that ENTRY snapshot (payroll-compute.ts) — NOT the live employee row.
+// So --apply ALSO patches every seeded employee's OPEN-run entry rows (merging the
+// seeds onto the entry's CURRENT snapshot, preserving any per-run rates_w2) via
+// qteklink_payroll_update_entry, then marks those runs stale so the read-through
+// live snapshot recomputes with the seeds. Both modes print the open-run patch plan.
 //
 // Input JSON (array; entries and seed_rate both optional per employee, >=1 required):
 //   [{ "employee": "Cantrell, Jeff",
@@ -293,10 +300,16 @@ const main = async () => {
     process.exit(1);
   }
 
-  // Round-4 review finding: an already-OPEN run cloned each employee's pay_config
-  // into its entry rows at creation (qteklink_payroll_create_run), and the snapshot
-  // builder reads the seeds from the ENTRY pay_config — seeds written now will NOT
-  // reach a pre-existing open run. Warn loudly in dry-run AND apply.
+  // ── Reach OPEN runs (round-13) ──────────────────────────────────────────────
+  // An already-OPEN run cloned each employee's pay_config into its entry rows at
+  // creation (qteklink_payroll_create_run), and live compute reads the leave-rate
+  // seeds from the ENTRY snapshot (payroll-compute.ts:295 → r.pay_config), NOT the
+  // live employee row. So writing the base config alone leaves the open run paying
+  // PTO/Holiday/Bereavement at 'current_run'/'base_rate'. Build the per-entry patch
+  // plan now (merge the seed fields onto each entry's CURRENT snapshot so any per-run
+  // rates_w2 survives); --apply writes them via qteklink_payroll_update_entry
+  // (open-runs-only, validated, audited) and then marks the open runs stale.
+  const planByEmpId = new Map(plans.map((p) => [p.emp.id, p]));
   const { data: openRuns, error: openErr } = await sb
     .from("qteklink_payroll_runs")
     .select("id, period_start")
@@ -304,34 +317,59 @@ const main = async () => {
     .eq("status", "open")
     .order("period_start", { ascending: true });
   if (openErr) throw new Error(`open-run check failed: ${openErr.message}`);
-  if ((openRuns ?? []).length > 0) {
-    const nameById = new Map(plans.map((p) => [p.emp.id, p.emp.display_name]));
+
+  const entryPatches = []; // { runEmployeeId, runPeriodStart, empName, entryMerged }
+  if ((openRuns ?? []).length > 0 && plans.length > 0) {
     const { data: entryRows, error: entryErr } = await sb
       .from("qteklink_payroll_run_employees")
-      .select("run_id, employee_id")
+      .select("id, run_id, employee_id, pay_config")
       .in("run_id", openRuns.map((r) => r.id))
-      .in("employee_id", [...nameById.keys()]);
+      .in("employee_id", [...planByEmpId.keys()]);
     if (entryErr) throw new Error(`open-run entry check failed: ${entryErr.message}`);
-    console.warn(
-      `\n⚠⚠ WARNING: shop ${SHOP_ID} has ${openRuns.length} OPEN payroll run(s). Open runs snapshotted each ` +
-        `employee's pay_config into their entry rows when the run was CREATED — these seeds will NOT reach them ` +
-        `(PTO/Holiday/Bereavement in those runs still pays at 'current_run'/'base_rate'). To pick the seeds up, ` +
-        `patch the entry's pay config in-app or recreate the run.`,
+    const periodByRunId = new Map((openRuns ?? []).map((r) => [r.id, r.period_start]));
+    for (const row of entryRows ?? []) {
+      const plan = planByEmpId.get(row.employee_id);
+      if (!plan) continue;
+      if (row.pay_config === null || typeof row.pay_config !== "object" || Array.isArray(row.pay_config)) {
+        errors.push(`open run ${periodByRunId.get(row.run_id)} entry for "${plan.emp.display_name}" has a malformed pay_config — fix in-app first`);
+        continue;
+      }
+      // Merge ONLY the provided seed fields onto the ENTRY's current snapshot (mirrors
+      // the base-config merge above; per-run rates_w2 and every other key survive).
+      const entryMerged = { ...row.pay_config };
+      if (plan.it.seedEntries !== null) entryMerged.leave_rate_seed_history = plan.it.seedEntries;
+      if (plan.it.seedRateCents !== null) entryMerged.leave_rate_seed_cents_per_hour = plan.it.seedRateCents;
+      entryPatches.push({
+        runEmployeeId: row.id,
+        runPeriodStart: periodByRunId.get(row.run_id),
+        empName: plan.emp.display_name,
+        entryMerged,
+      });
+    }
+  }
+  if (errors.length > 0) {
+    console.error(`\n${errors.length} error(s) — nothing was written:`);
+    for (const e of errors) console.error(`  ✗ ${e}`);
+    process.exit(1);
+  }
+
+  if ((openRuns ?? []).length > 0) {
+    console.log(
+      entryPatches.length > 0
+        ? `\nOPEN run(s): ${entryPatches.length} seeded entry row(s) will be patched so the seeds REACH them, then the run(s) are marked stale to recompute:`
+        : `\nOPEN run(s): ${openRuns.length} open, but none contain a seeded employee — nothing to patch.`,
     );
     for (const run of openRuns) {
-      const names = (entryRows ?? [])
-        .filter((x) => x.run_id === run.id)
-        .map((x) => nameById.get(x.employee_id))
-        .filter(Boolean)
-        .sort();
-      console.warn(
-        `  open run ${run.period_start} (${run.id}): ${names.length > 0 ? `seeded employee(s) in it: ${names.join(", ")}` : "none of this input's employees are in it"}`,
-      );
+      const names = entryPatches.filter((p) => p.runPeriodStart === run.period_start).map((p) => p.empName).sort();
+      console.log(`  open run ${run.period_start} (${run.id}): ${names.length > 0 ? `patch ${names.join(", ")}` : "no seeded employees in it"}`);
     }
   }
 
   if (!APPLY) {
-    console.log(`\nDRY-RUN complete — ${plans.length} employee(s) ready. Re-run with --apply to write.`);
+    console.log(
+      `\nDRY-RUN complete — ${plans.length} employee base config(s)` +
+        `${entryPatches.length > 0 ? ` + ${entryPatches.length} open-run entry row(s)` : ""} ready. Re-run with --apply to write.`,
+    );
     return;
   }
 
@@ -352,9 +390,29 @@ const main = async () => {
     if (data !== emp.id) throw new Error(`upsert for "${emp.display_name}" returned unexpected id ${data} (expected ${emp.id})`);
     console.log(`✓ wrote seeds for ${emp.display_name} (${emp.id})`);
   }
+
+  // Patch each seeded employee's OPEN-run entry snapshot, then invalidate the open
+  // runs' live caches so the next run view recomputes with the seeds. Everything is
+  // idempotent — a re-run re-patches the same entries and re-marks stale.
+  for (const p of entryPatches) {
+    const { error } = await sb.rpc("qteklink_payroll_update_entry", {
+      p_run_employee_id: p.runEmployeeId,
+      p_patch: { pay_config: p.entryMerged },
+      p_actor_user_id: null,
+      p_actor_label: ACTOR_LABEL,
+    });
+    if (error) throw new Error(`open-run entry patch for "${p.empName}" (run ${p.runPeriodStart}) failed: ${error.message} (base configs + earlier entries WERE written; re-run to finish — the seeder is idempotent)`);
+    console.log(`✓ patched open-run entry for ${p.empName} (run ${p.runPeriodStart})`);
+  }
+  if (entryPatches.length > 0) {
+    const { data: marked, error: markErr } = await sb.rpc("qteklink_payroll_mark_open_runs_stale", { p_shop_id: SHOP_ID });
+    if (markErr) throw new Error(`mark_open_runs_stale failed: ${markErr.message} (entries WERE patched — open the run in-app once to force a recompute)`);
+    console.log(`✓ marked ${typeof marked === "number" ? marked : 0} open run(s) stale — the next run view recomputes with the seeds`);
+  }
   console.log(
-    `\nAPPLY complete — ${plans.length} employee(s) updated. Verify in-app (dashboard leave rates show source 'history'/'seed').` +
-      ((openRuns ?? []).length > 0 ? " NOTE: pre-existing OPEN run(s) do NOT pick these seeds up — see the warning above." : ""),
+    `\nAPPLY complete — ${plans.length} employee(s) updated` +
+      (entryPatches.length > 0 ? ` + ${entryPatches.length} open-run entry row(s) patched (open runs marked stale)` : "") +
+      `. Verify in-app (dashboard + open-run leave rates show source 'history').`,
   );
 };
 
