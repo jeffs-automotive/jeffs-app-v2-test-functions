@@ -132,3 +132,86 @@ text/CSV form (or transcribe + Chris verifies) since it is money. Seeding is the
   seeding script, AND any test fixtures that build seed entries the old way.
 - full_time added to the profile RPC must follow the round-11 patch semantics (absent=keep) so
   the existing archive/unarchive/profile flows don't wipe it.
+
+---
+
+## v2 AMENDMENTS — regression check (2026-07-12, 5-lens; verify-phase crashed on a wide fan-out,
+## findings salvaged from the review transcripts + confirmed by hand against the live code)
+
+These SUPERSEDE the sections above where they conflict.
+
+**1. Leave-rate consumers — there are TWO call sites, in TWO files (not "two calls in
+payroll-compute.ts").** The (mergeLeaveRateWindow → resolveLeaveRate) pair + the `LeaveRateEntry`
+shape are consumed at **payroll-compute.ts:306** AND **payroll-compute-gp.ts:230** (the GP
+labor-pay proration path for other open runs overlapping the bonus month; wrong = SA GP-tier
+bonus money regresses). `fetchLeaveRateHistory` (payroll-leave-rate.ts:100) produces the entry
+for both. ALL THREE migrate in one commit; both files join the tsc/vitest gate.
+
+**2. Testing target correction — the golden suite is IMMUNE; the real lock is
+payroll-leave-rate.test.ts.** calc.golden.test.ts supplies NO leave rate (leave cells are
+Quirk-B SKIPPED) — it needs NO edit; VERIFY it stays green. calc.leave.test.ts tests calc.ts's
+consumption of an already-resolved rate — also unchanged. The suites that encode the OLD model
+and MUST change: **payroll-leave-rate.test.ts** (full rewrite — the {payCents,hours} return
+shape at :47/54/63/75/79, the weighted 'history' math at :117, and the {work_pay_cents,
+clock_hours} seed fixtures at :30/152/175), **payroll.test.ts:302** (a seed-history fixture),
+and **summary.test.ts** (the weighted avgHourly + the family-gate locks at :294/330/353/397).
+
+**3. Seed-shape cutover = a NEW migration + 5 surfaces; verified safe.** 20260712200000 is
+ALREADY APPLIED — author a FRESH migration that re-CREATEs qteklink_payroll_validate_pay_config
+with the leave_rate_seed_history block requiring `{period_start, avg_hourly_pay_cents}` (int
+cents ≥ 0) and rejecting the old keys. Co-edit: (a) types.ts LeaveRateSeedEntrySchema + BOTH
+`.max(26)` caps; (b) mergeLeaveRateWindow's seed→rate read; (c) scripts/payroll-seed-leave-rates.mjs
+— its INPUT contract (`avg_hourly_pay_dollars` not work_pay_dollars/clock_hours), the dollars→cents
+convert, the dry-run "avg" preview, AND its cadence/double-count guard all get re-derived for a
+rate-only entry; (d) every seed fixture (payroll-leave-rate.test.ts, payroll.test.ts:302).
+**DB-verified 2026-07-12: 0 rows carry leave_rate_seed_history** (employees / run_employees /
+run snapshots) → the strict swap cannot break a frozen re-parse (SnapshotEmployeeSchema
+re-validates pay_config on every read). Keep the strict shape (no legacy union needed).
+
+**4. Dashboard — don't mutate the shared functions; add per-run ones; keep the numerator; fix
+the window everywhere; drop the false equality claim.**
+- `avgHourlyPayCents`/`avgHourlyWithoutBonusCents` are DUAL-USE: also called by
+  `aggregateLastCompletedRuns` over a FLATTENED cross-run rowset (the shop-wide last-runs card,
+  summary.ts:319). Do NOT redefine them in place. Add NEW per-run functions
+  (`meanOfPerRunRates(runsRows)`), repoint ONLY `employeeHourlyAverages` (the per-employee card)
+  to the per-run mean, and LEAVE the shop-wide card's avg as-is (weighted) unless Chris signs off.
+- The dashboard mean needs per-RUN grouping, but page.tsx:245-252 FLATTENS rows across runs
+  (period identity lost). Thread per-run groups end-to-end: rowsByEmployee becomes per-employee-
+  per-run; update `employeeHourlyAverages`'s signature + EmployeesCard props + summary.test.ts.
+- The window is **12 in three places** (page.tsx:243 lastCompletedRuns(…,12); the DAL fetch
+  limit:40 → payroll-summaries.ts default 12; summary.ts lastCompletedRuns default 12) — bump the
+  dashboard window to 26 AND raise the fetch so ≥26 completed runs are guaranteed.
+- **DROP the "without-bonus dashboard == leave-rate" equality claim — it is UNREACHABLE.** The
+  dashboard numerator is `total_pay − bonus − spiff − manual` and total_pay INCLUDES leave pay;
+  the leave-rate numerator is `(base+OT+billed+efficiency)` and EXCLUDES leave pay. Chris's
+  "calculate the same way" = the same METHOD (rolling-26 mean of per-run rates), NOT the same
+  number. Keep the dashboard's existing (leave-inclusive) numerator; change only aggregation +
+  window. Preserve the WITH_BONUS_FAMILIES gate + EmployeesCard's two distinct n/a reasons.
+
+**5. Full-time — enumerate the whole chain; default-true in the engine; do NOT flip `eligible`;
+boolean special-case in the RPC.**
+- Threading: full_time BOOLEAN → EMPLOYEE_COLS + EmployeeDbRow + employeeFromRow +
+  PayrollEmployee.fullTime (payroll-shared.ts) → **PtoEmployeeFields.full_time (REQUIRED)** →
+  ptoFieldsFromEmployee maps it (tsc forces this) → computeAccrual gates on an EXPLICIT boolean
+  (never `?? true`). Update the pto.test.ts `emp()` helper to default full_time:true so the whole
+  eligibility/tier/usage matrix keeps compiling.
+- The gate ZEROES `accrual_hours` but must NOT flip `eligible` (which today means tenure/archive
+  eligibility, surfaced in projections). A part-time, tenure-eligible employee reports
+  accrual_hours:0 with `eligible` unchanged. **USAGE is still written for part-timers** with paid
+  PTO hours (C37) — re-run the archived/terminated/NULL-start usage cases with full_time=false.
+- Profile RPC (in the SAME new migration): treat full_time exactly like `pto_grandfathered` — add
+  to c_allowed, a boolean type-check branch that REJECTS JSON null (NOT NULL column), and a
+  `full_time = CASE WHEN p_patch ? 'full_time' THEN (p_patch->>'full_time')::boolean ELSE
+  e.full_time END` arm. TS: EmployeeProfilePatch + PROFILE_PATCH_KEYS gain `full_time?: boolean`.
+- pgTAP: extend the byte-identity lock + the all-columns patch test to include full_time; the
+  legacy upsert's fixed column list excludes full_time so DEFAULT true survives an archive/unarchive.
+- full_time is read LIVE at completion (via ptoFieldsFromEmployee on the master row), matching
+  start_date/termination_date — a mid-cycle flip changes that run's accrual. Documented + intended.
+
+**6. LEAVE_RATE_FETCH_RUNS** (payroll-leave-rate.ts:34) is 26 = the new window → zero slack (an
+employee who missed a shop run can't fill 26). Bump it to **52** so the fetch exceeds the window.
+
+**7. Live open-run money.** Deploying the MECHANISM alone does not shift leave pay: with no
+completed runs + no seeds, the leave rate still resolves via 'current_run'/'base_rate'. The shift
+happens at SEEDING (the open 6/28 run's leave rate becomes the seeded 26-mean) — Chris-controlled,
+intended. Note it in the seed step.
