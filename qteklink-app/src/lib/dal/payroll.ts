@@ -126,6 +126,7 @@ export {
   renderAndSendPaySummaries,
   resendFailedPaySummaries,
   sendNegativeBalanceAlerts,
+  sendPtoAdjustmentAlert,
 } from "@/lib/dal/payroll-pto-completion";
 export type {
   CompletionPtoEntries,

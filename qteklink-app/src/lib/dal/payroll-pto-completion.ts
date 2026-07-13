@@ -51,7 +51,12 @@ import {
   type PtoWarning,
 } from "@/lib/payroll/pto";
 import { RunSnapshotSchema, type RunSnapshot, type SnapshotEmployee } from "@/lib/payroll/types";
-import { fetchRunGuarded, type PayrollEmployee } from "@/lib/dal/payroll-shared";
+import {
+  fetchEmployeesByIds,
+  fetchRunGuarded,
+  getPayrollSettings,
+  type PayrollEmployee,
+} from "@/lib/dal/payroll-shared";
 import { QboClientError } from "@/lib/qbo/errors";
 import { ptoFieldsFromEmployee } from "@/lib/dal/payroll-pto";
 
@@ -457,6 +462,60 @@ export async function sendNegativeBalanceAlerts(
     result.adminAlertSent = ok;
   }
   return result;
+}
+
+/**
+ * Send the PTO-adjustment alert (plan #58): ONE roll-up to the
+ * pto_adjustment_alert_emails settings list whenever an adjustment is recorded,
+ * plus a pto_adjustment email-log row. Called by the adjust action AFTER the
+ * ledger write commits. Fully self-contained + NEVER throws — a bounce (or a
+ * settings/employee read failure) must not fail the already-committed
+ * adjustment. Legitimate empty list ⇒ NEVER call sendQteklinkEmail (N11) and
+ * NEVER log a row (nothing to audit). Returns whether an alert was sent.
+ */
+export async function sendPtoAdjustmentAlert(
+  shopId: number,
+  employeeId: string,
+  hours: number,
+  reason: string,
+  balanceAfterHours: number,
+): Promise<boolean> {
+  try {
+    const [{ payroll: settings }, masters] = await Promise.all([
+      getPayrollSettings(shopId),
+      fetchEmployeesByIds(shopId, [employeeId]),
+    ]);
+    const admins = settings.pto_adjustment_alert_emails
+      .map((e) => e.trim())
+      .filter((e) => e.length > 0);
+    if (admins.length === 0) return false; // N11 — nothing configured, nothing to audit
+    const displayName = masters.get(employeeId)?.displayName ?? "(employee)";
+    const signed = hours > 0 ? `+${hours}` : `${hours}`;
+    const subject = `PTO adjustment — ${displayName}`;
+    const text = [
+      `A PTO adjustment was recorded for ${displayName}:`,
+      "",
+      `  Adjustment: ${signed} hrs`,
+      `  New balance: ${fmtHrs(balanceAfterHours)}`,
+      `  Reason: ${reason}`,
+    ].join("\n");
+    const ok = await sendQteklinkEmail({ to: admins, subject, text });
+    await logNonSummaryEmail(shopId, {
+      kind: "pto_adjustment",
+      recipient: admins.join(", "),
+      subject,
+      status: ok ? "sent" : "failed",
+      runId: null,
+      employeeId,
+      detail: ok ? null : "edge function reported a non-2xx or unconfigured transport",
+    });
+    return ok;
+  } catch (e) {
+    Sentry.captureException(e, {
+      tags: { surface: "qteklink-payroll-adjust-alert", shop_id: String(shopId) },
+    });
+    return false;
+  }
 }
 
 /** Insert a pto_adjustment / pto_negative email-log row (the two NON-completion

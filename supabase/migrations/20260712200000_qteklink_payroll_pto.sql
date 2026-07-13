@@ -1017,7 +1017,14 @@ BEGIN
         END IF;
         v_year := (v_entry->>'boundary_year')::integer;
       ELSE
-        IF v_entry ? 'boundary_year' THEN
+        -- A non-forfeit entry may carry boundary_year AS AN EXPLICIT NULL: the
+        -- pure engine emits every accrual/usage entry as {..., boundary_year: null}
+        -- (the key is always PRESENT), and supabase-js/JSON.stringify preserves the
+        -- null. The `? ` presence test alone is TRUE for present-and-null, so it must
+        -- be paired with a not-null check — otherwise every real accrual/usage entry
+        -- trips this RAISE and rolls back the whole completion. Only a present,
+        -- NON-null boundary_year on a non-forfeit entry is illegal.
+        IF v_entry ? 'boundary_year' AND jsonb_typeof(v_entry->'boundary_year') <> 'null' THEN
           RAISE EXCEPTION 'qteklink_payroll_complete_run: boundary_year is rollover_forfeit-only';
         END IF;
         v_year := NULL;

@@ -164,7 +164,7 @@ export default function PtoAdjustDialog({
                 {resultBalance < 0 && (
                   <DeficitNotice>
                     This leaves {employeeName} with a {fmtHours(Math.abs(resultBalance))}-hour
-                    deficit. Negative balances are allowed — an alert will be sent.
+                    deficit. Negative balances are allowed.
                   </DeficitNotice>
                 )}
               </div>

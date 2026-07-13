@@ -24,6 +24,7 @@ const updateEmployeeProfileMock = vi.fn();
 const archiveEmployeeMock = vi.fn();
 const unarchiveEmployeeMock = vi.fn();
 const resendFailedPaySummariesMock = vi.fn();
+const sendPtoAdjustmentAlertMock = vi.fn();
 
 vi.mock("@/lib/auth", () => ({ requireQtekUser: () => requireQtekUserMock() }));
 vi.mock("@/lib/dal/payroll", () => ({
@@ -33,6 +34,7 @@ vi.mock("@/lib/dal/payroll", () => ({
   archiveEmployee: (...a: unknown[]) => archiveEmployeeMock(...a),
   unarchiveEmployee: (...a: unknown[]) => unarchiveEmployeeMock(...a),
   resendFailedPaySummaries: (...a: unknown[]) => resendFailedPaySummariesMock(...a),
+  sendPtoAdjustmentAlert: (...a: unknown[]) => sendPtoAdjustmentAlertMock(...a),
 }));
 // wrapQtekAction is pure observability — pass through to the inner fn in tests.
 vi.mock("@/lib/instrument-action", () => ({
@@ -90,6 +92,16 @@ describe("adjustPtoAction", () => {
     expect(adjustPtoMock).toHaveBeenCalledWith(SESSION_SHOP, EMP, -2, "correction", ACTOR);
     // never the client-supplied 999
     expect(adjustPtoMock.mock.calls[0]![0]).toBe(SESSION_SHOP);
+    // plan #58: an accepted adjustment fires the alert (session shop, employee,
+    // signed hours, trimmed reason, the DAL's new balance) AFTER the ledger write.
+    expect(sendPtoAdjustmentAlertMock).toHaveBeenCalledWith(SESSION_SHOP, EMP, -2, "correction", 14);
+  });
+
+  it("does NOT fire the adjustment alert when the adjustment itself failed", async () => {
+    adjustPtoMock.mockRejectedValue(new QboClientError("nope", { kind: "validation" }));
+    const r = await adjustPtoAction(null, fd({ employee_id: EMP, hours: "4", reason: "x" }));
+    expect(r).toMatchObject({ ok: false });
+    expect(sendPtoAdjustmentAlertMock).not.toHaveBeenCalled();
   });
 
   it("REQUIRES a reason — a blank reason is rejected BEFORE the DAL", async () => {

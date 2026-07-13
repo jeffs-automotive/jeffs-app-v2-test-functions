@@ -27,6 +27,7 @@ import {
   archiveEmployee,
   resendFailedPaySummaries,
   seedInitialBalance,
+  sendPtoAdjustmentAlert,
   unarchiveEmployee,
   updateEmployeeProfile,
   type EmployeeProfilePatch,
@@ -96,6 +97,10 @@ async function adjustPtoImpl(_prev: AdjustPtoState | null, formData: FormData): 
     if (!reason.success) return invalid(reason.error.issues[0]?.message ?? "A reason is required for a PTO adjustment.");
 
     const result = await adjustPto(shopId, employeeId.data, hours.data, reason.data, { userId, label: email });
+    // Plan #58: an accepted adjustment alerts the pto_adjustment_alert_emails list.
+    // Post-commit + self-contained never-throw (the ledger already committed — a
+    // bounce must not fail the action); no-op when the list is unconfigured.
+    await sendPtoAdjustmentAlert(shopId, employeeId.data, hours.data, reason.data, result.balanceAfterHours);
     return { ok: true, data: { balanceAfterHours: result.balanceAfterHours }, timestamp: Date.now() };
   } catch (e) {
     return qboFailure(e);

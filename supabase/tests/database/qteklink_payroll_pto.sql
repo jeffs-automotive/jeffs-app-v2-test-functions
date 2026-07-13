@@ -341,11 +341,16 @@ INSERT INTO _txt VALUES ('h1b', (public.qteklink_payroll_complete_run((SELECT v 
 INSERT INTO _ids VALUES ('tk1', (SELECT token_id FROM public.qteklink_payroll_issue_confirm_token((SELECT v FROM _ids WHERE k='run1'),'complete_run',(SELECT v FROM _txt WHERE k='h1b'),NULL,'chris@jeffsautomotive.com')));
 INSERT INTO _txt VALUES ('compres', (public.qteklink_payroll_complete_run((SELECT v FROM _ids WHERE k='run1'), false,
   (SELECT v FROM _ids WHERE k='tk1'), (SELECT v FROM _txt WHERE k='h1b'), '{"snapshot_version":1}'::jsonb, NULL, 'chris@jeffsautomotive.com',
+  -- accrual/usage entries carry boundary_year AS AN EXPLICIT NULL — the REAL shape
+  -- the pure engine emits ({..., boundary_year: null}, key always present) and
+  -- supabase-js/JSON.stringify sends over the wire. The guard must accept present-
+  -- and-null (a `? ` presence test alone wrongly RAISEs on this) — this fixture
+  -- would fail against a presence-only guard, so it locks the C2 regression.
   jsonb_build_array(
-    jsonb_build_object('employee_id',(SELECT v FROM _ids WHERE k='e1'),'kind','accrual','hours',3.08),
-    jsonb_build_object('employee_id',(SELECT v FROM _ids WHERE k='e1'),'kind','usage','hours',-8),
+    jsonb_build_object('employee_id',(SELECT v FROM _ids WHERE k='e1'),'kind','accrual','hours',3.08,'boundary_year',NULL),
+    jsonb_build_object('employee_id',(SELECT v FROM _ids WHERE k='e1'),'kind','usage','hours',-8,'boundary_year',NULL),
     jsonb_build_object('employee_id',(SELECT v FROM _ids WHERE k='e1'),'kind','rollover_forfeit','hours',-2,'boundary_year',2026),
-    jsonb_build_object('employee_id',(SELECT v FROM _ids WHERE k='e2'),'kind','accrual','hours',3.08)
+    jsonb_build_object('employee_id',(SELECT v FROM _ids WHERE k='e2'),'kind','accrual','hours',3.08,'boundary_year',NULL)
   )))::text);
 SELECT is(((SELECT v FROM _txt WHERE k='compres')::jsonb)->>'completed', 'true', 'completion returned {completed: true}');
 SELECT is(((SELECT v FROM _txt WHERE k='compres')::jsonb)->>'pto_entries_written', '4', 'four ledger rows written');

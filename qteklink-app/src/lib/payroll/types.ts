@@ -104,8 +104,14 @@ export type RatesW2 = z.infer<typeof RatesW2Schema>;
 
 const payConfigCommon = z.strictObject({
   config_version: z.literal(1),
-  pto_balance_hours: hoursNum,
-  pto_accrual_hours_per_period: hoursNum,
+  // Round-11 (plan §2a/§8.6): the legacy manual PTO keys are DEMOTED to optional
+  // (the ledger is now the balance truth; the tenure-tier engine owns accrual).
+  // They stay ALLOWED-forever inside the strictObject so stored / void-cloned /
+  // frozen pay_configs that still carry them keep parsing — matching the SQL
+  // validator's v_required (dropped) vs v_allowed (kept) split. The new employee
+  // form no longer emits them, so REQUIRING them here broke every create.
+  pto_balance_hours: hoursNum.optional(),
+  pto_accrual_hours_per_period: hoursNum.optional(),
   rates_w2: RatesW2Schema.optional(),
 });
 
