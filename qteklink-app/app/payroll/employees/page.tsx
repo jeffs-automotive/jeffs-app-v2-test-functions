@@ -8,7 +8,7 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { requireQtekUser } from "@/lib/auth";
-import { listPayrollEmployees } from "@/lib/dal/payroll";
+import { getPtoBalances, listPayrollEmployees } from "@/lib/dal/payroll";
 import { PageHeader, IdentityBlock } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import EmployeeManager from "./EmployeeManager";
@@ -20,6 +20,15 @@ export default async function PayrollEmployeesPage() {
   const isAdmin = role === "admin";
   const employees = await listPayrollEmployees(shopId, { includeArchived: true });
   const activeCount = employees.filter((e) => e.archivedAt === null).length;
+
+  // Ledger PTO balances per employee (the single balance truth — NOT pay_config).
+  // Absent from the map ⇒ the employee has no ledger rows yet (unseeded); the
+  // roster shows that state and the Adjust dialog seeds the first entry.
+  const ptoBalances = await getPtoBalances(
+    shopId,
+    employees.map((e) => e.id),
+  );
+  const ptoBalanceEntries = [...ptoBalances.entries()];
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
@@ -52,7 +61,11 @@ export default async function PayrollEmployeesPage() {
         )}
       </section>
 
-      <EmployeeManager employees={employees} isAdmin={isAdmin} />
+      <EmployeeManager
+        employees={employees}
+        isAdmin={isAdmin}
+        ptoBalanceEntries={ptoBalanceEntries}
+      />
     </main>
   );
 }

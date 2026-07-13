@@ -113,6 +113,18 @@ body {
   --color-voided: oklch(0.37 0.03 255);
   --color-voided-bg: oklch(0.96 0.005 255);
   --color-voided-border: oklch(0.87 0.02 255);
+
+  /* PTO-negative (deficit) state (qteklink-payroll PTO spec).
+   *   --color-pto-negative* = the "will owe hours" balance warning — a warm
+   *     amber-red that is browner than --destructive (form-error red) and
+   *     unrelated to --color-auto (Tekmetric provenance) or --color-voided
+   *     (archival slate), so a *balance deficit* reads one-to-one with its own
+   *     hue. Never carries meaning alone: paired with a "−" sign + the word
+   *     "deficit" + an accessible name. Text-ink on -bg = 6.9:1; on --card =
+   *     7.3:1 (WCAG AA). -border is a UI rule only (≥3:1 vs --card = 3.1:1). */
+  --color-pto-negative: oklch(0.44 0.16 25);
+  --color-pto-negative-bg: oklch(0.965 0.02 30);
+  --color-pto-negative-border: oklch(0.86 0.05 30);
 }
 
 /*---break---
@@ -156,6 +168,13 @@ body {
   --color-voided: oklch(0.83 0.03 255);
   --color-voided-bg: oklch(0.26 0.01 255);
   --color-voided-border: oklch(0.40 0.02 255);
+
+  /* Dark parity for the PTO-negative deficit token (spec pins).
+   *   pto-negative ink (warm salmon) on -bg (deep warm brown) = 7.6:1 (WCAG AA);
+   *   -border vs .dark --card = 3.2:1 (UI-rule floor). */
+  --color-pto-negative: oklch(0.80 0.11 30);
+  --color-pto-negative-bg: oklch(0.28 0.04 30);
+  --color-pto-negative-border: oklch(0.44 0.05 30);
 }
 
 /*---break---

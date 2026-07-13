@@ -1,12 +1,16 @@
 "use client";
 
 /**
- * AlertEmailsCard — who gets the two payroll alert emails (Void & clone /
- * Payroll completed). Each list renders as removable chips + an add row with
- * email validation (the AllowedUsersManager add-list shape). Every add/remove
- * submits BOTH lists comma-joined — the settings action's existing contract
- * (the DAL replaces alert_emails whole, so the two fields always travel
- * together; "" clears a list).
+ * AlertEmailsCard — who gets each payroll alert email. Four removable-chip lists:
+ *   • the two LEGACY lists (Void & clone / Payroll completed) live in the
+ *     alert_emails object and TRAVEL TOGETHER — the settings action replaces
+ *     alert_emails whole, so every add/remove submits both ("" clears one).
+ *   • the two PTO lists (PTO adjustment / Negative-balance admin) are INDEPENDENT
+ *     TOP-LEVEL payroll keys (plan §2d/§10.1/C25) — each is its own whole-replace
+ *     patch and does NOT travel with the others; a change to one submits only
+ *     that key.
+ * Each list renders as removable chips + an add row with email validation (the
+ * AllowedUsersManager add-list shape).
  */
 import { useActionState, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -20,29 +24,76 @@ import { Input } from "@/components/ui/input";
 
 const labelCls = "block text-xs font-medium uppercase tracking-wide text-muted-foreground";
 
-type ListKey = keyof PayrollAlertEmails; // "void_clone" | "completed"
+// UI-local union: the two legacy lists live under alert_emails; the two PTO lists
+// are top-level payroll keys (NOT members of PayrollAlertEmails — §10.1/C25).
+type LegacyKey = keyof PayrollAlertEmails; // "void_clone" | "completed"
+type PtoKey = "pto_adjustment" | "pto_negative";
+type ListKey = LegacyKey | PtoKey;
 
-export default function AlertEmailsCard({ alertEmails }: { alertEmails: PayrollAlertEmails }) {
+const EMPTY_INPUTS: Record<ListKey, string> = {
+  void_clone: "",
+  completed: "",
+  pto_adjustment: "",
+  pto_negative: "",
+};
+
+export default function AlertEmailsCard({
+  alertEmails,
+  ptoAdjustmentEmails,
+  ptoNegativeEmails,
+}: {
+  alertEmails: PayrollAlertEmails;
+  ptoAdjustmentEmails: string[];
+  ptoNegativeEmails: string[];
+}) {
   const router = useRouter();
   const [state, dispatch, pending] = useActionState(updatePayrollSettingsAction, null);
   const [, start] = useTransition();
-  const [inputs, setInputs] = useState<Record<ListKey, string>>({ void_clone: "", completed: "" });
+  const [inputs, setInputs] = useState<Record<ListKey, string>>(EMPTY_INPUTS);
   const [clientError, setClientError] = useState<string | null>(null);
+
+  // A read-through view of every list keyed by ListKey, so add/remove is uniform.
+  const lists: Record<ListKey, string[]> = {
+    void_clone: alertEmails.void_clone,
+    completed: alertEmails.completed,
+    pto_adjustment: ptoAdjustmentEmails,
+    pto_negative: ptoNegativeEmails,
+  };
 
   useEffect(() => {
     if (state?.ok) {
-      setInputs({ void_clone: "", completed: "" });
+      setInputs(EMPTY_INPUTS);
       setClientError(null);
       router.refresh();
     }
   }, [state?.timestamp, state?.ok, router]);
 
-  /** Submit BOTH lists (the action requires them together; "" clears one). */
-  function submitLists(next: PayrollAlertEmails) {
+  /** Legacy lists TRAVEL TOGETHER (the action requires both; "" clears one). */
+  function submitLegacy(next: PayrollAlertEmails) {
     const fd = new FormData();
     fd.set("void_clone_alert_emails", next.void_clone.join(", "));
     fd.set("completed_alert_emails", next.completed.join(", "));
     start(() => dispatch(fd));
+  }
+
+  /** PTO lists are INDEPENDENT — submit ONLY the one field being changed. */
+  function submitPto(which: PtoKey, next: string[]) {
+    const fd = new FormData();
+    fd.set(
+      which === "pto_adjustment" ? "pto_adjustment_alert_emails" : "pto_negative_alert_admin_emails",
+      next.join(", "),
+    );
+    start(() => dispatch(fd));
+  }
+
+  function commit(which: ListKey, next: string[]) {
+    if (which === "void_clone") {
+      submitLegacy({ ...alertEmails, void_clone: next });
+    } else if (which === "completed") {
+      submitLegacy({ ...alertEmails, completed: next });
+    } else {
+      submitPto(which, next);
+    }
   }
 
   function add(which: ListKey) {
@@ -51,22 +102,25 @@ export default function AlertEmailsCard({ alertEmails }: { alertEmails: PayrollA
       setClientError("Enter a valid email address (person@company.com).");
       return;
     }
-    const current = alertEmails[which];
+    const current = lists[which];
     if (current.some((e) => e.toLowerCase() === raw.toLowerCase())) {
       setClientError(`${raw} is already on that list.`);
       return;
     }
     setClientError(null);
-    submitLists({ ...alertEmails, [which]: [...current, raw] });
+    commit(which, [...current, raw]);
   }
 
   function remove(which: ListKey, email: string) {
     setClientError(null);
-    submitLists({ ...alertEmails, [which]: alertEmails[which].filter((e) => e !== email) });
+    commit(
+      which,
+      lists[which].filter((e) => e !== email),
+    );
   }
 
   function renderSection(which: ListKey, title: string, helper: string) {
-    const list = alertEmails[which];
+    const list = lists[which];
     return (
       <div>
         <p className="text-sm font-semibold text-foreground">{title}</p>
@@ -78,7 +132,7 @@ export default function AlertEmailsCard({ alertEmails }: { alertEmails: PayrollA
             list.map((email) => (
               <span
                 key={email}
-                className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-foreground"
+                className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-foreground animate-in fade-in slide-in-from-top-1 duration-150 motion-reduce:animate-none"
               >
                 {email}
                 <Button
@@ -141,6 +195,16 @@ export default function AlertEmailsCard({ alertEmails }: { alertEmails: PayrollA
             "completed",
             "Payroll completed alerts",
             "Sent when a payroll run is marked complete and locked.",
+          )}
+          {renderSection(
+            "pto_adjustment",
+            "PTO adjustment alerts",
+            "Sent when someone's PTO balance is manually adjusted.",
+          )}
+          {renderSection(
+            "pto_negative",
+            "Negative PTO balance alerts (admins)",
+            "Sent to admins when a completed run leaves someone with a negative PTO balance.",
           )}
         </div>
         {clientError && (

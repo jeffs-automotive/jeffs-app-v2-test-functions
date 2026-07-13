@@ -45,10 +45,17 @@ import {
   getPayrollSettings,
   type PayrollActor,
 } from "@/lib/dal/payroll-shared";
-import { getPtoBalances, getPtoRolloverLedger } from "@/lib/dal/payroll-pto";
+import {
+  getPtoBalances,
+  getPtoRolloverLedger,
+  projectRunPto,
+  ptoFieldsFromEmployee,
+  type PtoProjectionInput,
+} from "@/lib/dal/payroll-pto";
 import {
   completionInputFrom,
   computeCompletionPtoEntries,
+  detectMissingPersonalEmails,
   renderAndSendPaySummaries,
   sendNegativeBalanceAlerts,
   type CompletionPtoInput,
@@ -123,6 +130,78 @@ export async function assembleCompletionPtoEntries(
     period_start: snapshot.run.period_start,
     period_end: snapshot.run.period_end,
   });
+}
+
+/** The completion DIALOG's advisory PTO data (plan §4 / #53.3 + #59), fed to
+ *  CompleteRunButton: the roster employees with NO personal_email (they won't
+ *  get a pay summary → the dialog relabels its confirm to "Skip emails & mark
+ *  complete") and those PROJECTED negative after this run (an advisory deficit
+ *  notice — negatives are allowed, never blocks). */
+export interface CompletionDialogPto {
+  missingPersonalEmail: string[];
+  projectedNegative: { employeeId: string; displayName: string; deficitHours: number }[];
+}
+
+/**
+ * Build the completion dialog's advisory PTO lists from the CURRENT snapshot +
+ * ledger — NO Tekmetric re-fetch (that is the dry run's job). Reuses the exact
+ * projection assembly the dry run uses (projectRunPto over the frozen/live
+ * snapshot's paid PTO hours + current balances), so the dialog and the dry-run
+ * preview agree. Display-only (N4): the authoritative balances are stamped
+ * inside the completion transaction. Empty roster / zero PTO config ⇒ empty
+ * lists ⇒ the dialog shows no PTO notices and the confirm label stays
+ * "Mark complete".
+ */
+export async function getCompletionDialogPto(
+  shopId: number,
+  snapshot: RunSnapshot,
+): Promise<CompletionDialogPto> {
+  const employeeIds = snapshot.employees.map((e) => e.employee_id);
+  if (employeeIds.length === 0) return { missingPersonalEmail: [], projectedNegative: [] };
+
+  const [{ payroll: settings }, masters, balances, rolloverByEmployee] = await Promise.all([
+    getPayrollSettings(shopId),
+    fetchEmployeesByIds(shopId, employeeIds),
+    getPtoBalances(shopId, employeeIds),
+    getPtoRolloverLedger(shopId, employeeIds),
+  ]);
+
+  // masters holds exactly the roster (fetched by the snapshot's ids).
+  const missingPersonalEmail = detectMissingPersonalEmails([...masters.values()]).map(
+    (m) => m.displayName,
+  );
+
+  const inputs: PtoProjectionInput[] = [];
+  for (const snapEmp of snapshot.employees) {
+    const master = masters.get(snapEmp.employee_id);
+    if (master === undefined) continue;
+    inputs.push({
+      employee: ptoFieldsFromEmployee(master),
+      displayName: snapEmp.display_name,
+      snapshotPtoHours: snapEmp.sheet.pto_hours,
+      currentBalanceHours: balances.get(snapEmp.employee_id) ?? 0,
+      rolloverLedger: rolloverByEmployee.get(snapEmp.employee_id) ?? [],
+    });
+  }
+
+  const { projections } = projectRunPto(
+    inputs,
+    {
+      anchor_period_start: settings.anchor_period_start,
+      pto_tenure_tiers: settings.pto_tenure_tiers,
+      pto_rollover_cap_hours: settings.pto_rollover_cap_hours,
+    },
+    { period_start: snapshot.run.period_start, period_end: snapshot.run.period_end },
+  );
+  const projectedNegative = projections
+    .filter((p) => p.projectedBalanceHours < 0)
+    .map((p) => ({
+      employeeId: p.employeeId,
+      displayName: p.displayName,
+      deficitHours: Math.abs(p.projectedBalanceHours),
+    }));
+
+  return { missingPersonalEmail, projectedNegative };
 }
 
 /**

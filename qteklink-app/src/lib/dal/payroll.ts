@@ -138,8 +138,12 @@ export type {
 // Round-11 (plan §4): the completion PTO-entry assembly + the post-response
 // email fan-out (the after() workload) — split from THIS file per the ~500-line
 // policy; completePayrollRun below calls into them.
-export { assembleCompletionPtoEntries, runCompletionEmailFanout } from "@/lib/dal/payroll-completion";
-export type { CompletionPtoPayload } from "@/lib/dal/payroll-completion";
+export {
+  assembleCompletionPtoEntries,
+  runCompletionEmailFanout,
+  getCompletionDialogPto,
+} from "@/lib/dal/payroll-completion";
+export type { CompletionPtoPayload, CompletionDialogPto } from "@/lib/dal/payroll-completion";
 export type { PayrollActor, PayrollAlertEmails, PayrollEmployee, PayrollEntryPatch };
 export type { PayrollHourKey, PayrollRun, PayrollRunComputation, PayrollSettings };
 export type { UpsertPayrollEmployeeInput };

@@ -23,11 +23,16 @@ vi.mock("@/lib/dal/payroll-shared", () => ({
   fetchEmployeesByIds: vi.fn(),
   getPayrollSettings: vi.fn(),
 }));
-vi.mock("@/lib/dal/payroll-pto", () => ({
+// Keep the PURE functions real (projectRunPto/ptoFieldsFromEmployee used by
+// getCompletionDialogPto; detectMissingPersonalEmails too) — mock only the DB
+// fetchers + the send layer the other suites assert on.
+vi.mock("@/lib/dal/payroll-pto", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   getPtoBalances: vi.fn(),
   getPtoRolloverLedger: vi.fn(),
 }));
-vi.mock("@/lib/dal/payroll-pto-completion", () => ({
+vi.mock("@/lib/dal/payroll-pto-completion", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   completionInputFrom: vi.fn(),
   computeCompletionPtoEntries: vi.fn(),
   renderAndSendPaySummaries: vi.fn(),
@@ -45,7 +50,11 @@ import {
 } from "@/lib/dal/payroll-pto-completion";
 import { sendPayrollAlert } from "@/lib/dal/payroll-confirm";
 import type { RunSnapshot, SnapshotEmployee } from "@/lib/payroll/types";
-import { assembleCompletionPtoEntries, runCompletionEmailFanout } from "../payroll-completion";
+import {
+  assembleCompletionPtoEntries,
+  getCompletionDialogPto,
+  runCompletionEmailFanout,
+} from "../payroll-completion";
 
 const SHOP_ID = 7476;
 const RUN_ID = "7f0a1b2c-3d4e-4f5a-8b9c-0d1e2f3a4b5c";
@@ -215,5 +224,41 @@ describe("runCompletionEmailFanout", () => {
     await expect(
       runCompletionEmailFanout(SHOP_ID, snapshot([snapEmp(EMP_A, 0)]), "s", ["l"]),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe("getCompletionDialogPto (the completion dialog's advisory lists — #53.3 + #59)", () => {
+  it("empty roster ⇒ empty lists, no reads (the button won't render anyway)", async () => {
+    const out = await getCompletionDialogPto(SHOP_ID, snapshot([]));
+    expect(out).toEqual({ missingPersonalEmail: [], projectedNegative: [] });
+    expect(vi.mocked(fetchEmployeesByIds)).not.toHaveBeenCalled();
+  });
+
+  it("returns the no-email names and the projected-negative employees (real projectRunPto + detectMissingPersonalEmails)", async () => {
+    // Grandfathered ⇒ eligible regardless of cadence; tier [min_years 0 ⇒ 4 hrs/period];
+    // credit/start 2024-01-01 ⇒ ≥ tier-0. EMP_A: bal 2 + accr 4 − usage 10 = −4 (deficit 4),
+    // HAS an email. EMP_B: NO personal email; bal 20 + 4 − 0 = 24 (not negative).
+    vi.mocked(fetchEmployeesByIds).mockResolvedValue(
+      new Map([
+        [EMP_A, master(EMP_A, { ptoGrandfathered: true })],
+        [EMP_B, master(EMP_B, { personalEmail: null, ptoGrandfathered: true })],
+      ]),
+    );
+    vi.mocked(getPtoBalances).mockResolvedValue(
+      new Map([
+        [EMP_A, 2],
+        [EMP_B, 20],
+      ]),
+    );
+
+    const out = await getCompletionDialogPto(
+      SHOP_ID,
+      snapshot([snapEmp(EMP_A, 10), snapEmp(EMP_B, 0)]),
+    );
+
+    expect(out.missingPersonalEmail).toEqual(["Doe, Jane"]);
+    expect(out.projectedNegative).toEqual([
+      { employeeId: EMP_A, displayName: "Clark, Matt", deficitHours: 4 },
+    ]);
   });
 });

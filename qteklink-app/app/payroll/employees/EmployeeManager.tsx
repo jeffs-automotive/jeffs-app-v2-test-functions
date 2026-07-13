@@ -2,56 +2,70 @@
 
 /**
  * EmployeeManager — the /payroll/employees roster (AllowedUsersManager idiom):
- * a card per active employee (name, role badge, pay basis, PTO), an inline
- * per-card editor, archive/unarchive behind ConfirmDialog, archived employees
- * collapsed in a native <details>, and the dashed "Add someone" form at the
- * bottom. Admin-gated mutations happen in the server action; non-admins get
- * the same roster rendered read-only (no affordances).
+ * a card per active employee (name, role badge, pay basis, LEDGER PTO balance),
+ * an inline per-card editor, per-card PTO Adjust + Activity affordances,
+ * archive-with-termination-date + unarchive, archived employees collapsed in a
+ * native <details>, and the dashed "Add someone" form at the bottom. Admin-gated
+ * mutations happen in the server actions; non-admins get the same roster rendered
+ * read-only (only the Activity link stays visible — it's a read-only page).
  *
- * Archive/unarchive re-submits the employee's CURRENT values verbatim
- * (pay_config passed through untouched as JSON) with only the archived flag
- * flipped — the form path is the only thing that reshapes pay_config.
+ * PTO balance is the LEDGER truth (getPtoBalances, threaded from the page), NOT
+ * pay_config — an employee absent from the balance map has no ledger rows yet.
+ * Archive → ArchiveEmployeeDialog (archiveEmployeeAction, captures the
+ * termination date); unarchive stays a plain ConfirmDialog (unarchiveEmployeeAction,
+ * which clears the termination date server-side).
  */
 import { useActionState, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Archive, ArchiveRestore, ChevronRight, Pencil, Users, X } from "lucide-react";
-import { upsertPayrollEmployeeAction } from "@/actions/payroll";
+import Link from "next/link";
+import { Archive, ArchiveRestore, ChevronRight, History, Pencil, Users, X } from "lucide-react";
+import { unarchiveEmployeeAction } from "@/actions/payroll-pto";
 import type { PayrollEmployee } from "@/lib/dal/payroll";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { EmptyState } from "@/components/EmptyState";
 import EmployeeForm from "./EmployeeForm";
-import { ROLE_LABEL, cfgNum, fmtHours, payBasisLine } from "./payroll-ui";
+import PtoAdjustDialog from "./PtoAdjustDialog";
+import ArchiveEmployeeDialog from "./ArchiveEmployeeDialog";
+import { PtoBalance } from "../payroll-ui";
+import { ROLE_LABEL, payBasisLine } from "./payroll-ui";
 
-function EmployeeCard({ emp, isAdmin }: { emp: PayrollEmployee; isAdmin: boolean }) {
+function EmployeeCard({
+  emp,
+  isAdmin,
+  ptoBalanceHours,
+  hasLedger,
+}: {
+  emp: PayrollEmployee;
+  isAdmin: boolean;
+  /** Ledger balance (0 when the employee has no ledger rows yet). */
+  ptoBalanceHours: number;
+  /** False ⇒ no ledger rows yet — the Adjust dialog seeds the first entry. */
+  hasLedger: boolean;
+}) {
   const router = useRouter();
-  const [state, dispatch, pending] = useActionState(upsertPayrollEmployeeAction, null);
+  const [unarchiveState, unarchiveDispatch, unarchivePending] = useActionState(
+    unarchiveEmployeeAction,
+    null,
+  );
   const [, start] = useTransition();
   const [editing, setEditing] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
 
   useEffect(() => {
-    if (state?.ok) router.refresh();
-  }, [state?.timestamp, state?.ok, router]);
+    if (unarchiveState?.ok) router.refresh();
+  }, [unarchiveState?.timestamp, unarchiveState?.ok, router]);
 
   const archived = emp.archivedAt !== null;
-  const ptoBalance = cfgNum(emp.payConfig, "pto_balance_hours");
-  const ptoAccrual = cfgNum(emp.payConfig, "pto_accrual_hours_per_period");
 
-  /** Flip ONLY the archived flag; everything else passes through verbatim. */
-  function flipArchived() {
+  /** Unarchive → the RPC clears termination_date server-side (C8/C23/C36). */
+  function unarchive() {
     const fd = new FormData();
     fd.set("employee_id", emp.id);
-    fd.set("display_name", emp.displayName);
-    fd.set("role", emp.role);
-    if (emp.tekmetricEmployeeId !== null) {
-      fd.set("tekmetric_employee_id", String(emp.tekmetricEmployeeId));
-    }
-    fd.set("archived", archived ? "false" : "true");
-    fd.set("pay_config", JSON.stringify(emp.payConfig));
     setConfirmOpen(false);
-    start(() => dispatch(fd));
+    start(() => unarchiveDispatch(fd));
   }
 
   return (
@@ -67,29 +81,49 @@ function EmployeeCard({ emp, isAdmin }: { emp: PayrollEmployee; isAdmin: boolean
         {archived && <Badge variant="secondary">Archived</Badge>}
       </div>
       <p className="mt-1 text-sm text-muted-foreground">{payBasisLine(emp)}</p>
-      <p className="mt-0.5 text-xs text-muted-foreground">
-        PTO {ptoBalance === null ? "not set" : `${fmtHours(ptoBalance)} hrs available`}
-        {" · "}
-        accrues {ptoAccrual === null ? "not set" : `${fmtHours(ptoAccrual)} hrs/period`} (manual for now)
-        {" · "}
-        {emp.tekmetricEmployeeId === null
-          ? "not linked to Tekmetric"
-          : `Tekmetric ${emp.tekmetricIdType === "service_writer" ? "service-writer" : "technician"} id ${emp.tekmetricEmployeeId}`}
+      <p className="mt-0.5 flex flex-wrap items-center gap-x-1 text-xs text-muted-foreground">
+        <span>PTO</span>
+        {hasLedger ? (
+          <PtoBalance hours={ptoBalanceHours} />
+        ) : (
+          <span className="text-muted-foreground">not set</span>
+        )}
+        <span>available</span>
+        <span>·</span>
+        <span>
+          {emp.tekmetricEmployeeId === null
+            ? "not linked to Tekmetric"
+            : `Tekmetric ${emp.tekmetricIdType === "service_writer" ? "service-writer" : "technician"} id ${emp.tekmetricEmployeeId}`}
+        </span>
       </p>
 
-      {isAdmin && (
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          {!archived && (
-            <Button variant="outline" size="sm" onClick={() => setEditing((v) => !v)} disabled={pending}>
-              {editing ? <X aria-hidden="true" /> : <Pencil aria-hidden="true" />}
-              {editing ? "Close" : "Edit"}
-            </Button>
-          )}
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        {isAdmin && !archived && (
+          <Button variant="outline" size="sm" onClick={() => setEditing((v) => !v)} disabled={unarchivePending}>
+            {editing ? <X aria-hidden="true" /> : <Pencil aria-hidden="true" />}
+            {editing ? "Close" : "Edit"}
+          </Button>
+        )}
+        {isAdmin && !archived && (
+          <PtoAdjustDialog
+            employeeId={emp.id}
+            employeeName={emp.displayName}
+            currentBalanceHours={ptoBalanceHours}
+            needsSeed={!hasLedger}
+            disabled={unarchivePending}
+          />
+        )}
+        {/* Activity is read-only — visible to everyone, not just admins. */}
+        <Button render={<Link href={`/payroll/employees/${emp.id}/pto`} />} variant="outline" size="sm">
+          <History aria-hidden="true" />
+          Activity
+        </Button>
+        {isAdmin && (
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setConfirmOpen(true)}
-            disabled={pending}
+            onClick={() => (archived ? setConfirmOpen(true) : setArchiveOpen(true))}
+            disabled={unarchivePending}
             className={
               archived
                 ? "border-emerald-300 text-emerald-800 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
@@ -99,11 +133,11 @@ function EmployeeCard({ emp, isAdmin }: { emp: PayrollEmployee; isAdmin: boolean
             {archived ? <ArchiveRestore aria-hidden="true" /> : <Archive aria-hidden="true" />}
             {archived ? "Unarchive" : "Archive"}
           </Button>
-          {state?.ok === false && (
-            <span className="text-xs text-red-700 dark:text-red-400">{state.message}</span>
-          )}
-        </div>
-      )}
+        )}
+        {isAdmin && unarchiveState?.ok === false && (
+          <span className="text-xs text-red-700 dark:text-red-400">{unarchiveState.message}</span>
+        )}
+      </div>
 
       {isAdmin && editing && !archived && (
         <div className="mt-3 border-t border-border pt-3">
@@ -111,23 +145,32 @@ function EmployeeCard({ emp, isAdmin }: { emp: PayrollEmployee; isAdmin: boolean
         </div>
       )}
 
-      <ConfirmDialog
-        open={confirmOpen}
-        onOpenChange={(next) => {
-          if (!next) setConfirmOpen(false);
-        }}
-        isPending={pending}
-        title={archived ? `Unarchive ${emp.displayName}?` : `Archive ${emp.displayName}?`}
-        body={
-          archived
-            ? "They go back on the active roster and are included the next time a run's roster is synced."
-            : "Archived employees keep their history but stop appearing on new payroll runs. You can unarchive them any time."
-        }
-        confirmLabel={archived ? "Unarchive" : "Archive"}
-        confirmingLabel="Working…"
-        variant="default"
-        onConfirm={flipArchived}
-      />
+      {/* Archive captures a termination date (archiveEmployeeAction). */}
+      {isAdmin && !archived && (
+        <ArchiveEmployeeDialog
+          open={archiveOpen}
+          onOpenChange={setArchiveOpen}
+          employeeId={emp.id}
+          employeeName={emp.displayName}
+        />
+      )}
+
+      {/* Unarchive stays a plain confirm (unarchiveEmployeeAction). */}
+      {isAdmin && archived && (
+        <ConfirmDialog
+          open={confirmOpen}
+          onOpenChange={(next) => {
+            if (!next) setConfirmOpen(false);
+          }}
+          isPending={unarchivePending}
+          title={`Unarchive ${emp.displayName}?`}
+          body="They go back on the active roster and are included the next time a run's roster is synced. Their termination date is cleared so PTO accrues again."
+          confirmLabel="Unarchive"
+          confirmingLabel="Working…"
+          variant="default"
+          onConfirm={unarchive}
+        />
+      )}
     </li>
   );
 }
@@ -135,12 +178,19 @@ function EmployeeCard({ emp, isAdmin }: { emp: PayrollEmployee; isAdmin: boolean
 export default function EmployeeManager({
   employees,
   isAdmin,
+  ptoBalanceEntries = [],
 }: {
   employees: PayrollEmployee[];
   isAdmin: boolean;
+  /** Ledger balances keyed by employee id (from getPtoBalances). An id ABSENT
+   *  from the map has no ledger rows yet — the card shows "not set" and the
+   *  Adjust dialog seeds the first entry. Serialized as entries (Maps aren't
+   *  RSC-serializable) and rebuilt here. */
+  ptoBalanceEntries?: [string, number][];
 }) {
   const active = employees.filter((e) => e.archivedAt === null);
   const archived = employees.filter((e) => e.archivedAt !== null);
+  const ptoBalances = new Map(ptoBalanceEntries);
 
   return (
     <div className="mt-8 space-y-6">
@@ -157,7 +207,13 @@ export default function EmployeeManager({
       ) : (
         <ul className="space-y-3">
           {active.map((e) => (
-            <EmployeeCard key={e.id} emp={e} isAdmin={isAdmin} />
+            <EmployeeCard
+              key={e.id}
+              emp={e}
+              isAdmin={isAdmin}
+              ptoBalanceHours={ptoBalances.get(e.id) ?? 0}
+              hasLedger={ptoBalances.has(e.id)}
+            />
           ))}
         </ul>
       )}
@@ -173,7 +229,13 @@ export default function EmployeeManager({
           </summary>
           <ul className="mt-3 space-y-3">
             {archived.map((e) => (
-              <EmployeeCard key={e.id} emp={e} isAdmin={isAdmin} />
+              <EmployeeCard
+                key={e.id}
+                emp={e}
+                isAdmin={isAdmin}
+                ptoBalanceHours={ptoBalances.get(e.id) ?? 0}
+                hasLedger={ptoBalances.has(e.id)}
+              />
             ))}
           </ul>
         </details>

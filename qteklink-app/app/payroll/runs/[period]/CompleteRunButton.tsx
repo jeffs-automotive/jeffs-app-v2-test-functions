@@ -33,8 +33,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { fmtAsOf, fmtHours, fmtShortDate } from "../../payroll-ui";
+import { DeficitNotice, fmtAsOf, fmtHours, fmtShortDate } from "../../payroll-ui";
 import { getUnsavedEntryCount } from "./unsaved-entries";
+
+/** One employee still projected negative after this run (plan §4 / #59). */
+export interface ProjectedNegativeEmployee {
+  employeeId: string;
+  displayName: string;
+  /** Positive magnitude of the projected deficit. */
+  deficitHours: number;
+}
 
 export function CompleteRunButton({
   runId,
@@ -44,6 +52,8 @@ export function CompleteRunButton({
   dataAsOf,
   periodEnd,
   stale,
+  missingPersonalEmail = [],
+  projectedNegative = [],
 }: {
   runId: string;
   employeeCount: number;
@@ -55,6 +65,15 @@ export function CompleteRunButton({
   /** True when the mirror was last refreshed before the END of the period-end
    *  day, shop-local (server-computed — see the [period] page's staleMirror). */
   stale: boolean;
+  /** Round-11 (plan §4.2 / #53.3): employees with no personal_email — they won't
+   *  get a pay summary. Non-empty ⇒ a warning notice + the confirm relabels to
+   *  "Skip emails & mark complete". Defaults to [] so the completed contract is
+   *  unchanged for callers that don't pass it (C20). */
+  missingPersonalEmail?: string[];
+  /** Round-11 (plan §4 / #59): employees still projected negative after this run
+   *  — an advisory deficit notice (negatives are allowed, never blocks). Defaults
+   *  to []. */
+  projectedNegative?: ProjectedNegativeEmployee[];
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -150,6 +169,55 @@ export function CompleteRunButton({
             </div>
           )}
 
+          {missingPersonalEmail.length > 0 && (
+            <div
+              role="alert"
+              className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
+            >
+              <p>
+                <span className="font-semibold">
+                  {missingPersonalEmail.length === 1
+                    ? "This employee has"
+                    : "These employees have"}{" "}
+                  no personal email
+                </span>
+                , so they won&apos;t get a pay summary:
+              </p>
+              <ul className="mt-1 list-disc pl-5">
+                {missingPersonalEmail.map((name) => (
+                  <li key={name}>{name}</li>
+                ))}
+              </ul>
+              <p className="mt-2">
+                Add a personal email on the{" "}
+                <a href="/payroll/employees" className="font-medium underline">
+                  employees page
+                </a>
+                , or skip and complete anyway.
+              </p>
+            </div>
+          )}
+
+          {projectedNegative.length > 0 && (
+            <DeficitNotice>
+              <p className="font-semibold">
+                {projectedNegative.length === 1
+                  ? "One person will be in the hole after this run:"
+                  : "These people will be in the hole after this run:"}
+              </p>
+              <ul className="mt-1 list-disc pl-5">
+                {projectedNegative.map((emp) => (
+                  <li key={emp.employeeId} className="tabular-nums">
+                    {emp.displayName} — {fmtHours(emp.deficitHours)} h deficit
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2">
+                Negative balances are allowed. They&apos;ll be emailed the deficit when you complete.
+              </p>
+            </DeficitNotice>
+          )}
+
           {stale && (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
               <p>
@@ -184,7 +252,7 @@ export function CompleteRunButton({
               disabled={pending || unsaved > 0 || (stale && !acknowledged)}
               onClick={confirm}
             >
-              Mark complete
+              {missingPersonalEmail.length > 0 ? "Skip emails & mark complete" : "Mark complete"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -20,7 +20,7 @@
  *   --color-voided* — the archival/superseded (slate) run state.
  */
 import type { ReactNode } from "react";
-import { Ban, Link2, Lock, PencilLine, PenLine } from "lucide-react";
+import { Ban, Link2, Lock, PencilLine, PenLine, TrendingDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type {
@@ -46,6 +46,18 @@ export function fmtHoursFixed1(h: number): string {
 /** Hours with up to two decimals, no forced minimum — for accrual rates (1.54 hrs/period). */
 export function fmtHours2(h: number): string {
   return h.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
+/**
+ * Signed hours for the PTO ledger's "± hours" column and the Adjust preview:
+ * "+3.50" / "−1.25" / "0.00". The magnitude uses fmtHours (2dp min-1); the sign
+ * glyph is an explicit U+2212 minus for negatives (matching the DryRun fmtDelta
+ * convention) and a "+" for positives; zero stays unsigned.
+ */
+export function fmtSignedHours(h: number): string {
+  if (h < 0) return `−${fmtHours(Math.abs(h))}`;
+  if (h > 0) return `+${fmtHours(h)}`;
+  return fmtHours(0);
 }
 
 /** ISO YYYY-MM-DD → "6-28-26" (the task's M-D-YY period label format). */
@@ -280,6 +292,58 @@ export function NotApplicable({ reason }: { reason: string }) {
     <span className="text-muted-foreground" title={reason} aria-label={`n/a — ${reason}`}>
       n/a
     </span>
+  );
+}
+
+// ── PTO balance state (the deficit treatment) ─────────────────────────────────
+
+/**
+ * PtoBalance — an hours balance with the one PTO-negative state color. A
+ * positive/zero balance is plain tabular-nums ink (color never means "good");
+ * only a NEGATIVE balance gets the amber-red deficit chip (--color-pto-negative*)
+ * so "this person will owe hours" reads at a glance and identically on the
+ * employee card, the Adjust preview, the dry-run modal, the completion dialog,
+ * and the ledger. The chip never carries meaning by color alone: a leading "−"
+ * sign, a TrendingDown glyph, and an explicit accessible name ("… negative — X
+ * hour deficit") all say "deficit". Never renders "$" — hours 2dp via fmtHours.
+ *
+ * Prop: { hours; label? }. Pure formatting; no business logic.
+ */
+export function PtoBalance({ hours, label }: { hours: number; label?: string }) {
+  if (hours >= 0) {
+    return (
+      <span className="tabular-nums text-foreground" aria-label={label}>
+        {fmtHours(hours)} hrs
+      </span>
+    );
+  }
+  const deficit = Math.abs(hours);
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-md bg-[color:var(--color-pto-negative-bg)] px-1.5 py-0.5 tabular-nums text-[color:var(--color-pto-negative)] ring-1 ring-[color:var(--color-pto-negative-border)]"
+      aria-label={`PTO balance ${fmtHours(hours)} hours, negative — ${fmtHours(deficit)} hour deficit`}
+    >
+      <TrendingDown className="size-3 shrink-0" aria-hidden="true" />
+      −{fmtHours(deficit)} hrs
+    </span>
+  );
+}
+
+/**
+ * DeficitNotice — the reusable amber-red inline alert box (PTO-negative palette),
+ * shared by the dry-run PTO section, the completion dialog, and the Adjust
+ * preview. role="alert" so the deficit is announced. Mirrors the shape of
+ * CompleteRunButton's red role="alert" box but in the PTO-negative hue so a
+ * balance deficit reads distinctly from the unsaved-entries *error*.
+ */
+export function DeficitNotice({ children }: { children: ReactNode }) {
+  return (
+    <div
+      role="alert"
+      className="rounded-lg border border-[color:var(--color-pto-negative-border)] bg-[color:var(--color-pto-negative-bg)] p-3 text-sm text-[color:var(--color-pto-negative)]"
+    >
+      {children}
+    </div>
   );
 }
 

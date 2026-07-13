@@ -20,6 +20,7 @@ import { dryRunPayrollAction } from "@/actions/payroll";
 import { fmtUsd } from "@/lib/format";
 import type {
   DryRunDiffField,
+  DryRunPtoProjection,
   PayrollDryRunResult,
 } from "@/lib/payroll/dry-run-diff";
 import { Button } from "@/components/ui/button";
@@ -31,7 +32,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { fmtAsOf, fmtHours } from "../../payroll-ui";
+import { fmtAsOf, fmtHours, PtoBalance } from "../../payroll-ui";
 
 // ── Value + delta formatting per field kind ────────────────────────────────────
 
@@ -90,6 +91,56 @@ function DiffGroup({ title, children }: { title: string; children: React.ReactNo
   );
 }
 
+// ── PTO balances (plan §4/§10.4) ────────────────────────────────────────────────
+
+/**
+ * PtoDiffSection — the "PTO balances" group, fed by the NEW OPTIONAL SIBLING
+ * `result.pto` (never `diff`). Rendered OUTSIDE the `diff.changed` conditional
+ * (both branches — a deficit warning can co-render with "no Tekmetric
+ * differences"). Each employee shows the projected balance via the shared
+ * `PtoBalance` primitive (so a projected-negative balance surfaces the deficit
+ * chip identically to the employee card / completion dialog / ledger), the
+ * current→projected math as a muted line, and a compact deficit line when the
+ * run takes the balance negative (plan #59 intent: "will go NEGATIVE by 3.5 h").
+ * The caller renders this only when `pto` is non-empty; an empty/absent list
+ * means "no PTO movement this run" and the section is omitted entirely.
+ */
+function PtoDiffSection({ pto }: { pto: DryRunPtoProjection[] }) {
+  return (
+    <section>
+      <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        PTO balances
+      </h3>
+      <div className="mt-1 divide-y divide-border/50 rounded-lg border border-border bg-muted/30 px-3 py-1">
+        {pto.map((emp) => {
+          const negative = emp.projectedBalanceHours < 0;
+          const deficit = Math.abs(emp.projectedBalanceHours);
+          return (
+            <div key={emp.employeeId} className="py-1.5">
+              <div className="flex items-baseline justify-between gap-4">
+                <p className="text-sm font-medium text-foreground">{emp.displayName}</p>
+                <PtoBalance hours={emp.projectedBalanceHours} />
+              </div>
+              <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
+                {fmtHours(emp.currentBalanceHours)} now
+                {emp.accrualHours > 0 && <> · +{fmtHours(emp.accrualHours)} accrual</>}
+                {emp.usageHours > 0 && <> · −{fmtHours(emp.usageHours)} used</>}
+                <span aria-hidden="true"> → </span>
+                {fmtHours(emp.projectedBalanceHours)} projected
+              </p>
+              {negative && (
+                <p className="mt-0.5 text-xs text-[color:var(--color-pto-negative)]">
+                  Will go negative by {fmtHours(deficit)} h.
+                </p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 // ── The button + modal ─────────────────────────────────────────────────────────
 
 export function DryRunButton({
@@ -137,6 +188,7 @@ export function DryRunButton({
   }
 
   const diff = result?.diff ?? null;
+  const pto = result?.pto ?? [];
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -206,6 +258,12 @@ export function DryRunButton({
                   )}
                 </div>
               )}
+
+              {/* PTO balances — OUTSIDE the diff.changed branch (plan §4/C16): a
+                  deficit warning can co-render with "no Tekmetric differences".
+                  Fed by the optional `pto` sibling, never by `diff`; omitted
+                  entirely when there is no PTO movement this run. */}
+              {pto.length > 0 && <PtoDiffSection pto={pto} />}
             </>
           )}
 

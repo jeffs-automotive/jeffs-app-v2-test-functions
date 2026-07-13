@@ -3,7 +3,9 @@
  * employee: pay basis (hourly rate OR weekly salary), billed rate (n/a for
  * non-billed roles), the two last-12-completed-runs hourly averages (without
  * bonus for everyone; with bonus only for the SA / office-manager / foreman
- * families), and the manual-phase PTO balance + accrual from pay_config.
+ * families), and the LEDGER PTO balance (the single balance truth — plan §2b/C22;
+ * the tier engine owns accrual rates now, so the old "accrues X hrs/period"
+ * sub-line and the pay_config pto_* reads are gone).
  * Archived employees stay out of the way behind a collapsed <details>.
  *
  * Read/display only — averages are computed by the pure summary.ts exports from
@@ -32,21 +34,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  fmtHoursFixed1 as fmtHours,
-  fmtHours2,
-  headerCls,
-  NotApplicable,
-  numCell,
-  ROLE_LABELS,
-} from "./payroll-ui";
+import { headerCls, NotApplicable, numCell, PtoBalance, ROLE_LABELS } from "./payroll-ui";
 
 interface PayView {
   kind: "hourly" | "salary";
   rateCents: number;
   billedRateCents: number | null;
-  ptoBalanceHours: number;
-  ptoAccrualHoursPerPeriod: number;
 }
 
 /** Family-narrowed read of the validated pay_config (throws loud on a bad config —
@@ -55,44 +48,20 @@ function payViewFor(family: Family, payConfig: Record<string, unknown>): PayView
   switch (family) {
     case "service_advisor": {
       const c = parsePayConfig("service_advisor", payConfig);
-      return {
-        kind: "salary",
-        rateCents: c.weekly_salary_cents,
-        billedRateCents: null,
-        ptoBalanceHours: c.pto_balance_hours,
-        ptoAccrualHoursPerPeriod: c.pto_accrual_hours_per_period,
-      };
+      return { kind: "salary", rateCents: c.weekly_salary_cents, billedRateCents: null };
     }
     case "technician":
     case "shop_foreman": {
       const c = parsePayConfig(family, payConfig);
-      return {
-        kind: "hourly",
-        rateCents: c.hourly_rate_cents,
-        billedRateCents: c.billed_rate_cents,
-        ptoBalanceHours: c.pto_balance_hours,
-        ptoAccrualHoursPerPeriod: c.pto_accrual_hours_per_period,
-      };
+      return { kind: "hourly", rateCents: c.hourly_rate_cents, billedRateCents: c.billed_rate_cents };
     }
     case "office_manager": {
       const c = parsePayConfig("office_manager", payConfig);
-      return {
-        kind: "hourly",
-        rateCents: c.hourly_rate_cents,
-        billedRateCents: null,
-        ptoBalanceHours: c.pto_balance_hours,
-        ptoAccrualHoursPerPeriod: c.pto_accrual_hours_per_period,
-      };
+      return { kind: "hourly", rateCents: c.hourly_rate_cents, billedRateCents: null };
     }
     case "support": {
       const c = parsePayConfig("support", payConfig);
-      return {
-        kind: "hourly",
-        rateCents: c.hourly_rate_cents,
-        billedRateCents: null,
-        ptoBalanceHours: c.pto_balance_hours,
-        ptoAccrualHoursPerPeriod: c.pto_accrual_hours_per_period,
-      };
+      return { kind: "hourly", rateCents: c.hourly_rate_cents, billedRateCents: null };
     }
   }
 }
@@ -103,11 +72,14 @@ interface EmployeeRowView {
   pay: PayView;
   avgWithoutBonusCents: number | null;
   avgWithBonusCents: number | null;
+  /** Ledger PTO balance (single balance truth); 0 when the employee is unseeded. */
+  ptoBalanceHours: number;
 }
 
 function employeeRowView(
   emp: PayrollEmployee,
   rowsByEmployee: Map<string, SummaryRow[]>,
+  ptoBalances: Map<string, number>,
 ): EmployeeRowView {
   const family = familyForRole(emp.role);
   const averages = employeeHourlyAverages(family, rowsByEmployee.get(emp.id) ?? []);
@@ -117,6 +89,7 @@ function employeeRowView(
     pay: payViewFor(family, emp.payConfig),
     avgWithoutBonusCents: averages.avg_hourly_without_bonus_cents,
     avgWithBonusCents: averages.avg_hourly_with_bonus_cents,
+    ptoBalanceHours: ptoBalances.get(emp.id) ?? 0,
   };
 }
 
@@ -181,10 +154,9 @@ function EmployeeRow({ v, archived }: { v: EmployeeRowView; archived: boolean })
         )}
       </TableCell>
       <TableCell className={numCell}>
-        <div className="font-medium text-foreground">{fmtHours(v.pay.ptoBalanceHours)} hrs</div>
-        <div className="text-xs text-muted-foreground">
-          accrues {fmtHours2(v.pay.ptoAccrualHoursPerPeriod)} hrs/period
-        </div>
+        <span className="font-medium">
+          <PtoBalance hours={v.ptoBalanceHours} />
+        </span>
       </TableCell>
     </TableRow>
   );
@@ -194,14 +166,18 @@ export default function EmployeesCard({
   active,
   archived,
   rowsByEmployee,
+  ptoBalances,
 }: {
   active: PayrollEmployee[];
   archived: PayrollEmployee[];
   /** Per-employee SummaryRows from the last-12-COMPLETED-runs window. */
   rowsByEmployee: Map<string, SummaryRow[]>;
+  /** Per-employee LEDGER PTO balance (the single balance truth — plan §2b);
+   *  an unseeded employee is absent from the map and renders 0. */
+  ptoBalances: Map<string, number>;
 }) {
-  const activeViews = active.map((e) => employeeRowView(e, rowsByEmployee));
-  const archivedViews = archived.map((e) => employeeRowView(e, rowsByEmployee));
+  const activeViews = active.map((e) => employeeRowView(e, rowsByEmployee, ptoBalances));
+  const archivedViews = archived.map((e) => employeeRowView(e, rowsByEmployee, ptoBalances));
 
   return (
     <Card className="mt-8 shadow-xs">

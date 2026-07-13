@@ -12,8 +12,12 @@
  * The server action + next/navigation are mocked.
  */
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { PayrollDryRunDiff, PayrollDryRunResult } from "@/lib/payroll/dry-run-diff";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import type {
+  DryRunPtoProjection,
+  PayrollDryRunDiff,
+  PayrollDryRunResult,
+} from "@/lib/payroll/dry-run-diff";
 
 const actionMock = vi.fn();
 const refreshMock = vi.fn();
@@ -53,8 +57,11 @@ function diffFixture(over: Partial<PayrollDryRunDiff> = {}): PayrollDryRunDiff {
   };
 }
 
-function okResult(diff: PayrollDryRunDiff): { ok: true; data: PayrollDryRunResult; timestamp: number } {
-  return { ok: true, data: { diff, rosChecked: 42 }, timestamp: Date.now() };
+function okResult(
+  diff: PayrollDryRunDiff,
+  pto?: DryRunPtoProjection[],
+): { ok: true; data: PayrollDryRunResult; timestamp: number } {
+  return { ok: true, data: { diff, rosChecked: 42, pto }, timestamp: Date.now() };
 }
 
 function renderButton(over: Partial<Parameters<typeof DryRunButton>[0]> = {}) {
@@ -119,6 +126,91 @@ describe("DryRunButton (#42)", () => {
     expect(screen.queryByText("Per-technician billed hours")).not.toBeInTheDocument();
     expect(screen.queryByText("Month numbers")).not.toBeInTheDocument();
     expect(screen.queryByText("Pay totals")).not.toBeInTheDocument();
+  });
+
+  it("renders the PTO balances section (projected balance + deficit line) alongside a CHANGED diff", async () => {
+    actionMock.mockResolvedValue(
+      okResult(diffFixture(), [
+        {
+          employeeId: "aaaa1111-1111-4111-8111-111111111111",
+          displayName: "Matt Clark",
+          currentBalanceHours: 2,
+          accrualHours: 1.5,
+          usageHours: 7,
+          projectedBalanceHours: -3.5,
+        },
+        {
+          employeeId: "bbbb2222-2222-4222-8222-222222222222",
+          displayName: "Dana Reed",
+          currentBalanceHours: 10,
+          accrualHours: 1.5,
+          usageHours: 0,
+          projectedBalanceHours: 11.5,
+        },
+      ]),
+    );
+    renderButton();
+
+    fireEvent.click(screen.getByRole("button", { name: /dry run/i }));
+
+    expect(await screen.findByText("PTO balances")).toBeInTheDocument();
+    // negative projection surfaces the deficit chip (aria-label) + the compact line
+    expect(
+      screen.getByLabelText("PTO balance -3.5 hours, negative — 3.5 hour deficit"),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/will go negative by 3.5 h/i)).toBeInTheDocument();
+    // a positive projection reads as plain hours, no deficit line
+    expect(screen.getByText("11.5 hrs")).toBeInTheDocument();
+    // the diff groups still render (PTO co-exists with the changed diff)
+    expect(screen.getByText("Per-technician billed hours")).toBeInTheDocument();
+  });
+
+  it("renders the PTO balances section even when there are NO Tekmetric differences", async () => {
+    actionMock.mockResolvedValue(
+      okResult(diffFixture({ techHours: [], month: [], payTotals: [], changed: false }), [
+        {
+          employeeId: "aaaa1111-1111-4111-8111-111111111111",
+          displayName: "Matt Clark",
+          currentBalanceHours: 2,
+          accrualHours: 1.5,
+          usageHours: 7,
+          projectedBalanceHours: -3.5,
+        },
+      ]),
+    );
+    renderButton();
+
+    fireEvent.click(screen.getByRole("button", { name: /dry run/i }));
+
+    // the empty state AND the PTO deficit co-render
+    expect(
+      await screen.findByText("Everything is up to date — no differences."),
+    ).toBeInTheDocument();
+    const pto = screen.getByText("PTO balances").closest("section") as HTMLElement;
+    expect(pto).toHaveTextContent(/will go negative by 3.5 h/i);
+    expect(
+      within(pto).getByLabelText("PTO balance -3.5 hours, negative — 3.5 hour deficit"),
+    ).toBeInTheDocument();
+  });
+
+  it("omits the PTO balances section when the result carries no pto sibling", async () => {
+    actionMock.mockResolvedValue(okResult(diffFixture())); // pto undefined
+    renderButton();
+
+    fireEvent.click(screen.getByRole("button", { name: /dry run/i }));
+
+    expect(await screen.findByText("Dry run — what changed")).toBeInTheDocument();
+    expect(screen.queryByText("PTO balances")).not.toBeInTheDocument();
+  });
+
+  it("omits the PTO balances section when the pto sibling is an empty array", async () => {
+    actionMock.mockResolvedValue(okResult(diffFixture(), []));
+    renderButton();
+
+    fireEvent.click(screen.getByRole("button", { name: /dry run/i }));
+
+    expect(await screen.findByText("Dry run — what changed")).toBeInTheDocument();
+    expect(screen.queryByText("PTO balances")).not.toBeInTheDocument();
   });
 
   it("Accept closes the modal and fires onAccepted (→ the Summary tab)", async () => {

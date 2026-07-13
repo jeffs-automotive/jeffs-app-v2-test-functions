@@ -14,6 +14,7 @@ import { PageHeader, IdentityBlock } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import SpiffCategoriesCard from "./SpiffCategoriesCard";
+import PtoTiersCard from "./PtoTiersCard";
 import AlertEmailsCard from "./AlertEmailsCard";
 import AnchorPeriodCard from "./AnchorPeriodCard";
 
@@ -94,7 +95,15 @@ export default async function PayrollSettingsPage() {
           </section>
 
           <SpiffCategoriesCard categories={payroll.spiff_categories} />
-          <AlertEmailsCard alertEmails={payroll.alert_emails} />
+          <PtoTiersCard
+            tiers={payroll.pto_tenure_tiers}
+            rolloverCapHours={payroll.pto_rollover_cap_hours}
+          />
+          <AlertEmailsCard
+            alertEmails={payroll.alert_emails}
+            ptoAdjustmentEmails={payroll.pto_adjustment_alert_emails}
+            ptoNegativeEmails={payroll.pto_negative_alert_admin_emails}
+          />
           <AnchorPeriodCard anchor={payroll.anchor_period_start} />
         </>
       )}

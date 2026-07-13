@@ -16,6 +16,7 @@ import { CalendarClock, ChevronRight } from "lucide-react";
 import { requireQtekUser } from "@/lib/auth";
 import {
   getPayrollSettings,
+  getPtoBalances,
   listPayrollEmployees,
   listPayrollRunsWithSummaries,
   type PayrollRun,
@@ -221,6 +222,14 @@ export default async function PayrollPage() {
   const activeEmployees = employees.filter((e) => e.archivedAt === null);
   const archivedEmployees = employees.filter((e) => e.archivedAt !== null);
 
+  // Ledger PTO balances for the roster's "PTO available" column (the single
+  // balance truth — plan §2b/C22; supersedes the old pay_config manual field).
+  // One shop-scoped read; unseeded employees are absent from the map (→ 0).
+  const ptoBalances = await getPtoBalances(
+    shopId,
+    employees.map((e) => e.id),
+  );
+
   // Per-employee last-12-COMPLETED-runs window (pure summary.ts exports own the
   // filtering — voided/open runs never reach an average).
   const completedWindow = lastCompletedRuns(
@@ -297,6 +306,7 @@ export default async function PayrollPage() {
         active={activeEmployees}
         archived={archivedEmployees}
         rowsByEmployee={rowsByEmployee}
+        ptoBalances={ptoBalances}
       />
 
       {/* ── Recent payroll runs ── */}

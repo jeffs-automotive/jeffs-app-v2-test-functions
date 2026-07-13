@@ -12,7 +12,7 @@
  * action mocked at the module boundary.
  */
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 const refreshMock = vi.fn();
 vi.mock("next/navigation", () => ({
@@ -97,6 +97,93 @@ describe("CompleteRunButton", () => {
     expect(completeMock).not.toHaveBeenCalled();
     expect(await screen.findByRole("alert")).toHaveTextContent(/2 unsaved changes/i);
     expect(screen.getByRole("button", { name: /^mark complete$/i })).toBeDisabled();
+  });
+
+  it("relabels Confirm to 'Skip emails & mark complete' and lists employees missing a personal email", async () => {
+    completeMock.mockResolvedValue({ ok: true, data: { completed: true }, timestamp: 1 });
+    render(
+      <CompleteRunButton
+        {...baseProps}
+        stale={false}
+        missingPersonalEmail={["Matt Clark", "Dana Reed"]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /mark payroll complete/i }));
+    // the label swaps; the plain "Mark complete" is gone
+    const confirm = await screen.findByRole("button", {
+      name: /^skip emails & mark complete$/i,
+    });
+    expect(confirm).toBeEnabled();
+    expect(
+      screen.queryByRole("button", { name: /^mark complete$/i }),
+    ).not.toBeInTheDocument();
+
+    // the missing-email warning names both employees
+    const alert = screen.getByRole("alert");
+    expect(within(alert).getByText(/no personal email/i)).toBeInTheDocument();
+    expect(within(alert).getByText("Matt Clark")).toBeInTheDocument();
+    expect(within(alert).getByText("Dana Reed")).toBeInTheDocument();
+
+    // skipping still completes (the skip is recorded server-side)
+    fireEvent.click(confirm);
+    await waitFor(() => expect(completeMock).toHaveBeenCalledTimes(1));
+  });
+
+  it("keeps 'Mark complete' and renders no email notice when the missing-email list is empty", async () => {
+    render(<CompleteRunButton {...baseProps} stale={false} missingPersonalEmail={[]} />);
+    fireEvent.click(screen.getByRole("button", { name: /mark payroll complete/i }));
+    expect(
+      await screen.findByRole("button", { name: /^mark complete$/i }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/no personal email/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("shows the still-projected-negative deficit notice (advisory — never blocks Confirm)", async () => {
+    render(
+      <CompleteRunButton
+        {...baseProps}
+        stale={false}
+        projectedNegative={[
+          { employeeId: "e1", displayName: "Matt Clark", deficitHours: 3.5 },
+          { employeeId: "e2", displayName: "Dana Reed", deficitHours: 1.25 },
+        ]}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /mark payroll complete/i }));
+
+    const confirm = await screen.findByRole("button", { name: /^mark complete$/i });
+    expect(confirm).toBeEnabled(); // negatives are allowed — advisory only
+
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent(/Matt Clark — 3.5 h deficit/i);
+    expect(alert).toHaveTextContent(/Dana Reed — 1.25 h deficit/i);
+    expect(within(alert).getByText(/negative balances are allowed/i)).toBeInTheDocument();
+  });
+
+  it("carries up to three alert regions together (unsaved + missing-email + deficit)", async () => {
+    setUnsavedEntryCount(1);
+    render(
+      <CompleteRunButton
+        {...baseProps}
+        stale={false}
+        missingPersonalEmail={["Matt Clark"]}
+        projectedNegative={[{ employeeId: "e1", displayName: "Matt Clark", deficitHours: 3.5 }]}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /mark payroll complete/i }));
+
+    await screen.findByRole("button", { name: /^skip emails & mark complete$/i });
+    const alerts = screen.getAllByRole("alert");
+    expect(alerts).toHaveLength(3);
+    // the unsaved-entries error still blocks completion
+    expect(alerts.some((a) => /unsaved change/i.test(a.textContent ?? ""))).toBe(true);
+    expect(
+      screen.getByRole("button", { name: /^skip emails & mark complete$/i }),
+    ).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: /^skip emails & mark complete$/i }));
+    expect(completeMock).not.toHaveBeenCalled();
   });
 
   it("surfaces an action failure inside the dialog (no silent failure)", async () => {

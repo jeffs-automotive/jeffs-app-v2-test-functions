@@ -22,7 +22,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Ban, GitBranch, Inbox, Lock, Users } from "lucide-react";
 import { requireQtekUser } from "@/lib/auth";
-import { computePayrollRun, getPayrollRun, listPayrollRuns } from "@/lib/dal/payroll";
+import {
+  computePayrollRun,
+  getCompletionDialogPto,
+  getPayrollRun,
+  listPayrollRuns,
+} from "@/lib/dal/payroll";
 import { getShopSettings } from "@/lib/dal/settings";
 import { toShopLocalDate } from "@/lib/sales/sale-builder";
 import { isIsoDate } from "@/lib/format";
@@ -103,6 +108,17 @@ export default async function RunDetailPage({
   // whose UTC calendar date can run a day ahead of the shop's (Fri 8 PM shop
   // is already Sat UTC) — compare its shop-local date, never the UTC slice.
   const staleMirror = toShopLocalDate(asOf, shopSettings.shopTimezone) <= run.periodEnd;
+
+  // Round-11 (plan §4 / #53.3 + #59): the completion dialog's advisory PTO lists
+  // — employees with no personal_email (pay summaries will skip them → the confirm
+  // relabels) and those projected negative after this run (advisory deficit, never
+  // blocks). Only computed for the open run about to be completed (the button's
+  // render condition below); display-only — the confirm RPC stamps the authoritative
+  // balances (N4). Zero PTO config ⇒ empty lists ⇒ no notices.
+  const completionPto =
+    canEdit && snapshot.employees.length > 0
+      ? await getCompletionDialogPto(shopId, snapshot)
+      : { missingPersonalEmail: [], projectedNegative: [] };
 
   // Lineage targets (all runs of a period share the [period] route).
   const supersededBy = isVoided
@@ -205,6 +221,8 @@ export default async function RunDetailPage({
                 dataAsOf={asOf}
                 periodEnd={run.periodEnd}
                 stale={staleMirror}
+                missingPersonalEmail={completionPto.missingPersonalEmail}
+                projectedNegative={completionPto.projectedNegative}
               />
             )}
           </div>

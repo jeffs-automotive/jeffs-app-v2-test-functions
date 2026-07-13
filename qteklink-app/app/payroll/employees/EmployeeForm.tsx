@@ -21,7 +21,8 @@ import {
   upsertPayrollEmployeeAction,
   type TekmetricEmployeeOption,
 } from "@/actions/payroll";
-import type { PayrollEmployee } from "@/lib/dal/payroll";
+import { updateEmployeeProfileAction } from "@/actions/payroll-pto";
+import type { EmployeeProfilePatch, PayrollEmployee } from "@/lib/dal/payroll";
 import {
   ROLES,
   TEKMETRIC_ID_TYPE_BY_FAMILY,
@@ -31,11 +32,17 @@ import {
 } from "@/lib/payroll/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
+import EmployeeContactPanel, {
+  readProfileValues,
+  type ProfileValues,
+} from "./EmployeeContactPanel";
 import { ROLE_LABEL, labelCls, selectCls } from "./payroll-ui";
 
 // ── pay_config key whitelist per family (contract §pay_config JSONB) ───────────
-// The seed keys are NOT edited here — listed so an edit PRESERVES them.
+// The seed keys are NOT edited here — listed so an edit PRESERVES them. The two
+// legacy manual PTO keys stay in the allowlist (plan §2a: stored rows are never
+// backfilled) even though their inputs were removed — the form round-trips any
+// stored value untouched; the ledger is the balance truth going forward.
 
 const COMMON_KEYS = ["config_version", "pto_balance_hours", "pto_accrual_hours_per_period"] as const;
 
@@ -123,10 +130,11 @@ function buildPayConfig(
   existing: Record<string, unknown>,
   fd: FormData,
 ): Record<string, unknown> {
+  // Only config_version is (re)written here; the two legacy PTO keys are NO
+  // LONGER edited (their inputs were removed) — they ride through untouched via
+  // the `{ ...existing, ...values }` merge + the COMMON_KEYS allowlist below.
   const values: Record<string, unknown> = {
     config_version: 1,
-    pto_balance_hours: readHours(fd, "pto_balance_hours", "PTO balance"),
-    pto_accrual_hours_per_period: readHours(fd, "pto_accrual_hours_per_period", "PTO accrual"),
   };
   if (family === "technician" || family === "shop_foreman") {
     values.hourly_rate_cents = readDollars(fd, "hourly_rate_dollars", "Hourly rate");
@@ -208,8 +216,16 @@ export default function EmployeeForm({
 }) {
   const router = useRouter();
   const [state, dispatch, pending] = useActionState(upsertPayrollEmployeeAction, null);
+  const [profileState, profileDispatch, profilePending] = useActionState(
+    updateEmployeeProfileAction,
+    null,
+  );
   const [, start] = useTransition();
   const [role, setRole] = useState<Role>(employee?.role ?? "technician");
+  // True while a profile patch is in flight for the current submit — so the
+  // close/refresh effect waits for BOTH dispatches, but doesn't hang when the
+  // submit carried no profile change.
+  const [profileInFlight, setProfileInFlight] = useState(false);
   const [clientError, setClientError] = useState<string | null>(null);
   const [tekId, setTekId] = useState<string>(
     employee?.tekmetricEmployeeId != null ? String(employee.tekmetricEmployeeId) : "",
@@ -239,8 +255,27 @@ export default function EmployeeForm({
   const family = familyForRole(role);
   const cfg: Record<string, unknown> = employee?.payConfig ?? {};
 
+  // Profile-field defaults from the employee row (all optional strings; "" when
+  // unset). termination_date is NOT here — the Archive modal owns it.
+  const profileDefaults: ProfileValues = {
+    work_email: employee?.workEmail ?? "",
+    personal_email: employee?.personalEmail ?? "",
+    personal_phone: employee?.personalPhone ?? "",
+    work_phone: employee?.workPhone ?? "",
+    address: employee?.address ?? "",
+    start_date: employee?.startDate ?? "",
+    pto_grandfathered: employee?.ptoGrandfathered ?? false,
+    pto_tenure_credit_date: employee?.ptoTenureCreditDate ?? "",
+  };
+
   useEffect(() => {
-    if (state?.ok) {
+    // The pay_config upsert AND (when the submit changed profile fields) the
+    // profile patch each dispatch. The editor is done when the upsert succeeded
+    // AND either no profile patch was in flight OR it settled without failing.
+    const upsertDone = state?.ok === true;
+    const profileFailed = profileState?.ok === false;
+    const profileSettled = !profileInFlight || profileState?.ok === true;
+    if (upsertDone && profileSettled && !profileFailed) {
       router.refresh();
       if (employee === undefined) {
         formRef.current?.reset();
@@ -249,7 +284,37 @@ export default function EmployeeForm({
         onDoneRef.current?.();
       }
     }
-  }, [state?.timestamp, state?.ok, router, employee]);
+    // Key on both action timestamps so a two-dispatch save settles cleanly.
+  }, [state?.timestamp, state?.ok, profileState?.timestamp, profileState, profileInFlight, router, employee]);
+
+  /**
+   * Build the minimal profile patch (only CHANGED fields). A field that was
+   * cleared (was non-empty, now blank) submits JSON `null` to CLEAR it server-
+   * side; an unchanged field is OMITTED (=keep). Dates/emails/phones are strings;
+   * pto_grandfathered is a boolean.
+   */
+  function buildProfilePatch(values: ProfileValues): EmployeeProfilePatch {
+    const patch: EmployeeProfilePatch = {};
+    const strKeys = [
+      "work_email",
+      "personal_email",
+      "personal_phone",
+      "work_phone",
+      "address",
+      "start_date",
+      "pto_tenure_credit_date",
+    ] as const;
+    for (const key of strKeys) {
+      const next = values[key];
+      const prev = profileDefaults[key];
+      if (next === prev) continue; // unchanged → omit (keep)
+      patch[key] = next === "" ? null : next; // cleared → null; else the new value
+    }
+    if (values.pto_grandfathered !== profileDefaults.pto_grandfathered) {
+      patch.pto_grandfathered = values.pto_grandfathered;
+    }
+    return patch;
+  }
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -271,7 +336,26 @@ export default function EmployeeForm({
     // Archiving is a separate confirmed action on the card — the form never flips it.
     out.set("archived", employee?.archivedAt ? "true" : "false");
     out.set("pay_config", JSON.stringify(payConfig));
-    start(() => dispatch(out));
+
+    // Profile fields (contact/dates/grandfather) save via the SEPARATE profile
+    // RPC — only in edit mode (the patch needs an existing employee id) and only
+    // when something actually changed. pay_config still saves via the upsert path.
+    const profilePatch = isEdit ? buildProfilePatch(readProfileValues(fd)) : {};
+    const profileOut =
+      employee && Object.keys(profilePatch).length > 0
+        ? (() => {
+            const p = new FormData();
+            p.set("employee_id", employee.id);
+            p.set("patch", JSON.stringify(profilePatch));
+            return p;
+          })()
+        : null;
+
+    setProfileInFlight(profileOut !== null);
+    start(() => {
+      dispatch(out);
+      if (profileOut) profileDispatch(profileOut);
+    });
   }
 
   const tekTypeLabel =
@@ -355,6 +439,20 @@ export default function EmployeeForm({
           synced from Tekmetric.
         </span>
       </label>
+
+      {/* Contact & personal + PTO tenure — edit mode only (the profile patch
+          needs an existing employee id; add mode fills these in via Edit). */}
+      {isEdit ? (
+        <EmployeeContactPanel values={profileDefaults} />
+      ) : (
+        <div className="rounded-lg border border-dashed border-border p-4">
+          <p className="text-sm font-semibold text-foreground">Contact &amp; personal</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Add this person first, then use Edit to enter their emails, phones, address, start date,
+            and PTO tenure options.
+          </p>
+        </div>
+      )}
 
       {/* Pay config (role-driven) — key={family} remounts the panel cleanly on swap */}
       <div key={family} className="rounded-lg border border-dashed border-border p-4">
@@ -454,44 +552,22 @@ export default function EmployeeForm({
         </div>
       </div>
 
-      {/* PTO (phase 1 — manual) */}
-      <div className="rounded-lg border border-dashed border-border p-4">
-        <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
-          PTO
-          <Badge variant="secondary">phase 1</Badge>
-        </p>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          Accrual is entered by hand for now — the automatic accrual engine comes later.
-        </p>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          <Field
-            name="pto_balance_hours"
-            label="Available balance (hours)"
-            defaultValue={numToStr(cfg, "pto_balance_hours") || "0"}
-            placeholder="0"
-          />
-          <Field
-            name="pto_accrual_hours_per_period"
-            label="Accrual (hours per pay period)"
-            defaultValue={numToStr(cfg, "pto_accrual_hours_per_period") || "0"}
-            placeholder="0"
-          />
-        </div>
-      </div>
-
       <div className="flex flex-wrap items-center gap-2">
-        <Button type="submit" loading={pending} loadingText="Saving…">
+        <Button type="submit" loading={pending || profilePending} loadingText="Saving…">
           {isEdit ? <Save aria-hidden="true" /> : <UserPlus aria-hidden="true" />}
           {isEdit ? "Save changes" : "Add employee"}
         </Button>
         {isEdit && onDone && (
-          <Button type="button" variant="ghost" onClick={onDone} disabled={pending}>
+          <Button type="button" variant="ghost" onClick={onDone} disabled={pending || profilePending}>
             Cancel
           </Button>
         )}
         {clientError && <span className="text-sm text-red-700 dark:text-red-400">{clientError}</span>}
         {!clientError && state?.ok === false && (
           <span className="text-sm text-red-700 dark:text-red-400">{state.message}</span>
+        )}
+        {!clientError && state?.ok !== false && profileState?.ok === false && (
+          <span className="text-sm text-red-700 dark:text-red-400">{profileState.message}</span>
         )}
         {state?.ok && (
           <span className="text-sm text-emerald-800 dark:text-emerald-300">{isEdit ? "Saved." : "Added."}</span>

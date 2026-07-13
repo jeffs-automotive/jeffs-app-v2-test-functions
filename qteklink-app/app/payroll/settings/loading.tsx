@@ -1,7 +1,8 @@
 /**
  * Route skeleton for /payroll/settings — mirrors the page shape (header + back
- * row + explainer band + spiff-grid card + two smaller cards) while the RSC
- * streams. Presentational Next.js convention file; no functional wiring.
+ * row + explainer band + spiff-grid card + PTO tiers card + alert-emails card +
+ * anchor card) while the RSC streams. Presentational Next.js convention file;
+ * no functional wiring.
  */
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -32,7 +33,18 @@ export default function PayrollSettingsLoading() {
         <Skeleton className="h-8 w-44" />
       </div>
 
-      <Skeleton className="mt-6 h-48 w-full rounded-xl" />
+      {/* PTO accrual tiers card: a few tier rows + rollover cap + save */}
+      <div className="mt-6 space-y-3 rounded-xl p-4 ring-1 ring-foreground/10">
+        <Skeleton className="h-5 w-40" />
+        <Skeleton className="h-4 w-full max-w-xl" />
+        {Array.from({ length: 3 }).map((_, i) => (
+          <Skeleton key={i} className="h-8 w-64" />
+        ))}
+        <Skeleton className="h-8 w-32" />
+      </div>
+
+      {/* Alert-emails card: four chip lists */}
+      <Skeleton className="mt-6 h-72 w-full rounded-xl" />
       <Skeleton className="mt-6 h-36 w-full rounded-xl" />
     </main>
   );
