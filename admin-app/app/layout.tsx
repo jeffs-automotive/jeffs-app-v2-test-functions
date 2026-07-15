@@ -1,11 +1,21 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Poppins } from "next/font/google";
 import { cn } from "@/lib/utils";
 import { Providers } from "./providers";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-sans" });
 const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-mono" });
+
+// Poppins is the scheduler's "Heritage" typeface — published here ONLY so the
+// scoped `.heritage-preview` card-text preview can render in the customer's
+// exact type. Geist stays the admin app font; nothing else uses Poppins.
+const poppins = Poppins({
+  subsets: ["latin"],
+  variable: "--font-poppins",
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Jeff's Automotive — Admin",
@@ -34,7 +44,12 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={cn("font-sans", geist.variable, geistMono.variable)}
+      className={cn(
+        "font-sans",
+        geist.variable,
+        geistMono.variable,
+        poppins.variable,
+      )}
       suppressHydrationWarning
     >
       <body className="bg-background text-foreground antialiased">

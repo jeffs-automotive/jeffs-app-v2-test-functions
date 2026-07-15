@@ -1,0 +1,469 @@
+/*
+ * card-preview.css — the scoped "Heritage" port for the Card-Text preview.
+ *
+ * All --hp-* VALUES are byte-copied from scheduler-app/app/globals.css — the
+ * anti-drift guarantee. This stylesheet is fully self-contained under its own
+ * --hp-* namespace + .hp-* classes; it reads NONE of admin's --background /
+ * --primary / --radius tokens and emits no Tailwind color/radius utility, so
+ * it is isolated in both directions and immune to admin's live .dark theme
+ * (color-scheme:light + hard-coded values pin it to Heritage light).
+ *
+ * See .claude/work/design/card-text-editor-spec.md §4.
+ */
+.heritage-preview {
+  /* neutrals */
+  --hp-paper: #f5f1e8;
+  --hp-paper-100: #fdfaf3;
+  --hp-paper-200: #f0eadd;
+  --hp-paper-300: #e7dfd0;
+  --hp-ink: #2a2622;
+  --hp-ink-secondary: #5c534a;
+  --hp-ink-tertiary: #766c61;
+  --hp-rule: #ddd3be;
+  --hp-rule-strong: #b89e72;
+  --hp-rule-input: #9c8a6e;
+  /* burgundy ramp (only the values the preview + chips use) */
+  --hp-burgundy-50: #fdf2f5;
+  --hp-burgundy-100: #fbe5eb;
+  --hp-burgundy-200: #f6c8d4;
+  --hp-burgundy-500: #cb3a5d;
+  --hp-burgundy-700: #96003c;
+  --hp-burgundy-800: #7d0033;
+  /* gold (decorative only) + sanctioned bronze for gold-toned TEXT if ever needed */
+  --hp-gold-300: #d2b487;
+  --hp-gold-400: #c79964;
+  --hp-bronze-700: #7e5226;
+  /* status (disclosure/countdown ghosts) */
+  --hp-warn-bg: #fdf3dc;
+  --hp-warn-fg: #6a4e14;
+  --hp-err-bg: #f7e0df;
+  --hp-err-fg: #6c1a18;
+  /* radii + elevation + motion */
+  --hp-radius-card: 6px;
+  --hp-radius-input: 4px;
+  --hp-radius-pill: 9999px;
+  --hp-shadow-card: 0 1px 2px rgba(42, 38, 34, 0.04), 0 4px 12px -2px rgba(42, 38, 34, 0.06);
+  --hp-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  /* type — Poppins var published on <html> by admin layout.tsx */
+  --hp-font: var(--font-poppins), system-ui, -apple-system, "Segoe UI", "Roboto",
+    sans-serif;
+
+  color-scheme: light; /* pin light even under admin .dark */
+  background: var(--hp-paper);
+  background-image: radial-gradient(
+      ellipse at top,
+      rgba(255, 255, 255, 0.4) 0%,
+      transparent 60%
+    ),
+    radial-gradient(ellipse at bottom, rgba(0, 0, 0, 0.02) 0%, transparent 60%);
+  font-family: var(--hp-font);
+  color: var(--hp-ink);
+}
+
+/* ── card shell ─────────────────────────────────────────────────────────── */
+.heritage-preview .hp-card {
+  width: 100%;
+  max-width: 34rem;
+  background: var(--hp-paper-100);
+  border-top: 1px solid var(--hp-rule);
+  border-bottom: 1px solid var(--hp-rule);
+  box-shadow: var(--hp-shadow-card);
+  padding: 1.75rem 1.5rem; /* px-6 py-7 */
+}
+@media (min-width: 640px) {
+  .heritage-preview .hp-card {
+    padding: 2rem; /* sm:p-8 */
+    border-radius: var(--hp-radius-card);
+  }
+}
+
+/* selected-card cross-fade (motion-safe only) */
+@media (prefers-reduced-motion: no-preference) {
+  .heritage-preview .hp-card[data-fade="true"] {
+    animation: hp-fade 120ms var(--hp-ease);
+  }
+}
+@keyframes hp-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ── typography roles (reproduce the real Card slots) ───────────────────── */
+.heritage-preview .hp-eyebrow {
+  font-size: 0.6875rem;
+  line-height: 1.2;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--hp-ink-tertiary);
+}
+.heritage-preview .hp-title {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  font-size: 1.5rem;
+  line-height: 1.15;
+  color: var(--hp-ink);
+}
+@media (min-width: 640px) {
+  .heritage-preview .hp-title {
+    font-size: 28px;
+  }
+}
+.heritage-preview .hp-desc {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--hp-ink-secondary);
+}
+.heritage-preview .hp-body {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--hp-ink-secondary);
+}
+.heritage-preview .hp-body-heading {
+  font-weight: 600;
+  font-size: 17px;
+  line-height: 1.35;
+  color: var(--hp-ink);
+}
+.heritage-preview .hp-footnote {
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--hp-ink-tertiary);
+}
+
+/* vertical rhythm mirroring the real Card (mt-2 / mt-4 / mt-5) */
+.heritage-preview .hp-slot {
+  margin-top: 0.5rem;
+}
+.heritage-preview .hp-slot:first-child {
+  margin-top: 0;
+}
+/* the title lives inside an <h2> (SR heading contract) — neutralize UA styling
+   so the field's own .hp-title typography is what shows. */
+.heritage-preview .hp-h2 {
+  margin: 0;
+  font: inherit;
+  font-weight: inherit;
+}
+.heritage-preview .hp-body-region {
+  margin-top: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.heritage-preview .hp-footnote-region {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* gold-note callout (disclosure) */
+.heritage-preview .hp-goldnote {
+  border-left: 2px solid var(--hp-gold-400);
+  background: var(--hp-paper-200);
+  border-radius: var(--hp-radius-input);
+  padding: 0.5rem 0.75rem;
+}
+.heritage-preview .hp-goldnote .hp-body {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* ── inline editable field (invisible at rest, affordance on interaction) ── */
+.heritage-preview .hp-field-wrap {
+  position: relative;
+  margin: -2px -6px; /* pull the field flush with surrounding card text */
+}
+.heritage-preview .hp-field-gutter {
+  position: absolute;
+  left: -1.1rem;
+  top: 0.15rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+}
+/* textarea (the real control) + overlay (chips) share box + typography */
+.heritage-preview .hp-field,
+.heritage-preview .hp-overlay {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 2px 6px;
+  border: 1px solid transparent;
+  border-radius: var(--hp-radius-input);
+  font: inherit;
+  letter-spacing: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+.heritage-preview textarea.hp-field {
+  display: block;
+  margin: 0;
+  background: transparent;
+  color: transparent; /* raw text hidden at rest; overlay shows chips */
+  caret-color: var(--hp-burgundy-700);
+  resize: none;
+  overflow: hidden;
+  transition: border-color 120ms var(--hp-ease), background-color 120ms var(--hp-ease);
+}
+.heritage-preview textarea.hp-field::placeholder {
+  color: var(--hp-ink-tertiary);
+}
+.heritage-preview textarea.hp-field:hover {
+  border-color: var(--hp-rule);
+  background: rgba(255, 255, 255, 0.35);
+}
+.heritage-preview textarea.hp-field:focus {
+  outline: none;
+  color: var(--hp-ink); /* show raw tokens for editing */
+  border-color: var(--hp-burgundy-500);
+  box-shadow: 0 0 0 3px var(--hp-burgundy-200);
+  background: var(--hp-paper-100);
+}
+.heritage-preview textarea.hp-field[data-dirty="true"] {
+  border-color: var(--hp-gold-400);
+}
+.heritage-preview textarea.hp-field[aria-invalid="true"] {
+  border-color: var(--hp-err-fg);
+  box-shadow: 0 0 0 3px var(--hp-err-bg);
+}
+/* overlay: chips at rest, absolutely stacked over the textarea */
+.heritage-preview .hp-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  color: inherit;
+}
+.heritage-preview textarea.hp-field:focus ~ .hp-overlay {
+  display: none; /* reveal raw tokens while editing */
+}
+
+/* dirty gutter dot + edit cue + reset control */
+.heritage-preview .hp-dot {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: var(--hp-radius-pill);
+  background: var(--hp-gold-400);
+}
+.heritage-preview .hp-editcue {
+  font-size: 0.7rem;
+  color: var(--hp-ink-tertiary);
+  opacity: 0;
+  transition: opacity 120ms var(--hp-ease);
+}
+.heritage-preview .hp-field-wrap:hover .hp-editcue {
+  opacity: 0.7;
+}
+.heritage-preview .hp-reset {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  min-height: 1.5rem;
+  padding: 0.25rem;
+  border: none;
+  background: transparent;
+  color: var(--hp-ink-tertiary);
+  border-radius: var(--hp-radius-input);
+  cursor: pointer;
+}
+.heritage-preview .hp-reset:hover {
+  color: var(--hp-burgundy-700);
+  background: rgba(255, 255, 255, 0.5);
+}
+.heritage-preview .hp-reset:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--hp-burgundy-200);
+}
+
+/* per-slot affordance rail (insert-field + reset), shown when field active */
+.heritage-preview .hp-afford {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+  margin-top: 0.375rem;
+}
+.heritage-preview .hp-insert {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.5rem;
+  padding: 0.1rem 0.5rem;
+  font-size: 0.72rem;
+  font-family: var(--hp-font);
+  color: var(--hp-burgundy-700);
+  background: var(--hp-burgundy-50);
+  border: 1px solid var(--hp-burgundy-200);
+  border-radius: var(--hp-radius-input);
+  cursor: pointer;
+}
+.heritage-preview .hp-insert:hover {
+  background: var(--hp-burgundy-100);
+}
+.heritage-preview .hp-insert:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--hp-burgundy-200);
+}
+.heritage-preview .hp-hint {
+  font-size: 0.72rem;
+  color: var(--hp-ink-tertiary);
+}
+
+/* inline validation message under a field */
+.heritage-preview .hp-error {
+  margin-top: 0.375rem;
+  border: 1px solid var(--hp-err-fg);
+  background: var(--hp-err-bg);
+  color: var(--hp-err-fg);
+  border-radius: var(--hp-radius-input);
+  padding: 0.35rem 0.5rem;
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+.heritage-preview .hp-warn {
+  margin-top: 0.375rem;
+  border: 1px solid var(--hp-gold-400);
+  background: var(--hp-warn-bg);
+  color: var(--hp-warn-fg);
+  border-radius: var(--hp-radius-input);
+  padding: 0.35rem 0.5rem;
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+/* ── merge chip (burgundy sample value, gold underline) ─────────────────── */
+.heritage-preview .hp-chip {
+  display: inline;
+  padding: 0 0.28em;
+  border-radius: var(--hp-radius-input);
+  background: var(--hp-burgundy-50);
+  color: var(--hp-burgundy-700);
+  box-shadow: inset 0 -1px 0 var(--hp-gold-400);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* ── ghosts (non-copy controls, static + inert) ─────────────────────────── */
+.heritage-preview .hp-ghost {
+  opacity: 0.55;
+  pointer-events: none;
+}
+.heritage-preview .hp-ghost-wrap {
+  border: 1px dashed var(--hp-rule);
+  border-radius: var(--hp-radius-input);
+  padding: 0.75rem;
+  position: relative;
+}
+.heritage-preview .hp-ghost-tag {
+  position: absolute;
+  top: -0.6rem;
+  left: 0.5rem;
+  background: var(--hp-paper);
+  padding: 0 0.35rem;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--hp-ink-tertiary);
+}
+.heritage-preview .hp-ghost-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+@media (min-width: 640px) {
+  .heritage-preview .hp-ghost-btns[data-layout="row"] {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+}
+.heritage-preview .hp-ghost-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  padding: 0 1rem;
+  border-radius: var(--hp-radius-input);
+  font: inherit;
+  font-weight: 500;
+  font-size: 15px;
+}
+.heritage-preview .hp-ghost-btn[data-tone="primary"] {
+  background: var(--hp-burgundy-700);
+  color: #fff;
+}
+.heritage-preview .hp-ghost-btn[data-tone="secondary"] {
+  border: 1px solid var(--hp-burgundy-700);
+  color: var(--hp-burgundy-700);
+  background: transparent;
+}
+.heritage-preview .hp-ghost-btn[data-tone="ghost"] {
+  color: var(--hp-burgundy-700);
+  background: transparent;
+}
+/* gold-dot trust row */
+.heritage-preview .hp-ghost-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.heritage-preview .hp-ghost-badge {
+  font-size: 0.6875rem;
+  line-height: 1.2;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--hp-ink-tertiary);
+}
+.heritage-preview .hp-ghost-dot {
+  width: 0.25rem;
+  height: 0.25rem;
+  border-radius: var(--hp-radius-pill);
+  background: var(--hp-gold-400);
+}
+.heritage-preview .hp-ghost-input {
+  border: 1px solid var(--hp-rule-input);
+  border-radius: var(--hp-radius-input);
+  background: var(--hp-paper-100);
+  color: var(--hp-ink-tertiary);
+  padding: 0.5rem 0.6rem;
+  font: inherit;
+  font-size: 15px;
+}
+.heritage-preview .hp-ghost-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.heritage-preview .hp-ghost-listrow {
+  height: 0.75rem;
+  border-radius: var(--hp-radius-input);
+  background: var(--hp-paper-200);
+}
+.heritage-preview .hp-ghost-divider {
+  border-top: 1px solid var(--hp-rule);
+}
+.heritage-preview .hp-ghost-divider[data-tone="gold"] {
+  border-top-color: var(--hp-gold-400);
+}
+.heritage-preview .hp-ghost-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.7rem;
+  border: 1px solid var(--hp-rule);
+  border-radius: var(--hp-radius-pill);
+  color: var(--hp-ink-tertiary);
+  font-size: 0.75rem;
+}
+
+/* ── loading skeleton (paper-toned card silhouette) ─────────────────────── */
+.heritage-preview .hp-skel {
+  height: 0.85rem;
+  border-radius: var(--hp-radius-input);
+  background: var(--hp-paper-200);
+}
