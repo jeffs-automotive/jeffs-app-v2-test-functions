@@ -671,3 +671,39 @@ Every mutating RPC writes ≥1 audit row.
   replaced with a #51 posted-only suite on `rosInLocalRange("posted_date")`
   (153870 → week 2; unposted-completed counts NOWHERE; stale-posted counts in
   its posted week; evening-boundary shop-local conversion).
+
+---
+
+## Round-11–13 + finish amendments (2026-07-12 → 07-15)
+
+> The §RPCs / §Round-4 sections above were written at round-9 and no longer match
+> the live SQL. Authoritative deltas (verified against the migrations + the DAL):
+
+- **`qteklink_payroll_complete_run` is now 8-param** — the round-9 7-param signature was
+  DROPPED and recreated with a trailing `p_pto_entries jsonb DEFAULT NULL` (migration
+  `20260712200000`). Old positional 7-arg callers resolve via the DEFAULT.
+- **New RPCs (round-11 PTO + live-numbers):** `qteklink_payroll_update_employee_profile`
+  (profile patch — present=write / JSON-null=clear / absent=keep; `full_time` added
+  round-12, rejects JSON-null), `qteklink_payroll_adjust_pto`, `qteklink_payroll_log_email`
+  / `qteklink_payroll_transition_email`, `qteklink_payroll_store_live_snapshot` /
+  `qteklink_payroll_mark_open_runs_stale`, `qteklink_payroll_update_entries` (round-8 batch).
+  New tables: `qteklink_payroll_pto_ledger`, `qteklink_payroll_email_log` (both RLS
+  deny-all, service_role SELECT-only, RPC-only writes). New employee column `full_time`
+  (NOT NULL DEFAULT true; migration `20260712210000`).
+- **Leave-rate seed shape SWAPPED (round-12):** `pay_config.leave_rate_seed_history`
+  entries are now EXACTLY `{period_start, avg_hourly_pay_cents}` (was
+  `{period_start, work_pay_cents, clock_hours}`). The live SQL validator
+  (`qteklink_payroll_validate_pay_config`) + the Zod `LeaveRateSeedEntrySchema` REJECT
+  the old keys. Basis: the MEAN of per-period rates over a rolling **26** periods (was
+  weighted Σpay/Σhours over 12) — leave pay AND the dashboard avg hourly pay.
+- **Seeder input contract (`scripts/payroll-seed-leave-rates.mjs`):** per-entry
+  `{ period_start, avg_hourly_pay_dollars }` (was `work_pay_dollars`/`clock_hours`).
+  Round-13: `--apply` ALSO patches each seeded employee's OPEN-run entry snapshots
+  (via `qteklink_payroll_update_entry`) + marks the runs stale, because live compute
+  reads seeds from the ENTRY snapshot, not the live employee row.
+- **CALC_VERSION 9.**
+- **Finish-round hardening (2026-07-15):** the `/api/payroll/mirror-apply` +
+  `/api/cron/daily-sync` routes compare their bearer secret with a constant-time
+  helper (`@/lib/bearer-auth`, sha256 + `timingSafeEqual`) and Sentry-capture the 401;
+  the range-mode mirror fetch window is padded ±1 day (shop-local boundary safety; the
+  compute re-filters by shop-local `posted_date`, so numbers are unchanged).

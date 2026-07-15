@@ -41,6 +41,7 @@ import { EntryGrid } from "./EntryGrid";
 import { EntryGridReadOnly } from "./EntryGridReadOnly";
 import { PrintButton } from "./PrintButton";
 import { RefreshTekmetricButton } from "./RefreshTekmetricButton";
+import { ResendPaySummariesButton } from "./ResendPaySummariesButton";
 import { RunViewTabs, type RunView } from "./RunViewTabs";
 import { SheetsView } from "./SheetsView";
 import { SummaryView } from "./SummaryView";
@@ -242,7 +243,12 @@ export default async function RunDetailPage({
                 completed-alert list was emailed.
               </p>
             </div>
-            {isAdmin && <VoidCloneButton runId={run.id} period={period} />}
+            {isAdmin && (
+              <div className="flex flex-wrap items-center gap-2">
+                <ResendPaySummariesButton runId={run.id} />
+                <VoidCloneButton runId={run.id} period={period} />
+              </div>
+            )}
           </section>
         )}
 

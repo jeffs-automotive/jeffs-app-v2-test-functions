@@ -106,7 +106,10 @@ body {
    *   --color-voided* = the voided/superseded run — cool slate archival grey,
    *                     clearly not completed (emerald) and not an error (red).
    *                     voided-ink on voided-bg = 9.45:1 (WCAG AA).
-   * Border tokens are UI rules only (≥3:1 vs --card), never text. */
+   * Border tokens are DECORATIVE rules only, never text — and never load-bearing:
+   * each state's meaning rides its bg tint + an icon/sign + an accessible name, so
+   * the border is redundant and is NOT required to meet (and does not meet) the 3:1
+   * non-text-contrast floor. */
   --color-auto: oklch(0.45 0.16 275);
   --color-auto-bg: oklch(0.965 0.02 275);
   --color-auto-border: oklch(0.86 0.05 275);
@@ -121,7 +124,9 @@ body {
    *     (archival slate), so a *balance deficit* reads one-to-one with its own
    *     hue. Never carries meaning alone: paired with a "−" sign + the word
    *     "deficit" + an accessible name. Text-ink on -bg = 6.9:1; on --card =
-   *     7.3:1 (WCAG AA). -border is a UI rule only (≥3:1 vs --card = 3.1:1). */
+   *     7.3:1 (WCAG AA). -border is DECORATIVE redundancy (~1.5:1 vs --card — NOT a
+   *     load-bearing 3:1 indicator; the meaning rides the bg + "−" + accessible
+   *     name, never the ring). */
   --color-pto-negative: oklch(0.44 0.16 25);
   --color-pto-negative-bg: oklch(0.965 0.02 30);
   --color-pto-negative-border: oklch(0.86 0.05 30);
@@ -171,7 +176,8 @@ body {
 
   /* Dark parity for the PTO-negative deficit token (spec pins).
    *   pto-negative ink (warm salmon) on -bg (deep warm brown) = 7.6:1 (WCAG AA);
-   *   -border vs .dark --card = 3.2:1 (UI-rule floor). */
+   *   -border vs .dark --card is DECORATIVE redundancy (~2:1 — NOT a load-bearing
+   *   3:1 indicator). */
   --color-pto-negative: oklch(0.80 0.11 30);
   --color-pto-negative-bg: oklch(0.28 0.04 30);
   --color-pto-negative-border: oklch(0.44 0.05 30);

@@ -23,6 +23,7 @@ import { NextResponse } from "next/server";
 import * as Sentry from "@sentry/nextjs";
 import { z } from "zod";
 import { applyMirrorEventsAndRecompute, fetchMirrorApplyEvents } from "@/lib/dal/payroll-live";
+import { bearerMatches } from "@/lib/bearer-auth";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120; // apply + a possible multi-run recompute
@@ -35,7 +36,20 @@ const BodySchema = z.object({
 export async function POST(req: Request): Promise<Response> {
   const secret = process.env.PAYROLL_MIRROR_APPLY_SECRET;
   const auth = req.headers.get("authorization");
-  if (!secret || auth !== `Bearer ${secret}`) {
+  // Constant-time compare (incident 82dc03d — `!==` leaks per-byte timing); a
+  // rejection is surfaced to Sentry (observability rule 5 — a bare 401 on a
+  // mirror-WRITE endpoint must not be silent).
+  if (!bearerMatches(auth, secret)) {
+    Sentry.withScope((scope) => {
+      scope.setLevel("warning");
+      scope.setTag("event", "signature_fail");
+      scope.setFingerprint(["mirror-apply-auth-fail", "qteklink", "/api/payroll/mirror-apply"]);
+      scope.setContext("request", {
+        ip: req.headers.get("x-real-ip") ?? req.headers.get("x-forwarded-for") ?? "unknown",
+        user_agent: req.headers.get("user-agent") ?? "unknown",
+      });
+      Sentry.captureMessage("qteklink payroll mirror-apply: unauthorized call rejected", "warning");
+    });
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
 

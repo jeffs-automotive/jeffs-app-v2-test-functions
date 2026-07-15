@@ -236,6 +236,13 @@ export default function EmployeeForm({
   const formRef = useRef<HTMLFormElement>(null);
   const onDoneRef = useRef(onDone);
   onDoneRef.current = onDone;
+  // The action-result timestamps captured at THIS submit's dispatch — the settle
+  // effect only treats each dispatch as done once a NEWER result lands, so a stale
+  // success carried over from a prior submit (one that landed one side OK but the
+  // other FAIL, leaving the editor open) can't close the editor mid-flight. BOTH
+  // sides are baselined symmetrically.
+  const upsertPriorTsRef = useRef<number | undefined>(undefined);
+  const profilePriorTsRef = useRef<number | undefined>(undefined);
 
   function loadTekmetricEmployees() {
     setTekLoading(true);
@@ -271,23 +278,33 @@ export default function EmployeeForm({
   };
 
   useEffect(() => {
-    // The pay_config upsert AND (when the submit changed profile fields) the
-    // profile patch each dispatch. The editor is done when the upsert succeeded
-    // AND either no profile patch was in flight OR it settled without failing.
-    const upsertDone = state?.ok === true;
-    const profileFailed = profileState?.ok === false;
-    const profileSettled = !profileInFlight || profileState?.ok === true;
+    // The pay_config upsert AND (when the submit changed profile fields) the profile
+    // patch each dispatch. Close only when the upsert succeeded AND the profile is
+    // settled FOR THIS SUBMIT: a profile patch counts as settled only once its result
+    // timestamp advances past the baseline captured at dispatch. Without that, a stale
+    // profile success from a prior submit (profile-OK + upsert-FAIL, editor left open)
+    // would satisfy `ok === true` and close the editor while THIS submit's profile
+    // patch is still in flight — swallowing its failure and losing the edit.
+    const upsertFresh =
+      state?.timestamp !== undefined && state.timestamp !== upsertPriorTsRef.current;
+    const upsertDone = state?.ok === true && upsertFresh;
+    const profileFresh =
+      profileState?.timestamp !== undefined && profileState.timestamp !== profilePriorTsRef.current;
+    const profileSettled = !profileInFlight || profileFresh;
+    const profileFailed = profileInFlight && profileFresh && profileState?.ok === false;
     if (upsertDone && profileSettled && !profileFailed) {
       router.refresh();
       if (employee === undefined) {
         formRef.current?.reset();
         setRole("technician");
+        setTekId(""); // form.reset() doesn't clear controlled inputs
+        setTekOptions(null);
       } else {
         onDoneRef.current?.();
       }
     }
     // Key on both action timestamps so a two-dispatch save settles cleanly.
-  }, [state?.timestamp, state?.ok, profileState?.timestamp, profileState, profileInFlight, router, employee]);
+  }, [state?.timestamp, state?.ok, profileState?.timestamp, profileState?.ok, profileInFlight, router, employee]);
 
   /**
    * Build the minimal profile patch (only CHANGED fields). A field that was
@@ -357,6 +374,11 @@ export default function EmployeeForm({
         : null;
 
     setProfileInFlight(profileOut !== null);
+    // Baseline BOTH action timestamps BEFORE dispatch so the settle effect tells this
+    // submit's results apart from a prior submit's stale success (either side). The
+    // upsert always dispatches; the profile patch only when something changed.
+    upsertPriorTsRef.current = state?.timestamp;
+    if (profileOut !== null) profilePriorTsRef.current = profileState?.timestamp;
     start(() => {
       dispatch(out);
       if (profileOut) profileDispatch(profileOut);
@@ -437,7 +459,7 @@ export default function EmployeeForm({
           )}
         </span>
         {tekError !== null && (
-          <span className="mt-0.5 block text-xs font-normal normal-case text-destructive">{tekError}</span>
+          <span className="mt-0.5 block text-xs font-normal normal-case text-red-700 dark:text-red-400">{tekError}</span>
         )}
         <span className="mt-0.5 block text-xs font-normal normal-case text-muted-foreground">
           Matched as a {tekTypeLabel} id — derived from the role. Leave blank if this person isn&apos;t

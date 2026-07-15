@@ -229,13 +229,24 @@ export async function runCompletionEmailFanout(
   //    page's two blocks (per-employee table + Run totals card), styled like the
   //    individual pay summaries. HTML from the frozen snapshot; the alertLines
   //    metadata rides as the text fallback + the html footer.
-  const runSummary = renderRunSummaryEmail({
-    period,
-    rows: snapshot.summary ?? [],
-    totals: snapshot.summary_totals ?? null,
-    metaLines: alertLines,
-  });
-  await sendPayrollAlert(shopId, "completed", alertSubject, runSummary.text.split("\n"), runSummary.html);
+  try {
+    const runSummary = renderRunSummaryEmail({
+      period,
+      rows: snapshot.summary ?? [],
+      totals: snapshot.summary_totals ?? null,
+      metaLines: alertLines,
+    });
+    await sendPayrollAlert(shopId, "completed", alertSubject, runSummary.text.split("\n"), runSummary.html);
+  } catch (e) {
+    // sendPayrollAlert never throws, but the render (+ .split) is unguarded — a throw
+    // here would reject the after() callback and skip steps 2-3, stranding the
+    // pre-inserted pay-summary rows `pending` (unrecoverable via resend, which only
+    // requeues `failed`). Swallow-then-capture, exactly like steps 2/3 below.
+    Sentry.captureException(e, {
+      tags: { surface: "qteklink-payroll-completion-fanout", step: "completed_alert", shop_id: String(shopId) },
+      extra: { runId },
+    });
+  }
 
   // 2. Per-employee pay summaries (renderAndSendPaySummaries never throws — it
   //    finalizes each pre-inserted pending row through the atomic claim RPC).

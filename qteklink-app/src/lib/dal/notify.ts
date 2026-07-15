@@ -31,14 +31,22 @@ export async function sendQteklinkEmail(input: SendEmailInput): Promise<boolean>
   const to = input.to.map((t) => t.trim()).filter((t) => t.length > 0);
   if (to.length === 0) {
     console.log(JSON.stringify({ level: "warning", surface: "qteklink-notify", msg: "no recipients configured — email skipped", subject: input.subject }));
-    Sentry.captureMessage("qteklink-notify: notification skipped — no recipients configured (set them on /settings)", "warning");
+    Sentry.captureMessage("qteklink-notify: notification skipped — no recipients configured (set them on /settings)", {
+      level: "warning",
+      tags: { surface: "qteklink-notify" },
+      extra: { subject: input.subject },
+    });
     return false;
   }
   try {
     const base = resolveSupabaseUrl();
     const key = resolveServiceRoleKey();
     if (!base || !key) {
-      Sentry.captureMessage("qteklink-notify: Supabase URL / service key missing — email skipped", "error");
+      Sentry.captureMessage("qteklink-notify: Supabase URL / service key missing — email skipped", {
+        level: "error",
+        tags: { surface: "qteklink-notify" },
+        extra: { subject: input.subject },
+      });
       return false;
     }
     const url = `${base.replace(/\/$/, "")}/functions/v1/qteklink-email`;
@@ -60,7 +68,11 @@ export async function sendQteklinkEmail(input: SendEmailInput): Promise<boolean>
     });
     if (!res.ok) {
       const body = await res.text();
-      Sentry.captureMessage(`qteklink-notify: email send failed (${res.status})`, "error");
+      Sentry.captureMessage(`qteklink-notify: email send failed (${res.status})`, {
+        level: "error",
+        tags: { surface: "qteklink-notify" },
+        extra: { subject: input.subject, status: res.status },
+      });
       console.error(JSON.stringify({ level: "error", surface: "qteklink-notify", status: res.status, body: body.slice(0, 300), subject: input.subject }));
       return false;
     }

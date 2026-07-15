@@ -66,6 +66,9 @@ export async function sendPayrollAlert(
     // text stays required (the edge fn's contract) as the fallback.
     await sendQteklinkEmail({ to: payroll.alert_emails[list], subject, text: lines.join("\n"), html });
   } catch (e) {
-    Sentry.captureException(e, { tags: { surface: "qteklink-payroll-alert", alert_list: list } });
+    Sentry.captureException(e, {
+      tags: { surface: "qteklink-payroll-alert", alert_list: list, shop_id: String(shopId) },
+      extra: { subject },
+    });
   }
 }

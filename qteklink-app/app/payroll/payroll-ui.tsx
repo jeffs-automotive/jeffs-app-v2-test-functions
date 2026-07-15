@@ -43,11 +43,6 @@ export function fmtHoursFixed1(h: number): string {
   return h.toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 }
 
-/** Hours with up to two decimals, no forced minimum — for accrual rates (1.54 hrs/period). */
-export function fmtHours2(h: number): string {
-  return h.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-}
-
 /**
  * Signed hours for the PTO ledger's "± hours" column and the Adjust preview:
  * "+3.50" / "−1.25" / "0.00". The magnitude uses fmtHours (2dp min-1); the sign

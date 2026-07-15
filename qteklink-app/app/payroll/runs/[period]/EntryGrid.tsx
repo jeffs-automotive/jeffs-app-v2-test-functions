@@ -67,8 +67,10 @@ function cellKey(entryId: string, key: string): string {
 const TECH_FAMILIES = ["technician", "shop_foreman"] as const;
 const thCls = "px-2 py-2 text-left align-middle text-xs font-medium uppercase tracking-wide text-muted-foreground whitespace-nowrap";
 const numTh = `${thCls} text-right`;
+// amber-600 (light) clears the 3:1 non-text-contrast floor; the dirty state is ALSO
+// exposed to assistive tech via an "— unsaved" aria-label suffix (never color-alone).
 const dirtyCls =
-  "border-amber-500 bg-amber-50 ring-1 ring-amber-500/60 dark:border-amber-400 dark:bg-amber-950/40";
+  "border-amber-600 bg-amber-50 ring-1 ring-amber-600/70 dark:border-amber-400 dark:bg-amber-950/40";
 
 export function EntryGrid({
   runId,
@@ -358,7 +360,7 @@ function EntryRowGroup({
                     inputMode="decimal"
                     placeholder="0.0"
                     className={`h-8 w-16 text-right tabular-nums ${dirty ? dirtyCls : ""}`}
-                    aria-label={`${entry.displayName} week ${wk} ${f.label.toLowerCase().replace(".", "")} hours`}
+                    aria-label={`${entry.displayName} week ${wk} ${f.label.toLowerCase().replace(".", "")} hours${dirty ? " — unsaved" : ""}`}
                     data-dirty={dirty || undefined}
                     disabled={pending}
                   />
@@ -423,7 +425,7 @@ function EntryRowGroup({
                     inputMode="decimal"
                     placeholder="0.00"
                     className={`h-8 w-20 text-right tabular-nums ${isDirty(entry.id, "manual_incentive_cents") ? dirtyCls : ""}`}
-                    aria-label={`${entry.displayName} manual incentive dollars`}
+                    aria-label={`${entry.displayName} manual incentive dollars${isDirty(entry.id, "manual_incentive_cents") ? " — unsaved" : ""}`}
                     data-dirty={isDirty(entry.id, "manual_incentive_cents") || undefined}
                     disabled={pending}
                   />

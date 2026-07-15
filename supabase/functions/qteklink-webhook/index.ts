@@ -212,16 +212,27 @@ const RO_MIRROR_EVENT_KINDS = new Set([
   "ro_created", "ro_status_updated", "ro_posted", "ro_unposted", "ro_sent_to_ar", "ro_work_approved",
 ]);
 
-function notifyPayrollMirrorApply(eventId: string, eventKind: string): void {
+function notifyPayrollMirrorApply(eventId: string, eventKind: string, shopId: number | null): void {
   const url = Deno.env.get("QTL_MIRROR_APPLY_URL");
   const secret = Deno.env.get("QTL_MIRROR_APPLY_SECRET");
   if (!url || !secret) {
-    // Not configured (visible, not silent) — the nightly ingest still reconciles.
-    console.log(JSON.stringify({
-      level: "info", surface: "qteklink-webhook",
+    // Not configured. In production these secrets ARE set, so reaching here means a
+    // misconfig silently dropping the payroll mirror/recompute for a stored RO —
+    // surface it to Sentry, not just the fn log (observability: no silent drop). The
+    // nightly ingest remains the reconciliation backstop. Fingerprinted so a genuine
+    // misconfig groups into ONE issue rather than one-per-event.
+    console.error(JSON.stringify({
+      level: "warning", surface: "qteklink-webhook",
       msg: "payroll mirror-apply notify skipped — QTL_MIRROR_APPLY_URL/SECRET not set",
-      event_kind: eventKind,
+      event_kind: eventKind, shop_id: shopId,
     }));
+    Sentry.withScope((scope) => {
+      scope.setLevel("warning");
+      scope.setTag("event_kind", eventKind);
+      if (shopId != null) scope.setTag("shop_id", String(shopId));
+      scope.setFingerprint(["mirror-apply-notify-unconfigured", "qteklink"]);
+      Sentry.captureMessage("qteklink-webhook: payroll mirror-apply notify skipped — not configured", "warning");
+    });
     return;
   }
   const notify = fetch(url, {
@@ -235,11 +246,19 @@ function notifyPayrollMirrorApply(eventId: string, eventKind: string): void {
         throw new Error(`payroll mirror-apply notify got ${res.status}: ${text}`);
       }
     })
-    .catch((e: unknown) => {
-      // Best-effort by design — but never silent: fn logs + Sentry (the background
-      // capture may miss the per-request flush, so the console line is the floor).
+    .catch(async (e: unknown) => {
+      // Best-effort by design — but never silent. This runs INSIDE the waitUntil-ed
+      // chain (isolate kept alive) but AFTER withSentryScope's per-request flush has
+      // already fired, so we flush THIS event explicitly or the transport can freeze
+      // before it sends.
       console.error("qteklink-webhook: payroll mirror-apply notify failed:", String(e));
-      Sentry.captureException(e instanceof Error ? e : new Error(String(e)));
+      Sentry.withScope((scope) => {
+        scope.setTag("event_kind", eventKind);
+        if (shopId != null) scope.setTag("shop_id", String(shopId));
+        scope.setExtra("event_id", eventId);
+        Sentry.captureException(e instanceof Error ? e : new Error(String(e)));
+      });
+      await Sentry.flush(2000);
     });
   // Supabase Edge Runtime: keep the isolate alive past the response for the
   // background POST; fall back to a floating (caught) promise elsewhere (tests).
@@ -357,7 +376,7 @@ export async function handler(req: Request): Promise<Response> {
   // (23505 returned above); payment events don't touch the RO mirror.
   const storedId = inserted?.id;
   if (typeof storedId === "string" && RO_MIRROR_EVENT_KINDS.has(eventKind)) {
-    notifyPayrollMirrorApply(storedId, eventKind);
+    notifyPayrollMirrorApply(storedId, eventKind, ev.shopId);
   }
 
   return json(200, { ok: true, stored: true, id: inserted?.id ?? null, event_kind: eventKind });

@@ -21,6 +21,7 @@
  */
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { AlertTriangle, Lock } from "lucide-react";
 import { completePayrollRunAction } from "@/actions/payroll";
 import { fmtUsd } from "@/lib/format";
@@ -190,9 +191,9 @@ export function CompleteRunButton({
               </ul>
               <p className="mt-2">
                 Add a personal email on the{" "}
-                <a href="/payroll/employees" className="font-medium underline">
+                <Link href="/payroll/employees" className="font-medium underline">
                   employees page
-                </a>
+                </Link>
                 , or skip and complete anyway.
               </p>
             </div>

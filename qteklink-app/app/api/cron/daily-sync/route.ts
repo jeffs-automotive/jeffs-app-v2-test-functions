@@ -11,6 +11,7 @@
 import { NextResponse } from "next/server";
 import * as Sentry from "@sentry/nextjs";
 import { listConnectedShops, runNightlySync, type NightlyShopResult } from "@/lib/dal/nightly-sync";
+import { bearerMatches } from "@/lib/bearer-auth";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // reconcile + (auto-post) + the 2-API net can take a while
@@ -18,7 +19,9 @@ export const maxDuration = 300; // reconcile + (auto-post) + the 2-API net can t
 export async function GET(req: Request): Promise<Response> {
   const secret = process.env.CRON_SECRET;
   const auth = req.headers.get("authorization");
-  if (!secret || auth !== `Bearer ${secret}`) {
+  // Constant-time compare (incident 82dc03d — `!==` leaks per-byte timing).
+  if (!bearerMatches(auth, secret)) {
+    Sentry.captureMessage("qteklink daily-sync cron: unauthorized call rejected", "warning");
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
 

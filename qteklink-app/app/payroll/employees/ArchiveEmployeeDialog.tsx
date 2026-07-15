@@ -30,9 +30,13 @@ import {
 
 const labelCls = "block text-xs font-medium uppercase tracking-wide text-muted-foreground";
 
-/** Today as an ISO YYYY-MM-DD (the date input's prefill). */
+/** Today as a LOCAL-calendar YYYY-MM-DD (the date input's prefill). Built from local
+ *  date parts, NOT `toISOString()` — that is UTC, so after ~8 PM Eastern it would
+ *  prefill TOMORROW's date, and this value is submitted as the termination date that
+ *  stops PTO accrual (the office manager's browser runs in the shop's timezone). */
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 export default function ArchiveEmployeeDialog({

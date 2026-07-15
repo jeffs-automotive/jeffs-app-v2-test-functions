@@ -29,15 +29,17 @@ export const labelCls = "block text-xs font-medium uppercase tracking-wide text-
 export const selectCls =
   "rounded-md border border-input bg-card px-2.5 py-1.5 text-sm transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50";
 
-/** Hours with 1 decimal (2 when the value needs it): 40 → "40.0", 3.55 → "3.55". */
-export function fmtHours(h: number): string {
+/** Hours with 1 decimal (2 when the value needs it): 40 → "40.0", 3.55 → "3.55".
+ *  Module-private — consumed only by payBasisLine below (the public surface). */
+function fmtHours(h: number): string {
   const r2 = Math.round(h * 100) / 100;
   const r1 = Math.round(r2 * 10) / 10;
   return r1 === r2 ? r2.toFixed(1) : r2.toFixed(2);
 }
 
-/** Safe numeric read from the raw pay_config JSONB (render "not set" over NaN). */
-export function cfgNum(cfg: Record<string, unknown>, key: string): number | null {
+/** Safe numeric read from the raw pay_config JSONB (render "not set" over NaN).
+ *  Module-private — consumed only by payBasisLine below. */
+function cfgNum(cfg: Record<string, unknown>, key: string): number | null {
   const v = cfg[key];
   return typeof v === "number" && Number.isFinite(v) ? v : null;
 }

@@ -25,7 +25,7 @@ export function RefreshTekmetricButton({ runId }: { runId: string }) {
       fd.set("run_id", runId);
       const res = await refreshPayrollTekmetricDataAction(null, fd);
       if (res.ok) {
-        const parts = [`Pulled ${res.data.rosUpserted} repair orders for the period`];
+        const parts = [`Refreshed ${res.data.rosUpserted} repair orders`];
         if (res.data.bonusMonthRosUpserted !== null) {
           parts.push(`${res.data.bonusMonthRosUpserted} for the bonus month`);
         }

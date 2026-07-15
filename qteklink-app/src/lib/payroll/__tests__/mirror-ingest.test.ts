@@ -229,6 +229,7 @@ function makeDbMock(watermark: { created: string | null; updated: string | null 
   const calls: DbCall[] = [];
   const rpcCalls: { fn: string; args: Record<string, unknown> }[] = [];
   const writeErrors = new Map<string, { message: string }>(); // table → error to return on insert/upsert
+  const mirrorErrors = new Map<number, { message: string }>(); // ro_id → error the mirror-apply RPC returns
 
   const db: MirrorDb = {
     from(table: string) {
@@ -274,10 +275,14 @@ function makeDbMock(watermark: { created: string | null; updated: string | null 
     },
     rpc(fn: string, args: Record<string, unknown>) {
       rpcCalls.push({ fn, args });
+      if (fn === "qteklink_mirror_apply_ro") {
+        const roId = (args.p_ro as { id?: number } | undefined)?.id;
+        return Promise.resolve({ error: (roId != null ? mirrorErrors.get(roId) : null) ?? null });
+      }
       return Promise.resolve({ error: null });
     },
   };
-  return { db, calls, rpcCalls, writeErrors };
+  return { db, calls, rpcCalls, writeErrors, mirrorErrors };
 }
 
 function onePagePager(ros: Record<string, unknown>[]) {
@@ -294,7 +299,7 @@ function onePagePager(ros: Record<string, unknown>[]) {
 
 describe("runMirrorIngest (incremental)", () => {
   it("happy path: watermark −24h since-date, created+updated passes, parents before children, counts", async () => {
-    const { db, calls, rpcCalls } = makeDbMock({ created: "2026-07-08T12:00:00Z", updated: "2026-07-09T09:30:00Z" });
+    const { db, rpcCalls } = makeDbMock({ created: "2026-07-08T12:00:00Z", updated: "2026-07-09T09:30:00Z" });
     const { pager, queries } = onePagePager([sampleRo()]);
 
     const r = await runMirrorIngest({ shopId: SHOP, db, pageRos: pager }, { mode: "incremental" });
@@ -308,27 +313,24 @@ describe("runMirrorIngest (incremental)", () => {
       { updatedDateStart: "2026-07-08T00:00:00Z" },
     ]);
     expect(r).toMatchObject({ rosUpserted: 1, pagesFetched: 1, alerts: [] });
-    expect(rpcCalls).toEqual([]); // clean run → nothing to persist
 
-    // upsert order: parent tekmetric_ros UPSERT first, then child deletes, then child inserts
-    const writes = calls.filter((c) => c.op !== "select");
-    expect(writes[0]).toMatchObject({ op: "upsert", table: "tekmetric_ros" });
-    const deleteTables = writes.filter((c) => c.op === "delete").map((c) => c.table);
-    expect(deleteTables).toEqual([
-      "tekmetric_ro_jobs", "tekmetric_ro_fees", "tekmetric_ro_discounts",
-      "tekmetric_ro_customer_concerns", "tekmetric_ro_sublets",
-    ]);
-    const firstInsertIdx = writes.findIndex((c) => c.op === "insert");
-    const lastDeleteIdx = writes.map((c) => c.op).lastIndexOf("delete");
-    expect(lastDeleteIdx).toBeLessThan(firstInsertIdx); // delete-then-insert
-    // every child level landed
-    const insertTables = writes.filter((c) => c.op === "insert").map((c) => c.table);
-    expect(insertTables).toEqual(expect.arrayContaining([
-      "tekmetric_ro_jobs", "tekmetric_ro_job_labor", "tekmetric_ro_job_parts",
-      "tekmetric_ro_job_fees", "tekmetric_ro_job_discounts", "tekmetric_ro_fees",
-      "tekmetric_ro_discounts", "tekmetric_ro_customer_concerns", "tekmetric_ro_sublets",
-      "tekmetric_ro_sublet_items",
-    ]));
+    // ONE atomic per-RO mirror write: the whole RO (parent + every child level) rides a
+    // single qteklink_mirror_apply_ro transaction, so a failure can't half-replace it.
+    const mirrorCalls = rpcCalls.filter((c) => c.fn === "qteklink_mirror_apply_ro");
+    expect(mirrorCalls).toHaveLength(1);
+    const a = mirrorCalls[0]!.args;
+    expect((a.p_ro as { id: number }).id).toBe(153886);
+    expect(a.p_jobs).toHaveLength(1);
+    expect(a.p_labor).toHaveLength(1);
+    expect(a.p_parts).toHaveLength(1);
+    expect(a.p_job_fees).toHaveLength(1);
+    expect(a.p_job_discounts).toHaveLength(1);
+    expect(a.p_fees).toHaveLength(1);
+    expect(a.p_discounts).toHaveLength(1);
+    expect(a.p_concerns).toHaveLength(1);
+    expect(a.p_sublets).toHaveLength(1);
+    expect(a.p_sublet_items).toHaveLength(1);
+    expect(rpcCalls.filter((c) => c.fn === "record_tekmetric_ingest_alert")).toEqual([]); // clean run
   });
 
   it("unknown-key alert path: alert returned AND persisted via record_tekmetric_ingest_alert", async () => {
@@ -347,31 +349,31 @@ describe("runMirrorIngest (incremental)", () => {
       sample: { brandNewTekmetricField: { surprise: 1 } },
       occurrences: 1,
     });
-    expect(rpcCalls).toEqual([
-      {
-        fn: "record_tekmetric_ingest_alert",
-        args: {
-          p_level: "ro",
-          p_unknown_keys: ["brandNewTekmetricField"],
-          p_ro_id: 153886,
-          p_sample: { brandNewTekmetricField: { surprise: 1 } },
-        },
+    expect(rpcCalls.find((c) => c.fn === "record_tekmetric_ingest_alert")).toEqual({
+      fn: "record_tekmetric_ingest_alert",
+      args: {
+        p_level: "ro",
+        p_unknown_keys: ["brandNewTekmetricField"],
+        p_ro_id: 153886,
+        p_sample: { brandNewTekmetricField: { surprise: 1 } },
       },
-    ]);
+    });
     expect(r.rosUpserted).toBe(1); // the row still lands — alerting never drops data
   });
 
-  it("insert error (type surprise) → insert_error alert; the run continues and reports it", async () => {
-    const { db, writeErrors } = makeDbMock({ created: "2026-07-08T12:00:00Z", updated: null });
-    writeErrors.set("tekmetric_ro_job_labor", { message: 'invalid input syntax for type numeric: "abc"' });
+  it("mirror RPC error → insert_error alert; the whole RO rolls back atomically, run continues", async () => {
+    const { db, mirrorErrors } = makeDbMock({ created: "2026-07-08T12:00:00Z", updated: null });
+    mirrorErrors.set(153886, { message: 'invalid input syntax for type numeric: "abc"' });
     const { pager } = onePagePager([sampleRo()]);
 
     const r = await runMirrorIngest({ shopId: SHOP, db, pageRos: pager }, { mode: "incremental" });
 
     const alert = r.alerts.find((a: IngestAlert) => a.level === "insert_error");
-    expect(alert).toMatchObject({ keys: ["tekmetric_ro_job_labor"], ro_id: 153886 });
+    expect(alert).toMatchObject({ keys: ["qteklink_mirror_apply_ro:153886"], ro_id: 153886 });
     expect((alert!.sample.error as string)).toContain("invalid input syntax");
-    expect(r.rosUpserted).toBe(1); // parent + other children still landed
+    // The RO's replacement rolled back ATOMICALLY (nothing partial landed); the run
+    // still reports the RO processed and surfaces the failure as an ingest alert.
+    expect(r.rosUpserted).toBe(1);
   });
 
   it("empty mirror → throws (a backfill must seed it; never a silent no-op)", async () => {
@@ -392,8 +394,12 @@ describe("runMirrorIngest (range — the per-run refresh action)", () => {
       { mode: "range", postedDateStart: "2026-06-28", postedDateEnd: "2026-07-11" },
     );
 
+    // The FETCH window is padded ±1 day around the shop-local period so a shop behind
+    // UTC never drops ROs posted late on the final local day (their postedDate lands
+    // after a `T23:59:59Z` cap). The payroll compute re-filters the mirror by shop-local
+    // posted_date, so the extra adjacent-day rows never affect the numbers.
     expect(queries).toEqual([
-      { postedDateStart: "2026-06-28T00:00:00Z", postedDateEnd: "2026-07-11T23:59:59Z" },
+      { postedDateStart: "2026-06-27T00:00:00Z", postedDateEnd: "2026-07-12T23:59:59Z" },
     ]);
     expect(r.watermark).toBeNull(); // range mode never touches the incremental watermark
     expect(calls.filter((c) => c.op === "select")).toEqual([]); // no watermark query at all
@@ -417,8 +423,10 @@ describe("runMirrorIngest (range — the per-run refresh action)", () => {
       { mode: "range", postedDateStart: "2026-06-28", postedDateEnd: "2026-07-11", updatedDateStart: "2026-06-28" },
     );
 
+    // Posted window padded ±1 day (shop-local boundary safety); the updated-since pass
+    // is unchanged (it's a lower bound only, no end cap to shift).
     expect(queries).toEqual([
-      { postedDateStart: "2026-06-28T00:00:00Z", postedDateEnd: "2026-07-11T23:59:59Z" },
+      { postedDateStart: "2026-06-27T00:00:00Z", postedDateEnd: "2026-07-12T23:59:59Z" },
       { updatedDateStart: "2026-06-28T00:00:00Z" },
     ]);
     expect(r.watermark).toBeNull();

@@ -216,6 +216,11 @@ export default function EmployeeContactPanel({
                 hint="Overrides the start date for tier lookup — use for acquired-company hires who keep their seniority."
               />
             </div>
+          ) : values.pto_tenure_credit_date ? (
+            // Reveal closed but a date is stored: round-trip it through a hidden input
+            // so the parent's field-diff sees no change. An UNMOUNTED input reads as ""
+            // ⇒ the patch would silently CLEAR the stored tenure-credit date on any save.
+            <input type="hidden" name="pto_tenure_credit_date" value={values.pto_tenure_credit_date} />
           ) : null}
         </div>
       </div>

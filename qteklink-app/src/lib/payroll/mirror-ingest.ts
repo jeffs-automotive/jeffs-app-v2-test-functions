@@ -339,24 +339,13 @@ export interface MirrorDb {
       };
     };
   };
-  rpc(fn: "record_tekmetric_ingest_alert", args: Record<string, unknown>): PromiseLike<DbResult>;
+  rpc(
+    fn: "record_tekmetric_ingest_alert" | "qteklink_mirror_apply_ro",
+    args: Record<string, unknown>,
+  ): PromiseLike<DbResult>;
 }
 
-// ─── upsert one page of ROs (parents before children; children delete-then-insert) ──────────
-
-async function chunkedWrite(
-  table: string,
-  rows: RawObj[],
-  roIds: number[],
-  alerts: AlertCollector,
-  op: (slice: RawObj[]) => PromiseLike<DbResult>,
-): Promise<void> {
-  for (let i = 0; i < rows.length; i += 500) {
-    const slice = rows.slice(i, i + 500);
-    const { error } = await op(slice);
-    if (error) alerts.recordInsertError(table, roIds, error); // alerted + persisted; the run continues
-  }
-}
+// ─── upsert one page of ROs (each RO applied atomically via the mirror RPC) ──────────────────
 
 /** Exported for the round-7 #40 webhook mirror-apply path (payroll-live.ts), which
  *  applies webhook RO payloads through THESE SAME mappers — single-sourced, never
@@ -391,29 +380,50 @@ export async function upsertPage(
     }
   }
 
-  const roIds = roRows.map((r) => r.id as number);
+  // ATOMIC per-RO write (finish-round): each RO's parent + all children land inside
+  // ONE transaction (qteklink_mirror_apply_ro), so a failure can't leave a
+  // partially-replaced RO. The mappers above are unchanged; here we group the built
+  // rows by ro_id and hand each RO's slice to the RPC. A per-RO failure is recorded
+  // to the same ingest-alert surface and the loop continues — one bad RO never fails
+  // the others (per-RO isolation; small payloads even on a 100-RO nightly page).
+  const groupByRo = (rows: RawObj[]): Map<number, RawObj[]> => {
+    const m = new Map<number, RawObj[]>();
+    for (const r of rows) {
+      const k = r.ro_id as number;
+      const g = m.get(k);
+      if (g) g.push(r);
+      else m.set(k, [r]);
+    }
+    return m;
+  };
+  const jobsByRo = groupByRo(jobs);
+  const laborByRo = groupByRo(labor);
+  const partsByRo = groupByRo(parts);
+  const jobFeesByRo = groupByRo(jobFees);
+  const jobDiscountsByRo = groupByRo(jobDiscounts);
+  const feesByRo = groupByRo(fees);
+  const discountsByRo = groupByRo(discounts);
+  const concernsByRo = groupByRo(concerns);
+  const subletsByRo = groupByRo(sublets);
+  const subletItemsByRo = groupByRo(subletItems);
 
-  // parent upsert FIRST (children FK-reference it)
-  await chunkedWrite("tekmetric_ros", roRows, roIds, alerts, (slice) =>
-    db.from("tekmetric_ros").upsert(slice, { onConflict: "id" }));
-
-  // children: delete-then-insert per RO (Tekmetric can remove line items; PK upsert alone
-  // would strand deleted rows). Job/sublet grandchildren go via FK CASCADE.
-  for (const table of ["tekmetric_ro_jobs", "tekmetric_ro_fees", "tekmetric_ro_discounts", "tekmetric_ro_customer_concerns", "tekmetric_ro_sublets"]) {
-    const { error } = await db.from(table).delete().in("ro_id", roIds);
-    if (error) alerts.recordInsertError(`${table}:delete`, roIds, error);
+  for (const roRow of roRows) {
+    const roId = roRow.id as number;
+    const { error } = await db.rpc("qteklink_mirror_apply_ro", {
+      p_ro: roRow,
+      p_jobs: jobsByRo.get(roId) ?? [],
+      p_labor: laborByRo.get(roId) ?? [],
+      p_parts: partsByRo.get(roId) ?? [],
+      p_job_fees: jobFeesByRo.get(roId) ?? [],
+      p_job_discounts: jobDiscountsByRo.get(roId) ?? [],
+      p_fees: feesByRo.get(roId) ?? [],
+      p_discounts: discountsByRo.get(roId) ?? [],
+      p_concerns: concernsByRo.get(roId) ?? [],
+      p_sublets: subletsByRo.get(roId) ?? [],
+      p_sublet_items: subletItemsByRo.get(roId) ?? [],
+    });
+    if (error) alerts.recordInsertError(`qteklink_mirror_apply_ro:${roId}`, [roId], error);
   }
-
-  await chunkedWrite("tekmetric_ro_jobs", jobs, roIds, alerts, (s) => db.from("tekmetric_ro_jobs").insert(s));
-  await chunkedWrite("tekmetric_ro_job_labor", labor, roIds, alerts, (s) => db.from("tekmetric_ro_job_labor").insert(s));
-  await chunkedWrite("tekmetric_ro_job_parts", parts, roIds, alerts, (s) => db.from("tekmetric_ro_job_parts").insert(s));
-  await chunkedWrite("tekmetric_ro_job_fees", jobFees, roIds, alerts, (s) => db.from("tekmetric_ro_job_fees").insert(s));
-  await chunkedWrite("tekmetric_ro_job_discounts", jobDiscounts, roIds, alerts, (s) => db.from("tekmetric_ro_job_discounts").insert(s));
-  await chunkedWrite("tekmetric_ro_fees", fees, roIds, alerts, (s) => db.from("tekmetric_ro_fees").insert(s));
-  await chunkedWrite("tekmetric_ro_discounts", discounts, roIds, alerts, (s) => db.from("tekmetric_ro_discounts").insert(s));
-  await chunkedWrite("tekmetric_ro_customer_concerns", concerns, roIds, alerts, (s) => db.from("tekmetric_ro_customer_concerns").insert(s));
-  await chunkedWrite("tekmetric_ro_sublets", sublets, roIds, alerts, (s) => db.from("tekmetric_ro_sublets").insert(s));
-  await chunkedWrite("tekmetric_ro_sublet_items", subletItems, roIds, alerts, (s) => db.from("tekmetric_ro_sublet_items").insert(s));
 
   return { ros: roRows.length, jobs: jobs.length, concerns: concerns.length };
 }
@@ -531,8 +541,19 @@ export async function runMirrorIngest(deps: MirrorIngestDeps, opts: MirrorIngest
     if (opts.updatedDateStart !== undefined && !isIsoDate(opts.updatedDateStart)) {
       throw new Error("mirror-ingest: range mode updatedDateStart must be ISO YYYY-MM-DD");
     }
+    // Tekmetric filters postedDate by UTC instants, but a payroll period is defined in
+    // SHOP-LOCAL dates. A shop behind UTC would otherwise DROP ROs posted late on the
+    // period's final local day (their postedDate lands after the `T23:59:59Z` cap). Pad
+    // the FETCH window ±1 day so no boundary RO is missed; the payroll compute re-filters
+    // the mirror by shop-local posted_date (derive.ts fetchRosByLocalDate), so the extra
+    // adjacent-day rows never change the numbers — the mirror is a superset regardless.
+    const shiftDays = (iso: string, days: number) =>
+      new Date(Date.parse(`${iso}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
     await runPasses([
-      { postedDateStart: `${opts.postedDateStart}T00:00:00Z`, postedDateEnd: `${opts.postedDateEnd}T23:59:59Z` },
+      {
+        postedDateStart: `${shiftDays(opts.postedDateStart, -1)}T00:00:00Z`,
+        postedDateEnd: `${shiftDays(opts.postedDateEnd, 1)}T23:59:59Z`,
+      },
       // Round-7 #42: the updated-since pass (dry-run) — completed-but-unposted ROs.
       ...(opts.updatedDateStart !== undefined
         ? [{ updatedDateStart: `${opts.updatedDateStart}T00:00:00Z` }]

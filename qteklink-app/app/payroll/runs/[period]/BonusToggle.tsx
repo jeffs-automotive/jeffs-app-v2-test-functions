@@ -90,7 +90,7 @@ export function BonusToggle({
     >
       <label className="flex items-center gap-3 text-sm">
         <span
-          className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+          className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring/60 has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-background ${
             bonusPeriod ? "bg-primary" : "bg-muted-foreground/30"
           } ${canEdit && !pending ? "" : "opacity-60"}`}
         >
