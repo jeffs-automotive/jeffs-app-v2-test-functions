@@ -1,5 +1,6 @@
 import { ensureSessionExists } from "@/lib/scheduler/session-create";
 import { hydrateSession } from "@/lib/scheduler/hydrate-session";
+import { getCardText } from "@/lib/scheduler/card-text";
 import { getCurrentCard } from "@/lib/scheduler/wizard/get-current-card";
 import { signBeaconPayload } from "@/lib/security/beacon-hmac";
 import { WizardCrossCutting } from "@/components/scheduler/wizard/WizardCrossCutting";
@@ -37,7 +38,9 @@ export async function BookPageShell() {
   // to greeting inside getCurrentCard itself.
   const card = (await getCurrentCard(chatId)) ?? {
     step: "greeting" as const,
-    payload: {},
+    // getCardText never throws — returns hardcoded defaults on a read error,
+    // so the DB-error fallback card still has complete copy.
+    payload: { copy: await getCardText("greeting") },
   };
 
   // P1.5 + validator-2-followup (2026-05-25): server-side HMAC sig

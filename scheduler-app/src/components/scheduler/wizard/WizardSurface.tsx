@@ -186,6 +186,7 @@ function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
     case "greeting":
       return (
         <GreetingCard
+          copy={card.payload.copy}
           onSubmit={async ({ is_returning }) => {
             const result = await submitGreetingV2({
               chatId,

@@ -3,6 +3,8 @@
 import { useState } from "react";
 
 import { Button, Card } from "@/components/ui";
+import { interpolate } from "@/lib/scheduler/wizard/card-copy";
+import type { CardCopy } from "@/lib/scheduler/card-text";
 
 /**
  * Step 1 — Greeting card (wizard-first; replaces the textual disclosure +
@@ -18,9 +20,11 @@ import { Button, Card } from "@/components/ui";
  */
 
 export interface GreetingCardProps {
-  /** Optional override of the shop display name. */
+  /** Editable card copy (card-text-editor) — resolved slot strings. */
+  copy: CardCopy<"greeting">;
+  /** Merge value for {{shop_name}} in the description. */
   shop_name?: string;
-  /** Optional override of the assistant name. */
+  /** Merge value for {{agent_name}} in the title. */
   agent_name?: string;
   disabled?: boolean;
   onSubmit: (output: {
@@ -29,6 +33,7 @@ export interface GreetingCardProps {
 }
 
 export function GreetingCard({
+  copy,
   shop_name = "Jeff's Automotive",
   agent_name = "Jeff",
   disabled = false,
@@ -52,13 +57,12 @@ export function GreetingCard({
 
   return (
     <Card aria-labelledby="greeting-title">
-      <Card.Eyebrow>Welcome</Card.Eyebrow>
+      <Card.Eyebrow>{copy.eyebrow}</Card.Eyebrow>
       <Card.Title id="greeting-title">
-        Hi, I&apos;m {agent_name} 👋
+        {interpolate(copy.title, { agent_name })}
       </Card.Title>
       <Card.Description>
-        I&apos;m the AI scheduling assistant for {shop_name}. I&apos;ll walk
-        you through booking an appointment in just a few steps.
+        {interpolate(copy.description, { shop_name })}
       </Card.Description>
 
       <Card.Body className="space-y-4">
@@ -66,13 +70,12 @@ export function GreetingCard({
           role="note"
           className="rounded-[var(--radius-input)] border-l-2 border-brand-gold-400 bg-paper-200 px-3 py-2 text-[13px] leading-relaxed text-ink-secondary"
         >
-          Heads up — this conversation is recorded and reviewed by our team
-          to make sure we&apos;re taking good care of you.
+          {copy.body_disclosure}
         </div>
 
         <div>
           <p className="font-display text-[17px] leading-snug text-ink">
-            Have you been to our shop before?
+            {copy.body_question}
           </p>
         </div>
 
@@ -129,10 +132,7 @@ export function GreetingCard({
         </ul>
       </Card.Body>
 
-      <Card.Footnote>
-        Need a human instead? Tap &quot;Talk to a person&quot; below — no
-        problem. 📞
-      </Card.Footnote>
+      <Card.Footnote>{copy.footnote}</Card.Footnote>
     </Card>
   );
 }

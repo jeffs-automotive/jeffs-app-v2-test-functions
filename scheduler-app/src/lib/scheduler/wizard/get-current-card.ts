@@ -15,6 +15,7 @@ import * as Sentry from "@sentry/nextjs";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getCachedSessionRow } from "@/lib/scheduler/cache";
+import { getCardText } from "@/lib/scheduler/card-text";
 import {
   fetchVehiclesForCustomer,
   listWaiterTimes,
@@ -82,7 +83,7 @@ export async function getCurrentCard(
 
   switch (step) {
     case "greeting":
-      return { step: "greeting", payload: {} };
+      return { step: "greeting", payload: { copy: await getCardText("greeting") } };
 
     case "phone_name": {
       const bucket = row.customer_self_identified as

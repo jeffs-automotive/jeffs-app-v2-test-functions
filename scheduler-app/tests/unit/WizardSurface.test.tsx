@@ -77,7 +77,21 @@ vi.mock("@/lib/scheduler/wizard/actions/submit-back", () => ({ submitBackV2: vi.
 
 import { WizardSurface } from "@/components/scheduler/wizard/WizardSurface";
 
-const greetingCard = { step: "greeting" as const, payload: {} };
+const greetingCard = {
+  step: "greeting" as const,
+  payload: {
+    copy: {
+      eyebrow: "Welcome",
+      title: "Hi, I'm {{agent_name}} 👋",
+      description:
+        "I'm the AI scheduling assistant for {{shop_name}}. I'll walk you through booking an appointment in just a few steps.",
+      body_disclosure:
+        "Heads up — this conversation is recorded and reviewed by our team to make sure we're taking good care of you.",
+      body_question: "Have you been to our shop before?",
+      footnote: 'Need a human instead? Tap "Talk to a person" below — no problem. 📞',
+    },
+  },
+};
 
 describe("<WizardSurface /> failed-submit banner", () => {
   beforeEach(() => {

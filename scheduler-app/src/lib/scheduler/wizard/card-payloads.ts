@@ -18,12 +18,16 @@
  * in phases 3-13).
  */
 import type { WizardStep } from "../session-state";
+import type { CardCopy } from "../card-text";
 
 // ─── Per-step payload types ─────────────────────────────────────────────────
 
-/** Step 1 — Greeting. Hardcoded card chrome; no row data needed. */
+/** Step 1 — Greeting. Card copy is editable via /schedulerconfig (card-text). */
 export interface GreetingPayload {
-  // intentionally empty
+  /** Editable "main copy" (eyebrow/title/description/prose/footnote), resolved
+   *  server-side from scheduler_card_text (defaults ← DB override). Raw
+   *  templates; the card substitutes {{merge_field}} tokens via `interpolate`. */
+  copy: CardCopy<"greeting">;
 }
 
 /** Step 2 — Phone + name capture. Step-label tone varies by greeting bucket. */
