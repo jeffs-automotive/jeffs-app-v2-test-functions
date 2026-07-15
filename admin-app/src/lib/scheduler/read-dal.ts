@@ -323,3 +323,57 @@ export async function findOrphans(lookbackDays = 30): Promise<{
   }));
   return { orphans, count: orphans.length, lookback_days: lookbackDays };
 }
+
+// ─── card text (card-text-editor) ──────────────────────────────────────────
+
+export interface CardTextRow {
+  id: string;
+  card_key: string;
+  slot_key: string;
+  label: string;
+  /** Current (editable) copy; may contain {{merge_field}} tokens. */
+  body: string;
+  /** Immutable shipped copy → "Reset to default". */
+  default_body: string;
+  /** Merge tokens allowed on this slot. */
+  allowed_merge_fields: string[];
+  sort: number;
+  /** Optimistic-concurrency token surfaced to the editor. */
+  updated_at: string;
+  updated_by_email: string | null;
+}
+
+/** All active editable card-copy rows for the shop, ordered card → slot. */
+export async function listCardText(): Promise<CardTextRow[]> {
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("scheduler_card_text")
+    .select(
+      "id, card_key, slot_key, label, body, default_body, allowed_merge_fields, sort, updated_at, updated_by_email",
+    )
+    .eq("shop_id", SHOP_ID)
+    .eq("active", true)
+    .order("card_key", { ascending: true })
+    .order("sort", { ascending: true });
+  if (error) throw new Error(`scheduler_card_text read failed: ${error.message}`);
+  return (data ?? []) as CardTextRow[];
+}
+
+/** One card-copy slot (authoritative structural fields for the save action). */
+export async function getCardTextSlot(
+  cardKey: string,
+  slotKey: string,
+): Promise<CardTextRow | null> {
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("scheduler_card_text")
+    .select(
+      "id, card_key, slot_key, label, body, default_body, allowed_merge_fields, sort, updated_at, updated_by_email",
+    )
+    .eq("shop_id", SHOP_ID)
+    .eq("card_key", cardKey)
+    .eq("slot_key", slotKey)
+    .maybeSingle();
+  if (error) throw new Error(`scheduler_card_text slot read failed: ${error.message}`);
+  return (data ?? null) as CardTextRow | null;
+}

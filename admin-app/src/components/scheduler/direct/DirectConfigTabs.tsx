@@ -16,6 +16,7 @@ const TAB_ORDER: Array<{ key: string; label: string }> = [
   { key: "services", label: "Services" },
   { key: "types", label: "Appointment Types" },
   { key: "templates", label: "Messages" },
+  { key: "cardtext", label: "Card Text" },
   { key: "subcategories", label: "Subcategories" },
   { key: "questions", label: "Questions" },
   { key: "guidelines", label: "Guidelines" },

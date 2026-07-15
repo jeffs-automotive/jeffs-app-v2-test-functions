@@ -20,13 +20,17 @@ import {
   blockCapacity,
   deactivateAppointmentType,
   removeClosedDate,
+  resetCardText,
   runAppointmentsSyncDirect,
   setAppointmentLimits,
   setAppointmentType,
+  setCardText,
   setMessageTemplate,
   unblockCapacity,
 } from "@/lib/scheduler/write-dal";
+import { getCardTextSlot } from "@/lib/scheduler/read-dal";
 import { renderTemplate, validateSmsTemplateBody } from "@/lib/scheduler/template-renderer";
+import { validateCardTextBody } from "@/lib/scheduler/card-merge-fields";
 
 const CONFIG_PATH = "/schedulerconfig";
 
@@ -236,5 +240,80 @@ export const runAppointmentsSyncDirectAction = wrapAdminAction(
     }
     revalidatePath(CONFIG_PATH);
     return { status: "success", timestamp: Date.now() };
+  },
+);
+
+// ─── card text (card-text-editor) ──────────────────────────────────────────
+
+const cardTextSchema = z.object({
+  card_key: z.string().regex(/^[a-z0-9_]{2,60}$/),
+  slot_key: z.string().regex(/^[a-z0-9_]{2,60}$/),
+  body: z.string().trim().min(1).max(2000),
+  expected_updated_at: z.string().optional(),
+});
+
+export const setCardTextAction = wrapAdminAction(
+  "setCardTextAction",
+  async (args: unknown): Promise<DirectFormState> => {
+    const admin = await requireAdmin();
+    const parsed = cardTextSchema.safeParse(args);
+    if (!parsed.success) {
+      return validationError(
+        parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "),
+      );
+    }
+    const { card_key, slot_key, body, expected_updated_at } = parsed.data;
+    // Structural fields (label/default/allowed/sort) come from the seeded row,
+    // NEVER the client — the client only supplies the new body.
+    const row = await getCardTextSlot(card_key, slot_key);
+    if (!row) {
+      return validationError(`Unknown card slot: ${card_key}.${slot_key}`);
+    }
+    const check = validateCardTextBody(body, row.allowed_merge_fields);
+    if (!check.ok) {
+      return validationError(check.error);
+    }
+    const result = await setCardText(
+      admin.email,
+      {
+        card_key,
+        slot_key,
+        body,
+        label: row.label,
+        default_body: row.default_body,
+        allowed_merge_fields: row.allowed_merge_fields,
+        sort: row.sort,
+      },
+      expected_updated_at,
+    );
+    if (result.ok) revalidatePath(CONFIG_PATH);
+    return stateFromResult(result);
+  },
+);
+
+const resetCardTextSchema = z.object({
+  card_key: z.string().regex(/^[a-z0-9_]{2,60}$/),
+  slot_key: z.string().regex(/^[a-z0-9_]{2,60}$/),
+  expected_updated_at: z.string().optional(),
+});
+
+export const resetCardTextAction = wrapAdminAction(
+  "resetCardTextAction",
+  async (args: unknown): Promise<DirectFormState> => {
+    const admin = await requireAdmin();
+    const parsed = resetCardTextSchema.safeParse(args);
+    if (!parsed.success) {
+      return validationError(
+        parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "),
+      );
+    }
+    const { card_key, slot_key, expected_updated_at } = parsed.data;
+    const result = await resetCardText(
+      admin.email,
+      { card_key, slot_key },
+      expected_updated_at,
+    );
+    if (result.ok) revalidatePath(CONFIG_PATH);
+    return stateFromResult(result);
   },
 );

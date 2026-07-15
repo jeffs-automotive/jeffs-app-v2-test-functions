@@ -26,6 +26,7 @@ import { LimitsDirectTab } from "@/components/scheduler/direct/LimitsDirectTab";
 import { ClosedDatesDirectTab } from "@/components/scheduler/direct/ClosedDatesDirectTab";
 import { TypesDirectTab } from "@/components/scheduler/direct/TypesDirectTab";
 import { TemplatesDirectTab } from "@/components/scheduler/direct/TemplatesDirectTab";
+import { CardTextDirectTab } from "@/components/scheduler/direct/CardTextDirectTab";
 import { OperationsDirectTab } from "@/components/scheduler/direct/OperationsDirectTab";
 import { RecentChangesList } from "@/components/scheduler/direct/RecentChangesList";
 
@@ -35,6 +36,7 @@ import {
   listAppointmentLimits,
   listAppointmentTypes,
   listAuditLog,
+  listCardText,
   listClosedDates,
   listGuidelines,
   listMessageTemplates,
@@ -61,6 +63,7 @@ export default async function SchedulerConfigPage() {
     blocks,
     types,
     templates,
+    cardText,
     orphans,
     audit,
   ] = await Promise.all([
@@ -74,6 +77,7 @@ export default async function SchedulerConfigPage() {
     listAppointmentBlocks(todayYmd),
     listAppointmentTypes(),
     listMessageTemplates(),
+    listCardText(),
     findOrphans(30),
     listAuditLog({ limit: 30 }),
   ]);
@@ -90,6 +94,7 @@ export default async function SchedulerConfigPage() {
           services: <ServicesDirectTab routine={routine} testing={testing} />,
           types: <TypesDirectTab types={types} />,
           templates: <TemplatesDirectTab templates={templates} types={types} />,
+          cardtext: <CardTextDirectTab rows={cardText} />,
           subcategories: (
             <SubcategoriesDirectTab
               subcategories={subcategories}

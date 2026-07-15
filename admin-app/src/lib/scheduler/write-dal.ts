@@ -349,3 +349,49 @@ export async function runAppointmentsSyncDirect(args: {
   }
   return { ok: res.ok, status: res.status, summary };
 }
+
+// ─── card text (card-text-editor) ──────────────────────────────────────────
+
+/** Upsert one card-copy slot's body. Structural fields ride along so a
+ *  not-yet-seeded slot still persists (cross-verify §12.1). */
+export function setCardText(
+  actor: string,
+  args: {
+    card_key: string;
+    slot_key: string;
+    body: string;
+    label: string;
+    default_body: string;
+    allowed_merge_fields: string[];
+    sort: number;
+  },
+  expectedUpdatedAt?: string,
+): Promise<DirectWriteResult> {
+  return callRpc("scheduler_set_card_text", {
+    p_shop_id: SHOP_ID,
+    p_actor: actor,
+    p_card_key: args.card_key,
+    p_slot_key: args.slot_key,
+    p_body: args.body,
+    p_label: args.label,
+    p_default_body: args.default_body,
+    p_allowed_merge_fields: args.allowed_merge_fields,
+    p_sort: args.sort,
+    p_expected_updated_at: expectedUpdatedAt ?? null,
+  });
+}
+
+/** Restore one card-copy slot's body to its default_body. */
+export function resetCardText(
+  actor: string,
+  args: { card_key: string; slot_key: string },
+  expectedUpdatedAt?: string,
+): Promise<DirectWriteResult> {
+  return callRpc("scheduler_reset_card_text", {
+    p_shop_id: SHOP_ID,
+    p_actor: actor,
+    p_card_key: args.card_key,
+    p_slot_key: args.slot_key,
+    p_expected_updated_at: expectedUpdatedAt ?? null,
+  });
+}
