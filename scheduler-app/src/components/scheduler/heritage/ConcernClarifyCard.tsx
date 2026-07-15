@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { Button, Card } from "@/components/ui";
+import type { CardCopy } from "@/lib/scheduler/card-text";
 
 /**
  * Step 7.4b — Concern clarify card (act-or-ask AO4, 2026-07-03).
@@ -44,6 +45,8 @@ export interface ConcernClarifyCandidate {
 }
 
 export interface ConcernClarifyCardProps {
+  /** Editable card copy (card-text-editor) — resolved slot strings. */
+  copy: CardCopy<"concern_clarify">;
   /** The customer's own typed concern text, echoed back verbatim. */
   concern_text: string;
   /** 2-3 candidates, ALREADY RANKED best-first by the caller. Rendered in
@@ -70,6 +73,7 @@ function priceLabel(cents: number | null): string {
 }
 
 export function ConcernClarifyCard({
+  copy,
   concern_text,
   candidates,
   disabled = false,
@@ -105,15 +109,13 @@ export function ConcernClarifyCard({
 
   return (
     <Card aria-labelledby="concern-clarify-title">
-      <Card.Eyebrow>A quick check</Card.Eyebrow>
-      <Card.Title id="concern-clarify-title">
-        Which of these sounds closest?
-      </Card.Title>
+      <Card.Eyebrow>{copy.eyebrow}</Card.Eyebrow>
+      <Card.Title id="concern-clarify-title">{copy.title}</Card.Title>
 
       {/* ── Echoed concern: editorial pull-quote (gold rule-accent) ── */}
       {displayedConcern.length > 0 ? (
         <>
-          <p className="label-eyebrow mt-1">Here&apos;s what you told me</p>
+          <p className="label-eyebrow mt-1">{copy.body_concern_label}</p>
           <blockquote
             className={
               "mt-1.5 border-l-2 border-brand-gold-400 pl-3.5 py-0.5 " +
@@ -125,11 +127,7 @@ export function ConcernClarifyCard({
         </>
       ) : null}
 
-      <Card.Description>
-        A couple of these could fit. Tap whichever feels closest — or if none
-        quite match, that&apos;s OK, I&apos;ll pass your note to one of our
-        advisors. 🙂
-      </Card.Description>
+      <Card.Description>{copy.description}</Card.Description>
 
       <Card.Body>
         {/* role="group" + aria-label scopes the choice set for AT without
@@ -221,11 +219,7 @@ export function ConcernClarifyCard({
         </Button>
       </Card.Actions>
 
-      <Card.Footnote>
-        Not sure? No problem — pick &quot;None of these&quot; and a Jeff&apos;s
-        advisor will read your note and sort it out. You can keep booking either
-        way.
-      </Card.Footnote>
+      <Card.Footnote>{copy.footnote}</Card.Footnote>
     </Card>
   );
 }

@@ -1,8 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+  type ReactNode,
+} from "react";
 
 import { Card } from "@/components/ui";
+import { interpolate } from "@/lib/scheduler/wizard/card-copy";
+import type { CardCopy } from "@/lib/scheduler/card-text";
 
 /**
  * Step 7.3 — Diagnostic loading card (Phase 9c, 2026-05-15).
@@ -34,12 +42,21 @@ import { Card } from "@/components/ui";
  * shows an error nudge with a retry; phase 14 unifies the error UX.
  */
 
+const SHOP_PHONE_DISPLAY = "(610) 253-6565";
+
 export interface DiagnosticLoadingCardProps {
+  /** Editable card copy (card-text-editor) — resolved slot strings.
+   *  The error-state body + the role=alert failure block stay hardcoded
+   *  (error messaging is out of the editable "main copy" scope). */
+  copy: CardCopy<"diagnostic_loading">;
   /** Action passed in by WizardSurface — calls runDiagnosticsV2 with the chatId. */
   onMount: () => Promise<{ ok: boolean; error?: string }>;
 }
 
-export function DiagnosticLoadingCard({ onMount }: DiagnosticLoadingCardProps) {
+export function DiagnosticLoadingCard({
+  copy,
+  onMount,
+}: DiagnosticLoadingCardProps) {
   const [, startTransition] = useTransition();
   const startedRef = useRef(false);
   const [stage, setStage] = useState<"running" | "slow" | "very_slow">(
@@ -78,19 +95,19 @@ export function DiagnosticLoadingCard({ onMount }: DiagnosticLoadingCardProps) {
 
   const headline =
     stage === "very_slow"
-      ? "Still working on this..."
+      ? copy.title_very_slow
       : stage === "slow"
-        ? "Still thinking..."
-        : "One moment...";
+        ? copy.title_slow
+        : copy.title_running;
 
-  const body =
+  const body: ReactNode =
     error !== null
       ? "Something went wrong on our side. Hang tight — if this sticks, please call us at (610) 253-6565."
       : stage === "very_slow"
-        ? "This is taking a little longer than usual. Feel free to call us at (610) 253-6565 if you'd rather skip ahead."
+        ? interpolate(copy.body_very_slow, { shop_phone: SHOP_PHONE_DISPLAY })
         : stage === "slow"
-          ? "Almost there — pulling together the right questions for you."
-          : "I'm thinking through what testing might be needed based on what you described.";
+          ? copy.body_slow
+          : copy.body_running;
 
   // R6-D-3 a11y fix 2026-05-16: previously the Card wrapper carried
   // aria-live="polite" which scoped the live region to the entire card
@@ -100,7 +117,7 @@ export function DiagnosticLoadingCard({ onMount }: DiagnosticLoadingCardProps) {
   // role="alert" so screen readers announce failure immediately.
   return (
     <Card aria-labelledby="diagnostic-loading-title">
-      <Card.Eyebrow>Thinking through your concerns</Card.Eyebrow>
+      <Card.Eyebrow>{copy.eyebrow}</Card.Eyebrow>
       <div aria-live={error !== null ? undefined : "polite"} aria-atomic="true">
         <Card.Title id="diagnostic-loading-title">{headline} 🤔</Card.Title>
         <Card.Description>{body}</Card.Description>

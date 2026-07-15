@@ -3,6 +3,8 @@
 import { useState } from "react";
 
 import { Button, Card } from "@/components/ui";
+import { interpolate } from "@/lib/scheduler/wizard/card-copy";
+import type { CardCopy } from "@/lib/scheduler/card-text";
 
 /**
  * Step 3.5b — No-match-choose-path per chat-design.md §3.5b.
@@ -19,6 +21,8 @@ import { Button, Card } from "@/components/ui";
  */
 
 export interface NoMatchChoosePathCardProps {
+  /** Editable card copy (card-text-editor) — resolved slot strings. */
+  copy: CardCopy<"no_match_choose_path">;
   /** What the customer typed for their first name (so we can echo it back). */
   attempted_first_name?: string | null;
   /** Last 4 of the phone they entered, for the "didn't recognize" copy. */
@@ -30,6 +34,7 @@ export interface NoMatchChoosePathCardProps {
 }
 
 export function NoMatchChoosePathCard({
+  copy,
   attempted_first_name,
   attempted_phone_last_four,
   disabled = false,
@@ -55,9 +60,9 @@ export function NoMatchChoosePathCard({
 
   return (
     <Card aria-labelledby="no-match-title">
-      <Card.Eyebrow>One quick fork</Card.Eyebrow>
+      <Card.Eyebrow>{copy.eyebrow}</Card.Eyebrow>
       <Card.Title id="no-match-title">
-        Hmm{echoName} — I&apos;m not finding you in our records 🤔
+        {interpolate(copy.title, { first_name: echoName })}
       </Card.Title>
       <Card.Description>
         We didn&apos;t find an account
@@ -69,18 +74,9 @@ export function NoMatchChoosePathCard({
 
       <Card.Body>
         <ul className="space-y-2 text-[14px] leading-relaxed text-ink-secondary">
-          <li>
-            • You&apos;re new here — we&apos;ll set you up in a few quick
-            steps.
-          </li>
-          <li>
-            • You moved or changed your number — try the one we&apos;d have
-            on file.
-          </li>
-          <li>
-            • You&apos;ve been here as someone else&apos;s guest (a friend
-            or family member). Continue as new and we&apos;ll sort it.
-          </li>
+          <li>{copy.body_reason_new}</li>
+          <li>{copy.body_reason_moved}</li>
+          <li>{copy.body_reason_guest}</li>
         </ul>
       </Card.Body>
 

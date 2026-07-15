@@ -110,6 +110,7 @@ export async function getCurrentCard(
             (row.entered_last_name as string | null) ?? undefined,
           initial_phone_e164:
             (row.phone_e164 as string | null) ?? undefined,
+          copy: await getCardText("phone_name"),
         },
       };
     }
@@ -141,6 +142,7 @@ export async function getCurrentCard(
           attempted_first_name:
             (row.entered_first_name as string | null) ?? null,
           attempted_phone_last_four: phoneLastFour || null,
+          copy: await getCardText("partial_verification_gate"),
         },
       };
 
@@ -157,6 +159,7 @@ export async function getCurrentCard(
         payload: {
           candidates: parseCandidates(row.pending_candidates),
           attempted_phone_last_four: phoneLastFour || null,
+          copy: await getCardText("multi_account_disambiguation"),
         },
       };
 
@@ -167,6 +170,7 @@ export async function getCurrentCard(
           attempted_first_name:
             (row.entered_first_name as string | null) ?? null,
           attempted_phone_last_four: phoneLastFour || null,
+          copy: await getCardText("no_match_choose_path"),
         },
       };
 
@@ -182,6 +186,7 @@ export async function getCurrentCard(
           initial_phones: parsePhones(row.edited_phones),
           initial_emails: parseEmails(row.edited_emails),
           initial_address: parseAddress(row.edited_address),
+          copy: await getCardText("customer_info_edit"),
         },
       };
 
@@ -192,6 +197,7 @@ export async function getCurrentCard(
           first_name: (row.entered_first_name as string | null) ?? "",
           last_name: (row.entered_last_name as string | null) ?? "",
           verified_phone_e164: (row.phone_e164 as string | null) ?? "",
+          copy: await getCardText("new_customer_info"),
         },
       };
 
@@ -248,7 +254,10 @@ export async function getCurrentCard(
     }
 
     case "new_vehicle_form":
-      return { step: "new_vehicle_form", payload: {} };
+      return {
+        step: "new_vehicle_form",
+        payload: { copy: await getCardText("new_vehicle_form") },
+      };
 
     case "service_concern_picker": {
       // 2026-05-17 reshape: single-section picker showing all 10 routine
@@ -347,6 +356,7 @@ export async function getCurrentCard(
     }
 
     case "concern_explanation": {
+      const concernCopy = await getCardText("concern_explanation");
       // Pop the next un-explained item from explanation_required_items.
       // Phase 9c shape: { service_key, display_name, explanation_text } —
       // the first entry with empty explanation_text is the active card.
@@ -364,6 +374,7 @@ export async function getCurrentCard(
             service_key: "",
             display_name: "",
             lead_in_bubble: "",
+            copy: concernCopy,
           },
         };
       }
@@ -376,14 +387,19 @@ export async function getCurrentCard(
             next.service_key,
             next.display_name || next.service_key,
           ),
+          copy: concernCopy,
         },
       };
     }
 
     case "diagnostic_loading":
-      return { step: "diagnostic_loading", payload: {} };
+      return {
+        step: "diagnostic_loading",
+        payload: { copy: await getCardText("diagnostic_loading") },
+      };
 
     case "clarification_question": {
+      const clarificationCopy = await getCardText("clarification_question");
       // Pop head of clarification_questions_pending (Phase 9a writes the
       // full payload there: question_id + question_text + options +
       // service_key + category, in MD-display order).
@@ -401,6 +417,7 @@ export async function getCurrentCard(
             service_key: null,
             category: null,
             multi_select: false,
+            copy: clarificationCopy,
           },
         };
       }
@@ -413,6 +430,7 @@ export async function getCurrentCard(
           service_key: head.service_key,
           category: head.category,
           multi_select: head.multi_select,
+          copy: clarificationCopy,
         },
       };
     }
@@ -425,6 +443,7 @@ export async function getCurrentCard(
       // clarification_question above. When the column is empty/malformed,
       // fall through to a defensive stub (WizardSurface renders the escape-
       // only card so the customer always has the advisor path).
+      const concernClarifyCopy = await getCardText("concern_clarify");
       const clarifyQueue = parseConcernClarifyCandidates(
         (row as Record<string, unknown>).concern_clarify_candidates,
       );
@@ -436,6 +455,7 @@ export async function getCurrentCard(
             concern_text: "",
             service_display_name: null,
             candidates: [],
+            copy: concernClarifyCopy,
           },
         };
       }
@@ -445,6 +465,7 @@ export async function getCurrentCard(
           concern_text: clarifyHead.concern_text,
           service_display_name: clarifyHead.service_display_name,
           candidates: clarifyHead.candidates,
+          copy: concernClarifyCopy,
         },
       };
     }
@@ -482,6 +503,7 @@ export async function getCurrentCard(
         payload: {
           services,
           category: null,
+          copy: await getCardText("testing_service_approval"),
         },
       };
     }
@@ -541,6 +563,7 @@ export async function getCurrentCard(
         payload: {
           common_services: commonServices,
           already_picked: alreadyPicked,
+          copy: await getCardText("second_routine_pass"),
         },
       };
     }
@@ -589,6 +612,7 @@ export async function getCurrentCard(
       return {
         step: "appointment_type",
         payload: {
+          copy: await getCardText("appointment_type"),
           options: apptTypes.map((t) => {
             const isSlotLane = laneFor(t) === "waiter";
             const available = isSlotLane ? waitEligible : true;
@@ -726,13 +750,14 @@ export async function getCurrentCard(
           holdExpiresAt = hold.expires_at as string;
         }
       }
+      const summaryCopy = await getCardText("summary");
       try {
         const payload = await buildSummaryCardPayload({
           chatId,
           hold_id: holdToken,
           hold_expires_at: holdExpiresAt,
         });
-        return { step: "summary", payload };
+        return { step: "summary", payload: { ...payload, copy: summaryCopy } };
       } catch (e) {
         Sentry.captureException(e, {
           tags: { surface: "get_current_card_summary" },
@@ -753,6 +778,7 @@ export async function getCurrentCard(
               "dropoff",
             services: [],
             reminders: [],
+            copy: summaryCopy,
           },
         };
       }
@@ -764,9 +790,13 @@ export async function getCurrentCard(
       // from the same row columns as the summary card. Fail-soft to a
       // minimal payload so the hub always renders SOMETHING (the customer
       // can still tap "back to summary").
+      const editHubCopy = await getCardText("summary_edit_hub");
       try {
         const payload = await buildSummaryEditHubData({ chatId });
-        return { step: "summary_edit_hub", payload };
+        return {
+          step: "summary_edit_hub",
+          payload: { ...payload, copy: editHubCopy },
+        };
       } catch (e) {
         Sentry.captureException(e, {
           tags: { surface: "get_current_card_summary_edit_hub" },
@@ -787,6 +817,7 @@ export async function getCurrentCard(
               time: "",
             },
             hold_active: false,
+            copy: editHubCopy,
           },
         };
       }
@@ -804,6 +835,7 @@ export async function getCurrentCard(
       //   action submitCustomerNotesV2 handles Approve / Edit. Re-parse on
       //   every render so an Edit click (which only bumps edit_attempts)
       //   produces fresh alternate wording without us persisting it.
+      const customerNotesCopy = await getCardText("customer_notes");
       const rawText = (row.customer_notes_text as string | null) ?? null;
       const approved = (row.customer_notes_approved as boolean | null) ?? null;
       const editAttempts =
@@ -819,6 +851,7 @@ export async function getCurrentCard(
             initial_text: rawText,
             parsed_preview: null,
             edit_attempts: editAttempts,
+            copy: customerNotesCopy,
           },
         };
       }
@@ -836,12 +869,16 @@ export async function getCurrentCard(
           initial_text: rawText,
           parsed_preview: parsedPreview,
           edit_attempts: editAttempts,
+          copy: customerNotesCopy,
         },
       };
     }
 
     case "customer_question":
-      return { step: "customer_question", payload: {} };
+      return {
+        step: "customer_question",
+        payload: { copy: await getCardText("customer_question") },
+      };
 
     case "completed": {
       // Phase 13 (2026-05-16): build appointment_label from

@@ -8,6 +8,8 @@ import {
   normalizePhoneE164,
   e164ToDisplay,
 } from "@/lib/scheduler/phone-format";
+import { interpolate } from "@/lib/scheduler/wizard/card-copy";
+import type { CardCopy } from "@/lib/scheduler/card-text";
 
 /**
  * Step 5 (returning customer) — Customer info edit per chat-design.md
@@ -54,6 +56,8 @@ export interface AddressEntry {
 }
 
 export interface CustomerInfoEditCardProps {
+  /** Editable card copy (card-text-editor) — resolved slot strings. */
+  copy: CardCopy<"customer_info_edit">;
   /** Name read from Tekmetric — display-only. Use verified_*. */
   first_name: string;
   last_name: string;
@@ -83,6 +87,7 @@ interface EmailDraft {
 }
 
 export function CustomerInfoEditCard({
+  copy,
   first_name,
   last_name,
   initial_phones = [],
@@ -290,14 +295,11 @@ export function CustomerInfoEditCard({
 
   return (
     <Card aria-labelledby="customer-info-edit-title">
-      <Card.Eyebrow>Confirm your info</Card.Eyebrow>
+      <Card.Eyebrow>{copy.eyebrow}</Card.Eyebrow>
       <Card.Title id="customer-info-edit-title">
-        Welcome back, {first_name}.
+        {interpolate(copy.title, { first_name })}
       </Card.Title>
-      <Card.Description>
-        Quick check that we&apos;ve got your contact info right. Update
-        anything that&apos;s changed.
-      </Card.Description>
+      <Card.Description>{copy.description}</Card.Description>
 
       <Card.Body>
         <form onSubmit={handleSubmit} className="space-y-6">

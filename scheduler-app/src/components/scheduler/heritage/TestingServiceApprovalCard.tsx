@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { Button, Card } from "@/components/ui";
+import type { CardCopy } from "@/lib/scheduler/card-text";
 
 /**
  * Step 7.5 — Testing-service approval card.
@@ -25,6 +26,8 @@ interface TestingServiceOption {
 }
 
 export interface TestingServiceApprovalCardProps {
+  /** Editable card copy (card-text-editor) — resolved slot strings. */
+  copy: CardCopy<"testing_service_approval">;
   services: TestingServiceOption[];
   /** Concern category for the eyebrow label (optional). */
   category?: string;
@@ -41,6 +44,7 @@ function fmtPrice(cents: number): string {
 }
 
 export function TestingServiceApprovalCard({
+  copy,
   services,
   category,
   disabled = false,
@@ -81,16 +85,11 @@ export function TestingServiceApprovalCard({
   return (
     <Card aria-labelledby="testing-approval-title">
       <Card.Eyebrow>
-        Testing we&apos;d recommend{category ? ` · ${category}` : ""}
+        {copy.eyebrow_base}
+        {category ? ` · ${category}` : ""}
       </Card.Eyebrow>
-      <Card.Title id="testing-approval-title">
-        We&apos;d like to look at a couple of things.
-      </Card.Title>
-      <Card.Description>
-        Based on what you described, here&apos;s what our techs would test to
-        narrow it down. Starting prices below — we&apos;ll send a final estimate
-        before any work begins.
-      </Card.Description>
+      <Card.Title id="testing-approval-title">{copy.title}</Card.Title>
+      <Card.Description>{copy.description}</Card.Description>
 
       <Card.Body>
         <ul className="divide-y divide-rule rounded-[var(--radius-input)] border border-rule">
@@ -133,9 +132,7 @@ export function TestingServiceApprovalCard({
         </ul>
 
         <p className="mt-3 text-[12px] leading-relaxed text-ink-tertiary">
-          Starting prices — additional testing may be needed if our techs find
-          something extra. We&apos;ll always send an updated estimate before
-          doing any extra work.
+          {copy.body_pricing_note}
         </p>
       </Card.Body>
 

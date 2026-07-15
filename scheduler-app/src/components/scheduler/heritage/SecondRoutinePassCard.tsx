@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { Button, Card, Chip } from "@/components/ui";
+import type { CardCopy } from "@/lib/scheduler/card-text";
 
 /**
  * SecondRoutinePassCard — Step 7.6 add-on picker.
@@ -29,6 +30,8 @@ import { Button, Card, Chip } from "@/components/ui";
  */
 
 export interface SecondRoutinePassCardProps {
+  /** Editable card copy (card-text-editor) — resolved slot strings. */
+  copy: CardCopy<"second_routine_pass">;
   common_services: Array<{ service_key: string; display_name: string }>;
   /** service_keys the customer already picked at Step 7.1 / 7.2 — shown
    *  disabled with an "already added" badge. */
@@ -42,6 +45,7 @@ export interface SecondRoutinePassCardProps {
 }
 
 export function SecondRoutinePassCard({
+  copy,
   common_services,
   already_picked,
   disabled = false,
@@ -95,14 +99,9 @@ export function SecondRoutinePassCard({
 
   return (
     <Card aria-labelledby="second-routine-heading">
-      <Card.Eyebrow>Anything else?</Card.Eyebrow>
-      <Card.Title id="second-routine-heading">
-        Want to add anything else while you&apos;re here?
-      </Card.Title>
-      <Card.Description>
-        Tap any of these to add them on. The ones you&apos;ve already picked
-        are marked.
-      </Card.Description>
+      <Card.Eyebrow>{copy.eyebrow}</Card.Eyebrow>
+      <Card.Title id="second-routine-heading">{copy.title}</Card.Title>
+      <Card.Description>{copy.description}</Card.Description>
 
       <Card.Body>
         <div className="flex flex-wrap gap-2" role="group" aria-label="Routine add-ons">
@@ -141,8 +140,7 @@ export function SecondRoutinePassCard({
         {common_services.length > 0 ? <Card.Divider /> : null}
         <div>
           <p className="text-[14px] text-ink-secondary">
-            Noticing something that isn&apos;t on the list — a noise, a leak, a
-            warning light?
+            {copy.body_describe_prompt}
           </p>
           <Button
             type="button"

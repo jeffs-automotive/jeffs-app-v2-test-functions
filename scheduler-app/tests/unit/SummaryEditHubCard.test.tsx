@@ -5,6 +5,28 @@ import userEvent from "@testing-library/user-event";
 import { SummaryEditHubCard } from "@/components/scheduler/heritage/SummaryEditHubCard";
 import type { SummaryEditHubPayload } from "@/lib/scheduler/wizard/card-payloads";
 
+// card-text-editor: SummaryEditHubCard now takes editable `copy`. Fixture
+// matches CARD_TEXT_DEFAULTS.summary_edit_hub.
+const HUB_COPY = {
+  eyebrow: "Edit your appointment",
+  title: "What would you like to change?",
+  description:
+    "Tap Edit on any section. Everything else stays exactly as you left it — nothing is lost.",
+  body_section_contact: "Contact",
+  body_section_vehicle: "Vehicle",
+  body_section_services: "Services & concerns",
+  body_section_time: "Appointment time",
+  body_routine_label: "Routine",
+  body_concerns_label: "Concerns to investigate",
+  body_testing_label: "Testing",
+  body_type_waiter: "Waiter ☕",
+  body_type_dropoff: "Dropoff 🚗 — before 10 AM",
+  body_hold_caution:
+    "Editing your time releases the slot we're holding. You'll pick a fresh time and we'll hold that one.",
+  footnote:
+    "Changes you don't touch stay saved. Nothing here is submitted until you confirm on the summary.",
+};
+
 /**
  * SummaryEditHubCard (task EH2) — the summary "Edit something" hub.
  *
@@ -45,13 +67,14 @@ function makePayload(
       time: "09:00",
     },
     hold_active: false,
+    copy: HUB_COPY,
     ...overrides,
   };
 }
 
 describe("<SummaryEditHubCard />", () => {
   it("renders the four Edit buttons with distinct aria-labels + the back-to-summary CTA", () => {
-    render(<SummaryEditHubCard payload={makePayload()} onSelect={vi.fn()} />);
+    render(<SummaryEditHubCard copy={HUB_COPY} payload={makePayload()} onSelect={vi.fn()} />);
 
     expect(
       screen.getByRole("button", { name: /edit contact info/i }),
@@ -71,7 +94,7 @@ describe("<SummaryEditHubCard />", () => {
   });
 
   it("shows the current values per band", () => {
-    render(<SummaryEditHubCard payload={makePayload()} onSelect={vi.fn()} />);
+    render(<SummaryEditHubCard copy={HUB_COPY} payload={makePayload()} onSelect={vi.fn()} />);
 
     expect(screen.getByText("Sarah Johnson")).toBeInTheDocument();
     expect(screen.getByText(/ending in 0123/i)).toBeInTheDocument();
@@ -92,7 +115,7 @@ describe("<SummaryEditHubCard />", () => {
     async (label, section) => {
       const onSelect = vi.fn();
       render(
-        <SummaryEditHubCard payload={makePayload()} onSelect={onSelect} />,
+        <SummaryEditHubCard copy={HUB_COPY} payload={makePayload()} onSelect={onSelect} />,
       );
       await userEvent.click(
         screen.getByRole("button", { name: new RegExp(`^${label}$`, "i") }),
@@ -103,7 +126,7 @@ describe("<SummaryEditHubCard />", () => {
 
   it("fires onSelect('done') from the back-to-summary CTA", async () => {
     const onSelect = vi.fn();
-    render(<SummaryEditHubCard payload={makePayload()} onSelect={onSelect} />);
+    render(<SummaryEditHubCard copy={HUB_COPY} payload={makePayload()} onSelect={onSelect} />);
     await userEvent.click(
       screen.getByRole("button", { name: /looks good — back to summary/i }),
     );
@@ -113,6 +136,7 @@ describe("<SummaryEditHubCard />", () => {
   it("renders the slot-release caution ONLY when hold_active is true", () => {
     const { rerender } = render(
       <SummaryEditHubCard
+        copy={HUB_COPY}
         payload={makePayload({ hold_active: false })}
         onSelect={vi.fn()}
       />,
@@ -123,6 +147,7 @@ describe("<SummaryEditHubCard />", () => {
 
     rerender(
       <SummaryEditHubCard
+        copy={HUB_COPY}
         payload={makePayload({ hold_active: true })}
         onSelect={vi.fn()}
       />,
@@ -135,6 +160,7 @@ describe("<SummaryEditHubCard />", () => {
   it("renders italic empty-ish fallbacks when fields are absent", () => {
     render(
       <SummaryEditHubCard
+        copy={HUB_COPY}
         payload={makePayload({
           contact: { name: "" },
           vehicle_label: null,
@@ -158,6 +184,7 @@ describe("<SummaryEditHubCard />", () => {
   it("caps concern + testing rows at 4 with a '+N more' line", () => {
     render(
       <SummaryEditHubCard
+        copy={HUB_COPY}
         payload={makePayload({
           services: {
             routine: [],
@@ -195,7 +222,7 @@ describe("<SummaryEditHubCard />", () => {
           resolve = r;
         }),
     );
-    render(<SummaryEditHubCard payload={makePayload()} onSelect={onSelect} />);
+    render(<SummaryEditHubCard copy={HUB_COPY} payload={makePayload()} onSelect={onSelect} />);
 
     await userEvent.click(
       screen.getByRole("button", { name: /edit contact info/i }),
@@ -222,7 +249,7 @@ describe("<SummaryEditHubCard />", () => {
 
   it("disables every control when the disabled prop is set", () => {
     render(
-      <SummaryEditHubCard payload={makePayload()} onSelect={vi.fn()} disabled />,
+      <SummaryEditHubCard copy={HUB_COPY} payload={makePayload()} onSelect={vi.fn()} disabled />,
     );
     expect(
       screen.getByRole("button", { name: /edit contact info/i }),

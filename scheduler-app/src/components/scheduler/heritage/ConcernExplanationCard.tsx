@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 
 import { Button, Card, Field, Textarea } from "@/components/ui";
+import type { CardCopy } from "@/lib/scheduler/card-text";
 
 /**
  * Step 7.2 — Concern explanation card (Phase 9c, 2026-05-15).
@@ -24,6 +25,10 @@ import { Button, Card, Field, Textarea } from "@/components/ui";
  */
 
 export interface ConcernExplanationCardProps {
+  /** Editable card copy (card-text-editor) — resolved slot strings.
+   *  Only the description is editable; the eyebrow (service name) and title
+   *  (lead-in prompt) are dynamic, DB/queue-derived content. */
+  copy: CardCopy<"concern_explanation">;
   service_key: string;
   display_name: string;
   lead_in_bubble: string;
@@ -35,6 +40,7 @@ export interface ConcernExplanationCardProps {
 }
 
 export function ConcernExplanationCard({
+  copy,
   service_key,
   display_name,
   lead_in_bubble,
@@ -68,11 +74,7 @@ export function ConcernExplanationCard({
       <Card.Title id={`concern-${service_key}-title`}>
         {lead_in_bubble}
       </Card.Title>
-      <Card.Description>
-        Even rough details help — when it started, what it sounds or feels
-        like, where in the car you notice it. You don&apos;t need to know
-        the cause.
-      </Card.Description>
+      <Card.Description>{copy.description}</Card.Description>
 
       <form
         onSubmit={(e) => void handleSubmit(e)}

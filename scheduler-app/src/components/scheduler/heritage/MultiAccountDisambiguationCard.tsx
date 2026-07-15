@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { Button, Card } from "@/components/ui";
+import type { CardCopy } from "@/lib/scheduler/card-text";
 
 /**
  * Step 3.5c — Multi-account disambiguation per chat-design.md §3.5c.
@@ -34,6 +35,8 @@ export interface MultiAccountCandidate {
 }
 
 export interface MultiAccountDisambiguationCardProps {
+  /** Editable card copy (card-text-editor) — resolved slot strings. */
+  copy: CardCopy<"multi_account_disambiguation">;
   candidates: MultiAccountCandidate[];
   attempted_phone_last_four?: string | null;
   disabled?: boolean;
@@ -45,6 +48,7 @@ export interface MultiAccountDisambiguationCardProps {
 }
 
 export function MultiAccountDisambiguationCard({
+  copy,
   candidates,
   attempted_phone_last_four,
   disabled = false,
@@ -74,10 +78,8 @@ export function MultiAccountDisambiguationCard({
 
   return (
     <Card aria-labelledby="multi-account-title">
-      <Card.Eyebrow>Which one are you?</Card.Eyebrow>
-      <Card.Title id="multi-account-title">
-        Looks like more than one account on this phone 📱
-      </Card.Title>
+      <Card.Eyebrow>{copy.eyebrow}</Card.Eyebrow>
+      <Card.Title id="multi-account-title">{copy.title}</Card.Title>
       <Card.Description>
         {attempted_phone_last_four
           ? `The number ending in ${attempted_phone_last_four} is on file for `
@@ -130,10 +132,7 @@ export function MultiAccountDisambiguationCard({
         </Button>
       </Card.Actions>
 
-      <Card.Footnote>
-        We&apos;ll only show your own appointments + history once we know
-        which one you are. Your privacy matters.
-      </Card.Footnote>
+      <Card.Footnote>{copy.footnote}</Card.Footnote>
     </Card>
   );
 }

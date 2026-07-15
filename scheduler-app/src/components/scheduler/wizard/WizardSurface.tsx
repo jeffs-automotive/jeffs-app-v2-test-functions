@@ -200,6 +200,7 @@ function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
     case "phone_name":
       return (
         <PhoneNameCard
+          copy={card.payload.copy}
           step_label={card.payload.step_label}
           initial_first_name={card.payload.initial_first_name}
           initial_last_name={card.payload.initial_last_name}
@@ -240,6 +241,7 @@ function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
     case "partial_verification_gate":
       return (
         <PartialVerificationGateCard
+          copy={card.payload.copy}
           matched_axis={card.payload.matched_axis}
           attempted_first_name={card.payload.attempted_first_name}
           attempted_phone_last_four={card.payload.attempted_phone_last_four}
@@ -256,6 +258,7 @@ function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
     case "no_match_choose_path":
       return (
         <NoMatchChoosePathCard
+          copy={card.payload.copy}
           attempted_first_name={card.payload.attempted_first_name}
           attempted_phone_last_four={card.payload.attempted_phone_last_four}
           onSubmit={async ({ action }) => {
@@ -268,6 +271,7 @@ function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
     case "multi_account_disambiguation":
       return (
         <MultiAccountDisambiguationCard
+          copy={card.payload.copy}
           candidates={card.payload.candidates}
           attempted_phone_last_four={card.payload.attempted_phone_last_four}
           onSubmit={async (output) => {
@@ -288,6 +292,7 @@ function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
     case "customer_info_edit":
       return (
         <CustomerInfoEditCard
+          copy={card.payload.copy}
           first_name={card.payload.first_name}
           last_name={card.payload.last_name}
           initial_phones={card.payload.initial_phones}
@@ -310,6 +315,7 @@ function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
     case "new_customer_info":
       return (
         <NewCustomerInfoCard
+          copy={card.payload.copy}
           first_name={card.payload.first_name}
           last_name={card.payload.last_name}
           verified_phone_e164={card.payload.verified_phone_e164}
@@ -345,6 +351,7 @@ function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
     case "new_vehicle_form":
       return (
         <NewVehicleCard
+          copy={card.payload.copy}
           onSubmit={async (output) => {
             const result = await submitNewVehicleV2({
               chatId,
@@ -385,6 +392,7 @@ function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
         // ClarificationQuestionCard below.
         <ConcernExplanationCard
           key={card.payload.service_key}
+          copy={card.payload.copy}
           service_key={card.payload.service_key}
           display_name={card.payload.display_name}
           lead_in_bubble={card.payload.lead_in_bubble}
@@ -402,6 +410,7 @@ function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
     case "diagnostic_loading":
       return (
         <DiagnosticLoadingCard
+          copy={card.payload.copy}
           onMount={async () => {
             const result = await runDiagnosticsV2({ chatId });
             handleResult("runDiagnosticsV2", chatId, result);
@@ -420,6 +429,7 @@ function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
         // could persist across queue items without this.
         <ClarificationQuestionCard
           key={card.payload.question_id}
+          copy={card.payload.copy}
           question_id={card.payload.question_id}
           question_text={card.payload.question_text}
           options={card.payload.options}
@@ -448,6 +458,7 @@ function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
         // the local `pending` state must not persist across queue items.
         <ConcernClarifyCard
           key={card.payload.concern_text}
+          copy={card.payload.copy}
           concern_text={card.payload.concern_text}
           candidates={card.payload.candidates.map((c) => ({
             candidate_key: c.key,
@@ -469,6 +480,7 @@ function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
     case "testing_service_approval":
       return (
         <TestingServiceApprovalCard
+          copy={card.payload.copy}
           services={card.payload.services}
           category={card.payload.category ?? undefined}
           onSubmit={async ({ approved, declined }) => {
@@ -485,6 +497,7 @@ function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
     case "second_routine_pass":
       return (
         <SecondRoutinePassCard
+          copy={card.payload.copy}
           common_services={card.payload.common_services}
           already_picked={card.payload.already_picked}
           onSubmit={async (output) => {
@@ -501,6 +514,7 @@ function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
     case "appointment_type":
       return (
         <AppointmentTypeCard
+          copy={card.payload.copy}
           options={card.payload.options.map((o) => ({
             type: o.type,
             title: o.title,
@@ -558,6 +572,7 @@ function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
     case "summary":
       return (
         <SummaryCard
+          copy={card.payload.copy}
           hold_id={card.payload.hold_id ?? undefined}
           hold_expires_at={card.payload.hold_expires_at ?? undefined}
           starts_at={card.payload.starts_at}
@@ -582,6 +597,7 @@ function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
       return (
         <SummaryEditHubCard
           payload={card.payload}
+          copy={card.payload.copy}
           onSelect={async (section) => {
             const result = await submitEditHubV2({ chatId, section });
             handleResult("submitEditHubV2", chatId, result);
@@ -592,6 +608,7 @@ function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
     case "customer_notes":
       return (
         <CustomerNotesCard
+          copy={card.payload.copy}
           initial_text={card.payload.initial_text}
           parsed_preview={card.payload.parsed_preview}
           edit_attempts={card.payload.edit_attempts}
@@ -629,6 +646,7 @@ function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
     case "customer_question":
       return (
         <CustomerQuestionCard
+          copy={card.payload.copy}
           onSubmit={async ({ question }) => {
             const result = await submitCustomerQuestionV2({
               chatId,

@@ -7,6 +7,18 @@ import {
   type ConcernClarifyCandidate,
 } from "@/components/scheduler/heritage/ConcernClarifyCard";
 
+// card-text-editor: ConcernClarifyCard now takes editable `copy`. Fixture
+// matches CARD_TEXT_DEFAULTS.concern_clarify.
+const concernClarifyCopy = {
+  eyebrow: "A quick check",
+  title: "Which of these sounds closest?",
+  body_concern_label: "Here's what you told me",
+  description:
+    "A couple of these could fit. Tap whichever feels closest — or if none quite match, that's OK, I'll pass your note to one of our advisors. 🙂",
+  footnote:
+    'Not sure? No problem — pick "None of these" and a Jeff\'s advisor will read your note and sort it out. You can keep booking either way.',
+};
+
 /**
  * Act-or-ask AO4 (2026-07-03) — ConcernClarifyCard.
  *
@@ -39,6 +51,7 @@ describe("<ConcernClarifyCard />", () => {
   it("renders the heading, the echoed concern text, and one button per candidate", () => {
     render(
       <ConcernClarifyCard
+        copy={concernClarifyCopy}
         concern_text="My brakes squeak when I slow down"
         candidates={CANDIDATES}
         onSubmit={vi.fn()}
@@ -68,6 +81,7 @@ describe("<ConcernClarifyCard />", () => {
     const onSubmit = vi.fn();
     render(
       <ConcernClarifyCard
+        copy={concernClarifyCopy}
         concern_text="squeak"
         candidates={CANDIDATES}
         onSubmit={onSubmit}
@@ -87,6 +101,7 @@ describe("<ConcernClarifyCard />", () => {
     const onSubmit = vi.fn();
     render(
       <ConcernClarifyCard
+        copy={concernClarifyCopy}
         concern_text="squeak"
         candidates={CANDIDATES}
         onSubmit={onSubmit}
@@ -102,6 +117,7 @@ describe("<ConcernClarifyCard />", () => {
   it("renders 'From $49' for a priced candidate and the 'We'll take a look' pill for a null-price one", () => {
     render(
       <ConcernClarifyCard
+        copy={concernClarifyCopy}
         concern_text="squeak"
         candidates={CANDIDATES}
         onSubmit={vi.fn()}
@@ -123,6 +139,7 @@ describe("<ConcernClarifyCard />", () => {
     );
     render(
       <ConcernClarifyCard
+        copy={concernClarifyCopy}
         concern_text="squeak"
         candidates={CANDIDATES}
         onSubmit={onSubmit}
@@ -147,6 +164,7 @@ describe("<ConcernClarifyCard />", () => {
   it("disables all controls when the disabled prop is set", () => {
     render(
       <ConcernClarifyCard
+        copy={concernClarifyCopy}
         concern_text="squeak"
         candidates={CANDIDATES}
         onSubmit={vi.fn()}
@@ -165,6 +183,7 @@ describe("<ConcernClarifyCard />", () => {
   it("hides the quote block when concern_text is empty/whitespace but still renders the escape", () => {
     render(
       <ConcernClarifyCard
+        copy={concernClarifyCopy}
         concern_text="   "
         candidates={CANDIDATES}
         onSubmit={vi.fn()}

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { Button, Card } from "@/components/ui";
+import type { CardCopy } from "@/lib/scheduler/card-text";
 
 /**
  * Step 10.1 — Pre-confirmation Summary card.
@@ -35,6 +36,8 @@ interface SummaryService {
 }
 
 export interface SummaryCardProps {
+  /** Editable card copy (card-text-editor) — resolved slot strings. */
+  copy: CardCopy<"summary">;
   hold_id?: string;
   /** ISO timestamp when the hold expires. Drives the countdown timer. */
   hold_expires_at?: string;
@@ -101,6 +104,7 @@ function fmtCountdown(ms: number): string {
 }
 
 export function SummaryCard({
+  copy,
   hold_id,
   hold_expires_at,
   starts_at,
@@ -161,22 +165,20 @@ export function SummaryCard({
 
   return (
     <Card aria-labelledby="summary-title">
-      <Card.Eyebrow>Review before confirming</Card.Eyebrow>
-      <Card.Title id="summary-title">
-        Quick look — does this all look right? ✅
-      </Card.Title>
+      <Card.Eyebrow>{copy.eyebrow}</Card.Eyebrow>
+      <Card.Title id="summary-title">{copy.title}</Card.Title>
 
       <Card.Body className="space-y-5">
         {/* Time + type */}
         <section>
-          <p className="label-eyebrow mb-1">Appointment</p>
+          <p className="label-eyebrow mb-1">{copy.body_appointment_label}</p>
           <p className="font-display text-lg text-ink">{fmtStarts(starts_at, type)}</p>
           <p className="mt-0.5 text-[14px] text-ink-secondary">
             {type === "waiter"
-              ? "Waiter ☕"
+              ? copy.body_type_waiter
               : is_same_day
-                ? "Dropoff 🚗 — drop off as soon as you can today"
-                : "Dropoff 🚗 — please drop off before 10 AM"}
+                ? copy.body_type_dropoff_sameday
+                : copy.body_type_dropoff}
           </p>
         </section>
 
@@ -184,7 +186,7 @@ export function SummaryCard({
 
         {/* Customer + vehicle */}
         <section>
-          <p className="label-eyebrow mb-1">For</p>
+          <p className="label-eyebrow mb-1">{copy.body_for_label}</p>
           <p className="text-[15px] text-ink">{customer}</p>
           <p className="mt-0.5 text-[14px] text-ink-secondary">{vehicle}</p>
         </section>
@@ -193,11 +195,13 @@ export function SummaryCard({
 
         {/* Services */}
         <section>
-          <p className="label-eyebrow mb-2">Services</p>
+          <p className="label-eyebrow mb-2">{copy.body_services_label}</p>
           <div className="space-y-3">
             {routine.length > 0 ? (
               <div>
-                <p className="text-[13px] font-medium text-ink">Routine</p>
+                <p className="text-[13px] font-medium text-ink">
+                  {copy.body_routine_label}
+                </p>
                 <ul className="mt-1 list-inside list-disc pl-1 text-[14px] text-ink-secondary">
                   {routine.map((s) => (
                     <li key={`r-${s.display_name}`}>{s.display_name}</li>
@@ -207,7 +211,9 @@ export function SummaryCard({
             ) : null}
             {concerns.length > 0 ? (
               <div>
-                <p className="text-[13px] font-medium text-ink">Concerns to investigate</p>
+                <p className="text-[13px] font-medium text-ink">
+                  {copy.body_concerns_label}
+                </p>
                 <ul className="mt-1 space-y-1.5 text-[14px] text-ink-secondary">
                   {concerns.map((s) => (
                     <li key={`c-${s.display_name}`}>
@@ -224,7 +230,9 @@ export function SummaryCard({
             ) : null}
             {testing.length > 0 ? (
               <div>
-                <p className="text-[13px] font-medium text-ink">Testing</p>
+                <p className="text-[13px] font-medium text-ink">
+                  {copy.body_testing_label}
+                </p>
                 <ul className="mt-1 space-y-1 text-[14px] text-ink-secondary">
                   {testing.map((s) => (
                     <li
@@ -250,7 +258,7 @@ export function SummaryCard({
           <>
             <Card.Divider />
             <section>
-              <p className="label-eyebrow mb-2">Please bring</p>
+              <p className="label-eyebrow mb-2">{copy.body_reminders_label}</p>
               <ul className="space-y-1 text-[14px] text-ink-secondary">
                 {reminders.map((r, i) => (
                    
@@ -320,10 +328,7 @@ export function SummaryCard({
         </Card.Footnote>
       ) : null}
 
-      <Card.Footnote>
-        We&apos;ll only use your info to schedule and remind you about this
-        visit.
-      </Card.Footnote>
+      <Card.Footnote>{copy.footnote}</Card.Footnote>
     </Card>
   );
 }

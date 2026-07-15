@@ -4,6 +4,17 @@ import userEvent from "@testing-library/user-event";
 
 import { SecondRoutinePassCard } from "@/components/scheduler/heritage/SecondRoutinePassCard";
 
+// card-text-editor: SecondRoutinePassCard now takes editable `copy`. Fixture
+// matches CARD_TEXT_DEFAULTS.second_routine_pass.
+const secondRoutineCopy = {
+  eyebrow: "Anything else?",
+  title: "Want to add anything else while you're here?",
+  description:
+    "Tap any of these to add them on. The ones you've already picked are marked.",
+  body_describe_prompt:
+    "Noticing something that isn't on the list — a noise, a leak, a warning light?",
+};
+
 /**
  * SecondRoutinePassCard — the last-chance add-on picker + the EH2
  * "Describe another issue" ghost path.
@@ -25,6 +36,7 @@ describe("<SecondRoutinePassCard /> — existing add-on behavior (unchanged)", (
   it("shows 'Continue without adding more' when nothing new is selected", () => {
     render(
       <SecondRoutinePassCard
+        copy={secondRoutineCopy}
         common_services={COMMON}
         already_picked={[]}
         onSubmit={vi.fn()}
@@ -39,6 +51,7 @@ describe("<SecondRoutinePassCard /> — existing add-on behavior (unchanged)", (
     const onSubmit = vi.fn();
     render(
       <SecondRoutinePassCard
+        copy={secondRoutineCopy}
         common_services={COMMON}
         already_picked={[]}
         onSubmit={onSubmit}
@@ -55,6 +68,7 @@ describe("<SecondRoutinePassCard /> — describe-another-issue path (EH2)", () =
   it("renders the describe button, enabled", () => {
     render(
       <SecondRoutinePassCard
+        copy={secondRoutineCopy}
         common_services={COMMON}
         already_picked={[]}
         onSubmit={vi.fn()}
@@ -69,6 +83,7 @@ describe("<SecondRoutinePassCard /> — describe-another-issue path (EH2)", () =
     const onSubmit = vi.fn();
     render(
       <SecondRoutinePassCard
+        copy={secondRoutineCopy}
         common_services={COMMON}
         already_picked={[]}
         onSubmit={onSubmit}
@@ -87,6 +102,7 @@ describe("<SecondRoutinePassCard /> — describe-another-issue path (EH2)", () =
     const onSubmit = vi.fn();
     render(
       <SecondRoutinePassCard
+        copy={secondRoutineCopy}
         common_services={COMMON}
         already_picked={[]}
         onSubmit={onSubmit}
@@ -112,6 +128,7 @@ describe("<SecondRoutinePassCard /> — describe-another-issue path (EH2)", () =
   it("shows the describe path even when common_services is empty (no chips)", () => {
     render(
       <SecondRoutinePassCard
+        copy={secondRoutineCopy}
         common_services={[]}
         already_picked={[]}
         onSubmit={vi.fn()}
@@ -127,6 +144,7 @@ describe("<SecondRoutinePassCard /> — describe-another-issue path (EH2)", () =
   it("renders the divider above the describe path when chips are present", () => {
     render(
       <SecondRoutinePassCard
+        copy={secondRoutineCopy}
         common_services={COMMON}
         already_picked={[]}
         onSubmit={vi.fn()}
@@ -145,6 +163,7 @@ describe("<SecondRoutinePassCard /> — describe-another-issue path (EH2)", () =
     );
     render(
       <SecondRoutinePassCard
+        copy={secondRoutineCopy}
         common_services={COMMON}
         already_picked={[]}
         onSubmit={onSubmit}
@@ -179,6 +198,7 @@ describe("<SecondRoutinePassCard /> — describe-another-issue path (EH2)", () =
     );
     render(
       <SecondRoutinePassCard
+        copy={secondRoutineCopy}
         common_services={COMMON}
         already_picked={[]}
         onSubmit={onSubmit}

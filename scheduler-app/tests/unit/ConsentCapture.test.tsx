@@ -14,9 +14,19 @@ import { PhoneNameCard } from "@/components/scheduler/heritage/PhoneNameCard";
 import { CompletedCard } from "@/components/scheduler/heritage/CompletedCard";
 import { Checkbox } from "@/components/ui";
 
+// card-text-editor: PhoneNameCard now takes editable `copy`. Fixture matches
+// CARD_TEXT_DEFAULTS.phone_name (title/description/footnote).
+const phoneNameCopy = {
+  title: "Let's grab a few quick details.",
+  description:
+    "We'll send a one-time code to your phone to verify it's really you. 📲",
+  footnote:
+    "By continuing, you agree this conversation may be recorded and reviewed by our team to help us serve you better.",
+};
+
 describe("PhoneNameCard consent capture", () => {
   it("renders the opt-in checkbox UNCHECKED by default with the disclosure copy", () => {
-    render(<PhoneNameCard onSubmit={vi.fn()} />);
+    render(<PhoneNameCard copy={phoneNameCopy} onSubmit={vi.fn()} />);
     const box = screen.getByRole("checkbox", {
       name: /text me appointment updates/i,
     });
@@ -33,7 +43,7 @@ describe("PhoneNameCard consent capture", () => {
   });
 
   it("submit stays ENABLED while the checkbox is unchecked (never gates)", () => {
-    render(<PhoneNameCard onSubmit={vi.fn()} />);
+    render(<PhoneNameCard copy={phoneNameCopy} onSubmit={vi.fn()} />);
     expect(
       screen.getByRole("button", { name: /send my code/i }),
     ).toBeEnabled();
@@ -42,7 +52,7 @@ describe("PhoneNameCard consent capture", () => {
   it("threads sms_consent=false by default through onSubmit", async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn();
-    render(<PhoneNameCard onSubmit={onSubmit} />);
+    render(<PhoneNameCard copy={phoneNameCopy} onSubmit={onSubmit} />);
     await user.type(screen.getByLabelText(/first name/i), "pat");
     await user.type(screen.getByLabelText(/last name/i), "tester");
     await user.type(screen.getByLabelText(/phone number/i), "6105551234");
@@ -58,7 +68,7 @@ describe("PhoneNameCard consent capture", () => {
   it("threads sms_consent=true when checked", async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn();
-    render(<PhoneNameCard onSubmit={onSubmit} />);
+    render(<PhoneNameCard copy={phoneNameCopy} onSubmit={onSubmit} />);
     await user.type(screen.getByLabelText(/first name/i), "pat");
     await user.type(screen.getByLabelText(/last name/i), "tester");
     await user.type(screen.getByLabelText(/phone number/i), "6105551234");

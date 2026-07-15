@@ -37,6 +37,8 @@ export interface PhoneNamePayload {
   initial_first_name?: string;
   initial_last_name?: string;
   initial_phone_e164?: string;
+  /** Editable card copy (card-text-editor). */
+  copy: CardCopy<"phone_name">;
 }
 
 /** Step 3 — OTP entry. */
@@ -51,6 +53,8 @@ export interface PartialVerificationGatePayload {
   matched_axis: "name" | "phone";
   attempted_first_name: string | null;
   attempted_phone_last_four: string | null;
+  /** Editable card copy (card-text-editor). */
+  copy: CardCopy<"partial_verification_gate">;
 }
 
 /** Step 3.5b — Multi-account disambiguation. Vehicle-only per PII protection. */
@@ -60,12 +64,16 @@ export interface MultiAccountDisambiguationPayload {
     recent_vehicle: string;
   }>;
   attempted_phone_last_four: string | null;
+  /** Editable card copy (card-text-editor). */
+  copy: CardCopy<"multi_account_disambiguation">;
 }
 
 /** Step 3.5c — No-match choose-path (returning customer with 0 phone + 0 name). */
 export interface NoMatchChoosePathPayload {
   attempted_first_name: string | null;
   attempted_phone_last_four: string | null;
+  /** Editable card copy (card-text-editor). */
+  copy: CardCopy<"no_match_choose_path">;
 }
 
 /** Step 5 (returning) — Customer info edit. */
@@ -83,6 +91,8 @@ export interface CustomerInfoEditPayload {
         zip?: string;
       }
     | null;
+  /** Editable card copy (card-text-editor). */
+  copy: CardCopy<"customer_info_edit">;
 }
 
 /** Step 5 (new-client) — New customer info form. */
@@ -90,6 +100,8 @@ export interface NewCustomerInfoPayload {
   first_name: string;
   last_name: string;
   verified_phone_e164: string;
+  /** Editable card copy (card-text-editor). */
+  copy: CardCopy<"new_customer_info">;
 }
 
 /** Step 6 — Vehicle picker. */
@@ -101,6 +113,8 @@ export interface VehiclePickPayload {
 /** Step 6 sub — New vehicle drill-down / standalone form. */
 export interface NewVehicleFormPayload {
   // Phase 1: no per-mode rendering differences. Reserved for phase 7.
+  /** Editable card copy (card-text-editor). */
+  copy: CardCopy<"new_vehicle_form">;
 }
 
 /**
@@ -149,11 +163,15 @@ export interface ConcernExplanationPayload {
   service_key: string;
   display_name: string;
   lead_in_bubble: string;
+  /** Editable card copy (card-text-editor). */
+  copy: CardCopy<"concern_explanation">;
 }
 
 /** Step 7.3 — Diagnostic specialist runs in the background. */
 export interface DiagnosticLoadingPayload {
   // intentionally empty — pure loading state
+  /** Editable card copy (card-text-editor). */
+  copy: CardCopy<"diagnostic_loading">;
 }
 
 /** Step 7.4 — One clarification question. */
@@ -168,6 +186,8 @@ export interface ClarificationQuestionPayload {
    *  `concern_questions.multi_select`. Added 2026-05-18 with the CAT-2
    *  catalog rebuild. */
   multi_select: boolean;
+  /** Editable card copy (card-text-editor). */
+  copy: CardCopy<"clarification_question">;
 }
 
 /**
@@ -196,6 +216,8 @@ export interface ConcernClarifyPayload {
     starting_price_cents: number | null;
     description: string | null;
   }>;
+  /** Editable card copy (card-text-editor). */
+  copy: CardCopy<"concern_clarify">;
 }
 
 /** Step 7.5 — Testing service approval. */
@@ -207,12 +229,16 @@ export interface TestingServiceApprovalPayload {
     notes: string | null;
   }>;
   category: string | null;
+  /** Editable card copy (card-text-editor). */
+  copy: CardCopy<"testing_service_approval">;
 }
 
 /** Step 7.6 — Second routine pass. */
 export interface SecondRoutinePassPayload {
   common_services: Array<{ service_key: string; display_name: string }>;
   already_picked: string[];
+  /** Editable card copy (card-text-editor). */
+  copy: CardCopy<"second_routine_pass">;
 }
 
 /** Step 8 — Appointment type picker. */
@@ -229,6 +255,9 @@ export interface AppointmentTypePayload {
     unavailable_reason: string | null;
     earliest_hint: string | null;
   }>;
+  /** Editable card chrome copy (card-text-editor) — eyebrow/title/footnote
+   *  only. Per-option copy lives on scheduler_appointment_types. */
+  copy: CardCopy<"appointment_type">;
 }
 
 /** Step 9.1 — Date picker. */
@@ -266,6 +295,8 @@ export interface SummaryPayload {
    *  as soon as you can today" since the "by 10 AM" guidance may
    *  already be past or close to past. Added 2026-05-18. */
   is_same_day?: boolean;
+  /** Editable card copy (card-text-editor). */
+  copy: CardCopy<"summary">;
 }
 
 /**
@@ -307,6 +338,8 @@ export interface SummaryEditHubPayload {
    *  the appointment time releases it; the hub surfaces this so the card
    *  can warn before the customer re-picks. */
   hold_active: boolean;
+  /** Editable card copy (card-text-editor). */
+  copy: CardCopy<"summary_edit_hub">;
 }
 
 /**
@@ -339,11 +372,15 @@ export interface CustomerNotesPayload {
    * uses this to surface a "last try" hint on attempts=1.
    */
   edit_attempts: number;
+  /** Editable card copy (card-text-editor). */
+  copy: CardCopy<"customer_notes">;
 }
 
 /** Step 10.4 — Customer question capture. */
 export interface CustomerQuestionPayload {
   // intentionally empty
+  /** Editable card copy (card-text-editor). */
+  copy: CardCopy<"customer_question">;
 }
 
 /** Step 10.5 — Completed terminal state. */

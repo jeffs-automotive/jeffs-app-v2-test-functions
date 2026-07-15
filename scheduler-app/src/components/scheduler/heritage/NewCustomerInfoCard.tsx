@@ -8,6 +8,8 @@ import {
   normalizePhoneE164,
   e164ToDisplay,
 } from "@/lib/scheduler/phone-format";
+import { interpolate } from "@/lib/scheduler/wizard/card-copy";
+import type { CardCopy } from "@/lib/scheduler/card-text";
 
 /**
  * Step 4 (new client) — New customer info card per chat-design.md §2595-2683.
@@ -29,6 +31,8 @@ import {
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export interface NewCustomerInfoCardProps {
+  /** Editable card copy (card-text-editor) — resolved slot strings. */
+  copy: CardCopy<"new_customer_info">;
   /** Pulled from Step 2's PhoneName submission — display-only. */
   first_name: string;
   last_name: string;
@@ -72,6 +76,7 @@ const US_STATES = [
 ];
 
 export function NewCustomerInfoCard({
+  copy,
   first_name,
   last_name,
   verified_phone_e164,
@@ -264,14 +269,11 @@ export function NewCustomerInfoCard({
 
   return (
     <Card aria-labelledby="new-customer-info-title">
-      <Card.Eyebrow>Set up your account</Card.Eyebrow>
+      <Card.Eyebrow>{copy.eyebrow}</Card.Eyebrow>
       <Card.Title id="new-customer-info-title">
-        Welcome to Jeff&apos;s, {first_name}! 👋
+        {interpolate(copy.title, { first_name })}
       </Card.Title>
-      <Card.Description>
-        Just a few details so we can build your record. We&apos;ll save
-        everything when you confirm the appointment.
-      </Card.Description>
+      <Card.Description>{copy.description}</Card.Description>
 
       <Card.Body>
         <form onSubmit={handleSubmit} className="space-y-6" noValidate>

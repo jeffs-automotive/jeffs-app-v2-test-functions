@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { Button, Card, Field, Textarea } from "@/components/ui";
+import type { CardCopy } from "@/lib/scheduler/card-text";
 
 /**
  * Step 10.3 — Customer notes (optional).
@@ -34,6 +35,9 @@ import { Button, Card, Field, Textarea } from "@/components/ui";
  */
 
 export interface CustomerNotesCardProps {
+  /** Editable card copy (card-text-editor) — resolved slot strings for both
+   *  the input + approval modes. */
+  copy: CardCopy<"customer_notes">;
   /** Pre-filled text when the customer is editing a prior note (resume). */
   initial_text?: string | null | undefined;
   disabled?: boolean;
@@ -55,6 +59,7 @@ export interface CustomerNotesCardProps {
 const MAX_LENGTH = 500;
 
 export function CustomerNotesCard({
+  copy,
   initial_text = "",
   disabled = false,
   parsed_preview = null,
@@ -67,6 +72,7 @@ export function CustomerNotesCard({
   if (parsed_preview !== null && parsed_preview !== undefined && parsed_preview.trim().length > 0) {
     return (
       <CustomerNotesApprovalCard
+        copy={copy}
         parsed_preview={parsed_preview}
         edit_attempts={edit_attempts}
         disabled={disabled}
@@ -78,6 +84,7 @@ export function CustomerNotesCard({
 
   return (
     <CustomerNotesInputCard
+      copy={copy}
       initial_text={initial_text ?? ""}
       disabled={disabled}
       onSubmit={onSubmit}
@@ -88,10 +95,12 @@ export function CustomerNotesCard({
 // ─── Input mode ─────────────────────────────────────────────────────────────
 
 function CustomerNotesInputCard({
+  copy,
   initial_text,
   disabled,
   onSubmit,
 }: {
+  copy: CardCopy<"customer_notes">;
   initial_text: string;
   disabled: boolean;
   onSubmit: CustomerNotesCardProps["onSubmit"];
@@ -115,14 +124,9 @@ function CustomerNotesInputCard({
 
   return (
     <Card aria-labelledby="customer-notes-title">
-      <Card.Eyebrow>One more thing (optional)</Card.Eyebrow>
-      <Card.Title id="customer-notes-title">
-        Anything else our team should know? 🛠️
-      </Card.Title>
-      <Card.Description>
-        Quirks, preferences, that one weird thing — whatever helps us take
-        good care of your car. Or skip — it&apos;s up to you.
-      </Card.Description>
+      <Card.Eyebrow>{copy.input_eyebrow}</Card.Eyebrow>
+      <Card.Title id="customer-notes-title">{copy.input_title}</Card.Title>
+      <Card.Description>{copy.input_description}</Card.Description>
 
       <Card.Body>
         <Field
@@ -174,12 +178,14 @@ function CustomerNotesInputCard({
 // ─── Approval mode ──────────────────────────────────────────────────────────
 
 function CustomerNotesApprovalCard({
+  copy,
   parsed_preview,
   edit_attempts,
   disabled,
   onApprove,
   onReject,
 }: {
+  copy: CardCopy<"customer_notes">;
   parsed_preview: string;
   edit_attempts: number;
   disabled: boolean;
@@ -212,14 +218,11 @@ function CustomerNotesApprovalCard({
 
   return (
     <Card aria-labelledby="customer-notes-approval-title">
-      <Card.Eyebrow>Sound right?</Card.Eyebrow>
+      <Card.Eyebrow>{copy.approval_eyebrow}</Card.Eyebrow>
       <Card.Title id="customer-notes-approval-title">
-        I&apos;ll write this down 📝
+        {copy.approval_title}
       </Card.Title>
-      <Card.Description>
-        Here&apos;s the cleaned-up version of your note. Save it if it
-        captures what you meant, or hit Edit to send your original wording.
-      </Card.Description>
+      <Card.Description>{copy.approval_description}</Card.Description>
 
       <Card.Body>
         <blockquote className="rounded-[var(--radius-card)] border-l-4 border-brand-burgundy-700 bg-paper-100 px-4 py-3 text-[15px] leading-relaxed text-ink">
@@ -227,8 +230,7 @@ function CustomerNotesApprovalCard({
         </blockquote>
         {lastTry ? (
           <p className="mt-3 text-[13px] leading-snug text-ink-secondary">
-            Last try — if this still isn&apos;t quite right, hit Edit and
-            we&apos;ll pass your original note straight to the team.
+            {copy.approval_last_try}
           </p>
         ) : null}
       </Card.Body>

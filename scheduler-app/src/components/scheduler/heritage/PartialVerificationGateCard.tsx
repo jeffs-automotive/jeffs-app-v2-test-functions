@@ -3,6 +3,8 @@
 import { useState } from "react";
 
 import { Button, Card } from "@/components/ui";
+import { interpolate } from "@/lib/scheduler/wizard/card-copy";
+import type { CardCopy } from "@/lib/scheduler/card-text";
 
 /**
  * Step 3.5 — Partial-verification gate per chat-design.md §3.5
@@ -21,6 +23,8 @@ import { Button, Card } from "@/components/ui";
  */
 
 export interface PartialVerificationGateCardProps {
+  /** Editable card copy (card-text-editor) — resolved slot strings. */
+  copy: CardCopy<"partial_verification_gate">;
   /** Which axis matched — drives the explanatory copy. */
   matched_axis: "name" | "phone";
   /** Customer's typed first name (echoed for warmth). */
@@ -38,6 +42,7 @@ export interface PartialVerificationGateCardProps {
 }
 
 export function PartialVerificationGateCard({
+  copy,
   matched_axis,
   attempted_first_name,
   attempted_phone_last_four,
@@ -70,20 +75,17 @@ export function PartialVerificationGateCard({
   if (matched_axis === "name") {
     return (
       <Card aria-labelledby="partial-verify-title">
-        <Card.Eyebrow>Quick check</Card.Eyebrow>
+        <Card.Eyebrow>{copy.eyebrow}</Card.Eyebrow>
         <Card.Title id="partial-verify-title">
-          Found your name{echoName ? `, ${echoName}` : ""} — but the phone
-          doesn&apos;t match what we have on file.
+          {interpolate(copy.title_name, {
+            first_name: echoName ? `, ${echoName}` : "",
+          })}
         </Card.Title>
-        <Card.Description>
-          Want to try the number we&apos;d have on file, or set up a fresh
-          record with this number?
-        </Card.Description>
+        <Card.Description>{copy.description_name}</Card.Description>
 
         <Card.Body>
           <p className="text-[13px] italic text-ink-tertiary">
-            We&apos;ll keep your old account on file — the service team can
-            merge them later if needed.
+            {copy.body_name_note}
           </p>
         </Card.Body>
 
@@ -120,10 +122,8 @@ export function PartialVerificationGateCard({
   // case orchestrator-side logic ever surfaces matched_axis='phone'.
   return (
     <Card aria-labelledby="partial-verify-title">
-      <Card.Eyebrow>Quick check</Card.Eyebrow>
-      <Card.Title id="partial-verify-title">
-        We can&apos;t fully verify this combination from here.
-      </Card.Title>
+      <Card.Eyebrow>{copy.eyebrow}</Card.Eyebrow>
+      <Card.Title id="partial-verify-title">{copy.title_phone}</Card.Title>
       <Card.Description>
         {echoName ? `You said your name's ${echoName}. ` : ""}
         To protect everyone&apos;s information, we&apos;ll need a different

@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { Button, Card } from "@/components/ui";
+import type { CardCopy } from "@/lib/scheduler/card-text";
 import type { SummaryEditHubPayload } from "@/lib/scheduler/wizard/card-payloads";
 import type { EditHubSection } from "@/lib/scheduler/wizard/actions/submit-edit-hub";
 
@@ -36,6 +37,8 @@ const SERVICE_ROW_CAP = 4;
 
 export interface SummaryEditHubCardProps {
   payload: SummaryEditHubPayload;
+  /** Editable card copy (card-text-editor) — resolved slot strings. */
+  copy: CardCopy<"summary_edit_hub">;
   disabled?: boolean;
   /**
    * "done" clears edit_return_step + returns to summary; a section value
@@ -92,6 +95,7 @@ function fmtAppointment(date: string, time: string, type: "waiter" | "dropoff"):
 
 export function SummaryEditHubCard({
   payload,
+  copy,
   disabled = false,
   onSelect,
 }: SummaryEditHubCardProps) {
@@ -130,19 +134,16 @@ export function SummaryEditHubCard({
 
   return (
     <Card aria-labelledby="edit-hub-title">
-      <Card.Eyebrow>Edit your appointment</Card.Eyebrow>
-      <Card.Title id="edit-hub-title">What would you like to change?</Card.Title>
-      <Card.Description>
-        Tap Edit on any section. Everything else stays exactly as you left it —
-        nothing is lost.
-      </Card.Description>
+      <Card.Eyebrow>{copy.eyebrow}</Card.Eyebrow>
+      <Card.Title id="edit-hub-title">{copy.title}</Card.Title>
+      <Card.Description>{copy.description}</Card.Description>
 
       <Card.Body className="space-y-0">
         {/* 1 — Contact */}
         <SectionRow
           id="contact"
           eyebrowId="edit-hub-contact-label"
-          sectionLabel="Contact"
+          sectionLabel={copy.body_section_contact}
           accessibleName="contact info"
           controlsDisabled={controlsDisabled}
           busySection={busySection}
@@ -174,7 +175,7 @@ export function SummaryEditHubCard({
         <SectionRow
           id="vehicle"
           eyebrowId="edit-hub-vehicle-label"
-          sectionLabel="Vehicle"
+          sectionLabel={copy.body_section_vehicle}
           accessibleName="vehicle"
           controlsDisabled={controlsDisabled}
           busySection={busySection}
@@ -195,7 +196,7 @@ export function SummaryEditHubCard({
         <SectionRow
           id="services"
           eyebrowId="edit-hub-services-label"
-          sectionLabel="Services & concerns"
+          sectionLabel={copy.body_section_services}
           accessibleName="services and concerns"
           controlsDisabled={controlsDisabled}
           busySection={busySection}
@@ -205,7 +206,9 @@ export function SummaryEditHubCard({
             <div className="space-y-0">
               {routine.length > 0 ? (
                 <div>
-                  <p className="text-[13px] font-medium text-ink">Routine</p>
+                  <p className="text-[13px] font-medium text-ink">
+                    {copy.body_routine_label}
+                  </p>
                   <p className="text-[14px] text-ink-secondary">
                     {routine.join(", ")}
                   </p>
@@ -214,7 +217,7 @@ export function SummaryEditHubCard({
               {concerns.length > 0 ? (
                 <div className={routine.length > 0 ? "mt-2" : undefined}>
                   <p className="text-[13px] font-medium text-ink">
-                    Concerns to investigate
+                    {copy.body_concerns_label}
                   </p>
                   <div className="mt-1 space-y-1">
                     {concerns.slice(0, SERVICE_ROW_CAP).map((c, i) => (
@@ -246,7 +249,9 @@ export function SummaryEditHubCard({
                       : undefined
                   }
                 >
-                  <p className="text-[13px] font-medium text-ink">Testing</p>
+                  <p className="text-[13px] font-medium text-ink">
+                    {copy.body_testing_label}
+                  </p>
                   <div className="mt-1 space-y-1">
                     {testing.slice(0, SERVICE_ROW_CAP).map((t, i) => (
                       <div
@@ -283,7 +288,7 @@ export function SummaryEditHubCard({
         <SectionRow
           id="time"
           eyebrowId="edit-hub-time-label"
-          sectionLabel="Appointment time"
+          sectionLabel={copy.body_section_time}
           accessibleName="appointment time"
           controlsDisabled={controlsDisabled}
           busySection={busySection}
@@ -294,8 +299,8 @@ export function SummaryEditHubCard({
               <p className="text-[15px] text-ink">{appointmentLine}</p>
               <p className="mt-0.5 text-[14px] text-ink-secondary">
                 {appointment.type === "waiter"
-                  ? "Waiter ☕"
-                  : "Dropoff 🚗 — before 10 AM"}
+                  ? copy.body_type_waiter
+                  : copy.body_type_dropoff}
               </p>
             </>
           ) : (
@@ -307,10 +312,7 @@ export function SummaryEditHubCard({
           {hold_active ? (
             <p className="mt-2 flex items-start gap-1.5 rounded-[var(--radius-input)] bg-status-warn-bg px-2.5 py-1.5 text-[12px] leading-snug text-status-warn-fg">
               <span aria-hidden>⏳</span>
-              <span>
-                Editing your time releases the slot we&apos;re holding.
-                You&apos;ll pick a fresh time and we&apos;ll hold that one.
-              </span>
+              <span>{copy.body_hold_caution}</span>
             </p>
           ) : null}
         </SectionRow>
@@ -329,10 +331,7 @@ export function SummaryEditHubCard({
         </Button>
       </Card.Actions>
 
-      <Card.Footnote>
-        Changes you don&apos;t touch stay saved. Nothing here is submitted until
-        you confirm on the summary.
-      </Card.Footnote>
+      <Card.Footnote>{copy.footnote}</Card.Footnote>
     </Card>
   );
 }

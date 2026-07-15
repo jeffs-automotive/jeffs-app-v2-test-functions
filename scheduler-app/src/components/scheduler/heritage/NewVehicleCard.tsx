@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 
 import { Button, Card, Field, Input, Textarea } from "@/components/ui";
+import type { CardCopy } from "@/lib/scheduler/card-text";
 
 /**
  * New vehicle form per chat-design.md:
@@ -35,10 +36,9 @@ const YEAR_OPTIONS = (() => {
 const PLATE_REGEX = /^[A-Z0-9-]{1,15}$/;
 
 export interface NewVehicleCardProps {
-  /** Eyebrow label — defaults to "Add your vehicle". */
-  step_label?: string;
-  /** Title — defaults to "Now tell me about your ride! 🚗". */
-  title?: string;
+  /** Editable card copy (card-text-editor) — resolved slot strings
+   *  (eyebrow/title/description). */
+  copy: CardCopy<"new_vehicle_form">;
   disabled?: boolean;
   onSubmit: (output: {
     year: number;
@@ -50,8 +50,7 @@ export interface NewVehicleCardProps {
 }
 
 export function NewVehicleCard({
-  step_label = "Add your vehicle",
-  title = "Now tell me about your ride! 🚗",
+  copy,
   disabled = false,
   onSubmit,
 }: NewVehicleCardProps) {
@@ -119,11 +118,9 @@ export function NewVehicleCard({
 
   return (
     <Card aria-labelledby="new-vehicle-title">
-      <Card.Eyebrow>{step_label}</Card.Eyebrow>
-      <Card.Title id="new-vehicle-title">{title}</Card.Title>
-      <Card.Description>
-        Just the basics — we&apos;ll add it to your account.
-      </Card.Description>
+      <Card.Eyebrow>{copy.eyebrow}</Card.Eyebrow>
+      <Card.Title id="new-vehicle-title">{copy.title}</Card.Title>
+      <Card.Description>{copy.description}</Card.Description>
 
       <Card.Body>
         <form onSubmit={handleSubmit} className="space-y-4" noValidate>

@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { Button, Card } from "@/components/ui";
+import type { CardCopy } from "@/lib/scheduler/card-text";
 
 /**
  * Step 8 — Appointment type picker (waiter vs dropoff).
@@ -18,6 +19,11 @@ import { Button, Card } from "@/components/ui";
  */
 
 export interface AppointmentTypeCardProps {
+  /** Editable card CHROME copy (card-text-editor) — eyebrow/title/footnote
+   *  only. Per-option copy (title/description/emoji) lives on the
+   *  Appointment Types tab (scheduler_appointment_types) and stays on
+   *  `options` below. */
+  copy: CardCopy<"appointment_type">;
   /** Available types. B3 (2026-07-02): DB-driven — the card renders copy
    *  straight from the payload (scheduler_appointment_types rows); the old
    *  hardcoded TYPE_META is gone. */
@@ -37,6 +43,7 @@ export interface AppointmentTypeCardProps {
 }
 
 export function AppointmentTypeCard({
+  copy,
   options,
   disabled = false,
   onSubmit,
@@ -57,8 +64,8 @@ export function AppointmentTypeCard({
 
   return (
     <Card aria-labelledby="appt-type-title">
-      <Card.Eyebrow>How would you like to come in?</Card.Eyebrow>
-      <Card.Title id="appt-type-title">Waiter or dropoff?</Card.Title>
+      <Card.Eyebrow>{copy.eyebrow}</Card.Eyebrow>
+      <Card.Title id="appt-type-title">{copy.title}</Card.Title>
 
       <Card.Body className="space-y-3">
         {options.map((opt) => {
@@ -119,9 +126,7 @@ export function AppointmentTypeCard({
         })}
       </Card.Body>
 
-      <Card.Footnote>
-        Tap a card to continue. You&apos;ll pick the date next.
-      </Card.Footnote>
+      <Card.Footnote>{copy.footnote}</Card.Footnote>
     </Card>
   );
 }

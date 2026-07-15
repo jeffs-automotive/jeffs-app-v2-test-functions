@@ -100,6 +100,291 @@ export const CARD_TEXT_DEFAULTS = {
       allowed: ["shop_phone"],
     },
   },
+  phone_name: {
+    title: { default: "Let's grab a few quick details.", allowed: [] },
+    description: {
+      default:
+        "We'll send a one-time code to your phone to verify it's really you. 📲",
+      allowed: [],
+    },
+    footnote: {
+      default:
+        "By continuing, you agree this conversation may be recorded and reviewed by our team to help us serve you better.",
+      allowed: [],
+    },
+  },
+  partial_verification_gate: {
+    eyebrow: { default: "Quick check", allowed: [] },
+    title_name: {
+      default:
+        "Found your name{{first_name}} — but the phone doesn't match what we have on file.",
+      allowed: ["first_name"],
+    },
+    description_name: {
+      default:
+        "Want to try the number we'd have on file, or set up a fresh record with this number?",
+      allowed: [],
+    },
+    body_name_note: {
+      default:
+        "We'll keep your old account on file — the service team can merge them later if needed.",
+      allowed: [],
+    },
+    title_phone: {
+      default: "We can't fully verify this combination from here.",
+      allowed: [],
+    },
+  },
+  multi_account_disambiguation: {
+    eyebrow: { default: "Which one are you?", allowed: [] },
+    title: {
+      default: "Looks like more than one account on this phone 📱",
+      allowed: [],
+    },
+    footnote: {
+      default:
+        "We'll only show your own appointments + history once we know which one you are. Your privacy matters.",
+      allowed: [],
+    },
+  },
+  no_match_choose_path: {
+    eyebrow: { default: "One quick fork", allowed: [] },
+    title: {
+      default: "Hmm{{first_name}} — I'm not finding you in our records 🤔",
+      allowed: ["first_name"],
+    },
+    body_reason_new: {
+      default: "• You're new here — we'll set you up in a few quick steps.",
+      allowed: [],
+    },
+    body_reason_moved: {
+      default:
+        "• You moved or changed your number — try the one we'd have on file.",
+      allowed: [],
+    },
+    body_reason_guest: {
+      default:
+        "• You've been here as someone else's guest (a friend or family member). Continue as new and we'll sort it.",
+      allowed: [],
+    },
+  },
+  new_customer_info: {
+    eyebrow: { default: "Set up your account", allowed: [] },
+    title: {
+      default: "Welcome to Jeff's, {{first_name}}! 👋",
+      allowed: ["first_name"],
+    },
+    description: {
+      default:
+        "Just a few details so we can build your record. We'll save everything when you confirm the appointment.",
+      allowed: [],
+    },
+  },
+  new_vehicle_form: {
+    eyebrow: { default: "Add your vehicle", allowed: [] },
+    title: { default: "Now tell me about your ride! 🚗", allowed: [] },
+    description: {
+      default: "Just the basics — we'll add it to your account.",
+      allowed: [],
+    },
+  },
+  customer_info_edit: {
+    eyebrow: { default: "Confirm your info", allowed: [] },
+    title: { default: "Welcome back, {{first_name}}.", allowed: ["first_name"] },
+    description: {
+      default:
+        "Quick check that we've got your contact info right. Update anything that's changed.",
+      allowed: [],
+    },
+  },
+  concern_explanation: {
+    description: {
+      default:
+        "Even rough details help — when it started, what it sounds or feels like, where in the car you notice it. You don't need to know the cause.",
+      allowed: [],
+    },
+  },
+  diagnostic_loading: {
+    eyebrow: { default: "Thinking through your concerns", allowed: [] },
+    title_running: { default: "One moment...", allowed: [] },
+    title_slow: { default: "Still thinking...", allowed: [] },
+    title_very_slow: { default: "Still working on this...", allowed: [] },
+    body_running: {
+      default:
+        "I'm thinking through what testing might be needed based on what you described.",
+      allowed: [],
+    },
+    body_slow: {
+      default: "Almost there — pulling together the right questions for you.",
+      allowed: [],
+    },
+    body_very_slow: {
+      default:
+        "This is taking a little longer than usual. Feel free to call us at {{shop_phone}} if you'd rather skip ahead.",
+      allowed: ["shop_phone"],
+    },
+  },
+  clarification_question: {
+    eyebrow_base: { default: "A few details", allowed: [] },
+    description_single: {
+      default:
+        "Tap whichever feels closest. If you're unsure, that's OK — skip it. 🤔",
+      allowed: [],
+    },
+    description_multi: {
+      default:
+        "Tap all that apply, then Continue. If you're unsure, that's OK — skip it. 🤔",
+      allowed: [],
+    },
+    footnote: {
+      default:
+        "Your service advisor will see your answers — these help us spot the right thing faster.",
+      allowed: [],
+    },
+  },
+  concern_clarify: {
+    eyebrow: { default: "A quick check", allowed: [] },
+    title: { default: "Which of these sounds closest?", allowed: [] },
+    body_concern_label: { default: "Here's what you told me", allowed: [] },
+    description: {
+      default:
+        "A couple of these could fit. Tap whichever feels closest — or if none quite match, that's OK, I'll pass your note to one of our advisors. 🙂",
+      allowed: [],
+    },
+    footnote: {
+      default:
+        'Not sure? No problem — pick "None of these" and a Jeff\'s advisor will read your note and sort it out. You can keep booking either way.',
+      allowed: [],
+    },
+  },
+  testing_service_approval: {
+    eyebrow_base: { default: "Testing we'd recommend", allowed: [] },
+    title: {
+      default: "We'd like to look at a couple of things.",
+      allowed: [],
+    },
+    description: {
+      default:
+        "Based on what you described, here's what our techs would test to narrow it down. Starting prices below — we'll send a final estimate before any work begins.",
+      allowed: [],
+    },
+    body_pricing_note: {
+      default:
+        "Starting prices — additional testing may be needed if our techs find something extra. We'll always send an updated estimate before doing any extra work.",
+      allowed: [],
+    },
+  },
+  second_routine_pass: {
+    eyebrow: { default: "Anything else?", allowed: [] },
+    title: {
+      default: "Want to add anything else while you're here?",
+      allowed: [],
+    },
+    description: {
+      default:
+        "Tap any of these to add them on. The ones you've already picked are marked.",
+      allowed: [],
+    },
+    body_describe_prompt: {
+      default:
+        "Noticing something that isn't on the list — a noise, a leak, a warning light?",
+      allowed: [],
+    },
+  },
+  summary: {
+    eyebrow: { default: "Review before confirming", allowed: [] },
+    title: { default: "Quick look — does this all look right? ✅", allowed: [] },
+    body_appointment_label: { default: "Appointment", allowed: [] },
+    body_type_waiter: { default: "Waiter ☕", allowed: [] },
+    body_type_dropoff_sameday: {
+      default: "Dropoff 🚗 — drop off as soon as you can today",
+      allowed: [],
+    },
+    body_type_dropoff: {
+      default: "Dropoff 🚗 — please drop off before 10 AM",
+      allowed: [],
+    },
+    body_for_label: { default: "For", allowed: [] },
+    body_services_label: { default: "Services", allowed: [] },
+    body_routine_label: { default: "Routine", allowed: [] },
+    body_concerns_label: { default: "Concerns to investigate", allowed: [] },
+    body_testing_label: { default: "Testing", allowed: [] },
+    body_reminders_label: { default: "Please bring", allowed: [] },
+    footnote: {
+      default:
+        "We'll only use your info to schedule and remind you about this visit.",
+      allowed: [],
+    },
+  },
+  summary_edit_hub: {
+    eyebrow: { default: "Edit your appointment", allowed: [] },
+    title: { default: "What would you like to change?", allowed: [] },
+    description: {
+      default:
+        "Tap Edit on any section. Everything else stays exactly as you left it — nothing is lost.",
+      allowed: [],
+    },
+    body_section_contact: { default: "Contact", allowed: [] },
+    body_section_vehicle: { default: "Vehicle", allowed: [] },
+    body_section_services: { default: "Services & concerns", allowed: [] },
+    body_section_time: { default: "Appointment time", allowed: [] },
+    body_routine_label: { default: "Routine", allowed: [] },
+    body_concerns_label: { default: "Concerns to investigate", allowed: [] },
+    body_testing_label: { default: "Testing", allowed: [] },
+    body_type_waiter: { default: "Waiter ☕", allowed: [] },
+    body_type_dropoff: { default: "Dropoff 🚗 — before 10 AM", allowed: [] },
+    body_hold_caution: {
+      default:
+        "Editing your time releases the slot we're holding. You'll pick a fresh time and we'll hold that one.",
+      allowed: [],
+    },
+    footnote: {
+      default:
+        "Changes you don't touch stay saved. Nothing here is submitted until you confirm on the summary.",
+      allowed: [],
+    },
+  },
+  customer_notes: {
+    input_eyebrow: { default: "One more thing (optional)", allowed: [] },
+    input_title: {
+      default: "Anything else our team should know? 🛠️",
+      allowed: [],
+    },
+    input_description: {
+      default:
+        "Quirks, preferences, that one weird thing — whatever helps us take good care of your car. Or skip — it's up to you.",
+      allowed: [],
+    },
+    approval_eyebrow: { default: "Sound right?", allowed: [] },
+    approval_title: { default: "I'll write this down 📝", allowed: [] },
+    approval_description: {
+      default:
+        "Here's the cleaned-up version of your note. Save it if it captures what you meant, or hit Edit to send your original wording.",
+      allowed: [],
+    },
+    approval_last_try: {
+      default:
+        "Last try — if this still isn't quite right, hit Edit and we'll pass your original note straight to the team.",
+      allowed: [],
+    },
+  },
+  customer_question: {
+    eyebrow: { default: "Last bit (optional)", allowed: [] },
+    title: { default: "Got a question for our team? 🤔", allowed: [] },
+    description: {
+      default:
+        "I'll pass it along — your advisor will text or call to follow up. Or skip if you're all set.",
+      allowed: [],
+    },
+  },
+  appointment_type: {
+    eyebrow: { default: "How would you like to come in?", allowed: [] },
+    title: { default: "Waiter or dropoff?", allowed: [] },
+    footnote: {
+      default: "Tap a card to continue. You'll pick the date next.",
+      allowed: [],
+    },
+  },
 } as const satisfies Record<string, Record<string, CardTextSlotDef>>;
 
 export type CardKey = keyof typeof CARD_TEXT_DEFAULTS;

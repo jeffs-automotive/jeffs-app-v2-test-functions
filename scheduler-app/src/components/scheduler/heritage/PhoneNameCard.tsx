@@ -9,6 +9,7 @@ import {
   CONSENT_PRIVACY_URL,
   CONSENT_TERMS_URL,
 } from "@/lib/scheduler/consent-copy";
+import type { CardCopy } from "@/lib/scheduler/card-text";
 
 /**
  * Step 2 — Phone + Name card (Heritage exemplar).
@@ -28,6 +29,8 @@ import {
  */
 
 export interface PhoneNameCardProps {
+  /** Editable card copy (card-text-editor) — resolved slot strings. */
+  copy: CardCopy<"phone_name">;
   /** Optional context for the eyebrow label (e.g. "Step 2 of 10"). */
   step_label?: string;
   /** Prefilled name fields when resuming. */
@@ -75,6 +78,7 @@ function e164ToDisplay(e164: string): string {
 }
 
 export function PhoneNameCard({
+  copy,
   step_label = "Verify it's you",
   initial_first_name = "",
   initial_last_name = "",
@@ -137,13 +141,8 @@ export function PhoneNameCard({
   return (
     <Card aria-labelledby="phone-name-title">
       <Card.Eyebrow>{step_label}</Card.Eyebrow>
-      <Card.Title id="phone-name-title">
-        Let&apos;s grab a few quick details.
-      </Card.Title>
-      <Card.Description>
-        We&apos;ll send a one-time code to your phone to verify it&apos;s
-        really you. 📲
-      </Card.Description>
+      <Card.Title id="phone-name-title">{copy.title}</Card.Title>
+      <Card.Description>{copy.description}</Card.Description>
 
       <form
         onSubmit={(e) => void handleSubmit(e)}
@@ -298,10 +297,7 @@ export function PhoneNameCard({
         </Card.Actions>
       </form>
 
-      <Card.Footnote>
-        By continuing, you agree this conversation may be recorded and
-        reviewed by our team to help us serve you better.
-      </Card.Footnote>
+      <Card.Footnote>{copy.footnote}</Card.Footnote>
     </Card>
   );
 }

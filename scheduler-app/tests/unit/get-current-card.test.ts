@@ -120,7 +120,10 @@ describe("getCurrentCard", () => {
     };
 
     const card = await getCurrentCard("sess-1");
-    expect(card).toEqual({ step: "greeting", payload: {} });
+    // card-text-editor: the greeting payload now also carries editable `copy`
+    // (resolved from getCardText); match structurally so the copy field is
+    // allowed without pinning its contents here.
+    expect(card).toMatchObject({ step: "greeting", payload: {} });
   });
 
   it("returns input-mode customer_notes payload when no prior text saved", async () => {
@@ -133,7 +136,9 @@ describe("getCurrentCard", () => {
     };
 
     const card = await getCurrentCard("sess-1");
-    expect(card).toEqual({
+    // card-text-editor: payload also carries editable `copy` — match
+    // structurally so the copy field is allowed without pinning its contents.
+    expect(card).toMatchObject({
       step: "customer_notes",
       payload: {
         initial_text: null,
@@ -258,7 +263,9 @@ describe("getCurrentCard", () => {
     };
 
     const card = await getCurrentCard("sess-1");
-    expect(card).toEqual({
+    // card-text-editor: payload also carries editable `copy` — match
+    // structurally so the copy field is allowed without pinning its contents.
+    expect(card).toMatchObject({
       step: "concern_clarify",
       payload: {
         concern_text: "",

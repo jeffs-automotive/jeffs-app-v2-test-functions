@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { Button, Card, Field, Textarea } from "@/components/ui";
+import type { CardCopy } from "@/lib/scheduler/card-text";
 
 /**
  * Step 10.4 — Customer question (optional).
@@ -13,6 +14,8 @@ import { Button, Card, Field, Textarea } from "@/components/ui";
  */
 
 export interface CustomerQuestionCardProps {
+  /** Editable card copy (card-text-editor) — resolved slot strings. */
+  copy: CardCopy<"customer_question">;
   disabled?: boolean;
   onSubmit: (output: { question: string | null }) => void | Promise<void>;
 }
@@ -20,6 +23,7 @@ export interface CustomerQuestionCardProps {
 const MAX_LENGTH = 280;
 
 export function CustomerQuestionCard({
+  copy,
   disabled = false,
   onSubmit,
 }: CustomerQuestionCardProps) {
@@ -39,14 +43,9 @@ export function CustomerQuestionCard({
 
   return (
     <Card aria-labelledby="customer-question-title">
-      <Card.Eyebrow>Last bit (optional)</Card.Eyebrow>
-      <Card.Title id="customer-question-title">
-        Got a question for our team? 🤔
-      </Card.Title>
-      <Card.Description>
-        I&apos;ll pass it along — your advisor will text or call to follow
-        up. Or skip if you&apos;re all set.
-      </Card.Description>
+      <Card.Eyebrow>{copy.eyebrow}</Card.Eyebrow>
+      <Card.Title id="customer-question-title">{copy.title}</Card.Title>
+      <Card.Description>{copy.description}</Card.Description>
 
       <Card.Body>
         <Field

@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { Button, Card, Chip } from "@/components/ui";
+import type { CardCopy } from "@/lib/scheduler/card-text";
 
 /**
  * Step 7.4 — Clarification question card.
@@ -34,6 +35,9 @@ import { Button, Card, Chip } from "@/components/ui";
  */
 
 export interface ClarificationQuestionCardProps {
+  /** Editable card copy (card-text-editor) — resolved slot strings. The
+   *  title is the DB-driven question_text (not editable here). */
+  copy: CardCopy<"clarification_question">;
   /** Catalog row id (concern_questions.id). */
   question_id: number;
   /** Human-readable question text. */
@@ -57,6 +61,7 @@ export interface ClarificationQuestionCardProps {
 }
 
 export function ClarificationQuestionCard({
+  copy,
   question_id,
   question_text,
   options,
@@ -101,14 +106,14 @@ export function ClarificationQuestionCard({
   }
 
   const eyebrowText = category
-    ? `A few details · ${category}`
+    ? `${copy.eyebrow_base} · ${category}`
     : service_key
-      ? `A few details · ${service_key}`
-      : "A few details";
+      ? `${copy.eyebrow_base} · ${service_key}`
+      : copy.eyebrow_base;
 
   const helperText = multi_select
-    ? "Tap all that apply, then Continue. If you're unsure, that's OK — skip it. 🤔"
-    : "Tap whichever feels closest. If you're unsure, that's OK — skip it. 🤔";
+    ? copy.description_multi
+    : copy.description_single;
 
   return (
     <Card aria-labelledby={`clarify-${question_id}-title`}>
@@ -154,10 +159,7 @@ export function ClarificationQuestionCard({
         ) : null}
       </Card.Actions>
 
-      <Card.Footnote>
-        Your service advisor will see your answers — these help us spot the
-        right thing faster.
-      </Card.Footnote>
+      <Card.Footnote>{copy.footnote}</Card.Footnote>
     </Card>
   );
 }
