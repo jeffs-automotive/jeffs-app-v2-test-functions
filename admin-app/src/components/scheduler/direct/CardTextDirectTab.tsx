@@ -46,13 +46,9 @@ import { getCardPreviewManifest } from "./card-preview-manifest";
 import { HeritageCardPreview } from "./HeritageCardPreview";
 import { CardTextFallbackEditor } from "./CardTextFallbackEditor";
 
-/** Friendly picker labels for cards without a manifest yet. */
-const CARD_DISPLAY_NAMES: Record<string, string> = {
-  greeting: "Greeting",
-};
-
+/** Fallback picker label for a card that has no manifest yet (humanize the key). */
 function cardLabel(key: string): string {
-  return CARD_DISPLAY_NAMES[key] ?? key.replace(/_/g, " ");
+  return key.replace(/_/g, " ");
 }
 
 /** Picker groupings = wizard phases (scannability only, NOT a data contract). */

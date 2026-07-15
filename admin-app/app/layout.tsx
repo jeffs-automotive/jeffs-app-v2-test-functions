@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-mono" });
 const poppins = Poppins({
   subsets: ["latin"],
   variable: "--font-poppins",
-  weight: ["400", "500", "600", "700"],
+  weight: ["400", "500", "600"],
   display: "swap",
 });
 

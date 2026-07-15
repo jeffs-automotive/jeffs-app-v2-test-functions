@@ -606,16 +606,3 @@ export function getCardPreviewManifest(
   return CARD_PREVIEW_MANIFEST[cardKey] ?? null;
 }
 
-/**
- * Every slot_key a manifest references (head + body slots + footnotes), in
- * render order. Handy for manifest↔seed parity assertions and for the preview
- * to know which rows it consumes.
- */
-export function manifestSlotKeys(manifest: CardPreviewManifest): string[] {
-  const keys: string[] = manifest.head.map((h) => h.slot_key);
-  for (const blk of manifest.body) {
-    if (blk.block === "slot") keys.push(blk.slot_key);
-  }
-  keys.push(...manifest.footnotes);
-  return keys;
-}
