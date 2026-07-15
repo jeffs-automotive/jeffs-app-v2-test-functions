@@ -153,9 +153,11 @@ function InlineField({
   }, [sync]);
 
   // Re-measure once the Poppins swap-in reflows the metrics.
+  // (document.fonts.ready never rejects per spec; `void` marks it intentionally
+  // not awaited — no empty catch, per observability rule 15.)
   useEffect(() => {
     if (typeof document !== "undefined" && "fonts" in document) {
-      void document.fonts.ready.then(() => sync()).catch(() => {});
+      void document.fonts.ready.then(() => sync());
     }
   }, [sync]);
 

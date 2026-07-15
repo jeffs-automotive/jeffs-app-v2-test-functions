@@ -80,3 +80,42 @@ describe("getCardText", () => {
     expect(fromSpy).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("CARD_TEXT_DEFAULTS drift guard (plan §5/§6)", () => {
+  // Mirror of admin-app CARD_MERGE_FIELDS keys — the tokens a wizard card can fill.
+  const KNOWN_TOKENS = [
+    "agent_name",
+    "shop_name",
+    "shop_phone",
+    "first_name",
+    "appointment_label",
+    "vehicle",
+  ];
+  const TOKEN_RE = /\{\{\s*([a-z0-9_]+)\s*\}\}/g;
+
+  it("every {{token}} used in a default is declared in that slot's `allowed`, and every `allowed` token is a known merge field", () => {
+    for (const [cardKey, slots] of Object.entries(CARD_TEXT_DEFAULTS)) {
+      for (const [slotKey, def] of Object.entries(
+        slots as Record<string, { default: string; allowed: readonly string[] }>,
+      )) {
+        const used = [...def.default.matchAll(TOKEN_RE)].map((m) => m[1]);
+        for (const tok of used) {
+          expect(
+            KNOWN_TOKENS,
+            `${cardKey}.${slotKey}: {{${tok}}} must be a known merge field`,
+          ).toContain(tok);
+          expect(
+            def.allowed,
+            `${cardKey}.${slotKey}: {{${tok}}} is used but not in allowed`,
+          ).toContain(tok);
+        }
+        for (const allowed of def.allowed) {
+          expect(
+            KNOWN_TOKENS,
+            `${cardKey}.${slotKey}: allowed {{${allowed}}} must be a known merge field`,
+          ).toContain(allowed);
+        }
+      }
+    }
+  });
+});

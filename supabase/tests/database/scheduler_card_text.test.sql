@@ -108,6 +108,33 @@ SELECT is(
   (SELECT body FROM public.scheduler_card_text WHERE shop_id=7476 AND card_key='greeting' AND slot_key='title'),
   'Hi, I''m {{agent_name}} 👋', 'reset restored the default_body');
 
+-- ─── set RPC INSERT branch (unseeded slot) — regression guard for the
+--     found-classification fix (migration 20260715180000): a first write must
+--     log rows_added=1 / rows_modified=0 with a NULL pre-state snapshot. ─────
+SET ROLE service_role;
+SELECT lives_ok(
+  $$ SELECT public.scheduler_set_card_text(
+       7476, 'tester@jeffsautomotive.com', 'greeting', 'brand_new_slot',
+       'Fresh copy', 'New slot', 'Fresh copy', ARRAY[]::text[], 99, NULL) $$,
+  'set RPC inserts an unseeded slot');
+RESET ROLE;
+SELECT is(
+  (SELECT body FROM public.scheduler_card_text
+     WHERE shop_id=7476 AND card_key='greeting' AND slot_key='brand_new_slot'),
+  'Fresh copy', 'insert-branch row persisted');
+SELECT is(
+  (SELECT rows_added FROM public.scheduler_admin_audit_log
+     WHERE table_name='scheduler_card_text' AND diff_summary->>'slot_key'='brand_new_slot'),
+  1, 'insert branch logs rows_added=1 (found-fix)');
+SELECT is(
+  (SELECT rows_modified FROM public.scheduler_admin_audit_log
+     WHERE table_name='scheduler_card_text' AND diff_summary->>'slot_key'='brand_new_slot'),
+  0, 'insert branch logs rows_modified=0');
+SELECT ok(
+  (SELECT pre_state_snapshot IS NULL FROM public.scheduler_admin_audit_log
+     WHERE table_name='scheduler_card_text' AND diff_summary->>'slot_key'='brand_new_slot'),
+  'insert branch snapshots NULL, not an empty rowtype');
+
 -- ─── role denial ─────────────────────────────────────────────────────────
 SET ROLE service_role;
 SELECT throws_ok(

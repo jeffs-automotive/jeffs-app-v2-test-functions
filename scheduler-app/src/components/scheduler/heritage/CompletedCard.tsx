@@ -84,7 +84,7 @@ export function CompletedCard({
 
   return (
     <Card aria-labelledby="completed-card-title">
-      <Card.Eyebrow>All done</Card.Eyebrow>
+      <Card.Eyebrow>{copy.eyebrow}</Card.Eyebrow>
       {/* Confirmed tick badge — one-shot scale+fade celebration, contained in
           the card. LazyMotion strict (m.* not motion.*); reduced-motion gated
           via useReducedMotion (the CSS kill-switch can't reach JS animations). */}
