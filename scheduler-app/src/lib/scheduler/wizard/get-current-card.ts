@@ -888,6 +888,7 @@ export async function getCurrentCard(
           ),
           allow_schedule_another: true,
           sms_consent: smsConsent,
+          copy: await getCardText("completed"),
         },
       };
     }

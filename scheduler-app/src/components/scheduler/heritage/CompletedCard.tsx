@@ -4,6 +4,8 @@ import { useState } from "react";
 import { LazyMotion, domAnimation, m, useReducedMotion } from "motion/react";
 
 import { Button, Card } from "@/components/ui";
+import { interpolate } from "@/lib/scheduler/wizard/card-copy";
+import type { CardCopy } from "@/lib/scheduler/card-text";
 
 /**
  * Step 10.5 — Final completed card.
@@ -19,6 +21,10 @@ import { Button, Card } from "@/components/ui";
  */
 
 export interface CompletedCardProps {
+  /** Editable card copy (card-text-editor) — resolved slot strings. */
+  copy: CardCopy<"completed">;
+  /** Merge value for {{shop_name}} in the thanks line. */
+  shop_name?: string;
   /** Customer first name (verified or entered) — for warm greeting. */
   first_name?: string | null;
   /** Optional appointment time string for friendly recap, e.g. "Tue, May 14 at 9:00 AM". */
@@ -39,6 +45,8 @@ export interface CompletedCardProps {
 }
 
 export function CompletedCard({
+  copy,
+  shop_name = "Jeff's Automotive",
   first_name,
   appointment_label,
   allow_schedule_another = true,
@@ -62,9 +70,17 @@ export function CompletedCard({
     }
   }
 
-  const greeting = first_name?.trim().length
-    ? `You're all set, ${first_name.trim()}.`
-    : "You're all set.";
+  const greetingNode = first_name?.trim().length
+    ? interpolate(copy.title_named, { first_name: first_name.trim() })
+    : copy.title_anon;
+  const phoneLink = (
+    <a
+      href="tel:6102536565"
+      className="font-medium text-brand-burgundy-700 underline-offset-2 hover:underline"
+    >
+      (610) 253-6565
+    </a>
+  );
 
   return (
     <Card aria-labelledby="completed-card-title">
@@ -87,22 +103,16 @@ export function CompletedCard({
           <span className="text-[18px] leading-none">✓</span>
         </m.div>
       </LazyMotion>
-      <Card.Title id="completed-card-title">{greeting} 🎉</Card.Title>
+      <Card.Title id="completed-card-title">{greetingNode} 🎉</Card.Title>
       <Card.Description>
-        We&apos;ll see you{" "}
-        {appointment_label ? (
-          <strong className="text-ink">{appointment_label}</strong>
-        ) : (
-          "soon"
-        )}
-        . If anything comes up, text or call us at{" "}
-        <a
-          href="tel:6102536565"
-          className="font-medium text-brand-burgundy-700 underline-offset-2 hover:underline"
-        >
-          (610) 253-6565
-        </a>{" "}
-        and someone on our team will help you out.
+        {interpolate(copy.description, {
+          appointment_label: appointment_label ? (
+            <strong className="text-ink">{appointment_label}</strong>
+          ) : (
+            "soon"
+          ),
+          shop_phone: phoneLink,
+        })}
       </Card.Description>
 
       <Card.Body>
@@ -110,13 +120,13 @@ export function CompletedCard({
             (reflects what the system already does). Generic enough to be true
             for every booking; no per-appointment claims beyond the existing
             appointment_label prop. */}
-        <p className="label-eyebrow mb-2">What happens next</p>
+        <p className="label-eyebrow mb-2">{copy.next_label}</p>
         <ul className="space-y-2 text-[14px] leading-relaxed text-ink-secondary">
           <li className="flex gap-2.5">
             <span aria-hidden className="shrink-0">
               ✅
             </span>
-            <span>We&apos;ve booked it in our system</span>
+            <span>{copy.next_booked}</span>
           </li>
           {/* Consent-aware truthfulness (revamp Phase 2, design spec §5):
               only promise text/email sends when the customer opted in. */}
@@ -126,23 +136,22 @@ export function CompletedCard({
             </span>
             <span>
               {sms_consent
-                ? "We'll text and email your confirmation and a reminder before your visit."
-                : "Your confirmation and summary are saved right here in this chat. Want text + email reminders? Just tell us at your visit and we'll turn them on."}
+                ? copy.next_reminders_consent
+                : copy.next_reminders_noconsent}
             </span>
           </li>
           <li className="flex gap-2.5">
             <span aria-hidden className="shrink-0">
               🔑
             </span>
-            <span>Bring your keys and we&apos;ll take it from here</span>
+            <span>{copy.next_keys}</span>
           </li>
         </ul>
 
         <Card.Divider />
 
         <p className="text-sm leading-relaxed text-ink-secondary">
-          Thanks for choosing Jeff&apos;s Automotive — we appreciate it. A
-          confirmation summary stays in this chat for your reference.
+          {interpolate(copy.thanks, { shop_name })}
         </p>
       </Card.Body>
 
@@ -171,13 +180,7 @@ export function CompletedCard({
       </Card.Actions>
 
       <Card.Footnote>
-        Family-owned since 1976 · Questions?{" "}
-        <a
-          href="tel:6102536565"
-          className="font-medium text-brand-burgundy-700 underline-offset-2 hover:underline"
-        >
-          (610) 253-6565
-        </a>
+        {interpolate(copy.footnote, { shop_phone: phoneLink })}
       </Card.Footnote>
     </Card>
   );

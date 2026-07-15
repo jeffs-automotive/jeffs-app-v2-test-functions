@@ -105,6 +105,37 @@ export const CARD_PREVIEW_MANIFEST: Record<string, CardPreviewManifest> = {
     ],
     footnotes: ["footnote"], // "Need a human instead? …"
   },
+  completed: {
+    card_key: "completed",
+    display_name: "Completed",
+    group: "confirmation",
+    head: [
+      { slot_key: "eyebrow", role: "eyebrow" }, // "All done"
+      { slot_key: "title_named", role: "title" }, // "You're all set, {{first_name}}."
+      { slot_key: "title_anon", role: "title" }, // "You're all set." (no-name variant)
+      { slot_key: "description", role: "description" }, // "We'll see you {{appointment_label}}…"
+    ],
+    body: [
+      { block: "slot", slot_key: "next_label", variant: "heading" }, // "What happens next"
+      { block: "slot", slot_key: "next_booked", variant: "plain" },
+      { block: "slot", slot_key: "next_reminders_consent", variant: "plain" }, // opted-in variant
+      { block: "slot", slot_key: "next_reminders_noconsent", variant: "plain" }, // not-opted-in variant
+      { block: "slot", slot_key: "next_keys", variant: "plain" },
+      { block: "ghost", hint: { kind: "divider", tone: "rule" } },
+      { block: "slot", slot_key: "thanks", variant: "plain" }, // "Thanks for choosing {{shop_name}}…"
+      {
+        block: "ghost",
+        hint: {
+          kind: "buttons",
+          count: 2,
+          layout: "row",
+          labels: ["Close", "Schedule another"],
+          primaryIndex: 1,
+        },
+      },
+    ],
+    footnotes: ["footnote"], // "Family-owned since 1976 · Questions? {{shop_phone}}"
+  },
 };
 
 /** Look up a card's presentation manifest by card_key. Null when absent. */

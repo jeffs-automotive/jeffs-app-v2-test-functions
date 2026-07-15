@@ -663,6 +663,7 @@ function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
     case "completed":
       return (
         <CompletedCard
+          copy={card.payload.copy}
           first_name={card.payload.first_name}
           appointment_label={card.payload.appointment_label}
           allow_schedule_another={card.payload.allow_schedule_another}

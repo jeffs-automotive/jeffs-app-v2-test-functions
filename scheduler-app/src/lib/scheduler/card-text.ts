@@ -65,6 +65,41 @@ export const CARD_TEXT_DEFAULTS = {
       allowed: [],
     },
   },
+  completed: {
+    eyebrow: { default: "All done", allowed: [] },
+    title_named: { default: "You're all set, {{first_name}}.", allowed: ["first_name"] },
+    title_anon: { default: "You're all set.", allowed: [] },
+    description: {
+      default:
+        "We'll see you {{appointment_label}}. If anything comes up, text or call us at {{shop_phone}} and someone on our team will help you out.",
+      allowed: ["appointment_label", "shop_phone"],
+    },
+    next_label: { default: "What happens next", allowed: [] },
+    next_booked: { default: "We've booked it in our system", allowed: [] },
+    next_reminders_consent: {
+      default:
+        "We'll text and email your confirmation and a reminder before your visit.",
+      allowed: [],
+    },
+    next_reminders_noconsent: {
+      default:
+        "Your confirmation and summary are saved right here in this chat. Want text + email reminders? Just tell us at your visit and we'll turn them on.",
+      allowed: [],
+    },
+    next_keys: {
+      default: "Bring your keys and we'll take it from here",
+      allowed: [],
+    },
+    thanks: {
+      default:
+        "Thanks for choosing {{shop_name}} — we appreciate it. A confirmation summary stays in this chat for your reference.",
+      allowed: ["shop_name"],
+    },
+    footnote: {
+      default: "Family-owned since 1976 · Questions? {{shop_phone}}",
+      allowed: ["shop_phone"],
+    },
+  },
 } as const satisfies Record<string, Record<string, CardTextSlotDef>>;
 
 export type CardKey = keyof typeof CARD_TEXT_DEFAULTS;

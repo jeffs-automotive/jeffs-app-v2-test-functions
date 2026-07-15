@@ -72,16 +72,34 @@ describe("PhoneNameCard consent capture", () => {
   });
 });
 
+const completedCopy = {
+  eyebrow: "All done",
+  title_named: "You're all set, {{first_name}}.",
+  title_anon: "You're all set.",
+  description:
+    "We'll see you {{appointment_label}}. If anything comes up, text or call us at {{shop_phone}} and someone on our team will help you out.",
+  next_label: "What happens next",
+  next_booked: "We've booked it in our system",
+  next_reminders_consent:
+    "We'll text and email your confirmation and a reminder before your visit.",
+  next_reminders_noconsent:
+    "Your confirmation and summary are saved right here in this chat. Want text + email reminders? Just tell us at your visit and we'll turn them on.",
+  next_keys: "Bring your keys and we'll take it from here",
+  thanks:
+    "Thanks for choosing {{shop_name}} — we appreciate it. A confirmation summary stays in this chat for your reference.",
+  footnote: "Family-owned since 1976 · Questions? {{shop_phone}}",
+};
+
 describe("CompletedCard consent-aware copy", () => {
   it("consented: promises text + email confirmation and reminder", () => {
-    render(<CompletedCard sms_consent={true} />);
+    render(<CompletedCard copy={completedCopy} sms_consent={true} />);
     expect(
       screen.getByText(/we'll text and email your confirmation/i),
     ).toBeInTheDocument();
   });
 
   it("not consented (default): promises nothing by text or email", () => {
-    render(<CompletedCard />);
+    render(<CompletedCard copy={completedCopy} />);
     expect(
       screen.getByText(/saved right here in this chat/i),
     ).toBeInTheDocument();

@@ -355,6 +355,8 @@ export interface CompletedPayload {
    *  render time (revamp Phase 2). Drives the CompletedCard's truthful
    *  what-happens-next line; false when unknown/lookup-failed. */
   sms_consent: boolean;
+  /** Editable card copy (card-text-editor). */
+  copy: CardCopy<"completed">;
 }
 
 /** Escalation terminal state. */
