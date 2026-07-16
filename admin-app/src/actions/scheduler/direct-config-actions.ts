@@ -5,6 +5,7 @@
  * ops (sub-feature A + C, 2026-07-02). Same thin-wrapper contract as
  * direct-catalog-actions.ts.
  */
+import * as Sentry from "@sentry/nextjs";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 
@@ -34,6 +35,38 @@ import { validateCardTextBody } from "@/lib/scheduler/card-merge-fields";
 
 const CONFIG_PATH = "/schedulerconfig";
 
+/**
+ * Like `wrapAdminAction`, but for the direct-config actions that all return
+ * `DirectFormState`: wraps the body in a top-level try/catch so a THROWN
+ * exception (e.g. requireAdmin auth failure, or a read-DAL like getCardTextSlot
+ * that throws on a Supabase read error) comes back as the typed
+ * `{ status: "error", … }` envelope the UI switches on — instead of rejecting
+ * the Server Action raw (which the client would only see as a sanitized
+ * generic error). We re-capture to Sentry here because catching inside the
+ * wrapped body means `withServerActionInstrumentation` no longer sees a throw.
+ * Addresses the server-action-envelope-sentry gate finding across all 11 actions.
+ */
+function directAction(
+  actionName: string,
+  inner: (args: unknown) => Promise<DirectFormState>,
+): (args: unknown) => Promise<DirectFormState> {
+  return wrapAdminAction(
+    actionName,
+    async (args: unknown): Promise<DirectFormState> => {
+      try {
+        return await inner(args);
+      } catch (e) {
+        Sentry.captureException(e, { tags: { admin_action: actionName } });
+        return {
+          status: "error",
+          error: e instanceof Error ? e.message : "Unexpected error",
+          timestamp: Date.now(),
+        };
+      }
+    },
+  );
+}
+
 // ─── appointment limits ──────────────────────────────────────────────────────
 
 const limitsSchema = z.object({
@@ -46,7 +79,7 @@ const limitsSchema = z.object({
   expected_updated_at: z.string().optional(),
 });
 
-export const setAppointmentLimitsAction = wrapAdminAction(
+export const setAppointmentLimitsAction = directAction(
   "setAppointmentLimitsAction",
   async (args: unknown): Promise<DirectFormState> => {
     const admin = await requireAdmin();
@@ -65,7 +98,7 @@ export const setAppointmentLimitsAction = wrapAdminAction(
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "must be YYYY-MM-DD");
 
-export const addClosedDateAction = wrapAdminAction(
+export const addClosedDateAction = directAction(
   "addClosedDateAction",
   async (args: unknown): Promise<DirectFormState> => {
     const admin = await requireAdmin();
@@ -81,7 +114,7 @@ export const addClosedDateAction = wrapAdminAction(
   },
 );
 
-export const removeClosedDateAction = wrapAdminAction(
+export const removeClosedDateAction = directAction(
   "removeClosedDateAction",
   async (args: unknown): Promise<DirectFormState> => {
     const admin = await requireAdmin();
@@ -104,7 +137,7 @@ const blockSchema = z.object({
   reason: z.string().max(200).optional(),
 });
 
-export const blockCapacityDirectAction = wrapAdminAction(
+export const blockCapacityDirectAction = directAction(
   "blockCapacityDirectAction",
   async (args: unknown): Promise<DirectFormState> => {
     const admin = await requireAdmin();
@@ -118,7 +151,7 @@ export const blockCapacityDirectAction = wrapAdminAction(
   },
 );
 
-export const unblockCapacityDirectAction = wrapAdminAction(
+export const unblockCapacityDirectAction = directAction(
   "unblockCapacityDirectAction",
   async (args: unknown): Promise<DirectFormState> => {
     const admin = await requireAdmin();
@@ -146,7 +179,7 @@ const typeSchema = z.object({
   expected_updated_at: z.string().optional(),
 });
 
-export const setAppointmentTypeAction = wrapAdminAction(
+export const setAppointmentTypeAction = directAction(
   "setAppointmentTypeAction",
   async (args: unknown): Promise<DirectFormState> => {
     const admin = await requireAdmin();
@@ -161,7 +194,7 @@ export const setAppointmentTypeAction = wrapAdminAction(
   },
 );
 
-export const deactivateAppointmentTypeAction = wrapAdminAction(
+export const deactivateAppointmentTypeAction = directAction(
   "deactivateAppointmentTypeAction",
   async (args: unknown): Promise<DirectFormState> => {
     const admin = await requireAdmin();
@@ -186,7 +219,7 @@ const templateSchema = z.object({
   expected_updated_at: z.string().optional(),
 });
 
-export const setMessageTemplateAction = wrapAdminAction(
+export const setMessageTemplateAction = directAction(
   "setMessageTemplateAction",
   async (args: unknown): Promise<DirectFormState> => {
     const admin = await requireAdmin();
@@ -222,7 +255,7 @@ export const setMessageTemplateAction = wrapAdminAction(
 
 // ─── ops ─────────────────────────────────────────────────────────────────────
 
-export const runAppointmentsSyncDirectAction = wrapAdminAction(
+export const runAppointmentsSyncDirectAction = directAction(
   "runAppointmentsSyncDirectAction",
   async (args: unknown): Promise<DirectFormState> => {
     await requireAdmin();
@@ -252,7 +285,7 @@ const cardTextSchema = z.object({
   expected_updated_at: z.string().optional(),
 });
 
-export const setCardTextAction = wrapAdminAction(
+export const setCardTextAction = directAction(
   "setCardTextAction",
   async (args: unknown): Promise<DirectFormState> => {
     const admin = await requireAdmin();
@@ -297,7 +330,7 @@ const resetCardTextSchema = z.object({
   expected_updated_at: z.string().optional(),
 });
 
-export const resetCardTextAction = wrapAdminAction(
+export const resetCardTextAction = directAction(
   "resetCardTextAction",
   async (args: unknown): Promise<DirectFormState> => {
     const admin = await requireAdmin();
