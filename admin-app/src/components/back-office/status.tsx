@@ -1,12 +1,11 @@
 /**
- * Back-office status vocabulary — mirrored byte-for-byte (rendered output) from
- * qteklink-app so a status reads identically in both apps (the cross-app design
- * contract). Only the `IssueStatus` import path differs. Color + icon (never color
- * alone); tints clear WCAG AA in light AND dark. Icons are aria-hidden; the visible
- * label is the accessible name. Purely presentational.
+ * Back-office status vocabulary — the SHARED badges (status pill, change-type tag, kind tag)
+ * render identically to qteklink-app's copy so a status reads the same in both apps (the
+ * cross-app design contract). Only the `IssueStatus` import path differs; the office-only
+ * StaleBadge is not carried here. Color + icon (never color alone); tints clear WCAG AA in
+ * light AND dark. Icons are aria-hidden; the visible label is the accessible name.
  */
 import {
-  AlarmClock,
   CalendarClock,
   CheckCircle2,
   Circle,
@@ -57,19 +56,6 @@ export function BackOfficeStatusBadge({ status }: { status: IssueStatus }) {
     <Badge variant="outline" className={cn("gap-1", s.cls)}>
       <s.Icon aria-hidden="true" />
       {s.label}
-    </Badge>
-  );
-}
-
-/** An additive "Stale · Nd" overlay for issues idle past the threshold. Red + alarm icon. */
-export function StaleBadge({ days }: { days: number }) {
-  return (
-    <Badge
-      variant="outline"
-      className="gap-1 border-red-300 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
-    >
-      <AlarmClock aria-hidden="true" />
-      Stale · {days}d
     </Badge>
   );
 }

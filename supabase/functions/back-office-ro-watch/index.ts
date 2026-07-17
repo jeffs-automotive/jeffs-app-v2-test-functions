@@ -45,7 +45,9 @@ interface RawEventRow {
 }
 
 function toSaleEvent(r: RawEventRow): SaleEvent {
-  const d = r.raw_body?.data ?? {};
+  // Tekmetric payloads are usually nested under `data`, but some arrive FLAT (the 2026-07-06
+  // flat-vs-nested incident) — fall back to the top-level body so those aren't misread.
+  const d = (r.raw_body?.data as Record<string, unknown> | undefined) ?? (r.raw_body as Record<string, unknown> | null) ?? {};
   const total = typeof d.totalSales === "number" && Number.isSafeInteger(d.totalSales) ? d.totalSales : null;
   const roNum =
     typeof d.repairOrderNumber === "string" || typeof d.repairOrderNumber === "number"
@@ -147,12 +149,13 @@ async function detectOpenRoClose(shopId: number, realmId: string): Promise<numbe
     if ((row.context?.ro_status as string) === "ro_closed") continue;
     const roNum = String(row.ro_number);
 
+    // Match the RO# under the usual nested `data` path OR a flat top-level payload.
     const { data: evRows, error: evErr } = await sb
       .from("qteklink_events")
       .select("event_kind, raw_body, received_at, tekmetric_ro_id")
       .eq("shop_id", shopId)
       .eq("realm_id", realmId)
-      .eq("raw_body->data->>repairOrderNumber", roNum)
+      .or(`raw_body->data->>repairOrderNumber.eq.${roNum},raw_body->>repairOrderNumber.eq.${roNum}`)
       .in("event_kind", SCAN_KINDS)
       .order("received_at", { ascending: false })
       .limit(1);
@@ -206,13 +209,18 @@ Deno.serve((req) =>
       const realmId = String((c as { realm_id: unknown }).realm_id ?? "");
       if (!Number.isInteger(shopId) || shopId <= 0 || !realmId) continue;
 
-      const { data: setRow } = await sb
+      const { data: setRow, error: setErr } = await sb
         .from("qteklink_settings")
         .select("shop_timezone")
         .eq("shop_id", shopId)
         .eq("realm_id", realmId)
         .limit(1)
         .maybeSingle();
+      if (setErr) {
+        // Surface the read error (observability rule 9) rather than silently using the
+        // default tz — a wrong tz would misclassify reopened change_type business dates.
+        Sentry.captureException(setErr, { tags: { surface: "back-office-ro-watch", step: "settings", shop_id: String(shopId) } });
+      }
       const tz = (setRow?.shop_timezone as string) || DEFAULT_TZ;
 
       try {

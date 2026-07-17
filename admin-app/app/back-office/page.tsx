@@ -107,12 +107,16 @@ export default async function BackOfficeQueuePage() {
           )}
         </section>
 
-        {submitted.length > 0 && (
-          <section className="space-y-2">
-            <SectionHeading title="Submitted — waiting to verify" count={submitted.length} />
+        <section className="space-y-2">
+          <SectionHeading title="Submitted — waiting to verify" count={submitted.length} />
+          {submitted.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-border p-6 text-center">
+              <p className="text-sm text-muted-foreground">Nothing awaiting the office right now.</p>
+            </div>
+          ) : (
             <QueueTable issues={submitted} showSubmit={false} />
-          </section>
-        )}
+          )}
+        </section>
       </div>
     </AppShell>
   );

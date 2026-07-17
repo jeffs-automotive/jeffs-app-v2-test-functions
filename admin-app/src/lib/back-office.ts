@@ -19,6 +19,8 @@ export interface SaQueueIssue {
   roNumber: string | null;
   billNo: string | null;
   vendorName: string | null;
+  billDate: string | null;
+  totalCents: number | null;
   title: string | null;
   boNotes: string | null;
   saNotes: string | null;
@@ -38,6 +40,8 @@ interface QueueDbRow {
   ro_number: string | null;
   bill_no: string | null;
   vendor_name: string | null;
+  bill_date: string | null;
+  total_cents: number | string | null;
   title: string | null;
   bo_notes: string | null;
   sa_notes: string | null;
@@ -47,6 +51,7 @@ interface QueueDbRow {
 }
 
 function mapRow(r: QueueDbRow): SaQueueIssue {
+  const total = r.total_cents === null ? null : Number(r.total_cents);
   return {
     id: r.id,
     kind: r.kind as IssueKind,
@@ -54,6 +59,8 @@ function mapRow(r: QueueDbRow): SaQueueIssue {
     roNumber: r.ro_number,
     billNo: r.bill_no,
     vendorName: r.vendor_name,
+    billDate: r.bill_date,
+    totalCents: total !== null && Number.isFinite(total) ? total : null,
     title: r.title,
     boNotes: r.bo_notes,
     saNotes: r.sa_notes,
@@ -68,7 +75,7 @@ export async function listSaQueue(shopId: number): Promise<SaQueueIssue[]> {
   const admin = createSupabaseAdminClient();
   const { data, error } = await admin
     .from("back_office_issues")
-    .select("id, kind, status, ro_number, bill_no, vendor_name, title, bo_notes, sa_notes, context, created_at, sent_to_sa_at")
+    .select("id, kind, status, ro_number, bill_no, vendor_name, bill_date, total_cents, title, bo_notes, sa_notes, context, created_at, sent_to_sa_at")
     .eq("shop_id", shopId)
     .in("status", ["sent_to_sa", "awaiting_verify"])
     .order("sent_to_sa_at", { ascending: true });

@@ -92,7 +92,7 @@ function num(v: number | string | null): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-export function mapIssue(r: IssueDbRow): BackOfficeIssue {
+function mapIssue(r: IssueDbRow): BackOfficeIssue {
   return {
     id: r.id,
     kind: r.kind as IssueKind,

@@ -56,8 +56,14 @@ export function RowActions({ issue }: { issue: BackOfficeIssue }) {
   return (
     <div className="flex items-center justify-end gap-2">
       {canSend && (
-        <Dialog open={sendOpen} onOpenChange={setSendOpen}>
-          <DialogTrigger render={<Button size="sm" variant="outline" />}>
+        <Dialog
+          open={sendOpen}
+          onOpenChange={(next) => {
+            if (sendPending && !next) return; // don't close mid-send — the error would be lost
+            setSendOpen(next);
+          }}
+        >
+          <DialogTrigger render={<Button size="sm" variant={issue.status === "open" ? "default" : "outline"} />}>
             <SendIcon aria-hidden="true" />
             {sendLabel}
           </DialogTrigger>
@@ -94,13 +100,16 @@ export function RowActions({ issue }: { issue: BackOfficeIssue }) {
       )}
 
       {verifyBlocked ? (
-        <Button size="sm" disabled title="You can verify once the repair order has closed.">
-          <CheckCircle2 aria-hidden="true" />
-          Verify
-        </Button>
+        <span className="text-xs text-muted-foreground">Verify after the RO closes</span>
       ) : (
-        <Dialog open={verifyOpen} onOpenChange={setVerifyOpen}>
-        <DialogTrigger render={<Button size="sm" />}>
+        <Dialog
+          open={verifyOpen}
+          onOpenChange={(next) => {
+            if (verifyPending && !next) return; // don't close mid-verify — the error would be lost
+            setVerifyOpen(next);
+          }}
+        >
+        <DialogTrigger render={<Button size="sm" variant={issue.status === "awaiting_verify" ? "default" : "outline"} />}>
           <CheckCircle2 aria-hidden="true" />
           Verify
         </DialogTrigger>

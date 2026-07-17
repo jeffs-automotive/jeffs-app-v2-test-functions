@@ -13,10 +13,24 @@
 SELECT cron.unschedule('back-office-ro-watch')
 WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'back-office-ro-watch');
 
+-- Body wrapped in BEGIN/EXCEPTION → scheduler_error_log (observability rule 8; pattern
+-- 20260516200000 / 20260702182000) so a Vault/pg_net dispatch failure is recorded, not
+-- silent (Log Drain is plan-gated; a bare body would only surface in cron.job_run_details).
 SELECT cron.schedule(
   'back-office-ro-watch',
   '*/30 * * * *',
-  $$SELECT public.scheduler_invoke_edge_function('back-office-ro-watch', '{}'::jsonb);$$
+  $cron$
+  DO $$
+  BEGIN
+    PERFORM public.scheduler_invoke_edge_function('back-office-ro-watch', '{}'::jsonb);
+  EXCEPTION
+    WHEN OTHERS THEN
+      INSERT INTO public.scheduler_error_log
+        (origin, origin_id, surface, level, error_code, message)
+      VALUES
+        ('cron', 'back-office-ro-watch', 'cron/back-office-ro-watch', 'error', SQLSTATE, SQLERRM);
+  END $$;
+  $cron$
 );
 
 DO $$

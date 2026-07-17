@@ -6,6 +6,7 @@
  * Chris's Phase-1 decision). requireAdmin() runs OUTSIDE the try so its redirect
  * propagates; the DB work is wrapped so a failure surfaces (never a silent swallow).
  */
+import { z } from "zod";
 import * as Sentry from "@sentry/nextjs";
 import { requireAdmin } from "@/lib/auth";
 import { wrapAdminAction } from "@/lib/instrument-action";
@@ -16,14 +17,22 @@ export type SubmitFixState =
   | { ok: false; message: string; timestamp: number }
   | null;
 
+const SubmitFixSchema = z.object({
+  issue_id: z.string().uuid("Missing or invalid issue id."),
+  sa_note: z.string().trim().min(1, "Add a note describing what you fixed.").max(4000, "That note is too long."),
+});
+
 async function submitFixImpl(_prev: SubmitFixState, formData: FormData): Promise<SubmitFixState> {
   const { email } = await requireAdmin();
   try {
-    const issueId = String(formData.get("issue_id") ?? "").trim();
-    const note = String(formData.get("sa_note") ?? "").trim();
-    if (!issueId) return { ok: false, message: "Missing issue id.", timestamp: Date.now() };
-    if (!note) return { ok: false, message: "Add a note describing what you fixed.", timestamp: Date.now() };
-    if (note.length > 4000) return { ok: false, message: "That note is too long.", timestamp: Date.now() };
+    const parsed = SubmitFixSchema.safeParse({
+      issue_id: String(formData.get("issue_id") ?? ""),
+      sa_note: String(formData.get("sa_note") ?? ""),
+    });
+    if (!parsed.success) {
+      return { ok: false, message: parsed.error.issues[0]?.message ?? "Invalid input.", timestamp: Date.now() };
+    }
+    const { issue_id: issueId, sa_note: note } = parsed.data;
 
     const shopId = getAdminShopId();
     const done = await submitFix(shopId, issueId, email, note);

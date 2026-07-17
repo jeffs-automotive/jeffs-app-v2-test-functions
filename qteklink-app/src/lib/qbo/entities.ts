@@ -91,9 +91,7 @@ export const attachableSchema = z.object({
   Id: z.string(),
   FileName: z.string().nullish(),
   TempDownloadUri: z.string().nullish(),
-  ContentType: z.string().nullish(),
 });
-export type QboAttachable = z.infer<typeof attachableSchema>;
 
 /** `{ QueryResponse: { Bill?: [...] } }` — the entity array is omitted when there are 0 hits. */
 export const billQueryResponseSchema = z.object({

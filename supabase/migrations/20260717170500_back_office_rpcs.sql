@@ -272,16 +272,17 @@ RETURNS uuid[]
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
 DECLARE
-  v_id  uuid;
-  v_now timestamptz := now();
-  v_ids uuid[] := '{}';
+  v_id     uuid;
+  v_status text;
+  v_now    timestamptz := now();
+  v_ids    uuid[] := '{}';
 BEGIN
   IF p_shop_id IS NULL OR p_shop_id <= 0 OR p_ro_number IS NULL OR length(btrim(p_ro_number)) = 0 THEN
     RAISE EXCEPTION 'back_office_close_open_ro: positive p_shop_id + non-blank p_ro_number are required';
   END IF;
 
-  FOR v_id IN
-    SELECT id FROM public.back_office_issues
+  FOR v_id, v_status IN
+    SELECT id, status FROM public.back_office_issues
      WHERE shop_id = p_shop_id
        AND kind = 'open_ro'
        AND status <> 'verified'
@@ -298,8 +299,10 @@ BEGIN
            updated_at = v_now
      WHERE id = v_id;
 
+    -- ro_closed is a context flip, not a status transition — record the row's ACTUAL
+    -- status (which may be open / sent_to_sa / awaiting_verify) on both sides.
     INSERT INTO public.back_office_issue_events (issue_id, action, prior_status, new_status, actor_app, note)
-    VALUES (v_id, 'ro_closed', 'open', 'open', 'system', 'RO closed in Tekmetric');
+    VALUES (v_id, 'ro_closed', v_status, v_status, 'system', 'RO closed in Tekmetric');
 
     v_ids := array_append(v_ids, v_id);
   END LOOP;

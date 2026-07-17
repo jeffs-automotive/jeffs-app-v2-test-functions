@@ -99,7 +99,7 @@ function section(title: string, items: BackOfficeDigestItem[], emptyMsg: string,
   return `${header}<table style="width:100%;border-collapse:collapse;border-top:1px solid ${RULE};">${items.map((i) => itemRow(i, staleAccent)).join("")}</table>`;
 }
 
-export function buildDigestHtml(data: BackOfficeDigestData): string {
+function buildDigestHtml(data: BackOfficeDigestData): string {
   return `<!doctype html>
 <html><body style="margin:0;padding:0;background:${BG};">
   <div style="max-width:640px;margin:0 auto;padding:24px 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
@@ -147,13 +147,19 @@ Deno.serve((req) =>
       const realmId = String((c as { realm_id: unknown }).realm_id ?? "");
       if (!Number.isInteger(shopId) || shopId <= 0 || !realmId) continue;
 
-      const { data: setRow } = await sb
+      const { data: setRow, error: setErr } = await sb
         .from("qteklink_settings")
         .select("shop_timezone, back_office")
         .eq("shop_id", shopId)
         .eq("realm_id", realmId)
         .limit(1)
         .maybeSingle();
+      if (setErr) {
+        // A settings-read failure is an error, NOT "no recipients" (observability rule 9).
+        Sentry.captureException(setErr, { tags: { surface: "back-office-daily-report", shop_id: String(shopId) } });
+        results.push({ shop_id: shopId, error: `settings_read_failed: ${setErr.message}` });
+        continue;
+      }
       const tz = (setRow?.shop_timezone as string) || DEFAULT_TZ;
       const blob = (setRow?.back_office ?? {}) as Record<string, unknown>;
       const recipients = digestRecipients(blob);

@@ -28,6 +28,7 @@ function canManage(role: QtekRole): boolean {
 function invalid(message: string): { ok: false; reason: "validation"; message: string; timestamp: number } {
   return { ok: false, reason: "validation", message, timestamp: Date.now() };
 }
+const isUuid = (s: string): boolean => z.string().uuid().safeParse(s).success;
 
 // ─── Fetch a vendor doc from QuickBooks (read-only) ──────────────────────────
 async function fetchVendorDocImpl(
@@ -167,7 +168,7 @@ async function sendToSaImpl(
     if (!canManage(role)) return forbidden();
     const issueId = String(formData.get("issue_id") ?? "").trim();
     const note = String(formData.get("note") ?? "").trim() || null;
-    if (!issueId) return invalid("Missing issue id.");
+    if (!isUuid(issueId)) return invalid("Missing or invalid issue id.");
     const event = await sendToSa(shopId, issueId, email, note);
     if (!event) return invalid("That issue can't be sent right now (it may have changed).");
     await notifyBackOffice(shopId, issueId, event);
@@ -187,7 +188,7 @@ async function verifyIssueImpl(
     const { shopId, role, email } = await requireQtekUser();
     if (!canManage(role)) return forbidden();
     const issueId = String(formData.get("issue_id") ?? "").trim();
-    if (!issueId) return invalid("Missing issue id.");
+    if (!isUuid(issueId)) return invalid("Missing or invalid issue id.");
     const done = await verifyIssue(shopId, issueId, email);
     if (!done) return invalid("That issue is already verified.");
     await notifyBackOffice(shopId, issueId, "verified");

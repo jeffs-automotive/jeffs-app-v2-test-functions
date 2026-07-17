@@ -43,14 +43,20 @@ function ConfirmForm({
   cand,
   kind,
   onDone,
+  onBusyChange,
 }: {
   cand: VendorDocCandidate | null;
   kind: IssueKind;
   onDone: () => void;
+  onBusyChange: (busy: boolean) => void;
 }) {
   const router = useRouter();
   const [state, action, pending] = useActionState(createInvoiceIssueAction, null);
   const [amount, setAmount] = useState(cand?.totalCents != null ? (cand.totalCents / 100).toFixed(2) : "");
+
+  useEffect(() => {
+    onBusyChange(pending);
+  }, [pending, onBusyChange]);
 
   useEffect(() => {
     if (state?.ok) {
@@ -70,16 +76,16 @@ function ConfirmForm({
       <p className="text-xs text-muted-foreground">Check these match the paper invoice before adding.</p>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Vendor">
-          <input name="vendor_name" defaultValue={cand?.vendorName ?? ""} className={inputCls} maxLength={200} />
+          <Input name="vendor_name" defaultValue={cand?.vendorName ?? ""} maxLength={200} />
         </Field>
         <Field label="Bill / Expense #">
-          <input name="bill_no" defaultValue={cand?.billNo ?? ""} className={inputCls} maxLength={64} />
+          <Input name="bill_no" defaultValue={cand?.billNo ?? ""} maxLength={64} />
         </Field>
         <Field label="RO #">
-          <input name="ro_number" defaultValue={cand?.roNumber ?? ""} className={inputCls} maxLength={64} />
+          <Input name="ro_number" defaultValue={cand?.roNumber ?? ""} maxLength={64} />
         </Field>
         <Field label="Bill date (YYYY-MM-DD)">
-          <input name="bill_date" defaultValue={cand?.billDate ?? ""} className={inputCls} maxLength={10} placeholder="2026-07-17" />
+          <Input name="bill_date" defaultValue={cand?.billDate ?? ""} maxLength={10} placeholder="2026-07-17" />
         </Field>
         <Field label="Amount ($)">
           <Input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" placeholder="0.00" className="tabular-nums" />
@@ -109,12 +115,14 @@ export function AddInvoiceDialog({
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<VendorDocCandidate | null>(null);
   const [manual, setManual] = useState(false);
+  const [confirmBusy, setConfirmBusy] = useState(false);
   const [fetchState, fetchAction, fetchPending] = useActionState(fetchVendorDocAction, null);
 
   const reset = () => {
     setOpen(false);
     setSelected(null);
     setManual(false);
+    setConfirmBusy(false);
   };
 
   const candidates = fetchState?.ok ? fetchState.data : [];
@@ -129,7 +137,13 @@ export function AddInvoiceDialog({
     : null;
 
   return (
-    <Dialog open={open} onOpenChange={(o) => (o ? setOpen(true) : reset())}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o && (fetchPending || confirmBusy)) return; // don't close mid-fetch/mid-add
+        return o ? setOpen(true) : reset();
+      }}
+    >
       <DialogTrigger render={<Button size="sm" />}>
         <Plus aria-hidden="true" />
         Add
@@ -245,7 +259,7 @@ export function AddInvoiceDialog({
           </>
         )}
 
-        {showConfirm && <ConfirmForm cand={selected} kind={kind} onDone={reset} />}
+        {showConfirm && <ConfirmForm cand={selected} kind={kind} onDone={reset} onBusyChange={setConfirmBusy} />}
       </DialogContent>
     </Dialog>
   );

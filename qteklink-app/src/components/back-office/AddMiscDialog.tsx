@@ -25,7 +25,13 @@ export function AddMiscDialog() {
   }, [state?.timestamp, state?.ok, router]);
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (pending && !next) return; // don't close mid-add — the error would be lost
+        setOpen(next);
+      }}
+    >
       <DialogTrigger render={<Button size="sm" />}>
         <Plus aria-hidden="true" />
         Add

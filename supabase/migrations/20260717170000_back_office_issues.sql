@@ -118,7 +118,7 @@ CREATE TABLE IF NOT EXISTS public.back_office_issue_events (
   email_sent_at timestamptz,                      -- stamped by back-office-notify
   email_error   text,
   CONSTRAINT back_office_issue_events_action_valid CHECK (action IN (
-    'created','detected','ro_closed','sent_to_sa','resent_to_sa','sa_submitted','verified','note_added'
+    'created','detected','ro_closed','sent_to_sa','resent_to_sa','sa_submitted','verified'
   )),
   CONSTRAINT back_office_issue_events_app_valid CHECK (
     actor_app IS NULL OR actor_app IN ('qteklink','admin','system')

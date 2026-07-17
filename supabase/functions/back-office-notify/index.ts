@@ -142,17 +142,6 @@ export async function handler(req: Request): Promise<Response> {
   if (!issueRow) return json(404, { ok: false, error: "issue_not_found" });
   const issue = issueRow as unknown as BackOfficeIssueSummary;
 
-  // Recipients from the settings blob.
-  const { data: settingsRow } = await sb
-    .from("qteklink_settings")
-    .select("back_office")
-    .eq("shop_id", shopId)
-    .not("back_office", "is", null)
-    .limit(1)
-    .maybeSingle();
-  const blob = (settingsRow?.back_office ?? {}) as Record<string, unknown>;
-  const recipients = recipientsFor(event, blob);
-
   const stampError = async (msg: string | null) => {
     const { error } = await sb.rpc("back_office_stamp_email", {
       p_issue_id: issueId,
@@ -161,6 +150,23 @@ export async function handler(req: Request): Promise<Response> {
     });
     if (error) Sentry.captureException(error, { tags: { surface: "back-office-notify", step: "stamp" } });
   };
+
+  // Recipients from the settings blob. A DB read error is NOT "no recipients" — surface it
+  // (observability rule 9) so a settings-read failure doesn't silently suppress the alert.
+  const { data: settingsRow, error: settingsErr } = await sb
+    .from("qteklink_settings")
+    .select("back_office")
+    .eq("shop_id", shopId)
+    .not("back_office", "is", null)
+    .limit(1)
+    .maybeSingle();
+  if (settingsErr) {
+    Sentry.captureException(settingsErr, { tags: { surface: "back-office-notify", step: "settings" } });
+    await stampError("settings read failed");
+    return json(500, { ok: false, error: "settings_read_failed" });
+  }
+  const blob = (settingsRow?.back_office ?? {}) as Record<string, unknown>;
+  const recipients = recipientsFor(event, blob);
 
   if (recipients.length === 0) {
     console.log(JSON.stringify({ level: "warning", surface: "back-office-notify", msg: "no recipients configured", event, issue_id: issueId }));

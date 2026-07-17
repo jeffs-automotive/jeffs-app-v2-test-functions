@@ -15,7 +15,7 @@ export default async function MiscPage() {
   ]);
 
   return (
-    <main className="mx-auto max-w-6xl space-y-4 px-4 py-6">
+    <main className="mx-auto max-w-6xl space-y-4 px-6 py-12">
       <AutoRefresh />
       <PageHeader title="Misc issues" description="One-off issues to send to the service advisors.">
         <AddMiscDialog />

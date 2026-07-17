@@ -4,7 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 /** Loading skeleton mirroring the settings shape (header + two setting cards). */
 export default function Loading() {
   return (
-    <main className="mx-auto max-w-3xl space-y-4 px-4 py-6">
+    <main className="mx-auto max-w-3xl space-y-4 px-6 py-12">
       <div className="space-y-2 border-b border-border pb-4">
         <Skeleton className="h-7 w-56" />
         <Skeleton className="h-4 w-80" />
