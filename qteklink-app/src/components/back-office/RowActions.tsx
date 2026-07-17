@@ -48,6 +48,11 @@ export function RowActions({ issue }: { issue: BackOfficeIssue }) {
   const sendLabel = resend ? "Add note & re-send" : "Send to SA";
   const SendIcon = resend ? MessageSquarePlus : SendHorizontal;
 
+  // Decision #12: an open-RO issue can only be verified once the RO has actually closed
+  // (the ro-watch cron flips context.ro_status). The RPC enforces this too.
+  const roStatus = typeof issue.context?.ro_status === "string" ? issue.context.ro_status : "ro_open";
+  const verifyBlocked = issue.kind === "open_ro" && roStatus !== "ro_closed";
+
   return (
     <div className="flex items-center justify-end gap-2">
       {canSend && (
@@ -88,7 +93,13 @@ export function RowActions({ issue }: { issue: BackOfficeIssue }) {
         </Dialog>
       )}
 
-      <Dialog open={verifyOpen} onOpenChange={setVerifyOpen}>
+      {verifyBlocked ? (
+        <Button size="sm" disabled title="You can verify once the repair order has closed.">
+          <CheckCircle2 aria-hidden="true" />
+          Verify
+        </Button>
+      ) : (
+        <Dialog open={verifyOpen} onOpenChange={setVerifyOpen}>
         <DialogTrigger render={<Button size="sm" />}>
           <CheckCircle2 aria-hidden="true" />
           Verify
@@ -114,7 +125,8 @@ export function RowActions({ issue }: { issue: BackOfficeIssue }) {
             </DialogFooter>
           </form>
         </DialogContent>
-      </Dialog>
+        </Dialog>
+      )}
     </div>
   );
 }

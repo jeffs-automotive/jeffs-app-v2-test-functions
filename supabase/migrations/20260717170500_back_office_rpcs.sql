@@ -170,14 +170,22 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
 DECLARE
   v_prior text;
+  v_kind  text;
+  v_ctx   jsonb;
 BEGIN
   IF p_shop_id IS NULL OR p_issue_id IS NULL OR p_actor IS NULL OR length(btrim(p_actor)) = 0 THEN
     RAISE EXCEPTION 'back_office_verify: p_shop_id + p_issue_id + p_actor are required';
   END IF;
 
-  SELECT status INTO v_prior FROM public.back_office_issues
+  SELECT status, kind, context INTO v_prior, v_kind, v_ctx FROM public.back_office_issues
    WHERE id = p_issue_id AND shop_id = p_shop_id FOR UPDATE;
   IF v_prior IS NULL OR v_prior = 'verified' THEN
+    RETURN false;
+  END IF;
+
+  -- Decision #12: an open_ro issue can only be verified once the RO has closed (the
+  -- ro-watch cron flips context.ro_status to 'ro_closed'). Backstops the UI gate.
+  IF v_kind = 'open_ro' AND coalesce(v_ctx->>'ro_status', 'ro_open') <> 'ro_closed' THEN
     RETURN false;
   END IF;
 

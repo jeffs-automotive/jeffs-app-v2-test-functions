@@ -49,7 +49,7 @@ VALUES ('realm-A', 7476, now() + interval '1 hour', now() + interval '100 days')
 
 -- ─── create -> open, with an audit 'created' row ────────────────────────
 SELECT isnt(
-  public.back_office_create_issue(7476, 'open_ro', 'manual',
+  public.back_office_create_issue(7476, 'invoice_issue', 'manual',
     '{"realm_id":"realm-A","ro_number":"154157","vendor_name":"Koch 33 Mazda","bill_no":"110381"}'::jsonb,
     'chris@x.com', 'qteklink'),
   NULL, 'create_issue returns an id');
@@ -105,13 +105,20 @@ SELECT is((SELECT was_created FROM public.back_office_upsert_reopened(7476, 1541
   true, 'a later unpost cycle is a new row');
 SELECT is((SELECT count(*)::int FROM public.back_office_issues WHERE kind='reopened_ro' AND tekmetric_ro_id=154119), 2, 'two reopened rows (two cycles)');
 
--- ─── open-RO auto-close (decision #12) ──────────────────────────────────
+-- ─── open-RO auto-close + verify gate (decision #12) ────────────────────
 SELECT public.back_office_create_issue(7476, 'open_ro', 'manual', '{"realm_id":"realm-A","ro_number":"200001"}'::jsonb, 'chris@x.com', 'qteklink');
+-- an open_ro cannot be verified while the RO is still open
+SELECT is(public.back_office_verify(7476, (SELECT id FROM public.back_office_issues WHERE ro_number='200001'), 'chris@x.com', 'qteklink'),
+  false, 'verify is BLOCKED on an open_ro until the RO closes (decision #12)');
+SELECT is((SELECT status FROM public.back_office_issues WHERE ro_number='200001'), 'open', 'the blocked open_ro is still open (no transition)');
 SELECT is(array_length(public.back_office_close_open_ro(7476, '200001', 555, now()), 1), 1, 'close_open_ro flips the matching open_ro and returns 1 id');
 SELECT is((SELECT context->>'ro_status' FROM public.back_office_issues WHERE ro_number='200001'), 'ro_closed', 'open_ro is now ro_closed');
 SELECT is((SELECT count(*)::int FROM public.back_office_issue_events e JOIN public.back_office_issues i ON i.id=e.issue_id
   WHERE i.ro_number='200001' AND e.action='ro_closed'), 1, 'ro_closed audit written');
 SELECT is(coalesce(array_length(public.back_office_close_open_ro(7476, '200001', 555, now()), 1), 0), 0, 'closing an already-closed open_ro returns no ids (idempotent)');
+-- now that it's closed, verify is allowed
+SELECT is(public.back_office_verify(7476, (SELECT id FROM public.back_office_issues WHERE ro_number='200001'), 'chris@x.com', 'qteklink'),
+  true, 'verify is ALLOWED once the RO has closed');
 
 -- ─── dashboard_counts ───────────────────────────────────────────────────
 SELECT ok(
@@ -121,7 +128,7 @@ SELECT ok(
   'dashboard_counts returns the three tallies');
 SELECT is(
   ((public.back_office_dashboard_counts(7476, date_trunc('month', now())::date, 48))->>'closed_this_month')::int,
-  1, 'closed_this_month counts the one verified issue');
+  2, 'closed_this_month counts both verified issues (the invoice flow + the closed open_ro)');
 
 -- ─── Validation ─────────────────────────────────────────────────────────
 SELECT throws_ok($$ SELECT public.back_office_create_issue(7476,'bogus','manual','{}'::jsonb,'x','qteklink') $$, 'P0001', NULL, 'bad kind rejected');
