@@ -235,6 +235,39 @@ export async function sendToSa(shopId: number, issueId: string, actor: string, n
   return data === "sent_to_sa" || data === "resent_to_sa" ? data : null;
 }
 
+// A RO is "closed" once its newest sale-scan event is a posting (posted / sent-to-A-R);
+// an unpost (or no event) leaves it open. Mirrors the ro-watch cron's isPosting logic.
+const RO_POSTING_KINDS = ["ro_posted", "ro_sent_to_ar"];
+const RO_SCAN_KINDS = ["ro_posted", "ro_sent_to_ar", "ro_unposted"];
+// Guards the RO# before it goes into a PostgREST .or() filter (no comma/paren/dot → no
+// filter injection). Tekmetric RO numbers are digits; alnum+dash is a safe superset.
+const SAFE_RO_NUMBER = /^[A-Za-z0-9-]{1,32}$/;
+
+/**
+ * The RO's current closed/open state from the Tekmetric event ledger, for stamping an
+ * open_ro issue at creation time (so an already-closed RO is immediately verifiable rather
+ * than waiting for the ro-watch cron). Returns not-closed when the RO# is unknown/unsafe or
+ * has no posting event. Throws on DB error.
+ */
+export async function getRoClosureStatus(shopId: number, roNumber: string): Promise<{ closed: boolean; closedAt: string | null }> {
+  if (!SAFE_RO_NUMBER.test(roNumber)) return { closed: false, closedAt: null };
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin
+    .from("qteklink_events")
+    .select("event_kind, received_at")
+    .eq("shop_id", shopId)
+    .or(`raw_body->data->>repairOrderNumber.eq.${roNumber},raw_body->>repairOrderNumber.eq.${roNumber}`)
+    .in("event_kind", RO_SCAN_KINDS)
+    .order("received_at", { ascending: false })
+    .limit(1);
+  if (error) throw new Error(`getRoClosureStatus failed: ${error.message}`);
+  const latest = (data ?? [])[0] as { event_kind: string; received_at: string } | undefined;
+  if (latest && RO_POSTING_KINDS.includes(latest.event_kind)) {
+    return { closed: true, closedAt: latest.received_at };
+  }
+  return { closed: false, closedAt: null };
+}
+
 export async function verifyIssue(shopId: number, issueId: string, actor: string): Promise<boolean> {
   const admin = createSupabaseAdminClient();
   const { data, error } = await admin.rpc("back_office_verify", {

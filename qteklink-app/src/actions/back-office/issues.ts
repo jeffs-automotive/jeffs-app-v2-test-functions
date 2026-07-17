@@ -16,7 +16,7 @@ import {
   type VendorDocAttachment,
   type VendorDocType,
 } from "@/lib/qbo/vendor-docs";
-import { createIssue, sendToSa, verifyIssue, notifyBackOffice, type IssueKind } from "@/lib/dal/back-office";
+import { createIssue, sendToSa, verifyIssue, notifyBackOffice, getRoClosureStatus, type IssueKind } from "@/lib/dal/back-office";
 import { qboFailure, type QboActionResult } from "../qbo/result";
 
 function forbidden(): { ok: false; reason: "validation"; message: string; timestamp: number } {
@@ -107,6 +107,19 @@ async function createInvoiceIssueImpl(
     if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? "Invalid input.");
 
     const realmId = await resolveRealmForShop(shopId);
+
+    // For an open_ro, stamp the RO's CURRENT Tekmetric state at creation: if it's already
+    // closed (posted/A-R), mark ro_closed so the office manager can verify it right away
+    // instead of waiting for the ro-watch cron.
+    let context: Record<string, unknown> = {};
+    if (parsed.data.kind === "open_ro") {
+      context = { ro_status: "ro_open" };
+      if (parsed.data.roNumber) {
+        const closure = await getRoClosureStatus(shopId, parsed.data.roNumber);
+        if (closure.closed) context = { ro_status: "ro_closed", ro_closed_at: closure.closedAt };
+      }
+    }
+
     const id = await createIssue(shopId, parsed.data.kind as IssueKind, parsed.data.qboTxnId ? "qbo_fetch" : "manual", {
       realmId,
       vendorName: parsed.data.vendorName ?? null,
@@ -117,7 +130,7 @@ async function createInvoiceIssueImpl(
       qboTxnType: parsed.data.qboTxnType ?? null,
       qboTxnId: parsed.data.qboTxnId ?? null,
       boNotes: parsed.data.boNotes ?? null,
-      context: parsed.data.kind === "open_ro" ? { ro_status: "ro_open" } : {},
+      context,
     }, email);
     return { ok: true, data: { id }, timestamp: Date.now() };
   } catch (e) {
