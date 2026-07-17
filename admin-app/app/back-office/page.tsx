@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { cn } from "@/lib/utils";
 import { BackOfficeStatusBadge, ChangeTypeBadge, IssueKindBadge } from "@/components/back-office/status";
 import { SubmitFixDialog } from "@/components/back-office/SubmitFixDialog";
+import { ViewAttachmentButton } from "@/components/back-office/ViewAttachmentButton";
 
 function reference(i: SaQueueIssue): string {
   if (i.roNumber) return `RO #${i.roNumber}`;
@@ -52,11 +53,16 @@ function QueueTable({ issues, showSubmit }: { issues: SaQueueIssue[]; showSubmit
                 <BackOfficeStatusBadge status={i.status} />
               </TableCell>
               <TableCell className="text-right">
-                {showSubmit ? (
-                  <SubmitFixDialog issue={i} />
-                ) : (
-                  <span className="text-xs text-muted-foreground">Waiting on office</span>
-                )}
+                <div className="flex items-center justify-end gap-2">
+                  {i.qboTxnId && (i.qboTxnType === "Bill" || i.qboTxnType === "Purchase") && (
+                    <ViewAttachmentButton qboTxnType={i.qboTxnType} qboTxnId={i.qboTxnId} />
+                  )}
+                  {showSubmit ? (
+                    <SubmitFixDialog issue={i} />
+                  ) : (
+                    <span className="text-xs text-muted-foreground">Waiting on office</span>
+                  )}
+                </div>
               </TableCell>
             </TableRow>
           ))}
