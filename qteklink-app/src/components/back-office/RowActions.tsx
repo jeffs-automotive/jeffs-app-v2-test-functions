@@ -53,6 +53,13 @@ export function RowActions({ issue }: { issue: BackOfficeIssue }) {
   const roStatus = typeof issue.context?.ro_status === "string" ? issue.context.ro_status : "ro_open";
   const verifyBlocked = issue.kind === "open_ro" && roStatus !== "ro_closed";
 
+  // An open_ro row isn't an "issue" — it's just tracking until the RO closes, and the normal
+  // action is to VERIFY the entries. Send-to-SA is optional ("in case there's a problem"), so
+  // Verify is the primary button and Send-to-SA is secondary. The issue tabs are send-first.
+  const trackingKind = issue.kind === "open_ro";
+  const sendVariant = trackingKind ? "outline" : issue.status === "open" ? "default" : "outline";
+  const verifyVariant = trackingKind ? "default" : issue.status === "awaiting_verify" ? "default" : "outline";
+
   return (
     <div className="flex items-center justify-end gap-2">
       {canSend && (
@@ -63,7 +70,7 @@ export function RowActions({ issue }: { issue: BackOfficeIssue }) {
             setSendOpen(next);
           }}
         >
-          <DialogTrigger render={<Button size="sm" variant={issue.status === "open" ? "default" : "outline"} />}>
+          <DialogTrigger render={<Button size="sm" variant={sendVariant} />}>
             <SendIcon aria-hidden="true" />
             {sendLabel}
           </DialogTrigger>
@@ -109,7 +116,7 @@ export function RowActions({ issue }: { issue: BackOfficeIssue }) {
             setVerifyOpen(next);
           }}
         >
-        <DialogTrigger render={<Button size="sm" variant={issue.status === "awaiting_verify" ? "default" : "outline"} />}>
+        <DialogTrigger render={<Button size="sm" variant={verifyVariant} />}>
           <CheckCircle2 aria-hidden="true" />
           Verify
         </DialogTrigger>
@@ -119,7 +126,9 @@ export function RowActions({ issue }: { issue: BackOfficeIssue }) {
             <DialogHeader>
               <DialogTitle>Verify &amp; close?</DialogTitle>
               <DialogDescription>
-                This marks the issue resolved and removes it from the list. Everyone gets a confirmation email.
+                {trackingKind
+                  ? "This confirms the entries are correct and removes it from the list. Everyone gets a confirmation email."
+                  : "This marks the issue resolved and removes it from the list. Everyone gets a confirmation email."}
               </DialogDescription>
             </DialogHeader>
             {verifyState?.ok === false && (
