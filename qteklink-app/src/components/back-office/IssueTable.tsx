@@ -1,22 +1,20 @@
 /**
- * IssueTable — the office-manager list for one issue kind. Server component (its only
- * client leaf is <RowActions>). Kind-specific columns; a shared status pill + a stale
- * overlay + the before→after diff for reopened ROs. Dense ledger treatment: mono/tabular
- * numerics, right-aligned money, truncated free text with a full-value title. Kind-aware
- * empty state.
+ * IssueTable — the office-manager list for one issue kind. Server component; each row is a
+ * <ClickableRow> that opens the full-detail modal (all fields + actions + parts-invoice
+ * image). Kind-specific summary columns; a shared status pill + a stale overlay + the
+ * before→after diff for reopened ROs. Dense ledger treatment: mono/tabular numerics,
+ * right-aligned money, truncated free text (full value lives in the modal). Kind-aware empty.
  */
-import { CheckCircle2, DoorClosed, DoorOpen, Inbox } from "lucide-react";
+import { CheckCircle2, ChevronRight, DoorClosed, DoorOpen, Inbox } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/EmptyState";
 import { cn } from "@/lib/utils";
 import { BackOfficeStatusBadge, StaleBadge, ChangeTypeBadge } from "./status";
 import { DiffPair, DeltaChip } from "./DiffPair";
-import { RowActions } from "./RowActions";
-import { ViewAttachmentButton } from "./ViewAttachmentButton";
+import { ClickableRow } from "./ClickableRow";
 import { centsToUsd, isStale } from "@/lib/back-office/format";
 import type { BackOfficeIssue, IssueKind } from "@/lib/dal/back-office";
-import type { VendorDocType } from "@/lib/qbo/vendor-docs";
 
 function ctx(i: BackOfficeIssue, k: string): string | null {
   const v = i.context?.[k];
@@ -89,7 +87,7 @@ export function IssueTable({ issues, kind, staleHours }: { issues: BackOfficeIss
             const stale = isStale(i.lastActivityAt, staleHours);
             const rowCls = cn(stale && "border-l-2 border-l-red-400 dark:border-l-red-500");
             return (
-              <TableRow key={i.id} className={rowCls}>
+              <ClickableRow key={i.id} issue={i} staleHours={staleHours} rowClassName={rowCls}>
                 {kind === "invoice_issue" && (
                   <>
                     <TableCell><Truncate text={i.vendorName} max="max-w-[20ch]" className="font-medium" /></TableCell>
@@ -157,14 +155,9 @@ export function IssueTable({ issues, kind, staleHours }: { issues: BackOfficeIss
                   <StatusCell issue={i} staleHours={staleHours} />
                 </TableCell>
                 <TableCell className="text-right">
-                  <div className="flex items-center justify-end gap-2">
-                    {(i.kind === "invoice_issue" || i.kind === "open_ro") && i.qboTxnId && (i.qboTxnType === "Bill" || i.qboTxnType === "Purchase") && (
-                      <ViewAttachmentButton qboTxnType={i.qboTxnType as VendorDocType} qboTxnId={i.qboTxnId} />
-                    )}
-                    <RowActions issue={i} />
-                  </div>
+                  <ChevronRight aria-hidden="true" className="ml-auto size-4 text-muted-foreground" />
                 </TableCell>
-              </TableRow>
+              </ClickableRow>
             );
           })}
         </TableBody>

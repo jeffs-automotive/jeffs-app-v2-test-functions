@@ -5,17 +5,8 @@ import { requireAdmin } from "@/lib/auth";
 import { listSaQueue, getAdminShopId, type SaQueueIssue } from "@/lib/back-office";
 import { AppShell, PageHeader } from "@/components/shell/AppShell";
 import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { cn } from "@/lib/utils";
-import { BackOfficeStatusBadge, ChangeTypeBadge, IssueKindBadge } from "@/components/back-office/status";
-import { SubmitFixDialog } from "@/components/back-office/SubmitFixDialog";
-import { ViewAttachmentButton } from "@/components/back-office/ViewAttachmentButton";
-
-function reference(i: SaQueueIssue): string {
-  if (i.roNumber) return `RO #${i.roNumber}`;
-  if (i.billNo) return `#${i.billNo}`;
-  return i.title ?? "—";
-}
+import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { SaQueueRow } from "@/components/back-office/SaQueueRow";
 
 function QueueTable({ issues, showSubmit }: { issues: SaQueueIssue[]; showSubmit: boolean }) {
   return (
@@ -33,38 +24,7 @@ function QueueTable({ issues, showSubmit }: { issues: SaQueueIssue[]; showSubmit
         </TableHeader>
         <TableBody className="[&_td]:px-3 [&_td]:py-2.5">
           {issues.map((i) => (
-            <TableRow
-              key={i.id}
-              className={cn(showSubmit && "border-l-2 border-l-amber-400 dark:border-l-amber-500")}
-            >
-              <TableCell><IssueKindBadge kind={i.kind} /></TableCell>
-              <TableCell className="font-mono text-xs tabular-nums">{reference(i)}</TableCell>
-              <TableCell className="text-sm">
-                <div className="max-w-[20ch] truncate" title={i.vendorName ?? undefined}>{i.vendorName ?? "—"}</div>
-              </TableCell>
-              <TableCell className="text-xs text-muted-foreground">
-                {i.kind === "reopened_ro" ? (
-                  <ChangeTypeBadge changeType={(i.context?.change_type as string) ?? null} />
-                ) : (
-                  <div className="max-w-[36ch] truncate" title={i.boNotes ?? undefined}>{i.boNotes ?? "—"}</div>
-                )}
-              </TableCell>
-              <TableCell>
-                <BackOfficeStatusBadge status={i.status} />
-              </TableCell>
-              <TableCell className="text-right">
-                <div className="flex items-center justify-end gap-2">
-                  {i.qboTxnId && (i.qboTxnType === "Bill" || i.qboTxnType === "Purchase") && (
-                    <ViewAttachmentButton qboTxnType={i.qboTxnType} qboTxnId={i.qboTxnId} />
-                  )}
-                  {showSubmit ? (
-                    <SubmitFixDialog issue={i} />
-                  ) : (
-                    <span className="text-xs text-muted-foreground">Waiting on office</span>
-                  )}
-                </div>
-              </TableCell>
-            </TableRow>
+            <SaQueueRow key={i.id} issue={i} showSubmit={showSubmit} />
           ))}
         </TableBody>
       </Table>
