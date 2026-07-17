@@ -17,7 +17,9 @@
 //     against the same code fail.
 //
 // Rate limits (Phase 1):
-//   - Max 3 active codes per phone per hour (insert hits the 4th → reject)
+//   - Max 15 active codes per phone per hour (insert hits the 16th → reject).
+//     Raised from 3 → 15 on 2026-07-17 (Chris); kept in lockstep with the
+//     app-layer OTP_PHONE_MAX in scheduler-app/src/lib/security/rate-limit.ts.
 //   - Max 3 wrong attempts per code → consume the code (force a resend)
 
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
@@ -29,7 +31,7 @@ import { sendSms, type SmsSendResult } from "../telnyx-client.ts";
 
 const OTP_TTL_MIN = 5;
 const OTP_LENGTH = 6;
-const MAX_ACTIVE_CODES_PER_HOUR = 3;
+const MAX_ACTIVE_CODES_PER_HOUR = 15;
 const MAX_ATTEMPTS_PER_CODE = 3;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -230,7 +232,7 @@ export async function sendOtp(
     // - 'invalid_number' is a customer-side issue (bad phone) AND letting it
     //   loop without consuming would allow infinite retries burning Telnyx
     //   budget. Keep the row + log; downstream rate limit kicks in after
-    //   MAX_ACTIVE_CODES_PER_HOUR=3 attempts.
+    //   MAX_ACTIVE_CODES_PER_HOUR=15 attempts.
     const isCustomerSideFailure = sendResult.error_code === "invalid_number";
     if (!isCustomerSideFailure) {
       await sb

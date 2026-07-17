@@ -8,7 +8,7 @@
  *               reaches our compute; no code here). See
  *               docs/scheduler/DEFERRED-AUDIT-ITEMS.md SEC-7 item 1.
  *   - PER-PHONE → this module: the `check_and_increment_rate_limit`
- *               Postgres RPC (3 sends / phone-hash / hour), called via the
+ *               Postgres RPC (15 sends / phone-hash / hour), called via the
  *               service-role admin client. The phone is encrypted in the
  *               POST body so the edge can't see it — per-phone shaping has
  *               to stay app-layer, but needs no external vendor.
@@ -27,9 +27,16 @@ import * as Sentry from "@sentry/nextjs";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { isRateLimitStrictMode } from "@/lib/security/check-bot";
 
-/** 3 OTP sends per phone-hash per hour (unchanged from the Upstash config). */
+/**
+ * 15 OTP sends per phone-hash per hour. Raised from 3 → 15 on 2026-07-17
+ * (Chris): the old cap was too tight — a single legitimate multi-account
+ * session can burn 2–3 sends (phone step + account-select each send a code),
+ * so a real customer could hit it on their first attempt. The DB-level
+ * `otp_codes` cap in `_shared/tools/scheduler-otp.ts`
+ * (MAX_ACTIVE_CODES_PER_HOUR) is kept in lockstep at 15.
+ */
 const OTP_PHONE_WINDOW_SECONDS = 3600;
-const OTP_PHONE_MAX = 3;
+const OTP_PHONE_MAX = 15;
 
 export type RateLimitOutcome =
   | { allowed: true }
