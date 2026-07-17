@@ -14,10 +14,11 @@
  */
 import Link from "next/link";
 import * as Sentry from "@sentry/nextjs";
-import { ArrowRightLeft, ChevronRight, Wallet, type LucideIcon } from "lucide-react";
+import { ArrowRightLeft, ChevronRight, ClipboardList, Wallet, type LucideIcon } from "lucide-react";
 import { requireQtekUser } from "@/lib/auth";
 import { getCoaSummary } from "@/lib/dal/coa";
 import { listPayrollEmployees } from "@/lib/dal/payroll";
+import { listAllActiveIssues } from "@/lib/dal/back-office";
 import { PageHeader, IdentityBlock } from "@/components/PageHeader";
 import {
   Card,
@@ -35,9 +36,10 @@ export default async function ModuleDirectoryPage() {
 
   // The two hints load concurrently; a rejected read reports to Sentry and its
   // hint is omitted — the landing page never pays serial round-trips or 500s.
-  const [coaRes, rosterRes] = await Promise.allSettled([
+  const [coaRes, rosterRes, backOfficeRes] = await Promise.allSettled([
     getCoaSummary(shopId),
     listPayrollEmployees(shopId), // active-only by default
+    listAllActiveIssues(shopId),
   ]);
 
   let qboHint: string | null = null;
@@ -62,6 +64,20 @@ export default async function ModuleDirectoryPage() {
       tags: {
         qteklink_surface: "module_directory",
         qteklink_hint: "payroll_roster",
+        shop_id: String(shopId),
+      },
+    });
+  }
+
+  let backOfficeHint: string | null = null;
+  if (backOfficeRes.status === "fulfilled") {
+    const n = backOfficeRes.value.length;
+    backOfficeHint = `${n} open issue${n === 1 ? "" : "s"}`;
+  } else {
+    Sentry.captureException(backOfficeRes.reason, {
+      tags: {
+        qteklink_surface: "module_directory",
+        qteklink_hint: "back_office",
         shop_id: String(shopId),
       },
     });
@@ -94,6 +110,13 @@ export default async function ModuleDirectoryPage() {
           title="Payroll"
           description="Bi-weekly payroll runs — employees, Tekmetric-tracked hours and bonuses."
           hint={payrollHint}
+        />
+        <ModuleCard
+          href="/back-office/dashboard"
+          icon={ClipboardList}
+          title="Back Office"
+          description="Invoice + repair-order issues — raise, send to a service advisor, verify, and track."
+          hint={backOfficeHint}
         />
       </section>
     </main>

@@ -11,7 +11,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
-import { LayoutDashboard, KeyRound, Settings, LogOut, Sun, Moon } from "lucide-react";
+import { LayoutDashboard, KeyRound, Settings, ClipboardList, LogOut, Sun, Moon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
@@ -49,6 +49,7 @@ function ThemeToggle() {
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/keytags", label: "Key tags", icon: KeyRound },
+  { href: "/back-office", label: "Back office", icon: ClipboardList },
   { href: "/schedulerconfig", label: "Scheduler config", icon: Settings },
 ] as const;
 

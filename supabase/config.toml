@@ -554,6 +554,32 @@ verify_jwt = false
 import_map = "./functions/qteklink-email/deno.json"
 entrypoint = "./functions/qteklink-email/index.ts"
 
+[functions.back-office-notify]
+enabled = true
+# Back-office module transition-alert sender (service-to-service): both apps' server
+# actions + the back-office-ro-watch cron call it with the service key; holds
+# RESEND_API_KEY. Auth validated in-function.
+verify_jwt = false
+import_map = "./functions/back-office-notify/deno.json"
+entrypoint = "./functions/back-office-notify/index.ts"
+
+[functions.back-office-ro-watch]
+enabled = true
+# Back-office module 30-min cron: detects reopened ROs (unpost/repost) and open-RO
+# closes from the Tekmetric event ledger; creates issues + fires alerts via
+# back-office-notify. Triggered by pg_cron (jobname: back-office-ro-watch).
+verify_jwt = false
+import_map = "./functions/back-office-ro-watch/deno.json"
+entrypoint = "./functions/back-office-ro-watch/index.ts"
+
+[functions.back-office-daily-report]
+enabled = true
+# Back-office module daily digest (open issues + stale section). Triggered by pg_cron
+# (jobname: back-office-daily-report).
+verify_jwt = false
+import_map = "./functions/back-office-daily-report/deno.json"
+entrypoint = "./functions/back-office-daily-report/index.ts"
+
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/tekmetric-webhook/*.html" ]

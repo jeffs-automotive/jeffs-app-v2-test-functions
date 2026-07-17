@@ -18,7 +18,7 @@
  */
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowRightLeft, LayoutGrid, Wallet } from "lucide-react";
+import { ArrowRightLeft, ClipboardList, LayoutGrid, Wallet } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import ThemeToggle from "./ThemeToggle";
 
@@ -47,6 +47,15 @@ const PAYROLL_TABS: readonly Tab[] = [
   { href: "/payroll/settings", label: "Settings" },
 ];
 
+const BACK_OFFICE_TABS: readonly Tab[] = [
+  { href: "/back-office/dashboard", label: "Dashboard" },
+  { href: "/back-office/invoice-issues", label: "Invoice issues" },
+  { href: "/back-office/open-ros", label: "Open ROs" },
+  { href: "/back-office/reopened-ros", label: "Reopened ROs" },
+  { href: "/back-office/misc", label: "Misc" },
+  { href: "/back-office/settings", label: "Settings" },
+];
+
 function isActive(tab: Tab, pathname: string): boolean {
   if (pathname === tab.href) return true;
   if (!tab.exact && pathname.startsWith(`${tab.href}/`)) return true;
@@ -60,9 +69,10 @@ export default function QtlTabs() {
   if (pathname === "/" || pathname.startsWith("/login") || pathname.startsWith("/auth")) return null;
 
   const isPayroll = pathname === "/payroll" || pathname.startsWith("/payroll/");
-  const moduleLabel = isPayroll ? "Payroll" : "QBO Link";
-  const ModuleIcon = isPayroll ? Wallet : ArrowRightLeft;
-  const tabs = isPayroll ? PAYROLL_TABS : QBO_TABS;
+  const isBackOffice = pathname === "/back-office" || pathname.startsWith("/back-office/");
+  const moduleLabel = isBackOffice ? "Back Office" : isPayroll ? "Payroll" : "QBO Link";
+  const ModuleIcon = isBackOffice ? ClipboardList : isPayroll ? Wallet : ArrowRightLeft;
+  const tabs = isBackOffice ? BACK_OFFICE_TABS : isPayroll ? PAYROLL_TABS : QBO_TABS;
 
   return (
     <div className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur">
