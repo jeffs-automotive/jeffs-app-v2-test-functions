@@ -43,7 +43,7 @@ export function AddMiscDialog() {
             </label>
             <label className="block text-xs font-medium text-muted-foreground">
               RO # (if applicable)
-              <Input name="ro_number" className="mt-1" maxLength={64} placeholder="e.g. 154157" />
+              <Input name="ro_number" className="mt-1 tabular-nums" inputMode="numeric" maxLength={64} placeholder="e.g. 154157" />
             </label>
             <label className="block text-xs font-medium text-muted-foreground">
               Notes

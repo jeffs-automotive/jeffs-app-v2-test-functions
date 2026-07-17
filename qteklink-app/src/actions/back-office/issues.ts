@@ -9,7 +9,13 @@ import { z } from "zod";
 import { requireQtekUser, type QtekRole } from "@/lib/auth";
 import { wrapQtekAction } from "@/lib/instrument-action";
 import { resolveRealmForShop } from "@/lib/dal/realm";
-import { fetchVendorDocByNumber, type VendorDocCandidate } from "@/lib/qbo/vendor-docs";
+import {
+  fetchVendorDocByNumber,
+  fetchVendorDocAttachments,
+  type VendorDocCandidate,
+  type VendorDocAttachment,
+  type VendorDocType,
+} from "@/lib/qbo/vendor-docs";
 import { createIssue, sendToSa, verifyIssue, notifyBackOffice, type IssueKind } from "@/lib/dal/back-office";
 import { qboFailure, type QboActionResult } from "../qbo/result";
 
@@ -40,6 +46,27 @@ async function fetchVendorDocImpl(
   }
 }
 export const fetchVendorDocAction = wrapQtekAction("backOfficeFetchVendorDoc", fetchVendorDocImpl);
+
+// ─── Fetch the parts-invoice image(s) attached to a QBO Bill/Purchase (read-only) ──
+async function fetchAttachmentsImpl(
+  _prev: QboActionResult<VendorDocAttachment[]> | null,
+  formData: FormData,
+): Promise<QboActionResult<VendorDocAttachment[]>> {
+  try {
+    const { shopId, role } = await requireQtekUser();
+    if (!canManage(role)) return forbidden();
+    const txnType = String(formData.get("qbo_txn_type") ?? "") as VendorDocType;
+    const txnId = String(formData.get("qbo_txn_id") ?? "").trim();
+    if (!txnId || (txnType !== "Bill" && txnType !== "Purchase")) {
+      return invalid("This issue has no linked QuickBooks document.");
+    }
+    const attachments = await fetchVendorDocAttachments(shopId, txnType, txnId);
+    return { ok: true, data: attachments, timestamp: Date.now() };
+  } catch (e) {
+    return qboFailure(e);
+  }
+}
+export const fetchAttachmentsAction = wrapQtekAction("backOfficeFetchAttachments", fetchAttachmentsImpl);
 
 // ─── Create an invoice_issue / open_ro ───────────────────────────────────────
 const InvoiceIssueSchema = z.object({

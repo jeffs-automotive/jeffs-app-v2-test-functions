@@ -8,7 +8,7 @@
  */
 import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Send } from "lucide-react";
+import { CheckCircle2, MessageSquarePlus, SendHorizontal } from "lucide-react";
 import { sendToSaAction, verifyIssueAction } from "@/actions/back-office/issues";
 import { Button } from "@/components/ui/button";
 import {
@@ -44,14 +44,16 @@ export function RowActions({ issue }: { issue: BackOfficeIssue }) {
   }, [verifyState?.timestamp, verifyState?.ok, router]);
 
   const canSend = issue.status === "open" || issue.status === "awaiting_verify";
-  const sendLabel = issue.status === "awaiting_verify" ? "Add note & re-send" : "Send to SA";
+  const resend = issue.status === "awaiting_verify";
+  const sendLabel = resend ? "Add note & re-send" : "Send to SA";
+  const SendIcon = resend ? MessageSquarePlus : SendHorizontal;
 
   return (
     <div className="flex items-center justify-end gap-2">
       {canSend && (
         <Dialog open={sendOpen} onOpenChange={setSendOpen}>
           <DialogTrigger render={<Button size="sm" variant="outline" />}>
-            <Send aria-hidden="true" />
+            <SendIcon aria-hidden="true" />
             {sendLabel}
           </DialogTrigger>
           <DialogContent>
@@ -77,7 +79,7 @@ export function RowActions({ issue }: { issue: BackOfficeIssue }) {
               <DialogFooter className="mt-3">
                 <DialogClose render={<Button type="button" variant="ghost" />}>Cancel</DialogClose>
                 <Button type="submit" size="sm" loading={sendPending} loadingText="Sending…">
-                  <Send aria-hidden="true" />
+                  <SendIcon aria-hidden="true" />
                   {sendLabel}
                 </Button>
               </DialogFooter>
@@ -88,7 +90,7 @@ export function RowActions({ issue }: { issue: BackOfficeIssue }) {
 
       <Dialog open={verifyOpen} onOpenChange={setVerifyOpen}>
         <DialogTrigger render={<Button size="sm" />}>
-          <Check aria-hidden="true" />
+          <CheckCircle2 aria-hidden="true" />
           Verify
         </DialogTrigger>
         <DialogContent>
@@ -106,7 +108,7 @@ export function RowActions({ issue }: { issue: BackOfficeIssue }) {
             <DialogFooter className="mt-3">
               <DialogClose render={<Button type="button" variant="ghost" />}>Cancel</DialogClose>
               <Button type="submit" size="sm" loading={verifyPending} loadingText="Verifying…">
-                <Check aria-hidden="true" />
+                <CheckCircle2 aria-hidden="true" />
                 Verify
               </Button>
             </DialogFooter>

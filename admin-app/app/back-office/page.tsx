@@ -1,18 +1,14 @@
 export const dynamic = "force-dynamic";
 
-import { Inbox } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 import { requireAdmin } from "@/lib/auth";
 import { listSaQueue, getAdminShopId, type SaQueueIssue } from "@/lib/back-office";
+import { AppShell, PageHeader } from "@/components/shell/AppShell";
+import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { BackOfficeStatusBadge, ChangeTypeBadge } from "@/components/back-office/status";
+import { cn } from "@/lib/utils";
+import { BackOfficeStatusBadge, ChangeTypeBadge, IssueKindBadge } from "@/components/back-office/status";
 import { SubmitFixDialog } from "@/components/back-office/SubmitFixDialog";
-
-const KIND_LABEL: Record<string, string> = {
-  invoice_issue: "Invoice issue",
-  open_ro: "Open RO",
-  reopened_ro: "Reopened RO",
-  misc: "Misc",
-};
 
 function reference(i: SaQueueIssue): string {
   if (i.roNumber) return `RO #${i.roNumber}`;
@@ -22,11 +18,11 @@ function reference(i: SaQueueIssue): string {
 
 function QueueTable({ issues, showSubmit }: { issues: SaQueueIssue[]; showSubmit: boolean }) {
   return (
-    <div className="overflow-x-auto rounded-lg border border-border">
+    <div className="overflow-x-auto rounded-lg border border-border shadow-xs">
       <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Type</TableHead>
+        <TableHeader className="bg-muted [&_th]:h-10 [&_th]:px-3 [&_th]:text-xs [&_th]:font-medium [&_th]:uppercase [&_th]:tracking-wide [&_th]:text-muted-foreground">
+          <TableRow className="hover:bg-transparent">
+            <TableHead>Kind</TableHead>
             <TableHead>Reference</TableHead>
             <TableHead>Vendor</TableHead>
             <TableHead>What&apos;s wrong</TableHead>
@@ -34,17 +30,22 @@ function QueueTable({ issues, showSubmit }: { issues: SaQueueIssue[]; showSubmit
             <TableHead className="text-right"></TableHead>
           </TableRow>
         </TableHeader>
-        <TableBody>
+        <TableBody className="[&_td]:px-3 [&_td]:py-2.5">
           {issues.map((i) => (
-            <TableRow key={i.id}>
-              <TableCell className="text-xs text-muted-foreground">{KIND_LABEL[i.kind] ?? i.kind}</TableCell>
-              <TableCell className="font-mono text-xs">{reference(i)}</TableCell>
-              <TableCell className="text-sm">{i.vendorName ?? "—"}</TableCell>
-              <TableCell className="max-w-80 text-xs text-muted-foreground">
+            <TableRow
+              key={i.id}
+              className={cn(showSubmit && "border-l-2 border-l-amber-400 dark:border-l-amber-500")}
+            >
+              <TableCell><IssueKindBadge kind={i.kind} /></TableCell>
+              <TableCell className="font-mono text-xs tabular-nums">{reference(i)}</TableCell>
+              <TableCell className="text-sm">
+                <div className="max-w-[20ch] truncate" title={i.vendorName ?? undefined}>{i.vendorName ?? "—"}</div>
+              </TableCell>
+              <TableCell className="text-xs text-muted-foreground">
                 {i.kind === "reopened_ro" ? (
                   <ChangeTypeBadge changeType={(i.context?.change_type as string) ?? null} />
                 ) : (
-                  i.boNotes ?? "—"
+                  <div className="max-w-[36ch] truncate" title={i.boNotes ?? undefined}>{i.boNotes ?? "—"}</div>
                 )}
               </TableCell>
               <TableCell>
@@ -65,40 +66,54 @@ function QueueTable({ issues, showSubmit }: { issues: SaQueueIssue[]; showSubmit
   );
 }
 
+function SectionHeading({ title, count }: { title: string; count: number }) {
+  return (
+    <div className="flex items-center gap-2">
+      <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+      {count > 0 && (
+        <Badge variant="secondary" className="tabular-nums">
+          {count}
+        </Badge>
+      )}
+    </div>
+  );
+}
+
 export default async function BackOfficeQueuePage() {
-  await requireAdmin();
+  const { email } = await requireAdmin();
   const issues = await listSaQueue(getAdminShopId());
   const needsFix = issues.filter((i) => i.status === "sent_to_sa");
   const submitted = issues.filter((i) => i.status === "awaiting_verify");
 
   return (
-    <main className="mx-auto max-w-6xl space-y-6 px-4 py-6">
-      <header className="border-b border-border pb-4">
-        <h1 className="text-2xl font-bold text-foreground">Back office</h1>
-        <p className="text-sm text-muted-foreground">
-          Issues the office manager sent over. Fix them, then submit so they can verify.
-        </p>
-      </header>
+    <AppShell email={email}>
+      <PageHeader
+        eyebrow="Service advisor"
+        title="Back office"
+        description="Vendor-bill and re-post issues the office needs your help on. Fix them, then submit so they can verify."
+      />
 
-      <section className="space-y-2">
-        <h2 className="text-sm font-semibold text-foreground">Needs a fix ({needsFix.length})</h2>
-        {needsFix.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border p-8 text-center">
-            <Inbox className="mx-auto size-8 text-muted-foreground" aria-hidden="true" />
-            <p className="mt-3 text-sm font-medium text-foreground">All caught up</p>
-            <p className="mt-1 text-sm text-muted-foreground">No issues waiting on a service advisor.</p>
-          </div>
-        ) : (
-          <QueueTable issues={needsFix} showSubmit />
-        )}
-      </section>
-
-      {submitted.length > 0 && (
+      <div className="space-y-8">
         <section className="space-y-2">
-          <h2 className="text-sm font-semibold text-foreground">Submitted — waiting to verify ({submitted.length})</h2>
-          <QueueTable issues={submitted} showSubmit={false} />
+          <SectionHeading title="Needs your fix" count={needsFix.length} />
+          {needsFix.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-border p-8 text-center">
+              <CheckCircle2 className="mx-auto size-8 text-muted-foreground" aria-hidden="true" />
+              <p className="mt-3 text-sm font-medium text-foreground">Nothing needs you right now</p>
+              <p className="mt-1 text-sm text-muted-foreground">The office hasn&apos;t sent any issues your way.</p>
+            </div>
+          ) : (
+            <QueueTable issues={needsFix} showSubmit />
+          )}
         </section>
-      )}
-    </main>
+
+        {submitted.length > 0 && (
+          <section className="space-y-2">
+            <SectionHeading title="Submitted — waiting to verify" count={submitted.length} />
+            <QueueTable issues={submitted} showSubmit={false} />
+          </section>
+        )}
+      </div>
+    </AppShell>
   );
 }

@@ -7,7 +7,7 @@
  */
 import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Wrench } from "lucide-react";
+import { SendHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -43,7 +43,7 @@ export function SubmitFixDialog({ issue }: { issue: SaQueueIssue }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={<Button size="sm" />}>
-        <Wrench aria-hidden="true" />
+        <SendHorizontal aria-hidden="true" />
         Submit fix
       </DialogTrigger>
       <DialogContent>
@@ -67,7 +67,7 @@ export function SubmitFixDialog({ issue }: { issue: SaQueueIssue }) {
           <DialogFooter className="mt-3">
             <DialogClose render={<Button type="button" variant="ghost" />}>Cancel</DialogClose>
             <Button type="submit" size="sm" loading={pending} loadingText="Submitting…">
-              <Wrench aria-hidden="true" />
+              <SendHorizontal aria-hidden="true" />
               Submit fix
             </Button>
           </DialogFooter>

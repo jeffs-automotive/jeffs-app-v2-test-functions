@@ -1,23 +1,18 @@
 export const dynamic = "force-dynamic";
 
-import { CheckCircle2 } from "lucide-react";
+import { AlarmClock, CheckCircle2, Inbox } from "lucide-react";
 import { requireQtekUser } from "@/lib/auth";
 import { getBackOfficeSettings, getDashboardCounts, listAllActiveIssues, type BackOfficeIssue } from "@/lib/dal/back-office";
 import { getShopSettings } from "@/lib/dal/settings";
 import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EmptyState } from "@/components/EmptyState";
-import { BackOfficeStatusBadge } from "@/components/back-office/status";
+import { BackOfficeStatusBadge, IssueKindBadge } from "@/components/back-office/status";
+import { cn } from "@/lib/utils";
 import { monthStartYmd, isStale, daysSince } from "@/lib/back-office/format";
 import AutoRefresh from "@/components/AutoRefresh";
-
-const KIND_LABEL: Record<string, string> = {
-  invoice_issue: "Invoice issue",
-  open_ro: "Open RO",
-  reopened_ro: "Reopened RO",
-  misc: "Misc",
-};
 
 function issueRef(i: BackOfficeIssue): string {
   if (i.roNumber) return `RO #${i.roNumber}`;
@@ -25,12 +20,41 @@ function issueRef(i: BackOfficeIssue): string {
   return i.title ?? "—";
 }
 
-function Metric({ value, label, accent }: { value: number; label: string; accent?: boolean }) {
+function Metric({
+  value,
+  label,
+  Icon,
+  accent,
+}: {
+  value: number;
+  label: string;
+  Icon: typeof Inbox;
+  accent?: boolean;
+}) {
+  const flagged = Boolean(accent) && value > 0;
   return (
     <Card>
-      <CardContent className="p-5 text-center">
-        <div className={`text-3xl font-bold leading-none ${accent ? "text-red-600 dark:text-red-400" : "text-foreground"}`}>{value}</div>
-        <div className="mt-2 text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
+      <CardContent className="flex flex-col items-center gap-2 p-5 text-center">
+        <div
+          className={cn(
+            "text-3xl font-bold leading-none tabular-nums",
+            flagged ? "text-red-700 dark:text-red-300" : "text-foreground",
+          )}
+        >
+          {value}
+        </div>
+        <div className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+          <Icon className="size-3.5" aria-hidden="true" />
+          {label}
+        </div>
+        {flagged && (
+          <Badge
+            variant="outline"
+            className="border-red-300 bg-red-50 text-[10px] uppercase tracking-wider text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
+          >
+            Needs review
+          </Badge>
+        )}
       </CardContent>
     </Card>
   );
@@ -49,37 +73,37 @@ export default async function BackOfficeDashboardPage() {
     .sort((a, b) => daysSince(b.createdAt) - daysSince(a.createdAt));
 
   return (
-    <main className="mx-auto max-w-5xl space-y-5 px-4 py-6">
+    <main className="mx-auto max-w-5xl space-y-6 px-4 py-6">
       <AutoRefresh />
       <PageHeader title="Back office" description="Open issues, what's closed this month, and anything gone stale." />
 
-      <div className="grid grid-cols-3 gap-3">
-        <Metric value={counts.openCount} label="Open" />
-        <Metric value={counts.closedThisMonth} label="Closed this month" />
-        <Metric value={counts.staleCount} label="Stale" accent />
+      <div className="grid grid-cols-3 gap-3 sm:gap-4">
+        <Metric value={counts.openCount} label="Open" Icon={Inbox} />
+        <Metric value={counts.closedThisMonth} label="Closed this month" Icon={CheckCircle2} />
+        <Metric value={counts.staleCount} label="Stale" Icon={AlarmClock} accent />
       </div>
 
       <section className="space-y-2">
         <h2 className="text-sm font-semibold text-foreground">Stale — over {settings.staleHours}h</h2>
         {stale.length === 0 ? (
-          <EmptyState icon={CheckCircle2} title="Nothing stale" subtext="Everything open is moving." />
+          <EmptyState icon={CheckCircle2} title="Nothing's gone stale" subtext="Every open issue has had activity recently." />
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-border">
+          <div className="overflow-x-auto rounded-lg border border-border shadow-xs">
             <Table>
-              <TableHeader>
-                <TableRow>
+              <TableHeader className="bg-muted [&_th]:h-10 [&_th]:px-3 [&_th]:text-xs [&_th]:font-medium [&_th]:uppercase [&_th]:tracking-wide [&_th]:text-muted-foreground">
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>Kind</TableHead>
                   <TableHead>Reference</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Days open</TableHead>
+                  <TableHead className="text-right">Days open</TableHead>
                   <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
-              <TableBody>
+              <TableBody className="[&_td]:px-3 [&_td]:py-2.5">
                 {stale.map((i) => (
-                  <TableRow key={i.id}>
-                    <TableCell className="font-mono text-xs">{issueRef(i)}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{KIND_LABEL[i.kind] ?? i.kind}</TableCell>
-                    <TableCell className="tabular-nums font-semibold text-red-600 dark:text-red-400">{daysSince(i.createdAt)}d</TableCell>
+                  <TableRow key={i.id} className="border-l-2 border-l-red-400 dark:border-l-red-500">
+                    <TableCell><IssueKindBadge kind={i.kind} /></TableCell>
+                    <TableCell className="font-mono text-xs tabular-nums">{issueRef(i)}</TableCell>
+                    <TableCell className="text-right font-semibold tabular-nums text-red-700 dark:text-red-300">{daysSince(i.createdAt)}d</TableCell>
                     <TableCell>
                       <BackOfficeStatusBadge status={i.status} />
                     </TableCell>
