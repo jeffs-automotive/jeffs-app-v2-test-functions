@@ -26,6 +26,7 @@ import {
   type BackOfficeIssueSummary,
   type BackOfficeLinks,
 } from "../_shared/back-office-email.ts";
+import { recipientsFor } from "../_shared/back-office-recipients.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const FROM_EMAIL =
@@ -54,42 +55,8 @@ const KIND_TAB: Record<BackOfficeIssueSummary["kind"], string> = {
   misc: "misc",
 };
 
-const EMAIL_RX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 function json(status: number, body: Record<string, unknown>): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
-}
-
-/** Recipient sets per event, read from the settings blob. */
-function recipientsFor(
-  event: BackOfficeEvent,
-  blob: { sa_emails?: unknown; office_emails?: unknown; accounting_emails?: unknown },
-): string[] {
-  const list = (v: unknown): string[] =>
-    Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && EMAIL_RX.test(x.trim())).map((x) => x.trim()) : [];
-  const sa = list(blob.sa_emails);
-  const office = list(blob.office_emails);
-  const accounting = list(blob.accounting_emails);
-  let picked: string[];
-  switch (event) {
-    case "sent_to_sa":
-    case "resent_to_sa":
-      picked = sa;
-      break;
-    case "sa_submitted":
-      picked = [...office, ...accounting];
-      break;
-    case "verified":
-      picked = [...sa, ...office, ...accounting];
-      break;
-    case "detected":
-      picked = [...office, ...accounting];
-      break;
-    case "ro_closed":
-      picked = office;
-      break;
-  }
-  return [...new Set(picked)];
 }
 
 function linksFor(issue: BackOfficeIssueSummary): BackOfficeLinks {

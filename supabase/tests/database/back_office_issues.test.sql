@@ -1,7 +1,7 @@
 -- =====================================================================
 -- pgTAP — Back Office module (issues + audit + RPCs + settings)
 -- =====================================================================
--- Covers 20260717170000 / 170500 / 171000:
+-- Covers 20260717170000 / 170500 / 171000 + 20260718170000 (reopened saga model):
 --   - tables + all RPCs exist; RLS enabled on both tables
 --   - least-privilege grants: service_role SELECT-only (writes via definer RPCs),
 --     service_role EXECUTE RPCs, anon denied SELECT + EXECUTE
@@ -9,8 +9,9 @@
 --     the awaiting_verify->sent_to_sa re-send loop, and guarded no-ops on wrong
 --     from-state (return false, no transition)
 --   - shop-scoping: a transition with the wrong shop_id is a no-op
---   - reopened dedup: one row per (shop, ro, unpost cycle); refresh not fork;
---     audit 'detected' only on first create
+--   - reopened dedup: one ACTIVE (un-verified) row per (shop, ro); refresh not fork;
+--     audit 'detected' only on first create; verify frees the slot for a later reopen (D7);
+--     a non-net change_type is rejected
 --   - open-RO auto-close: close_open_ro flips ro_status + returns the ids
 --   - dashboard_counts returns the three tallies
 --   - validation RAISEs (bad kind / bad source)
@@ -88,22 +89,30 @@ SELECT ok((SELECT verified_at IS NOT NULL AND verified_by='chris@x.com' FROM pub
 SELECT is(public.back_office_verify(7476, (SELECT id FROM public.back_office_issues WHERE ro_number='154157'), 'x', 'qteklink'),
   false, 're-verifying a verified issue is a no-op');
 
--- ─── reopened dedup: one row per (shop, ro, unpost cycle) ────────────────
+-- ─── reopened dedup: ONE active (un-verified) issue per (shop, RO) ───────
 SELECT is((SELECT was_created FROM public.back_office_upsert_reopened(7476, 154119,
-  '{"unposted_at":"2026-07-16T15:12:00Z","change_type":"unposted","ro_number":"154119","new_total_cents":632593}'::jsonb)),
+  '{"change_type":"total_changed","ro_number":"154119","baseline_total_cents":145010,"final_total_cents":140771,"baseline_posted_date":"2026-07-14","final_posted_date":"2026-07-14","final_at":"2026-07-16T18:57:16Z","saga_started_at":"2026-07-16T18:51:32Z"}'::jsonb)),
   true, 'first reopened detection creates the row (was_created)');
 SELECT is((SELECT was_created FROM public.back_office_upsert_reopened(7476, 154119,
-  '{"unposted_at":"2026-07-16T15:12:00Z","change_type":"date_changed","ro_number":"154119","new_total_cents":632593}'::jsonb)),
-  false, 're-detecting the SAME cycle refreshes (not was_created)');
-SELECT is((SELECT count(*)::int FROM public.back_office_issues WHERE kind='reopened_ro' AND tekmetric_ro_id=154119), 1, 'exactly one reopened row for the cycle');
-SELECT is((SELECT context->>'change_type' FROM public.back_office_issues WHERE kind='reopened_ro' AND tekmetric_ro_id=154119), 'date_changed', 'context refreshed to the latest classification');
+  '{"change_type":"date_and_total_changed","ro_number":"154119","final_total_cents":140771,"final_at":"2026-07-16T18:57:16Z"}'::jsonb)),
+  false, 're-detecting the same RO refreshes the ACTIVE row (not was_created)');
+SELECT is((SELECT count(*)::int FROM public.back_office_issues WHERE kind='reopened_ro' AND tekmetric_ro_id=154119), 1, 'still exactly one reopened row for the RO');
+SELECT is((SELECT context->>'change_type' FROM public.back_office_issues WHERE kind='reopened_ro' AND tekmetric_ro_id=154119), 'date_and_total_changed', 'context refreshed to the latest net classification');
+SELECT is((SELECT total_cents FROM public.back_office_issues WHERE kind='reopened_ro' AND tekmetric_ro_id=154119), 140771::bigint, 'total_cents mirrors final_total_cents');
 SELECT is((SELECT count(*)::int FROM public.back_office_issue_events e JOIN public.back_office_issues i ON i.id=e.issue_id
   WHERE i.kind='reopened_ro' AND i.tekmetric_ro_id=154119 AND e.action='detected'), 1, 'detected audit written ONCE (only on create)');
--- a DIFFERENT unpost cycle (later unposted_at) is a separate row
+-- change_type is validated (unposted / reposted no longer allowed)
+SELECT throws_ok($$ SELECT public.back_office_upsert_reopened(7476, 154120, '{"change_type":"unposted","ro_number":"154120"}'::jsonb) $$,
+  NULL::text, NULL::text, 'a non-net change_type is rejected');
+-- D7: after the active row is VERIFIED, a later reopen opens a NEW active row
+SELECT is(public.back_office_verify(7476,
+  (SELECT id FROM public.back_office_issues WHERE kind='reopened_ro' AND tekmetric_ro_id=154119),
+  'chris@x.com', 'qteklink'), true, 'the reopened issue can be verified');
 SELECT is((SELECT was_created FROM public.back_office_upsert_reopened(7476, 154119,
-  '{"unposted_at":"2026-07-17T09:00:00Z","change_type":"total_changed","ro_number":"154119"}'::jsonb)),
-  true, 'a later unpost cycle is a new row');
-SELECT is((SELECT count(*)::int FROM public.back_office_issues WHERE kind='reopened_ro' AND tekmetric_ro_id=154119), 2, 'two reopened rows (two cycles)');
+  '{"change_type":"total_changed","ro_number":"154119","final_total_cents":130000,"final_at":"2026-07-20T16:05:00Z","saga_started_at":"2026-07-20T16:00:00Z"}'::jsonb)),
+  true, 'a reopen AFTER verify opens a fresh active row (D7)');
+SELECT is((SELECT count(*)::int FROM public.back_office_issues WHERE kind='reopened_ro' AND tekmetric_ro_id=154119), 2, 'now two rows (1 verified + 1 active)');
+SELECT is((SELECT count(*)::int FROM public.back_office_issues WHERE kind='reopened_ro' AND tekmetric_ro_id=154119 AND status <> 'verified'), 1, 'exactly one ACTIVE reopened row (the partial-unique invariant)');
 
 -- ─── open-RO auto-close + verify gate (decision #12) ────────────────────
 SELECT public.back_office_create_issue(7476, 'open_ro', 'manual', '{"realm_id":"realm-A","ro_number":"200001"}'::jsonb, 'chris@x.com', 'qteklink');

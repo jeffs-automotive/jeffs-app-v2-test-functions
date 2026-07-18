@@ -21,12 +21,19 @@ import {
   unauthorizedResponse,
   RESOLVED_SERVICE_ROLE_KEY,
 } from "../_shared/scheduler-auth.ts";
-import { buildReopenedCycle, isPosting, type SaleEvent } from "../_shared/back-office-detect.ts";
+import {
+  buildReopenedSaga,
+  isPosting,
+  type SaleEvent,
+  type SagaAnchor,
+} from "../_shared/back-office-detect.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const DEFAULT_TZ = "America/New_York";
-const UNPOST_LOOKBACK_MS = 72 * 60 * 60 * 1000; // self-healing across missed runs; dedup makes re-scan safe
-const SCAN_KINDS = ["ro_posted", "ro_sent_to_ar", "ro_unposted"];
+const DEFAULT_LOOKBACK_MS = 72 * 60 * 60 * 1000; // self-healing across missed runs; dedup makes re-scan safe
+const MAX_LOOKBACK_MS = 400 * 24 * 60 * 60 * 1000; // ceiling for the one-time backfill override
+const SCAN_KINDS = ["ro_posted", "ro_sent_to_ar", "ro_unposted"]; // saga math (postings + unposts)
+const HISTORY_KINDS = [...SCAN_KINDS, "payment_made"]; // + payments for the timeline
 
 const sb = createClient(SUPABASE_URL, RESOLVED_SERVICE_ROLE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
@@ -73,14 +80,43 @@ async function notify(shopId: number, issueId: string, event: string): Promise<v
     });
     if (!res.ok) {
       console.error(JSON.stringify({ level: "error", surface: "back-office-ro-watch", msg: "notify_failed", event, status: res.status }));
+      // No silent failure: a bounced alert must surface (observability rule 5/9), not just log.
+      Sentry.setContext("notify", { event, status: res.status, shop_id: shopId, issue_id: issueId });
+      Sentry.captureMessage(`back-office-ro-watch: notify failed (${res.status}) for ${event}`, "warning");
     }
   } catch (e) {
     Sentry.captureException(e, { tags: { surface: "back-office-ro-watch", step: "notify" } });
   }
 }
 
-async function detectReopened(shopId: number, realmId: string, tz: string): Promise<number> {
-  const cutoff = new Date(Date.now() - UNPOST_LOOKBACK_MS).toISOString();
+/** The state a prior VERIFIED reopened issue for this RO settled at (the D7 re-baseline). */
+async function loadVerifiedAnchor(shopId: number, ro: number): Promise<SagaAnchor | null> {
+  const { data, error } = await sb
+    .from("back_office_issues")
+    .select("context")
+    .eq("shop_id", shopId)
+    .eq("kind", "reopened_ro")
+    .eq("status", "verified")
+    .eq("tekmetric_ro_id", ro)
+    .order("verified_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    Sentry.captureException(error, { tags: { surface: "back-office-ro-watch", step: "anchor" } });
+    return null; // fail open to the original baseline rather than dropping the RO
+  }
+  const ctx = (data?.context ?? null) as Record<string, unknown> | null;
+  const at = ctx && typeof ctx.final_at === "string" ? ctx.final_at : null;
+  if (!at) return null;
+  return {
+    at,
+    posted_date: typeof ctx!.final_posted_date === "string" ? ctx!.final_posted_date : null,
+    total_cents: typeof ctx!.final_total_cents === "number" ? ctx!.final_total_cents : null,
+  };
+}
+
+async function detectReopened(shopId: number, realmId: string, tz: string, lookbackMs: number): Promise<number> {
+  const cutoff = new Date(Date.now() - lookbackMs).toISOString();
   const { data: unpostRows, error: unpostErr } = await sb
     .from("qteklink_events")
     .select("tekmetric_ro_id")
@@ -100,25 +136,32 @@ async function detectReopened(shopId: number, realmId: string, tz: string): Prom
 
   let created = 0;
   for (const ro of roIds) {
+    // Full lifecycle + payment history for this RO (not time-bounded — the baseline may
+    // reach back to the original posting; D7).
     const { data: evRows, error: evErr } = await sb
       .from("qteklink_events")
       .select("event_kind, raw_body, received_at, event_text")
       .eq("shop_id", shopId)
       .eq("realm_id", realmId)
       .eq("tekmetric_ro_id", ro)
-      .in("event_kind", SCAN_KINDS)
+      .in("event_kind", HISTORY_KINDS)
       .order("received_at", { ascending: true });
     if (evErr) {
       Sentry.captureException(evErr, { tags: { surface: "back-office-ro-watch", step: "events" } });
       continue;
     }
-    const cycle = buildReopenedCycle((evRows ?? []).map((r) => toSaleEvent(r as RawEventRow)), tz);
-    if (!cycle) continue;
+    const events = (evRows ?? []).map((r) => toSaleEvent(r as RawEventRow));
+    const lifecycle = events.filter((e) => SCAN_KINDS.includes(e.kind));
+    const payments = events.filter((e) => e.kind === "payment_made");
+
+    const anchor = await loadVerifiedAnchor(shopId, ro);
+    const res = buildReopenedSaga(lifecycle, payments, tz, anchor);
+    if (res.skip) continue; // no net issue / currently unposted → don't track or alert
 
     const { data: upRes, error: upErr } = await sb.rpc("back_office_upsert_reopened", {
       p_shop_id: shopId,
       p_tekmetric_ro_id: ro,
-      p_cycle: cycle,
+      p_cycle: res.saga,
     });
     if (upErr) {
       Sentry.captureException(upErr, { tags: { surface: "back-office-ro-watch", step: "upsert_reopened" } });
@@ -193,6 +236,14 @@ Deno.serve((req) =>
     const auth = checkSchedulerBearer(req, "back-office-ro-watch");
     if (!auth.ok) return unauthorizedResponse(auth);
 
+    // Optional wide-lookback override for the one-time post-migration backfill
+    // (?lookback_hours=N). Normal cron runs omit it and use the 72h default.
+    const lbRaw = Number(new URL(req.url).searchParams.get("lookback_hours"));
+    const lookbackMs =
+      Number.isFinite(lbRaw) && lbRaw > 0
+        ? Math.min(lbRaw * 60 * 60 * 1000, MAX_LOOKBACK_MS)
+        : DEFAULT_LOOKBACK_MS;
+
     // Every active QBO connection (shop, realm) — shop-agnostic.
     const { data: conns, error: connErr } = await sb
       .from("qbo_connections")
@@ -224,7 +275,7 @@ Deno.serve((req) =>
       const tz = (setRow?.shop_timezone as string) || DEFAULT_TZ;
 
       try {
-        detected += await detectReopened(shopId, realmId, tz);
+        detected += await detectReopened(shopId, realmId, tz, lookbackMs);
         closed += await detectOpenRoClose(shopId, realmId);
       } catch (e) {
         Sentry.captureException(e, { tags: { surface: "back-office-ro-watch", shop_id: String(shopId) } });

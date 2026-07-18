@@ -54,11 +54,16 @@ const KIND_LABEL: Record<BackOfficeIssueSummary["kind"], string> = {
 };
 
 const CHANGE_TYPE_LABEL: Record<string, string> = {
-  unposted: "Unposted (not yet reposted)",
-  reposted: "Reposted (no change to date or total)",
   date_changed: "Reposted to a different date",
   total_changed: "Reposted with a different total",
   date_and_total_changed: "Reposted to a different date AND with a different total",
+};
+
+const HISTORY_LABEL: Record<string, string> = {
+  ro_sent_to_ar: "Sent to A/R",
+  ro_posted: "Posted",
+  ro_unposted: "Unposted (reopened)",
+  payment_made: "Payment received",
 };
 
 function esc(s: unknown): string {
@@ -116,20 +121,51 @@ function detailRows(issue: BackOfficeIssueSummary): string {
   if (issue.kind === "reopened_ro") {
     const ct = String(ctx["change_type"] ?? "");
     if (ct) rows.push(row("What changed", esc(CHANGE_TYPE_LABEL[ct] ?? ct)));
-    const od = ctx["original_posted_date"];
-    const nd = ctx["new_posted_date"];
-    if (od || nd) rows.push(row("Posted date", `${esc(od ?? "—")} &rarr; <strong>${esc(nd ?? "—")}</strong>`));
-    const ot = ctx["original_total_cents"];
-    const nt = ctx["new_total_cents"];
-    if (ot !== undefined || nt !== undefined) {
-      rows.push(row("Total sales", `${esc(money(ot as number))} &rarr; <strong>${esc(money(nt as number))}</strong>`));
+    const bd = ctx["baseline_posted_date"];
+    const fd = ctx["final_posted_date"];
+    if (bd || fd) rows.push(row("Posted date", `${esc(bd ?? "—")} &rarr; <strong>${esc(fd ?? "—")}</strong>`));
+    const bt = ctx["baseline_total_cents"];
+    const ft = ctx["final_total_cents"];
+    if (bt !== undefined || ft !== undefined) {
+      rows.push(row("Total sales", `${esc(money(bt as number))} &rarr; <strong>${esc(money(ft as number))}</strong>`));
     }
-    if (ctx["unposted_by"]) rows.push(row("Unposted by", esc(ctx["unposted_by"])));
+    if (ctx["reopened_by"]) rows.push(row("Reopened by", esc(ctx["reopened_by"])));
   }
 
   if (issue.bo_notes) rows.push(row("Back-office note", esc(issue.bo_notes)));
   if (issue.sa_notes) rows.push(row("Service-advisor fix", esc(issue.sa_notes)));
   return rows.join("");
+}
+
+/** The posting-lifecycle timeline for a reopened RO (empty for other kinds / no history). */
+function historyBlock(issue: BackOfficeIssueSummary): string {
+  if (issue.kind !== "reopened_ro") return "";
+  const raw = (issue.context ?? {})["history"];
+  const hist = Array.isArray(raw) ? (raw as Array<Record<string, unknown>>) : [];
+  if (hist.length === 0) return "";
+  const items = hist
+    .map((h) => {
+      const when = String(h.at_local ?? h.at ?? ""); // pre-formatted shop-local (detector)
+      const label = HISTORY_LABEL[String(h.kind)] ?? String(h.kind);
+      let detail = "";
+      if (h.kind === "ro_posted" || h.kind === "ro_sent_to_ar") {
+        const parts: string[] = [];
+        if (h.posted_date) parts.push(`date ${esc(h.posted_date)}`);
+        if (typeof h.total_cents === "number") parts.push(esc(money(h.total_cents as number)));
+        if (parts.length) detail = ` — ${parts.join(", ")}`;
+      } else if (h.kind === "payment_made" && h.payer) {
+        detail = ` — ${esc(h.payer)}`;
+      }
+      const actor = h.actor && h.kind !== "payment_made" ? ` <span style="color:${MUTED};">by ${esc(h.actor)}</span>` : "";
+      return `<li style="margin:0 0 6px;color:${TEXT};font-size:13px;line-height:1.4;">
+        <span style="color:${MUTED};">${esc(when)}</span> — <strong>${esc(label)}</strong>${detail}${actor}
+      </li>`;
+    })
+    .join("");
+  return `<div style="margin-top:20px;border-top:1px solid ${RULE};padding-top:12px;">
+    <div style="color:${BRAND_ACCENT};font-size:11px;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px;">History</div>
+    <ul style="margin:0;padding-left:18px;list-style:disc;">${items}</ul>
+  </div>`;
 }
 
 function cta(event: BackOfficeEvent, links: BackOfficeLinks): string {
@@ -182,6 +218,7 @@ export function buildNotifyEmail(
       <table style="width:100%;border-collapse:collapse;border-top:1px solid ${RULE};padding-top:8px;">
         ${detailRows(issue)}
       </table>
+      ${historyBlock(issue)}
       ${cta(event, links)}
     </div>
     <div style="color:${MUTED};font-size:11px;text-align:center;margin-top:16px;">
