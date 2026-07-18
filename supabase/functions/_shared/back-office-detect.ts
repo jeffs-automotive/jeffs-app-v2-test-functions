@@ -32,7 +32,7 @@ export function toShopLocalDate(iso: string | null, tz: string): string | null {
 }
 
 /** An instant → a short shop-local label, e.g. "Jul 16, 2026, 2:51 PM" (what the UI + email show). */
-export function formatLocalDateTime(iso: string, tz: string): string {
+function formatLocalDateTime(iso: string, tz: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return new Intl.DateTimeFormat("en-US", {

@@ -34,8 +34,6 @@ describe("StaleBadge", () => {
 
 describe("ChangeTypeBadge", () => {
   it.each([
-    ["unposted", "Unposted"],
-    ["reposted", "Reposted"],
     ["date_changed", "Date changed"],
     ["total_changed", "Total changed"],
     ["date_and_total_changed", "Date & total changed"],

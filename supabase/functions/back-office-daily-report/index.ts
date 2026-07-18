@@ -29,7 +29,6 @@ const FROM_EMAIL =
   "Jeff's Automotive Back Office <alerts@jeffsautomotive.com>";
 const DEFAULT_TZ = "America/New_York";
 
-const BRAND_PRIMARY = "#96003C";
 const BRAND_ACCENT = "#D2B487";
 const BG = "#1a1416";
 const CARD = "#241c1f";

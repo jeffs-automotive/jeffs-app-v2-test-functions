@@ -21,7 +21,7 @@ import { centsToUsd, isStale, daysSince } from "@/lib/back-office/format";
 import type { BackOfficeIssue } from "@/lib/dal/back-office";
 import type { VendorDocType } from "@/lib/qbo/vendor-docs";
 
-export function issueRef(i: BackOfficeIssue): string {
+function issueRef(i: BackOfficeIssue): string {
   if (i.roNumber) return `RO #${i.roNumber}`;
   if (i.billNo) return `#${i.billNo}`;
   return i.title ?? "Issue";

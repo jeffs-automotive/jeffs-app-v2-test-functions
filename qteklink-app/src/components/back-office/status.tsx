@@ -18,7 +18,6 @@ import {
   RotateCcw,
   SendHorizontal,
   StickyNote,
-  Undo2,
   Wrench,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -78,8 +77,6 @@ export function StaleBadge({ days }: { days: number }) {
 // Change-type tag — a lighter-weight classification (outline + body-ink label, the hue
 // lives only on the icon as redundant reinforcement, so there is zero text-contrast risk).
 const CHANGE_TYPE: Record<string, { label: string; Icon: IconType; iconCls: string }> = {
-  unposted: { label: "Unposted", Icon: Undo2, iconCls: "text-red-600 dark:text-red-400" },
-  reposted: { label: "Reposted", Icon: RotateCcw, iconCls: "text-sky-600 dark:text-sky-400" },
   date_changed: { label: "Date changed", Icon: CalendarClock, iconCls: "text-sky-600 dark:text-sky-400" },
   total_changed: { label: "Total changed", Icon: CircleDollarSign, iconCls: "text-amber-600 dark:text-amber-400" },
   date_and_total_changed: {
