@@ -4,8 +4,8 @@ import { useState, type FormEvent } from "react";
 
 import { Button, Card, Checkbox, Field, Input } from "@/components/ui";
 import {
-  CONSENT_LABEL_LEAD,
-  CONSENT_OPTIONAL_NOTE,
+  APPT_SMS_CONSENT_STATEMENT,
+  APPT_SMS_OPT_OUT_LABEL,
   CONSENT_PRIVACY_URL,
   CONSENT_TERMS_URL,
 } from "@/lib/scheduler/consent-copy";
@@ -43,9 +43,10 @@ export interface PhoneNameCardProps {
     first_name: string;
     last_name: string;
     phone: string; // E.164 +1xxxxxxxxxx
-    /** TCPA opt-in for confirmation/reminder texts (revamp Phase 2).
-     *  NEVER gates submit — the OTP rides its own consent basis. */
-    sms_consent: boolean;
+    /** Opt-OUT of transactional appointment texts (2026-07-17). Default false
+     *  = box left unchecked = consented. NEVER gates submit — the OTP rides
+     *  its own consent basis. */
+    sms_opt_out: boolean;
   }) => void | Promise<void>;
 }
 
@@ -97,9 +98,10 @@ export function PhoneNameCard({
     phone?: string;
   }>({});
   const [pending, setPending] = useState(false);
-  // TCPA opt-in — unchecked by default (design spec §4). NEVER appears in
-  // any disabled=/validation branch: the OTP has its own consent basis.
-  const [smsConsent, setSmsConsent] = useState(false);
+  // Appointment-SMS OPT-OUT — unchecked by default (2026-07-17): appointment
+  // texts are transactional, so leaving this unchecked = consent. NEVER
+  // appears in any disabled=/validation branch: the OTP has its own basis.
+  const [smsOptOut, setSmsOptOut] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -131,7 +133,7 @@ export function PhoneNameCard({
         first_name: capitalizeFirst(fn),
         last_name: capitalizeFirst(ln),
         phone: e164!,
-        sms_consent: smsConsent,
+        sms_opt_out: smsOptOut,
       });
     } finally {
       setPending(false);
@@ -220,20 +222,20 @@ export function PhoneNameCard({
             grant (TCPA proof-of-consent). */}
         <Card.Body className="mt-5">
           <div className="rounded-[var(--radius-input)] border border-rule bg-paper-200 px-4 py-3.5">
-            <p className="label-eyebrow mb-2">Text updates — optional</p>
+            <p className="label-eyebrow mb-2">Appointment texts</p>
             <Checkbox
-              id="pn-sms-consent"
-              name="sms_consent"
-              checked={smsConsent}
-              onChange={(e) => setSmsConsent(e.target.checked)}
+              id="pn-sms-opt-out"
+              name="sms_opt_out"
+              checked={smsOptOut}
+              onChange={(e) => setSmsOptOut(e.target.checked)}
               disabled={pending || disabled}
-              aria-describedby="pn-sms-consent-note"
+              aria-describedby="pn-sms-opt-out-note"
               description={
-                <span id="pn-sms-consent-note">{CONSENT_OPTIONAL_NOTE}</span>
+                <span id="pn-sms-opt-out-note">{APPT_SMS_CONSENT_STATEMENT}</span>
               }
             >
               <span className="text-[14px] font-medium leading-snug text-ink">
-                {CONSENT_LABEL_LEAD}
+                {APPT_SMS_OPT_OUT_LABEL}
               </span>
               {/* Fine print stays ink-secondary on paper-200 — ink-tertiary
                   fails AA here (design spec §2 contrast trap). */}

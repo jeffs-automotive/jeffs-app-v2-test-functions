@@ -63,7 +63,7 @@ describe("hashPhone", () => {
 // ─── checkPhoneRateLimit ─────────────────────────────────────────────────────
 
 describe("checkPhoneRateLimit", () => {
-  it("calls the RPC with the HASHED phone key + 3/hour budget; allows when under", async () => {
+  it("calls the RPC with the HASHED phone key + 15/hour budget; allows when under", async () => {
     rpcMock.mockResolvedValue({
       data: [{ allowed: true, retry_after_seconds: 0 }],
       error: null,
@@ -78,7 +78,7 @@ describe("checkPhoneRateLimit", () => {
     expect(args).toEqual({
       p_key: `otp_phone:${hashPhone(PHONE)}`,
       p_window_seconds: 3600,
-      p_max: 3,
+      p_max: 15,
     });
     // PII minimization — the raw phone never reaches the RPC key.
     expect((args as { p_key: string }).p_key).not.toContain(PHONE);

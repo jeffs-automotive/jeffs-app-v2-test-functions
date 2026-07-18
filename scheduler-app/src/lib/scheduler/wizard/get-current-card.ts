@@ -886,30 +886,32 @@ export async function getCurrentCard(
       // appears in the completed card recap ("We'll see you Wednesday,
       // May 13 at 8:00 AM" for waiter; bare date for dropoff).
       //
-      // Revamp Phase 2 (2026-07-02): the what-happens-next line is
-      // consent-aware — look up an ACTIVE sms_consents row for the
-      // session's phone so the card only promises text/email sends the
-      // ledger will actually drive. Fail-safe to false (the no-promise
-      // copy) on any lookup problem; error still surfaces (rule 9).
+      // Revamp 2026-07-17: appointment SMS is TRANSACTIONAL (sends by
+      // default). The what-happens-next line promises texts UNLESS the phone
+      // has an ACTIVE opt-out (wizard checkbox or STOP). Fail-safe to false
+      // (the no-promise copy) on any lookup problem — the send path itself
+      // fail-closes on an opt-out lookup error, so don't over-promise.
       let smsConsent = false;
       const phoneForConsent = row.phone_e164 as string | null;
       if (phoneForConsent) {
         const supabase = createSupabaseAdminClient();
-        const { data: consentRow, error: consentErr } = await supabase
-          .from("sms_consents")
+        const { data: optOutRow, error: optOutErr } = await supabase
+          .from("sms_appointment_opt_outs")
           .select("id")
           .eq("shop_id", SHOP_ID)
           .eq("phone_e164", phoneForConsent)
-          .is("revoked_at", null)
+          .is("restored_at", null)
           .limit(1)
           .maybeSingle();
-        if (consentErr) {
-          Sentry.captureException(consentErr, {
-            tags: { surface: "get_current_card_consent_lookup" },
+        if (optOutErr) {
+          Sentry.captureException(optOutErr, {
+            tags: { surface: "get_current_card_opt_out_lookup" },
             level: "warning",
           });
+        } else {
+          // Texts are on unless the customer opted out.
+          smsConsent = !optOutRow;
         }
-        smsConsent = !!consentRow;
       }
       return {
         step: "completed",

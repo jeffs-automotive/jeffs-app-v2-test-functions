@@ -205,13 +205,13 @@ function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
           initial_first_name={card.payload.initial_first_name}
           initial_last_name={card.payload.initial_last_name}
           initial_phone_e164={card.payload.initial_phone_e164}
-          onSubmit={async ({ first_name, last_name, phone, sms_consent }) => {
+          onSubmit={async ({ first_name, last_name, phone, sms_opt_out }) => {
             const result = await submitPhoneNameV2({
               chatId,
               first_name,
               last_name,
               phone_e164: phone,
-              sms_consent,
+              sms_opt_out,
             });
             handleResult("submitPhoneNameV2", chatId, result);
           }}

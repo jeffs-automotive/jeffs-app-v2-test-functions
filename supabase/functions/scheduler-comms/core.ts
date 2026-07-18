@@ -302,31 +302,36 @@ async function settleClaim(
   }
 }
 
-// ─── Consent gate ───────────────────────────────────────────────────────────
+// ─── Appointment-SMS suppression gate (transactional + opt-out) ──────────────
 
-async function hasActiveConsent(
+// Appointment confirmation/reminder SMS is TRANSACTIONAL — it sends by default
+// (2026-07-17). This returns true when the phone has an ACTIVE opt-out (wizard
+// checkbox OR inbound STOP), false when it does not, null on lookup error.
+// Callers fail CLOSED (skip on true OR null): never text a phone we can't
+// confirm is un-suppressed — STOP compliance is the safe direction.
+async function isAppointmentSmsSuppressed(
   sb: SupabaseClient,
   shopId: number,
   phoneE164: string,
 ): Promise<boolean | null> {
   const { data, error } = await sb
-    .from("sms_consents")
+    .from("sms_appointment_opt_outs")
     .select("id")
     .eq("shop_id", shopId)
     .eq("phone_e164", phoneE164)
-    .is("revoked_at", null)
+    .is("restored_at", null)
     .limit(1)
     .maybeSingle();
   if (error) {
     await logEdgeError(sb, {
-      surface: "scheduler-comms/consent_lookup",
+      surface: "scheduler-comms/opt_out_lookup",
       origin_id: "scheduler-comms",
       level: "error",
-      error_code: "consent_lookup_failed",
+      error_code: "opt_out_lookup_failed",
       message: error.message,
       context: { phone_last_four: phoneE164.slice(-4) },
     });
-    return null; // fail CLOSED — treated as no consent by callers
+    return null; // fail CLOSED — treated as suppressed by callers
   }
   return !!data;
 }
@@ -409,9 +414,19 @@ export async function dispatchKind(
       await settleClaim(sb, smsClaim, { status: "skipped", skip_reason: "no_contact" });
       outcome.sms = "skipped";
     } else {
-      const consent = await hasActiveConsent(sb, target.shop_id, target.phone_e164);
-      if (!consent) {
-        await settleClaim(sb, smsClaim, { status: "skipped", skip_reason: "no_consent" });
+      const suppressed = await isAppointmentSmsSuppressed(
+        sb,
+        target.shop_id,
+        target.phone_e164,
+      );
+      if (suppressed !== false) {
+        // Transactional send is the default; skip ONLY when the customer has
+        // opted out (true) OR the lookup errored (null → fail closed for STOP
+        // compliance — never text a phone we can't confirm is un-suppressed).
+        await settleClaim(sb, smsClaim, {
+          status: "skipped",
+          skip_reason: suppressed === true ? "opted_out" : "opt_out_lookup_failed",
+        });
         outcome.sms = "skipped";
       } else {
         const tpl = await resolveTemplate(sb, {

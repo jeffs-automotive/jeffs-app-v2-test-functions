@@ -146,6 +146,46 @@ async function handleInbound(
         revoked_count: revoked?.length ?? 0, phone_last_four: phone.slice(-4),
       }));
     }
+
+    // Suppress TRANSACTIONAL appointment SMS too — STOP stops ALL texts, not
+    // just marketing. Anyone who can text STOP received a message from us
+    // (ledgered in sms_messages with its shop_id); record an appointment
+    // opt-out for each such shop so confirmation/reminder SMS halts.
+    const { data: msgShops, error: msgShopErr } = await sb
+      .from("sms_messages")
+      .select("shop_id")
+      .eq("phone_e164", phone)
+      .eq("direction", "outbound");
+    if (msgShopErr) {
+      await logEdgeError(sb, {
+        surface: "telnyx-webhook/stop_optout_shop_lookup",
+        origin_id: "telnyx-webhook",
+        level: "error",
+        error_code: "optout_shop_lookup_failed",
+        message: msgShopErr.message,
+        context: { phone_last_four: phone.slice(-4) },
+      });
+    } else {
+      const shopIds = [
+        ...new Set((msgShops ?? []).map((m) => m.shop_id as number)),
+      ];
+      for (const shopId of shopIds) {
+        const { error: optOutErr } = await sb
+          .from("sms_appointment_opt_outs")
+          .insert({ shop_id: shopId, phone_e164: phone, source: "sms_stop" });
+        // 23505 = an active opt-out already exists (partial unique) — fine.
+        if (optOutErr && optOutErr.code !== "23505") {
+          await logEdgeError(sb, {
+            surface: "telnyx-webhook/stop_optout_insert",
+            origin_id: "telnyx-webhook",
+            level: "error",
+            error_code: "optout_insert_failed",
+            message: optOutErr.message,
+            context: { phone_last_four: phone.slice(-4), shop_id: shopId },
+          });
+        }
+      }
+    }
     return;
   }
 
@@ -159,6 +199,30 @@ async function handleInbound(
       }));
       return;
     }
+
+    // Restore TRANSACTIONAL appointment SMS: clear the active opt-out(s) for
+    // this phone so confirmation/reminder texts resume. Runs independently of
+    // (and BEFORE) the marketing-consent restore below — the wizard no longer
+    // writes marketing grants, so there may be no prior sms_consents to find.
+    const { error: unsuppressErr } = await sb
+      .from("sms_appointment_opt_outs")
+      .update({
+        restored_at: new Date().toISOString(),
+        restore_source: "sms_start",
+      })
+      .eq("phone_e164", phone)
+      .is("restored_at", null);
+    if (unsuppressErr) {
+      await logEdgeError(sb, {
+        surface: "telnyx-webhook/start_unsuppress",
+        origin_id: "telnyx-webhook",
+        level: "error",
+        error_code: "optout_restore_failed",
+        message: unsuppressErr.message,
+        context: { phone_last_four: phone.slice(-4) },
+      });
+    }
+
     // START restores a PRIOR opt-in: find the most recent revoked consent.
     const { data: prior, error: priorErr } = await sb
       .from("sms_consents")

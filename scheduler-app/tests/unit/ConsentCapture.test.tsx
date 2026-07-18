@@ -24,32 +24,32 @@ const phoneNameCopy = {
     "By continuing, you agree this conversation may be recorded and reviewed by our team to help us serve you better.",
 };
 
-describe("PhoneNameCard consent capture", () => {
-  it("renders the opt-in checkbox UNCHECKED by default with the disclosure copy", () => {
+describe("PhoneNameCard appointment-SMS opt-out", () => {
+  const OPT_OUT_LABEL = /don't send me text messages about my appointment/i;
+
+  it("renders the opt-OUT checkbox UNCHECKED by default with the consent disclosure", () => {
     render(<PhoneNameCard copy={phoneNameCopy} onSubmit={vi.fn()} />);
-    const box = screen.getByRole("checkbox", {
-      name: /text me appointment updates/i,
-    });
+    const box = screen.getByRole("checkbox", { name: OPT_OUT_LABEL });
     expect(box).not.toBeChecked();
+    // Leaving it unchecked = consent — the disclosure states so.
+    expect(
+      screen.getByText(/by not checking this box, you consent/i),
+    ).toBeInTheDocument();
     expect(screen.getByText(/reply stop to opt out/i)).toBeInTheDocument();
     expect(screen.getByText(/msg & data rates may apply/i)).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: /privacy policy/i }),
     ).toBeInTheDocument();
-    // The old non-compliant footnote is gone.
-    expect(
-      screen.queryByText(/standard texting rates apply/i),
-    ).not.toBeInTheDocument();
   });
 
-  it("submit stays ENABLED while the checkbox is unchecked (never gates)", () => {
+  it("submit stays ENABLED regardless of the opt-out box (never gates)", () => {
     render(<PhoneNameCard copy={phoneNameCopy} onSubmit={vi.fn()} />);
     expect(
       screen.getByRole("button", { name: /send my code/i }),
     ).toBeEnabled();
   });
 
-  it("threads sms_consent=false by default through onSubmit", async () => {
+  it("threads sms_opt_out=false by default (unchecked = consented) through onSubmit", async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn();
     render(<PhoneNameCard copy={phoneNameCopy} onSubmit={onSubmit} />);
@@ -60,24 +60,22 @@ describe("PhoneNameCard consent capture", () => {
     expect(onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({
         phone: "+16105551234",
-        sms_consent: false,
+        sms_opt_out: false,
       }),
     );
   });
 
-  it("threads sms_consent=true when checked", async () => {
+  it("threads sms_opt_out=true when the customer checks the opt-out box", async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn();
     render(<PhoneNameCard copy={phoneNameCopy} onSubmit={onSubmit} />);
     await user.type(screen.getByLabelText(/first name/i), "pat");
     await user.type(screen.getByLabelText(/last name/i), "tester");
     await user.type(screen.getByLabelText(/phone number/i), "6105551234");
-    await user.click(
-      screen.getByRole("checkbox", { name: /text me appointment updates/i }),
-    );
+    await user.click(screen.getByRole("checkbox", { name: OPT_OUT_LABEL }));
     await user.click(screen.getByRole("button", { name: /send my code/i }));
     expect(onSubmit).toHaveBeenCalledWith(
-      expect.objectContaining({ sms_consent: true }),
+      expect.objectContaining({ sms_opt_out: true }),
     );
   });
 });

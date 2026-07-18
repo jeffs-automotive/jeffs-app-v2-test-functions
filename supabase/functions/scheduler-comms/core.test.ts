@@ -58,9 +58,10 @@ const TEMPLATE_ROW = {
     "Jeff's Automotive: {{appointment_type_label}} confirmed {{appointment_date}}{{appointment_time_suffix}}. Call {{shop_phone}}.",
 };
 
-/** Standard sb wiring: templates resolve, consents active, claims succeed. */
+/** Standard sb wiring: templates resolve, NOT opted out, claims succeed. */
 function makeSb(opts: {
-  consent?: boolean;
+  optedOut?: boolean;
+  optOutError?: boolean;
   claimBehavior?: "ok" | "conflict";
   template?: typeof TEMPLATE_ROW | null;
 } = {}) {
@@ -81,9 +82,11 @@ function makeSb(opts: {
     data: opts.template === undefined ? TEMPLATE_ROW : opts.template,
     error: null,
   });
-  sb.onTable("sms_consents", {
-    data: (opts.consent ?? true) ? { id: "c1" } : null,
-    error: null,
+  // Appointment SMS is transactional — sends UNLESS an active opt-out row
+  // exists. Default: no opt-out (transactional send proceeds).
+  sb.onTable("sms_appointment_opt_outs", {
+    data: opts.optedOut ? { id: "o1" } : null,
+    error: opts.optOutError ? { message: "opt-out lookup boom" } : null,
   });
   sb.onTable("scheduler_appointment_types", { data: [], error: null });
   sb.onTable("sms_messages", { data: null, error: null });
@@ -110,14 +113,14 @@ Deno.test("dispatchKind — happy path sends BOTH channels + ledgers the SMS", a
   assertEquals(sb.callsForTable("sms_messages").length, 1);
 });
 
-Deno.test("dispatchKind — NO consent → SMS skipped, email still sends", async () => {
-  const sb = makeSb({ consent: false });
+Deno.test("dispatchKind — opted out → SMS skipped, email still sends", async () => {
+  const sb = makeSb({ optedOut: true });
   const senders = makeSenders();
   const out = await dispatchKind(sb as AnySb, senders, target(), "reminder_24h");
   assertEquals(out.email, "sent");
   assertEquals(out.sms, "skipped");
   assertEquals(senders.smsCalls.length, 0);
-  // the skip is settled with no_consent
+  // the skip is settled with opted_out
   const settles = sb
     .callsForTable("scheduler_reminders")
     .filter((c) => c.chain[0]?.method === "update");
@@ -125,7 +128,33 @@ Deno.test("dispatchKind — NO consent → SMS skipped, email still sends", asyn
     settles.some(
       (c) =>
         (c.chain[0].args[0] as Record<string, unknown>).skip_reason ===
-          "no_consent",
+          "opted_out",
+    ),
+  );
+});
+
+Deno.test("dispatchKind — transactional default → SMS sends when NOT opted out", async () => {
+  const sb = makeSb(); // no active opt-out
+  const senders = makeSenders();
+  const out = await dispatchKind(sb as AnySb, senders, target(), "reminder_24h");
+  assertEquals(out.sms, "sent");
+  assertEquals(senders.smsCalls.length, 1);
+});
+
+Deno.test("dispatchKind — opt-out lookup error → SMS fails CLOSED (skipped, not sent)", async () => {
+  const sb = makeSb({ optOutError: true });
+  const senders = makeSenders();
+  const out = await dispatchKind(sb as AnySb, senders, target(), "reminder_24h");
+  assertEquals(out.sms, "skipped");
+  assertEquals(senders.smsCalls.length, 0);
+  const settles = sb
+    .callsForTable("scheduler_reminders")
+    .filter((c) => c.chain[0]?.method === "update");
+  assert(
+    settles.some(
+      (c) =>
+        (c.chain[0].args[0] as Record<string, unknown>).skip_reason ===
+          "opt_out_lookup_failed",
     ),
   );
 });
