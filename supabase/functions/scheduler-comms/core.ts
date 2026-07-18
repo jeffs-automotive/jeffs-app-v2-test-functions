@@ -650,9 +650,51 @@ const SWEEP_WINDOWS: Array<{ kind: ReminderKind; fromMin: number; toMin: number 
   { kind: "reminder_2h", fromMin: 90, toMin: 150 },
 ];
 
+// Pure shop-local quiet-hours check — 08:00–20:59 (conservative TCPA window).
+export function isWithinQuietHours(hour: number): boolean {
+  return hour >= 8 && hour < 21;
+}
+
+// Fallback derivation from a UTC-ms clock, used only when the canonical
+// Postgres clock is unavailable. Kept exported for unit coverage.
 export function isWithinQuietHoursSendWindow(nowUtcMs: number): boolean {
-  const { hour } = shopLocalDateAndHour(new Date(nowUtcMs).toISOString());
-  return hour >= 8 && hour < 21; // shop-local 08:00–20:59 (conservative TCPA window)
+  return isWithinQuietHours(
+    shopLocalDateAndHour(new Date(nowUtcMs).toISOString()).hour,
+  );
+}
+
+// The canonical shop-local hour, read from Postgres (scheduler_shop_now) so the
+// quiet-hours decision uses ONE authoritative clock (shop-clock-single-snapshot,
+// code-review #3) rather than the Vercel process clock. Falls back to the
+// UTC-derived hour on RPC error — a courtesy TCPA gate must not hard-fail the
+// whole sweep.
+export async function canonicalShopHour(
+  sb: SupabaseClient,
+  fallbackUtcMs: number,
+): Promise<number> {
+  try {
+    const { data, error } = await sb.rpc("scheduler_shop_now");
+    const hour = (data as { hour?: unknown } | null)?.hour;
+    if (!error && typeof hour === "number") return hour;
+    if (error) {
+      await logEdgeError(sb, {
+        surface: "scheduler-comms/shop_clock",
+        origin_id: "scheduler-comms",
+        level: "warning",
+        error_code: "shop_now_lookup_failed",
+        message: error.message,
+      });
+    }
+  } catch (e) {
+    await logEdgeError(sb, {
+      surface: "scheduler-comms/shop_clock",
+      origin_id: "scheduler-comms",
+      level: "warning",
+      error_code: "shop_now_threw",
+      message: e instanceof Error ? e.message : String(e),
+    });
+  }
+  return shopLocalDateAndHour(new Date(fallbackUtcMs).toISOString()).hour;
 }
 
 export async function sweepReminders(
@@ -660,7 +702,11 @@ export async function sweepReminders(
   senders: Senders,
   nowUtcMs: number,
 ): Promise<{ processed: DispatchOutcome[]; quiet_hours: boolean }> {
-  if (!isWithinQuietHoursSendWindow(nowUtcMs)) {
+  // Gate on the canonical Postgres shop clock (not the Vercel clock). The
+  // window-bound math below stays UTC — it's duration arithmetic against
+  // appointment TIMESTAMPTZ, not a time-of-day decision.
+  const shopHour = await canonicalShopHour(sb, nowUtcMs);
+  if (!isWithinQuietHours(shopHour)) {
     // Outside the window: do NOT claim — the next in-window sweep sends.
     return { processed: [], quiet_hours: true };
   }

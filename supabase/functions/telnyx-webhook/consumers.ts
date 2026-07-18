@@ -123,68 +123,34 @@ async function handleInbound(
   }
 
   if (keyword === "stop") {
-    // Revoke EVERY active consent for this phone (no shop filter — STOP
-    // means stop; acting on an unsigned delivery is the safe direction).
-    const { data: revoked, error: revokeErr } = await sb
-      .from("sms_consents")
-      .update({ revoked_at: new Date().toISOString(), revoke_source: "sms_stop" })
-      .eq("phone_e164", phone)
-      .is("revoked_at", null)
-      .select("id");
-    if (revokeErr) {
+    // Atomic STOP (code-review #1): revoke marketing consent AND suppress
+    // transactional appointment SMS in ONE transaction via process_sms_stop.
+    // STOP means stop; acting on an unsigned delivery is the safe direction
+    // (fail toward not-sending). The inbound-message ledger insert above is
+    // independent and already done.
+    const { data: stopResult, error: stopErr } = await sb.rpc(
+      "process_sms_stop",
+      { p_phone: phone },
+    );
+    if (stopErr) {
       await logEdgeError(sb, {
-        surface: "telnyx-webhook/stop_revoke",
+        surface: "telnyx-webhook/stop_process",
         origin_id: "telnyx-webhook",
         level: "error",
-        error_code: "consent_revoke_failed",
-        message: revokeErr.message,
+        error_code: "process_sms_stop_failed",
+        message: stopErr.message,
         context: { phone_last_four: phone.slice(-4) },
       });
     } else {
+      const r = (stopResult ?? {}) as {
+        revoked_count?: number;
+        opt_out_shops?: number;
+      };
       console.log(JSON.stringify({
         level: "info", surface: "telnyx-webhook", msg: "stop_processed",
-        revoked_count: revoked?.length ?? 0, phone_last_four: phone.slice(-4),
+        revoked_count: r.revoked_count ?? 0, opt_out_shops: r.opt_out_shops ?? 0,
+        phone_last_four: phone.slice(-4),
       }));
-    }
-
-    // Suppress TRANSACTIONAL appointment SMS too — STOP stops ALL texts, not
-    // just marketing. Anyone who can text STOP received a message from us
-    // (ledgered in sms_messages with its shop_id); record an appointment
-    // opt-out for each such shop so confirmation/reminder SMS halts.
-    const { data: msgShops, error: msgShopErr } = await sb
-      .from("sms_messages")
-      .select("shop_id")
-      .eq("phone_e164", phone)
-      .eq("direction", "outbound");
-    if (msgShopErr) {
-      await logEdgeError(sb, {
-        surface: "telnyx-webhook/stop_optout_shop_lookup",
-        origin_id: "telnyx-webhook",
-        level: "error",
-        error_code: "optout_shop_lookup_failed",
-        message: msgShopErr.message,
-        context: { phone_last_four: phone.slice(-4) },
-      });
-    } else {
-      const shopIds = [
-        ...new Set((msgShops ?? []).map((m) => m.shop_id as number)),
-      ];
-      for (const shopId of shopIds) {
-        const { error: optOutErr } = await sb
-          .from("sms_appointment_opt_outs")
-          .insert({ shop_id: shopId, phone_e164: phone, source: "sms_stop" });
-        // 23505 = an active opt-out already exists (partial unique) — fine.
-        if (optOutErr && optOutErr.code !== "23505") {
-          await logEdgeError(sb, {
-            surface: "telnyx-webhook/stop_optout_insert",
-            origin_id: "telnyx-webhook",
-            level: "error",
-            error_code: "optout_insert_failed",
-            message: optOutErr.message,
-            context: { phone_last_four: phone.slice(-4), shop_id: shopId },
-          });
-        }
-      }
     }
     return;
   }

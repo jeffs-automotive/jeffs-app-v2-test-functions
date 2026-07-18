@@ -96,7 +96,10 @@ vi.mock("@/lib/scheduler/wizard/availability", () => ({
   getEarliestAvailableDate: vi.fn(async () => null),
 }));
 
-import { getCurrentCard } from "@/lib/scheduler/wizard/get-current-card";
+import {
+  getCurrentCard,
+  parseRecommendedTestingServices,
+} from "@/lib/scheduler/wizard/get-current-card";
 
 beforeEach(() => {
   storedRow = null;
@@ -316,5 +319,54 @@ describe("getCurrentCard", () => {
       // But it does still carry the date.
       expect(card.payload.appointment_label).toMatch(/May/);
     }
+  });
+});
+
+describe("parseRecommendedTestingServices (jsonb-defensive-parse)", () => {
+  it("returns [] for non-array input", () => {
+    expect(parseRecommendedTestingServices(null)).toEqual([]);
+    expect(parseRecommendedTestingServices(undefined)).toEqual([]);
+    expect(parseRecommendedTestingServices("nope")).toEqual([]);
+    expect(parseRecommendedTestingServices({})).toEqual([]);
+  });
+
+  it("drops null / non-object entries without throwing (shape-drifted JSONB)", () => {
+    const raw = [
+      null,
+      123,
+      "str",
+      { service_key: "diag_electrical", display_name: "Electrical Diagnostic" },
+    ];
+    // The regression: [null] used to crash on entry.service_key.
+    expect(() => parseRecommendedTestingServices(raw)).not.toThrow();
+    expect(parseRecommendedTestingServices(raw)).toEqual([
+      {
+        service_key: "diag_electrical",
+        display_name: "Electrical Diagnostic",
+        starting_price_cents: 0,
+        notes: null,
+      },
+    ]);
+  });
+
+  it("maps a well-formed entry (description → notes) and drops entries missing key/name", () => {
+    const raw = [
+      {
+        service_key: "diag_noise",
+        display_name: "Noise Diagnostic",
+        starting_price_cents: 12995,
+        description: "We'll track down the noise.",
+      },
+      { service_key: "", display_name: "No key" }, // dropped
+      { service_key: "has_key", display_name: "" }, // dropped
+    ];
+    expect(parseRecommendedTestingServices(raw)).toEqual([
+      {
+        service_key: "diag_noise",
+        display_name: "Noise Diagnostic",
+        starting_price_cents: 12995,
+        notes: "We'll track down the noise.",
+      },
+    ]);
   });
 });

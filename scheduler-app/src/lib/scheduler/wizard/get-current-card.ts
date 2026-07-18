@@ -481,23 +481,9 @@ export async function getCurrentCard(
       // service_key + display_name + description + starting_price_cents
       // + source_concerns. We strip source_concerns from the customer-
       // facing payload — that's audit-only context.
-      const raw = (row as Record<string, unknown>).recommended_testing_services;
-      const services = Array.isArray(raw)
-        ? (raw as Array<Record<string, unknown>>)
-            .map((entry) => ({
-              service_key:
-                typeof entry.service_key === "string" ? entry.service_key : "",
-              display_name:
-                typeof entry.display_name === "string" ? entry.display_name : "",
-              starting_price_cents:
-                typeof entry.starting_price_cents === "number"
-                  ? entry.starting_price_cents
-                  : 0,
-              notes:
-                typeof entry.description === "string" ? entry.description : null,
-            }))
-            .filter((s) => s.service_key.length > 0 && s.display_name.length > 0)
-        : [];
+      const services = parseRecommendedTestingServices(
+        (row as Record<string, unknown>).recommended_testing_services,
+      );
       return {
         step: "testing_service_approval",
         payload: {
@@ -1115,6 +1101,40 @@ interface ExplanationItem {
   display_name: string;
   explanation_text: string;
   category?: string | null;
+}
+
+export interface RecommendedTestingService {
+  service_key: string;
+  display_name: string;
+  starting_price_cents: number;
+  notes: string | null;
+}
+
+/**
+ * Parse the LLM-written `recommended_testing_services` JSONB into the
+ * testing_service_approval payload shape. Defensive per jsonb-defensive-parse:
+ * non-array input, null entries, and non-object entries are DROPPED rather than
+ * dereferenced — a shape-drifted `[null]` must not crash the card render.
+ * Exported for direct unit testing.
+ */
+export function parseRecommendedTestingServices(
+  raw: unknown,
+): RecommendedTestingService[] {
+  if (!Array.isArray(raw)) return [];
+  return (raw as unknown[])
+    .filter((e): e is Record<string, unknown> => !!e && typeof e === "object")
+    .map((entry) => ({
+      service_key:
+        typeof entry.service_key === "string" ? entry.service_key : "",
+      display_name:
+        typeof entry.display_name === "string" ? entry.display_name : "",
+      starting_price_cents:
+        typeof entry.starting_price_cents === "number"
+          ? entry.starting_price_cents
+          : 0,
+      notes: typeof entry.description === "string" ? entry.description : null,
+    }))
+    .filter((s) => s.service_key.length > 0 && s.display_name.length > 0);
 }
 
 function parseExplanationRequiredItems(raw: unknown): ExplanationItem[] {

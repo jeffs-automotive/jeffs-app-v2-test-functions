@@ -5,9 +5,11 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
 import { createMockSupabaseClient } from "../_shared/test-helpers.ts";
 import {
+  canonicalShopHour,
   dispatchKind,
   isWithinQuietHoursSendWindow,
   renderTemplate,
+  sweepReminders,
   type Senders,
   type SendTarget,
 } from "./core.ts";
@@ -230,4 +232,42 @@ Deno.test("quiet hours — 8am..8:59pm shop-local sends; night blocks", () => {
   assert(isWithinQuietHoursSendWindow(Date.parse("2026-07-10T23:00:00Z")));
   assert(!isWithinQuietHoursSendWindow(Date.parse("2026-07-10T03:00:00Z")));
   assert(!isWithinQuietHoursSendWindow(Date.parse("2026-07-11T02:30:00Z")));
+});
+
+Deno.test("canonicalShopHour — uses scheduler_shop_now().hour (Postgres clock)", async () => {
+  const sb = createMockSupabaseClient();
+  sb.onRpc("scheduler_shop_now", {
+    data: { hour: 3, date: "2026-07-10" },
+    error: null,
+  });
+  // nowUtcMs says 12pm ET, but the canonical clock (3am) must win.
+  const hour = await canonicalShopHour(
+    sb as AnySb,
+    Date.parse("2026-07-10T16:00:00Z"),
+  );
+  assertEquals(hour, 3);
+});
+
+Deno.test("canonicalShopHour — falls back to the UTC-derived hour on RPC error", async () => {
+  const sb = createMockSupabaseClient();
+  sb.onRpc("scheduler_shop_now", { data: null, error: { message: "boom" } });
+  // 12:00Z on 2026-07-10 (EDT) = 8am ET.
+  const hour = await canonicalShopHour(
+    sb as AnySb,
+    Date.parse("2026-07-10T12:00:00Z"),
+  );
+  assertEquals(hour, 8);
+});
+
+Deno.test("sweepReminders — gates on the canonical clock (night blocks even when UTC says day)", async () => {
+  const sb = createMockSupabaseClient();
+  // Canonical clock = 3am (night) → quiet hours, regardless of the UTC arg.
+  sb.onRpc("scheduler_shop_now", { data: { hour: 3 }, error: null });
+  const out = await sweepReminders(
+    sb as AnySb,
+    makeSenders(),
+    Date.parse("2026-07-10T16:00:00Z"), // 12pm ET — would be "allowed" on the Vercel clock
+  );
+  assertEquals(out.quiet_hours, true);
+  assertEquals(out.processed.length, 0);
 });

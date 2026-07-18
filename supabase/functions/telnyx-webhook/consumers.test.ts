@@ -50,16 +50,12 @@ Deno.test("extractMessagePayload — envelope unwrap", () => {
   assertEquals(extractMessagePayload({}), null);
 });
 
-Deno.test("STOP revokes consents, suppresses appointment SMS, ledgers inbound (even unsigned)", async () => {
+Deno.test("STOP applies atomically via process_sms_stop + ledgers inbound (even unsigned)", async () => {
   const sb = createMockSupabaseClient();
-  sb.onTable("sms_consents", { data: [{ id: "c1" }], error: null });
-  sb.onTable("sms_messages", (call) => {
-    // select → the phone's messaged shops (opt-out shop resolution);
-    // insert → the inbound-ledger row.
-    if (call.chain[0]?.method === "select") {
-      return { data: [{ shop_id: 7476 }], error: null };
-    }
-    return { data: null, error: null };
+  sb.onTable("sms_messages", { data: null, error: null }); // inbound ledger insert
+  sb.onRpc("process_sms_stop", {
+    data: { revoked_count: 1, opt_out_shops: 1 },
+    error: null,
   });
 
   await processMessageEvent({
@@ -69,7 +65,7 @@ Deno.test("STOP revokes consents, suppresses appointment SMS, ledgers inbound (e
     signatureVerified: false, // spoofable STOP still acts — fail toward not-sending
   });
 
-  // inbound ledgered
+  // inbound ledgered (independent of the STOP action)
   const ledgerInserts = sb
     .callsForTable("sms_messages")
     .filter((c) => c.chain[0].method === "insert");
@@ -78,21 +74,16 @@ Deno.test("STOP revokes consents, suppresses appointment SMS, ledgers inbound (e
   assertEquals(inserted.kind, "inbound");
   assertEquals(inserted.status, "received");
 
-  // marketing consent revoked
-  const consent = sb.callsForTable("sms_consents");
-  assertEquals(consent.length, 1);
-  assertEquals(consent[0].chain[0].method, "update");
-  const patch = consent[0].chain[0].args[0] as Record<string, unknown>;
-  assertEquals(patch.revoke_source, "sms_stop");
-  assert(typeof patch.revoked_at === "string");
-
-  // transactional appointment SMS suppressed for the messaged shop
-  const optOuts = sb.callsForTable("sms_appointment_opt_outs");
-  assertEquals(optOuts.length, 1);
-  assertEquals(optOuts[0].chain[0].method, "insert");
-  const oo = optOuts[0].chain[0].args[0] as Record<string, unknown>;
-  assertEquals(oo.source, "sms_stop");
-  assertEquals(oo.shop_id, 7476);
+  // revoke + appointment-SMS suppression happen atomically in ONE RPC
+  const stopCalls = sb.callsForRpc("process_sms_stop");
+  assertEquals(stopCalls.length, 1);
+  assertEquals(
+    (stopCalls[0].rpcArgs as Record<string, unknown>).p_phone,
+    "+16105551234",
+  );
+  // the raw two-table writes are gone — the RPC owns them now
+  assertEquals(sb.callsForTable("sms_consents").length, 0);
+  assertEquals(sb.callsForTable("sms_appointment_opt_outs").length, 0);
 });
 
 Deno.test("signed START restores appointment-SMS opt-out (even with no prior marketing consent)", async () => {

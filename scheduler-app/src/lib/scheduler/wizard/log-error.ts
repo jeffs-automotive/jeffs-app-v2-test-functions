@@ -60,7 +60,26 @@ const MAX_MESSAGE_LEN = 2000;
 const MAX_STACK_LEN = 4000;
 
 export async function logError(args: LogErrorArgs): Promise<void> {
-  const supabase = createSupabaseAdminClient();
+  // logError is best-effort and MUST NEVER throw (code-review #2): it's called
+  // from Server Actions' terminal catch blocks, and a throw here would turn the
+  // graceful { ok: false } envelope into a raw Server Action rejection.
+  // createSupabaseAdminClient() throws when its env vars are unavailable — so
+  // guard it and bail quietly rather than propagating.
+  let supabase: ReturnType<typeof createSupabaseAdminClient>;
+  try {
+    supabase = createSupabaseAdminClient();
+  } catch (e) {
+     
+    console.warn(
+      JSON.stringify({
+        level: "warning",
+        msg: "log_error_admin_client_unavailable",
+        detail: e instanceof Error ? e.message : String(e),
+        original_surface: args.surface,
+      }),
+    );
+    return;
+  }
 
   // Look up step_at_error if we have a chatId — helps triage by linking
   // the error to the wizard step the customer was on. Best-effort.
@@ -111,7 +130,7 @@ export async function logError(args: LogErrorArgs): Promise<void> {
   } catch (e) {
     // Best-effort. Surface to console so a dev running locally sees the
     // failure to write the log row (which is itself a useful signal).
-    // eslint-disable-next-line no-console
+     
     console.warn(
       JSON.stringify({
         level: "warning",
