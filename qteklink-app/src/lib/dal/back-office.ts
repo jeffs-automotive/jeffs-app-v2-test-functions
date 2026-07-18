@@ -43,6 +43,7 @@ export interface BackOfficeSettings {
   saEmails: string[];
   officeEmails: string[];
   accountingEmails: string[];
+  reopenedEmails: string[];
   digestEmails: string[];
   fallbackAdminEmail: string;
   staleHours: number;
@@ -52,6 +53,7 @@ export const DEFAULT_BACK_OFFICE_SETTINGS: BackOfficeSettings = {
   saEmails: [],
   officeEmails: [],
   accountingEmails: [],
+  reopenedEmails: [],
   digestEmails: [],
   fallbackAdminEmail: "",
   staleHours: 48,
@@ -286,6 +288,7 @@ interface SettingsBlobDb {
   sa_emails?: unknown;
   office_emails?: unknown;
   accounting_emails?: unknown;
+  reopened_emails?: unknown;
   digest_emails?: unknown;
   fallback_admin_email?: unknown;
   stale_hours?: unknown;
@@ -314,6 +317,7 @@ export async function getBackOfficeSettings(shopId: number): Promise<{ realmId: 
       saEmails: strList(blob.sa_emails),
       officeEmails: strList(blob.office_emails),
       accountingEmails: strList(blob.accounting_emails),
+      reopenedEmails: strList(blob.reopened_emails),
       digestEmails: strList(blob.digest_emails),
       fallbackAdminEmail: typeof blob.fallback_admin_email === "string" ? blob.fallback_admin_email : "",
       staleHours: typeof blob.stale_hours === "number" && Number.isFinite(blob.stale_hours) ? blob.stale_hours : 48,
@@ -332,6 +336,7 @@ export async function upsertBackOfficeSettings(shopId: number, settings: BackOff
       sa_emails: settings.saEmails,
       office_emails: settings.officeEmails,
       accounting_emails: settings.accountingEmails,
+      reopened_emails: settings.reopenedEmails,
       digest_emails: settings.digestEmails,
       fallback_admin_email: settings.fallbackAdminEmail,
       stale_hours: settings.staleHours,

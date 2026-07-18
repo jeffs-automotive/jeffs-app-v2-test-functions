@@ -51,7 +51,7 @@ function StatusCell({ issue, staleHours }: { issue: BackOfficeIssue; staleHours:
 const HEADERS: Record<IssueKind, string[]> = {
   invoice_issue: ["Vendor", "Bill / Exp #", "RO #", "Bill date", "Amount~", "Back-office note", "SA fix", "Status", ""],
   open_ro: ["Vendor", "Bill #", "RO #", "Bill date", "Amount~", "RO state", "Status", ""],
-  reopened_ro: ["RO #", "What changed", "Posted date", "Total~", "Unposted by", "Status", ""],
+  reopened_ro: ["RO #", "What changed", "Posted date", "Total~", "Reopened by", "Status", ""],
   misc: ["Title", "RO #", "Note", "Status", ""],
 };
 
@@ -128,20 +128,20 @@ export function IssueTable({ issues, kind, staleHours }: { issues: BackOfficeIss
                       <ChangeTypeBadge changeType={ctx(i, "change_type")} />
                     </TableCell>
                     <TableCell className="text-xs">
-                      <DiffPair before={ctx(i, "original_posted_date")} after={ctx(i, "new_posted_date")} />
+                      <DiffPair before={ctx(i, "baseline_posted_date")} after={ctx(i, "final_posted_date")} />
                     </TableCell>
                     <TableCell className="text-right text-xs">
                       <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
                         <DiffPair
-                          before={centsToUsd(ctxNum(i, "original_total_cents"))}
-                          after={ctxNum(i, "new_total_cents") == null ? null : centsToUsd(ctxNum(i, "new_total_cents"))}
+                          before={centsToUsd(ctxNum(i, "baseline_total_cents"))}
+                          after={ctxNum(i, "final_total_cents") == null ? null : centsToUsd(ctxNum(i, "final_total_cents"))}
                         />
-                        {ctxNum(i, "original_total_cents") != null && ctxNum(i, "new_total_cents") != null && (
-                          <DeltaChip deltaCents={(ctxNum(i, "new_total_cents") ?? 0) - (ctxNum(i, "original_total_cents") ?? 0)} />
+                        {ctxNum(i, "baseline_total_cents") != null && ctxNum(i, "final_total_cents") != null && (
+                          <DeltaChip deltaCents={(ctxNum(i, "final_total_cents") ?? 0) - (ctxNum(i, "baseline_total_cents") ?? 0)} />
                         )}
                       </span>
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground"><Truncate text={ctx(i, "unposted_by")} max="max-w-[18ch]" /></TableCell>
+                    <TableCell className="text-xs text-muted-foreground"><Truncate text={ctx(i, "reopened_by")} max="max-w-[18ch]" /></TableCell>
                   </>
                 )}
                 {kind === "misc" && (

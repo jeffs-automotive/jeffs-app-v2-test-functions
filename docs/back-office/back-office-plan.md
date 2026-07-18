@@ -110,12 +110,19 @@ Transitions follow the repo idiom: **SECURITY DEFINER RPCs with a guarded `UPDAT
 | `created_at` / `updated_at` | TIMESTAMPTZ NOT NULL DEFAULT now() | |
 
 `context` shapes:
-- `reopened_ro`: `{ change_type, original_posted_date, new_posted_date, original_total_cents, new_total_cents, unposted_by, unposted_at }` where `change_type ∈ {unposted, reposted, date_changed, total_changed, date_and_total_changed}`.
+- `reopened_ro`: **SUPERSEDED 2026-07-18** by the net-saga model — see `docs/back-office/reopened-ro-history-plan.md` §4. The
+  live shape is now `{ change_type (date_changed|total_changed|date_and_total_changed only), saga_started_at, reopened_by,
+  baseline_posted_date, baseline_total_cents, final_posted_date, final_total_cents, final_at, history[] }`. (Original 2026-07-17
+  shape, now retired: `{ change_type ∈ {unposted, reposted, date_changed, total_changed, date_and_total_changed}, original_posted_date,
+  new_posted_date, original_total_cents, new_total_cents, unposted_by, unposted_at }`.)
 - `open_ro`: `{ ro_status, ro_closed_at }` (from Tekmetric status).
 - `invoice_issue`: `{ attachment: { qbo_attachable_id, file_name, temp_download_uri?, fetched_at } | null }`.
 
-**Indexes:** partial unique for reopened dedup `(shop_id, tekmetric_ro_id, (context->>'unposted_at')) WHERE kind='reopened_ro'`;
-active-issue index `(shop_id, kind, status) WHERE status <> 'verified'`; stale scan `(shop_id, last_activity_at) WHERE status <> 'verified'`.
+**Indexes:** reopened dedup — **SUPERSEDED 2026-07-18**: the per-unpost-cycle index
+`(shop_id, tekmetric_ro_id, (context->>'unposted_at')) WHERE kind='reopened_ro'` was replaced by the one-active-issue-per-RO
+index `back_office_issues_reopened_active (shop_id, tekmetric_ro_id) WHERE kind='reopened_ro' AND status <> 'verified'`
+(migration `20260718170000`). Also: active-issue index `(shop_id, kind, status) WHERE status <> 'verified'`; stale scan
+`(shop_id, last_activity_at) WHERE status <> 'verified'`.
 
 ### `back_office_issue_events` (audit — keytag_audit_log style)
 `id BIGSERIAL PK`, `issue_id UUID NOT NULL REFERENCES back_office_issues(id)`, `occurred_at`, `action TEXT

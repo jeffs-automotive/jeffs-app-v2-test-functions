@@ -137,7 +137,7 @@ SELECT ok(
   'dashboard_counts returns the three tallies');
 SELECT is(
   ((public.back_office_dashboard_counts(7476, date_trunc('month', now())::date, 48))->>'closed_this_month')::int,
-  2, 'closed_this_month counts both verified issues (the invoice flow + the closed open_ro)');
+  3, 'closed_this_month counts every verified issue this month (invoice flow + verified reopened_ro + closed open_ro)');
 
 -- ─── Validation ─────────────────────────────────────────────────────────
 SELECT throws_ok($$ SELECT public.back_office_create_issue(7476,'bogus','manual','{}'::jsonb,'x','qteklink') $$, 'P0001', NULL, 'bad kind rejected');

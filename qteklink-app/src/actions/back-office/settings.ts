@@ -26,6 +26,7 @@ const SettingsSchema = z.object({
   saEmails: emailListField("Service-advisor recipients"),
   officeEmails: emailListField("Office recipients"),
   accountingEmails: emailListField("Accounting recipients"),
+  reopenedEmails: emailListField("Reopened-RO alert recipients"),
   digestEmails: emailListField("Daily-digest recipients"),
   fallbackAdminEmail: z
     .string()
@@ -50,6 +51,7 @@ async function updateSettingsImpl(
       saEmails: String(formData.get("sa_emails") ?? ""),
       officeEmails: String(formData.get("office_emails") ?? ""),
       accountingEmails: String(formData.get("accounting_emails") ?? ""),
+      reopenedEmails: String(formData.get("reopened_emails") ?? ""),
       digestEmails: String(formData.get("digest_emails") ?? ""),
       fallbackAdminEmail: String(formData.get("fallback_admin_email") ?? ""),
       staleHours: formData.get("stale_hours") ?? 48,
@@ -61,6 +63,7 @@ async function updateSettingsImpl(
       saEmails: toList(parsed.data.saEmails),
       officeEmails: toList(parsed.data.officeEmails),
       accountingEmails: toList(parsed.data.accountingEmails),
+      reopenedEmails: toList(parsed.data.reopenedEmails),
       digestEmails: toList(parsed.data.digestEmails),
       fallbackAdminEmail: parsed.data.fallbackAdminEmail,
       staleHours: parsed.data.staleHours,

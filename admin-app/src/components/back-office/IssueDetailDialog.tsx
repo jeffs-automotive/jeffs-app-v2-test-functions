@@ -20,6 +20,7 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { BackOfficeStatusBadge, ChangeTypeBadge, IssueKindBadge } from "@/components/back-office/status";
+import { ReopenedHistory, type HistoryItem } from "@/components/back-office/ReopenedHistory";
 import { ViewAttachmentButton } from "@/components/back-office/ViewAttachmentButton";
 import { submitFixAction } from "@/actions/back-office/submit-fix";
 import type { SaQueueIssue } from "@/lib/back-office";
@@ -67,10 +68,11 @@ export function IssueDetailDialog({
   }, [state?.timestamp, state?.ok, router, onOpenChange]);
 
   const hasImage = issue.qboTxnId && (issue.qboTxnType === "Bill" || issue.qboTxnType === "Purchase");
-  const od = ctx["original_posted_date"] as string | undefined;
-  const nd = ctx["new_posted_date"] as string | undefined;
-  const ot = ctx["original_total_cents"] as number | undefined;
-  const nt = ctx["new_total_cents"] as number | undefined;
+  const od = ctx["baseline_posted_date"] as string | undefined;
+  const nd = ctx["final_posted_date"] as string | undefined;
+  const ot = ctx["baseline_total_cents"] as number | undefined;
+  const nt = ctx["final_total_cents"] as number | undefined;
+  const history = Array.isArray(ctx["history"]) ? (ctx["history"] as HistoryItem[]) : [];
 
   return (
     <Dialog open={open} onOpenChange={(next) => (pending && !next ? undefined : onOpenChange(next))}>
@@ -112,6 +114,8 @@ export function IssueDetailDialog({
             </>
           )}
         </dl>
+
+        {issue.kind === "reopened_ro" && <ReopenedHistory history={history} />}
 
         <div className="rounded-md border border-border bg-muted/40 p-3">
           <p className="text-xs uppercase tracking-wide text-muted-foreground">Office manager note</p>

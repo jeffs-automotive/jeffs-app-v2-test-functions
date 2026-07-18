@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { BackOfficeStatusBadge, StaleBadge, ChangeTypeBadge, IssueKindBadge } from "./status";
 import { RowActions } from "./RowActions";
+import { ReopenedHistory, type HistoryItem } from "./ReopenedHistory";
 import { ViewAttachmentButton } from "./ViewAttachmentButton";
 import { centsToUsd, isStale, daysSince } from "@/lib/back-office/format";
 import type { BackOfficeIssue } from "@/lib/dal/back-office";
@@ -50,10 +51,11 @@ export function IssueDetailDialog({
   const stale = isStale(issue.lastActivityAt, staleHours);
   const hasImage = issue.qboTxnId && (issue.qboTxnType === "Bill" || issue.qboTxnType === "Purchase");
   const isInvoice = issue.kind === "invoice_issue" || issue.kind === "open_ro";
-  const od = ctx["original_posted_date"] as string | undefined;
-  const nd = ctx["new_posted_date"] as string | undefined;
-  const ot = ctx["original_total_cents"] as number | undefined;
-  const nt = ctx["new_total_cents"] as number | undefined;
+  const od = ctx["baseline_posted_date"] as string | undefined;
+  const nd = ctx["final_posted_date"] as string | undefined;
+  const ot = ctx["baseline_total_cents"] as number | undefined;
+  const nt = ctx["final_total_cents"] as number | undefined;
+  const history = Array.isArray(ctx["history"]) ? (ctx["history"] as HistoryItem[]) : [];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -105,10 +107,12 @@ export function IssueDetailDialog({
                   </span>
                 </Row>
               )}
-              {ctx["unposted_by"] ? <Row label="Unposted by">{String(ctx["unposted_by"])}</Row> : null}
+              {ctx["reopened_by"] ? <Row label="Reopened by">{String(ctx["reopened_by"])}</Row> : null}
             </>
           )}
         </dl>
+
+        {issue.kind === "reopened_ro" && <ReopenedHistory history={history} />}
 
         {issue.boNotes && (
           <div className="rounded-md border border-border bg-muted/40 p-3">

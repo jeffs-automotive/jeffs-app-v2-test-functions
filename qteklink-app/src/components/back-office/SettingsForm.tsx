@@ -48,6 +48,7 @@ export function SettingsForm({ settings, canEdit }: { settings: BackOfficeSettin
             <div><dt className="text-xs uppercase tracking-wide text-muted-foreground">Service advisors</dt><dd>{settings.saEmails.join(", ") || "—"}</dd></div>
             <div><dt className="text-xs uppercase tracking-wide text-muted-foreground">Office</dt><dd>{settings.officeEmails.join(", ") || "—"}</dd></div>
             <div><dt className="text-xs uppercase tracking-wide text-muted-foreground">Accounting</dt><dd>{settings.accountingEmails.join(", ") || "—"}</dd></div>
+            <div><dt className="text-xs uppercase tracking-wide text-muted-foreground">Reopened-RO alerts</dt><dd>{settings.reopenedEmails.join(", ") || "—"}</dd></div>
             <div><dt className="text-xs uppercase tracking-wide text-muted-foreground">Daily digest</dt><dd>{settings.digestEmails.join(", ") || "—"}</dd></div>
             <div><dt className="text-xs uppercase tracking-wide text-muted-foreground">Admin fallback</dt><dd>{settings.fallbackAdminEmail || "—"}</dd></div>
             <div><dt className="text-xs uppercase tracking-wide text-muted-foreground">Stale after</dt><dd className="tabular-nums">{settings.staleHours} hours</dd></div>
@@ -67,7 +68,8 @@ export function SettingsForm({ settings, canEdit }: { settings: BackOfficeSettin
         <CardContent className="grid gap-4">
           <ListField name="sa_emails" label="Service-advisor recipients" help="Get 'sent to SA' alerts." initial={settings.saEmails} />
           <ListField name="office_emails" label="Office recipients" help="Get fix-submitted, RO-closed, and verified alerts." initial={settings.officeEmails} />
-          <ListField name="accounting_emails" label="Accounting recipients" help="Get detected + fix-submitted + verified alerts." initial={settings.accountingEmails} />
+          <ListField name="accounting_emails" label="Accounting recipients" help="Get fix-submitted + verified alerts." initial={settings.accountingEmails} />
+          <ListField name="reopened_emails" label="Reopened-RO alert recipients" help="Get the alert when a posted RO is reopened and re-closed with a different date or total." initial={settings.reopenedEmails} />
           <ListField name="digest_emails" label="Daily-digest recipients" help="Get the once-a-day open + stale summary." initial={settings.digestEmails} />
           <label className="block">
             <span className="text-sm font-medium text-foreground">Admin fallback address</span>
