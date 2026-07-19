@@ -13,3 +13,8 @@ final-current*.json
 act-or-ask*-report.json
 cross-judge-report.json
 stage3-adjudication.json
+
+# Human spot-check artifacts — embed real customer text + Chris's verdicts. Local only.
+spot-check-sheet.json
+spot-check.html
+spot-check-filled.json

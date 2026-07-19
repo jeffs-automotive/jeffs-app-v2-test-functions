@@ -116,6 +116,7 @@ async function main(): Promise<void> {
   const { diagnoseConcern } = await import(
     "../../src/lib/scheduler/wizard/llm/diagnose-concern.ts"
   );
+  const { catalogContentHash } = await import("./catalog-hash.ts");
   const { loadDiagnosticCatalog, isTestingService } = await import(
     "../../src/lib/scheduler/wizard/llm/load-diagnostic-catalog.ts"
   );
@@ -439,7 +440,7 @@ ${rows
   writeFileSync(
     resolve(__dirname, "last-run.json"),
     JSON.stringify(
-      { ts, verdicts, allPass, s1: { accuracy: s1.accuracy, macroF1: s1.macroF1 }, s2, s3, landings: Object.fromEntries(landings), overAskTotal, underAskTotal, gateFires, parseFails, latency: { p50: percentile(latencies, 50), p95: percentile(latencies, 95) }, rows: rows.map((r) => ({ id: r.id, gate: r.gate, landing: r.landing, raw_key: r.raw.matched_category_key, raw_slug: r.raw.matched_subcategory_slug, latency_ms: r.latency_ms, expected_facts: r.expected.stage3_facts, raw_facts: r.raw.extracted_facts, stage3: r.stage3, askDelta: r.askDelta })) },
+      { ts, catalog_hash: catalogContentHash(catalog), verdicts, allPass, s1: { accuracy: s1.accuracy, macroF1: s1.macroF1 }, s2, s3, landings: Object.fromEntries(landings), overAskTotal, underAskTotal, gateFires, parseFails, latency: { p50: percentile(latencies, 50), p95: percentile(latencies, 95) }, rows: rows.map((r) => ({ id: r.id, gate: r.gate, landing: r.landing, raw_key: r.raw.matched_category_key, raw_slug: r.raw.matched_subcategory_slug, latency_ms: r.latency_ms, expected_facts: r.expected.stage3_facts, raw_facts: r.raw.extracted_facts, stage3: r.stage3, askDelta: r.askDelta })) },
       null,
       2,
     ) + "\n",

@@ -286,6 +286,7 @@ async function main(): Promise<void> {
   const { resolveServiceRoleKey, resolveSupabaseUrl } = await import(
     "../../src/lib/supabase/resolve-keys.ts"
   );
+  const { catalogContentHash } = await import("./catalog-hash.ts");
 
   const url = resolveSupabaseUrl(process.env);
   const key = resolveServiceRoleKey(process.env);
@@ -296,6 +297,10 @@ async function main(): Promise<void> {
 
   console.log("Loading live diagnostic catalog…");
   const catalog = await loadDiagnosticCatalog(supabase);
+  const catalogHash = catalogContentHash(catalog);
+  console.log(
+    `Catalog: ${catalog.categories.length} categories, content-hash ${catalogHash}`,
+  );
 
   const stage1Model =
     process.env.DIAGNOSE_CONCERN_STAGE1_MODEL ||
@@ -641,6 +646,7 @@ async function main(): Promise<void> {
         tag,
         models: { stage1: stage1Model, stage2: stage2Model, stage3: stage3Model },
         catalog_categories: catalog.categories.length,
+        catalog_hash: catalogHash,
         contract: "production diagnoseConcern full-chain (act-or-ask AO5)",
         per_corpus: perCorpus,
         rows: allRows,
