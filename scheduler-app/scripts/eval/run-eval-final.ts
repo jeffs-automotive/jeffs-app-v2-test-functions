@@ -452,7 +452,7 @@ async function main(): Promise<void> {
 
           row = {
             id: gc.id,
-            text: gc.text.slice(0, 90),
+            text: gc.text, // FULL concern text — what the LLM actually reads (was slice(0,90); truncation hid the input from the spot-check reviewer)
             consensus_category: gc.consensus_category,
             consensus_subcategory: gc.consensus_subcategory,
             category_status: gc.category_status,
@@ -472,7 +472,7 @@ async function main(): Promise<void> {
         } catch (e) {
           row = {
             id: gc.id,
-            text: gc.text.slice(0, 90),
+            text: gc.text, // FULL concern text — what the LLM actually reads (was slice(0,90); truncation hid the input from the spot-check reviewer)
             consensus_category: gc.consensus_category,
             consensus_subcategory: gc.consensus_subcategory,
             category_status: gc.category_status,

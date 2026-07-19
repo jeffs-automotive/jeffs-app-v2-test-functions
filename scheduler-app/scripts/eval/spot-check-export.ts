@@ -49,6 +49,7 @@ interface ReportRow {
 }
 interface LabelRow {
   id: string;
+  text?: string;
   category_votes?: Record<string, string | null>;
   subcategory_votes?: Record<string, string | null>;
 }
@@ -92,6 +93,9 @@ function main(): void {
   const labelsRaw = JSON.parse(readFileSync(resolve(process.cwd(), labelsPath), "utf8"));
   const labels: LabelRow[] = Array.isArray(labelsRaw) ? labelsRaw : (labelsRaw.rows ?? labelsRaw.cases ?? []);
   const votesById = new Map(labels.map((l) => [l.id, l.category_votes ?? {}]));
+  // FULL concern text from the source labels file — the report row may store a
+  // truncated copy, but the reviewer must see exactly what the LLM read.
+  const textById = new Map(labels.map((l) => [l.id, l.text]));
 
   const rows = (report.rows[corpus] ?? []).slice().sort((a, b) => a.id.localeCompare(b.id));
   if (rows.length === 0) throw new Error(`No rows for corpus "${corpus}" in report.`);
@@ -99,7 +103,7 @@ function main(): void {
   const mk = (r: ReportRow, stratum: Item["stratum"]): Item => ({
     id: r.id,
     stratum,
-    text: r.text,
+    text: textById.get(r.id) ?? r.text, // prefer the FULL source text over any truncated report copy
     model: {
       candidates: r.candidates,
       routed_key: r.routed_key,
