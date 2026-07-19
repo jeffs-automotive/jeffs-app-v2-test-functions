@@ -5,13 +5,52 @@ import {
   computeAskDelta,
   computeStage1Metrics,
   computeStage2Metrics,
+  errorRateUpperBound,
   gradeStage3Case,
   isStage1Correct,
+  minNForZeroErrorBar,
   percentile,
   stage3Micro,
+  wilsonInterval,
   type EvalCaseExpected,
   type GradableResult,
 } from "./graders";
+
+describe("wilsonInterval", () => {
+  it("brackets the point estimate and stays in [0,1]", () => {
+    const w = wilsonInterval(75, 100);
+    expect(w.p).toBeCloseTo(0.75, 6);
+    expect(w.lo).toBeGreaterThan(0.65);
+    expect(w.lo).toBeLessThan(0.75);
+    expect(w.hi).toBeGreaterThan(0.75);
+    expect(w.hi).toBeLessThan(0.83);
+  });
+  it("all-success run has an upper bound < 1 (never over-claims certainty)", () => {
+    const w = wilsonInterval(50, 50);
+    expect(w.p).toBe(1);
+    expect(w.hi).toBe(1);
+    expect(w.lo).toBeLessThan(1); // e.g. ~0.93 — 50/50 is not proof of 100%
+  });
+  it("n=0 is safe", () => {
+    expect(wilsonInterval(0, 0)).toEqual({ p: 0, lo: 0, hi: 0, n: 0 });
+  });
+});
+
+describe("errorRateUpperBound + minNForZeroErrorBar (bar certifiability)", () => {
+  it("250 zero-error cases cannot certify a 1% bar (rule of three ≈ 3/n)", () => {
+    const ub = errorRateUpperBound(0, 250);
+    expect(ub).toBeGreaterThan(0.01); // ~0.0119 — above 1-in-100
+    expect(ub).toBeLessThan(0.02);
+  });
+  it("certifying ≤1% at 95% needs ~299 zero-error cases", () => {
+    expect(minNForZeroErrorBar(0.01)).toBe(299);
+    expect(minNForZeroErrorBar(0.005)).toBe(598);
+  });
+  it("with observed errors the bound rises above the point rate", () => {
+    const ub = errorRateUpperBound(10, 500); // 2% observed
+    expect(ub).toBeGreaterThan(0.02);
+  });
+});
 
 function expected(
   overrides: Partial<EvalCaseExpected> = {},
