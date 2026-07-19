@@ -1,0 +1,444 @@
+system: exhaust-emissions
+# Typed change-ops bound to the live snapshot (00-current-scheduler-taxonomy.md + DB verified 2026-07-18).
+# Every op terminates a dossier finding. routes_to REQUIRED on every negative example.
+# Keyword-op `evidence` MUST be LINGUISTIC (corpus / NHTSA), never a diagnostic (Tier 1/2) source — a
+# diagnostic reference cannot prove that CUSTOMERS use a phrase (source-policy.md two-authority rule).
+
+ops:
+  # =========================================================================
+  # L1 — Stage-1 keywords. BOTH bound services have EMPTY example_keywords in
+  # the live DB (exhaust_system_testing=null, check_engine_light_testing=[]),
+  # so Stage-1 has no lexical anchor for exhaust/emissions today. High-value.
+  # =========================================================================
+  - op: stage1.keyword.add
+    category_key: exhaust_system_testing
+    phrase: "loud exhaust"
+    rationale: Core FM-2 louder-exhaust cue; corpus-frequent.
+    evidence: "tekmetric: 'SEEMS LOUDER THAN NORMAL ... CLIENT THINKS EXHAUST ISSUE' (real-concerns-tekmetric-labeled-v2.json:8370)"
+  - op: stage1.keyword.add
+    category_key: exhaust_system_testing
+    phrase: "exhaust leak"
+    rationale: Manifold/pipe breach; the shop's own service description leads with it.
+    evidence: "tekmetric: 'THE CLIENT HEARS AN EXHAUST LEAK ... FROM ONE OF THE FLANGES' (real-concerns-tekmetric-labeled-v2.json:10405)"
+  - op: stage1.keyword.add
+    category_key: exhaust_system_testing
+    phrase: "muffler"
+    rationale: Domain single-token; customers name the muffler for any exhaust section.
+    evidence: "tekmetric: 'it appears to be the muffler that is loose' (real-concerns-tekmetric-labeled-v2.json:4331)"
+  - op: stage1.keyword.add
+    category_key: exhaust_system_testing
+    phrase: "rumbling exhaust"
+    rationale: FM-2 deep-rumble percept.
+    evidence: "tekmetric: 'my car is rumbling' (real-concerns-tekmetric-labeled-v2.json:5804)"
+  - op: stage1.keyword.add
+    category_key: exhaust_system_testing
+    phrase: "exhaust manifold"
+    rationale: FM-1 manifold-gasket tick.
+    evidence: "tekmetric: exhaust leak 'coming from one of the flanges' (real-concerns-tekmetric-labeled-v2.json:10405)"
+  # REMOVED this revision: 'cat rattle' keyword. It was mechanic shorthand (the cited eval line
+  # 'loud rattle from under the car ... like a can full of rocks' contains neither 'cat' nor 'cat rattle'),
+  # AND a bare underbody-rattle keyword on exhaust_system_testing would mis-route generic heat-shield/
+  # hanger rattles. Cat-substrate rattle is already handled by the noise subcat rattling_underneath_the_car,
+  # whose live description names a failing cat as a cause (see dossier FM-3 / §7).
+  - op: stage1.keyword.add
+    category_key: exhaust_system_testing
+    phrase: "rotten egg smell"
+    rationale: FM-4 sulfur/cat smell -> smell category routes to exhaust_system_testing.
+    evidence: "forum: 'rotten egg smell coming from the catalytic converter' (real-concerns-forums.json:1690)"
+  - op: stage1.keyword.add
+    category_key: exhaust_system_testing
+    phrase: "exhaust fumes"
+    rationale: FM-5 cabin fumes (safety).
+    evidence: "tekmetric: 'EXHAUST SMELL COMING THROUGH THE HEATER' (real-concerns-tekmetric-labeled-v2.json:8458)"
+  - op: stage1.keyword.add
+    category_key: exhaust_system_testing
+    phrase: "sounds like a motorcycle"
+    rationale: Very common lay description of a blown exhaust.
+    evidence: "authored eval case 'sounds like a motorcycle now' (eval-cases.json:1238, exhaust_system_testing-004; synthetic-class customer voice)"
+  - op: stage1.keyword.add
+    category_key: check_engine_light_testing
+    phrase: "P0420"
+    rationale: Domain DTC single-token; catalyst-efficiency code customers read off a parts-store scanner.
+    evidence: "domain code token (no corpus instance; qualifies as a domain-specific single token per customer-voice-style-guide §Anti-patterns). NOT evidenced by a diagnostic source."
+  - op: stage1.keyword.add
+    category_key: check_engine_light_testing
+    phrase: "catalytic converter code"
+    rationale: FM-6 emissions code path (scan-required) vs mechanical exhaust eval.
+    evidence: "corpus attests customers say 'catalytic converter' (real-concerns-forums.json:1690; tekmetric 'Cat monitors' real-concerns-tekmetric-labeled-v2.json:2970), paired with a scanner code."
+  - op: stage1.keyword.add
+    category_key: check_engine_light_testing
+    phrase: "oxygen sensor"
+    rationale: Domain 2-token; FM-7 O2/AFR code. (Replaces the prior 'O2 sensor', which was wrongly evidenced by NGK/NTK diagnostic training.)
+    evidence: "tekmetric: 'needed y pipe and 4 oxygen sensors' (real-concerns-tekmetric-labeled-v2.json:228); forum: 'Oxygen sensor? or something else?' (real-concerns-forums.json:754); forum: '02 sensor' (real-concerns-forums.json:1810)"
+  # REMOVED this revision: 'EGR' keyword. No customer uses 'EGR' anywhere in the corpus (tekmetric/forums/
+  # eval all searched, zero hits), and its prior evidence cited SAE J2012 — a DIAGNOSTIC source, which
+  # cannot evidence customer language. EGR remains a diagnostic concept in the dossier (§2, FM-7), not a
+  # Stage-1 customer keyword.
+  # NOTE: bare 'check engine light' / 'CEL' keywords intentionally NOT added here — owned by
+  # router-warning-lights (general CEL triage). This dossier adds only emissions-after-treatment tokens.
+
+  # =========================================================================
+  # L1 — Stage-1 confusable hedges (this dossier OWNS these confusable-matrix rows)
+  # =========================================================================
+  - op: stage1.hedge.add
+    category_a: exhaust_system_testing
+    category_b: oil_leak_testing
+    rule: >
+      If the customer leads with a rotten-egg/smoky exhaust smell or a louder/ticking exhaust NOISE,
+      prefer exhaust_system_testing. If they lead with a greasy hot-oil smell from under the hood or a
+      visible dark drip, prefer oil_leak_testing. Oil dripping onto a hot manifold smells/smokes off it,
+      so both can co-occur — route on the LEAD complaint.
+    discriminating_fact: smell_descriptor  # rotten_egg_or_sulfur/exhaust_inside_cabin vs burnt_oil
+  - op: stage1.hedge.add
+    category_a: exhaust_system_testing
+    category_b: check_engine_light_testing
+    rule: >
+      A rotten-egg smell or exhaust noise with no dash light -> exhaust_system_testing. If the LEAD is a
+      named check-engine light (P0420/P0430/oxygen-sensor/EGR code) or the customer says 'catalytic
+      converter code', -> check_engine_light_testing (scan + live O2 data required). When a CEL and a
+      smell/noise co-occur, route on whichever the customer emphasizes first.
+    discriminating_fact: warning_light_named  # present (+lead) => CEL testing
+  - op: stage1.hedge.add
+    category_a: exhaust_system_testing
+    category_b: suspension_steering_check
+    rule: >
+      A 'rumble'/'roar' that rises with engine RPM (revs in park) is exhaust; a 'rumble'/'roar' that rises
+      only with ROAD SPEED and is steady in park is a wheel bearing/tire -> suspension_steering_check.
+    discriminating_fact: speed_band  # speed-linked roar => bearing; RPM-linked => exhaust
+
+  # =========================================================================
+  # L2 — Stage-2 description revisions (sharpen confusable boundaries only)
+  # =========================================================================
+  - op: stage2.description.revise
+    subcat_slug: exhaust_manifold_tick_or_puff
+    text: >
+      (APPEND one clause to the existing description) — Discriminator vs valvetrain tick: an exhaust-manifold
+      tick is present at COLD START and FADES or disappears once the engine reaches operating temperature
+      (the cast manifold expands and reseals); a valvetrain tick (noise/engine_ticking_or_tapping) persists
+      when warm and often pairs with oil-pressure concerns.
+    why: Encodes the single best FM-1-vs-valvetrain discriminator (charter confusable pair #1) directly in Stage-2 signal.
+  - op: stage2.description.revise
+    subcat_slug: exhaust_louder_or_rumbling
+    text: >
+      (APPEND one clause) — If the deep rumble/roar rises and falls with ENGINE RPM (rev in park), it is
+      exhaust; if it rises only with ROAD SPEED and is steady when revving in park, it is a wheel-bearing/tire
+      roar -> suspension_steering_check, not exhaust.
+    why: Adds the exhaust-vs-bearing RPM/speed discriminator the current description lacks.
+
+  # =========================================================================
+  # L3 — Stage-2 positive examples (real-voice; provenance flagged; synthetic <=~30%)
+  # =========================================================================
+  - op: stage2.example.positive.add
+    subcat_slug: exhaust_louder_or_rumbling
+    phrase: "seems louder than normal, client thinks exhaust issue"
+    provenance: tekmetric   # real-concerns-tekmetric-labeled-v2.json:8370
+  - op: stage2.example.positive.add
+    subcat_slug: exhaust_louder_or_rumbling
+    phrase: "my car is rumbling, i think somethings wrong with the alignment"
+    provenance: tekmetric   # misattribution example — teaches rumble stays exhaust despite the alignment guess (:5804)
+  - op: stage2.example.positive.add
+    subcat_slug: exhaust_manifold_tick_or_puff
+    # FIXED (was fabricated 'tekmetric'): the real Tekmetric line is only 'making a ticking noise when driving'
+    # (no cold/warm clause). The cold-fades-warm phrasing below is AUTHORED (eval-cases.json:1217), so it is
+    # labelled synthetic. The bare real line is intentionally NOT used as a positive example because it is
+    # the inference-trap (ambiguous manifold-vs-valvetrain) — see golden case #7.
+    phrase: "fast ticking noise when i first start it cold in the morning, goes away after it warms up"
+    provenance: synthetic
+  - op: stage2.example.positive.add
+    subcat_slug: rotten_egg_sulfur_smell
+    # FIXED (was synthetic despite a real forum line existing): use the real forum utterance.
+    phrase: "getting a rotten egg smell from the catalytic converter"
+    provenance: forum-paraphrase   # real forum basis: real-concerns-forums.json:1690
+  - op: stage2.example.positive.add
+    subcat_slug: exhaust_fumes_inside_the_cabin
+    phrase: "exhaust smell coming through the heater after it warms up and at idle, heat needs to be on"
+    provenance: tekmetric   # real-concerns-tekmetric-labeled-v2.json:8458
+
+  # =========================================================================
+  # L3 — Stage-2 negative examples (EVERY one names routes_to)
+  # =========================================================================
+  - op: stage2.example.negative.add
+    subcat_slug: exhaust_manifold_tick_or_puff
+    phrase: "light tap from the top of the engine thats there all the time even when warm"
+    routes_to: engine_ticking_or_tapping
+  - op: stage2.example.negative.add
+    subcat_slug: exhaust_louder_or_rumbling
+    phrase: "roaring hum from the front that gets louder the faster i drive, steady when i rev in park"
+    routes_to: humming_or_whirring_at_speed
+  - op: stage2.example.negative.add
+    subcat_slug: rotten_egg_sulfur_smell
+    phrase: "sharp fresh gasoline smell like standing at the pump"
+    routes_to: gasoline_fuel_smell
+  - op: stage2.example.negative.add
+    subcat_slug: rotten_egg_sulfur_smell
+    phrase: "check engine light on and the engine runs really rough, sometimes a rotten egg whiff"
+    routes_to: check_engine_light   # LEAD = rough-run + CEL -> check_engine_light_testing
+  - op: stage2.example.negative.add
+    subcat_slug: exhaust_fumes_inside_the_cabin
+    phrase: "greasy hot burning oil smell from under the hood after i drive"
+    routes_to: burnt_oil_smell
+  - op: stage2.example.negative.add
+    subcat_slug: exhaust_louder_or_rumbling
+    phrase: "tinny rattle like a can of rocks under the car at idle"
+    routes_to: rattling_underneath_the_car   # cat-rattle lives there; deep-rumble stays here
+
+  # =========================================================================
+  # L4 — Stage-2 synonyms (>=2 tokens OR domain single-token; no bare 'noise/smell')
+  # =========================================================================
+  - op: stage2.synonym.add
+    subcat_slug: exhaust_louder_or_rumbling
+    term: "sounds like a motorcycle"
+  - op: stage2.synonym.add
+    subcat_slug: exhaust_louder_or_rumbling
+    term: "exhaust got loud"
+  - op: stage2.synonym.add
+    subcat_slug: exhaust_manifold_tick_or_puff
+    term: "tick when cold goes away warm"
+  - op: stage2.synonym.add
+    subcat_slug: rotten_egg_sulfur_smell
+    term: "sewer smell from exhaust"
+  - op: stage2.synonym.add
+    subcat_slug: exhaust_fumes_inside_the_cabin
+    term: "exhaust through the vents"
+
+  # =========================================================================
+  # L5 — Fact slots
+  # =========================================================================
+  - op: stage3.slot.value.add
+    slot: noise_descriptor
+    value: rumbling_or_droning
+    literal_cues:
+      - "deep rumble"
+      - "rumbling"
+      - "drone"
+      - "droning"
+      - "sounds like a muscle car"
+      - "sounds like a harley"
+      - "sounds like a motorcycle"
+    rationale: >
+      ACKNOWLEDGED OVERLAP: the live 'roaring' value already reads 'exhaust leak / wheel bearing at speed',
+      so 'roaring' TODAY conflates the deep periodic exhaust note with a broadband bearing roar. That
+      conflation is exactly the FM-2-vs-wheel-bearing confusion this system fights. Adding a distinct
+      'rumbling_or_droning' value lets the exhaust deep-rumble percept ('like a Harley/muscle car', 'deep
+      rumble', 'drone') be separated from 'roaring' (kept for the speed-linked bearing/tire roar), so the
+      RPM-linked-vs-speed-linked discriminator (see stage1.hedge exhaust<->suspension) can bind cleanly.
+    # NOTE: this is a VALUE add, not a new slot. Golden cases that set it carry a `depends_on_proposed`
+    # marker so Wave C gates them until the value lands (it is not in the live 29-slot enum yet).
+
+  - op: stage3.slot.propose
+    name: warm_up_behavior
+    status: deferred                 # DOES NOT YET MEET THE >=3-QUESTION RULE — see binding_note below.
+    type: enum
+    # NARROWED this revision to ONLY the two values existing slots cannot express. The originally-drafted
+    # `only_when_cold` and `worse_when_warm` were DROPPED because they duplicate onset_timing=cold_start
+    # and onset_timing=after_warming_up respectively (the dossier itself uses onset_timing=after_warming_up
+    # in FM-4/FM-5). The 'present-cold-then-RESOLVES-warm' compound is the genuinely inexpressible concept:
+    # onset_timing=cold_start says WHEN it starts, not THAT it clears once warm.
+    values: [worse_cold_fades_warm, no_change_with_temperature]
+    literal_cues:
+      - "goes away after it warms up"            # worse_cold_fades_warm
+      - "quiets down once its warm"              # worse_cold_fades_warm
+      - "only ticks cold then stops when hot"    # worse_cold_fades_warm
+      - "there all the time no matter the temp"  # no_change_with_temperature
+    questions_unlocked: [76]
+    binding_note: >
+      As bound this serves exactly ONE existing question: Q76 on engine_ticking_or_tapping ('Does the
+      ticking get quieter or go away once the engine warms up?'), which is CURRENTLY mis-tagged
+      required_facts=[onset_timing] and cannot express fades-when-warm; rebind Q76 to warm_up_behavior
+      IF this slot is accepted. It does NOT meet the template's >=3-question minimum today because:
+      (a) Q252 on rotten_egg_sulfur_smell is already satisfied by onset_timing (at_startup /
+      after_warming_up) — no new slot needed; (b) the two exhaust NOISE subcats that would use it
+      (exhaust_manifold_tick_or_puff, exhaust_louder_or_rumbling) have ZERO questions in the live DB.
+      Therefore filed as DEFERRED: it reaches >=3 only after questions are authored on those two
+      zero-question noise subcats. Proposed now so question-authoring can target it rather than
+      re-inventing onset_timing.
+
+  # ---- question.required_facts.set (reduce over-asking; skip_class SAFE|PARTIAL) ----
+  - op: question.required_facts.set
+    question_id: 275   # "Does the smell get worse when stopped at a light versus when driving?"
+    facts: [speed_band]
+    skip_class: PARTIAL
+    derivation_note: >
+      If the customer already stated 'worse at stoplights' (speed_band=stopped) or 'only while driving'
+      (speed_band=highway/all_speeds), the stop-vs-drive comparison is answered. PARTIAL because a bare
+      speed_band without the explicit comparison may not fully satisfy the intent.
+  - op: question.required_facts.set
+    question_id: 277   # "car running louder than normal, like a rumble or hissing sound?"
+    facts: [noise_descriptor]
+    skip_class: PARTIAL
+    derivation_note: >
+      If the customer already described a rumble/roar (noise_descriptor=rumbling_or_droning/roaring) or a
+      hiss (hissing), the louder-noise question is answered. PARTIAL: absence of a noise descriptor does not
+      prove there is no noise.
+  - op: question.required_facts.set
+    question_id: 279   # "recent work on exhaust, muffler, or undercarriage?"
+    facts: [recent_action]
+    skip_class: PARTIAL
+    derivation_note: >
+      recent_action=general_service/none_mentioned partially answers this; recent_action has no
+      exhaust-specific value, so PARTIAL only.
+  - op: question.required_facts.set
+    question_id: 276   # already has hvac_mode in DB — restate to keep tagging explicit
+    facts: [hvac_mode]
+    skip_class: SAFE
+    derivation_note: Confirms existing correct tag; hvac_mode=heat directly answers 'worse when heater/fan on'.
+  - op: question.required_facts.set
+    question_id: 250   # rotten_egg "smell more after filling up at a particular station / different fuel brand?"
+    facts: [recent_action]
+    skip_class: PARTIAL
+    derivation_note: recent_action=fuel_fill_up partially answers the fill-up linkage; fuel-brand nuance is unmodeled.
+
+  # ---- question.intentionally_empty (genuinely un-modelable; keep asking) ----
+  - op: question.intentionally_empty
+    question_id: 278   # "felt lightheaded, dizzy, drowsy, or headache while driving?"
+    reason: SAFETY always-ask — CO exposure symptom; no fact slot models human symptoms; must never be skipped.
+  - op: question.intentionally_empty
+    question_id: 280   # "rear hatch/trunk/window seal damaged or leaking air?"
+    reason: Body-seal ingress path; no fact slot; low-cost always-ask that changes the exhaust-vs-seal diagnosis.
+  - op: question.intentionally_empty
+    question_id: 274   # "smell exhaust more windows up vs cracked open?"
+    reason: Windows-up/down cabin-concentration cue has no fact slot and only this one question needs it (<3).
+  - op: question.intentionally_empty
+    question_id: 247   # rotten_egg "more after hard driving or sitting in traffic?"
+    reason: Load/heat-soak duration cue not cleanly modeled by a single slot; keep asking.
+  - op: question.intentionally_empty
+    question_id: 251   # rotten_egg "any work done on exhaust/cat/emissions system?"
+    reason: recent_action has no exhaust/cat-specific value; general_service is too lossy to skip on.
+
+  # =========================================================================
+  # Catalog proposal (Chris-gated) — NO-FIT with demand evidence
+  # =========================================================================
+  - op: catalog.service.propose
+    name: State Safety / Emissions Inspection
+    demand_evidence: >
+      Tekmetric corpus contains explicit state inspection/emissions requests that are NOT the $39.99
+      diagnostic exhaust eval and carry no symptom: e.g. 'State Inspection and Emissions Already have a
+      current emissions sticker. Just need the inspection.' (real-concerns-tekmetric-labeled-v2.json:4440)
+      and 'MAKE SURE NO EXHAUST LEAKS' (:10701). Today these null-route to an advisor with no catalog path.
+    fee_rationale: >
+      State-set or shop-set flat inspection fee (jurisdiction-dependent; not a diagnostic hourly). If Jeff's
+      is a licensed inspection station, this is a bookable service, not a diagnosis — needs its own catalog
+      entry so the wizard stops treating an inspection request as a fault to diagnose.
+  # NOTE: the prior "aftermarket make-it-loud/quiet/delete request" NO-FIT row was DROPPED from dossier §8 —
+  # the corpus contains NO such request, so there is no demand evidence and no op is warranted (per
+  # dossier-template §8, a NO-FIT needs demand evidence to become a proposal).
+
+# ===========================================================================
+# GOLDEN CASES (>=8; >=1 inference-trap, >=1 null-route). Schema mirrors eval-cases.json.
+# `depends_on_proposed`: lists proposal ops a case's expected facts rely on; Wave C must GATE such cases
+# until those ops are accepted (they reference slots/values not in the live 29-slot contract).
+# ===========================================================================
+golden_cases:
+  - text: "the car got crazy loud all of a sudden, sounds like a motorcycle now. pretty sure the muffler rusted out"
+    tags: [noise, fact_rich]
+    depends_on_proposed: ["stage3.slot.value.add noise_descriptor=rumbling_or_droning"]
+    expected:
+      stage1_category_key: exhaust_system_testing
+      stage1_acceptable: [exhaust_system_testing]
+      stage2_subcategory_slug: exhaust_louder_or_rumbling
+      stage3_facts: { noise_descriptor: rumbling_or_droning, started_when: sudden_onset }
+      route: testing_service
+
+  - text: "my engine makes a fast ticking noise when i first start it cold in the morning, goes away after it warms up a few minutes"
+    tags: [noise, fact_rich]
+    expected:
+      stage1_category_key: exhaust_system_testing
+      stage1_acceptable: [exhaust_system_testing]
+      stage2_subcategory_slug: exhaust_manifold_tick_or_puff
+      # LITERAL ONLY: 'when i first start it cold in the morning' => onset_timing=cold_start (accepted slot).
+      # REMOVED warm_up_behavior (proposed slot not in the live contract) and REMOVED
+      # sound_or_smoke_location_zone=under_hood (over-assertion: 'my engine makes...' attributes the SOURCE
+      # to the engine but states no LOCATION; the contract reserves under_hood for 'from under the hood'
+      # phrasings and maps 'engine area' to location_axle=front — the customer said neither).
+      stage3_facts: { noise_descriptor: ticking_or_tapping, onset_timing: cold_start }
+      route: testing_service
+
+  - text: "my car smells like rotten eggs from the exhaust, worse when i get on it"
+    tags: [smell]
+    expected:
+      stage1_category_key: exhaust_system_testing
+      stage1_acceptable: [exhaust_system_testing]
+      stage2_subcategory_slug: rotten_egg_sulfur_smell
+      stage3_facts: { smell_descriptor: rotten_egg_or_sulfur, sound_or_smoke_location_zone: from_tailpipe }
+      route: testing_service
+
+  - text: "exhaust smell coming through the heater after it warms up and at idle, heat needs to be on, getting headaches"
+    tags: [smell, safety, fact_rich]
+    expected:
+      stage1_category_key: exhaust_system_testing
+      stage1_acceptable: [exhaust_system_testing]
+      stage2_subcategory_slug: exhaust_fumes_inside_the_cabin
+      # 'after it warms up' => onset_timing=after_warming_up (accepted slot, REPLACES the removed
+      # warm_up_behavior). 'at idle' => speed_band=idle. 'heat needs to be on' => hvac_mode=heat.
+      # 'getting headaches' sets NO fact (no human-symptom slot — Q278 stays always-ask; see §9).
+      stage3_facts: { smell_descriptor: exhaust_inside_cabin, hvac_mode: heat, speed_band: idle, onset_timing: after_warming_up }
+      route: testing_service
+
+  - text: "check engine light on for a couple days, no unusual sounds, smells, or performance issues, steady light"
+    tags: [warning_light]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing, warning_light_general]
+      stage2_subcategory_slug: check_engine_light
+      stage3_facts: { warning_light_named: "check engine", warning_light_behavior: steady_on }
+      route: testing_service
+
+  - text: "auto parts store pulled a P0420 and said catalytic converter, want a second opinion before i buy a cat"
+    tags: [warning_light]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing]
+      stage2_subcategory_slug: check_engine_light
+      stage3_facts: { warning_light_named: "check engine", customer_request_type: second_opinion }
+      route: testing_service
+
+  # ---- INFERENCE-TRAP #1: bare "ticking" must NOT be asserted as a manifold leak ----
+  - text: "making a ticking noise when driving"
+    tags: [noise, inference_trap]
+    expected:
+      stage1_category_key: exhaust_system_testing
+      stage1_acceptable: [exhaust_system_testing]
+      stage2_subcategory_slug: exhaust_manifold_tick_or_puff
+      # TRAP: only noise_descriptor is literally stated. Do NOT set onset_timing (the customer never said
+      # cold/warm). Leaving it null keeps the cold-vs-warm discriminating question ASK-able (manifold vs
+      # valvetrain still open). This is the real Tekmetric line (:6155); the cold/warm clause was fabricated
+      # in an earlier draft and has been removed everywhere.
+      stage3_facts: { noise_descriptor: ticking_or_tapping }
+      route: testing_service
+
+  # ---- INFERENCE-TRAP #2: rumble misattributed to alignment; extractor must not set steering/pull facts ----
+  - text: "not sure but my car is rumbling. i think there's something wrong with the alignment"
+    tags: [noise, inference_trap]
+    depends_on_proposed: ["stage3.slot.value.add noise_descriptor=rumbling_or_droning"]
+    expected:
+      stage1_category_key: exhaust_system_testing
+      stage1_acceptable: [exhaust_system_testing, suspension_steering_check]
+      stage2_subcategory_slug: exhaust_louder_or_rumbling
+      # TRAP: the customer NAMES 'alignment' but states no pull/drift/steering feel. Do NOT set
+      # pull_direction, steering_feel, or location_side. Only the rumble is literal.
+      stage3_facts: { noise_descriptor: rumbling_or_droning }
+      route: testing_service
+
+  # ---- Confusable: burnt-oil smell must route AWAY from exhaust ----
+  - text: "greasy hot burning oil smell from under the hood after i drive for a while"
+    tags: [smell, nearmiss]
+    expected:
+      stage1_category_key: oil_leak_testing
+      stage1_acceptable: [oil_leak_testing]
+      stage2_subcategory_slug: burnt_oil_smell
+      stage3_facts: { smell_descriptor: burnt_oil, sound_or_smoke_location_zone: under_hood }
+      route: testing_service
+
+  # ---- NULL-ROUTE: state inspection request is not a diagnostic concern ----
+  - text: "State Inspection and Emissions. Already have a current emissions sticker. Just need the inspection."
+    tags: [null_route, work_order]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      # LEFT NULL on purpose: customer_request_type enum has no 'inspection' value, and 'routine_maintenance'
+      # is defined as 'oil change / service interval' — a state inspection is neither, so mapping to it would
+      # be a non-literal stretch. No stage3 fact is literally supported. Routes to advisor (see the
+      # catalog.service.propose 'State Safety / Emissions Inspection' above).
+      stage3_facts: {}
+      route: advisor

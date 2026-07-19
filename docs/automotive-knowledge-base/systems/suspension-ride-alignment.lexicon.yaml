@@ -1,0 +1,174 @@
+system: suspension-ride-alignment
+# phrase -> normalized -> routes_to[] (subcategory slugs) -> ambiguity -> provenance
+# ambiguity: unambiguous | needs-fact:<slot> | cross-system:<slug>   (PROPOSED: prefix = not-yet-created slug)
+# provenance: tekmetric | nhtsa | forum-paraphrase | synthetic  (synthetic < 30% per subcategory)
+entries:
+  # --- clunk/knock over bumps (noise) ---
+  - phrase: "Vehicle has clunking in front end when driving, client thinks failing tie rod ends"
+    normalized: front-end clunk over the road, customer guesses tie rods
+    routes_to: [clunking_over_bumps]
+    ambiguity: needs-fact:onset_timing
+    provenance: tekmetric
+  - phrase: "suspension noise mainly over bumps"
+    normalized: suspension noise triggered by bumps
+    routes_to: [clunking_over_bumps]
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "Loud noises coming from front wheel well"
+    normalized: loud noise from front wheel area
+    routes_to: [clunking_over_bumps]
+    ambiguity: needs-fact:noise_descriptor
+    provenance: tekmetric
+  - phrase: "Front pop/clunk from the passenger side front wheel, I assumed sway bar links or bushings"
+    normalized: front-right clunk over bumps, guessed sway-bar links/bushings
+    routes_to: [clunking_over_bumps]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  - phrase: "DRAGGING NOISE OCCURRING IN THE FRONT END"
+    normalized: dragging/scraping noise in the front end
+    routes_to: [clunking_over_bumps]
+    ambiguity: cross-system:brake_inspection
+    provenance: tekmetric
+  - phrase: "loud clunk from the front driver side every time i go over a bump or pothole"
+    normalized: front-left clunk on every bump
+    routes_to: [clunking_over_bumps]
+    ambiguity: unambiguous
+    provenance: tekmetric
+  # --- squeak / creak over bumps (noise) ---
+  - phrase: "chassis squeaking. lube?"
+    normalized: chassis squeak, customer asks if it needs lube
+    routes_to: [squeaking_or_creaking_over_bumps]
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "CHECK SQUEAKING IN REAR OVER BUMPS. CAN HEAR IF PUSHING DOWN ON BUMPER"
+    normalized: rear suspension squeak over bumps, reproducible by bouncing the bumper
+    routes_to: [squeaking_or_creaking_over_bumps]
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "SQUEAKING NOISE GOING OVER BUMPS, hears it on uneven roads"
+    normalized: squeak over bumps and on uneven roads
+    routes_to: [squeaking_or_creaking_over_bumps]
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "CHECK CREAKING NOISE OVER BUMPS. POSSIBLE HEATSHIELD?"
+    normalized: creak over bumps, customer suspects heat shield
+    routes_to: [squeaking_or_creaking_over_bumps]
+    ambiguity: cross-system:rattling_underneath_the_car
+    provenance: tekmetric
+  # --- car sitting low on one corner / broken spring (Stage-1 only; no clean Stage-2) ---
+  - phrase: "LEFT FRONT WHEEL SITTING LOWER THAN REST SUSPENSION INSPECTION AUTH 89"
+    normalized: left-front corner sitting low (broken/collapsed spring), inspection requested
+    routes_to: []   # Stage-1 suspension_steering_check; NO clean Stage-2 subcategory (collapsed-spring gap, dossier 3k/8)
+    ambiguity: needs-fact:location_side
+    provenance: tekmetric
+  # --- harsh / bouncy ride (vibration) --- (synthetic removed; all real)
+  - phrase: "WHEN HITTING A BUMP AT HIGHWAY SPEEDS, CLIENT GETS A VIOLENT SHAKE, thinks it may be the track bar"
+    normalized: violent shake when hitting a bump at highway speed
+    routes_to: [shaking_or_bouncing_over_bumps_and_rough_roads]
+    ambiguity: needs-fact:ride_damping_symptom
+    provenance: tekmetric
+  - phrase: "the ride was more bouncy and floaty than before, I feel every bump and road crack now"
+    normalized: ride became bouncy/floaty, feels every bump
+    routes_to: [shaking_or_bouncing_over_bumps_and_rough_roads]
+    ambiguity: needs-fact:ride_damping_symptom
+    provenance: forum-paraphrase
+  - phrase: "the day after the shop work we noticed how bouncy the car was and how bad every little bump felt"
+    normalized: newly bouncy ride, every small bump exaggerated
+    routes_to: [shaking_or_bouncing_over_bumps_and_rough_roads]
+    ambiguity: needs-fact:ride_damping_symptom
+    provenance: forum-paraphrase
+  # --- bump hit felt in the wheel (steering) --- (synthetic removed; nhtsa + forum)
+  - phrase: "clunking noise, very noticeable when going over a speed bump and turning the steering"
+    normalized: clunk over speed bumps, felt/heard while steering
+    routes_to: [clunking_knocking_or_rough_ride_over_bumps]
+    ambiguity: cross-system:clunking_over_bumps
+    provenance: nhtsa
+  - phrase: "there is a loud clunking sound when driving over street bumps or ditches"
+    normalized: loud clunk over street bumps and ditches
+    routes_to: [clunking_knocking_or_rough_ride_over_bumps]
+    ambiguity: cross-system:clunking_over_bumps
+    provenance: forum-paraphrase
+  - phrase: "clunk/thump/pop from the front passenger side over a rough patched road with the wheels straight ahead"
+    normalized: front-right clunk/thump over rough road surfaces, wheels straight
+    routes_to: [clunking_knocking_or_rough_ride_over_bumps]
+    ambiguity: cross-system:clunking_over_bumps
+    provenance: forum-paraphrase
+  # --- steady one-side pull (pulling) --- (synthetic removed; nhtsa + forum)
+  - phrase: "the car is pulling, I've taken it to the dealership over 6 times, and when I'm driving the car is shaking"
+    normalized: steady pull with a shake, unresolved after multiple visits
+    routes_to: [steady_drift_while_cruising]
+    ambiguity: needs-fact:pull_road_dependence
+    provenance: nhtsa
+  - phrase: "my Accord pulls ever so slightly to the right and slowly drifts right going down the highway"
+    normalized: mild steady right pull/drift on the highway
+    routes_to: [steady_drift_while_cruising]
+    ambiguity: needs-fact:pull_road_dependence
+    provenance: forum-paraphrase
+  # --- pull that appeared right after recent alignment/tire work (pulling) --- (issue-4 fix: full corpus text)
+  - phrase: "RE CHECK ALIGNMENT (if you hold the steering wheel straight the car will go to the right). Just had alignment performed last service."
+    normalized: right pull that showed up right after a recent alignment
+    routes_to: [pull_that_started_after_recent_tire_or_service_work]
+    ambiguity: needs-fact:recent_action
+    provenance: tekmetric
+  # --- road-crown drift (pulling) --- (synthetic removed; all real forum)
+  - phrase: "on a calm straight road you can take your hands off and it tracks fine, but it drifts on the highway"
+    normalized: drift shows up on the road, not on a calm straight stretch
+    routes_to: [drift_that_follows_the_roads_slope]
+    ambiguity: needs-fact:pull_road_dependence
+    provenance: forum-paraphrase
+  - phrase: "it only seems to pull on some roads and drives fine on others"
+    normalized: pull that appears only on certain roads
+    routes_to: [drift_that_follows_the_roads_slope]
+    ambiguity: needs-fact:pull_road_dependence
+    provenance: forum-paraphrase
+  # --- two-way wander (pulling) ---
+  - phrase: "it began to wander badly, especially at highway speeds, and now Im uncomfortable driving it"
+    normalized: two-way wander worse at highway speed, feels unsafe
+    routes_to: [wandering_or_drifting_in_both_directions]
+    ambiguity: needs-fact:drivable_state
+    provenance: forum-paraphrase
+  - phrase: "PLAY IN STEERING WHEEL AND CLUNKING IN SUSPENSION"
+    normalized: steering play plus suspension clunk
+    routes_to: [wandering_or_drifting_in_both_directions, loose_or_sloppy_steering]
+    ambiguity: cross-system:loose_or_sloppy_steering
+    provenance: tekmetric
+  # --- uneven tire wear as the framing (tires) ---
+  # NOTE: these are tires-pool phrasings; suspension_steering_check CANNOT reach uneven_tire_wear_bald_spots
+  # today (concern_categories = noise/steering/pulling/vibration). See dossier 8 NO-FIT #3 + the
+  # concern_categories-extension proposal; today they reach the slug via tire_repair.
+  - phrase: "uneven wear on inside edge of front tires, alignment okay if needed"
+    normalized: inner-edge front tire wear, wants alignment if needed
+    routes_to: [uneven_tire_wear_bald_spots]
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "WHEEL ALIGNMENT CHECK, rear tires were worn on edges"
+    normalized: alignment check prompted by edge-worn rear tires
+    routes_to: [uneven_tire_wear_bald_spots]
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "Alignment, tires have been having uneven wear"
+    normalized: alignment request due to uneven tire wear
+    routes_to: [uneven_tire_wear_bald_spots]
+    ambiguity: unambiguous
+    provenance: tekmetric
+  # --- cross-system traps (documented so routing does NOT land in suspension) ---
+  - phrase: "yellow ABS light came on right after I hit a big pothole, brakes still feel normal"
+    normalized: ABS light after pothole, brakes normal
+    routes_to: [abs_anti_lock_brake_light]
+    ambiguity: cross-system:abs_anti_lock_brake_light
+    provenance: tekmetric
+  - phrase: "hit a bad pothole yesterday and now the front end feels off, want to make sure nothing got bent"
+    normalized: post-impact check request, no discrete symptom
+    routes_to: [after_a_recent_accident_or_impact]
+    ambiguity: cross-system:after_a_recent_accident_or_impact
+    provenance: tekmetric
+  - phrase: "Clunking noise when putting car into drive from park / turning left"
+    normalized: clunk on shift-into-gear (driveline), not over bumps
+    routes_to: []   # NO current subcategory fit (driveline) -> PROPOSED:driveline_clunk_on_shift_or_acceleration
+    ambiguity: cross-system:PROPOSED:driveline_clunk_on_shift_or_acceleration
+    provenance: tekmetric
+  - phrase: "Very noticeable humming coming from the rear end, most noticeable at 30 to 40 mph"
+    normalized: speed-dependent hum from the rear (wheel bearing)
+    routes_to: [humming_or_whirring_at_speed]
+    ambiguity: cross-system:humming_or_whirring_at_speed
+    provenance: tekmetric

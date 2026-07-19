@@ -1,0 +1,532 @@
+system: lighting-visibility
+# Typed change-ops for the classifier. Bind to live snapshot slugs / question IDs (queried 2026-07-18,
+# shop 7476). Question IDs: dim_or_flickering_lights=539-545; accessory_doesnt_work=1631-1637;
+# blue_or_light_blue_puddle_washer_fluid=1021-1027; foggy_or_hard_to_defog_windows=595-601.
+# All negative_example ops name routes_to. All synonyms are >=2 tokens or domain tokens.
+
+ops:
+
+  # ============================================================
+  # STAGE 1 — keyword adds
+  # ============================================================
+  - op: stage1.keyword.add
+    category_key: electrical_testing_general
+    phrase: "headlight out"
+    rationale: Exterior bulb-out is a recurring electrical concern with only weak subcat representation.
+    evidence: "tekmetric 'DRIVER HEADLIGHT OUT ...' -> consensus electrical_testing_general (confirmed)"
+  - op: stage1.keyword.add
+    category_key: electrical_testing_general
+    phrase: "tail light out"
+    rationale: Taillight-out routes to the general electrical test, not a warning-light service.
+    evidence: "tekmetric 'CHECK TAIL LIGHTS' -> consensus electrical_testing_general (confirmed)"
+  - op: stage1.keyword.add
+    category_key: electrical_testing_general
+    phrase: "turn signal not working"
+    rationale: Blinker faults are bulb/socket/ground/connector; general electrical test.
+    evidence: "tekmetric 'RIGHT REAR TURN SIGNAL NOT WORKING INTERMITTENTLY' -> electrical_testing_general (confirmed)"
+  - op: stage1.keyword.add
+    category_key: electrical_testing_general
+    phrase: "blinker not working"
+    rationale: Customer synonym for turn-signal fault.
+    evidence: customer-voice variant of the confirmed turn-signal case above
+  - op: stage1.keyword.add
+    category_key: electrical_testing_general
+    phrase: "license plate light"
+    rationale: Marker/plate lamp out; same fixture-circuit family.
+    evidence: fixture family per dossier 3.1; domain-specific multi-token phrase
+  - op: stage1.keyword.add
+    category_key: electrical_testing_general
+    phrase: "brake light bulb"
+    rationale: Disambiguate the rear brake BULB from the red BRAKE dash telltale (3-token, specific; bare "brake light" intentionally NOT added).
+    evidence: dossier 5/7 brake-bulb-vs-dash-light confusable
+  - op: stage1.keyword.add
+    category_key: electrical_testing_general
+    phrase: "dome light stays on"
+    rationale: Interior lamp stuck-on is an electrical fault (switch/door-jamb).
+    evidence: "tekmetric 'DOME LIGHT STAYS ON EVEN AFTER CLOSING DOOR' (in a multi-symptom line)"
+  - op: stage1.keyword.add
+    category_key: windshield_inop_testing
+    phrase: "wipers not spraying"
+    rationale: Washer-spray failure is a wiper/washer OPERATION fault, not a leak.
+    evidence: "tekmetric 'WIPERS NOT SPRAYING TESTING AUTH ...' -> consensus windshield_inop_testing"
+  - op: stage1.keyword.add
+    category_key: windshield_inop_testing
+    phrase: "washers not spraying"
+    rationale: Same as above; explicit washer wording.
+    evidence: "tekmetric 'WASHERS NOT SPRAYING.' -> consensus windshield_inop_testing"
+  - op: stage1.keyword.add
+    category_key: windshield_inop_testing
+    phrase: "wipers stopped working"
+    rationale: Core wiper-inop phrasing.
+    evidence: "tekmetric 'Wipers stopped working' -> consensus windshield_inop_testing"
+  - op: stage1.keyword.add
+    category_key: windshield_inop_testing
+    phrase: "wiper won't move"
+    rationale: Wiper-motor/linkage inop.
+    evidence: eval windshield_inop_testing-002 ("dont move at all now")
+  - op: stage1.keyword.add
+    category_key: windshield_inop_testing
+    phrase: "wiper streaking"
+    rationale: Blade/arm operation complaint.
+    evidence: dossier 3.8; customer-voice
+  - op: stage1.keyword.add
+    category_key: windshield_inop_testing
+    phrase: "wiper stalls halfway"
+    rationale: Slow/stall wiper-motor cue.
+    evidence: eval windshield_inop_testing-004 ("stall halfway up the glass")
+  - op: stage1.keyword.add
+    category_key: windshield_inop_testing
+    phrase: "wipers won't turn off"
+    rationale: Wipers that won't park / won't shut off = park-switch or motor fault (dossier §3.17); still the wiper service.
+    evidence: dossier 3.17 (park switch, cited AA1Car/Erjavec); customer-voice, >=2 tokens
+
+  # ============================================================
+  # STAGE 1 — hedges (confusable pairs)
+  # ============================================================
+  - op: stage1.hedge.add
+    category_a: electrical_testing_general
+    category_b: charging_starting_testing
+    rule: >
+      When lights are DIM/FLICKERING, hedge between a lighting-fixture/wiring fault (electrical) and a
+      charging fault (charging). If brightness rises when revving / falls at idle, or a battery/CHARGE
+      dash light is present, lean charging; if it is ONE named lamp out, lean electrical (single-bulb).
+    discriminating_fact: lights_state   # dim_at_idle_brighten_when_revving -> charging; else fixture
+  - op: stage1.hedge.add
+    category_a: electrical_testing_general
+    category_b: brake_inspection_warning_light
+    rule: >
+      The phrase "brake light" is ambiguous. A rear brake BULB out -> electrical (fixture). A red BRAKE
+      warning light on the DASH -> brake_inspection_warning_light. Hedge unless the customer clearly
+      says "bulb"/"at the back" (electrical) or "on my dashboard" (warning light).
+    discriminating_fact: warning_light_named   # present ('brake') -> dash light; absent + bulb wording -> electrical
+  - op: stage1.hedge.add
+    category_a: windshield_inop_testing
+    category_b: coolant_leak_testing   # nearest leak-owning service for the blue-fluid pool
+    rule: >
+      A washer complaint splits: "won't spray" -> windshield_inop_testing (operation); a BLUE puddle
+      under the car -> the washer-fluid LEAK subcat. Do not send a puddle to windshield_inop nor a
+      spray-failure to the leak path.
+    discriminating_fact: fluid_under_car_location   # present (+fluid_color blue) -> leak; absent -> windshield_inop
+
+  # ============================================================
+  # STAGE 2 — description revisions (additive sharpening)
+  # ============================================================
+  - op: stage2.description.revise
+    subcat_slug: accessory_doesnt_work
+    text: >
+      APPEND to the examples clause: "This subcategory also covers a single EXTERIOR lamp that is out or
+      misbehaving — a headlight, taillight, brake-light bulb, turn signal/blinker, fog lamp, side-marker,
+      or license-plate light — where the rest of the car's lights are fine. A customer who says they
+      replaced a headlight bulb and it is still dark usually has a socket, fuse, ground, wiring, or
+      (LED) sealed-module fault, not a bad bulb. Note: a WIPER complaint ('wipers don't work / won't
+      move') is NOT an accessory-testing item here — it belongs to the windshield/wiper inoperative
+      service (windshield_inop_testing)."
+    why: >
+      Live enrichment lists only windows/radio/locks, so exterior bulb-out has no explicit home and
+      under-matches; and the live "wipers don't work" synonym / "Rear windshield wiper doesn't move"
+      positive wrongly pull wiper complaints in (dossier §7/§8). Exterior-lamp demand: 4 genuine
+      concern lines in the 500-line corpus (headlight, tail light, turn signal, a terse "left plate
+      lamp") all consensus-routed here, plus 3 declined/work-order lamp lines — recurring but modest.
+  - op: stage2.description.revise
+    subcat_slug: dim_or_flickering_lights
+    text: >
+      APPEND: "Pick this ONLY for a brightness/flicker complaint affecting the lights as a system. If
+      just ONE lamp is out (the others fine) -> accessory_doesnt_work. If the lights dimmed and then the
+      car SHUT OFF or won't restart -> car_died_while_driving_electrical. If the customer names a
+      battery/CHARGE dash light, that co-occurrence points at the charging system."
+    why: Reinforces the single-bulb and dim-then-died boundaries the negatives below encode.
+  - op: stage2.description.revise
+    subcat_slug: blue_or_light_blue_puddle_washer_fluid
+    text: >
+      APPEND: "This is the LEAK/puddle pick. If the customer's complaint is that the washers WON'T SPRAY
+      (with no puddle), that is a wiper/washer OPERATION fault -> windshield_inop_testing, not this
+      subcategory."
+    why: Corpus 'WASHER FLUID LEAKING' was judge-ambiguous; the spray-vs-leak split needs to be explicit.
+  - op: stage2.description.revise
+    subcat_slug: foggy_or_hard_to_defog_windows
+    text: >
+      APPEND: "Keep the REAR-window defogger grid (the printed lines on the back glass not heating) in
+      THIS subcategory even though the cause is electrical — do not divert it to accessory_doesnt_work.
+      The complaint is visibility. Distinguish INSIDE fog/greasy film (this subcat) from OUTSIDE rain
+      the wipers should clear (windshield_inop_testing)."
+    why: Rear defogger wording risks pulling to the electrical bucket; inside-vs-outside is the wiper boundary.
+
+  # ============================================================
+  # STAGE 2 — positive examples (corpus-first; synthetic flagged)
+  # NB (DATA HYGIENE): do NOT inject verbatim eval-case text into live enrichment — that leaks
+  # train-on-test and silently inflates future eval scores. The dim "dimmer and brighter ... freaky"
+  # line is eval charging_starting_testing-005; the "inside of my windshield ... defroster barely
+  # clears it" line is eval ac_performance_check-007 — both deliberately EXCLUDED here. We also do
+  # not re-add phrases already present as live-DB positives (e.g. the "windex" and rear-defogger
+  # DB positives) — that would be a circular no-op. The 3 accessory adds are customer-voice
+  # PARAPHRASES of corpus concern lines (not verbatim, not eval); the dim add is a forum paraphrase.
+  # ============================================================
+  - op: stage2.example.positive.add
+    subcat_slug: accessory_doesnt_work
+    phrase: "driver headlight out, replaced the bulb and its still not coming on"
+    provenance: tekmetric-paraphrase   # paraphrase of corpus "DRIVER HEADLIGHT OUT, CLIENT REPLACED HEADLIGHT ..."
+  - op: stage2.example.positive.add
+    subcat_slug: accessory_doesnt_work
+    phrase: "right rear turn signal not working, works if i tap it then goes out again"
+    provenance: tekmetric-paraphrase   # paraphrase of corpus "RIGHT REAR TURN SIGNAL NOT WORKING INTERMITTENTLY"
+  - op: stage2.example.positive.add
+    subcat_slug: accessory_doesnt_work
+    phrase: "one of my tail lights is out"
+    provenance: tekmetric-paraphrase   # paraphrase of corpus "CHECK TAIL LIGHTS"
+  - op: stage2.example.positive.add
+    subcat_slug: dim_or_flickering_lights
+    phrase: "headlights and dash lights flicker almost all the time while im driving"
+    provenance: forum-paraphrase
+  - op: stage2.example.positive.add
+    subcat_slug: foggy_or_hard_to_defog_windows
+    phrase: "the lines on my back glass dont warm up and it stays foggy back there"
+    provenance: synthetic   # NEW rear-defogger phrasing (NOT the near-verbatim DB positive)
+
+  # ============================================================
+  # STAGE 2 — negative examples (routes_to REQUIRED)
+  # ============================================================
+  - op: stage2.example.negative.add
+    subcat_slug: dim_or_flickering_lights
+    phrase: "only the driver-side headlight is out, the other one is fine"
+    routes_to: accessory_doesnt_work
+  - op: stage2.example.negative.add
+    subcat_slug: dim_or_flickering_lights
+    phrase: "headlights got dim then the car shut off on the highway and wont restart"
+    routes_to: car_died_while_driving_electrical
+  - op: stage2.example.negative.add
+    subcat_slug: dim_or_flickering_lights
+    phrase: "battery-shaped warning light came on while driving"
+    routes_to: battery_charging_light
+  - op: stage2.example.negative.add
+    subcat_slug: accessory_doesnt_work
+    phrase: "headlights and dash lights pulse dim and bright with the engine RPM"
+    routes_to: dim_or_flickering_lights
+  - op: stage2.example.negative.add
+    subcat_slug: blue_or_light_blue_puddle_washer_fluid
+    phrase: "bright blue slimy fluid right under the radiator and it smells sweet"
+    routes_to: green_orange_yellow_or_pink_puddle_coolant
+  - op: stage2.example.negative.add
+    subcat_slug: blue_or_light_blue_puddle_washer_fluid
+    phrase: "washers wont spray but theres no puddle under the car"
+    routes_to: windshield_inop_testing   # SERVICE-level route (windshield_inop_testing has no stage-2 subcat).
+    # A washer SPRAY failure is a wiper/washer OPERATION fault — corpus consensus for "WASHERS NOT
+    # SPRAYING." is windshield_inop_testing. Do NOT route it to accessory_doesnt_work (that would
+    # train Stage-2 to accept washer-spray complaints in the accessory bucket, against the dossier's
+    # own §3.9 route and golden case #7).
+  - op: stage2.example.negative.add
+    subcat_slug: foggy_or_hard_to_defog_windows
+    phrase: "the heater blows cold air"
+    routes_to: heat_doesnt_work
+  - op: stage2.example.negative.add
+    subcat_slug: foggy_or_hard_to_defog_windows
+    phrase: "weak airflow from all the vents including defrost"
+    routes_to: vents_dont_blow_strongly
+  - op: stage2.example.negative.add
+    subcat_slug: foggy_or_hard_to_defog_windows
+    phrase: "sweet maple smell and a greasy film with the fog"
+    routes_to: sweet_smell_maple_syrup_antifreeze
+  # Counter-weight for a live-DB collision (dossier §7/§8): accessory_doesnt_work already carries the
+  # live synonym "wipers don't work" and the positive "Rear windshield wiper doesn't move", which pull
+  # wiper complaints INTO the electrical accessory bucket — against this dossier's windshield_inop_testing
+  # routing. This negative pushes wiper-operation complaints back out to the wiper service.
+  - op: stage2.example.negative.add
+    subcat_slug: accessory_doesnt_work
+    phrase: "my wipers dont work, they wont move across the windshield"
+    routes_to: windshield_inop_testing   # SERVICE-level route (no stage-2 subcat)
+  # Oxidized/cloudy headlight lenses read as "headlights dim at night" but are an OPTICAL/physical
+  # restoration item, not an electrical brightness/voltage fault — keep them OUT of dim_or_flickering_lights.
+  # (No stage-2 negative_example op here: the honest destination is an advisor/maintenance handoff with
+  # no clean subcategory slug to name. Handled instead by the §5 discriminator row, the §3.15 failure
+  # mode, and the lexicon entry that routes_to [] with ambiguity cross-system:router-requests-maintenance.)
+
+  # ============================================================
+  # STAGE 2 — synonyms (>=2 tokens or domain token)
+  # ============================================================
+  - op: stage2.synonym.add
+    subcat_slug: accessory_doesnt_work
+    term: "headlight out"
+  - op: stage2.synonym.add
+    subcat_slug: accessory_doesnt_work
+    term: "tail light out"
+  - op: stage2.synonym.add
+    subcat_slug: accessory_doesnt_work
+    term: "turn signal out"
+  - op: stage2.synonym.add
+    subcat_slug: accessory_doesnt_work
+    term: "blinker out"
+  - op: stage2.synonym.add
+    subcat_slug: accessory_doesnt_work
+    term: "fog light out"
+  - op: stage2.synonym.add
+    subcat_slug: dim_or_flickering_lights
+    term: "brighten when revving"
+  - op: stage2.synonym.add
+    subcat_slug: dim_or_flickering_lights
+    term: "lights dim when the ac is on"   # customer symptom voice (was "lights dim under load" — technician idiom)
+  - op: stage2.synonym.add
+    subcat_slug: blue_or_light_blue_puddle_washer_fluid
+    term: "blue puddle under the front"   # customer reports the puddle, not the cracked part
+  - op: stage2.synonym.add
+    subcat_slug: blue_or_light_blue_puddle_washer_fluid
+    term: "washer fluid keeps running out"   # symptom voice (was "washer pump leak" — cause-diagnosis)
+  - op: stage2.synonym.add
+    subcat_slug: foggy_or_hard_to_defog_windows
+    term: "greasy film on windshield"
+  - op: stage2.synonym.add
+    subcat_slug: foggy_or_hard_to_defog_windows
+    term: "inside glass fogs up"
+
+  # ============================================================
+  # STAGE 2 — subcategory proposal (Chris-gated)
+  # ============================================================
+  - op: stage2.subcategory.propose
+    category: electrical
+    name: exterior_light_out
+    description: >
+      One or more EXTERIOR lamps is out or intermittently out while the rest of the car's electrical
+      system is normal — a headlight (low/high beam, DRL), taillight, brake-light bulb, turn
+      signal/blinker, fog lamp, side-marker, or license-plate light. Distinct from dim_or_flickering_lights
+      (a whole-system brightness/voltage problem) and from accessory_doesnt_work in its narrow original
+      sense (windows/radio/locks). Common causes: burned bulb, corroded socket, blown fuse, bad ground,
+      wiring break, or a failed LED module. A customer who replaced the bulb and it is still out usually
+      has a socket/ground/wiring fault.
+    examples:
+      - "driver headlight out, replaced the bulb and its still out"
+      - "one of my tail lights is out"
+      - "blinker not working on the passenger side"
+      - "fog light bulb burnt out"
+    why_existing_insufficient: >
+      accessory_doesnt_work's enrichment is entirely interior/comfort accessories (windows, radio,
+      locks, dome light, cigarette lighter); exterior lamp-out is a distinct fix family (bulb/socket/
+      ground vs an interior circuit) and dim_or_flickering_lights is a different (system-voltage)
+      problem. A dedicated subcat sharpens Stage-2 and lets the wizard ask lamp-specific questions.
+    demand_evidence: >
+      Modest but recurring. In the 500-line Tekmetric corpus there are 4 genuine exterior-lamp CONCERN
+      lines — a headlight, a tail light, a turn signal, and a terse "left plate lamp" — all consensus-
+      routed to electrical_testing_general / accessory_doesnt_work, PLUS 3 declined/work-order lamp lines
+      ("REPLACE DRIVERS SIDE LOW BEAM", "Remove & Replace Fog Lamp Bulb", "REPLACE THE RIGHT FRONT TURN
+      SIGNAL"). License-plate coverage is thin (one terse line). This is enough to justify SHARPENING
+      accessory_doesnt_work now; a dedicated subcat is a Chris-gated judgment call, not a slam-dunk.
+
+  # ============================================================
+  # STAGE 3 — slot value / literal-cue guidance (no new slots)
+  # ============================================================
+  - op: stage3.slot.value.add
+    slot: accessory_affected   # free-text slot; these are literal_cues to recognize, not enum members
+    value: "exterior lamp names"
+    literal_cues:
+      - "driver headlight"
+      - "left taillight"
+      - "right turn signal"
+      - "blinker"
+      - "brake light"        # only when clearly the bulb, not the dash telltale
+      - "fog light"
+      - "license plate light"
+      - "rear defroster"
+      - "wipers"
+      - "washers"
+  # NOTE: zero stage3.slot.propose ops. lights_state already has dim_at_idle_brighten_when_revving (the
+  # alternator discriminator) and accessory_affected (free-text) already carries exterior-lamp position.
+  # The inside-vs-outside-glass surface gap and the washer soapy-smell gap are logged as backlog in the
+  # dossier fact-slot audit (each helps <3 questions -> below the slot-proposal threshold).
+
+  # ============================================================
+  # QUESTIONS — required_facts.set (fix over-asking) + intentionally_empty
+  # ============================================================
+  - op: question.required_facts.set
+    question_id: 1634   # accessory_doesnt_work: "Did anything happen right before it stopped ... fender bender, sound system install, car wash, spilling a drink?"
+    facts: [recent_action]
+    skip_class: SAFE
+    derivation_note: >
+      The question enumerates recent events that map cleanly to recent_action
+      (accident_or_impact / general_service / car_wash_or_driven_through_water). If the customer already
+      stated one, skip the ask.
+  - op: question.required_facts.set
+    question_id: 596    # foggy: "When you turn on defrost, does air actually come out of the vents at the bottom of the windshield?"
+    facts: [airflow_state]
+    skip_class: PARTIAL
+    derivation_note: >
+      Answerable from airflow_state when the customer already said the defrost vents blow strongly or not
+      at all (no_airflow / strong_normal). Partial because a customer can complain of fog without saying
+      anything about defrost-vent airflow.
+  - op: question.required_facts.set
+    question_id: 600    # foggy: "Does the back window defroster (the lines on the rear glass) work normally?"
+    facts: [accessory_affected]
+    skip_class: PARTIAL
+    derivation_note: >
+      When the customer's complaint IS the rear defroster (accessory_affected='rear defroster'), the
+      answer is already given. Partial because a front-fog complaint says nothing about the rear grid.
+  - op: question.intentionally_empty
+    question_id: 1632   # accessory: "does only one of them not work, or several ..."
+    reason: A count/scope question with no fact slot; keep asking.
+  - op: question.intentionally_empty
+    question_id: 1635   # accessory: "do you hear any sound at all — a click, a hum, a buzz — when you try it?"
+    reason: >
+      Actuation-sound probe (distinguishes a dead-in-place accessory from one whose motor/relay still
+      energizes). No fact slot models "sound when I try the accessory" — noise_descriptor is for the
+      customer's spontaneous noise complaint, not a yes/no actuation click. Keep asking.
+  - op: question.intentionally_empty
+    question_id: 1636   # accessory: "Are any other electrical things acting strange right now?"
+    reason: Multi-glitch probe (distinguishes accessory_doesnt_work from multiple_random_electrical_glitches); no slot models it.
+  - op: question.intentionally_empty
+    question_id: 1637   # accessory: "Has anyone checked the fuses ...?"
+    reason: Diagnostic-history probe; no fact slot.
+  - op: question.intentionally_empty
+    question_id: 1023   # blue washer: "does any fluid actually reach the windshield ...?"
+    reason: Spray-performance probe; no slot (accessory_affected is about a dead item, not spray strength).
+  - op: question.intentionally_empty
+    question_id: 1024   # blue washer: "refill the reservoir more often than usual?"
+    reason: Consumption-rate probe; no fact slot.
+  - op: question.intentionally_empty
+    question_id: 1025   # blue washer: "watery and thin rather than oily?"
+    reason: Fluid-texture probe; no slot (fluid_color captures color, not viscosity).
+  - op: question.intentionally_empty
+    question_id: 1026   # blue washer: "leak only after using the washers or all the time?"
+    reason: Leak-timing probe; no fact slot.
+  - op: question.intentionally_empty
+    question_id: 597    # foggy: "clear up if you turn the AC on with defrost?"
+    reason: Self-diagnostic test the customer performs; no slot.
+  - op: question.intentionally_empty
+    question_id: 598    # foggy: "wet carpet on the passenger side floor?"
+    reason: Heater-core/evaporator-drain clue; no fact slot.
+  - op: question.intentionally_empty
+    question_id: 599    # foggy: "inside of the windows look greasy or oily?"
+    reason: Heater-core visual clue; no slot (smell_descriptor would need a sweet smell, not a film).
+  - op: question.intentionally_empty
+    question_id: 601    # foggy: "worse when more passengers are in the car?"
+    reason: Humidity-load clue; no fact slot.
+
+# ============================================================
+# GOLDEN CASES (>=8; incl. 2 inference-traps + 2 null-routes)
+# ============================================================
+golden_cases:
+  # NB: Stage-1 keys must be a testing_services.service_key or an 'other'-bucket slug —
+  # dim_or_flickering_lights is a Stage-2 subcategory, NOT a valid stage1_category_key. The eval
+  # harness proves the pick for this exact text: eval charging_starting_testing-005 ("dimmer and
+  # brighter ... freaky") uses stage1_category_key charging_starting_testing, stage2 dim_or_flickering_lights.
+  - text: "my headlights pulse brighter and dimmer, they get bright when i rev at a stoplight and dim at idle"
+    tags: [fact_rich, alternator_cue, confusable_charging]
+    expected:
+      stage1_category_key: charging_starting_testing
+      stage1_acceptable: [charging_starting_testing, electrical_testing_general]
+      stage2_subcategory_slug: dim_or_flickering_lights
+      stage3_facts: { lights_state: dim_at_idle_brighten_when_revving }
+      route: testing_service
+
+  - text: "dash lights and headlights flicker on and off while im driving, all of them together"
+    tags: [moderate]
+    expected:
+      stage1_category_key: charging_starting_testing
+      stage1_acceptable: [charging_starting_testing, electrical_testing_general]
+      stage2_subcategory_slug: dim_or_flickering_lights
+      stage3_facts: { lights_state: dim_or_flickering }
+      route: testing_service
+
+  - text: "driver headlight is out, i replaced the bulb and its still dark, the other one works fine"
+    tags: [fact_rich, single_bulb]
+    expected:
+      stage1_category_key: electrical_testing_general
+      stage1_acceptable: [electrical_testing_general]
+      stage2_subcategory_slug: accessory_doesnt_work
+      stage3_facts: { accessory_affected: "driver headlight", location_side: left }
+      route: testing_service
+
+  - text: "right rear turn signal not working, sometimes it works if i tap it then goes back out"
+    tags: [moderate, intermittent]
+    expected:
+      stage1_category_key: electrical_testing_general
+      stage1_acceptable: [electrical_testing_general]
+      stage2_subcategory_slug: accessory_doesnt_work
+      # 'intermittent' is an onset_timing value (extracted-facts.ts) — NOT a started_when value.
+      stage3_facts: { accessory_affected: "turn signal", location_side: right, onset_timing: intermittent }
+      route: testing_service
+
+  # INFERENCE TRAP #1 — "dim" tempts dim_or_flickering_lights, but the car DIED -> route away
+  - text: "my headlights got real dim and then the car just shut off on the highway, it wont start back up and im stuck on the shoulder"
+    tags: [inference_trap, safety]
+    expected:
+      stage1_category_key: charging_starting_testing
+      stage1_acceptable: [charging_starting_testing]
+      stage2_subcategory_slug: car_died_while_driving_electrical
+      # lights_state IS literally stated, so the extractor SHOULD set it; but stage1/2 must NOT pick the dim subcat.
+      stage3_facts: { lights_state: dim_or_flickering, engine_running: died_while_driving, drivable_state: stranded_now }
+      route: testing_service
+
+  - text: "wipers stopped working, they dont move at all now, quit right after i went through the car wash"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: windshield_inop_testing
+      stage1_acceptable: [windshield_inop_testing]
+      stage2_subcategory_slug: null
+      stage3_facts: { accessory_affected: "wipers", recent_action: car_wash_or_driven_through_water }
+      route: testing_service
+
+  - text: "washers wont spray any fluid on the windshield, the wipers themselves work fine"
+    tags: [moderate, spray_not_leak]
+    expected:
+      stage1_category_key: windshield_inop_testing
+      stage1_acceptable: [windshield_inop_testing]
+      stage2_subcategory_slug: null
+      stage3_facts: { accessory_affected: "washers" }
+      route: testing_service
+
+  - text: "light blue watery puddle near my front tire, kind of soapy smell, and my washer fluid keeps running out"
+    tags: [fact_rich, leak]
+    expected:
+      stage1_category_key: coolant_leak_testing
+      stage1_acceptable: [coolant_leak_testing, windshield_inop_testing]
+      stage2_subcategory_slug: blue_or_light_blue_puddle_washer_fluid
+      stage3_facts: { fluid_color: blue_or_light_blue, fluid_under_car_location: under_engine_front }
+      route: testing_service
+
+  # INFERENCE TRAP #2 — the customer LITERALLY said "bright blue", so strict extraction MUST set
+  # fluid_color=blue_or_light_blue (extracted-facts.ts maps blue_or_light_blue = washer fluid). The
+  # coolant routing is carried by STAGE 2 from the non-color cues (slimy + smells sweet + under the
+  # radiator), NOT by counter-literally re-coloring the fluid. Setting fluid_color to the coolant
+  # value here would itself be the over-assertion this trap is meant to catch.
+  - text: "theres a bright blue slimy puddle right under the radiator and it smells kind of sweet"
+    tags: [inference_trap, confusable_coolant]
+    expected:
+      stage1_category_key: coolant_leak_testing
+      stage1_acceptable: [coolant_leak_testing]
+      stage2_subcategory_slug: green_orange_yellow_or_pink_puddle_coolant
+      stage3_facts: { fluid_color: blue_or_light_blue, smell_descriptor: sweet_or_maple_syrup, fluid_under_car_location: under_engine_front }
+      route: testing_service
+
+  - text: "inside of my windshield keeps fogging up when it rains and the defroster barely clears it"
+    tags: [sparse, hvac]
+    expected:
+      stage1_category_key: ac_performance_check
+      stage1_acceptable: [ac_performance_check]
+      stage2_subcategory_slug: foggy_or_hard_to_defog_windows
+      stage3_facts: { weather_condition: rainy_or_wet }
+      route: testing_service
+
+  - text: "the rear window defroster doesnt work, the lines on the back glass never heat up and it stays fogged"
+    tags: [moderate, rear_defogger]
+    expected:
+      stage1_category_key: ac_performance_check
+      stage1_acceptable: [ac_performance_check]
+      stage2_subcategory_slug: foggy_or_hard_to_defog_windows
+      stage3_facts: { accessory_affected: "rear defroster" }
+      route: testing_service
+
+  # NULL-ROUTE #1 — work-order bulb-replacement line, no diagnostic concern
+  - text: "REPLACE DRIVERS SIDE LOW BEAM"
+    tags: [null_route, work_order]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      stage3_facts: {}
+      route: advisor
+
+  # NULL-ROUTE #2 — maintenance/parts request phrased as an instruction
+  - text: "REPLACE WIPERS IF NEEDED."
+    tags: [null_route, work_order]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      stage3_facts: { customer_request_type: replace_specific_part }
+      route: advisor

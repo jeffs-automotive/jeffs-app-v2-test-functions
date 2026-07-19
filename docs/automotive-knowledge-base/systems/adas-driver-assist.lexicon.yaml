@@ -1,0 +1,133 @@
+system: adas-driver-assist
+# ADAS / driver-assistance electronics. NOTE: the Tekmetric/authored/forum corpus contains ZERO
+# ADAS utterances (the catalog gap itself). Real voice below is NHTSA ODI narrative paraphrase
+# (public domain, rewritten first-person) + flagged synthetic. Provenance is disclosed per entry so
+# the aggregator/verifier can down-weight the elevated synthetic share (forced by the corpus gap).
+# routes_to slugs marked "(proposed)" bind to the new subcategory proposed in proposals.yaml:
+#   adas_driver_assist_warning_or_malfunction (category: warning_light -> service warning_light_general)
+entries:
+  # ---- FM-2 calibration lost after service ----
+  - phrase: "just got a new windshield and now my lane assist light is on"
+    normalized: lane-keep warning after windshield replacement (calibration need)
+    routes_to: [adas_driver_assist_warning_or_malfunction]   # (proposed)
+    ambiguity: needs-fact:recent_action
+    provenance: nhtsa-paraphrase
+  - phrase: "had my alignment done and the lane keep warning popped up right after"
+    normalized: LKA warning after alignment (steering-angle recalibration)
+    routes_to: [adas_driver_assist_warning_or_malfunction]   # (proposed)
+    ambiguity: needs-fact:recent_action
+    provenance: synthetic
+  - phrase: "put in a new battery and now the lane keep assist light is on"
+    normalized: ADAS relearn after battery/power loss (recent_action=battery_or_alternator_work)
+    routes_to: [adas_driver_assist_warning_or_malfunction]   # (proposed)
+    ambiguity: needs-fact:recent_action   # existing value battery_or_alternator_work; not a new value
+    provenance: synthetic
+
+  # ---- FM-1 obstruction / temporary blockage ----
+  - phrase: "message says front radar obstruction, driving aids unavailable"
+    normalized: front radar blocked message
+    routes_to: [adas_driver_assist_warning_or_malfunction]   # (proposed)
+    ambiguity: needs-fact:weather_condition
+    provenance: nhtsa
+  - phrase: "after the snowstorm it said forward driving aids temporarily disabled"
+    normalized: driving-aids disabled after snow/ice (self-clearing)
+    routes_to: [adas_driver_assist_warning_or_malfunction]   # (proposed)
+    ambiguity: needs-fact:weather_condition
+    provenance: nhtsa
+  - phrase: "parking sensors beep nonstop even in an empty lot"
+    normalized: ultrasonic park-sensor false alarm / fascia contamination
+    routes_to: [adas_driver_assist_warning_or_malfunction]   # (proposed)
+    ambiguity: speed_band:low_speed   # "in a lot" literally sets low_speed per slot; do NOT infer onset_timing
+    provenance: synthetic
+
+  # ---- FM-3 sensor/module defect ----
+  - phrase: "adaptive cruise control stopped working and there's a warning about it"
+    normalized: ACC disabled with dash message
+    routes_to: [adas_driver_assist_warning_or_malfunction]   # (proposed)
+    ambiguity: unambiguous
+    provenance: nhtsa
+  - phrase: "blind spot light on the mirror stays lit all the time now"
+    normalized: BSW indicator stuck on (system fault)
+    routes_to: [adas_driver_assist_warning_or_malfunction]   # (proposed)
+    ambiguity: needs-fact:warning_light_behavior
+    provenance: synthetic
+  - phrase: "little car with sensor beams light on my dash"
+    normalized: unnamed ADAS icon lit
+    routes_to: [adas_driver_assist_warning_or_malfunction]   # (proposed)
+    ambiguity: needs-fact:warning_light_named
+    provenance: synthetic
+
+  # ---- FM-4 phantom activation ----
+  - phrase: "pre-collision system problem, car slammed the brakes for no reason on the highway"
+    normalized: AEB phantom braking + fault message
+    routes_to: [adas_driver_assist_warning_or_malfunction]   # (proposed)
+    ambiguity: cross-system:brakes   # tempts a brake-feel route; no pedal_feel stated
+    provenance: nhtsa
+  - phrase: "car brakes by itself sometimes, kinda scary"
+    normalized: phantom braking, no light/system named
+    routes_to: [adas_driver_assist_warning_or_malfunction]   # (proposed); may co-route safety bucket
+    ambiguity: needs-fact:warning_light_named
+    provenance: nhtsa-paraphrase
+  - phrase: "collision warning keeps going off when nothing is in front of me"
+    normalized: FCW false alert
+    routes_to: [adas_driver_assist_warning_or_malfunction]   # (proposed)
+    ambiguity: needs-fact:warning_light_behavior
+    provenance: nhtsa
+  - phrase: "the auto brake is acting up and the self-braking freaks out for no reason"
+    normalized: messy-voice phantom AEB (customer slang for AEB/self-braking)
+    routes_to: [adas_driver_assist_warning_or_malfunction]   # (proposed)
+    ambiguity: needs-fact:warning_light_behavior
+    provenance: nhtsa-paraphrase
+  - phrase: "lane assist keeps yanking the steering wheel on the highway"
+    normalized: phantom lane-keep steer intervention (NOT a mechanical pull)
+    routes_to: [adas_driver_assist_warning_or_malfunction]   # (proposed)
+    ambiguity: cross-system:pulling/steering   # tempts pulling_drifting_or_wandering_on_the_road; no pull_direction stated
+    provenance: nhtsa-paraphrase
+
+  # ---- FM-5 multiple assist systems down together ----
+  - phrase: "collision mitigation problem and road departure problem both showed up at once"
+    normalized: multi-assist message set (shared camera/radar/bus)
+    routes_to: [adas_driver_assist_warning_or_malfunction]   # (proposed)
+    ambiguity: needs-fact:warning_light_behavior
+    provenance: nhtsa
+  - phrase: "lane departure warning keeps flashing even when i'm in my lane"
+    normalized: LDW false/steady alert
+    routes_to: [adas_driver_assist_warning_or_malfunction]   # (proposed)
+    ambiguity: needs-fact:warning_light_behavior
+    provenance: nhtsa
+
+  # ---- FM-6 aim disturbed by minor impact ----
+  - phrase: "tapped a curb and now the collision system says service required"
+    normalized: radar aim disturbed after minor impact
+    routes_to: [adas_driver_assist_warning_or_malfunction]   # (proposed)
+    ambiguity: needs-fact:recent_action
+    provenance: synthetic
+
+  # ---- BOUNDARY: routes AWAY from ADAS ----
+  - phrase: "backup camera screen is just black"
+    normalized: dead camera display (no assist/warning framing)
+    routes_to: [accessory_doesnt_work]   # electrical, NOT adas
+    ambiguity: cross-system:electrical
+    provenance: synthetic
+  - phrase: "my cruise control quit working"
+    normalized: plain set-speed cruise inop on a car with NO adaptive/radar feature — NOT ADAS
+    routes_to: [accessory_doesnt_work]   # electrical_testing_general; only ADAPTIVE/radar cruise is ADAS
+    ambiguity: cross-system:electrical   # if adaptive/radar or a message is named, re-route to ADAS — ASK, do not assume
+    provenance: synthetic
+  - phrase: "check engine light is on and the car runs rough"
+    normalized: classic CEL — not ADAS
+    routes_to: [check_engine_light]
+    ambiguity: unambiguous
+    provenance: synthetic
+  - phrase: "yellow car with squiggly skid lines light came on"
+    normalized: stability/traction icon — not ADAS
+    routes_to: [traction_control_stability_light]
+    ambiguity: unambiguous
+    provenance: synthetic
+
+  # ---- NULL-ROUTE: work-order line, not a customer concern ----
+  - phrase: "PERFORM FORWARD CAMERA CALIBRATION AFTER ALIGNMENT"
+    normalized: technician/advisor work-order note
+    routes_to: []   # advisor handoff; empty stage1
+    ambiguity: non-concern
+    provenance: synthetic

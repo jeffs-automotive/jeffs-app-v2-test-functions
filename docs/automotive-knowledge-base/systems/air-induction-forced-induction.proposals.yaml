@@ -1,0 +1,417 @@
+system: air-induction-forced-induction
+# Every op binds to a live snapshot slug / question id (2026-07-18 DB, shop 7476).
+# Diagnostic rationale is cited in the dossier; customer artifacts follow the voice guide.
+
+ops:
+  # ============================================================
+  # L1 — Stage-1 keyword adds (testing_services.example_keywords[])
+  # All bind to check_engine_light_testing (owns performance + warning_light,
+  # and boost/intake faults nearly always set a code -> CEL is the right service).
+  # Each phrase is >=2 tokens or a domain token.
+  # ============================================================
+  - op: stage1.keyword.add
+    category_key: check_engine_light_testing
+    phrase: "limp mode"
+    rationale: "Boost/throttle faults force reduced-power/limp; strong CEL cue."
+    evidence: "tekmetric: 'went into limp mode ... dash lights came on'"
+  - op: stage1.keyword.add
+    category_key: check_engine_light_testing
+    phrase: "reduced engine power"
+    rationale: "Dash message customers read off verbatim when a hard boost/throttle fault forces limp."
+    evidence: "customer voice — corpus 7409 'went into limp mode ... a lot of dash board lights came on'; synthetic 'reduced engine power light'"   # linguistic provenance only
+  - op: stage1.keyword.add
+    category_key: check_engine_light_testing
+    phrase: "turbo whistle"
+    rationale: "Most specific forced-induction customer cue; pairs with power loss."
+    evidence: "tekmetric 6774: 'HEARS WHISTLING ON ACCEL'"   # linguistic provenance only
+  - op: stage1.keyword.add
+    category_key: check_engine_light_testing
+    phrase: "boost leak"
+    rationale: "Owner shorthand for a charge-air leak; ≥2-token domain phrase."
+    evidence: "forum-paraphrase — turbo owners phrase it 'it has a boost leak' / 'boost leak'"   # linguistic provenance only (NOT a diagnostic cite)
+  - op: stage1.keyword.add
+    category_key: check_engine_light_testing
+    phrase: "wont build boost"
+    rationale: "Underboost in plain speech; ≥2-token domain phrase."
+    evidence: "forum-paraphrase — owner plain speech 'it won't build boost anymore'"   # linguistic provenance only (NOT a diagnostic cite)
+
+  # ============================================================
+  # L1 — Stage-1 hedge rules (bind STAGE-1 candidate keys = testing_services.service_key)
+  # NOTE: category_a/category_b are Stage-1 candidate keys, per taxonomy §1/§5 and every peer
+  # dossier. The boost-leak(accel) vs vacuum-leak(idle) split is a STAGE-2 split within
+  # check_engine_light_testing (no Stage-1 hedge) and is carried by the L2 description revisions +
+  # the L3 negative examples, not a stage1.hedge.
+  # ============================================================
+  - op: stage1.hedge.add
+    category_a: check_engine_light_testing
+    category_b: charging_starting_testing
+    rule: >-
+      An under-hood whine that rises with ENGINE RPM UNDER LOAD (when_accelerating, climbing hills) and can
+      sharpen into a whistle points to a turbo/supercharger or a boost/charge-air leak -> check_engine_light_testing.
+      A whine that tracks ELECTRICAL LOAD (worse with headlights/blower, a battery light, dim-at-idle) or is a
+      steady serpentine-belt whine points to the alternator/accessory-belt -> charging_starting_testing. Ask the
+      load/timing question before committing. (A whine gated ONLY on turning the wheel is power steering ->
+      steering-power-steering owns that hedge.)
+    discriminating_fact: onset_timing   # + lights_state for the electrical-load tell
+  - op: stage1.hedge.add
+    category_a: check_engine_light_testing
+    category_b: brake_inspection
+    rule: >-
+      'Booster' almost always means the BRAKE BOOSTER (power-brake vacuum booster), NOT turbo boost. Do NOT let
+      the word 'booster' pull a concern toward forced-induction / boost / low_power. Route on the ACTUAL stated
+      symptom: a check engine light -> check_engine_light_testing; a hard/heavy brake pedal or extra effort to
+      stop -> brake_inspection (hard_or_unresponsive_pedal); a bare 'need a booster' with no symptom -> advisor.
+    discriminating_fact: warning_light_named   # + pedal_feel for the brake-symptom branch
+
+  # ============================================================
+  # L2 — Subcategory description revisions
+  # ============================================================
+  - op: stage2.description.revise
+    subcat_slug: high_pitched_whining_under_the_hood
+    text: >-
+      A continuous high-pitched whine, whirr, squeal, or whistle from the front/engine bay. Track the
+      trigger: a serpentine belt squeal is worst COLD/DAMP; a power-steering whine rises when TURNING the
+      wheel; an alternator whine rises with ELECTRICAL LOAD (headlights/blower); a turbocharger or
+      supercharger whine/siren rises with ENGINE RPM UNDER LOAD (accelerating, climbing hills) and can turn
+      into a whistle from a boost/charge-air leak. Distinct from humming_or_whirring_at_speed (wheel-bearing,
+      tied to ROAD speed, not engine RPM) and from a power-steering whine that ONLY happens when turning
+      (that belongs to steering/noise_when_turning_the_steering_wheel).
+    why: "Adds the forced-induction cause + the load-vs-steering-vs-electrical discriminator so a turbo whistle isn't defaulted to belt/PS."
+  - op: stage2.description.revise
+    subcat_slug: low_power_or_wont_accelerate_normally
+    text: >-
+      SUSTAINED loss of power — the car feels weak, flat, or 'held back', struggles on hills, or won't go
+      past a certain RPM/MPH, often with a gas-mileage drop. Causes include limp/reduced-power mode
+      (computer-limited safe state), a turbo/boost fault (underboost, boost/charge-air leak, wastegate or
+      actuator), clogged catalytic converter, failing fuel pump, bad mass airflow sensor, or a slipping
+      transmission (engine revs without speed). A turbo/boost cause often adds a whistle or hiss ONLY under
+      acceleration. Distinct from hesitation_or_lag_when_accelerating (a MOMENTARY pause, not constant
+      weakness) and stalling_while_driving_under_load (engine actually dies).
+    why: "Names the forced-induction cause set + the accel-only whistle cue; keeps the hesitation/stall boundaries."
+
+  # ============================================================
+  # L3 — positive_examples (real-voice first; diffed vs live DB positives, dups dropped)
+  # Dropped as DUPLICATES of existing DB positives: "sounds like a jet/turbine ..." (live
+  # 'Sounds like a turbine or a jet engine under the hood') and a limp-mode/rev-cap line
+  # (live 'won't accelerate past 3,000 RPM'). Only the genuinely-new forced-induction delta is added.
+  # ============================================================
+  - op: stage2.example.positive.add
+    subcat_slug: low_power_or_wont_accelerate_normally
+    phrase: "when stepping on gas vehicle not accelerating also hears whistling on accel, did not happen before"
+    provenance: tekmetric   # corpus 6774 (turbo-whistle + no-accel; the real forced-induction delta)
+  - op: stage2.example.positive.add
+    subcat_slug: low_power_or_wont_accelerate_normally
+    phrase: "hear a whoosh and hissing when i floor it, then it bogs down"
+    provenance: synthetic   # boost/charge-air-leak-under-load cue; no real corpus line exists (coverage gap)
+  - op: stage2.example.positive.add
+    subcat_slug: high_pitched_whining_under_the_hood
+    phrase: "my supercharger whines louder the more gas i give it"
+    provenance: synthetic   # supercharger absent from corpus + from live positives; genuinely new
+  - op: stage2.example.positive.add
+    subcat_slug: hesitation_or_lag_when_accelerating
+    phrase: "it hesitates when accelerating, especially uphill, and not all the time"
+    provenance: forum-paraphrase   # pattern of forums 1650/1770 (real hesitation voice)
+  - op: stage2.example.positive.add
+    subcat_slug: hesitation_or_lag_when_accelerating
+    phrase: "stumbles when i step on it, started right after they changed the air filter"
+    provenance: synthetic   # the diagnostically-key after-service MAF cue; no real corpus line
+
+  # ============================================================
+  # L3 — negative_examples (each names routes_to)
+  # ============================================================
+  - op: stage2.example.negative.add
+    subcat_slug: high_pitched_whining_under_the_hood
+    phrase: "whine only when i turn the steering wheel, goes away when straight"
+    routes_to: noise_when_turning_the_steering_wheel
+  - op: stage2.example.negative.add
+    subcat_slug: high_pitched_whining_under_the_hood
+    phrase: "whine that gets louder with road speed and matches the wheels, worst on the highway"
+    routes_to: humming_or_whirring_at_speed
+  - op: stage2.example.negative.add
+    subcat_slug: low_power_or_wont_accelerate_normally
+    phrase: "engine hesitates for a second when i press the gas then catches up and pulls fine"
+    routes_to: hesitation_or_lag_when_accelerating
+  - op: stage2.example.negative.add
+    subcat_slug: low_power_or_wont_accelerate_normally
+    phrase: "whistle and rough idle only when im sitting at a stop, fine once im moving"
+    routes_to: rough_idle_or_shaking_at_a_stop
+  - op: stage2.example.negative.add
+    subcat_slug: low_power_or_wont_accelerate_normally
+    phrase: "check engine light on, was told i need a booster by the dealer"
+    routes_to: check_engine_light   # 'booster' = brake booster, NOT turbo boost; route on the STATED CEL, not power-loss
+  - op: stage2.example.negative.add
+    subcat_slug: hesitation_or_lag_when_accelerating
+    phrase: "no power at all, wont go past 45 even floored, feels held back constantly"
+    routes_to: low_power_or_wont_accelerate_normally
+
+  # ============================================================
+  # L4 — synonyms (>=2 tokens OR domain single token)
+  # ============================================================
+  - op: stage2.synonym.add
+    subcat_slug: low_power_or_wont_accelerate_normally
+    term: "turbo whistle"
+  - op: stage2.synonym.add
+    subcat_slug: low_power_or_wont_accelerate_normally
+    term: "boost leak"
+  # 'underboost' REMOVED — DTC/mechanic vocabulary with no corpus evidence any customer says it
+  # (customer-voice-style-guide rule 3). 'wont build boost' is retained (real plain-speech owner phrasing).
+  - op: stage2.synonym.add
+    subcat_slug: low_power_or_wont_accelerate_normally
+    term: "wont build boost"
+  - op: stage2.synonym.add
+    subcat_slug: high_pitched_whining_under_the_hood
+    term: "turbo whine"
+  - op: stage2.synonym.add
+    subcat_slug: high_pitched_whining_under_the_hood
+    term: "supercharger whine"
+
+  # ============================================================
+  # L2 — new subcategory proposal (Chris-gated; demand-flagged)
+  # ============================================================
+  - op: stage2.subcategory.propose
+    category: performance
+    name: turbo_or_boost_power_problem
+    description: >-
+      Forced-induction / boost-specific power problems: a turbo or supercharger that whistles, whines, or
+      surges AND is down on power under load, 'went into limp mode', or 'wont build boost'. Covers boost/
+      charge-air leaks, wastegate/actuator/boost-solenoid faults, and underboost/overboost. Differs from
+      generic low_power (which spans cats, fuel, trans) by the boost-specific cues (whistle-under-boost,
+      spool, wastegate, intercooler pipe) and from high_pitched_whining_under_the_hood (which also holds
+      belt/PS/alternator whine with no power complaint).
+    examples:
+      - "turbo whistles and the car has no power under boost, threw a check engine light"
+      - "went into limp mode on the highway, wont build boost anymore"
+      - "they said i have a cracked pipe somewhere, it loses power and whooshes when i accelerate"   # reported speech, not a customer self-diagnosis
+    why_existing_insufficient: >-
+      Boost symptoms currently split three ways (low_power / hesitation / whining) so no single customer
+      boost utterance routes cleanly, and the whine subcategory is framed for belt/PS/alternator. README
+      names forced induction as a known catalog coverage gap. LOW current corpus volume — propose, do not
+      assume; Chris decides whether to add the subcategory or keep folding into low_power + CEL.
+
+  # ============================================================
+  # L5 — fact-slot value adds
+  # ============================================================
+  # noise_descriptor VALUE add (enum currently: ...whining/hissing/roaring — no 'whistling').
+  # A value-add on an existing slot is NOT governed by the >=3-question rule (that governs new SLOTS).
+  # Consumed by existing questions already tagged required_facts=[noise_descriptor]: q1187 (low_power)
+  # and q378 (check_engine_light) — so the value lets those be answered/skipped when a customer literally
+  # says 'whistle', and gives Stage-2 the most specific forced-induction/vacuum cue.
+  - op: stage3.slot.value.add
+    slot: noise_descriptor
+    value: whistling
+    literal_cues:
+      - "whistling"
+      - "whistle"
+      - "whistling on accel"
+      - "high pitched whistle"
+      - "whistles when i get on it"
+      # 'whoosh' intentionally EXCLUDED — a whoosh is not literally a whistle, and golden case 4
+      # ('hissing whoosh') maps to noise_descriptor=hissing. A bare 'whoosh' sets no noise_descriptor.
+  - op: stage3.slot.value.add
+    slot: vehicle_powertrain
+    value: supercharged
+    literal_cues:
+      - "supercharged"
+      - "supercharger"
+      - "its supercharged"
+      # 'the blower' intentionally EXCLUDED — in customer voice it overwhelmingly means the HVAC
+      # blower motor ('blower not working'); using it here would corrupt HVAC extraction.
+
+  # ============================================================
+  # L5 — required_facts.set (skip over-asking; confident maps only)
+  # ============================================================
+  - op: question.required_facts.set
+    question_id: 461   # hesitation: "all the time or only sometimes?"
+    facts: [onset_timing]
+    skip_class: PARTIAL
+    derivation_note: "'always'/'intermittent' onset_timing answers the frequency question; skip when stated literally."
+  - op: question.required_facts.set
+    question_id: 460   # hesitation: "does it jerk/buck/stumble when you push the pedal?"
+    facts: [engine_running]
+    skip_class: PARTIAL
+    derivation_note: "engine_running=misfiring is set only from a literal 'bucks/jerks/skips' phrasing; skip then."
+  - op: question.required_facts.set
+    question_id: 93    # whine: "louder when you turn the steering wheel?"
+    facts: [onset_timing]
+    skip_class: PARTIAL
+    derivation_note: "onset_timing=when_turning (literal 'when I turn the wheel') answers the PS-whine discriminator."
+  - op: question.required_facts.set
+    question_id: 96    # whine: "battery warning light or dim headlights along with the noise?"
+    facts: [lights_state]
+    skip_class: PARTIAL
+    derivation_note: "lights_state (dim/flickering/dim-at-idle) answers the alternator-load discriminator when stated."
+  - op: question.required_facts.set
+    question_id: 97    # whine: "come from the front where the belts are?"
+    facts: [sound_or_smoke_location_zone]
+    skip_class: PARTIAL
+    derivation_note: "sound_or_smoke_location_zone=under_hood answers the location question when the customer said so."
+  - op: question.required_facts.set
+    question_id: 1182  # low_power: "constant, or does it come and go?"
+    facts: [onset_timing]
+    skip_class: PARTIAL
+    derivation_note: >-
+      onset_timing=always/intermittent answers constancy; skip when literally stated.
+      CROSS-DOSSIER NOTE (Wave C): engine-controls-driveability binds q1182 [onset_timing] as SAFE and
+      automatic-transmission binds it [onset_timing] PARTIAL. This dossier aligns with the PARTIAL reading
+      (a condition-triggered onset_timing like when_accelerating does not cleanly answer 'constant vs
+      comes-and-goes'). Reconcile to one skip_class at aggregation.
+
+  # ============================================================
+  # L5 — intentionally_empty (no current slot; do not force a bad map)
+  # ============================================================
+  - op: question.intentionally_empty
+    question_id: 92    # whine: "speed up/slow down with engine speed?"
+    reason: "RPM-tracking of a noise has no fact slot; inferring it would violate literalness. Keep asking."
+  - op: question.intentionally_empty
+    question_id: 455   # hesitation: "first press vs pushing hard for passing/merging?"
+    reason: "Tip-in vs wide-open-throttle sub-distinction is not expressible in onset_timing (both are when_accelerating)."
+  # q1183 (revs-without-speed) and q1186 (stuck-in-gear/held-back) are DELIBERATELY NOT touched here.
+  # They are trans-slip / power-delivery cues owned by other systems, which already PROPOSE slots for them:
+  #   - automatic-transmission.proposals.yaml binds both to [transmission_behavior]
+  #   - engine-controls-driveability.proposals.yaml binds both to [power_delivery_feel]
+  # They are NOT forced-induction discriminators (a boost fault does not produce revs-without-speed), so this
+  # dossier DEFERS rather than marking them intentionally_empty — an intentionally_empty here would directly
+  # conflict with those proposed bindings at Wave C aggregation.
+  - op: question.intentionally_empty
+    question_id: 1185  # low_power: "drop in gas mileage?"
+    reason: "Fuel-economy change has no fact slot; customer rarely states it literally. No peer dossier proposes a slot for it."
+
+  # ============================================================
+  # Catalog service proposal (Chris-gated)
+  # ============================================================
+  - op: catalog.service.propose
+    name: "Forced-induction / boost system test"
+    demand_evidence: >-
+      Tekmetric corpus has turbo/boost concerns (whistle+no-accel, limp mode, oil under turbos) currently
+      absorbed by CEL testing and situational buckets; README lists forced induction as a coverage gap.
+      Volume is modest today but rising with the shop's turbo-heavy modern mix.
+    fee_rationale: >-
+      Overlaps the $179.95 CEL scan (codes + live data) plus a boost/smoke-leak test and charge-pipe
+      inspection. Could price at CEL parity ($179.95) OR simply route to check_engine_light_testing.
+      DECISION IS CHRIS'S — do not auto-create; forced-induction faults already scan well under CEL.
+
+# ================================================================
+# Golden cases (>=8; >=1 inference-trap, >=1 null-route). Mirrors eval-cases.json.
+# stage3_facts marked (PROPOSED) depend on the slot.value.add ops above.
+# ================================================================
+golden_cases:
+  - text: "my turbo whistles loud when i get on the gas and the car feels way down on power lately"
+    tags: [fact_rich, forced_induction]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing]
+      stage2_subcategory_slug: low_power_or_wont_accelerate_normally
+      stage3_facts:
+        noise_descriptor: whistling      # PROPOSED value
+        onset_timing: when_accelerating
+        vehicle_powertrain: turbocharged  # customer literally said 'turbo'
+      route: testing_service
+
+  - text: "CUSTOMER STATES THE VEHICLE DOESNT GO OVER A CERTAIN SPEED / WENT INTO LIMP MODE. A LOT OF DASH BOARD LIGHTS CAME ON BUT ARE NOW OFF"
+    tags: [fact_rich, corpus_verbatim]
+    expected:
+      stage1_category_key: warning_light_general
+      stage1_acceptable: [warning_light_general, check_engine_light_testing]
+      stage2_subcategory_slug: multiple_warning_lights_at_once
+      stage3_facts:
+        warning_light_behavior: came_on_then_off
+        # drivable_state REMOVED — the customer stated a speed cap + lights, not that they are still driving
+        # it or 'concerned'. Setting drivable_but_concerned would be an inference (literalness).
+      route: testing_service
+
+  - text: "theres a whining noise under the hood when its running"
+    tags: [vague, inference_trap, clarify_chip]
+    expected:
+      # Genuinely ambiguous under-hood whine -> clarify chip with 2-3 RANKED Stage-1 candidate keys
+      # (cf. steering-power-steering tka-013, same utterance shape). Belt/alternator is the statistically
+      # dominant under-hood whine, so it leads; turbo/boost and power-steering stay acceptable.
+      stage1_category_key: charging_starting_testing
+      stage1_acceptable: [charging_starting_testing, check_engine_light_testing, power_steering_eps_testing]
+      stage2_subcategory_slug: high_pitched_whining_under_the_hood
+      stage3_facts:
+        noise_descriptor: whining
+        sound_or_smoke_location_zone: under_hood   # literal ("under the hood")
+        # TRAP: do NOT set vehicle_powertrain=turbocharged, onset_timing, or a cause -- none were stated.
+      route: testing_service
+
+  - text: "hear a hissing whoosh only when im accelerating hard and then it bogs down, check engine light came on"
+    tags: [fact_rich, forced_induction]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing]
+      stage2_subcategory_slug: low_power_or_wont_accelerate_normally
+      stage3_facts:
+        noise_descriptor: hissing
+        onset_timing: when_accelerating
+        warning_light_named: "check engine"
+      route: testing_service
+
+  - text: "theres a whistle and it idles rough when im just sitting at a stop, fine once im moving"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing]
+      stage2_subcategory_slug: rough_idle_or_shaking_at_a_stop
+      stage3_facts:
+        noise_descriptor: whistling   # PROPOSED value
+        onset_timing: when_idling
+        engine_running: rough_idle
+      route: testing_service
+
+  - text: "car stumbles when i step on it, started right after they replaced my engine air filter"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing]
+      stage2_subcategory_slug: hesitation_or_lag_when_accelerating
+      stage3_facts:
+        onset_timing: when_accelerating
+        recent_action: general_service
+      route: testing_service
+
+  - text: "blue smoke out the tailpipe and a burnt oil smell, its a turbo car"
+    tags: [cross_system]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing]
+      stage2_subcategory_slug: blue_or_gray_smoke_from_tailpipe
+      stage3_facts:
+        smoke_color: blue_or_gray
+        smell_descriptor: burnt_oil
+        vehicle_powertrain: turbocharged
+      route: testing_service
+
+  - text: "Previously declined>REPLACE ENGINE AIR FILTER"
+    tags: [null_route, work_order, corpus_verbatim]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      stage3_facts: {}
+      route: advisor
+
+  - text: "hi i just want to get a new engine air filter put in, nothing wrong just due for it"
+    tags: [null_route, request]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      stage3_facts:
+        customer_request_type: replace_specific_part
+      route: advisor
+
+  - text: "CHECK ENGINE LIGHT ON. WAS TOLD NEEDED A BOOSTER BY DEALER"
+    tags: [inference_trap, cross_system, corpus_verbatim]
+    expected:
+      # Corpus 7910 verbatim. The routable symptom is the STATED check engine light -> CEL scan.
+      # brake_inspection is NOT acceptable here: (a) it cannot reach the check_engine_light subcategory
+      # (its concern_categories are brakes+noise, no warning_light), and (b) no brake symptom was stated.
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing]
+      stage2_subcategory_slug: check_engine_light
+      stage3_facts:
+        warning_light_named: "check engine"   # literal ("CHECK ENGINE LIGHT ON")
+      # TRAP: 'booster' = brake BOOSTER (a part the dealer named), NOT turbo boost. Do NOT let the word
+      # pull this toward forced-induction / low_power, and do NOT add a brake subcategory or pedal fact
+      # (no brake symptom was stated). Route on the stated CEL only.
+      route: testing_service

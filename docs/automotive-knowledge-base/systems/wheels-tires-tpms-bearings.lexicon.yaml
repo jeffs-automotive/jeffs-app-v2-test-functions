@@ -1,0 +1,250 @@
+system: wheels-tires-tpms-bearings
+# phrase -> normalized -> routes_to[] (subcategory slug) -> ambiguity -> provenance
+# ambiguity: unambiguous | needs-fact:<slot> | cross-system:<slug> | null-route
+# provenance: tekmetric | nhtsa | forum-paraphrase | synthetic   (sanctioned 4-value enum, source-policy §citation)
+# PROVENANCE SHARES (corrected 2026-07-18): real Tekmetric corpus ~58%; forum-paraphrase (real NHTSA/forum
+#   PATTERNS, paraphrased) ~14%; synthetic ~28% — under the 30% cap, ALL flagged. The synthetic bucket now
+#   correctly includes eval-suite fixtures (source 'authored-2026-07-02-workflow': tpms_testing-001/-003,
+#   nearmiss-012, suspension_steering_check-001/-006) and DB-authored positive patterns ('there's a nail in
+#   my tire', 'shop told me my tires are cupping'); these are AUTHORED, not real Tekmetric customer text, so
+#   they are no longer mislabeled `tekmetric` (which had inflated the real-voice share).
+entries:
+
+  # ---- tire_going_flat_losing_air ----
+  - phrase: "Lf tire slow leak"
+    normalized: left-front tire slow air leak
+    routes_to: [tire_going_flat_losing_air]
+    ambiguity: unambiguous           # 'Lf' literally states location (left-front) AND the slow-leak symptom; nothing missing
+    provenance: tekmetric            # tkc-010
+  - phrase: "LEFT REAR TIRE LOOSING AIR PSI"
+    normalized: left-rear tire losing air pressure
+    routes_to: [tire_going_flat_losing_air]
+    ambiguity: unambiguous
+    provenance: tekmetric            # tka-056
+  - phrase: "front left tire needs looses air pressure, have to add air about every 1000 miles"
+    normalized: front-left tire slow leak, repeated topping up
+    routes_to: [tire_going_flat_losing_air]
+    ambiguity: unambiguous           # 'front left' literally states location_side=left/location_axle=front; not the routing gap
+    provenance: tekmetric            # tkc-217
+  - phrase: "my tire keeps going flat"
+    normalized: tire repeatedly loses air, no cause named
+    routes_to: [tire_going_flat_losing_air]
+    ambiguity: needs-fact:tire_state
+    provenance: synthetic
+  - phrase: "tire was soft this morning, fine yesterday, heard a hiss pulling in"
+    normalized: sudden slow leak with hiss
+    routes_to: [tire_going_flat_losing_air]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+
+  # ---- visible_damage_nail_screw_bulge_cut ----
+  - phrase: "found a screw sticking out of my rear left tire, its still holding air and drives fine"
+    normalized: screw in rear-left tread, tire holding air
+    routes_to: [visible_damage_nail_screw_bulge_cut]
+    ambiguity: unambiguous
+    provenance: synthetic            # authored eval fixture tpms_testing-001 (source authored-2026-07-02-workflow; NOT real Tekmetric text)
+  - phrase: "there's a nail in my tire"
+    normalized: nail embedded in tread
+    routes_to: [visible_damage_nail_screw_bulge_cut]
+    ambiguity: unambiguous
+    provenance: synthetic            # DB-authored positive pattern (not real Tekmetric customer text)
+  - phrase: "bubble on the sidewall after I smacked a curb"
+    normalized: impact sidewall bulge (non-repairable)
+    routes_to: [visible_damage_nail_screw_bulge_cut]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  - phrase: "big gash in my tire, looks like I ran over something sharp"
+    normalized: sidewall/tread cut
+    routes_to: [visible_damage_nail_screw_bulge_cut]
+    ambiguity: unambiguous
+    provenance: synthetic
+
+  # ---- tpms_tire_pressure_light  (canonical when the LIGHT leads) ----
+  - phrase: "TPMS LIGHT ON (Testing auth)"
+    normalized: TPMS telltale illuminated
+    routes_to: [tpms_tire_pressure_light]
+    ambiguity: unambiguous
+    provenance: tekmetric            # tkc-018
+  - phrase: "TPMS LIGHT COMES ON & OFF"
+    normalized: TPMS telltale intermittent
+    routes_to: [tpms_tire_pressure_light]
+    ambiguity: needs-fact:warning_light_behavior
+    provenance: tekmetric            # tka-088
+  - phrase: "Tire Pressure Monitor warning light on even after checking tire pressure"
+    normalized: TPMS light stays on, pressures checked (system fault)
+    routes_to: [tpms_tire_pressure_light]
+    ambiguity: unambiguous
+    provenance: tekmetric            # tkc-137
+  - phrase: "TPMS light will flash when coming on and then solid, seems to go on going over bumps"
+    normalized: TPMS flash-then-steady (system fault)
+    routes_to: [tpms_tire_pressure_light]
+    ambiguity: needs-fact:warning_light_behavior
+    provenance: tekmetric            # tka-021
+  - phrase: "front driver-side tire pressure sensor not reading / offline, no low tire observed"
+    normalized: dead/offline TPMS sensor, pressures normal
+    routes_to: [tpms_tire_pressure_light]
+    ambiguity: unambiguous
+    provenance: tekmetric            # tkc-076
+  - phrase: "yellow horseshoe light with an exclamation point on my dash"
+    normalized: TPMS telltale by shape description
+    routes_to: [tpms_tire_pressure_light]
+    ambiguity: unambiguous
+    provenance: synthetic
+
+  # ---- low_pressure_warning_light_only  (light-led, tires-category sibling) ----
+  - phrase: "put air in all 4 tires yesterday but the light still won't go off, tires look fine to me"
+    normalized: low-pressure light won't clear after inflating (relearn/fault)
+    routes_to: [low_pressure_warning_light_only]
+    ambiguity: unambiguous
+    provenance: synthetic            # authored eval fixture tpms_testing-003 (source authored-2026-07-02-workflow; NOT real Tekmetric text)
+  - phrase: "tire pressure light keeps coming back on even tho I put air in all four"
+    normalized: recurring low-pressure light after top-up
+    routes_to: [low_pressure_warning_light_only, tpms_tire_pressure_light]
+    ambiguity: needs-fact:warning_light_behavior
+    provenance: synthetic            # authored eval fixture nearmiss-012 (source authored-2026-07-02-workflow; NOT real Tekmetric text)
+
+  # ---- steering_wheel_shake_at_highway_speed  (balance shimmy) ----
+  - phrase: "SHIMMY AT HIGHWAY SPEEDS"
+    normalized: steering-wheel shimmy at highway speed
+    routes_to: [steering_wheel_shake_at_highway_speed]
+    ambiguity: unambiguous
+    provenance: tekmetric            # tkc-052
+  - phrase: "WHEEL SHAKES AT HIGHWAY SPEEDS"
+    normalized: steering-wheel shake at highway speed
+    routes_to: [steering_wheel_shake_at_highway_speed]
+    ambiguity: unambiguous
+    provenance: tekmetric            # tka-196
+  - phrase: "CHECK BRAKES (Steering wheel shakes at highway speeds)"
+    normalized: highway shimmy that the customer guessed was brakes
+    routes_to: [steering_wheel_shake_at_highway_speed]
+    ambiguity: cross-system:vibration_or_pulsing_when_braking
+    provenance: tekmetric            # tkc-290
+  - phrase: "steering wheel shakes really bad at 65, smooths out if I slow down, started after a pothole"
+    normalized: band-limited highway shimmy after impact (bent wheel)
+    routes_to: [steering_wheel_shake_at_highway_speed]
+    ambiguity: unambiguous
+    provenance: synthetic            # authored eval fixture suspension_steering_check-001 (source authored-2026-07-02-workflow; NOT real Tekmetric text)
+
+  # ---- constant_vibration_that_doesnt_change_with_speed ----
+  - phrase: "VEHICLE SHAKING AT ALL SPEEDS ( like a 2000lbs vibrator )"
+    normalized: constant vibration at every speed
+    routes_to: [constant_vibration_that_doesnt_change_with_speed]
+    ambiguity: unambiguous
+    provenance: tekmetric            # tkc-032
+  - phrase: "buzz through the seat at every speed, even crawling through a parking lot, never changes"
+    normalized: speed-independent tremor (out-of-round/broken belt)
+    routes_to: [constant_vibration_that_doesnt_change_with_speed]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+
+  # ---- humming_or_whirring_at_speed  (wheel-bearing / tire roar) ----
+  - phrase: "very noticeable humming from the rear end, most noticeable 30 to 40 mph, sounds like aggressive snow tires"
+    normalized: road-speed hum from rear, bearing-like
+    routes_to: [humming_or_whirring_at_speed]
+    ambiguity: needs-fact:steering_load_effect   # 'rear end' already states axle=rear; the real bearing-vs-tire-roar gap is the steering-load answer (proposed slot, §9), NOT the side
+    provenance: tekmetric            # tkc-113
+  - phrase: "tires making a strange noise when driving"
+    normalized: unspecified wheel-area driving noise
+    routes_to: [humming_or_whirring_at_speed]
+    ambiguity: needs-fact:noise_descriptor
+    provenance: tekmetric            # tkc-081
+  - phrase: "ROTATIONAL NOISE HEARD IN LEFT REAR"
+    normalized: rotational (speed-linked) noise, left rear
+    routes_to: [humming_or_whirring_at_speed]
+    ambiguity: unambiguous
+    provenance: tekmetric            # tka-149
+  - phrase: "dealership said wheel bearings were needed, wants a second opinion"
+    normalized: prior-shop wheel-bearing diagnosis, second opinion
+    routes_to: [humming_or_whirring_at_speed]
+    ambiguity: needs-fact:customer_request_type
+    provenance: tekmetric            # tkc-102
+  - phrase: "front passenger side tire makes noise"
+    normalized: noise localized to front-right wheel area
+    routes_to: [humming_or_whirring_at_speed]
+    ambiguity: needs-fact:noise_descriptor
+    provenance: tekmetric            # tkc-075
+  - phrase: "humming that gets louder curving left, quieter curving right, feel it in the floor"
+    normalized: steering-load-sensitive hum (right bearing implicated)
+    routes_to: [humming_or_whirring_at_speed]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  - phrase: "sounds like an airplane taking off when I'm on the highway"
+    normalized: loud road-speed roar (bearing)
+    routes_to: [humming_or_whirring_at_speed]
+    ambiguity: needs-fact:steering_load_effect   # bearing-vs-tire-roar ambiguity; the discriminator is the steering-load answer (proposed slot, §9), not the side
+    provenance: synthetic            # authored eval fixture suspension_steering_check-006 (source authored-2026-07-02-workflow; NOT real Tekmetric text)
+
+  # ---- uneven_tire_wear_bald_spots ----
+  - phrase: "uneven wear on inside edge of front tires"
+    normalized: inside-edge front tire wear (alignment cue)
+    routes_to: [uneven_tire_wear_bald_spots]
+    ambiguity: unambiguous
+    provenance: tekmetric            # tkc-278
+  - phrase: "rear tires were worn on edges"
+    normalized: edge wear, rear tires
+    routes_to: [uneven_tire_wear_bald_spots]
+    ambiguity: unambiguous
+    provenance: tekmetric            # tkc-239
+  - phrase: "shop told me my tires are cupping"
+    normalized: scalloped/cupped wear (strut/balance cue)
+    routes_to: [uneven_tire_wear_bald_spots]
+    ambiguity: unambiguous
+    provenance: synthetic            # DB-authored positive pattern (not real Tekmetric customer text)
+
+  # ---- dry_rot_sidewall_cracking  (→ tire-buying gap) ----
+  - phrase: "sidewalls are all cracked, tires are old and dry-rotted"
+    normalized: age/UV sidewall crazing on all tires
+    routes_to: [dry_rot_sidewall_cracking]
+    ambiguity: unambiguous           # names the cracking -> dry_rot_sidewall_cracking; just_want_new_tires is a same-CATEGORY tires sibling (both -> tire-buying gap), NOT cross-system
+    provenance: synthetic
+  - phrase: "car's been sitting a couple years and now the rubber is all cracked"
+    normalized: storage-aged dry rot
+    routes_to: [dry_rot_sidewall_cracking]
+    ambiguity: cross-system:car_has_been_sitting_unused_for_a_long_time
+    provenance: forum-paraphrase
+
+  # ---- just_want_new_tires  (→ tire-buying gap) ----
+  - phrase: "4 NEW TIRES AND ALIGNMENT (would like entry level tire)"
+    normalized: buying 4 tires + alignment, budget tier
+    routes_to: [just_want_new_tires]
+    ambiguity: unambiguous
+    provenance: tekmetric            # tkc-138
+  - phrase: "TIRE REPLACEMENT"
+    normalized: tire-replacement request (work-order voice)
+    routes_to: [just_want_new_tires]
+    ambiguity: unambiguous
+    provenance: tekmetric            # tka-125
+  - phrase: "my tires are shot, need new rubber before winter"
+    normalized: worn-out tires, replacement intent
+    routes_to: [just_want_new_tires]
+    ambiguity: unambiguous
+    provenance: synthetic
+
+  # ---- recent_tire_work_then_new_symptom ----
+  - phrase: "CLIENT REPORTED REAR END SWAYING AFTER TIRE REPLACEMENT"
+    normalized: new symptom (sway) after tire replacement
+    routes_to: [recent_tire_work_then_new_symptom]
+    ambiguity: needs-fact:speed_band
+    provenance: tekmetric            # tka-057
+  - phrase: "got new tires last week and now it vibrates at highway speed"
+    normalized: post-tire-work highway vibration
+    routes_to: [recent_tire_work_then_new_symptom]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+
+  # ---- NULL-ROUTE (maintenance / work-order lines, not customer symptoms) ----
+  - phrase: "Tire Rotation & Balance"
+    normalized: routine rotation & balance line item
+    routes_to: []
+    ambiguity: null-route
+    provenance: tekmetric            # tkc-060
+  - phrase: "ROTATE IF NEEDED"
+    normalized: conditional rotation work-order note
+    routes_to: []
+    ambiguity: null-route
+    provenance: tekmetric            # tka-026
+  - phrase: "quote replacing 4 tpms sensors"
+    normalized: internal quote line for TPMS sensor replacement
+    routes_to: []
+    ambiguity: null-route            # replace-intent WORK-ORDER line (no customer symptom); if a live symptom surfaces, advisor decides. Corrected to the conforming `null-route` value (schema permits: unambiguous | needs-fact:<slot> | cross-system:<slug> | null-route).
+    provenance: tekmetric            # tkc-263

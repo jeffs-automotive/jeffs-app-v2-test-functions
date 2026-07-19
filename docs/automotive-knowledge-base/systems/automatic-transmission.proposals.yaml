@@ -1,0 +1,456 @@
+system: automatic-transmission
+# Typed change-ops bound to the live snapshot (2026-07-18, shop 7476).
+# Every diagnostic rationale traces to the dossier §; every negative names routes_to.
+# Chris-gated ops (new subcategories, service-config, new service, new slot) are flagged gated: true.
+# Ops whose routes_to / discriminating_fact points at a PROPOSED (not-yet-live) slug or slot carry
+#   depends_on: [<op that must land first>] so they do not dangle if the proposal is rejected.
+
+ops:
+
+  # =====================================================================================
+  # L1 — Stage-1 keywords: transmission_testing.example_keywords[] is EMPTY today.
+  # This is the single highest-leverage fix. All entries are >=2 tokens or domain tokens.
+  # NOTE: transmission_testing's Stage-1 keyword line = example_keywords[] UNION the synonyms[] of
+  #   every subcategory in its concern_categories (today: `performance` only). So low_power's
+  #   synonyms (which include "stuck in gear", "limp mode", "engine revs but car doesn't move")
+  #   ALREADY feed the Stage-1 line — the ops below that duplicate those are explicit no-ops
+  #   (belt-and-suspenders), flagged inline.
+  # =====================================================================================
+  - op: stage1.keyword.add
+    category_key: transmission_testing
+    phrase: "transmission slipping"
+    rationale: "Core M1 slip cue; service had zero keywords so slip complaints only matched via subcat synonyms."
+    evidence: "tekmetric: 'when driving up a hill trans slips'; 'CLIENT STATES CLUTCH IS SLIPPING'"
+  - op: stage1.keyword.add
+    category_key: transmission_testing
+    phrase: "slips in gear"
+    rationale: "M1 slip, in-gear."
+    evidence: "forum-paraphrase; existing low_power synonym 'engine revs but car doesn't move'"
+  - op: stage1.keyword.add
+    category_key: transmission_testing
+    phrase: "wont shift"
+    rationale: "M6/M7 no-shift/limp; high corpus frequency."
+    evidence: "tekmetric: 'VEHICLE STARTS BUT DOES NOT SHIFT INTO GEAR'; 'TOW IN DOES NOT SHIFT'"
+  - op: stage1.keyword.add
+    category_key: transmission_testing
+    phrase: "does not shift into gear"
+    rationale: "M6 no engagement."
+    evidence: "tekmetric: 'VEHICLE STARTS BUT DOES NOT SHIFT INTO GEAR. A LOT OF DASHBOARD LIGHTS ON'"
+  - op: stage1.keyword.add
+    category_key: transmission_testing
+    phrase: "wont go into gear"
+    rationale: "M6 no engagement, customer voice."
+    evidence: "forum-paraphrase corpus of no-engagement complaints"
+  - op: stage1.keyword.add
+    category_key: transmission_testing
+    phrase: "hard shift"
+    rationale: "M5 harsh shift."
+    evidence: "forum: 'Hard shift between second and third'"
+  - op: stage1.keyword.add
+    category_key: transmission_testing
+    phrase: "shifts hard"
+    rationale: "M5 harsh shift variant."
+    evidence: "forum-paraphrase; 'slams into gear'"
+  - op: stage1.keyword.add
+    category_key: transmission_testing
+    phrase: "jerks when shifting"
+    rationale: "M5 harsh shift felt as a jerk ON the gear change. NOTE dual-read: the same words can be an engine buck/misfire under steady load (see lexicon, routed engine_misfire_or_bucking_feeling, ambiguity needs-fact:transmission_behavior). Targets the shift-specific reading; the D1/D2 hedges + the transmission_behavior slot disambiguate."
+    evidence: "forum-paraphrase 'slams/jerks on the 2-3 shift'. (The tekmetric line 'The car jerks while switching gears in the lower gears' is ambiguous harsh-shift vs misfire — not used as clean trans evidence.)"
+  - op: stage1.keyword.add
+    category_key: transmission_testing
+    phrase: "stuck in gear"
+    rationale: "M7 limp/holds-gear. NO-OP: already a low_power synonym, so it already reaches this service's Stage-1 line via the synonym union; added to example_keywords[] for explicitness only."
+    evidence: "forum-paraphrase; tekmetric limp-mode lines"
+  - op: stage1.keyword.add
+    category_key: transmission_testing
+    phrase: "stuck in park"
+    rationale: "M6 won't select gear."
+    evidence: "tekmetric: 'GETS STUCK IN PARK WILL HAVE TO GO BACK AND FORTH WITH SHIFTER TO GET INTO GEAR'"
+  - op: stage1.keyword.add
+    category_key: transmission_testing
+    phrase: "limp mode"
+    rationale: "M7 failsafe; domain multi-token. NO-OP: already a low_power synonym reaching this service's Stage-1 line via the synonym union; added for explicitness only."
+    evidence: "tekmetric: 'WENT INTO LIMP MODE. A LOT OF DASH BOARD LIGHTS CAME ON'"
+  - op: stage1.keyword.add
+    category_key: transmission_testing
+    phrase: "takes a second to go in gear"
+    rationale: "M4 delayed engagement in customer voice (NOT the advisor term 'delayed engagement' — style-guide compliant)."
+    evidence: "tekmetric: 'CAR HESITATES WHEN PUTTING IN GEAR AFTER SITTING FOR AWHILE'"
+  - op: stage1.keyword.add
+    category_key: transmission_testing
+    phrase: "transmission fluid"
+    rationale: "M9/M10 leak + condition; domain two-token."
+    evidence: "tekmetric: 'TRANSMISSION COOLER LINE LEAKING'; 'transmission fluid was flushed'"
+  - op: stage1.keyword.add
+    category_key: transmission_testing
+    phrase: "transmission whine"
+    rationale: "M11 gear/pump/CVT whine; domain two-token. Reaches transmission_testing only if P3 adds `noise` (today the whine lands on the noise subcat high_pitched_whining_under_the_hood via suspension/other services)."
+    evidence: "forum-paraphrase CVT/gear-whine threads; dossier M11"
+    depends_on: [catalog.service.propose]   # needs the `noise` category on transmission_testing to actually route here
+  - op: stage1.keyword.add
+    category_key: transmission_testing
+    phrase: "torque converter"
+    rationale: "M2 TCC shudder; domain term customers do sometimes use (borderline — kept as a domain single token)."
+    evidence: "Gears/ATRA TCC shudder; forum corpus"
+  - op: stage1.keyword.add
+    category_key: transmission_testing
+    phrase: "CVT"
+    rationale: "M3 CVT judder; domain single token (allowed)."
+    evidence: "forum CVT judder threads; US mix (Nissan/Subaru/Honda)"
+  - op: stage1.keyword.add
+    category_key: transmission_testing
+    phrase: "transmission"
+    rationale: "Domain single token; service had ZERO keywords, so even the literal system word did not anchor it. Kept despite loose customer usage (style guide flags 'transmission for any drivetrain feel') because the confusable hedges (D1/D2) + subcat negatives catch the CV/diff/driveline cross-overs. FLAGGED for Chris as a documented judgment call."
+    evidence: "tekmetric: 'POSSIBLE TRANSMISSION CONCERN'; 'client believes needs transmission'"
+
+  # =====================================================================================
+  # Stage-1 hedges (confusable pairs) — canonical pairs + the new trans-slip pair.
+  # discriminating_fact transmission_behavior is a PROPOSED slot -> depends_on the slot proposal.
+  # Until it lands, the hedge RULE text still applies at Stage-1 (prose); no Stage-3 fact is recorded.
+  # =====================================================================================
+  - op: stage1.hedge.add
+    category_a: transmission_testing
+    category_b: check_engine_light_testing     # engine driveability (low-power / misfire) lives here
+    rule: "If the customer describes an engine REV/SPEED SPLIT (engine revs higher than normal while the car does not gain speed) OR a shift-quality behavior (slips, won't shift, delayed/no engagement, harsh shift), prefer transmission_testing. If the weakness has NO rev/speed split (revs stay low, car just gutless) or a FLASHING CEL / bucking under load, prefer the engine path."
+    discriminating_fact: transmission_behavior   # PROPOSED slot
+    depends_on: [stage3.slot.propose]
+  - op: stage1.hedge.add
+    category_a: transmission_testing
+    category_b: suspension_steering_check       # acceleration shudder shared with CV/driveshaft
+    rule: "Acceleration shudder with CV cues (grease on inside of a front tire, clicking when turning tight, worst on turns) leans driveline/CV (suspension_steering_check). Shudder at steady light-throttle cruise (~40 mph) that clears on a throttle change (or a brake tap) leans transmission (TCC lockup)."
+    discriminating_fact: transmission_behavior   # PROPOSED slot; interim fallback = speed_band + onset_timing (existing)
+    depends_on: [stage3.slot.propose]
+  - op: stage1.hedge.add
+    category_a: transmission_testing
+    category_b: power_steering_eps_testing      # red-fluid pair
+    rule: "A red/pink oily leak toward the MIDDLE/REAR under the car (no steering complaint) leans transmission. A red/pink leak up FRONT by the engine WITH heavy/whining steering leans power steering. Same dye — do not pick confidently without the location or steering cue."
+    discriminating_fact: fluid_under_car_location   # existing slot; no dependency
+
+  # =====================================================================================
+  # L2/L3/L4 — Stage-2 sharpening of the existing confusable subcategories.
+  # =====================================================================================
+  - op: stage2.description.revise
+    subcat_slug: low_power_or_wont_accelerate_normally
+    text: "Keep existing text; sharpen the trans-slip boundary: add that a rev/speed SPLIT (engine revs climb but the car doesn't gain speed) points to transmission slipping specifically, and the wizard should capture whether the engine over-revs vs stays low — this is the discriminator between a slipping transmission and an engine-side power loss (clogged cat, fuel pump, MAF)."
+    why: "This subcat currently absorbs both engine low-power AND trans slip; the rev/speed split is the one cue that separates them (dossier D1)."
+  - op: stage2.example.positive.add
+    subcat_slug: low_power_or_wont_accelerate_normally
+    phrase: "when driving up a hill the trans slips and the rpms climb but it barely speeds up"
+    provenance: synthetic     # COMPOSITE: corpus seed 'when driving up a hill trans slips' (tekmetric) + spliced rev/speed clause (from the catalog low_power example). Flagged synthetic — counts toward the subcat's synthetic share.
+  - op: stage2.example.negative.add
+    subcat_slug: low_power_or_wont_accelerate_normally
+    phrase: "it wont shift into gear at all and wont move, transmission failed"
+    routes_to: harsh_delayed_or_no_shift        # PROPOSED slug
+    gated: true
+    depends_on: [stage2.subcategory.propose]    # only meaningful once harsh_delayed_or_no_shift exists; TODAY this line force-fits into low_power itself, so it is NOT a valid negative under current config
+  - op: stage2.example.negative.add
+    subcat_slug: low_power_or_wont_accelerate_normally
+    phrase: "shudders like rumble strips at a steady 40 then smooths out"
+    routes_to: shaking_when_speeding_up_or_going_uphill
+
+  - op: stage2.example.positive.add
+    subcat_slug: shaking_when_speeding_up_or_going_uphill
+    phrase: "car shudders pretty bad whenever i give it gas going uphill, smooths right out as soon as i let off"
+    provenance: tekmetric
+  - op: stage2.example.positive.add
+    subcat_slug: shaking_when_speeding_up_or_going_uphill
+    phrase: "shuddering transmission issue, feels like rumble strips around 40"
+    provenance: synthetic     # COMPOSITE: tekmetric fragment 'SHUTTERING TRANSMISSION ISSUE' + forum-paraphrase 'rumble strips around 40'. Flagged synthetic.
+  - op: stage2.example.negative.add
+    subcat_slug: shaking_when_speeding_up_or_going_uphill
+    phrase: "engine bucks and jerks worse under hard load and low rpm, flashing check engine light"
+    routes_to: engine_misfire_or_bucking_feeling
+  - op: stage2.synonym.add
+    subcat_slug: shaking_when_speeding_up_or_going_uphill
+    term: "torque converter shudder"
+  - op: stage2.synonym.add
+    subcat_slug: shaking_when_speeding_up_or_going_uphill
+    term: "CVT judder"
+  - op: stage2.synonym.add
+    subcat_slug: shaking_when_speeding_up_or_going_uphill
+    term: "transmission shudder"
+
+  - op: stage2.example.positive.add
+    subcat_slug: red_or_pink_puddle_transmission_or_power_steering
+    phrase: "transmission cooler line leaking, red fluid toward the back"
+    provenance: synthetic     # COMPOSITE: corpus verbatim 'TRANSMISSION COOLER LINE LEAKING' (tekmetric) + invented location clause 'red fluid toward the back'. Flagged synthetic.
+  - op: stage2.example.negative.add
+    subcat_slug: red_or_pink_puddle_transmission_or_power_steering
+    phrase: "thick near-black puddle under the rear axle that smells like rotten eggs"
+    routes_to: thick_dark_brown_puddle_gear_or_differential_oil
+  - op: stage2.example.negative.add
+    subcat_slug: red_or_pink_puddle_transmission_or_power_steering
+    phrase: "bright neon pink watery fluid by the radiator, smells sweet like syrup"
+    routes_to: green_orange_yellow_or_pink_puddle_coolant   # D5: OAT coolant (neon, watery, sweet) vs oily red ATF
+  - op: stage2.synonym.add
+    subcat_slug: red_or_pink_puddle_transmission_or_power_steering
+    term: "ATF leak"
+  - op: stage2.synonym.add
+    subcat_slug: red_or_pink_puddle_transmission_or_power_steering
+    term: "transmission cooler line"
+
+  - op: stage2.example.negative.add
+    subcat_slug: hesitation_or_lag_when_accelerating
+    phrase: "takes a few seconds to catch when i put it in drive or reverse from park"
+    routes_to: harsh_delayed_or_no_shift        # PROPOSED slug (delayed engagement is NOT engine tip-in lag)
+    gated: true
+    depends_on: [stage2.subcategory.propose]    # only meaningful once harsh_delayed_or_no_shift exists; TODAY delayed engagement force-fits into hesitation, so it is NOT a valid negative under current config
+
+  # =====================================================================================
+  # Stage-2 subcategory proposals (Chris-gated).
+  # =====================================================================================
+  - op: stage2.subcategory.propose
+    gated: true
+    category: performance
+    name: harsh_delayed_or_no_shift
+    description: "Problems with HOW the transmission shifts or engages (not raw engine power): harsh/banging shifts, a delay before it engages when you put it in Drive or Reverse, won't go into gear / won't move at all, stuck in one gear or limp mode, pops out of gear on its own, or revs flaring up between gears. The engine itself runs; the issue is the gear change. Distinct from low_power_or_wont_accelerate_normally (sustained engine weakness with no shift/engagement problem) and hesitation_or_lag_when_accelerating (a momentary pause while already moving, not on gear selection)."
+    examples:
+      - "vehicle starts but does not shift into gear"          # tekmetric
+      - "gets stuck in park, have to work the shifter to get into gear"  # tekmetric
+      - "tow in, does not shift, feels like transmission failed"          # tekmetric
+      - "takes a few seconds to engage when i put it in drive"           # forum-paraphrase
+      - "slams hard into gear / shifts really hard between 2nd and 3rd"    # forum-paraphrase
+      - "went into limp mode and wont go over 40, dash lights came on"     # tekmetric
+    why_existing_insufficient: "transmission_testing's only concern_category is 'performance', whose subcats are all engine-behavior (hesitation, misfire, surge, stall, low-power). Shift-quality complaints (M4-M8) have literally no Stage-2 home and are force-fit into low_power/hesitation, whose own descriptions explicitly exclude them. >=8 distinct corpus lines."
+  - op: stage2.subcategory.propose
+    gated: true
+    category: performance
+    name: transmission_slipping
+    description: "The engine revs higher than normal but the car doesn't gain speed to match — most noticeable under load, uphill, or when warm. A rev/speed split, not general weakness. (Lower priority: if not split out, the transmission_behavior fact slot + the D1 Stage-1 hedge already disambiguate slip from engine low-power inside low_power_or_wont_accelerate_normally.)"
+    examples:
+      - "when driving up a hill trans slips, rpms climb but it barely speeds up"  # composite (tekmetric seed + rev/speed clause)
+      - "engine revs but the car doesnt move like it should"                      # forum-paraphrase
+      - "feels like its slipping when i accelerate"                               # synthetic
+    why_existing_insufficient: "Slip and engine-power-loss lead to different repairs; low_power conflates them. Split is optional because the new slot covers the Stage-3 need; offered for Chris to decide."
+
+  # =====================================================================================
+  # Service / catalog config (Chris-gated).
+  # =====================================================================================
+  - op: catalog.service.propose
+    gated: true
+    name: "transmission_testing (REVISION, not a new service): expand concern_categories from [performance] to [performance, vibration, leak, warning_light, noise]; populate example_keywords[] (see stage1.keyword.add ops)."
+    demand_evidence: "Correctly-worded transmission complaints in four OTHER categories currently cannot reach transmission_testing at Stage-1: converter/CVT shudder (vibration -> shaking_when_speeding_up_or_going_uphill), red ATF puddle (leak -> red_or_pink_puddle_transmission_or_power_steering), limp-mode / trans-temp light (warning_light), and gear/pump/CVT whine + reverse grind (noise -> high_pitched_whining_under_the_hood). Corpus shows all five channels in real concerns; today only 'performance' is advertised."
+    fee_rationale: "No fee change — same $179.95 diagnostic; this is a routing-reach fix, not a new offering."
+
+  # =====================================================================================
+  # L5 — NEW FACT SLOT (>=3-question rule; unlocks the 4 EMPTY-required_facts questions below).
+  # =====================================================================================
+  - op: stage3.slot.propose
+    name: transmission_behavior
+    type: enum
+    values:
+      - slipping                 # engine revs, road speed does not follow
+      - delayed_engagement       # multi-second pause before it engages after selecting D/R
+      - no_engagement            # selects a gear but won't move (incl. reverse-only failure)
+      - harsh_or_hard_shift      # bangs/jolts into gear
+      - shudder_or_judder        # rhythmic shudder under load / at cruise / on takeoff
+      - flaring_between_shifts   # rpm spikes/hangs during an upshift then grabs
+      - stuck_in_gear            # holds one gear / limp mode / won't shift OUT of a gear (merged: covers the old wont_shift_out_of_gear)
+      - pops_out_of_gear         # jumps/pops OUT of gear on its own while moving (the inverse of stuck_in_gear — kept separate so the two never collide)
+      - shifts_erratically       # random rough/late shifting, no single pattern
+      - normal                   # customer says shifting is fine (rules trans out)
+    literal_cues:
+      slipping: ["trans slips", "engine revs but the car doesn't move", "revs high but doesn't speed up", "slips in gear", "revs up going uphill but barely speeds up"]
+      delayed_engagement: ["takes a few seconds to engage", "hesitates when i put it in gear", "delay before it catches in drive or reverse", "felt like it was in neutral for a moment"]
+      no_engagement: ["does not shift into gear", "won't go into gear", "won't move", "starts but won't shift into gear", "drives forward but won't go in reverse", "no reverse"]
+      harsh_or_hard_shift: ["shifts hard", "slams into gear", "jerks when shifting gears", "hard shift between 2nd and 3rd", "bangs into gear"]
+      shudder_or_judder: ["shudders when i give it gas", "shuddering transmission", "judder on takeoff", "feels like rumble strips at 40", "torque converter shudder"]
+      flaring_between_shifts: ["revs up between gears then catches", "rpm flares on the shift"]
+      stuck_in_gear: ["stuck in gear", "won't shift out of 3rd", "won't shift out of gear", "went into limp mode", "stays in one gear", "holds one gear"]
+      pops_out_of_gear: ["pops out of gear", "jumps out of gear while driving", "slips out of gear on its own"]
+      shifts_erratically: ["shifts weird sometimes", "shifting strangely", "shifts at the wrong times"]
+      normal: ["shifts fine", "shifting is normal", "no shifting problems"]
+    questions_unlocked: [995, 168, 1183, 1186]   # 4 EXISTING questions with empty required_facts (>=3 rule met). Any harsh_delayed_or_no_shift questions are additional but not counted here (that subcat is not yet approved).
+    note: >
+      Boundary discipline (verifier issue 7): stuck_in_gear and the old wont_shift_out_of_gear collided —
+      'won't shift out of 3rd' and 'won't shift out of gear' are the SAME complaint. Merged into stuck_in_gear.
+      pops_out_of_gear is the OPPOSITE failure (won't stay in gear) and never shares a cue.
+      A bare speed cap ('won't go over a certain speed') is NOT a literal transmission_behavior cue
+      (could be engine limp / fuel starvation / clogged cat) and was REMOVED from stuck_in_gear — that phrase
+      only sets stuck_in_gear when paired with a named mode ('went into limp mode').
+      engine_running cannot hold these — it encodes misfire/surge/stall/crank state; mixing shift behavior
+      into it would corrupt an engine-state slot and the D1/D2 hedges. Literalness enforced: 'slipping'
+      requires an explicit rev/speed split; a bare 'no power' does NOT set it.
+
+  # New warning_light_named example values (free-text slot; adding documented examples, not an enum change).
+  - op: stage3.slot.value.add
+    slot: warning_light_named
+    value: "transmission"
+    literal_cues: ["transmission light", "trans light", "transmission warning light"]
+  - op: stage3.slot.value.add
+    slot: warning_light_named
+    value: "transmission temp"
+    literal_cues: ["transmission hot", "trans temp light", "AT oil temp", "transmission temperature light"]
+
+  # =====================================================================================
+  # question.required_facts.set — reduce over-asking. All target questions VERIFIED empty
+  # in catalog-snapshot.json (2026-07-18): 995, 168, 1183, 1186, 461, 1182. (q166 was dropped —
+  # it already carries required_facts=['onset_timing'], so an op there would be a no-op.)
+  # The 4 transmission_behavior sets depend on the L5 slot proposal.
+  # =====================================================================================
+  - op: question.required_facts.set
+    question_id: 995            # "When you shift into Drive or Reverse, does it hesitate, slip, or feel rough?"
+    facts: [transmission_behavior]
+    skip_class: SAFE
+    depends_on: [stage3.slot.propose]
+    derivation_note: "Directly asks the behavior; if the customer already said 'slips in gear' / 'takes a few seconds to engage' / 'won't go into gear', the slot is set and the question is skippable."
+  - op: question.required_facts.set
+    question_id: 168            # "Has the transmission been slipping or shifting strangely along with the shaking?"
+    facts: [transmission_behavior]
+    skip_class: SAFE
+    depends_on: [stage3.slot.propose]
+    derivation_note: "Answered when the customer stated any slip/shift behavior alongside the shudder."
+  - op: question.required_facts.set
+    question_id: 1183           # "Does the engine rev up high but the car doesn't pick up speed like it used to?"
+    facts: [transmission_behavior]
+    skip_class: PARTIAL
+    depends_on: [stage3.slot.propose]
+    derivation_note: "Set only when the customer literally stated the rev/speed split (transmission_behavior=slipping). PARTIAL because a customer could describe low power without stating the split."
+  - op: question.required_facts.set
+    question_id: 1186           # "Does the car feel like it's stuck in a lower gear or 'held back' when you accelerate?"
+    facts: [transmission_behavior]
+    skip_class: PARTIAL
+    depends_on: [stage3.slot.propose]
+    derivation_note: "Answered by stuck_in_gear/slipping cues; PARTIAL because 'held back' can also be an engine-power phrasing."
+  - op: question.required_facts.set
+    question_id: 461            # "Does the problem happen all the time or only sometimes?" (hesitation subcat)
+    facts: [onset_timing]
+    skip_class: PARTIAL
+    derivation_note: "'all the time'->always, 'only sometimes'->intermittent are onset_timing values; skip when the customer stated frequency."
+  - op: question.required_facts.set
+    question_id: 1182           # "Is the loss of power constant, or does it come and go?" (low_power subcat)
+    facts: [onset_timing]
+    skip_class: PARTIAL
+    derivation_note: "constant->always / comes-and-goes->intermittent; skip when stated."
+
+  - op: question.intentionally_empty
+    question_id: 998            # leak: "more when parked after driving, or when it sits a day?"
+    reason: "No fact slot models fresh-vs-cold leak timing for fluids; leaving empty is correct — a new slot for a single question would violate the >=3 rule."
+  - op: question.intentionally_empty
+    question_id: 999            # leak: "spot after running, or first thing in the morning?"
+    reason: "Same leak-timing dimension as 998; not slot-modeled, below the >=3-question threshold."
+
+# =======================================================================================
+# GOLDEN CASES (>=8, incl. >=1 inference-trap + >=1 null-route). Schema mirrors eval-cases.json.
+#
+# config_dependency (per case): the proposal op(s) that must LAND before the case is valid under the
+#   eval harness. run-eval.ts validates (a) stage2_subcategory_slug is reachable from the PRIMARY
+#   stage1_category_key's concern_categories pool, and (b) every stage3 fact slot exists in the live
+#   schema. Cases below that use the shaking/red-puddle subcats from transmission_testing (needs P3 to
+#   add vibration/leak) OR the proposed transmission_behavior slot (needs L5) therefore CANNOT run under
+#   current config. WAVE C MUST exclude any case with a non-empty config_dependency from the
+#   current-config eval set and run it only once the referenced ops are adopted. Cases with
+#   config_dependency: [] run today as-is.
+#   Op refs: L5 = stage3.slot.propose:transmission_behavior;
+#            P1 = stage2.subcategory.propose:harsh_delayed_or_no_shift;
+#            P3 = catalog.service.propose:transmission_testing.concern_categories (+vibration/+leak/+noise).
+# =======================================================================================
+golden_cases:
+
+  - text: "when driving up a hill trans slips, the rpms climb but it barely speeds up"
+    tags: [fact_rich, confusable_trans_vs_lowpower]
+    config_dependency: [L5]
+    expected:
+      stage1_category_key: transmission_testing
+      stage1_acceptable: [transmission_testing, check_engine_light_testing]
+      stage2_subcategory_slug: low_power_or_wont_accelerate_normally   # reachable today (performance); transmission_slipping if P2 adopted
+      stage3_facts: { transmission_behavior: slipping, onset_timing: when_accelerating }
+      route: testing_service
+
+  - text: "VEHICLE STARTS BUT DOES NOT SHIFT INTO GEAR. A LOT OF DASHBOARD LIGHTS ON"
+    tags: [all_caps, no_engagement]
+    config_dependency: [L5]
+    expected:
+      stage1_category_key: transmission_testing
+      stage1_acceptable: [transmission_testing]
+      stage2_subcategory_slug: low_power_or_wont_accelerate_normally   # reachable today; harsh_delayed_or_no_shift if P1 adopted
+      stage3_facts: { transmission_behavior: no_engagement, warning_light_behavior: multiple_lights_at_once }
+      route: testing_service
+
+  - text: "gets stuck in park, have to go back and forth with the shifter to get it into gear"
+    tags: [no_engagement]
+    config_dependency: [L5]
+    expected:
+      stage1_category_key: transmission_testing
+      stage1_acceptable: [transmission_testing]
+      stage2_subcategory_slug: low_power_or_wont_accelerate_normally   # reachable today; harsh_delayed_or_no_shift if P1 adopted
+      stage3_facts: { transmission_behavior: no_engagement }
+      route: testing_service
+
+  - text: "car shudders pretty bad whenever i give it gas going uphill, smooths right out as soon as i let off. started a couple weeks ago"
+    tags: [fact_rich, confusable_shudder_vs_misfire]
+    config_dependency: [P3, L5]   # stage2 is a VIBRATION subcat -> transmission_testing reaches it only after P3 adds `vibration`; stage3 needs the L5 slot
+    expected:
+      stage1_category_key: transmission_testing
+      stage1_acceptable: [transmission_testing, suspension_steering_check, check_engine_light_testing]
+      stage2_subcategory_slug: shaking_when_speeding_up_or_going_uphill
+      stage3_facts: { transmission_behavior: shudder_or_judder, onset_timing: when_accelerating, started_when: weeks_ago }
+      route: testing_service
+
+  - text: "takes a few seconds to catch when i put it in drive or reverse, then it drives fine"
+    tags: [delayed_engagement, confusable_vs_hesitation]
+    config_dependency: [L5]
+    expected:
+      stage1_category_key: transmission_testing
+      stage1_acceptable: [transmission_testing]
+      stage2_subcategory_slug: hesitation_or_lag_when_accelerating     # reachable today; harsh_delayed_or_no_shift if P1 adopted
+      stage3_facts: { transmission_behavior: delayed_engagement }
+      route: testing_service
+
+  - text: "bright red oily puddle under the middle of my car, about the size of a plate"
+    tags: [leak, confusable_atf_vs_ps]
+    config_dependency: [P3]   # stage2 is a LEAK subcat -> transmission_testing reaches it only after P3 adds `leak`. stage3 facts are all EXISTING slots.
+    expected:
+      stage1_category_key: transmission_testing
+      stage1_acceptable: [transmission_testing, power_steering_eps_testing, oil_leak_testing]
+      stage2_subcategory_slug: red_or_pink_puddle_transmission_or_power_steering
+      stage3_facts: { fluid_color: red_or_pink, fluid_under_car_location: under_middle }
+      route: testing_service
+
+  - text: "went into limp mode, wont go over 40 mph, bunch of dash lights came on but theyre off now"
+    tags: [limp_mode, stuck_in_gear]
+    config_dependency: [L5]
+    expected:
+      stage1_category_key: transmission_testing
+      stage1_acceptable: [transmission_testing, check_engine_light_testing]
+      stage2_subcategory_slug: low_power_or_wont_accelerate_normally   # reachable today; harsh_delayed_or_no_shift if P1 adopted
+      stage3_facts: { transmission_behavior: stuck_in_gear, speed_band: specific_mph, speed_specific_mph: 40, warning_light_behavior: came_on_then_off }
+      route: testing_service
+
+  # ---- INFERENCE TRAP: tempts engine-misfire route + setting an engine_running/noise the customer never stated
+  - text: "car shudders when i step on the gas going uphill, smooths out when i coast"
+    tags: [inference_trap, confusable_shudder_vs_misfire]
+    config_dependency: [P3, L5]   # VIBRATION subcat + L5 slot
+    expected:
+      stage1_category_key: transmission_testing
+      stage1_acceptable: [transmission_testing, suspension_steering_check]
+      stage2_subcategory_slug: shaking_when_speeding_up_or_going_uphill
+      # TRAP: must NOT set engine_running=misfiring, noise_descriptor, or location_* — the customer named
+      # only a load-dependent shudder. transmission_behavior=shudder_or_judder is the only literal behavior.
+      stage3_facts: { transmission_behavior: shudder_or_judder, onset_timing: when_accelerating }
+      route: testing_service
+
+  # ---- INFERENCE TRAP #2: "no power" must NOT be read as slipping; and drivable_state/safety must NOT be assumed
+  - text: "car has no power, feels like the emergency brake is on, foot to the floor and it wont pick up"
+    tags: [inference_trap, confusable_trans_vs_lowpower]
+    config_dependency: []   # runs under current config as-is
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing, transmission_testing]
+      stage2_subcategory_slug: low_power_or_wont_accelerate_normally
+      # TRAP: (1) customer did NOT state a rev/speed split -> do NOT set transmission_behavior=slipping.
+      # (2) customer stated neither drivability nor a safety feeling -> drivable_state stays NULL
+      #     (extracted-facts.ts: 'Most descriptions don't mention this — leave null'). Facts EMPTY on purpose.
+      stage3_facts: {}
+      route: testing_service
+
+  # ---- NULL-ROUTE: work-order / maintenance line, not a live concern
+  - text: "recs from dealer: transmission flush, brake fluid, front brake pads and rotors"
+    tags: [null_route, work_order]
+    config_dependency: []   # runs under current config as-is
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      stage3_facts: { customer_request_type: routine_maintenance }
+      route: advisor

@@ -1,0 +1,604 @@
+system: wheels-tires-tpms-bearings
+# Typed change-ops binding this dossier's findings to the live snapshot (00-current-scheduler-taxonomy.md),
+# verified against the DB 2026-07-18 (project itzdasxobllfiuolmbxu). Two structural gaps drive these ops:
+#   (1) tire_repair / tpms_testing / suspension_steering_check ALL have empty example_keywords[] -> L1.
+#   (2) THE TIRE-BUYING GAP (just_want_new_tires / dry_rot / worn-out) has no bookable service -> catalog.
+# Stage-2 enrichment is otherwise strong -> NO stage2.description.revise ops (avoid regression; the one
+# real description bug -- tpms desc references a non-existent slug -- is flagged in dossier §8 for Chris,
+# not auto-revised). L5 AUDITS the required_facts[] gaps on REAL question IDs (esp. humming_or_whirring_at_speed,
+# all 7 empty) and RECONCILES with the same-day Workstream-Q maps (binding/required-facts-map.q2.md/q3.md):
+# the mapper is presence-only, so every candidate tag is a wrongful-skip risk -> ZERO required_facts.set ops;
+# all deferred to intentionally_empty with the map's reason, plus the steering_load_effect slot proposal.
+
+ops:
+  # ============================================================
+  # L1 — Stage-1 keywords. ALL THREE services are keyword-blind today. Multi-token / domain only.
+  # ============================================================
+  # --- tire_repair (concern_categories: [tires]) ---
+  - op: stage1.keyword.add
+    category_key: tire_repair
+    phrase: "nail in my tire"
+    rationale: "Canonical repairable-puncture phrase; tire_repair has ZERO keywords today."
+    evidence: "DB positive pattern; USTMA puncture-repair scope"
+  - op: stage1.keyword.add
+    category_key: tire_repair
+    phrase: "screw in my tire"
+    rationale: "High-frequency puncture object; verbatim customer voice."
+    evidence: "eval tpms_testing-001 ('screw sticking out')"
+  - op: stage1.keyword.add
+    category_key: tire_repair
+    phrase: "tire keeps losing air"
+    rationale: "Slow-leak lead phrase (FM-3.2); air-loss framing."
+    evidence: "tka-056 'LOOSING AIR PSI'; tkc-217"
+  - op: stage1.keyword.add
+    category_key: tire_repair
+    phrase: "slow leak in my tire"
+    rationale: "2-token slow-leak phrase, unambiguously tire_repair."
+    evidence: "tkc-010 'Lf tire slow leak'"
+  - op: stage1.keyword.add
+    category_key: tire_repair
+    phrase: "tire going flat"
+    rationale: "Going-flat framing; distinguishes physical tire from TPMS-light-only."
+    evidence: "tkc-010, tka-056"
+  # NOTE: "patch and plug" was intentionally DROPPED — it is the shop's name for the repair
+  # (service display_name), not customer voice, and had no corpus occurrence or cited misroute
+  # (fails the consolidation-lint bar for keywords, which requires a corpus hit or a real misroute).
+  # --- tpms_testing (concern_categories: [warning_light, tires]) ---
+  - op: stage1.keyword.add
+    category_key: tpms_testing
+    phrase: "TPMS light"
+    rationale: "The canonical TPMS trigger; tpms_testing has ZERO keywords today. Domain token."
+    evidence: "tkc-018, tka-088"
+  - op: stage1.keyword.add
+    category_key: tpms_testing
+    phrase: "tire pressure light"
+    rationale: "Most common lay name for the TPMS telltale."
+    evidence: "tkc-137, eval tpms_testing-003"
+  - op: stage1.keyword.add
+    category_key: tpms_testing
+    phrase: "low tire pressure warning"
+    rationale: "Warning-led framing; routes to the light path not the physical-tire path."
+    evidence: "eval tpms_testing-003"
+  - op: stage1.keyword.add
+    category_key: tpms_testing
+    phrase: "tire pressure sensor not reading"
+    rationale: "TPMS system-fault phrasing (dead/offline sensor)."
+    evidence: "tkc-076 'sensor not reading/offline'"
+  - op: stage1.keyword.add
+    category_key: tpms_testing
+    phrase: "horseshoe light"
+    rationale: "Shape-based customer name for the amber TPMS icon."
+    evidence: "DB synonym 'horseshoe icon'; FMVSS 138 telltale shape"
+  # --- suspension_steering_check (concern_categories: [noise, steering, pulling, vibration]) ---
+  #     Only the WHEEL/BALANCE/BEARING-flavored keys here (this dossier's focus). Suspension-ride and
+  #     driveline keys are owned by their dossiers; flagged to avoid collision.
+  - op: stage1.keyword.add
+    category_key: suspension_steering_check
+    phrase: "shimmy at highway speed"
+    rationale: "Balance-imbalance shimmy (FM-3.9); service is keyword-blind."
+    evidence: "tkc-052 'SHIMMY AT HIGHWAY SPEEDS', tka-196"
+  - op: stage1.keyword.add
+    category_key: suspension_steering_check
+    phrase: "steering wheel shakes at highway speed"
+    rationale: "Highest-frequency balance phrase; disambiguates from brake-only shake at Stage-1."
+    evidence: "tka-196, tkc-290"
+  - op: stage1.keyword.add
+    category_key: suspension_steering_check
+    phrase: "wheel bearing hum"
+    rationale: "Bearing hum (FM-3.11); domain phrase. SHARED surface with driveline dossier — coordinate."
+    evidence: "tkc-102 (dealer said wheel bearings), tkc-113"
+  - op: stage1.keyword.add
+    category_key: suspension_steering_check
+    phrase: "humming that gets louder with speed"
+    rationale: "Road-speed-rising hum, the bearing/tire-roar cue."
+    evidence: "tkc-113 '30 to 40 mph', DB positive"
+  - op: stage1.keyword.add
+    category_key: suspension_steering_check
+    phrase: "vibration at all speeds"
+    rationale: "Out-of-round constant tremor (FM-3.10); separates from band-limited shimmy."
+    evidence: "tkc-032 'SHAKING AT ALL SPEEDS'"
+
+  # ============================================================
+  # L1 — Stage-1 hedges (confusable pairs). THE REQUIRED TRIPLE FIRST.
+  # ============================================================
+  - op: stage1.hedge.add
+    category_a: tire_repair
+    category_b: tpms_testing
+    rule: "Physical tire evidence the customer can SEE or feel (nail/screw/bulge/cut, a tire that is low or going flat) -> tire_repair. A dashboard TPMS/low-pressure LIGHT as the customer's lead clue, with no confirmed low or damaged tire -> tpms_testing. If a nail/flat AND the light are both stated, the physical damage wins (tire_repair) and the light is corroborating. NOTE: the eval corpus mislabels a visible screw as tpms_testing (tpms_testing-001) — a named object must route to tire_repair."
+    discriminating_fact: tire_state   # visible_damage/flat/low_pressure -> tire_repair; normal_or_unknown + TPMS light -> tpms_testing
+  - op: stage1.hedge.add
+    category_a: tire_repair
+    category_b: suspension_steering_check
+    rule: "A tire problem (puncture, leak, visible damage) -> tire_repair. A wheel-DYNAMICS problem (vibration/shimmy at speed, wheel-bearing hum, a pull) -> suspension_steering_check. The split is 'the tire itself' vs 'how the wheel spins/rides'."
+    discriminating_fact: tire_state   # present -> tire_repair; absent + noise/vibration cue -> suspension_steering_check
+  - op: stage1.hedge.add
+    category_a: tpms_testing
+    category_b: suspension_steering_check
+    rule: "A TPMS/low-pressure warning LIGHT -> tpms_testing. A balance shimmy or bearing hum with NO tire-pressure light -> suspension_steering_check. A TPMS light plus an unrelated vibration is two concerns — lead with the customer's primary framing and hedge."
+    discriminating_fact: warning_light_named   # TPMS -> tpms_testing; null + vibration/noise -> suspension_steering_check
+  - op: stage1.hedge.add
+    category_a: suspension_steering_check
+    category_b: brake_inspection
+    rule: "Steering-wheel shake at a steady HIGHWAY speed with the foot OFF the brake -> suspension_steering_check (wheel balance). Shake/pulsation ONLY while pressing the brake pedal -> brake_inspection. The corpus files balance shimmy under 'CHECK BRAKES' (tkc-290) — do not let the customer's brake guess override an explicit speed-triggered, non-braking shake."
+    discriminating_fact: onset_timing   # when_braking -> brakes; highway/specific_mph without brake -> balance
+  # NOTE: the tire_repair-vs-tire-buying boundary is NOT expressed as a stage1.hedge.add — a hedge's two
+  # keys must both be valid Stage-1 keys (a testing_services.service_key or one of the 6 'other' situational
+  # slugs, per taxonomy §1/§3b), and `just_want_new_tires` is a tires-category SUBCATEGORY slug, not a
+  # Stage-1 key. The boundary is a Stage-1 ACCEPT-vs-REJECT (does tire_repair fire, or is there no service ->
+  # empty Stage-1 -> advisor), already carried by: (a) the live `tire_repair` service description ("NOT
+  # worn/dry-rot/new-tire requests (no fit -> advisor quote)"), (b) catalog.service.propose
+  # (tire_sales_consultation, below), and (c) the Stage-2 negatives below. One reinforcing Stage-2 negative
+  # is added so a "worn-out/just-want-new" phrasing on a repairable subcat routes to the tire-buying bucket.
+
+  # ============================================================
+  # L3 — Positive examples (real Tekmetric voice; DB positives skew clean/authored).
+  # ============================================================
+  - op: stage2.example.positive.add
+    subcat_slug: tire_going_flat_losing_air
+    phrase: "LEFT REAR TIRE LOOSING AIR PSI"
+    provenance: tekmetric            # tka-056
+  - op: stage2.example.positive.add
+    subcat_slug: tire_going_flat_losing_air
+    phrase: "front left tire looses air pressure, need to add air about every 1000 miles"
+    provenance: tekmetric            # tkc-217
+  - op: stage2.example.positive.add
+    subcat_slug: visible_damage_nail_screw_bulge_cut
+    phrase: "found a screw sticking out of my rear left tire, still holds air and drives fine"
+    provenance: synthetic            # authored eval fixture tpms_testing-001 (source authored-2026-07-02-workflow; NOT real Tekmetric text)
+  - op: stage2.example.positive.add
+    subcat_slug: tpms_tire_pressure_light
+    phrase: "TPMS light will flash when coming on then go solid, seems to come on going over bumps too"
+    provenance: tekmetric            # tka-021
+  - op: stage2.example.positive.add
+    subcat_slug: tpms_tire_pressure_light
+    phrase: "front driver-side tire pressure sensor not reading / offline, no low tire pressure observed"
+    provenance: tekmetric            # tkc-076
+  - op: stage2.example.positive.add
+    subcat_slug: low_pressure_warning_light_only
+    phrase: "put air in all 4 tires yesterday but the light still won't go off, tires look fine to me"
+    provenance: synthetic            # authored eval fixture tpms_testing-003 (source authored-2026-07-02-workflow; NOT real Tekmetric text)
+  - op: stage2.example.positive.add
+    subcat_slug: steering_wheel_shake_at_highway_speed
+    phrase: "SHIMMY AT HIGHWAY SPEEDS"
+    provenance: tekmetric            # tkc-052
+  - op: stage2.example.positive.add
+    subcat_slug: constant_vibration_that_doesnt_change_with_speed
+    phrase: "vehicle shaking at all speeds, like a 2000lb vibrator"
+    provenance: tekmetric            # tkc-032
+  - op: stage2.example.positive.add
+    subcat_slug: humming_or_whirring_at_speed
+    phrase: "very noticeable humming from the rear end, most noticeable 30 to 40 mph, sounds like aggressive snow tires"
+    provenance: tekmetric            # tkc-113
+  - op: stage2.example.positive.add
+    subcat_slug: humming_or_whirring_at_speed
+    phrase: "rotational noise heard in left rear"
+    provenance: tekmetric            # tka-149
+  - op: stage2.example.positive.add
+    subcat_slug: uneven_tire_wear_bald_spots
+    phrase: "uneven wear on inside edge of front tires"
+    provenance: tekmetric            # tkc-278
+  - op: stage2.example.positive.add
+    subcat_slug: just_want_new_tires
+    phrase: "4 new tires and alignment, would like entry level tire"
+    provenance: tekmetric            # tkc-138
+  - op: stage2.example.positive.add
+    subcat_slug: recent_tire_work_then_new_symptom
+    phrase: "rear end swaying after tire replacement"
+    provenance: tekmetric            # tka-057
+  - op: stage2.example.positive.add
+    subcat_slug: dry_rot_sidewall_cracking
+    phrase: "sidewalls are all cracked, tires are old and dry-rotted"
+    provenance: synthetic
+
+  # ============================================================
+  # L3 — Negative examples (sharpen confusable boundaries; every one names routes_to).
+  # ============================================================
+  - op: stage2.example.negative.add
+    subcat_slug: visible_damage_nail_screw_bulge_cut
+    phrase: "tire keeps going flat but I don't see anything stuck in it"
+    routes_to: tire_going_flat_losing_air
+  - op: stage2.example.negative.add
+    subcat_slug: tire_going_flat_losing_air
+    phrase: "there's a nail sticking out of the tread"
+    routes_to: visible_damage_nail_screw_bulge_cut
+  - op: stage2.example.negative.add
+    subcat_slug: tpms_tire_pressure_light
+    phrase: "front tire looks low and there's a screw in it"
+    routes_to: visible_damage_nail_screw_bulge_cut
+  - op: stage2.example.negative.add
+    subcat_slug: tpms_tire_pressure_light
+    phrase: "one tire keeps going flat every few days, no light mentioned"
+    routes_to: tire_going_flat_losing_air
+  - op: stage2.example.negative.add
+    subcat_slug: humming_or_whirring_at_speed
+    phrase: "whining noise under the hood that goes up with engine RPM when I rev in park"
+    routes_to: high_pitched_whining_under_the_hood
+  - op: stage2.example.negative.add
+    subcat_slug: humming_or_whirring_at_speed
+    phrase: "steering wheel shakes hard right around 65 and eases off above and below it"
+    routes_to: steering_wheel_shake_at_highway_speed
+  - op: stage2.example.negative.add
+    subcat_slug: steering_wheel_shake_at_highway_speed
+    phrase: "steering wheel only shakes when I press the brake pedal coming down from highway speed"
+    routes_to: vibration_or_pulsing_when_braking
+  - op: stage2.example.negative.add
+    subcat_slug: steering_wheel_shake_at_highway_speed
+    phrase: "it vibrates the same the whole time at every speed, doesn't come in around one speed"
+    routes_to: constant_vibration_that_doesnt_change_with_speed
+  - op: stage2.example.negative.add
+    subcat_slug: constant_vibration_that_doesnt_change_with_speed
+    phrase: "shake only shows up around 60 on the highway, smooths out if I slow down"
+    routes_to: steering_wheel_shake_at_highway_speed
+  - op: stage2.example.negative.add
+    subcat_slug: uneven_tire_wear_bald_spots
+    phrase: "I don't care why, I just want a price on four new tires"
+    routes_to: just_want_new_tires
+  - op: stage2.example.negative.add
+    subcat_slug: just_want_new_tires
+    phrase: "tires are wearing on the inside edge, is that an alignment thing?"
+    routes_to: uneven_tire_wear_bald_spots
+  - op: stage2.example.negative.add
+    subcat_slug: dry_rot_sidewall_cracking
+    phrase: "big gash in the sidewall from hitting something"
+    routes_to: visible_damage_nail_screw_bulge_cut
+  # Reinforces the tire_repair-vs-tire-buying boundary at Stage-2 (replaces the invalid Stage-1 hedge):
+  # a repairable-subcat phrasing that is really a worn-out/shopping request routes to the tire-buying bucket.
+  - op: stage2.example.negative.add
+    subcat_slug: visible_damage_nail_screw_bulge_cut
+    phrase: "tires are just worn out and old, I need a whole new set"
+    routes_to: just_want_new_tires
+  - op: stage2.example.negative.add
+    subcat_slug: tire_going_flat_losing_air
+    phrase: "these tires are shot and dry-rotted, want a price on four new ones"
+    routes_to: just_want_new_tires
+
+  # ============================================================
+  # L4 — Synonyms (>=2 tokens OR domain single-token; only NEW ones, not already in DB).
+  # ============================================================
+  - op: stage2.synonym.add
+    subcat_slug: tire_going_flat_losing_air
+    term: "loosing air psi"          # preserve the corpus misspelling (tka-056)
+  - op: stage2.synonym.add
+    subcat_slug: tire_going_flat_losing_air
+    term: "add air every week"
+  - op: stage2.synonym.add
+    subcat_slug: tpms_tire_pressure_light
+    term: "sensor not reading"
+  - op: stage2.synonym.add
+    subcat_slug: tpms_tire_pressure_light
+    term: "tpms not reading"
+  - op: stage2.synonym.add
+    subcat_slug: humming_or_whirring_at_speed
+    term: "rotational noise"
+  - op: stage2.synonym.add
+    subcat_slug: humming_or_whirring_at_speed
+    term: "snow tire noise"
+  - op: stage2.synonym.add
+    subcat_slug: steering_wheel_shake_at_highway_speed
+    term: "shimmy at highway speed"
+  - op: stage2.synonym.add
+    subcat_slug: uneven_tire_wear_bald_spots
+    term: "worn on the edges"
+  - op: stage2.synonym.add
+    subcat_slug: recent_tire_work_then_new_symptom
+    term: "swaying after tire replacement"
+
+  # ============================================================
+  # L5 — required_facts (attack the empty-required_facts over-ask problem).
+  # RECONCILED with the same-day Workstream-Q triage maps (binding/required-facts-map.q2.md noise batch,
+  # q3.md tires/vibration batch), which audited these SAME question IDs first. The deterministic mapper
+  # (question-fact-mapper.ts) is PRESENCE-ONLY: present==len -> SKIP, the VALUE IS NOT CHECKED. Under that
+  # rule, tagging any slot that could hold a value UNRELATED to the question wrongly-skips it — and
+  # methodology thesis 5 ranks wrongful-skip > over-ask. The Q-maps therefore classed every candidate here
+  # NO-SLOT / PARTIAL / NEVER (0 SAFE in the tires+vibration batch, 1 SAFE in the whole noise batch — not
+  # one of ours). This dossier DEFERS to those classifications rather than override them, so there are ZERO
+  # `question.required_facts.set` ops. Each ID below is recorded `intentionally_empty` with the Q-map's
+  # reason, so Phase-C consolidation sees one reconciled position, not a collision.
+  #   (Earlier draft tagged Q85/Q91 speed_band, Q87 side+axle SAFE, Q89 recent_action+tire_state,
+  #    Q740 recent_action SAFE, Q752 started_when SAFE — ALL retracted: each is a documented wrongful-skip
+  #    path, e.g. Q89 [recent_action,tire_state] would skip on recent_action=oil_change + tire_state=low_pressure;
+  #    Q740 [recent_action] would skip 'sits parked for long stretches?' on ANY recent_action; Q752's
+  #    started_when tracks SYMPTOM onset, not the work date.)
+  # ============================================================
+  - op: question.intentionally_empty
+    question_id: 85    # humming: "Does the hum get louder the faster you drive?"
+    reason: "Speed-DEPENDENCE yes/no. `speed_band` records WHICH band, not dependence, and a band stated for another reason would wrong-skip. NO-SLOT per required-facts-map.q2.md (line 48). Defer to Q-map."
+  - op: question.intentionally_empty
+    question_id: 87    # humming: "Does the sound come from one specific wheel area, or hard to pin down?"
+    reason: "PARTIAL per required-facts-map.q2.md (line 50): 'specific wheel vs vague' is not the side/axle dimension — `location_side`/`location_axle` set from elsewhere in the complaint would wrong-skip, and `sound_or_smoke_location_zone` is too coarse. Leave empty. Defer to Q-map."
+  - op: question.intentionally_empty
+    question_id: 89    # humming: "Have you had new tires put on recently, OR are your tires worn unevenly?"
+    reason: "OR-design (recent_action=tire_* OR tire_state=uneven_wear); the AND-only presence mapper skips when BOTH slots are present REGARDLESS of value — e.g. recent_action=oil_change + tire_state=low_pressure -> wrong-skip. PARTIAL per required-facts-map.q2.md (line 52). Defer to Q-map; needs value-aware/any_of mapper before tagging."
+  - op: question.intentionally_empty
+    question_id: 91    # humming: "Does the hum disappear or get quieter when you're stopped at a light?"
+    reason: "Speed-dependence; no slot holds 'quieter when stopped'. NO-SLOT per required-facts-map.q2.md (line 54). Defer to Q-map."
+  - op: question.intentionally_empty
+    question_id: 740   # dry_rot: "Does the vehicle sit parked for long stretches without being driven?"
+    reason: "Chronic-parking PATTERN; recent_action=car_sat_unused is a stated EVENT, not the chronic pattern, and tagging [recent_action] would skip on ANY recent_action value (oil_change, tire_air_added, ...). NEVER per required-facts-map.q3.md (line 81). Defer to Q-map."
+  - op: question.intentionally_empty
+    question_id: 752   # recent_tire_work: "Roughly when was the work done — a few days, a week, or longer?"
+    reason: "`started_when` tracks SYMPTOM onset, not the WORK date — near-equal but not identical (q3-map's exact objection). PARTIAL per required-facts-map.q3.md (line 87). Defer to Q-map."
+
+  # ============================================================
+  # L5 — questions with genuinely NO holding slot (mark audited-empty, not un-audited).
+  # These are the discriminators the 29-slot ontology cannot express (steering-load, floor-vs-seat,
+  # band-narrowness, buying context, wear-location, tire-age). All concur with the Workstream-Q maps.
+  # ============================================================
+  - op: question.intentionally_empty
+    question_id: 86    # humming: "Does the noise change when you turn left versus right?"
+    reason: "THE bearing discriminator (steering-load sensitivity). No current slot holds it -> propose steering_load_effect (§9). Must always be asked until that slot lands."
+  - op: question.intentionally_empty
+    question_id: 88    # humming: "Does the hum stay the same when you coast?"
+    reason: "Load-vs-speed check (bearing vs diff-whine). No slot expresses throttle-load sensitivity of a hum."
+  - op: question.intentionally_empty
+    question_id: 90    # humming: "Does it come through the floor or seat as a vibration too?"
+    reason: "Noise-vs-felt-vibration coupling; no slot captures the tactile channel."
+  - op: question.intentionally_empty
+    question_id: 1480  # constant_vibration: "Does the vibration change when you turn the wheel left or right?"
+    reason: "Same steering-load discriminator as Q86 -> steering_load_effect proposal. Always ask until slot lands."
+  - op: question.intentionally_empty
+    question_id: 1478  # constant_vibration: "Do you feel it more in the floor, the seat, or all over?"
+    reason: "Tactile-location of a tremor; no slot (sound_or_smoke_location_zone is for sound/smoke, not felt-vibration body zone)."
+  - op: question.intentionally_empty
+    question_id: 1482  # constant_vibration: "Does it feel like something is loose or flopping under the car?"
+    reason: "Subjective looseness cue (broken belt / loose component); no slot expresses it."
+  - op: question.intentionally_empty
+    question_id: 142   # steering_wheel_shake: "Does it get better if you speed up past that point?"
+    reason: "Band-narrowness confirmation (imbalance signature); no slot captures 'eases above the band'."
+  - op: question.intentionally_empty
+    question_id: 143   # steering_wheel_shake: "If you coast, does the shaking stay the same?"
+    reason: "Rules out driveline/engine coupling; no slot for coast-invariance."
+  - op: question.intentionally_empty
+    question_id: 730   # uneven_tire_wear: "Where is the wear — inside/outside edge, center, or patchy?"
+    reason: "Wear-LOCATION on the tire (alignment vs inflation vs cupping cue) is richer than tire_state=uneven_wear; single question -> backlog, not a forced slot (§9)."
+  - op: question.intentionally_empty
+    question_id: 739   # dry_rot: "How old are the tires / how many years have you had them?"
+    reason: "Tire-age in years; no slot. Single question -> backlog."
+  - op: question.intentionally_empty
+    question_id: 745   # just_want_new_tires: "Brand currently on it, or want a recommendation?"
+    reason: "Tire-shopping context gathering (not a diagnostic fact); no slot, must always be asked."
+  - op: question.intentionally_empty
+    question_id: 746   # just_want_new_tires: "Lowest-cost, mid-range, or premium?"
+    reason: "Budget tier for a quote; non-diagnostic sales context, no slot."
+
+  # ============================================================
+  # L5 — NEW slot proposal. Meets the >=3-question rule on THREE genuine, distinct questions (86, 1480, 114)
+  # within the maps this dossier reconciles against — it does NOT lean on any driveline-dossier question.
+  # ============================================================
+  - op: stage3.slot.propose
+    name: steering_load_effect
+    type: enum
+    values: [louder_turning_left, louder_turning_right, no_change_with_steering, unsure]
+    literal_cues:
+      - "louder when I turn left"
+      - "louder when I turn right"
+      - "gets louder curving one way, quieter the other"
+      - "changes when I steer"
+      - "same no matter how I steer"
+    questions_unlocked: [86, 1480, 114]
+    # THREE distinct turn-direction/steering-load questions, all triaged NO-SLOT by the Workstream-Q maps:
+    #   Q86   humming_or_whirring_at_speed        "changes turning L vs R?"          (required-facts-map.q2.md line 49)
+    #   Q1480 constant_vibration_..._with_speed   "changes when you turn the wheel?" (required-facts-map.q3.md line 111)
+    #   Q114  popping_or_clicking_when_turning    "louder one direction?"            (required-facts-map.q2.md line 67)
+    # >=3 met on its own -> land unconditionally (no cross-dossier dependency).
+    # Rationale: THE wheel-bearing discriminator. A hum/vibration that changes with cornering load is a
+    # bearing (the side OPPOSITE the louder-turn is the failing bearing, per Timken); a steering-invariant
+    # hum is tire road-roar or a diff issue. Today all three questions carry empty required_facts.
+    # LITERALNESS: fires ONLY when the customer literally states a turn-direction effect; 'louder when I turn
+    # left' sets louder_turning_left and NOTHING about which bearing (that inference is the classifier's job
+    # downstream, not the extractor's).
+    # CROSS-DOSSIER: the driveline dossier (driveline-cv-diff-awd §9 item 3) BACKLOGS this same
+    # steering-load dimension as '<3 questions' (it counted only Q86). This proposal supersedes that backlog
+    # by supplying the third and fourth witnesses (Q1480, Q114); the driveline dossier should reference this
+    # slug rather than re-propose. It is ONE slot, owned here.
+
+  # ============================================================
+  # Catalog proposal — THE TIRE-BUYING GAP (Chris-gated; business decision).
+  # ============================================================
+  - op: catalog.service.propose
+    name: tire_sales_consultation
+    demand_evidence: >-
+      Recurring, unmet demand in the corpus with NO bookable service: tkc-138 ("4 NEW TIRES AND
+      ALIGNMENT, would like entry level tire"), tka-125 ("TIRE REPLACEMENT"), tka-169 ("TIRE REPLACE IF
+      NEEDED CHECK CONDITION OF REMAINING"), tka-112 ("CHECK CONDITION OF WINTER TIRES ... MOUNT AND
+      BALANCE"), tkc-159 (tire protection plan), plus every dry_rot_sidewall_cracking case and non-repairable bulge/cut (§3.3/§3.4). Today
+      `tire_repair` explicitly excludes worn/aged/new-tire requests and `tpms_testing` is a sensor scan,
+      so `just_want_new_tires` + `dry_rot_sidewall_cracking` fall through to a bare advisor hand-off with
+      no structured flow. `customer_request_type=just_get_new_tires` already exists at the FACT level — the
+      gap is the SERVICE/route.
+    fee_rationale: >-
+      Advisor-quote route, NOT a diagnostic fee (there is no symptom to diagnose). Gather size / driving
+      style / budget tier / mileage (mirrors the existing just_want_new_tires question set 744-750) and
+      hand off to a tire quote. Whether this is a $0 "tire consultation" booking type or folds into an
+      existing quote flow is a business/pricing decision — Chris-gated. Do NOT build speculatively.
+
+# ================================================================
+# GOLDEN CASES (13; incl. 1 inference-trap + 1 null-route). Schema mirrors eval-cases.json.
+# stage3_facts assert ONLY literally-stated facts (strict no-inference discipline).
+# HARNESS SCHEMA (verified against eval-cases.json 2026-07-18): route is one of
+#   testing_service | advisor_handoff | null_match; there are ZERO cases with a null stage1 AND a
+#   non-null stage2 (empty Stage-1 always pairs with a null Stage-2). The tire-buying-gap cases below
+#   therefore carry stage2_subcategory_slug: null and record the correct tires-category bucket in a
+#   `latent_subcategory` annotation (see per-case harness_note) — the diagnostic label a FUTURE
+#   tire_sales_consultation service would emit, scored as a soft KB target only until that service lands.
+# ================================================================
+golden_cases:
+  - text: "found a screw sticking out of my rear left tire this morning. its still holding air and drives fine but want it checked"
+    tags: [fact_rich, confusable_tpms]
+    expected:
+      stage1_category_key: tire_repair
+      stage1_acceptable: [tire_repair, tpms_testing]
+      stage2_subcategory_slug: visible_damage_nail_screw_bulge_cut
+      stage3_facts:
+        tire_state: visible_damage
+        location_axle: rear
+        location_side: left
+        started_when: today
+        drivable_state: drivable_normally
+      # A NAMED object -> tire_repair, NOT tpms_testing (corrects eval tpms_testing-001's stage1 mislabel).
+      route: testing_service
+
+  - text: "my front tire keeps going low, i have to put air in it like every week. cant see anything stuck in it"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: tire_repair
+      stage1_acceptable: [tire_repair, tpms_testing]
+      stage2_subcategory_slug: tire_going_flat_losing_air
+      stage3_facts:
+        location_axle: front
+        tire_state: low_pressure
+      route: testing_service
+
+  - text: "the TPMS light is on in my car. been really cold here this week so maybe thats why? tires look fine"
+    tags: [fact_rich, confusable_low_pressure]
+    expected:
+      stage1_category_key: tpms_testing
+      stage1_acceptable: [tpms_testing]
+      stage2_subcategory_slug: tpms_tire_pressure_light
+      stage2_acceptable: [tpms_tire_pressure_light, low_pressure_warning_light_only]
+      stage3_facts:
+        warning_light_named: TPMS
+        weather_condition: cold_weather
+        tire_state: normal_or_unknown
+      route: testing_service
+
+  - text: "put air in all 4 tires yesterday but the low tire pressure light still wont go off. tires look fine to me"
+    tags: [fact_rich, system_fault]
+    expected:
+      stage1_category_key: tpms_testing
+      stage1_acceptable: [tpms_testing]
+      stage2_subcategory_slug: low_pressure_warning_light_only
+      stage2_acceptable: [low_pressure_warning_light_only, tpms_tire_pressure_light]
+      stage3_facts:
+        recent_action: tire_air_added
+        tire_state: normal_or_unknown
+      route: testing_service
+
+  - text: "steering wheel shakes really bad at 65 on the highway, calms right down when i slow down. started after i hit a big pothole"
+    tags: [fact_rich, balance]
+    expected:
+      stage1_category_key: suspension_steering_check
+      stage1_acceptable: [suspension_steering_check]
+      stage2_subcategory_slug: steering_wheel_shake_at_highway_speed
+      stage3_facts:
+        speed_band: specific_mph
+        speed_specific_mph: 65
+        recent_action: hit_pothole_or_curb
+      route: testing_service
+
+  - text: "very noticeable humming from the rear, most noticeable around 30 to 40 mph, sounds like snow tires on the back"
+    tags: [fact_rich, bearing, needs_fact]
+    expected:
+      stage1_category_key: suspension_steering_check
+      stage1_acceptable: [suspension_steering_check]
+      stage2_subcategory_slug: humming_or_whirring_at_speed
+      stage3_facts:
+        noise_descriptor: humming_or_whirring
+        location_axle: rear
+        speed_band: mid_speed
+      # Bearing vs tire-roar still needs the steering-load answer (Q86) -> not asserted (customer didn't state it).
+      route: testing_service
+
+  - text: "vehicle is shaking at all speeds, doesnt matter if im going 25 or 65, its just always there through the floor"
+    tags: [fact_rich, constant_tremor]
+    expected:
+      stage1_category_key: suspension_steering_check
+      stage1_acceptable: [suspension_steering_check]
+      stage2_subcategory_slug: constant_vibration_that_doesnt_change_with_speed
+      stage3_facts:
+        speed_band: all_speeds
+      route: testing_service
+
+  - text: "the sidewalls on my tires are all cracked, theyre pretty old and dry rotted. car sat in the driveway for a couple years"
+    tags: [fact_rich, tire_buying_gap]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      latent_subcategory: dry_rot_sidewall_cracking
+      stage3_facts:
+        tire_state: sidewall_cracking
+        recent_action: car_sat_unused
+      route: advisor_handoff
+      # THE TIRE-BUYING GAP. No testing service fits an aged/dry-rotted tire (tire_repair excludes it), and
+      # no situational 'other' bucket fits either -> empty Stage-1 -> advisor_handoff. Per the harness
+      # invariant (no null-Stage-1 + non-null-Stage-2), stage2 is null; the correct tires-category bucket is
+      # recorded as `latent_subcategory`.
+      # harness_note: score Stage-1 = [] and route = advisor_handoff as the hard pass condition. Treat
+      # `latent_subcategory` as a SOFT KB/analytics target only; it becomes the hard Stage-2 target once the
+      # proposed tire_sales_consultation service (catalog.service.propose) lands and reaches the tires pool.
+
+  - text: "hey can i get a quote for 4 new tires, want to put a set on before winter. entry level is fine"
+    tags: [tire_buying_gap, sales_request]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      latent_subcategory: just_want_new_tires
+      stage3_facts:
+        customer_request_type: just_get_new_tires
+      route: advisor_handoff
+      # THE TIRE-BUYING GAP (pure sales request, no symptom). No service and no situational bucket fit ->
+      # empty Stage-1 -> advisor_handoff; stage2 null per the harness invariant; correct bucket in
+      # `latent_subcategory`. 'before winter' is a DEADLINE, NOT a driving condition -> must NOT set
+      # weather_condition=cold_weather.
+      # harness_note: same scoring as the dry_rot case — Stage-1 [] + advisor_handoff is the hard pass;
+      # latent_subcategory is a soft KB target until tire_sales_consultation lands.
+
+  - text: "my tires are wearing funny on the inside edge of both fronts, is that an alignment thing?"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: suspension_steering_check
+      stage1_acceptable: [suspension_steering_check, tire_repair]
+      stage2_subcategory_slug: uneven_tire_wear_bald_spots
+      stage3_facts:
+        tire_state: uneven_wear
+        location_axle: front
+      route: testing_service
+
+  # ---- INFERENCE-TRAP: 'my tires are shot, need new rubber' -> buying; must NOT over-assert. ----
+  - text: "my tires are shot, gotta get new rubber on it before winter"
+    tags: [inference_trap, tire_buying_gap]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      latent_subcategory: just_want_new_tires
+      stage3_facts:
+        customer_request_type: just_get_new_tires
+      route: advisor_handoff
+      # TRAP: 'shot' is vague -> must NOT set tire_state=uneven_wear or sidewall_cracking (no wear pattern
+      # named). 'before winter' is a deadline, NOT a driving condition -> must NOT set
+      # weather_condition=cold_weather. Only the literal buying intent is present.
+      # THE TIRE-BUYING GAP: empty Stage-1 -> advisor_handoff; stage2 null; correct bucket in
+      # `latent_subcategory` (soft KB target until tire_sales_consultation lands).
+
+  # ---- CROSS-SYSTEM near-miss: brake-triggered shake, NOT balance. Guards the balance<->brake hedge. ----
+  - text: "the steering wheel only shakes when i press the brakes coming down from highway speed, smooth otherwise"
+    tags: [confusable_brakes, near_miss]
+    expected:
+      stage1_category_key: brake_inspection
+      stage1_acceptable: [brake_inspection]
+      stage2_subcategory_slug: vibration_or_pulsing_when_braking
+      stage3_facts:
+        onset_timing: when_braking
+      stage3_acceptable_extra: [speed_band]   # 'coming down from highway speed' literally states a speed band
+      # Not this system: the shake is brake-TRIGGERED, and onset_timing=when_braking is the load-bearing
+      # discriminator that routes it to brakes. LITERALNESS: the customer DID literally say 'highway speed',
+      # so speed_band=highway is a supportable extraction and must NOT be scored as a failure if extracted —
+      # it is simply non-diagnostic here. The hard assertion is onset_timing=when_braking; speed_band is
+      # optional/acceptable-extra, not required and not forbidden.
+      route: testing_service
+
+  # ---- NULL-ROUTE: maintenance / work-order line, not a customer symptom. Empty Stage-1 -> advisor. ----
+  - text: "Tire Rotation & Balance"
+    tags: [null_route, work_order_noise]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      stage3_facts: {}
+      route: null_match
+      # Internal routine-maintenance line (the NON-CONCERN rejection rule), not a customer describing a
+      # problem. Must not fabricate a tire symptom from it. route=null_match (the harness value for a
+      # non-concern; distinct from advisor_handoff, which is a real request routed to an advisor).

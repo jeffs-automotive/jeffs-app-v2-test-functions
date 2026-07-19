@@ -1,0 +1,467 @@
+system: brakes-friction-hydraulic
+# Typed change-ops binding this dossier's findings to the live snapshot (00-current-scheduler-taxonomy.md).
+# Stage-2 enrichment is already fully populated (rich descriptions/positives/negatives/synonyms in the DB) —
+# these ops SHARPEN (real-voice positives, confusable-pair negatives, missing domain synonyms) and, above all,
+# fill the L5 required_facts[] gaps on real question IDs pulled from the DB this pass. No description.revise
+# ops: the live descriptions were reviewed and are strong; revising them would risk regression for no gain.
+
+ops:
+  # ============================================================
+  # L1 — Stage-1 keywords (service: brake_inspection). Multi-token / domain only (never bare words).
+  # ============================================================
+  - op: stage1.keyword.add
+    category_key: brake_inspection
+    phrase: "metal on metal when braking"
+    rationale: "Highest-signal grinding phrase; customers use it verbatim (eval brake_inspection-002, forum)."
+    evidence: "eval brake_inspection-002; forum '07 Envoy"
+  - op: stage1.keyword.add
+    category_key: brake_inspection
+    phrase: "grinding when stopping"
+    rationale: "Verbatim Tekmetric phrasing for FM-2."
+    evidence: "tekmetric tkc-063, tkc-240"
+  - op: stage1.keyword.add
+    category_key: brake_inspection
+    phrase: "pedal sinks to the floor"
+    rationale: "Load-bearing FM-5/6 phrase; distinguishes hydraulic from friction."
+    evidence: "forum '08 Avenger; eval brake_inspection-005"
+  - op: stage1.keyword.add
+    category_key: brake_inspection
+    phrase: "soft brake pedal"
+    rationale: "FM-4 spongy phrase, 2-token, unambiguously brake."
+    evidence: "eval brake_inspection-004"
+  - op: stage1.keyword.add
+    category_key: brake_inspection
+    phrase: "pulls when braking"
+    rationale: "FM-8; disambiguates brake pull from alignment pull at Stage-1."
+    evidence: "eval brake_inspection-008; forum Sportage"
+  - op: stage1.keyword.add
+    category_key: brake_inspection
+    phrase: "hot brake smell"
+    rationale: "FM-9 dragging/overheat cue routed into brake_inspection (smell category reachable)."
+    evidence: "eval brake_inspection-003 (adjacent)"
+  - op: stage1.keyword.add
+    category_key: brake_inspection_warning_light
+    phrase: "red brake light on"
+    rationale: "The canonical brake_inspection_warning_light trigger (already in DB description; reinforce as keyword)."
+    evidence: "tekmetric tka-192, tka-037"
+
+  # ============================================================
+  # L1 — Stage-1 hedges (confusable-pair rules). REQUIRED PAIRS FIRST.
+  # ============================================================
+  - op: stage1.hedge.add
+    category_a: brake_inspection
+    category_b: suspension_steering_check
+    rule: "Brake-only vibration (shake ONLY when the brake pedal is pressed) -> brake_inspection. Steering-wheel shake at highway speed WITHOUT braking -> suspension_steering_check. If the customer states both a brake trigger and a speed trigger, hedge and let Stage-3 decide."
+    discriminating_fact: onset_timing   # when_braking (brake) vs speed_band=highway + no brake (suspension)
+  - op: stage1.hedge.add
+    category_a: brake_inspection
+    category_b: brake_inspection_warning_light
+    rule: "A mechanical brake symptom (noise/feel/pull/smell) with NO dash light -> brake_inspection. The SAME symptom PLUS a RED brake or ABS dash light -> brake_inspection_warning_light. A dash light alone with normal brakes is NOT this pair (yellow ABS-only -> abs_traction_stability_testing)."
+    discriminating_fact: warning_light_named   # present (brake/ABS) escalates to the warning-light service
+  - op: stage1.hedge.add
+    category_a: brake_inspection
+    category_b: abs_traction_stability_testing
+    rule: "RED brake light or any hydraulic/friction symptom -> brake_inspection(_warning_light). YELLOW/AMBER ABS-letters light with brakes that still stop normally -> abs_traction_stability_testing. When BOTH red and yellow are on, route to the brake warning-light path (whole system suspect)."
+    discriminating_fact: warning_light_named
+  - op: stage1.hedge.add
+    category_a: brake_inspection
+    category_b: safety_concern_dont_feel_safe_driving_it
+    rule: "Total or near-total brake loss ('no brakes', 'brakes gave out', 'no pedal pressure, do not drive') is a SAFETY situational override -> safety_concern_dont_feel_safe_driving_it, even though the system is brakes. A specific, drivable brake symptom stays in brake_inspection."
+    discriminating_fact: drivable_state   # not_drivable_needs_tow / stranded_now -> safety override
+
+  # ============================================================
+  # L3 — Positive examples (real Tekmetric voice; DB positives skew authored/clean).
+  # ============================================================
+  - op: stage2.example.positive.add
+    subcat_slug: metallic_grinding
+    phrase: "BRAKE NOISE WHEN BACKING UP SOUNDS LIKE SLIGHT GRINDING NOISE"
+    provenance: tekmetric   # tka-023
+  - op: stage2.example.positive.add
+    subcat_slug: metallic_grinding
+    phrase: "grinding noise when braking and coming to a stop, sounds like it's coming from the left rear"
+    provenance: tekmetric   # tkc-240
+  - op: stage2.example.positive.add
+    subcat_slug: high_pitched_squealing
+    phrase: "brake inspection squeek"
+    provenance: tekmetric   # tkc-082
+  - op: stage2.example.positive.add
+    subcat_slug: pulsating_or_vibrating_pedal
+    phrase: "brake pedal also vibrates at highway speeds when braking"
+    provenance: tekmetric   # tka-002
+  - op: stage2.example.positive.add
+    subcat_slug: vibration_or_pulsing_when_braking
+    phrase: "client is reporting shaking when applying brakes"
+    provenance: tekmetric   # tkc-150
+  - op: stage2.example.positive.add
+    subcat_slug: clear_yellow_or_light_brown_puddle_brake_fluid
+    phrase: "attempted to add brake fluid and it leaks right out"
+    provenance: tekmetric   # tka-181
+  - op: stage2.example.positive.add
+    subcat_slug: brake_system_red_light
+    phrase: "red brake light coming on and off, found the fluid low and topped it off, light came back on"
+    provenance: tekmetric   # tka-192
+
+  # ============================================================
+  # L3 — Negative examples (sharpen confusable boundaries; every one names routes_to).
+  # ============================================================
+  - op: stage2.example.negative.add
+    subcat_slug: metallic_grinding
+    phrase: "grinding or scraping noise only when I turn the steering wheel, not when braking"
+    routes_to: noise_when_turning_the_steering_wheel
+  - op: stage2.example.negative.add
+    subcat_slug: metallic_grinding
+    phrase: "humming/roaring that's there when driving even with my foot off the brake"
+    routes_to: humming_or_whirring_at_speed
+  - op: stage2.example.negative.add
+    subcat_slug: pulsating_or_vibrating_pedal
+    phrase: "steering wheel shakes at 65 even when I'm not touching the brakes"
+    routes_to: steering_wheel_shake_at_highway_speed
+  - op: stage2.example.negative.add
+    subcat_slug: vibration_or_pulsing_when_braking
+    phrase: "whole car shakes over every bump and pothole, not when braking"
+    routes_to: shaking_or_bouncing_over_bumps_and_rough_roads
+  - op: stage2.example.negative.add
+    subcat_slug: pulling_only_when_braking
+    phrase: "car drifts to the right all the time on the freeway even when I'm not braking"
+    routes_to: steady_drift_while_cruising
+  - op: stage2.example.negative.add
+    subcat_slug: burning_rubber_hot_brake_smell
+    phrase: "I can actually see smoke coming off the wheel"
+    routes_to: smoke_or_burning_smell_from_a_wheel
+  - op: stage2.example.negative.add
+    subcat_slug: clear_yellow_or_light_brown_puddle_brake_fluid
+    phrase: "thin clear water dripping at the front passenger area only after running the AC"
+    routes_to: clear_odorless_puddle_water_or_ac_condensation
+  - op: stage2.example.negative.add
+    subcat_slug: brake_system_red_light
+    phrase: "just the yellow ABS letters light, brakes stop the car totally normal"
+    routes_to: abs_anti_lock_brake_light
+
+  # ============================================================
+  # L4 — Synonyms (>=2 tokens OR domain single-token; skip anything already in DB).
+  # ============================================================
+  - op: stage2.synonym.add
+    subcat_slug: metallic_grinding
+    term: "metal on metal when braking"
+  - op: stage2.synonym.add
+    subcat_slug: metallic_grinding
+    term: "grinding when stopping"
+  - op: stage2.synonym.add
+    subcat_slug: pulsating_or_vibrating_pedal
+    term: "pulsation when braking"
+  - op: stage2.synonym.add
+    subcat_slug: pedal_sinks_to_floor
+    term: "pedal doesn't hold"
+  - op: stage2.synonym.add
+    subcat_slug: hard_or_unresponsive_pedal
+    term: "have to stand on the pedal"   # customer voice (eval brake_inspection-006); replaced mechanic-voice "hydro-boost failure"
+  - op: stage2.synonym.add
+    subcat_slug: pulling_only_when_braking
+    term: "pulls to one side when braking"   # symptom voice, pull-specific; replaced "sticking caliper" (a cause that also rode FM-9 drag/smell texts)
+  - op: stage2.synonym.add
+    subcat_slug: clear_yellow_or_light_brown_puddle_brake_fluid
+    term: "brake line leak"
+
+  # ============================================================
+  # L5 — required_facts.set on REAL question IDs (attack the 48%-empty over-ask problem).
+  # skip_class: SAFE = if slot is filled the question is fully answered; PARTIAL = usually answered.
+  # ============================================================
+  - op: question.required_facts.set
+    question_id: 263   # burning_rubber_hot_brake_smell: "any squealing, grinding, or dragging feeling from the brakes?"
+    facts: [noise_descriptor]
+    skip_class: PARTIAL
+    derivation_note: "If the customer already named a BRAKE noise (squealing_high_pitched/grinding_metallic/scraping), this yes/no is answered. PARTIAL, not SAFE: noise_descriptor can be filled by a NON-brake noise in the same utterance (e.g. 'hissing from under the hood'), which must not auto-skip this brake-specific question."
+  - op: question.required_facts.set
+    question_id: 265   # burning_rubber: "seen any smoke or haze from a wheel area or under the hood?"
+    facts: [sound_or_smoke_location_zone]
+    skip_class: PARTIAL
+    derivation_note: "from_a_wheel / under_hood answers 'where'; smoke_color would further confirm but zone alone lets us skip the location half."
+  - op: question.required_facts.set
+    question_id: 657   # hard_or_unresponsive_pedal: "Do you hear any noises while you are braking?"
+    facts: [noise_descriptor]
+    skip_class: PARTIAL
+    derivation_note: "Customer who described a brake noise (hissing/grinding/etc.) already answered. PARTIAL, not SAFE: noise_descriptor can be set by a non-brake noise stated in the same utterance, which should not auto-skip this while-braking question; null means still ask."
+  - op: question.required_facts.set
+    question_id: 645   # pedal_sinks_to_floor: "Are there any warning lights on the dash?"
+    facts: [warning_light_named]
+    skip_class: SAFE
+    derivation_note: "Named light (or explicit 'no lights') answers it; also feeds the brake_inspection_warning_light hedge."
+  - op: question.required_facts.set
+    question_id: 648   # pulsating_or_vibrating_pedal: "At what specific speed does the vibration become noticeable?"
+    facts: [speed_band, speed_specific_mph]
+    skip_class: PARTIAL
+    derivation_note: "Existing binding is speed_band only; add speed_specific_mph so 'at 65' fully answers instead of re-prompting."
+  - op: question.required_facts.set
+    question_id: 630   # metallic_grinding: "Does the grinding happen every single time you apply the brakes?"
+    facts: [onset_timing]
+    skip_class: PARTIAL
+    derivation_note: "Frequency-of-braking axis: onset_timing=when_braking answers 'yes, every application'. Same derivation as q631 but a distinct question (q631 is the foot-OFF-pedal variant); bound so it is audited, not left un-audited (dossier §9). PARTIAL because 'every single time' vs 'sometimes' is a frequency nuance onset_timing alone doesn't fully capture."
+  - op: question.required_facts.set
+    question_id: 631   # metallic_grinding: "scraping sound even when your foot is off the pedal?"
+    facts: [onset_timing]
+    skip_class: PARTIAL
+    derivation_note: "onset_timing=when_braking => 'no, only braking'; =always/during_driving => 'yes, even off pedal' (bearing cue). No new slot needed (see dossier §9)."
+  - op: question.required_facts.set
+    question_id: 183   # pulling_only_when_braking: "only when you press the brake, or also when cruising?"
+    facts: [onset_timing]
+    skip_class: PARTIAL
+    derivation_note: "onset_timing=when_braking answers the isolation question; during_driving would re-route toward steady_drift."
+  - op: question.required_facts.set
+    question_id: 1003  # clear_yellow_or_light_brown_puddle_brake_fluid: "slick/oily but clear-to-yellowish, fishy/oily smell?"
+    facts: [fluid_color]
+    skip_class: SAFE
+    derivation_note: "fluid_color=clear_yellow_or_light_brown answers the identification question."
+  - op: question.required_facts.set
+    question_id: 1005  # clear_yellow_or_light_brown_puddle_brake_fluid: "car pull to one side when you brake / longer to stop?"
+    facts: [pull_direction]
+    skip_class: PARTIAL
+    derivation_note: "pull_direction (left/right/no_pull) answers the pull half; stopping-distance half has no slot (acceptable partial skip)."
+
+  # ============================================================
+  # L5 — questions with genuinely NO holding slot (mark audited-empty, not un-audited).
+  # ============================================================
+  - op: question.intentionally_empty
+    question_id: 654   # hard pedal: "Is the pedal stiff before you turn the engine key on in the morning?"
+    reason: "Booster reserve-vacuum test — a yes/no diagnostic state with no fact slot; must always be asked."
+  - op: question.intentionally_empty
+    question_id: 655   # hard pedal: "Does the pedal drop slightly when you crank the engine over?"
+    reason: "Booster-function confirmation; no slot expresses this transient behavior."
+  - op: question.intentionally_empty
+    question_id: 642   # pedal_sinks: "Does the pedal creep down while holding pressure at a red light?"
+    reason: "This IS the defining symptom of the subcategory; onset_timing=at_stop is too weak to safely auto-skip a confirm."
+  - op: question.intentionally_empty
+    question_id: 646   # pedal_sinks: "Does the pedal pop right back up instantly when you release?"
+    reason: "Master-cylinder bypass discriminator; no slot captures release behavior."
+  - op: question.intentionally_empty
+    question_id: 639   # spongy: "Does the vehicle take longer to start slowing down than it used to?"
+    reason: "Stopping-distance change has no fact slot; leave asked."
+  - op: question.intentionally_empty
+    question_id: 640   # spongy: "Have you noticed the brake fluid reservoir level dropping?"
+    reason: "Reservoir-level observation; no slot."
+  - op: question.intentionally_empty
+    question_id: 1006  # brake fluid: "checked the reservoir marked 'brake fluid' — does it look low?"
+    reason: "Physical reservoir check; no slot."
+
+  # ============================================================
+  # L5 — slot value recognition cue (existing value, no enum change).
+  # ============================================================
+  - op: stage3.slot.value.add
+    slot: onset_timing
+    value: always   # 'always' = continuous (extracted-facts.ts). Only literally-continuous wording maps here.
+    literal_cues:
+      - "all the time even off the brake"
+      - "there whether I brake or not"
+    # LITERALNESS: fires only when the customer literally states CONTINUITY (all the time / whether I brake or not).
+  - op: stage3.slot.value.add
+    slot: onset_timing
+    value: during_driving   # off-pedal-but-not-stated-continuous. 'during_driving' = while in motion, no other trigger.
+    literal_cues:
+      - "even when I'm not braking"
+      - "with my foot off the pedal"
+    # Purpose: both values are the grinding-vs-bearing discriminator (dossier §5/§9) — either keeps the noise
+    # OUT of when_braking (the routing signal). The split respects literalness: "foot off the pedal" states the
+    # noise is present off-brake, NOT that it is continuous, so it maps to during_driving, not always.
+    # Values already exist in the enum; these ops only add literal cues, no enum change.
+
+  # ============================================================
+  # Stage-2 subcategory proposal (Chris-gated; low demand — do NOT build speculatively).
+  # ============================================================
+  - op: stage2.subcategory.propose
+    category: brakes
+    name: parking_brake_wont_hold
+    description: "The parking / emergency brake no longer holds the car on a slope (rolls when parked), with no accompanying squeal, grind, pull, soft pedal, or smell — a mechanical parking-brake cable/actuator issue distinct from the hydraulic service brake."
+    examples:
+      - "parking brake doesn't hold, car rolls on my driveway"
+      - "e-brake handle pulls all the way up but the car still moves"
+    why_existing_insufficient: "All six brakes/* subcats and burning_rubber_hot_brake_smell assume a friction/hydraulic symptom; a pure won't-hold parking-brake complaint has no fit. Corpus demand is currently thin (parking brake appears only paired with hydraulic symptoms, e.g. tka-192, eval brake_inspection-003), so this is propose-only pending Chris confirming volume before any question set is authored."
+
+  - op: stage2.subcategory.propose
+    category: brakes
+    name: grabby_or_jumpy_brakes
+    description: "The brakes bite harder or more suddenly than pedal effort warrants — 'grabby,' 'jumpy,' 'over-sensitive,' 'grabs hard' — from contaminated or glazed friction material or sticky/seized caliper hardware (FM-11). Distinct from soft/hard/pulsating pedal feel."
+    examples:
+      - "my brakes grab really hard, feels jumpy even with light pedal"
+      - "the brakes are super touchy, they grab and jerk the car when i barely press"
+    why_existing_insufficient: "pedal_feel=grabby is a LIVE Stage-3 enum value (extracted-facts.ts) with no matching brakes/* subcategory — the six existing subcats cover squeal/grind/pulsation/soft/sink/hard, none of them grab. Today a grabby complaint routes to brake_inspection at Stage-1 and carries its signal only in the Stage-3 fact, with no confident Stage-2 landing. Propose-only pending Chris confirming demand; until then the golden case for grab expects stage2_subcategory_slug: null rather than forcing a wrong subcat."
+
+# ================================================================
+# GOLDEN CASES (>=8; >=1 inference-trap; >=1 null-route). Schema mirrors eval-cases.json.
+# ================================================================
+golden_cases:
+  - text: "loud grinding from the front right when i brake, feels like metal on metal"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: brake_inspection
+      stage1_acceptable: [brake_inspection, brake_inspection_warning_light]
+      stage2_subcategory_slug: metallic_grinding
+      stage3_facts:
+        noise_descriptor: grinding_metallic
+        location_side: right
+        location_axle: front
+        onset_timing: when_braking
+      route: testing_service
+
+  - text: "my brakes squeel every time i come to a stop, worse the first couple stops in the morning when its damp out"
+    tags: [fact_rich, misspelling]
+    expected:
+      stage1_category_key: brake_inspection
+      stage1_acceptable: [brake_inspection]
+      stage2_subcategory_slug: high_pitched_squealing
+      stage3_facts:
+        noise_descriptor: squealing_high_pitched
+        onset_timing: when_braking
+        weather_condition: humid   # "damp out" maps to humid per extracted-facts.ts ('humid days'->humid); NOT rainy_or_wet (which is 'in the rain'/'after a car wash')
+      route: testing_service
+
+  - text: "brake pedal feels soft and mushy, i have to pump it a couple times before the car really slows down. started a few days ago"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: brake_inspection
+      stage1_acceptable: [brake_inspection]
+      stage2_subcategory_slug: spongy_or_soft_pedal
+      stage3_facts:
+        pedal_feel: soft_spongy
+        started_when: days_ago
+      route: testing_service
+
+  - text: "when im stopped at a light the brake pedal slowly sinks toward the floor even though im not pressing any harder"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: brake_inspection
+      stage1_acceptable: [brake_inspection]
+      stage2_subcategory_slug: pedal_sinks_to_floor
+      stage3_facts:
+        pedal_feel: sinks_to_floor
+        onset_timing: at_stop
+      route: testing_service
+
+  - text: "the brake pedal is rock hard, i have to stand on it to stop, and theres a hiss when i push it"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: brake_inspection
+      stage1_acceptable: [brake_inspection]
+      stage2_subcategory_slug: hard_or_unresponsive_pedal
+      stage3_facts:
+        pedal_feel: hard_unresponsive
+        noise_descriptor: hissing
+      route: testing_service
+
+  - text: "car pulls hard to the left every time i hit the brakes but drives perfectly straight otherwise"
+    tags: [fact_rich, confusable_alignment]
+    expected:
+      stage1_category_key: brake_inspection
+      stage1_acceptable: [brake_inspection]
+      stage2_subcategory_slug: pulling_only_when_braking
+      stage3_facts:
+        pull_direction: left
+        onset_timing: when_braking
+      route: testing_service
+
+  - text: "clear yellowish oily puddle right next to my front tire and the brake pedal feels soft now"
+    tags: [fact_rich, safety]
+    expected:
+      stage1_category_key: brake_inspection
+      stage1_acceptable: [brake_inspection, brake_inspection_warning_light]
+      stage2_subcategory_slug: clear_yellow_or_light_brown_puddle_brake_fluid
+      stage3_facts:
+        fluid_color: clear_yellow_or_light_brown
+        fluid_under_car_location: under_a_wheel
+        pedal_feel: soft_spongy
+      route: testing_service
+
+  - text: "brakes have been squeaking for a couple weeks and now the red BRAKE light just came on, my e-brake is all the way off"
+    tags: [confusable_warning_light, near_miss]
+    expected:
+      stage1_category_key: brake_inspection_warning_light
+      stage1_acceptable: [brake_inspection_warning_light, brake_inspection]
+      stage2_subcategory_slug: brake_system_red_light
+      stage3_facts:
+        noise_descriptor: squealing_high_pitched
+        started_when: weeks_ago
+        warning_light_named: brake
+        parking_brake_state: released
+      route: testing_service
+
+  - text: "theres smoke coming off my rear right wheel and it smells hot, i think i left the parking brake on when i drove home"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: brake_inspection
+      stage1_acceptable: [brake_inspection]
+      stage2_subcategory_slug: smoke_or_burning_smell_from_a_wheel
+      stage3_facts:
+        sound_or_smoke_location_zone: from_a_wheel
+        location_axle: rear
+        location_side: right
+        smell_descriptor: burning_rubber_or_hot_brakes
+        parking_brake_state: engaged_or_partially_engaged
+      route: testing_service
+
+  # ---- FM-11 GRAB: pedal_feel=grabby is a live enum with NO dedicated subcat. Tests Stage-1 route + Stage-3
+  #      fact; Stage-2 stays null until the gated grabby_or_jumpy_brakes subcat exists. ----
+  - text: "my brakes grab really hard and jerk the car even when i barely touch the pedal"
+    tags: [fact_rich, no_subcat_fit]
+    expected:
+      stage1_category_key: brake_inspection
+      stage1_acceptable: [brake_inspection]
+      stage2_subcategory_slug: null
+      stage2_acceptable: [hard_or_unresponsive_pedal, pulsating_or_vibrating_pedal]   # nearest only; none actually describe grab
+      stage3_facts:
+        pedal_feel: grabby
+      # No brakes/* subcat describes grab (§8 NO-SUBCAT-FIT). The routing signal lives in Stage-3
+      # pedal_feel=grabby; do not force a wrong Stage-2 pick.
+      route: testing_service
+
+  # ---- INFERENCE-TRAP: "shakes when I brake" must set ONLY onset_timing; NOT pedal_feel, location, noise, rotor. ----
+  - text: "my car shakes when i brake"
+    tags: [inference_trap, sparse]
+    expected:
+      stage1_category_key: brake_inspection
+      stage1_acceptable: [brake_inspection]
+      stage2_subcategory_slug: vibration_or_pulsing_when_braking
+      stage2_acceptable: [vibration_or_pulsing_when_braking, pulsating_or_vibrating_pedal]
+      stage3_facts:
+        onset_timing: when_braking
+      # TRAP: must NOT set pedal_feel=pulsating (customer said 'shakes', not that the pedal pulses),
+      # must NOT set location_side/axle, noise_descriptor, or anything about rotors. Only the literal
+      # 'when i brake' fact is present.
+      route: testing_service
+
+  # ---- CROSS-SYSTEM near-miss: brake-triggered vs speed-triggered shake (guards the brake<->suspension hedge). ----
+  - text: "steering wheel shakes really bad at 65 on the highway, calms down when i slow, but its fine when i brake"
+    tags: [confusable_suspension, near_miss]
+    expected:
+      stage1_category_key: suspension_steering_check
+      stage1_acceptable: [suspension_steering_check]
+      stage2_subcategory_slug: steering_wheel_shake_at_highway_speed
+      stage3_facts:
+        speed_band: specific_mph
+        speed_specific_mph: 65
+      # Not a brake case: shake is speed-triggered and explicitly NOT when braking.
+      route: testing_service
+
+  # ---- CROSS-SYSTEM near-miss: yellow ABS light only (guards against over-routing to brakes). ----
+  - text: "the yellow ABS light popped on right after i smacked a big pothole, brakes still stop the car totally fine"
+    tags: [confusable_abs, near_miss]
+    expected:
+      stage1_category_key: abs_traction_stability_testing
+      stage1_acceptable: [abs_traction_stability_testing]
+      stage2_subcategory_slug: abs_anti_lock_brake_light
+      stage3_facts:
+        warning_light_named: ABS
+        recent_action: hit_pothole_or_curb
+      # LITERALNESS: customer said the brakes still STOP the car fine (a stopping-FUNCTION statement), not that
+      # the PEDAL feels normal. pedal_feel is therefore NOT expected — asserting pedal_feel=normal would grade a
+      # correctly-literal extractor as wrong.
+      route: testing_service
+
+  # ---- NULL-ROUTE: work-order / maintenance line, not a customer symptom. Empty Stage-1 -> advisor. ----
+  - text: "Previously declined>BRAKE SYSTEM FLUSH (Service recommended every 3 years / 30k miles)"
+    tags: [null_route, work_order_noise]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      stage3_facts: {}
+      route: advisor
+      # This is an internal work-order/maintenance recommendation line (the NON-CONCERN rejection rule),
+      # not a customer describing a problem. Must not fabricate a brake symptom from it.

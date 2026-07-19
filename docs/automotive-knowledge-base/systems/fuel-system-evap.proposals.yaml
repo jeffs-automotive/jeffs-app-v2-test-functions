@@ -1,0 +1,364 @@
+system: fuel-system-evap
+# Typed change-ops binding to the live snapshot (2026-07-18, shop 7476).
+# Every op is a retraining lever. Catalog/service/subcategory and any service-routing edit is
+# CHRIS-GATED (propose, never assume). All corpus ids below re-verified to exist with matching text.
+
+ops:
+  # ===================================================================
+  # L1 — Stage-1 example_keywords (BOTH target services have EMPTY example_keywords in the DB today)
+  # ===================================================================
+  - op: stage1.keyword.add
+    category_key: check_engine_light_testing
+    phrase: "check engine light on"
+    rationale: "example_keywords[] is empty for this service; the CEL is its primary Stage-1 signal."
+    evidence: "tkc-002, tkc-116, tka-060, tka-084"
+  - op: stage1.keyword.add
+    category_key: check_engine_light_testing
+    phrase: "evap code"
+    rationale: "EVAP CEL is a core fuel/emissions presentation with no keyword coverage."
+    evidence: "tkc-148 (p0446), tkc-002 (believe it is an EVAP issue)"
+  - op: stage1.keyword.add
+    category_key: check_engine_light_testing
+    phrase: "engine light after filling up gas"
+    rationale: "Loose-cap / EVAP CEL post-fill-up is the highest-frequency benign CEL cause."
+    evidence: "tkc-116 (recently got gas, steady CEL), eval check_engine_light_testing-001"
+  - op: stage1.keyword.add
+    category_key: check_engine_light_testing
+    phrase: "black smoke from tailpipe"
+    rationale: "Rich-running black smoke routes here; no keyword today (also see the smoke concern_category op below)."
+    evidence: "eval check_engine_light_testing-007"
+  - op: stage1.keyword.add
+    category_key: no_start_testing
+    phrase: "cranks but wont start"
+    rationale: "example_keywords[] empty; this is the definitional no_start signal (cranks-but-won't-fire)."
+    evidence: "tka-170, tkc-172"
+  - op: stage1.keyword.add
+    category_key: no_start_testing
+    phrase: "turns over but wont fire"
+    rationale: "Synonym of cranks-but-won't-start; disambiguates from won't-crank (charging)."
+    evidence: "tka-170 (AAA said timing belt)"
+  - op: stage1.keyword.add
+    category_key: no_start_testing
+    phrase: "no start after getting gas"
+    rationale: "No-start shortly after a fuel stop (fuel-delivery or contaminated-fuel no-start)."
+    evidence: "tka-020, tkc-098"
+
+  # ===================================================================
+  # Stage-1 hedges — confusable ROUTING (owned confusable-matrix rows)
+  # ===================================================================
+  - op: stage1.hedge.add
+    category_a: check_engine_light_testing
+    category_b: coolant_leak_testing
+    rule: "BLACK sooty tailpipe smoke (rich fuel) and BLUE/GRAY smoke (oil burn) route to check_engine_light_testing; only WHITE thick smoke with a SWEET smell routes to coolant_leak_testing. (The durable enablement — adding `smoke` to check_engine_light_testing.concern_categories — is the separate Chris-gated catalog.service.concern_category.add op below; this hedge is the retraining lever.)"
+    discriminating_fact: "smoke_color (black|blue_or_gray -> CEL; white -> coolant) + smell_descriptor (gasoline_or_fuel/burnt_oil vs sweet_or_maple_syrup)"
+  - op: stage1.hedge.add
+    category_a: check_engine_light_testing
+    category_b: no_start_testing
+    rule: "Cranks-but-won't-fire, stalls, or hard-start with a running engine can route to either; prefer no_start_testing when the LEAD complaint is 'won't start / cranks but won't catch', prefer check_engine_light_testing when a CEL/rich/lean symptom leads. Never route to charging_starting_testing unless the engine won't crank / just clicks / needed a jump."
+    discriminating_fact: "engine_running (wont_start/died_while_driving vs wont_crank_just_clicks/slow_crank)"
+
+  # ===================================================================
+  # Service-routing EDIT (explicit Chris-gated proposal block) — the durable fix for the smoke routing gap
+  # ===================================================================
+  - op: catalog.service.concern_category.add   # explicit service-edit proposal — CHRIS-GATED
+    service_key: check_engine_light_testing
+    add_category: smoke
+    demand_evidence: "eval check_engine_light_testing-007 ('my truck started blowing black smoke' -> expected CEL testing). taxonomy 00-current-scheduler-taxonomy.md line 77 already states CEL owns blue/gray tailpipe smoke, but the DB testing_services.concern_categories = [warning_light, performance] omits `smoke`, so black_smoke_from_tailpipe and blue_or_gray_smoke_from_tailpipe are unreachable via CEL and only reachable via coolant_leak_testing / oil_leak_testing (wrong diagnostics for rich-fuel black smoke)."
+    rationale: "Adds `smoke` so the rich-fuel / oil-burn smoke subcategories are reachable from the correct diagnostic service. Pairs with the stage1.hedge.add smoke-color lever above. Chris-gated because it edits a service's routing surface."
+
+  # ===================================================================
+  # L3 — Stage-2 negative_examples (routes_to REQUIRED) — sharpen the confusable boundaries
+  # ===================================================================
+  - op: stage2.example.negative.add
+    subcat_slug: gasoline_fuel_smell
+    phrase: "smoky, burnt tailpipe smell inside the car with headaches"
+    routes_to: exhaust_fumes_inside_the_cabin
+  - op: stage2.example.negative.add
+    subcat_slug: gasoline_fuel_smell
+    phrase: "rotten egg / sulfur smell from the exhaust, worse under acceleration"
+    routes_to: rotten_egg_sulfur_smell
+  - op: stage2.example.negative.add
+    subcat_slug: black_smoke_from_tailpipe
+    phrase: "thick white smoke that smells sweet like syrup"
+    routes_to: white_smoke_from_tailpipe
+  - op: stage2.example.negative.add
+    subcat_slug: black_smoke_from_tailpipe
+    phrase: "puff of blue smoke on cold start that smells like burning oil"
+    routes_to: blue_or_gray_smoke_from_tailpipe
+  - op: stage2.example.negative.add
+    subcat_slug: hard_to_start_when_hot
+    phrase: "cranks slow / just clicks when i turn the key"
+    routes_to: wont_crank_just_clicks
+  - op: stage2.example.negative.add
+    subcat_slug: hard_to_start_when_cold
+    phrase: "hard to restart right after i stop for gas on a hot day"
+    routes_to: hard_to_start_when_hot
+  - op: stage2.example.negative.add
+    subcat_slug: check_engine_light
+    phrase: "gas pump keeps clicking off / gas spits back when i try to fill up"
+    routes_to: trouble_fueling_gas_wont_go_in
+    conditional_on: "stage2.subcategory.propose trouble_fueling_gas_wont_go_in (below) — CONDITIONAL on Chris approval. Until the slug exists this text stays check_engine_light_testing with a NULL subcategory (see tka-046). Do not apply this negative example before the subcategory lands."
+
+  # ===================================================================
+  # L3 — Stage-2 positive_examples (real customer voice; provenance tagged per template enum)
+  # ===================================================================
+  - op: stage2.example.positive.add
+    subcat_slug: check_engine_light
+    phrase: "check engine light on, believe it is an EVAP issue, need a loaner"
+    provenance: tekmetric   # tkc-002
+  - op: stage2.example.positive.add
+    subcat_slug: check_engine_light
+    phrase: "p0446 evap code keeps setting, cant find the leak"
+    provenance: tekmetric   # tkc-148
+  - op: stage2.example.positive.add
+    subcat_slug: black_smoke_from_tailpipe
+    phrase: "fuel mileage tanked and theres black smoke from the back"
+    provenance: synthetic   # no Tekmetric-corpus row exists for black_smoke_from_tailpipe (dossier §11)
+  - op: stage2.example.positive.add
+    subcat_slug: hard_to_start_when_hot
+    phrase: "after getting gas has to crank the vehicle multiple times to get it started"
+    provenance: tekmetric   # tka-020
+  - op: stage2.example.positive.add
+    subcat_slug: low_power_or_wont_accelerate_normally
+    phrase: "losing power going uphill, i think its the high pressure fuel pump"
+    provenance: tekmetric   # tkc-133
+  - op: stage2.example.positive.add
+    subcat_slug: stalling_at_idle_or_when_stopping
+    phrase: "cel comes on and off, stalls when idling, i pulled rich codes"
+    provenance: tekmetric   # tka-084
+
+  # ===================================================================
+  # L4 — Stage-2 synonyms (>=2 tokens or a domain token; NEVER bare "gas/smoke/light"; customer voice)
+  # ===================================================================
+  - op: stage2.synonym.add
+    subcat_slug: check_engine_light
+    term: "evap code"
+  - op: stage2.synonym.add
+    subcat_slug: check_engine_light
+    term: "loose gas cap light"
+  - op: stage2.synonym.add
+    subcat_slug: gasoline_fuel_smell
+    term: "raw fuel smell"
+  - op: stage2.synonym.add
+    subcat_slug: black_smoke_from_tailpipe
+    term: "sooty black exhaust"   # customer voice (replaces mechanic-voice "running rich")
+  - op: stage2.synonym.add
+    subcat_slug: hard_to_start_when_hot
+    term: "cranks but wont catch when hot"
+  # NOTE: the previous synonym `stalling_while_driving_under_load <- "cranks but will not start"` was REMOVED.
+  # A bare crank-no-fire matches neither stalling_* nor hard_start_* (it is a NO-FIT; dossier §7/§8); binding it
+  # to a stalling subcategory would have pulled all crank-no-start texts into stalling. Stage-1 no_start_testing
+  # keyword ("cranks but wont start", above) covers the phrase instead.
+
+  # ===================================================================
+  # Stage-2 subcategory PROPOSAL (NO FIT, real corpus demand) — CHRIS-GATED
+  # ===================================================================
+  - op: stage2.subcategory.propose
+    category: performance
+    name: trouble_fueling_gas_wont_go_in
+    description: "The customer cannot fill the fuel tank normally — the gas-pump nozzle keeps clicking off after only a little fuel, or gasoline spits/backs up out of the filler. Points to a blocked EVAP vent path, a saturated/failed charcoal canister, a fuel-tank vapor-recirculation fault, or a filler-neck / rollover check-valve problem. May or may not set an EVAP code. Distinct from gasoline_fuel_smell (smell-led, not fill-led) and from check_engine_light (light-led)."
+    examples:
+      - "cant fill up with gas, the pump keeps clicking off / gas squirts back out"   # tka-046
+      - "when i fill up the gas comes back out after only a few dollars"               # tka-137
+      - "takes forever to fuel, nozzle shuts off every second or two"                  # synthetic
+    why_existing_insufficient: "There is no slug for a fill-up-failure complaint (neither a smell, a light, nor a drivability symptom). Honest demand: tka-046 ('CAN NOT FILL WITH GAS. WHEN TRYING TO REFUEL GAS SQUIRTS BACK OUT') was judged check_engine_light_testing with a NULL subcategory. tka-137 ('NOW WHEN FILLING UP GAS IT COMES BACK OUT AFTER $14') is the SAME fill-failure symptom but was judged after_recent_service_or_repair_work (UNANIMOUS) because its text leads with 'WE REPLACED FUEL PUMP LAST SERVICE' — the judges keyed on recent-repair context, so its fueling symptom is currently masked, not captured. So the demand is one clean null-subcategory case plus one symptom-masked case."
+
+  # ===================================================================
+  # L5 — Stage-3 slot value add (existing slot) — CHRIS-gated soft add
+  # ===================================================================
+  - op: stage3.slot.value.add
+    slot: customer_request_type
+    value: emissions_or_smog_check
+    literal_cues:
+      - "need to pass smog"
+      - "failed emissions test"
+      - "need to pass inspection"
+      - "monitors arent ready"
+      - "need a drive cycle for the retest"
+    # Evidence: tkc-127 (monitors not set), tkc-002 (EVAP inspection framing). Keeps emissions-readiness
+    # requests off the drivability slugs. Only set when the customer literally frames it as passing a test.
+
+  # ===================================================================
+  # L5 — Stage-3 NEW SLOT proposal (>=3 questions bind it via emitted ops below)
+  # ===================================================================
+  - op: stage3.slot.propose
+    name: fuel_economy_change
+    type: enum
+    values: [dropped, normal_or_better, not_mentioned]
+    literal_cues:
+      - "gas mileage tanked"
+      - "using more gas than usual"
+      - "getting terrible gas mileage"
+      - "mpg dropped"
+      - "burning through fuel"
+    questions_unlocked: [297, 1185, 376]
+    # Catalog snapshot: q297 (black_smoke: "noticed the fuel mileage dropping recently?") and q1185
+    # (low_power: "sudden drop in your gas mileage?") currently have EMPTY required_facts[]. q376
+    # (check_engine_light: "using more gas than usual, or any black smoke?") is COMPOUND and already has
+    # required_facts=["smoke_color"] -> we ADD fuel_economy_change to it (a compound question requires BOTH
+    # facts to be skippable). All three bindings are emitted as question.required_facts.set ops below, so the
+    # >=3-question rule is met by EMITTED ops, not just the questions_unlocked list.
+    # Extraction discipline: set `dropped` ONLY on a literal mileage statement; do NOT infer from "running rich".
+
+  # ===================================================================
+  # question.required_facts.set — close over-asking gaps (skip_class + derivation)
+  # ===================================================================
+  - op: question.required_facts.set
+    question_id: 297
+    facts: [fuel_economy_change]
+    skip_class: PARTIAL
+    derivation_note: "Depends on the proposed fuel_economy_change slot; skip only when the customer literally stated a mileage change. Currently required_facts[] is empty."
+  - op: question.required_facts.set
+    question_id: 1185
+    facts: [fuel_economy_change]
+    skip_class: PARTIAL
+    derivation_note: "Depends on the proposed fuel_economy_change slot. Currently required_facts[] is empty."
+  - op: question.required_facts.set
+    question_id: 376
+    facts: [smoke_color, fuel_economy_change]
+    skip_class: PARTIAL
+    derivation_note: "q376 is COMPOUND ('using more gas than usual, or any black smoke?'). It already carries required_facts=[smoke_color]; this ADDS fuel_economy_change so it is skippable only when BOTH the mileage half and the smoke half are already known. No question-split op exists (or is needed) — the two-fact requirement expresses the compound question correctly."
+  - op: question.required_facts.set
+    question_id: 1172
+    facts: [smoke_color, smell_descriptor]
+    skip_class: PARTIAL
+    derivation_note: "hard_to_start_when_cold 'any black smoke or strong gas smell when it starts?' — answered if the customer already stated smoke_color=black and/or smell_descriptor=gasoline_or_fuel."
+
+  # ===================================================================
+  # question.intentionally_empty — genuinely un-slottable (document so the verifier stops flagging)
+  # ===================================================================
+  - op: question.intentionally_empty
+    question_id: 243
+    reason: "gasoline_fuel_smell 'is your gas cap on tight / does it click?' — no gas-cap-state slot exists and customers rarely volunteer it; must be asked."
+  - op: question.intentionally_empty
+    question_id: 299
+    reason: "black_smoke 'when was the air filter last changed?' — maintenance-history detail with no slot; always ask."
+  - op: question.intentionally_empty
+    question_id: 516
+    reason: "engine_misfire 'how long since spark plugs were replaced?' — service-history detail, no slot."
+  - op: question.intentionally_empty
+    question_id: 471
+    reason: "stalling_at_idle 'restart right away or do you have to wait?' — restart-latency has no slot; diagnostic-only follow-up."
+  - op: question.intentionally_empty
+    question_id: 1178
+    reason: "hard_to_start_when_hot 'does it start better if you press the gas pedal partway?' — a diagnostic probe with no customer-stated slot."
+
+# =====================================================================
+# GOLDEN CASES (>=8; 2 inference-traps, 1 null-route). Schema mirrors eval-cases.json.
+# =====================================================================
+golden_cases:
+  - text: "black smoke pours out the tailpipe when i stomp on the gas and it smells like raw gas, my mileage tanked too"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing]
+      stage2_subcategory_slug: black_smoke_from_tailpipe
+      stage3_facts:
+        smoke_color: black
+        onset_timing: when_accelerating
+        smell_descriptor: gasoline_or_fuel
+        sound_or_smoke_location_zone: from_tailpipe
+      route: testing_service
+
+  - text: "check engine light came on right after i filled up with gas like 2 weeks ago, tightened the cap but its still on solid, car drives totally fine"
+    tags: [fact_rich, inference_trap]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage2_subcategory_slug: check_engine_light
+      stage3_facts:
+        warning_light_named: "*"
+        warning_light_behavior: steady_on
+        recent_action: fuel_fill_up
+        started_when: weeks_ago
+        drivable_state: drivable_normally
+      route: testing_service
+    # TRAP: do NOT set smell_descriptor or smoke_color (none stated); do NOT assert an EVAP diagnosis.
+
+  - text: "my truck started blowing black smoke, not sure whats going on with it"
+    tags: [sparse, inference_trap]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage2_subcategory_slug: black_smoke_from_tailpipe
+      stage3_facts:
+        smoke_color: black
+      route: testing_service
+    # TRAP: do NOT set vehicle_powertrain=diesel from "truck" (US pickups are usually gas); do NOT set smell.
+
+  - text: "if i stop for gas after driving a while the car cranks and cranks but wont catch, i smell gas around the engine, then it starts fine after it sits for a bit"
+    tags: [fact_rich, inference_trap]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing, no_start_testing]
+      stage2_subcategory_slug: hard_to_start_when_hot
+      stage3_facts:
+        onset_timing: after_warming_up
+        engine_running: wont_start
+        smell_descriptor: gasoline_or_fuel
+      route: testing_service
+    # TRAP: do NOT set recent_action=fuel_fill_up. "if i stop for gas after driving a while" is a HABITUAL/
+    # conditional scenario, not a literal recent fill-up event; recent_action is defined as an actual recent
+    # action ("right after I filled up"), which this text does not literally state.
+
+  - text: "cranks forever first thing in the morning before it finally fires up, but once its warmed up it starts fine, been doing it a couple weeks"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing, no_start_testing]
+      stage2_subcategory_slug: hard_to_start_when_cold
+      stage3_facts:
+        onset_timing: cold_start
+        started_when: weeks_ago
+      route: testing_service
+
+  - text: "i smell raw gasoline inside the car when im driving, and the whole garage reeks of gas when i park it"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage2_subcategory_slug: gasoline_fuel_smell
+      stage3_facts:
+        smell_descriptor: gasoline_or_fuel
+        sound_or_smoke_location_zone: inside_cabin_general
+      route: testing_service
+
+  - text: "was driving on the highway and the engine just shut off, had to coast to the shoulder, it cranks but wont start back up right away"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: no_start_testing
+      stage1_acceptable: [no_start_testing, check_engine_light_testing]
+      stage2_subcategory_slug: stalling_while_driving_under_load
+      stage3_facts:
+        engine_running: died_while_driving
+        speed_band: highway
+      route: testing_service
+
+  - text: "engine sputters and runs rough when im stopped at red lights, rpm needle bounces all over, check engine light is on and sometimes i get a rotten egg smell"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage2_subcategory_slug: rough_idle_or_shaking_at_a_stop
+      stage3_facts:
+        engine_running: rough_idle
+        speed_band: stopped
+        warning_light_named: "*"
+        smell_descriptor: rotten_egg_or_sulfur
+      route: testing_service
+
+  - text: "i cant fill up with gas anymore, the pump keeps clicking off after a couple seconds and gas spits back out at me"
+    tags: [moderate, proposed_subcategory]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage2_subcategory_slug: trouble_fueling_gas_wont_go_in   # PROPOSED — pending Chris approval
+      stage3_facts: {}
+      route: testing_service
+    # Until the subcategory exists, judges label this check_engine_light_testing with a NULL subcategory
+    # (see tka-046). This golden case is the acceptance test for the proposed slug.
+
+  - text: "evap and cat monitors still not set, customer needs the vehicle back and will drive it a few days then bring it in for the retest"
+    tags: [null_route, work_order]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      stage3_facts: {}
+      route: advisor
+    # Internal shop / work-order note, not a customer concern (verbatim-ish tkc-127). Empty Stage-1 -> advisor.

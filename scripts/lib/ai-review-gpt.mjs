@@ -54,47 +54,114 @@ export async function resolveOpenAIApiKey() {
 // (verified twice during scheduler-edge-parity v0.4 cross-verify rounds).
 // 600s gives headroom for deep audits on large plan docs without burning
 // cache on retries.
-export async function callGpt({ systemInstruction, userMessage, apiKey, timeoutMs = 600_000 }) {
+export async function callGpt({ systemInstruction, userMessage, apiKey, timeoutMs = 1_800_000 }) {
+  // timeoutMs default 30min (2026-07-19): background+poll holds NO connection,
+  // so a long deadline is free — and MAX effort on a large (30k+ char) plan
+  // doc genuinely reasons >10min. The old 600s poll deadline aborted a
+  // still-"in_progress" response. Chris: terra runs at max, always → give it
+  // room. (Gemini stays fast; only the terra poll needs the headroom.)
   if (!apiKey) {
     return { ok: false, error: "Missing OPENAI_API_KEY" };
   }
-  // HISTORY: 2026-05-25 we removed `reasoning: { effort }` because the old
-  // caller used /v1/chat/completions, which 400s on that param (it is a
-  // /v1/responses parameter). 2026-07-12: migrated to /v1/responses exactly
-  // so effort CAN be set — Chris wants terra at max.
+  const headers = {
+    Authorization: `Bearer ${apiKey}`,
+    "Content-Type": "application/json",
+  };
+  const deadline = Date.now() + timeoutMs;
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // fetch with a few retries on transient network errors (ECONNRESET etc.).
+  async function fetchRetry(url, init, tries = 3) {
+    let lastErr;
+    for (let i = 0; i < tries; i++) {
+      try {
+        return await fetch(url, init);
+      } catch (e) {
+        lastErr = e;
+        if (i < tries - 1) await sleep(1000 * (i + 1));
+      }
+    }
+    throw lastErr;
+  }
+
+  // ── Create the response in BACKGROUND mode ─────────────────────────────
+  // HISTORY: 2026-07-12 migrated to /v1/responses so `reasoning.effort` works
+  // (a /v1/responses-only param; /v1/chat/completions 400s on it). 2026-07-19
+  // (Chris: terra runs at MAX, always): a max-effort review reasons for
+  // minutes; a *synchronous* request holds an idle connection that an
+  // intermediary resets mid-flight (surfaces as "fetch failed", NOT a clean
+  // timeout — a retry just restarts the same long request → same reset). So
+  // we use `background: true`: the POST returns an id immediately and we poll
+  // GET /v1/responses/{id} until terminal. No long-held connection to reset;
+  // the work continues server-side even across a dropped poll. `stream:false`
+  // stays (we read the final object, not deltas).
   const body = {
     model: MODEL,
     instructions: systemInstruction,
     input: userMessage,
     reasoning: { effort: REASONING_EFFORT },
+    background: true,
     stream: false,
   };
 
-  let res;
+  let createRes;
   try {
-    res = await fetch(API_URL, {
+    createRes = await fetchRetry(API_URL, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
+      headers,
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: AbortSignal.timeout(60_000),
     });
   } catch (e) {
-    return { ok: false, error: `GPT network: ${e instanceof Error ? e.message : String(e)}` };
+    const cause = e instanceof Error && e.cause && e.cause.message ? ` (${e.cause.message})` : "";
+    return { ok: false, error: `GPT create network: ${e instanceof Error ? e.message : String(e)}${cause}` };
   }
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => "<unreadable>");
-    return { ok: false, error: `GPT HTTP ${res.status}: ${text.slice(0, 500)}` };
+  if (!createRes.ok) {
+    const text = await createRes.text().catch(() => "<unreadable>");
+    return { ok: false, error: `GPT create HTTP ${createRes.status}: ${text.slice(0, 500)}` };
   }
-
   let data;
   try {
-    data = await res.json();
+    data = await createRes.json();
   } catch (e) {
-    return { ok: false, error: `GPT non-JSON: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, error: `GPT create non-JSON: ${e instanceof Error ? e.message : String(e)}` };
+  }
+  const id = data?.id;
+  if (!id) {
+    return { ok: false, error: `GPT create returned no id (status=${data?.status ?? "?"})` };
+  }
+
+  // ── Poll until terminal or deadline ────────────────────────────────────
+  const TERMINAL = new Set(["completed", "failed", "cancelled", "incomplete"]);
+  const pollUrl = `${API_URL}/${id}`;
+  let status = data?.status ?? "queued";
+  while (!TERMINAL.has(status)) {
+    if (Date.now() > deadline) {
+      // Best-effort cancel so it doesn't keep running/billing after we bail.
+      try {
+        await fetch(`${pollUrl}/cancel`, { method: "POST", headers, signal: AbortSignal.timeout(15_000) });
+      } catch { /* ignore */ }
+      return { ok: false, error: `GPT background timed out after ${Math.round(timeoutMs / 1000)}s (last status=${status})` };
+    }
+    await sleep(4000);
+    let pollRes;
+    try {
+      pollRes = await fetchRetry(pollUrl, { method: "GET", headers, signal: AbortSignal.timeout(60_000) });
+    } catch {
+      continue; // transient poll failure — work continues server-side; keep polling
+    }
+    if (!pollRes.ok) continue; // 5xx/429 on a poll — transient; keep polling
+    try {
+      data = await pollRes.json();
+    } catch {
+      continue;
+    }
+    status = data?.status ?? status;
+  }
+
+  if (status !== "completed") {
+    const reason = data?.incomplete_details?.reason || data?.error?.message || status;
+    return { ok: false, error: `GPT background ${status}: ${reason}` };
   }
 
   // Responses API shape: data.output[] holds typed items ("reasoning",
@@ -115,7 +182,7 @@ export async function callGpt({ systemInstruction, userMessage, apiKey, timeoutM
   if (typeof text !== "string" || text.length === 0) {
     return {
       ok: false,
-      error: `GPT empty response. status=${data?.status ?? "?"} incomplete=${data?.incomplete_details?.reason ?? "-"}`,
+      error: `GPT empty response. status=${status} incomplete=${data?.incomplete_details?.reason ?? "-"}`,
     };
   }
 

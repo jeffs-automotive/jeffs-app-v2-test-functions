@@ -1,0 +1,169 @@
+system: airbag-srs-restraints
+# phrase -> normalized -> routes_to[] -> ambiguity -> provenance
+# ambiguity: unambiguous | needs-fact:<slot> | cross-system:<slug> | null-route
+#   null-route = no current subcategory holds it; route to advisor (empty routes_to []).
+# provenance enum (source-policy.md): tekmetric | nhtsa | forum-paraphrase | synthetic
+#   NOTE ON AUTHORED EVAL TEXT: phrasings taken from eval-cases.json (source
+#   "authored-2026-07-02-workflow") are NOT real customer corpus. The strict enum has no
+#   "authored" value, so they are labeled `synthetic` and the originating eval id is named in
+#   a comment. This keeps the real-voice/synthetic-share accounting honest (they do NOT count
+#   as real `tekmetric` voice).
+#   REAL-VOICE SCARCITY: the Tekmetric 500-corpus contains only four airbag/SRS utterances
+#   (two of them route AWAY — accident + cascade), so most in-subcategory phrasings are NHTSA
+#   ODI real voice (public-domain) or flagged synthetic. See dossier §4/§10.
+# Voice preserved as customers write it (caps/fragments/misspellings intact).
+# Routing-only: SRS is a live pyrotechnic system; nothing here implies handling/DIY.
+entries:
+  # ---- SRS light, isolated (the core happy path) ----
+  - phrase: "AIR BAG LIGHT ON"
+    normalized: airbag/SRS telltale on
+    routes_to: [airbag_srs_light]
+    ambiguity: unambiguous
+    provenance: tekmetric   # verbatim opening fragment of corpus RO (real-concerns-tekmetric line ~5758); fuller line adds accident framing -> handled as a route-away entry below
+
+  - phrase: "airbag light always on in my dashboard"
+    normalized: SRS telltale steady on
+    routes_to: [airbag_srs_light]
+    ambiguity: unambiguous
+    provenance: nhtsa   # ODI narrative, air-bag component (paraphrased to first person)
+
+  - phrase: "SRS light went on and stayed on, the dealer said the SRS computer malfunctioned and needs replacing"
+    normalized: SRS telltale steady on, module fault
+    routes_to: [airbag_srs_light]
+    ambiguity: unambiguous
+    provenance: nhtsa   # ODI narrative (paraphrased); real recurrent SRS-module-failure voice
+
+  - phrase: "theres a yellow SRS triangle showing on my dash, no clue what that even means"
+    normalized: SRS-triangle icon, customer cannot name it
+    routes_to: [airbag_srs_light]
+    ambiguity: unambiguous
+    provenance: synthetic   # authored eval airbag_srs_testing-004 (not real corpus)
+
+  - phrase: "the little airbag person light on my dash has been glowing for a couple weeks now"
+    normalized: airbag person-icon telltale on, weeks
+    routes_to: [airbag_srs_light]
+    ambiguity: unambiguous
+    provenance: synthetic   # authored eval airbag_srs_testing-003 (not real corpus)
+
+  - phrase: "red person-with-seatbelt-and-a-ball icon lit up on the dash"
+    normalized: SRS person+airbag icon description
+    routes_to: [airbag_srs_light]
+    ambiguity: unambiguous
+    provenance: synthetic
+
+  # ---- Trigger cues (crash code / interior work / voltage / flood) ----
+  - phrase: "Airbag light popped on a few days ago right after a lil fender bender, no airbags went off, stays on steady the whole time i drive"
+    normalized: SRS steady after minor impact, no deployment
+    routes_to: [airbag_srs_light]
+    ambiguity: cross-system:after_a_recent_accident_or_impact   # minor bump + lone light + want-light-checked -> SRS; deployment/damage/insurance/whole-car -> accident bucket
+    provenance: synthetic   # authored eval airbag_srs_testing-001 (not real corpus)
+
+  - phrase: "started after i pulled the seats out to shampoo the carpets"
+    normalized: SRS light after DIY seat removal / interior work
+    routes_to: [airbag_srs_light]
+    ambiguity: unambiguous   # DIY (customer's own work) -> stays SRS; a SHOP causally blamed -> after_recent_service_or_repair_work (see boundary entry below)
+    provenance: synthetic   # authored eval airbag_srs_testing-003 (not real corpus)
+
+  - phrase: "my SRS light is flashing some weird pattern of blinks ever since the battery died and i had to jump start the car"
+    normalized: SRS blink-pattern after battery/jump, isolated
+    routes_to: [airbag_srs_light]
+    ambiguity: unambiguous   # behavior (blink pattern) + trigger (jump) both literally stated; isolated light -> not a cascade
+    provenance: synthetic   # authored eval airbag_srs_testing-002 (not real corpus)
+
+  - phrase: "air bag code pass seat sensor"
+    normalized: airbag code, passenger occupancy (seat) sensor
+    routes_to: [airbag_srs_light]
+    ambiguity: cross-system:multiple_warning_lights_at_once   # FRAGMENT of a multi-system code dump (tekmetric tkc-165: B1317/B1318/P0625/P0705/... + this airbag line); full RO would route multi-symptom. The occupancy-sensor fragment ALONE is airbag-specific.
+    provenance: tekmetric
+
+  - phrase: "airbag light came on after i drove through a flooded street last night"
+    normalized: SRS light after flood / water intrusion
+    routes_to: [airbag_srs_light]
+    ambiguity: unambiguous
+    provenance: synthetic
+
+  # ---- Clockspring bundle (SRS + horn + steering-wheel controls) ----
+  - phrase: "airbag light and my horn quit working at the same time"
+    normalized: SRS light with dead horn (clockspring signature)
+    routes_to: [airbag_srs_light]
+    ambiguity: unambiguous
+    provenance: synthetic   # clockspring pattern; NO corpus/forum source exists -> synthetic voice for a Tier-3-cited diagnostic pattern (dossier §3 FM-3)
+
+  - phrase: "srs light on and the cruise control and volume buttons on the wheel stopped working"
+    normalized: SRS light with dead steering-wheel controls (clockspring)
+    routes_to: [airbag_srs_light]
+    ambiguity: unambiguous
+    provenance: synthetic
+
+  # ---- OCS / passenger airbag off ----
+  - phrase: "the PASSENGER AIRBAG OFF light stays on even when my husband is sitting there"
+    normalized: passenger-airbag-off stuck with adult seated (OCS fault)
+    routes_to: [airbag_srs_light]
+    ambiguity: unambiguous   # light literally named AND an adult ("my husband") literally stated as seated -> OCS fault (no slot holds "who is seated"; the phrase resolves it in text)
+    provenance: synthetic
+
+  - phrase: "passenger airbag off light comes on when my little kid sits up front"
+    normalized: passenger-airbag-off for a child (NORMAL by design)
+    routes_to: []   # advisor / reassure -- normal OCS behavior (FMVSS 208), not a fault
+    ambiguity: null-route
+    provenance: synthetic
+
+  # ---- Accident-framing (route to the situational bucket) ----
+  - phrase: "AIR BAG LIGHT ON. WILL LET US KNOW IF WE ARE GOING TO DO TESTING. SHE WAS IN ACCIDENT RECENTLY AND WANTS TO TALK TO BODY SHOP 1st"
+    normalized: airbag light but collision + body-shop framing dominates
+    routes_to: [after_a_recent_accident_or_impact]
+    ambiguity: cross-system:after_a_recent_accident_or_impact
+    provenance: tekmetric
+
+  - phrase: "got rear-ended hard on the highway, airbags went off, want the whole car checked and insurance is sending me"
+    normalized: deployment + collision + insurance framing
+    routes_to: [after_a_recent_accident_or_impact]
+    ambiguity: cross-system:after_a_recent_accident_or_impact
+    provenance: synthetic
+
+  # ---- Recent-SERVICE override (shop worked on it, customer causally blames the shop) ----
+  - phrase: "the shop replaced my battery yesterday and now the airbag light is on, i think they messed something up and they need to fix it"
+    normalized: SRS light right after SHOP work, customer blames the service
+    routes_to: [after_recent_service_or_repair_work]
+    ambiguity: cross-system:after_recent_service_or_repair_work   # situational cue causally tied to recent SHOP work overrides the symptom keyword (taxonomy §3b PRIORITY-ORDER). Contrast the DIY seat-shampoo entry above, which stays airbag_srs_light.
+    provenance: synthetic
+
+  # ---- Multi-light cascade (route away) ----
+  - phrase: "ABS & TRAC LIGHTS COMING ON. CLIENT ALSO REPORTED TPMS AND AIRBAG"
+    normalized: airbag one of several chassis telltales
+    routes_to: [multiple_warning_lights_at_once]
+    ambiguity: cross-system:multiple_warning_lights_at_once
+    provenance: tekmetric
+
+  - phrase: "car wont start and a bunch of dash lights are flickering, the ABS, traction, airbag and security lights, plus my power locks and windows are dead too"
+    normalized: airbag inside an electrical/voltage cascade (no-start)
+    routes_to: [multiple_warning_lights_at_once]
+    ambiguity: cross-system:multiple_warning_lights_at_once
+    provenance: forum-paraphrase   # paraphrase of a 2carpros U-code no-start cascade pattern; NOT verbatim (copyright)
+
+  # ---- Safety-concern framing (a passing "is it safe?" does NOT override) ----
+  - phrase: "airbag light is on, is it safe to drive with it like this??"
+    normalized: SRS light + passing safety question
+    routes_to: [airbag_srs_light]
+    ambiguity: cross-system:safety_concern_dont_feel_safe_driving_it   # a NAMED, diagnosable light + a passing "is it safe?" stays airbag_srs_light; only if fear/"dont feel safe driving it" dominates -> safety_concern bucket
+    provenance: synthetic
+
+  # ---- Recall inquiry (no diagnostic subcategory; advisor / recall handling) ----
+  - phrase: "theres been so many airbag recalls, i got a notice in the mail, want to know if my car is one of them"
+    normalized: airbag recall inquiry, not a symptom
+    routes_to: []   # advisor / recall handling (Takata-era airbag recalls). No diagnostic subcategory holds a recall inquiry.
+    ambiguity: null-route
+    provenance: nhtsa   # ODI narratives repeatedly reference airbag recalls (paraphrased); real recurrent voice
+
+  # ---- Null-route: mechanical seat belt / restraint hardware (NO current fit) ----
+  - phrase: "seat belt won't pull out, its stuck and wont come across me, no warning light on the dash"
+    normalized: seat-belt retractor jammed, no telltale (restraint hardware)
+    routes_to: []   # advisor / proposed seat_belt_or_restraint_hardware -- NOT airbag_srs_light
+    ambiguity: null-route
+    provenance: synthetic
+
+  - phrase: "the seat belt buckle wont click / latch anymore, no dash light"
+    normalized: buckle won't latch, no telltale (restraint hardware)
+    routes_to: []   # advisor / proposed subcategory -- NOT this system
+    ambiguity: null-route
+    provenance: synthetic

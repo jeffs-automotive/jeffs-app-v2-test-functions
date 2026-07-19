@@ -1,0 +1,412 @@
+system: cooling-system
+# Typed change-ops binding this system's findings back onto the live taxonomy snapshot
+# (00-current-scheduler-taxonomy.md). Every diagnostic claim is cited in the dossier §3/§10.
+# Existing Stage-2 enrichment is already populated; these SHARPEN it (negatives on confusable
+# pairs, a few real positives, level/gauge slot binding) rather than fill blanks.
+
+ops:
+  # ============================================================
+  # L1 — Stage-1 keyword adds (coolant_leak_testing service)
+  # A synonym/keyword must be >=2 tokens or a domain token (customer-voice §1).
+  # ============================================================
+  - op: stage1.keyword.add
+    category_key: coolant_leak_testing
+    phrase: "running hot"
+    rationale: "Overheating lead-in that carries no puddle/light; heavily attested in corpus ('running hotter than usual', 'thinking it was just running hot')."
+    evidence: tekmetric ("pulled into walmart thinking it was just running hot"), forum-paraphrase
+  - op: stage1.keyword.add
+    category_key: coolant_leak_testing
+    phrase: "temp gauge in the red"
+    rationale: "Gauge-in-the-red is the most common plain-overheat phrasing and currently under-keyworded vs the named light."
+    evidence: eval coolant_leak_testing-006; tekmetric ("temp gauge goes all the way up")
+  - op: stage1.keyword.add
+    category_key: coolant_leak_testing
+    phrase: "lost all coolant"
+    rationale: "Total coolant loss + overheat; a domain-specific multi-token cue for cooling."
+    evidence: tekmetric ("VEHICLE OVERHEATED AND LOST ALL COOLANT")
+  - op: stage1.keyword.add
+    category_key: coolant_leak_testing
+    phrase: "water pump leak"
+    rationale: "Domain multi-token cue for the LEAK failure mode, which IS reachable (leak → green_orange_yellow_or_pink_puddle_coolant). Deliberately NOT the bare 'water pump': bare 'water pump' also fires on BEARING-NOISE utterances (wobbling pulley, metal-on-metal at shutoff) whose subcategory (high_pitched_whining_under_the_hood) lives in the 'noise' category that coolant_leak_testing CANNOT reach (DB-verified) — so a bare-token match there dead-ends at Stage-2. Bearing-noise reachability is handled by the Chris-gated concern_categories.amend op (L-amend) + the water-pump leak-vs-noise hedge below."
+    evidence: tekmetric ('EVIDENCE OF WATER PUMP LEAKAGE', 'water pump leak / weep')
+  - op: stage1.keyword.add
+    category_key: coolant_leak_testing
+    phrase: "thermostat stuck"
+    rationale: "Domain phrase for overheat/no-heat; corpus 'as if the STAT is getting stuck'."
+    evidence: tekmetric ("gauge fluctuate high and low as if the STAT is getting stuck")
+
+  # ============================================================
+  # L1 — Stage-1 hedges (confusable-pair disambiguation). This system OWNS pairs #3 and #4.
+  # ============================================================
+  - op: stage1.hedge.add
+    category_a: coolant_leak_testing
+    category_b: ac_performance_check
+    rule: "For a 'no heat / heater blows cold' complaint, default to ac_performance_check (HVAC). Route to coolant_leak_testing ONLY when a coolant symptom is ALSO present: low/topped-off coolant, a front-center puddle, a temp gauge that is abnormal (high OR stays low), or a sweet smell."
+    discriminating_fact: temperature_gauge_state   # (proposed) stays_low ⇒ thermostat/cooling; also coolant_level_state
+  - op: stage1.hedge.add
+    category_a: coolant_leak_testing
+    category_b: oil_leak_testing
+    rule: "WHITE tailpipe smoke (coolant, sweet smell) => coolant_leak_testing (reaches 'smoke' => white_smoke_from_tailpipe). BLUE/GRAY tailpipe smoke (oil burn, oily/burnt-oil smell) => a 'smoke'-reaching service; among live services only coolant_leak_testing and oil_leak_testing reach the 'smoke' category, so blue_or_gray_smoke_from_tailpipe is reachable via oil_leak_testing. FLAG (Chris): the taxonomy doc pair #4 names check_engine_light_testing for blue/gray smoke, but CEL.concern_categories = [warning_light, performance] EXCLUDE 'smoke' — so CEL cannot reach blue_or_gray_smoke_from_tailpipe (see concern_categories.amend below). Decide on smell_descriptor + smoke_color, never the bare word 'smoke'."
+    discriminating_fact: smell_descriptor          # sweet_or_maple_syrup vs burnt_oil (+ smoke_color)
+  - op: stage1.hedge.add
+    category_a: coolant_leak_testing
+    category_b: high_pitched_whining_under_the_hood   # NVH subcat (noise category) — no cooling service reaches it today
+    rule: "'water pump' + a LEAK cue (puddle / sweet smell / topping-off / overheat) => coolant_leak_testing (green_orange_yellow_or_pink_puddle_coolant). 'water pump' + a NOISE cue (whining, grinding, metal-on-metal, wobbling pulley) and NO leak => a bearing-noise NVH concern (high_pitched_whining_under_the_hood / humming_or_whirring_at_speed). coolant_leak_testing CANNOT reach the 'noise' category (DB-verified), so route water-pump-NOISE via the NVH path pending the concern_categories.amend below — do NOT force it onto a cooling service where it dead-ends at Stage-2."
+    discriminating_fact: noise_descriptor          # whining/grinding present (bearing) vs fluid_color/fluid_under_car_location present (leak)
+  - op: stage1.hedge.add
+    category_a: coolant_leak_testing
+    category_b: check_engine_light_testing
+    rule: "A bare check-engine light with NO temp/heat/coolant complaint => check_engine_light_testing. A temp/overheat/coolant complaint that also happens to trip the CEL (P0128/P0125/misfire from intermix) stays in coolant_leak_testing when the customer LEADS with the temp/heat symptom."
+    discriminating_fact: warning_light_named
+
+  # ============================================================
+  # L2 — Stage-2 description revisions
+  # ============================================================
+  - op: stage2.description.revise
+    subcat_slug: engine_temperature_light
+    text: "A red (urgent — overheating now) or blue (cold start; normal) dashboard warning light shaped like a THERMOMETER SUBMERGED IN TWO WAVY WAVES of liquid. ALSO route here when the customer's lead symptom is the temperature GAUGE reading high / in the red / 'running hot' / 'overheated', or a digital 'HIGH TEMPERATURE' / 'ENGINE HOT' / 'COOLANT TEMP' message — even if they did not name a specific light — UNTIL a dedicated overheating subcategory exists. When RED, coolant temperature is above safe range: imminent risk of warping the head, blowing a head gasket, or seizing. Causes: low coolant (leak or internal burn), a bad pressure/radiator cap that won't hold pressure and boils over, stuck thermostat, failed water pump, clogged radiator, dead cooling fan (overheats at idle/in traffic, cools at speed), or head-gasket failure. (A gauge that swings or reads dead with NO steam/coolant-loss can instead be a failing coolant-temp sensor/sender, not a real overheat.) Often paired with steam from under the hood, a sweet maple-syrup smell, or the needle climbing into the red. Pull over and shut off. Distinct from smoke/smoke_from_under_the_hood (customer leads with VISIBLE steam) and smell/sweet_smell_maple_syrup_antifreeze (leads with smell). Distinct from oil_pressure_light — both red, but oil is a can-with-drip and this is a thermometer-in-waves."
+    why: "Interim fix for the §8 NO-FIT: plain-overheat and gauge-in-the-red reports have no home and are force-fit here anyway. Makes the force-fit explicit and correct until Chris rules on the new subcategory. Adds the fan idle-vs-speed cue."
+  - op: stage2.description.revise
+    subcat_slug: heat_doesnt_work
+    text: "Customer says the heater blows cold or room-temperature air, OR heat takes a very long time to warm up, OR heat works while moving but goes cold at idle/stops. Common causes: stuck-open thermostat (engine never reaches operating temp — temp GAUGE stays low), low coolant from a leak, clogged/failing heater core, or a stuck blend-door actuator. Key tell: the temp GAUGE — stays low while driving ⇒ thermostat suspect; gauge normal but cabin cold ⇒ heater core / actuator. Distinct from ac_blows_warm_or_hot_air (that's AC making no cool; this is HEAT making no warm) and vents_dont_blow_strongly (there airflow VOLUME is weak; here air comes out fine but stays cold). No heat + wet passenger carpet + foggy windows ⇒ leaking heater core (still route here). If the PRIMARY report is a temp warning light/gauge-in-the-red, route warning_light/engine_temperature_light instead."
+    why: "Adds the 'works at speed, cold at idle' pattern (low coolant/airflow) and sharpens the gauge-stays-low thermostat discriminator (proposed temperature_gauge_state)."
+
+  # ============================================================
+  # L3 — Positive examples (real customer voice) on confusable-heavy slugs
+  # ============================================================
+  - op: stage2.example.positive.add
+    subcat_slug: engine_temperature_light
+    phrase: "temp gauge went all the way up and I saw steam behind the fan, pulled over"
+    provenance: forum-paraphrase
+  - op: stage2.example.positive.add
+    subcat_slug: engine_temperature_light
+    phrase: "HIGH TEMPERATURE UNSAFE TO DRIVE message kept coming back, had it towed in"
+    provenance: tekmetric
+  - op: stage2.example.positive.add
+    subcat_slug: green_orange_yellow_or_pink_puddle_coolant
+    phrase: "leak at the lower radiator line, been topping off antifreeze"
+    provenance: tekmetric
+  - op: stage2.example.positive.add
+    subcat_slug: heat_doesnt_work
+    phrase: "heat only works when the car is moving, goes cold as soon as I stop"
+    provenance: tekmetric
+
+  # ============================================================
+  # L3 — Negative examples (each MUST name routes_to)
+  # ============================================================
+  # NOTE: the cold-morning tailpipe-steam case was REMOVED as a negative_example — it is normal
+  # condensation that should REJECT (empty Stage-1 / advisor handoff), so it has no valid routes_to
+  # subcategory. A negative_example's routes_to must name a REAL better home; inventing one here would
+  # train normal condensation INTO engine_temperature_light. It is now encoded as a null-route golden
+  # case instead (see golden_cases: cold-morning steam), which is the correct reject mechanism.
+  - op: stage2.example.negative.add
+    subcat_slug: white_smoke_from_tailpipe
+    phrase: "blue-gray smoke on startup that smells like burning oil"
+    routes_to: blue_or_gray_smoke_from_tailpipe
+  - op: stage2.example.negative.add
+    subcat_slug: green_orange_yellow_or_pink_puddle_coolant
+    phrase: "sweet smell but I cannot find any puddle on the ground"
+    routes_to: sweet_smell_maple_syrup_antifreeze
+  - op: stage2.example.negative.add
+    subcat_slug: green_orange_yellow_or_pink_puddle_coolant
+    phrase: "bright blue watery puddle near the front, no smell, kind of soapy"
+    routes_to: blue_or_light_blue_puddle_washer_fluid
+  - op: stage2.example.negative.add
+    subcat_slug: sweet_smell_maple_syrup_antifreeze
+    phrase: "sweet smell blowing through the dash vents when the heat is on, windows fog up"
+    routes_to: bad_smell_from_vents
+  - op: stage2.example.negative.add
+    subcat_slug: engine_temperature_light
+    phrase: "oil pressure light (the red oil-can-with-drip) is on, temp is fine"
+    routes_to: oil_pressure_light
+  - op: stage2.example.negative.add
+    subcat_slug: heat_doesnt_work
+    phrase: "AC blows warm in the summer, heat is fine"
+    routes_to: ac_blows_warm_or_hot_air
+
+  # ============================================================
+  # L4 — Synonym adds (>=2 tokens or domain token)
+  # ============================================================
+  - op: stage2.synonym.add
+    subcat_slug: engine_temperature_light
+    term: "temp gauge in the red"
+  - op: stage2.synonym.add
+    subcat_slug: engine_temperature_light
+    term: "running hot"
+  - op: stage2.synonym.add
+    subcat_slug: engine_temperature_light
+    term: "overheated and pulled over"
+  - op: stage2.synonym.add
+    subcat_slug: green_orange_yellow_or_pink_puddle_coolant
+    term: "water pump leak"
+  - op: stage2.synonym.add
+    subcat_slug: green_orange_yellow_or_pink_puddle_coolant
+    term: "lower radiator hose leak"
+  - op: stage2.synonym.add
+    subcat_slug: white_smoke_from_tailpipe
+    term: "head gasket white smoke"
+  - op: stage2.synonym.add
+    subcat_slug: heat_doesnt_work
+    term: "cold at idle warm at speed"
+
+  # ============================================================
+  # L5 — Stage-3 slot proposals (each clears the >=3-question rule)
+  # ============================================================
+  - op: stage3.slot.propose
+    name: temperature_gauge_state
+    type: enum
+    values: [normal, reading_high_or_hot, in_the_red, stays_low, fluctuating, gauge_dead_or_no_reading]
+    literal_cues:                       # every cue must literally name the GAUGE / temperature reading
+      - "temp gauge is in the red"
+      - "gauge went all the way up"
+      - "temp gauge reads high"
+      - "gauge stays low, never warms up"
+      - "gauge fluctuates high and low"
+      - "temperature is not showing on the cluster"
+    # NOT a cue: "running hotter than normal" / "feels like it's running hot" — a subjective heat feel
+    # names no gauge, so it sets nothing here (it belongs to the engine_overheating_running_hot lexicon).
+    questions_unlocked: [399, 285, 988, 303, 939]
+    rationale: "A temperature GAUGE needle is NOT a named dash indicator light; literalness forbids coercing it into warning_light_named. 5 questions across 5 subcategories ask about gauge/temp reading with no slot to hold the answer. Enum values 'fluctuating' and 'gauge_dead_or_no_reading' are backed by dossier failure mode 3.11 (ECT-sensor / gauge-sender false readings)."
+  - op: stage3.slot.propose
+    name: coolant_level_state
+    type: enum
+    values: [normal_or_full, low, empty_or_bone_dry, topping_off_repeatedly, unknown]
+    literal_cues:
+      - "coolant reservoir is bone dry"
+      - "had to top off coolant twice this week"
+      - "coolant is low"
+      - "lost all my coolant"
+      - "keeps needing antifreeze"
+      - "have not added any coolant"
+    questions_unlocked: [990, 940, 229, 284, 401]
+    rationale: "Coolant LEVEL has no slot today; the 5 questions that ask it all carry EMPTY required_facts — direct over-asking wins. topping_off_repeatedly is also the key discriminator for internal (head-gasket) vs external coolant loss."
+
+  # ============================================================
+  # L5 — question.required_facts.set (skip over-asking) — PARTIAL pending the two proposed slots
+  # ============================================================
+  - op: question.required_facts.set
+    question_id: 399
+    facts: [temperature_gauge_state]
+    skip_class: PARTIAL
+    derivation_note: "Depends on proposed temperature_gauge_state. If customer literally said gauge is high/red/normal, skip this ask."
+  - op: question.required_facts.set
+    question_id: 285
+    facts: [temperature_gauge_state]
+    skip_class: PARTIAL
+    derivation_note: "'engine running hotter / gauge crept up' — proposed slot."
+  - op: question.required_facts.set
+    question_id: 988
+    facts: [temperature_gauge_state]
+    skip_class: PARTIAL
+    derivation_note: "'temp gauge creeping toward hot / overheated recently' — proposed slot."
+  - op: question.required_facts.set
+    question_id: 303
+    facts: [temperature_gauge_state]
+    skip_class: PARTIAL
+    derivation_note: "'did the temp gauge climb into the red before you saw smoke' — proposed slot."
+  - op: question.required_facts.set
+    question_id: 939
+    facts: [temperature_gauge_state]
+    skip_class: PARTIAL
+    derivation_note: "'does the gauge reach normal or stay cold' — proposed slot (stays_low)."
+  - op: question.required_facts.set
+    question_id: 990
+    facts: [coolant_level_state]
+    skip_class: PARTIAL
+    derivation_note: "'had to add antifreeze / level dropped' — proposed coolant_level_state."
+  - op: question.required_facts.set
+    question_id: 940
+    facts: [coolant_level_state]
+    skip_class: PARTIAL
+    derivation_note: "'needed to add coolant / tank running low' — proposed slot."
+  - op: question.required_facts.set
+    question_id: 229
+    facts: [coolant_level_state]
+    skip_class: PARTIAL
+    derivation_note: "'had to add coolant/antifreeze recently' — proposed slot."
+  - op: question.required_facts.set
+    question_id: 284
+    facts: [coolant_level_state]
+    skip_class: PARTIAL
+    derivation_note: "'had to top off / coolant level dropping' — proposed slot."
+  - op: question.required_facts.set
+    question_id: 401
+    facts: [coolant_level_state]
+    skip_class: PARTIAL
+    derivation_note: "'coolant reservoir full, low, or empty' — proposed slot."
+
+  # ---- questions that are genuinely binary/observational with no clean slot ----
+  - op: question.intentionally_empty
+    question_id: 991
+    reason: "'Do you see steam from under the hood when you stop' — binary observation; no slot cleanly holds a yes/no steam sighting (smoke_color would over-claim a color the customer did not state)."
+  - op: question.intentionally_empty
+    question_id: 287
+    reason: "'milky/frothy stuff on the oil filler cap' — head-gasket intermix cue; only ~1 question needs it, fails the >=3 slot-proposal rule."
+  - op: question.intentionally_empty
+    question_id: 403
+    reason: "'does the heater still blow hot or cold now' — discriminating cue but no dedicated slot; would require an hvac-heat-state slot that only this question needs."
+
+  # ============================================================
+  # Catalog / subcategory proposal (Chris-gated)
+  # ============================================================
+  - op: stage2.subcategory.propose
+    category: performance
+    name: engine_overheating_running_hot
+    description: "Customer's PRIMARY symptom is the engine running hot / overheating / temp gauge in the red, without leading with a specific named dash light and without a visible puddle. Covers 'it overheated and I pulled over', 'running hot', 'lost all my coolant', 'gauge went into the red', digital 'HIGH TEMPERATURE' messages. Routes to coolant_leak_testing. Discriminated from engine_temperature_light (light-first), green_orange_yellow_or_pink_puddle_coolant (puddle-first), and smoke_from_under_the_hood (visible-steam-first)."
+    examples:
+      - "my car overheated on the way home, had to stop and let it cool several times"
+      - "running hot, temp needle keeps climbing in traffic"
+      - "lost all my coolant and it started overheating"
+    why_existing_insufficient: "engine_temperature_light is explicitly a LIGHT-FIRST slug; forcing plain-overheat and gauge reports onto it mislabels the lead symptom and pollutes the light's training set. ~4 distinct real Tekmetric utterances have no natural Stage-2 home today ('VEHICLE OVERHEATED AND LOST ALL COOLANT', 'CHECK FOR OVERHEATING. HAS NOT ADDED ANY COOLANT', 'drop box overheating', 'gauge fluctuate high and low as if the STAT is getting stuck'). NOT counted (they already have homes): 'HIGH TEMPERATURE, UNSAFE TO DRIVE' is a digital dash MESSAGE → engine_temperature_light; 'vehicle overheated after valve cover replacement' → the after_recent_service_or_repair_work situational bucket (dossier §8)."
+
+  # ============================================================
+  # Catalog reachability amendments (Chris-gated) — each closes a §8 structural gap where a real
+  # failure mode's Stage-2 subcategory is UNREACHABLE from any semantically-correct service under the
+  # live concern_categories. There is no lighter-weight op for this; it changes a service's reachable
+  # subcategory pool, so it is Chris-gated (analogous to catalog.service.propose).
+  # ============================================================
+  - op: catalog.service.concern_categories.amend
+    service_key: [coolant_leak_testing, coolant_leak_testing_euro]
+    add: [noise]
+    demand_evidence: "Water-pump BEARING failure is a core cooling failure mode (§3.2) but its symptom subcategories (high_pitched_whining_under_the_hood, humming_or_whirring_at_speed) live in the 'noise' category, which coolant_leak_testing[_euro].concern_categories = [leak, smoke, smell, performance, warning_light] cannot reach (DB-verified 2026-07-18). Real Tekmetric tickets name the water pump directly: 'appeared that water pump pulley was wobbling', 'noise is coming from water pump ... metal on metal'. Without this, a water-pump-noise utterance has no reachable Stage-2 home under a cooling service."
+    rationale: "Adding 'noise' lets coolant_leak_testing reach the two water-pump bearing-noise subcategories so the 'water pump leak' keyword + the leak-vs-noise hedge resolve correctly instead of dead-ending. Alternative (no change): keep water-pump-noise entirely in the NVH router's territory — Chris chooses."
+  - op: catalog.service.concern_categories.amend
+    service_key: [check_engine_light_testing]
+    add: [smoke]
+    demand_evidence: "check_engine_light_testing's OWN description claims it 'owns blue/gray tailpipe smoke (oil burn)' and confusable-pair #4 routes blue/gray smoke to it — but its concern_categories = [warning_light, performance] EXCLUDE 'smoke' (DB-verified), so blue_or_gray_smoke_from_tailpipe is unreachable from CEL. This is a pre-existing taxonomy-doc vs DB inconsistency, surfaced here, not created here."
+    rationale: "Either add 'smoke' to CEL so its description's claim becomes reachable, OR accept oil_leak_testing as the reachable home for blue/gray tailpipe smoke and correct the taxonomy doc's pair #4 note. Chris decides; flagged so a Wave-C gold label is not silently built on an unreachable combo."
+
+golden_cases:
+  - text: "Thick white smoke pouring out of my tailpipe even after driving 20 min, smells kinda sweet like syrup, and Ive been topping off the coolant. Started a few days ago."
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: coolant_leak_testing
+      stage1_acceptable: [coolant_leak_testing, coolant_leak_testing_euro]
+      stage2_subcategory_slug: white_smoke_from_tailpipe
+      stage3_facts:
+        smoke_color: white
+        smell_descriptor: sweet_or_maple_syrup
+        sound_or_smoke_location_zone: from_tailpipe
+        started_when: days_ago
+        coolant_level_state: topping_off_repeatedly   # proposed slot
+      route: testing_service
+
+  - text: "Theres a bright green puddle under the front of my car right by the radiator, and it smells sweet like pancake syrup. Just noticed it today."
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: coolant_leak_testing
+      stage2_subcategory_slug: green_orange_yellow_or_pink_puddle_coolant
+      stage3_facts:
+        fluid_color: green_or_orange_or_yellow_or_pink
+        fluid_under_car_location: under_engine_front
+        smell_descriptor: sweet_or_maple_syrup
+        started_when: today
+      route: testing_service
+
+  - text: "That red thermometer light with the waves is showing on my dash and the car feels like its running hotter than usual."
+    tags: [sparse, inference_trap]
+    expected:
+      stage1_category_key: coolant_leak_testing
+      stage2_subcategory_slug: engine_temperature_light
+      stage3_facts:
+        warning_light_named: temp
+        # TRAP: the customer named the LIGHT and a subjective "feels like running hotter" — they did NOT
+        # read a GAUGE. Do NOT set temperature_gauge_state (no gauge named; "feels hotter" is not a gauge
+        # reading). warning_light_named=temp is the only literal fact.
+      route: testing_service
+
+  - text: "somethin smells like maple syrup around my car after i drive it, cant find any leak tho"
+    tags: [sparse]
+    expected:
+      stage1_category_key: coolant_leak_testing
+      stage2_subcategory_slug: sweet_smell_maple_syrup_antifreeze
+      stage3_facts:
+        smell_descriptor: sweet_or_maple_syrup
+      route: testing_service
+
+  - text: "Smoke coming out from under the hood and the temp gauge went all the way into the red, pulled over right away."
+    tags: [moderate]
+    expected:
+      stage1_category_key: coolant_leak_testing
+      stage2_subcategory_slug: smoke_from_under_the_hood
+      stage3_facts:
+        sound_or_smoke_location_zone: under_hood
+        temperature_gauge_state: in_the_red   # proposed slot — gauge "all the way into the red" IS literal
+        # Do NOT set drivable_state: "pulled over right away" states they STOPPED, not that the car is
+        # un-drivable / needs a tow — leave drivable_state null (extraction discipline).
+      route: testing_service
+
+  - text: "My heater just blows cold air no matter how long I drive, started a couple weeks ago. Also had to top off the coolant tank twice."
+    tags: [moderate, confusable_hvac_vs_coolant]
+    expected:
+      stage1_category_key: coolant_leak_testing
+      stage1_acceptable: [coolant_leak_testing, ac_performance_check]
+      stage2_subcategory_slug: heat_doesnt_work
+      stage3_facts:
+        hvac_mode: heat
+        started_when: weeks_ago
+        coolant_level_state: topping_off_repeatedly   # proposed slot
+      route: testing_service
+
+  # ---- INFERENCE-TRAP: literalness — gauge is not a named light; no coolant loss stated ----
+  - text: "my temp gauge sometimes reads a little high sitting in traffic but goes back to normal once I get moving. no smoke, no leaks that I can see."
+    tags: [inference_trap]
+    expected:
+      stage1_category_key: coolant_leak_testing
+      stage2_subcategory_slug: engine_temperature_light
+      stage3_facts:
+        temperature_gauge_state: reading_high_or_hot   # proposed slot
+        speed_band: idle
+      # TRAP: the extractor must NOT set warning_light_named (customer named a GAUGE, not a dash
+      # light), must NOT set coolant_level_state (no coolant loss stated), must NOT set smoke_color
+      # (they explicitly said no smoke), and must NOT assert a head gasket. The idle-vs-moving pattern
+      # is a cooling-FAN cue, but that inference is for the tech, not the extractor.
+      route: testing_service
+
+  # ---- NULL-ROUTE / REJECT: normal cold-start condensation (the inference-trap vs 3.6 white smoke) ----
+  # This is the reject mechanism that REPLACES the dropped false-route negative_example op. Normal
+  # condensation must reject to advisor (empty Stage-1), NOT mis-route into white_smoke_from_tailpipe.
+  - text: "little bit of white steam comes out my tailpipe on cold mornings but it goes away after a minute, no weird smell"
+    tags: [inference_trap, null_route]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      stage3_facts:
+        smoke_color: steam_thin_wispy
+        onset_timing: cold_start
+        weather_condition: cold_weather
+      # TRAP: must NOT upgrade to smoke_color=white, must NOT route to white_smoke_from_tailpipe, must
+      # NOT assert a head gasket. Clears within a minute + no smell = normal exhaust condensation → reject.
+      route: advisor
+
+  # ---- NULL-ROUTE: work-order / maintenance line, not a diagnostic concern ----
+  - text: "just need a coolant flush, car runs fine, no problems"
+    tags: [null_route, work_order]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      stage3_facts:
+        customer_request_type: routine_maintenance
+      route: advisor
+
+  # ---- Confusable #4: blue/gray oil smoke must NOT route to coolant ----
+  # The load-bearing assertion for THIS dossier: stage1 is NOT coolant_leak_testing and stage2 is NOT
+  # white_smoke_from_tailpipe. Expected stage1 = oil_leak_testing because it is the only service that
+  # BOTH reaches the 'smoke' category (so blue_or_gray_smoke_from_tailpipe is reachable) AND is
+  # semantically the oil service. FLAG: the taxonomy doc pair #4 names check_engine_light_testing, but
+  # CEL.concern_categories exclude 'smoke' so that combo is UNREACHABLE (see concern_categories.amend);
+  # the authoritative home is the smoke/oil router's call — this case only pins the "not coolant" edge.
+  - text: "cloud of blue-gray smoke every time I floor it onto the highway, kinda smells oily, and I keep adding a quart of oil"
+    tags: [confusable_smoke_color]
+    expected:
+      stage1_category_key: oil_leak_testing
+      stage1_acceptable: [oil_leak_testing, check_engine_light_testing]
+      stage2_subcategory_slug: blue_or_gray_smoke_from_tailpipe
+      stage3_facts:
+        smoke_color: blue_or_gray
+        smell_descriptor: burnt_oil
+        onset_timing: when_accelerating
+        sound_or_smoke_location_zone: from_tailpipe
+      route: testing_service

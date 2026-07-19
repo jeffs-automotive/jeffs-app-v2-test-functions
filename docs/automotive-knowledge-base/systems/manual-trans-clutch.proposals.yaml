@@ -1,0 +1,408 @@
+system: manual-trans-clutch
+# Typed change-ops against the 5 retraining levers. Bind to snapshot slugs/IDs
+# (00-current-scheduler-taxonomy.md + live DB read 2026-07-18). Nothing here is
+# applied; Chris owns Phase-5 apply. Proposed slugs are flagged conditional_on.
+# SNAPSHOT DEPENDENCY: the "empty example_keywords" and "empty required_facts"
+# claims come from a live Supabase MCP read (2026-07-18), NOT from the snapshot
+# doc; re-read against the live DB before applying the keyword/required_facts ops.
+
+ops:
+  # ============================================================
+  # L1 — Stage-1 keywords for transmission_testing (currently EMPTY example_keywords[])
+  # ============================================================
+  - op: stage1.keyword.add
+    category_key: transmission_testing
+    phrase: "clutch slipping"
+    rationale: "Service has zero keywords; clutch slip is verbatim in the Tekmetric corpus and is the #1 manual complaint. 2 tokens."
+    evidence: "tekmetric: 'CLIENT STATES CLUTCH IS SLIPPING'"
+  - op: stage1.keyword.add
+    category_key: transmission_testing
+    phrase: "clutch is slipping"
+    rationale: "Verbatim corpus phrasing; disambiguates to the trans service."
+    evidence: "tekmetric verbatim"
+  - op: stage1.keyword.add
+    category_key: transmission_testing
+    phrase: "grinding into gear"
+    rationale: "Clutch-drag/synchro grind on shift; domain phrase, 3 tokens."
+    evidence: "forum: 'gear grinds when shifting into 1st or reverse'"
+  - op: stage1.keyword.add
+    category_key: transmission_testing
+    phrase: "hard to shift"
+    rationale: "Hard/notchy manual shift; routes to trans service."
+    evidence: "forum: 'hard shift between second and third'"
+  - op: stage1.keyword.add
+    category_key: transmission_testing
+    phrase: "wont go into gear"
+    rationale: "Clutch not disengaging; strong manual cue."
+    evidence: "corpus: 'does not shift into gear'"
+  - op: stage1.keyword.add
+    category_key: transmission_testing
+    phrase: "pops out of gear"
+    rationale: "Jumps out of gear; manual-specific, 4 tokens."
+    evidence: "forum-paraphrase; corroborated onallcylinders + aa1car"
+  - op: stage1.keyword.add
+    category_key: transmission_testing
+    phrase: "clutch pedal"
+    rationale: "Clutch pedal complaints (to-floor / no pressure); manual-only actuation term, 2 tokens."
+    evidence: "synthetic customer voice grounded in FM-9; customers routinely say 'clutch pedal'"
+  - op: stage1.keyword.add
+    category_key: transmission_testing
+    phrase: "gear grinding when shifting"
+    rationale: "Distinguishes gear grind from brake grinding (metallic_grinding)."
+    evidence: "forum corpus"
+  - op: stage1.keyword.add
+    category_key: transmission_testing
+    phrase: "manual transmission"
+    rationale: "Explicit powertrain cue; separates manual complaints from automatic."
+    evidence: "forum: '2000 4-Runner ... with a manual transmission'"
+  # REMOVED prior keyword "throwout bearing": mechanic voice with NO corpus/forum
+  # provenance, and its evidence field cited a DIAGNOSTIC source (ASE) for a
+  # LINGUISTIC artifact -- source-policy forbids mixing the two authorities.
+  # Customers say "clutch pedal / weird squeal when i push the clutch", captured above.
+
+  # ============================================================
+  # L1 — Stage-1 hedge: manual-clutch reading vs automatic reading of transmission_testing
+  #      (terminal op for the §5 "does it have a clutch pedal?" discriminator)
+  # ============================================================
+  - op: stage1.hedge.add
+    category_a: transmission_testing__manual_reading   # → manual_clutch_slipping / clutch_pedal_or_engagement_feel
+    category_b: transmission_testing__automatic_reading # → low_power / auto shift-quality subcats
+    rule: >-
+      Presence of a clutch pedal / "stick" / "manual" / clutch-out-engagement language selects the MANUAL
+      reading; "flare between shifts", "slams into gear", "won't engage until I tap the gas", or no clutch
+      pedal selects the AUTOMATIC reading. Both book transmission_testing; the Stage-2 subcat differs.
+    discriminating_fact: clutch_pedal_feel   # any non-null clutch_pedal_feel value ⇒ manual reading
+
+  # ============================================================
+  # L2/L3 — Stage-2 enrichment on the weak-fit current subcategories
+  # ============================================================
+  - op: stage2.description.revise
+    subcat_slug: low_power_or_wont_accelerate_normally
+    text: >-
+      ...append: On a MANUAL-transmission car this is most often a slipping CLUTCH — the engine revs up
+      but road speed doesn't follow, worst on hills or hard acceleration, often with a burning smell.
+      Distinct from an AUTOMATIC's torque-converter/gear slip (no clutch pedal, flare between shifts). If
+      the customer mentions a clutch pedal or a manual/stick shift, prefer the clutch reading.
+    why: "Current desc mentions 'transmission slipping (engine revs without speed)' generically but gives Stage-2 no manual/clutch-vs-auto cue; corpus has verbatim clutch-slip lines landing here."
+  - op: stage2.example.positive.add
+    subcat_slug: low_power_or_wont_accelerate_normally
+    phrase: "clutch is slipping - revs up and doesnt have power when accelerating"
+    provenance: tekmetric
+  - op: stage2.example.positive.add
+    subcat_slug: low_power_or_wont_accelerate_normally
+    phrase: "manual car, engine revs but it barely moves going up a hill and i smell burning"
+    provenance: synthetic
+  - op: stage2.synonym.add
+    subcat_slug: low_power_or_wont_accelerate_normally
+    term: "clutch slipping"
+  - op: stage2.synonym.add
+    subcat_slug: low_power_or_wont_accelerate_normally
+    term: "clutch not grabbing"
+
+  # -- negative examples: each names routes_to AND carries a real conditional_on FIELD --
+  - op: stage2.example.negative.add
+    subcat_slug: high_pitched_whining_under_the_hood
+    phrase: "squealing that goes away when i push the clutch pedal in"   # input-shaft bearing, not a belt
+    routes_to: clutch_pedal_or_engagement_feel
+    conditional_on: stage2.subcategory.propose:clutch_pedal_or_engagement_feel
+  - op: stage2.example.negative.add
+    subcat_slug: humming_or_whirring_at_speed
+    phrase: "whirring only when i hold the clutch pedal down in gear, quiet when i let it up"
+    routes_to: clutch_pedal_or_engagement_feel
+    conditional_on: stage2.subcategory.propose:clutch_pedal_or_engagement_feel
+  - op: stage2.example.negative.add
+    subcat_slug: shaking_when_speeding_up_or_going_uphill
+    phrase: "shudders only when i let the clutch out pulling away from a stop, smooth once moving"
+    routes_to: clutch_pedal_or_engagement_feel
+    conditional_on: stage2.subcategory.propose:clutch_pedal_or_engagement_feel
+  - op: stage2.example.negative.add
+    subcat_slug: engine_ticking_or_tapping
+    phrase: "rattles and raps at idle like a diesel but it quiets down when i push the clutch pedal in"   # DMF, not engine tick
+    routes_to: clutch_pedal_or_engagement_feel
+    conditional_on: stage2.subcategory.propose:clutch_pedal_or_engagement_feel
+  - op: stage2.example.negative.add
+    subcat_slug: low_power_or_wont_accelerate_normally
+    phrase: "manual transmission slips only in 4-high and first gear, fine in 4-low and 2-high"   # 4WD range, not clutch
+    routes_to: awd_4x4_testing   # existing service/subject; range-dependent = transfer-case
+
+  # ============================================================
+  # L2 — NEW Stage-2 subcategories (Chris-gated; all under 'performance'
+  #      so transmission_testing can reach them)
+  # ============================================================
+  - op: stage2.subcategory.propose
+    category: performance
+    name: manual_clutch_slipping
+    description: >-
+      A slipping clutch on a manual/stick-shift car: the engine revs up but the car doesn't gain speed to
+      match, worst under load (hills, hard acceleration, higher gears), often with a burning-friction smell
+      and a gradual worsening. Distinct from an automatic's torque-converter slip (no clutch pedal) and
+      from engine low-power/misfire (the engine RPM rises without a corresponding speed increase).
+    examples:
+      - "clutch is slipping - revs up and doesnt have power when accelerating"   # tekmetric
+      - "manual car revs high but barely moves going uphill, smells like burning"  # synthetic
+      - "clutch slips in the higher gears when i get on it"                        # forum-paraphrase
+    why_existing_insufficient: "low_power_or_wont_accelerate_normally is an engine-centric bucket (limp mode, fuel pump, cat); clutch slip needs its own home + a clutch-pedal discriminator so Stage-3 asks manual-specific questions."
+  - op: stage2.subcategory.propose
+    category: performance
+    name: grinding_or_hard_shift_gears
+    description: >-
+      Trouble selecting gears on a manual: grinding going into gear, hard/notchy/balky shifting, having to
+      force it, won't go into a gear, popping out of gear on its own, or a sloppy/vague shifter (worn shift
+      linkage/bushings). Grinding into EVERY gear (incl. reverse) with the engine running points to a clutch
+      that won't fully release; grinding into ONE particular gear on quick shifts points to a worn synchronizer.
+    examples:
+      - "grinds every time i put it in first"                        # forum-paraphrase
+      - "hard to get it into gear when its cold, have to force it"   # forum-paraphrase
+      - "pops out of 3rd gear on the highway"                        # forum-paraphrase
+      - "shifter feels really sloppy and notchy, hard to find gears" # synthetic (linkage slop)
+    why_existing_insufficient: "No current subcategory covers gear-selection/grind-on-shift/pops-out/linkage slop; metallic_grinding is brakes, and these complaints currently have NO FIT (advisor spill)."
+  - op: stage2.subcategory.propose
+    category: performance
+    name: clutch_pedal_or_engagement_feel
+    description: >-
+      How the clutch pedal feels and behaves, plus noises tied to the CLUTCH PEDAL: pedal goes soft / has
+      no pressure / sinks to the floor and stays, the bite point is very high or very low, the car
+      shudders/chatters as the clutch engages, a squeal/whirr/rattle that changes with the clutch pedal
+      (not road speed) — this covers all THREE pedal-phase bearing noises (release bearing squeal that
+      APPEARS when you press the pedal; pilot-bearing whirr only when the pedal is fully down in gear;
+      input-shaft-bearing noise present in neutral pedal-UP that goes away when you press) and a dual-mass
+      flywheel rattle at idle. NOTE: the clutch pedal is the far-left pedal — do not confuse with a brake
+      pedal-to-floor complaint (that is brakes/pedal_sinks_to_floor).
+    examples:
+      - "clutch pedal went to the floor and stays there, cant get in gear"           # synthetic
+      - "car shudders as the clutch catches when i take off from a stop"             # synthetic
+      - "squealing that goes away when i push the clutch pedal in"                   # synthetic (input-shaft)
+    why_existing_insufficient: "No slot/subcat holds clutch-pedal feel; the brake pedal_feel slot is brake-only and would misroute; the three pedal-phase bearing noises + DMF rattle are pedal-dependent and don't fit the belt-whine, wheel-hum, or engine-tick noise subcats."
+
+  # ============================================================
+  # L2 — NEW proposed Stage-3 questions under clutch_pedal_or_engagement_feel
+  #      (these are the ≥3 questions that clutch_pedal_feel unlocks)
+  # ============================================================
+  - op: stage2.question.propose
+    proposed_id: Q-CPF-BITE
+    subcat_slug: clutch_pedal_or_engagement_feel   # conditional_on its acceptance
+    question_text: "Where does the clutch grab — really high near the top, low near the floor, or does it slip/never fully grab?"
+    required_facts: [clutch_pedal_feel]
+    multi_select: false
+  - op: stage2.question.propose
+    proposed_id: Q-CPF-RETURN
+    subcat_slug: clutch_pedal_or_engagement_feel
+    question_text: "Does the clutch pedal feel normal, or is it soft / has no pressure / sinks to the floor and won't come back?"
+    required_facts: [clutch_pedal_feel]
+    multi_select: false
+  - op: stage2.question.propose
+    proposed_id: Q-CPF-NOISE
+    subcat_slug: clutch_pedal_or_engagement_feel
+    question_text: "When does the noise happen — when you press the clutch pedal down, only when it's held fully down in gear, or in neutral with your foot off the clutch (and it stops when you press)?"
+    required_facts: [noise_descriptor]
+    multi_select: false
+
+  # ============================================================
+  # L5 — Stage-3 slot proposals + value add
+  # ============================================================
+  - op: stage3.slot.propose
+    name: clutch_or_gear_engagement
+    type: enum
+    values: [revs_without_speed_gain, grinds_when_shifting, wont_go_into_gear, pops_out_of_gear, hard_or_notchy_shift, delayed_or_slipping, normal]
+    literal_cues:
+      revs_without_speed_gain: ["revs up but doesnt pick up speed", "engine revs but car barely moves", "revs but no go", "rpms climb but it wont accelerate"]
+      grinds_when_shifting: ["grinds going into gear", "grinds when i shift", "grinding putting it in first"]
+      wont_go_into_gear: ["wont go into gear", "cant get it in gear", "wont shift into gear"]
+      pops_out_of_gear: ["pops out of gear", "jumps out of gear", "wont stay in gear"]
+      hard_or_notchy_shift: ["hard to get into gear", "notchy shifting", "have to force it into gear", "sloppy shifter"]
+      delayed_or_slipping: ["slips when shifting", "takes a second to grab", "shifting strangely"]
+    questions_unlocked: [1183, 1186, 168]   # existing active questions, currently required_facts = []
+    contested_with:
+      - "automatic-transmission.proposals.yaml (proposed slot: transmission_behavior)"
+      - "engine-controls-driveability.proposals.yaml (proposed slot: power_delivery_feel)"
+      - "air-induction-forced-induction.proposals.yaml (marks 1183/1186 intentionally_empty)"
+    note: >-
+      Fills EMPTY required_facts on 3 existing questions (the 48%-over-ask problem). CONTESTED: three sibling
+      dossiers propose different slot names for the SAME revs_without_speed_gain semantics on these exact IDs.
+      Wave-C MUST merge them into ONE canonical driveline slot before applying; see the Workstream-Q table in
+      the dossier. Meets the >=3-question rule on existing IDs alone.
+  - op: stage3.slot.propose
+    name: clutch_pedal_feel
+    type: enum
+    values: [slips_high_bite_point, engages_low_near_floor, soft_or_no_pressure, stays_on_floor_wont_return, stiff_hard_to_press, chatters_on_release, normal]
+    literal_cues:
+      slips_high_bite_point: ["clutch grabs really high up", "have to let it almost all the way out before it catches"]
+      engages_low_near_floor: ["clutch catches right off the floor", "grabs low near the floor"]
+      soft_or_no_pressure: ["clutch pedal has no pressure", "pedal feels soft", "no resistance in the clutch"]
+      stays_on_floor_wont_return: ["clutch pedal stays on the floor", "pedal went to the floor and wont come back"]
+      stiff_hard_to_press: ["clutch is really stiff", "hard to push the clutch in"]
+      chatters_on_release: ["shudders as the clutch comes out", "chatters when the clutch catches"]
+    questions_unlocked: [Q-CPF-BITE, Q-CPF-RETURN, Q-CPF-NOISE]   # the 3 proposed questions above (>=3 satisfied)
+    note: "Manual-specific; MUST NOT reuse the brake-only pedal_feel slot (its enum + description are brake). Conditional on the clutch_pedal_or_engagement_feel subcat being accepted; unlocks the 3 stage2.question.propose ops authored above."
+    conditional_on: stage2.subcategory.propose:clutch_pedal_or_engagement_feel
+  - op: stage3.slot.value.add
+    slot: onset_timing
+    value: from_a_stop_pulling_away
+    literal_cues: ["when i take off from a stop", "pulling away from a light", "when i let the clutch out", "as i pull away from a stop sign"]
+
+  # ============================================================
+  # Workstream-Q — required_facts tags on existing questions (all CONTESTED; see dossier Workstream-Q)
+  # ============================================================
+  - op: question.required_facts.set
+    question_id: 1182
+    facts: [onset_timing]
+    skip_class: PARTIAL
+    contested_with: ["engine-controls-driveability.proposals.yaml (same onset_timing fact — harmless idempotent duplicate)"]
+    derivation_note: "'Is the loss of power constant, or does it come and go?' — answered by onset_timing=always vs intermittent. Existing slot. PARTIAL: skip only when onset_timing is clearly always/intermittent. Duplicate with engine-controls is harmless (identical fact)."
+  - op: question.required_facts.set
+    question_id: 1183
+    facts: [clutch_or_gear_engagement]
+    skip_class: SAFE
+    conditional_on: wave_c_driveline_slot_merge
+    contested_with:
+      - "automatic-transmission.proposals.yaml (transmission_behavior)"
+      - "engine-controls-driveability.proposals.yaml (power_delivery_feel)"
+      - "air-induction-forced-induction.proposals.yaml (intentionally_empty)"
+    derivation_note: "'Does the engine rev up high but the car doesn't pick up speed?' == revs_without_speed_gain. Currently EMPTY -> always asked. CONTESTED across 4 dossiers on this exact ID; apply only after Wave-C merges the competing slots into one canonical slot."
+  - op: question.required_facts.set
+    question_id: 1186
+    facts: [clutch_or_gear_engagement]
+    skip_class: PARTIAL
+    conditional_on: wave_c_driveline_slot_merge
+    contested_with:
+      - "automatic-transmission.proposals.yaml (transmission_behavior)"
+      - "engine-controls-driveability.proposals.yaml (power_delivery_feel)"
+      - "air-induction-forced-induction.proposals.yaml (intentionally_empty)"
+    derivation_note: "'Feels stuck in a lower gear or held back?' overlaps revs_without_speed_gain/delayed_or_slipping. PARTIAL. CONTESTED; conditional on the Wave-C slot merge."
+  - op: question.required_facts.set
+    question_id: 168
+    facts: [clutch_or_gear_engagement]
+    skip_class: PARTIAL
+    conditional_on: wave_c_driveline_slot_merge
+    contested_with: ["sibling driveline dossiers per the cross-dossier collision report"]
+    derivation_note: "'Has the transmission been slipping or shifting strangely along with the shaking?' -> delayed_or_slipping. PARTIAL. CONTESTED; conditional on the Wave-C slot merge."
+
+  # ============================================================
+  # Catalog scope (Chris-gated)
+  # ============================================================
+  - op: catalog.service.propose
+    name: "Route manual-trans fluid leak (gear oil OR clutch hydraulic brake fluid) to a bookable service"
+    demand_evidence: "FM-11 (manual gearbox gear-oil leak) maps to leak/thick_dark_brown_puddle_gear_or_differential_oil and FM-12 (clutch hydraulic leak) maps to leak/clear_yellow_or_light_brown_puddle_brake_fluid, but the 'leak' category is unreachable by transmission_testing (concern_categories=['performance']); no service cleanly books a manual-trans fluid leak. Options: (a) add 'leak' to transmission_testing.concern_categories, or (b) add a trans-fluid-leak service."
+    fee_rationale: "Reuse transmission_testing fee ($179.95) if scope-extended; new service fee is Chris's call."
+
+# ================================================================
+# Golden cases (>=8; >=1 inference-trap, >=1 null-route). Schema mirrors
+# scheduler-app/scripts/eval/eval-cases.json. Proposed slugs/values flagged in tags.
+# ================================================================
+golden_cases:
+  - text: "CLIENT STATES CLUTCH IS SLIPPING"
+    tags: [fact_poor, real_tekmetric]
+    expected:
+      stage1_category_key: transmission_testing
+      stage1_acceptable: [transmission_testing]
+      stage2_subcategory_slug: low_power_or_wont_accelerate_normally   # proposed target: manual_clutch_slipping
+      stage3_facts: {}
+      route: testing_service
+
+  - text: "customer states the clutch has failed. it revs up and doesnt have power when accelerating"
+    tags: [fact_rich, real_tekmetric, proposed_fact_value]
+    expected:
+      stage1_category_key: transmission_testing
+      stage1_acceptable: [transmission_testing]
+      stage2_subcategory_slug: low_power_or_wont_accelerate_normally   # proposed: manual_clutch_slipping
+      stage3_facts: { clutch_or_gear_engagement: revs_without_speed_gain, onset_timing: when_accelerating }
+      route: testing_service
+    note: "clutch_or_gear_engagement is a PROPOSED slot/value (flagged proposed_fact_value). 'revs up and doesnt have power when accelerating' literally states revs-without-speed."
+
+  - text: "manual car, clutch slips going up hills and i smell somthing burning"
+    tags: [fact_medium, cross_system_smell, synthetic, literalness]
+    expected:
+      stage1_category_key: transmission_testing
+      stage1_acceptable: [transmission_testing]
+      stage2_subcategory_slug: low_power_or_wont_accelerate_normally   # proposed: manual_clutch_slipping
+      stage3_facts: { smell_descriptor: other_burning }
+      route: testing_service
+    note: "LITERALNESS: a vague 'something burning' sets smell_descriptor=other_burning, NOT burning_rubber_or_hot_brakes (customer named no brake/rubber source). 'going up hills' states LOAD, not a speed band, so speed_band is NOT set (highway=50+ mph). 'slips' alone does not literally state 'revs', so clutch_or_gear_engagement is left unset."
+
+  - text: "manual transmission slips only in 4-high and first gear, fine in 4-low and 2-high"
+    tags: [inference_trap, cross_system, forum_grounded]
+    expected:
+      stage1_category_key: awd_4x4_testing
+      stage1_acceptable: [awd_4x4_testing, transmission_testing]
+      stage2_subcategory_slug: null
+      stage3_facts: {}
+      route: testing_service
+    note: "INFERENCE TRAP: 'slipping' + 'manual transmission' tempts a clutch-slip read, but slip that is confined to ONE 4WD range (fine in the others) is a TRANSFER-CASE/4WD signature, not a clutch. Route to awd_4x4_testing. Do NOT set clutch_or_gear_engagement."
+
+  - text: "grinds every time i put it in first and its hard to get into reverse"
+    tags: [proposed_subcat, forum_grounded, proposed_fact_value]
+    expected:
+      stage1_category_key: transmission_testing
+      stage1_acceptable: [transmission_testing]
+      stage2_subcategory_slug: grinding_or_hard_shift_gears   # PROPOSED
+      stage3_facts: { clutch_or_gear_engagement: grinds_when_shifting, noise_descriptor: grinding_metallic }
+      route: testing_service
+
+  - text: "hard to get it into gear especially when its cold in the morning, have to force it"
+    tags: [proposed_subcat, forum_grounded, proposed_fact_value]
+    expected:
+      stage1_category_key: transmission_testing
+      stage1_acceptable: [transmission_testing]
+      stage2_subcategory_slug: grinding_or_hard_shift_gears   # PROPOSED
+      stage3_facts: { clutch_or_gear_engagement: hard_or_notchy_shift, onset_timing: cold_start, weather_condition: cold_weather }
+      route: testing_service
+
+  - text: "loud squealing sound that goes away as soon as i push the clutch pedal in"
+    tags: [proposed_subcat, confusable_bearing, synthetic, literalness]
+    expected:
+      stage1_category_key: transmission_testing
+      stage1_acceptable: [transmission_testing]
+      stage2_subcategory_slug: clutch_pedal_or_engagement_feel   # PROPOSED (NOT high_pitched_whining_under_the_hood)
+      stage3_facts: { noise_descriptor: squealing_high_pitched }
+      route: testing_service
+    note: "MECHANISM: noise PRESENT in neutral with the pedal UP that STOPS when the clutch is pressed = INPUT-SHAFT bearing (per freeasestudyguides diagnose-clutch-noise), NOT the release/throwout bearing (that APPEARS on depression). clutch_pedal_feel is NOT set (the customer stated no chatter/bite/pedal complaint; the pedal is only a diagnostic reference for the noise phase). Do NOT route to high_pitched_whining_under_the_hood (belt)."
+
+  - text: "chirping sound that starts when i press the clutch pedal down toward where it grabs"
+    tags: [proposed_subcat, confusable_bearing, synthetic, proposed_fact_value]
+    expected:
+      stage1_category_key: transmission_testing
+      stage1_acceptable: [transmission_testing]
+      stage2_subcategory_slug: clutch_pedal_or_engagement_feel   # PROPOSED
+      stage3_facts: { noise_descriptor: squealing_high_pitched }
+      route: testing_service
+    note: "Release/THROWOUT bearing: noise APPEARS as the pedal is pressed to the engagement point (bearing contacts pressure-plate fingers) — the opposite pedal phase to the input-shaft case above. Discriminator = pedal PHASE."
+
+  - text: "whirring noise only when i hold the clutch all the way down while in gear"
+    tags: [proposed_subcat, confusable_bearing, synthetic]
+    expected:
+      stage1_category_key: transmission_testing
+      stage1_acceptable: [transmission_testing]
+      stage2_subcategory_slug: clutch_pedal_or_engagement_feel   # PROPOSED (NOT humming_or_whirring_at_speed)
+      stage3_facts: { noise_descriptor: humming_or_whirring }
+      route: testing_service
+    note: "FM-6 pilot bearing vs wheel bearing: pilot = clutch-pedal-fully-down & stationary; wheel = road-speed. Do NOT route to humming_or_whirring_at_speed."
+
+  - text: "rattles and raps at idle like a diesel but quiets down when i push the clutch pedal in"
+    tags: [proposed_subcat, confusable_engine_noise, synthetic]
+    expected:
+      stage1_category_key: transmission_testing
+      stage1_acceptable: [transmission_testing]
+      stage2_subcategory_slug: clutch_pedal_or_engagement_feel   # PROPOSED (NOT engine_ticking_or_tapping)
+      stage3_facts: { noise_descriptor: rattling, speed_band: idle }
+      route: testing_service
+    note: "FM-10 dual-mass flywheel: clutch-pedal-linked rattle at idle. Do NOT route to engine_ticking_or_tapping (engine knock tracks RPM, not the clutch pedal)."
+
+  - text: "my car shakes when i take off from a stop"
+    tags: [inference_trap, proposed_fact_value]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: [transmission_testing, suspension_steering_check]
+      stage2_subcategory_slug: null
+      stage3_facts: { onset_timing: from_a_stop_pulling_away }
+      route: clarify
+    note: "INFERENCE TRAP: 'shakes on takeoff' could be clutch chatter, a motor mount, or a CV axle. The extractor must set ONLY the literally-stated onset_timing (a PROPOSED value, flagged) and must NOT set clutch_pedal_feel or clutch_or_gear_engagement — the customer never named a clutch or the cause. There is no vehicle_powertrain=manual value (that enum is fuel-type only); do not attempt to set it."
+
+  - text: "install customer supplied clutch kit, flywheel resurface"
+    tags: [null_route, work_order]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      stage3_facts: {}
+      route: advisor
+    note: "NULL ROUTE: a work-order instruction line, not a customer-stated symptom. No concern to classify."

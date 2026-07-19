@@ -1,0 +1,365 @@
+system: airbag-srs-restraints
+# Typed change-ops binding this dossier's findings to the live snapshot (00-current-scheduler-taxonomy.md).
+# Stage-2 enrichment for airbag_srs_light is already fully populated in the DB (rich description, 7 positives,
+# 5 negatives, 16 synonyms) — these ops SHARPEN (real-voice positives, the named confusable negatives, a few
+# missing customer-voice synonyms) and fill the two Stage-1 + Workstream-Q gaps. No description.revise op: the
+# live description already encodes the cascade boundary and is strong; revising it would risk regression for no
+# measurable gain (same discipline as the brakes dossier).
+#
+# PROVENANCE HONESTY: the Tekmetric 500-corpus has only four airbag/SRS utterances (two route AWAY). Real
+# in-subcategory positives therefore lean on NHTSA ODI real voice (public-domain, paraphrased) + a small,
+# flagged synthetic share. Phrasings drawn from eval-cases.json (source "authored-2026-07-02-workflow") are
+# NOT real corpus voice; the strict provenance enum (tekmetric|nhtsa|forum-paraphrase|synthetic) has no
+# "authored" value, so they are labeled `synthetic` with the eval id named in a comment.
+#
+# NOTE (not a typed op — logged for Workstream Q): FOUR of this subcategory's questions gate on `recent_action`
+# (427 accident, 428 seat/dash/belt work, 432 sitting/battery, 433 flood). Because the extractor stores ONLY ONE
+# recent_action, a single stated trigger (e.g. "fender bender" -> accident_or_impact) makes the mapper skip the
+# other three even though they were never answered. This is a multi-value `recent_action[]` cardinality fix owned
+# by Workstream Q / a future array slot — it is deliberately NOT emitted as a per-system op here.
+
+ops:
+  # ============================================================
+  # L1 — Stage-1 keywords (service: airbag_srs_testing; example_keywords is EMPTY in the live DB).
+  # Multi-token / domain-token only. `evidence` names the TRUE attestation source per keyword
+  # (Tekmetric corpus | NHTSA | authored eval | domain phrase) — NOT all are Tekmetric-corpus-attested.
+  # ============================================================
+  - op: stage1.keyword.add
+    category_key: airbag_srs_testing
+    phrase: "airbag light on"
+    rationale: "Canonical trigger; verbatim all-caps Tekmetric line 'AIR BAG LIGHT ON'."
+    evidence: "tekmetric corpus 'AIR BAG LIGHT ON' (real-concerns-tekmetric line ~5758)"
+  - op: stage1.keyword.add
+    category_key: airbag_srs_testing
+    phrase: "SRS light"
+    rationale: "Domain 2-token; the other dominant way customers name it."
+    evidence: "NHTSA ODI 'SRS Warning Light ON'; DB synonym 'SRS light'; authored eval -002/-004"
+  - op: stage1.keyword.add
+    category_key: airbag_srs_testing
+    phrase: "air bag light"
+    rationale: "Two-word spelling that customers use verbatim."
+    evidence: "tekmetric corpus 'AIR BAG LIGHT ON'"
+  - op: stage1.keyword.add
+    category_key: airbag_srs_testing
+    phrase: "airbag warning light"
+    rationale: "Full form; unambiguous SRS trigger."
+    evidence: "NHTSA ODI 'Airbag Warning Light: SRS Warning Light ON'"
+  - op: stage1.keyword.add
+    category_key: airbag_srs_testing
+    phrase: "srs triangle"
+    rationale: "Icon description customers reach for when they can't name it."
+    evidence: "authored eval -004 'yellow SRS triangle'; DB synonym 'SRS triangle' (not Tekmetric-corpus-attested)"
+  - op: stage1.keyword.add
+    category_key: airbag_srs_testing
+    phrase: "airbag person light"
+    rationale: "Icon nickname (person-with-seatbelt-and-airbag)."
+    evidence: "authored eval -003 'little airbag person light'; DB synonym 'person and airbag icon' (not Tekmetric-corpus-attested)"
+  - op: stage1.keyword.add
+    category_key: airbag_srs_testing
+    phrase: "airbag light flashing"
+    rationale: "Blink-pattern fault phrasing; distinguishes from a normal startup flash at Stage-1."
+    evidence: "authored eval -002 'flashing some weird pattern of blinks'"
+  - op: stage1.keyword.add
+    category_key: airbag_srs_testing
+    phrase: "passenger airbag off"
+    rationale: "OCS indicator; unambiguous domain phrase that should reach the SRS service (adult-seated fault case)."
+    evidence: "domain OCS telltale (PASSENGER AIRBAG OFF); no Tekmetric-corpus occurrence — kept as an unambiguous ≥2-token domain phrase"
+
+  # ============================================================
+  # L1 — Stage-1 hedges (the named confusables + the situational-bucket overrides).
+  # ============================================================
+  - op: stage1.hedge.add
+    category_a: airbag_srs_testing
+    category_b: warning_light_general
+    rule: "A LONE airbag/SRS light -> airbag_srs_testing. If the airbag light is one of THREE OR MORE lights, or the customer says 'all of them' / 'dashboard lit up' / 'Christmas tree' (usually a charging/voltage cascade), route to multiple_warning_lights_at_once (via warning_light_general). Exactly-two lights that share a system are handled by the more-urgent single subcategory, not here."
+    discriminating_fact: warning_light_behavior   # multiple_lights_at_once -> route to the cascade subcategory
+  - op: stage1.hedge.add
+    category_a: airbag_srs_testing
+    category_b: after_a_recent_accident_or_impact
+    rule: "An airbag light after a MINOR bump (curb / low-speed fender bender), with NO airbags deployed, car drivable, and the customer wanting THE LIGHT diagnosed -> airbag_srs_testing. A COLLISION framing (airbags deployed, real damage, insurance inspection, 'check the whole car / talk to body shop') -> after_a_recent_accident_or_impact, even though an airbag light is present. Phrasing/severity decides."
+    discriminating_fact: drivable_state   # + customer_request_type (whole-car/insurance vs diagnose-this-light)
+  - op: stage1.hedge.add
+    category_a: airbag_srs_testing
+    category_b: after_recent_service_or_repair_work
+    rule: "SRS light after RECENT WORK: if the customer causally ties the light to work a SHOP just did and wants that work made right ('they replaced my battery / worked under my seats and now the airbag light is on, they broke something') -> after_recent_service_or_repair_work (situational-cue override, taxonomy §3b). If the service is only incidental TIMING and the customer just wants the light diagnosed — especially DIY work ('I pulled the seats to shampoo the carpets and it came on') -> airbag_srs_testing. Who did the work + whether the customer blames it decides."
+    discriminating_fact: recent_action   # general_service; the override turns on causal-blame framing, not the fact alone
+  - op: stage1.hedge.add
+    category_a: airbag_srs_testing
+    category_b: charging_starting_testing
+    rule: "After a dead battery / jump / battery replacement: if the airbag light is the ONLY light on, route airbag_srs_testing (a voltage dip latched an SRS code). If a BATTERY light is on with dim lights and hard/slow cranking, route charging_starting_testing."
+    discriminating_fact: warning_light_named   # isolated 'airbag'/'srs' vs a 'battery' light + dim/cranking cues
+  - op: stage1.hedge.add
+    category_a: airbag_srs_testing
+    category_b: safety_concern_dont_feel_safe_driving_it
+    rule: "A NAMED, diagnosable airbag/SRS light plus a passing 'is it safe to drive?' stays airbag_srs_testing (the actionable item is the light). Route safety_concern_dont_feel_safe_driving_it only when fear dominates and no diagnosable symptom is named ('I don't feel safe driving it, something's wrong'). A safety question alone does NOT override a named light."
+    discriminating_fact: warning_light_named   # a named SRS light keeps it diagnosable
+
+  # ============================================================
+  # L3 — Positive examples (add REAL-voice: NHTSA ODI + verbatim Tekmetric + a flagged clockspring synthetic).
+  # DB positives skew clean/authored; these add real all-caps/module-fault voice. <30% synthetic.
+  # ============================================================
+  - op: stage2.example.positive.add
+    subcat_slug: airbag_srs_light
+    phrase: "AIR BAG LIGHT ON"
+    provenance: tekmetric   # real-concerns-tekmetric line ~5758 (opening fragment; fuller RO's accident framing handled as a negative below)
+  - op: stage2.example.positive.add
+    subcat_slug: airbag_srs_light
+    phrase: "airbag light always on in my dashboard"
+    provenance: nhtsa   # ODI narrative, air-bag component (paraphrased)
+  - op: stage2.example.positive.add
+    subcat_slug: airbag_srs_light
+    phrase: "SRS light went on and stayed on, the dealer said the SRS computer malfunctioned and needs replacing"
+    provenance: nhtsa   # ODI narrative (paraphrased); recurrent SRS-module-failure voice
+  - op: stage2.example.positive.add
+    subcat_slug: airbag_srs_light
+    phrase: "airbag light and my horn quit working at the same time"
+    provenance: synthetic   # clockspring signature not represented in any corpus; flagged synthetic (diagnostic pattern cited §3 FM-3)
+
+  # ============================================================
+  # L3 — Negative examples (sharpen the named confusables; every one names routes_to).
+  # ============================================================
+  - op: stage2.example.negative.add
+    subcat_slug: airbag_srs_light
+    phrase: "the airbags actually deployed in a highway crash and insurance is sending me in to check the whole car"
+    routes_to: after_a_recent_accident_or_impact
+  - op: stage2.example.negative.add
+    subcat_slug: airbag_srs_light
+    phrase: "the shop replaced my battery yesterday and now the airbag light is on, i think they broke something and want them to fix it"
+    routes_to: after_recent_service_or_repair_work
+  - op: stage2.example.negative.add
+    subcat_slug: airbag_srs_light
+    phrase: "airbag light is on but so are the battery, ABS, traction and security lights all at once"
+    routes_to: multiple_warning_lights_at_once
+  - op: stage2.example.negative.add
+    subcat_slug: airbag_srs_light
+    phrase: "battery-shaped light is on with dim headlights and it barely cranks"
+    routes_to: battery_charging_light
+  - op: stage2.example.negative.add
+    subcat_slug: multiple_warning_lights_at_once
+    phrase: "only the SRS airbag light is on, nothing else is lit up"
+    routes_to: airbag_srs_light
+  - op: stage2.example.negative.add
+    subcat_slug: after_a_recent_accident_or_impact
+    phrase: "just tapped a curb, no airbags went off, car drives fine and i only want the airbag light checked"
+    routes_to: airbag_srs_light
+
+  # ============================================================
+  # L4 — Synonyms (>=2 tokens OR domain single-token; only terms NOT already in the DB's 16).
+  # Existing DB synonyms include 'SRS light', 'SRS triangle', 'airbag light', 'airbag warning light' — NOT re-added.
+  # ============================================================
+  - op: stage2.synonym.add
+    subcat_slug: airbag_srs_light
+    term: "passenger airbag off light"
+  - op: stage2.synonym.add
+    subcat_slug: airbag_srs_light
+    term: "airbag person light"
+  - op: stage2.synonym.add
+    subcat_slug: airbag_srs_light
+    term: "airbag light flashing"
+
+  # ============================================================
+  # L5 — Workstream Q: the two empty-required_facts questions on this subcategory.
+  # (427, 428, 431, 432, 433 already carry rf in the DB — left as-is; see recent_action[] note above.)
+  # ============================================================
+  - op: question.intentionally_empty
+    question_id: 429   # "Is there anything stuck in any seat belt buckle — a coin, a crumb, a piece of plastic?"
+    reason: "Physical-inspection yes/no (buckle obstruction shorting the switch). No fact slot captures 'debris in a buckle'; must always be asked."
+  - op: question.intentionally_empty
+    question_id: 430   # "Did you recently have a car seat installed or use the front passenger seat occupancy area differently than usual?"
+    reason: "Occupancy-area usage confirmation for the OCS branch. No slot captures who/what is in the seat; single-question need, below the >=3-question new-slot bar. Always ask."
+
+  # ============================================================
+  # Stage-2 subcategory proposal (Chris-gated; NO current fit for FM-9; demand thin -> propose-only).
+  # ============================================================
+  - op: stage2.subcategory.propose
+    category: electrical
+    name: seat_belt_or_restraint_hardware
+    description: "A physical seat-belt / restraint-hardware complaint with NO dashboard warning light: a belt that won't retract or is stuck extended, a buckle that won't latch or won't release, frayed/cut webbing, or a persistent seat-belt chime/buzzer with no telltale. Distinct from airbag_srs_light (which is a dashboard SRS light / electronic restraint fault) and from accessory_doesnt_work (a dead powered accessory)."
+    examples:
+      - "seat belt won't pull out, it's stuck and won't come across me, no dash light"
+      - "the buckle won't click / latch anymore, no warning light"
+      - "seat belt chime keeps going off but no light on the dash"
+    why_existing_insufficient: "airbag_srs_light requires a dash telltale; accessory_doesnt_work is for powered accessories on a fuse/circuit. A purely mechanical restraint-hardware complaint routes to neither and currently dead-ends at advisor. Corpus demand is THIN (seat belt appears only as an SRS-light trigger, never as a standalone hardware complaint), so this is propose-only pending Chris confirming volume before any question set is authored; category=electrical chosen because the airbag_srs_testing service already reaches it (no restraints category exists)."
+
+# ================================================================
+# GOLDEN CASES (>=8; >=1 inference-trap; >=2 null-route incl. a work-order line). Schema mirrors eval-cases.json.
+# ================================================================
+golden_cases:
+  - text: "Airbag light popped on a few days ago right after a lil fender bender, no airbags went off. It just stays on steady the whole time I drive."
+    tags: [fact_rich, confusable_accident_bucket]
+    expected:
+      stage1_category_key: airbag_srs_testing
+      stage1_acceptable: [airbag_srs_testing, after_a_recent_accident_or_impact]
+      stage2_subcategory_slug: airbag_srs_light
+      stage3_facts:
+        warning_light_named: airbag
+        warning_light_behavior: steady_on
+        recent_action: accident_or_impact
+        started_when: days_ago
+      route: testing_service
+
+  - text: "my SRS light is flashing some weird pattern of blinks ever since the battery died and i had to jump start the car. is that serious??"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: airbag_srs_testing
+      stage1_acceptable: [airbag_srs_testing]
+      stage2_subcategory_slug: airbag_srs_light
+      stage3_facts:
+        warning_light_named: srs
+        warning_light_behavior: flashing_or_blinking
+        recent_action: jump_started
+      # A passing "is that serious??" does NOT override a named, diagnosable SRS light -> stays airbag_srs_testing.
+      route: testing_service
+
+  - text: "hey, the little airbag person light on my dash has been glowing for a couple weeks now, started after i pulled the seats out to shampoo the carpets"
+    tags: [moderate]
+    expected:
+      stage1_category_key: airbag_srs_testing
+      stage1_acceptable: [airbag_srs_testing]
+      stage2_subcategory_slug: airbag_srs_light
+      stage3_facts:
+        warning_light_named: airbag
+        started_when: weeks_ago
+      # DIY seat-shampoo is the customer's OWN work, not "had it serviced" -> recent_action is NOT set here
+      # (matches authoritative eval airbag_srs_testing-003, which expects no recent_action). A SHOP causally
+      # blamed would instead route to after_recent_service_or_repair_work (see near-miss below).
+      route: testing_service
+
+  - text: "theres a yellow SRS triangle showing on my dash, no clue what that even means"
+    tags: [sparse]
+    expected:
+      stage1_category_key: airbag_srs_testing
+      stage1_acceptable: [airbag_srs_testing]
+      stage2_subcategory_slug: airbag_srs_light
+      stage3_facts:
+        warning_light_named: srs
+      route: testing_service
+
+  - text: "airbag light came on and my horn stopped working at the same time, sometimes the cruise buttons on the wheel dont respond either"
+    tags: [fact_rich, clockspring]
+    expected:
+      stage1_category_key: airbag_srs_testing
+      stage1_acceptable: [airbag_srs_testing]
+      stage2_subcategory_slug: airbag_srs_light
+      stage3_facts:
+        warning_light_named: airbag
+        accessory_affected: "horn, cruise buttons"
+      # clockspring signature: SRS light routes here even though horn/SWC are also dead.
+      route: testing_service
+
+  - text: "SRS light came on steady right after i drove through a flooded street and got water in the floor"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: airbag_srs_testing
+      stage1_acceptable: [airbag_srs_testing]
+      stage2_subcategory_slug: airbag_srs_light
+      stage3_facts:
+        warning_light_named: srs
+        warning_light_behavior: steady_on
+        recent_action: car_wash_or_driven_through_water
+      route: testing_service
+
+  # ---- CROSS-SYSTEM near-miss: SRS inside a cascade -> route to multiple_warning_lights_at_once. ----
+  - text: "the battery light, ABS, traction control, airbag and security lights all came on together after my battery died, and it barely runs"
+    tags: [confusable_cascade, near_miss]
+    expected:
+      stage1_category_key: warning_light_general
+      stage1_acceptable: [warning_light_general, charging_starting_testing]
+      stage2_subcategory_slug: multiple_warning_lights_at_once
+      stage3_facts:
+        warning_light_named: "battery, abs, traction control, airbag, security"
+        warning_light_behavior: multiple_lights_at_once
+        recent_action: battery_or_alternator_work
+      route: testing_service
+
+  # ---- CROSS-SYSTEM near-miss: collision framing -> accident situational bucket (advisor). ----
+  - text: "got rear-ended hard on the highway, the airbags went off and theres real damage, insurance is sending me in to get the whole car inspected"
+    tags: [confusable_accident_bucket, near_miss]
+    expected:
+      stage1_category_key: after_a_recent_accident_or_impact
+      stage1_acceptable: [after_a_recent_accident_or_impact]
+      stage2_subcategory_slug: after_a_recent_accident_or_impact
+      stage3_facts:
+        recent_action: accident_or_impact
+      # Deployment + damage + insurance/whole-car framing dominates the lone-light symptom.
+      route: advisor
+
+  # ---- CROSS-SYSTEM near-miss: SHOP-work causally blamed -> recent-service situational bucket (advisor). ----
+  - text: "took it to a shop yesterday for work under the seats and to swap the battery, and now the airbag light is on. pretty sure they knocked something loose and i want them to fix what they broke"
+    tags: [confusable_service_bucket, near_miss]
+    expected:
+      stage1_category_key: after_recent_service_or_repair_work
+      stage1_acceptable: [after_recent_service_or_repair_work, airbag_srs_testing]
+      stage2_subcategory_slug: after_recent_service_or_repair_work
+      stage3_facts:
+        warning_light_named: airbag
+        recent_action: general_service
+      # Situational-cue override (taxonomy §3b): the customer causally ties the light to a SHOP's recent work
+      # and wants that work made right -> the service bucket, even though an airbag light is named. Contrast the
+      # DIY seat-shampoo case above, which stays airbag_srs_testing.
+      route: advisor
+
+  # ---- GUARD the reverse boundary: lone SRS light after a tiny bump stays in SRS testing. ----
+  - text: "just tapped a curb pulling into my driveway, no airbags went off, car drives totally fine, i only want the airbag light checked out"
+    tags: [confusable_accident_bucket, near_miss]
+    expected:
+      stage1_category_key: airbag_srs_testing
+      stage1_acceptable: [airbag_srs_testing]
+      stage2_subcategory_slug: airbag_srs_light
+      stage3_facts:
+        warning_light_named: airbag
+        recent_action: hit_pothole_or_curb
+        customer_request_type: diagnose_problem
+      # 'car drives fine' + 'only want the airbag light checked' keeps this out of the accident bucket.
+      route: testing_service
+
+  # ---- INFERENCE-TRAP: normal OCS behavior. Must NOT fabricate a fault. ----
+  - text: "the passenger airbag off light comes on when my little kid sits up front"
+    tags: [inference_trap, ocs_normal]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      stage3_facts:
+        warning_light_named: "passenger airbag off"
+      # TRAP: a light passenger legitimately disables the passenger bag by design (FMVSS 208 OCS).
+      # The extractor must set ONLY warning_light_named; it must NOT set warning_light_behavior to a
+      # fault value, must NOT assert a malfunction/defect, and must NOT set drivable_state. Advisor can
+      # reassure; do NOT route to a paid SRS test on a normal condition (so airbag_srs_testing is NOT acceptable).
+      route: advisor
+
+  # ---- NULL-ROUTE (no-fit): mechanical seat belt, no dash light -> advisor (no subcategory holds it). ----
+  - text: "my seat belt wont pull out anymore, its stuck and wont come across me, theres no light on the dash"
+    tags: [null_route, no_fit_restraint_hardware]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      stage3_facts: {}
+      # No warning light + mechanical belt hardware = no current subcategory (see proposed
+      # seat_belt_or_restraint_hardware). Must NOT fabricate an SRS light or route to airbag_srs_testing.
+      route: advisor
+
+  # ---- NULL-ROUTE (recall inquiry): not a symptom -> advisor / recall handling (no diagnostic subcategory). ----
+  - text: "i got a recall notice in the mail about my airbag, want to find out if my car is actually one of the affected ones"
+    tags: [null_route, recall_inquiry]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      stage3_facts: {}
+      # An airbag RECALL inquiry (Takata-era) is not a symptom; no diagnostic subcategory holds it. Advisor
+      # handles recall lookups. Must NOT manufacture an airbag_srs_light concern or route to a paid SRS test.
+      route: advisor
+
+  # ---- NULL-ROUTE (work-order noise): internal declined-service line, not a customer symptom. ----
+  - text: "Previously declined>SRS AIRBAG MODULE - CLEAR CRASH DATA / RESET (per body shop)"
+    tags: [null_route, work_order_noise]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      stage3_facts: {}
+      # Internal work-order / declined-service line (NON-CONCERN rejection rule), not a customer describing
+      # a problem. Must not manufacture an airbag_srs_light concern from it.
+      route: advisor

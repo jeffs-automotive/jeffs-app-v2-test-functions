@@ -1,0 +1,162 @@
+system: steering-power-steering
+# phrase -> normalized -> routes_to[] (subcategory slugs) -> ambiguity -> provenance
+# provenance: tekmetric | nhtsa | forum-paraphrase | synthetic   (synthetic <=30% per subcategory)
+# ambiguity: unambiguous | needs-fact:<slot> | cross-system:<slug>
+entries:
+  # ---- heavy / stiff steering (FM-1/3/5) ----
+  - phrase: "STEERING WHEEL FEELS TIGHT"
+    normalized: steering effort high / heavy wheel
+    routes_to: [hard_to_turn_heavy_steering]
+    ambiguity: needs-fact:warning_light_named   # if a light is named -> power_steering_eps_light
+    provenance: tekmetric   # tka-000 (verbatim fragment; full text continues "TESTING AUTH 89 TO START")
+  - phrase: "have to use both hands to turn the wheel, its gotten really stiff"
+    normalized: heavy steering effort
+    routes_to: [hard_to_turn_heavy_steering]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  - phrase: "power steering feels like it quit, wheel takes way more effort now"
+    normalized: loss of power assist, heavy steering
+    routes_to: [hard_to_turn_heavy_steering]
+    ambiguity: needs-fact:warning_light_named
+    provenance: forum-paraphrase
+  - phrase: "steering went stiff overnight, hard to crank in parking lots but fine on the highway"
+    normalized: sudden heavy steering, low-speed dominant
+    routes_to: [hard_to_turn_heavy_steering]
+    ambiguity: unambiguous
+    provenance: synthetic
+  # ---- whine / groan / squeal ON TURN (FM-1/2/3/9) ----
+  - phrase: "HEARS A LOUD SQUEAL WHEN TURNING"
+    normalized: squeal on steering input
+    routes_to: [noise_when_turning_the_steering_wheel]
+    ambiguity: needs-fact:noise_descriptor
+    provenance: tekmetric   # tka-157 verbatim (consensus power_steering_eps_testing; squeal can also be a dry strut bearing -> suspension_steering_check)
+  - phrase: "theres a whining noise whenever i turn the steering wheel, goes away when the wheel is straight"
+    normalized: whine on turn, absent when straight
+    routes_to: [noise_when_turning_the_steering_wheel]
+    ambiguity: cross-system:high_pitched_whining_under_the_hood
+    provenance: synthetic
+  - phrase: "steering wheel groans when i turn it in the parking lot"
+    normalized: groan on low-speed turn
+    routes_to: [noise_when_turning_the_steering_wheel]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  - phrase: "creak from the steering column every time i turn the wheel while parked"
+    normalized: creak on turn at standstill (dry bearing / u-joint)
+    routes_to: [noise_when_turning_the_steering_wheel]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  # ---- whine that is NOT the steering system (confusable neighbor) ----
+  - phrase: "WHINE NOISE WHEN RUNNING"
+    normalized: continuous whine, engine running (not tied to turning)
+    routes_to: [high_pitched_whining_under_the_hood]
+    ambiguity: cross-system:noise_when_turning_the_steering_wheel
+    provenance: tekmetric   # tka-013 verbatim; NOTE corpus reached NO consensus (votes null/null/multiple_symptoms) and text states no RPM/turn linkage — the belt/alternator route is authorial, not corpus-proven
+  - phrase: "i hear a whine while accelerating that gets louder going up hills"
+    normalized: RPM/load-tied whine (belt/alternator/driveline)
+    routes_to: [high_pitched_whining_under_the_hood]
+    ambiguity: cross-system:noise_when_turning_the_steering_wheel
+    provenance: forum-paraphrase
+  # ---- EPS / power steering warning light (FM-5) ----
+  - phrase: "power steering light just came on and the wheel is really hard to turn"
+    normalized: PS/EPS warning light + heavy steering
+    routes_to: [power_steering_eps_light]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  - phrase: "EPS light came on right after they put a new battery in, steering feels heavy now"
+    normalized: EPS light post battery service, heavy assist
+    routes_to: [power_steering_eps_light]
+    ambiguity: unambiguous
+    provenance: synthetic
+  - phrase: "steering wheel symbol with an exclamation point is on my dash"
+    normalized: EPS icon named, no feel stated
+    routes_to: [power_steering_eps_light]
+    ambiguity: needs-fact:steering_feel
+    provenance: forum-paraphrase
+  - phrase: "yellow steering wheel light came on and its harder to park than usual"
+    normalized: amber PS/EPS light + low-speed heavy assist
+    routes_to: [power_steering_eps_light]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  - phrase: "four lights came on that look like steering and electrical issues, steering indicator is one"
+    normalized: EPS among multiple simultaneous lights (low-voltage cascade)
+    routes_to: [multiple_warning_lights_at_once]
+    ambiguity: cross-system:power_steering_eps_light
+    provenance: tekmetric
+  # ---- PS-fluid leak (FM-1) ----
+  - phrase: "TOW IN POWER STEERING PUMP BADLY LEAKING FLUID"
+    normalized: PS pump fluid leak, named part (TRUNCATED fragment)
+    routes_to: [red_or_pink_puddle_transmission_or_power_steering, car_has_been_sitting_unused_for_a_long_time]
+    # WARNING: truncated. Full tka-118 text continues "...HAD NOT BEEN DRIVEN FOR A FEW MONTHS, OVER DUE
+    # FOR INSPECTION..." and its consensus_category is car_has_been_sitting_unused_for_a_long_time (a
+    # Stage-1 PRIORITY-ORDER situational override that outranks the PS-leak symptom). The PS-leak fragment
+    # is real customer/tech voice, but this row must NOT be cited as proof of a clean PS-leak route.
+    ambiguity: situational-override:car_has_been_sitting_unused_for_a_long_time
+    provenance: tekmetric   # tka-118
+  - phrase: "drips and small puddles of power steering fluid under the front driver side"
+    normalized: red/pink PS-fluid leak, front-driver location
+    routes_to: [red_or_pink_puddle_transmission_or_power_steering]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  - phrase: "bright red puddle under the front of my car, steering feels totally normal not hard at all"
+    normalized: red/pink leak, steering explicitly normal
+    routes_to: [red_or_pink_puddle_transmission_or_power_steering]
+    ambiguity: needs-fact:steering_feel   # inference-trap: do NOT assert heavy steering
+    provenance: forum-paraphrase
+  # ---- loose / sloppy play (FM-6) ----
+  - phrase: "steering wheel feels super loose, i can wiggle it before the car actually turns"
+    normalized: play/deadband at center
+    routes_to: [loose_or_sloppy_steering]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  - phrase: "lots of play in the wheel, like theres a dead zone in the middle"
+    normalized: excessive free play
+    routes_to: [loose_or_sloppy_steering]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  - phrase: "the car kind of lags behind the steering wheel, i turn and it turns a second later"
+    normalized: vague/disconnected steering
+    routes_to: [loose_or_sloppy_steering]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  # ---- off-center wheel (FM-7) ----
+  - phrase: "steering wheel is crooked when im driving straight, drives me crazy"
+    normalized: wheel off-center, car tracks straight
+    routes_to: [steering_wheel_off_center_when_driving_straight]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  - phrase: "just had an alignment and now the steering wheel isnt centered"
+    normalized: off-center after alignment
+    routes_to: [steering_wheel_off_center_when_driving_straight]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  # ---- pull / wander framed as steering (FM-8) ----
+  # NOTE: the pulling category is a FAMILY of live subcategories that already draw sharp boundaries.
+  # Route to the MOST specific one; do not collapse a recent-service pull or a bi-directional wander
+  # into the generic pulling_drifting_or_wandering_on_the_road (that would collide with neighbor
+  # slugs' existing enrichment).
+  - phrase: "got new tires and an alignment, it still pulls to the left afterwards"
+    normalized: pull whose onset is tied to recent tire/alignment work
+    routes_to: [pull_that_started_after_recent_tire_or_service_work]   # onset-after-service is its OWN slug (tire conicity / post-service)
+    ambiguity: needs-fact:recent_action
+    provenance: forum-paraphrase
+  - phrase: "the car began to wander badly especially at highway speeds"
+    normalized: bi-directional wander at speed (not a single-direction pull)
+    routes_to: [wandering_or_drifting_in_both_directions]   # both-ways wander is its OWN slug; NOT the generic pull slug
+    ambiguity: needs-fact:pull_direction   # varies_or_wanders confirms both-ways
+    provenance: forum-paraphrase
+  - phrase: "steering feels off, car wanders and im fighting the wheel"
+    normalized: vague steering + wander, no direction stated
+    routes_to: [pulling_drifting_or_wandering_on_the_road]   # matches this slug's own positive; generic when neither recent-service nor clean both-ways is stated
+    ambiguity: needs-fact:pull_direction
+    provenance: forum-paraphrase
+  - phrase: "pulls to the left when i brake too hard, drives straight the rest of the time"
+    normalized: pull only under braking
+    routes_to: [pulling_only_when_braking]
+    ambiguity: cross-system:pulling_drifting_or_wandering_on_the_road
+    provenance: forum-paraphrase
+  # ---- bare work-order / part request (null-route territory) ----
+  - phrase: "rack replacement"
+    normalized: bare part-replacement work order, no symptom
+    routes_to: []   # advisor / null-route
+    ambiguity: needs-fact:customer_request_type
+    provenance: tekmetric

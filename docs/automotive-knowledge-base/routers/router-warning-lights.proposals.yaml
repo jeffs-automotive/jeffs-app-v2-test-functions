@@ -1,0 +1,405 @@
+system: router-warning-lights
+# Wave-B router proposals. Typed ops bound to the live snapshot (2026-07-18, shop 7476) — the 12
+# warning_light/* subcategories + the testing services in 00-current-scheduler-taxonomy.md.
+# This router OWNS cross-system warning-light routing; it does NOT re-emit ops a Wave-A system dossier
+# already owns (e.g. the red-brake↔ABS color hedge lives in abs-traction-stability.proposals.yaml). New
+# ops here are the CROSS-light arbitrations no single system can own: CEL steady/flashing, CEL↔reminder,
+# oil-pressure↔oil-life, temp red↔blue, multiple-lights ladder, dash-telltale↔exterior-bulb, hybrid/ADAS.
+# warning_light_named is a FREE-TEXT slot (extracted-facts.ts:370) → no stage3.slot.value.add is emitted
+# for it. warning_light_behavior is the enum that carries steady/flashing/multiple.
+
+ops:
+  # =========================================================================
+  # Stage-1 hedges (cross-system confusable pairs this router owns)
+  # =========================================================================
+  - op: stage1.hedge.add
+    category_a: check_engine_light_testing
+    category_b: warning_light_general
+    rule: >
+      A NAMED, identifiable dash light routes to its specific service; only route to warning_light_general
+      when the customer genuinely cannot name/identify the light ("a light came on, not sure which", "some
+      symbol I don't recognize") OR reports SEVERAL different lights with no single concern. A clearly-named
+      check-engine / engine-outline light => check_engine_light_testing, not the general bucket.
+    discriminating_fact: warning_light_named
+
+  - op: stage1.hedge.add
+    category_a: check_engine_light_testing
+    category_b: warning_light_general
+    rule: >
+      MAINTENANCE-REMINDER vs FAULT. "Service Engine Soon", "Maintenance Required", "MAINT REQD", a wrench
+      icon, or "oil life / service due" is a mileage/oil-life REMINDER, not a stored fault — it needs no code
+      scan (advisor reassurance / service_engine_soon_or_maintenance_required_light). Only the amber
+      ENGINE-OUTLINE "check engine" (MIL), or a "service engine soon" the customer ties to a DRIVE-FEEL
+      symptom, is a real fault => check_engine_light_testing. Do not scan a bare maintenance reminder.
+    discriminating_fact: warning_light_named
+
+  - op: stage1.hedge.add
+    category_a: check_engine_light_testing
+    category_b: charging_starting_testing
+    rule: >
+      MULTIPLE-LIGHTS ladder. When several DIFFERENT lights flare together WITH electrical distress —
+      dimming/flickering lights, hard or slow cranking, rough running, or the car stalling/dying ("whole dash
+      lit up then it died") — the root cause is a charging/voltage cascade => multiple_warning_lights_at_once
+      (charging_starting_testing / warning_light_general), NOT the individual lights. A lone named light with
+      no cascade stays on its own service.
+    discriminating_fact: warning_light_behavior
+
+  - op: stage1.hedge.add
+    category_a: oil_pressure_light_testing
+    category_b: warning_light_general
+    rule: >
+      OIL-PRESSURE (damage) light vs OIL-LIFE (reminder). A red OIL-CAN / genie-lamp icon, or "oil light on
+      while driving", is the oil-PRESSURE warning => oil_pressure_light_testing (stop driving). A "oil life
+      %", "oil change due", "SERVICE OIL MAINT" reminder is the maintenance-reminder subcategory, not a
+      pressure fault — do not route to oil_pressure_light_testing.
+    discriminating_fact: warning_light_named
+
+  - op: stage1.hedge.add
+    category_a: warning_light_general
+    category_b: abs_traction_stability_testing
+    rule: >
+      SIBLING PAIR is ONE concern, not "multiple". ABS + traction/stability lights share the wheel-speed-
+      sensor network and routinely co-illuminate; a "no AWD"/"hill assist unavailable" MESSAGE rides along
+      with them. Route to the NAMED light (abs_traction_stability_testing), NOT multiple_warning_lights_at_once,
+      unless a THIRD unrelated system (airbag + TPMS + check-engine…) or an electrical cascade is also present.
+    discriminating_fact: warning_light_named
+
+  - op: stage1.hedge.add
+    category_a: check_engine_light_testing
+    category_b: coolant_leak_testing
+    rule: >
+      TEMP light / overheating owns cooling. A RED thermometer-in-waves light, "HOT" / "ENGINE HOT" /
+      "COOLANT TEMP" message, or stated overheating => coolant_leak_testing (temp light, cooling), even if a
+      check-engine light is also on. A BLUE thermometer = normal cold engine, NOT a fault. A bare CEL with no
+      temp/overheat symptom stays check_engine_light_testing.
+    discriminating_fact: warning_light_named
+
+  # =========================================================================
+  # Stage-2 negative examples (routes_to REQUIRED) — cross-light misroutes
+  # =========================================================================
+  # CEL steady/flashing + CEL↔reminder
+  - op: stage2.example.negative.add
+    subcat_slug: check_engine_light
+    phrase: "wrench light / 'service due' came on, engine runs perfectly fine"
+    routes_to: service_engine_soon_or_maintenance_required_light
+  - op: stage2.example.negative.add
+    subcat_slug: check_engine_light
+    phrase: "check engine light is FLASHING and the car is bucking and shaking hard"
+    routes_to: engine_misfire_or_bucking_feeling
+  - op: stage2.example.negative.add
+    subcat_slug: service_engine_soon_or_maintenance_required_light
+    phrase: "the orange engine-shaped light is on steady and it's running rough"
+    routes_to: check_engine_light
+  # oil-pressure ↔ oil-life reminder
+  - op: stage2.example.negative.add
+    subcat_slug: oil_pressure_light
+    phrase: "dash says oil life 5% / oil change due soon, drives totally normal"
+    routes_to: service_engine_soon_or_maintenance_required_light
+  - op: stage2.example.negative.add
+    subcat_slug: service_engine_soon_or_maintenance_required_light
+    phrase: "red oil-can light popped on while driving and the engine got loud"
+    routes_to: oil_pressure_light
+  # temp red vs blue vs CEL
+  - op: stage2.example.negative.add
+    subcat_slug: check_engine_light
+    phrase: "red thermometer light came on and the temp gauge is near H, engine running hot"
+    routes_to: engine_temperature_light
+  - op: stage2.example.negative.add
+    subcat_slug: engine_temperature_light
+    phrase: "blue thermometer light is on when I first start it cold, goes off after a few minutes"
+    routes_to: service_engine_soon_or_maintenance_required_light   # non-fault; nearest 'not-a-fault reassurance' home — advisor reassurance, do NOT run a cooling test
+  # multiple / cascade vs single, and all-ADAS
+  - op: stage2.example.negative.add
+    subcat_slug: check_engine_light
+    phrase: "the whole dashboard lit up at once, lights are dimming and it cranks slow"
+    routes_to: multiple_warning_lights_at_once
+  - op: stage2.example.negative.add
+    subcat_slug: multiple_warning_lights_at_once
+    phrase: "just the ABS and traction control lights are both on, everything else is fine"
+    routes_to: abs_anti_lock_brake_light
+  - op: stage2.example.negative.add
+    subcat_slug: multiple_warning_lights_at_once
+    phrase: "'Lane Keep Unavailable' and 'Pre-Collision Service Required' messages, no dimming, cranks fine"
+    routes_to: check_engine_light   # interim: no ADAS subcategory exists yet (adas-driver-assist proposes one); NOT the charging-cascade multiple_* bucket
+  # dash telltale vs exterior bulb (the standing trap, reinforced cross-system)
+  - op: stage2.example.negative.add
+    subcat_slug: brake_system_red_light
+    phrase: "one of my rear brake lights is burned out, need a bulb, nothing lit on the dash"
+    routes_to: accessory_doesnt_work
+  # TPMS steady vs flashing already owned by wheels dossier from the TPMS side; router adds the cross-light guard
+  - op: stage2.example.negative.add
+    subcat_slug: check_engine_light
+    phrase: "amber horseshoe light with an exclamation point came on"
+    routes_to: tpms_tire_pressure_light
+  # EPS vs ABS (heavy-steering co-report names the wrong light)
+  - op: stage2.example.negative.add
+    subcat_slug: power_steering_eps_light
+    phrase: "the letters ABS lit up in a circle; steering is a little heavier but no steering-wheel icon"
+    routes_to: abs_anti_lock_brake_light
+
+  # =========================================================================
+  # Stage-1 keyword (the safety-critical flashing-MIL signal — cross-references ignition-misfire)
+  # =========================================================================
+  - op: stage1.keyword.add
+    category_key: check_engine_light_testing
+    phrase: "flashing engine light"
+    rationale: >
+      A FLASHING/blinking check-engine light is an active catalyst-damaging misfire — the single highest-
+      urgency warning-light signal. Ensures Stage-1 fires even when the customer leads with the light, not the
+      buck/stumble. (ignition-misfire.proposals.yaml also emits this; harmless duplicate, one canonical add.)
+    evidence: "engine-controls §6 / ignition-misfire §6 (flashing MIL = active severe misfire); corpus 'CHECK ENGINE LIGHT ON. RUNNING ROUGH'"
+
+  # =========================================================================
+  # NOTE — no new subcategory / slot / catalog op from this router.
+  # =========================================================================
+  # The 12 warning_light/* subcategories cover the dash-telltale space; gaps (hybrid master warning, ADAS
+  # message set, EV turtle) are logged as interim routes in binding/warning-light-master-table.md §5 and are
+  # owned as Chris-gated subcategory proposals by their Wave-A dossiers (hybrid-ev-high-voltage,
+  # adas-driver-assist), NOT re-proposed here. Sibling-light "is the OTHER light also on?" questions stay
+  # always-ask (naming one light can't assert another is off — literalness); the ABS/brake Wave-A owners
+  # already emitted the question.intentionally_empty ops for Q414/Q423/Q435, so this router does not.
+
+# ===========================================================================
+# CONFUSABLE MATRIX ROWS — the router's contribution to binding/confusable-matrix.yaml
+# Each: {pair:[a,b], discriminating_fact, discriminating_question, hedge_rule, examples_a, examples_b}
+# ===========================================================================
+confusable_matrix_rows:
+  - pair: [brake_system_red_light, abs_anti_lock_brake_light]
+    discriminating_fact: warning_light_named
+    discriminating_question: "Is the light RED with the word BRAKE / a red (!), or YELLOW with the letters ABS?"
+    hedge_rule: >
+      Red word BRAKE / red (!) => brake_system_red_light (base hydraulic, safety). Yellow 'ABS' letters or a
+      sliding-car skid icon => abs_anti_lock_brake_light. BOTH on at once => brake_system_red_light
+      (safety-first; ABS/EBD fault compromises braking balance).
+    examples_a:   # brake_system_red_light
+      - "red brake light stays on, parking brake is all the way off"
+      - "the word BRAKE lit up red and the pedal feels mushy"
+      - "red brake light and the yellow abs light both came on at once"
+    examples_b:   # abs_anti_lock_brake_light
+      - "yellow ABS letters in a circle came on, brakes still stop normally"
+      - "abs light on after i hit a big pothole, pedal feels normal"
+
+  - pair: [check_engine_light, engine_misfire_or_bucking_feeling]
+    discriminating_fact: warning_light_behavior
+    discriminating_question: "Is the check-engine light STEADY, or is it BLINKING/flashing?"
+    hedge_rule: >
+      Steady check-engine (or a relayed code) with the car driving fine => check_engine_light (warning_light).
+      FLASHING/blinking check-engine WITH a felt buck/stumble => engine_misfire_or_bucking_feeling
+      (performance) — the flash is the active catalyst-damaging-misfire urgency signal.
+    examples_a:   # check_engine_light
+      - "check engine light on steady, no issues driving the vehicle"
+      - "shop pulled a code but the car drives totally normal, light's just on"
+    examples_b:   # engine_misfire_or_bucking_feeling
+      - "check engine light is flashing and the car is bucking hard under gas"
+      - "engine light blinking, feels like it's stumbling and shaking"
+
+  - pair: [check_engine_light, service_engine_soon_or_maintenance_required_light]
+    discriminating_fact: warning_light_named
+    discriminating_question: "Is it the engine-OUTLINE 'check engine' light, or a WRENCH / 'service due' / 'maintenance required' message?"
+    hedge_rule: >
+      Engine-outline MIL (a stored fault, code-scan) => check_engine_light. A wrench icon / 'Service Engine
+      Soon' / 'Maintenance Required' / 'oil life' is a mileage REMINDER, no fault => the maintenance-reminder
+      subcategory (advisor reassurance, no scan). EXCEPTION: some imports use 'Service Engine Soon' AS the
+      MIL — if tied to a drive-feel symptom, treat as check_engine_light.
+    examples_a:   # check_engine_light
+      - "the little engine symbol is on, orange"
+      - "check engine light came on, wondering what code it is"
+    examples_b:   # service_engine_soon_or_maintenance_required_light
+      - "MAINT REQD light on, car runs perfect, is it just due for service?"
+      - "wrench light popped up, i think it's telling me an oil change is due"
+
+  - pair: [oil_pressure_light, service_engine_soon_or_maintenance_required_light]
+    discriminating_fact: warning_light_named
+    discriminating_question: "Is it a red OIL-CAN light, or an 'oil life % / oil change due' message?"
+    hedge_rule: >
+      Red oil-can / genie-lamp icon, or 'oil light on while driving' => oil_pressure_light (damage risk, stop
+      driving). 'Oil life 5%' / 'oil change due' / 'SERVICE OIL MAINT' is the oil-life REMINDER =>
+      maintenance-reminder subcategory, not a pressure fault.
+    examples_a:   # oil_pressure_light
+      - "red oil can light came on and the engine got loud/ticking"
+      - "oil light came on when driving, want the oil level checked"
+    examples_b:   # service_engine_soon_or_maintenance_required_light
+      - "dash says oil life 5 percent, drives fine, just due for a change"
+      - "RESET OIL MAINT LIGHT, not due yet"
+
+  - pair: [engine_temperature_light, check_engine_light]
+    discriminating_fact: warning_light_named
+    discriminating_question: "Is a RED thermometer / 'HOT' / 'engine hot' light on, or the plain engine light?"
+    hedge_rule: >
+      A RED thermometer-in-waves, 'HOT', 'ENGINE HOT', or 'COOLANT TEMP' message, or stated overheating =>
+      engine_temperature_light (cooling), even if a check-engine light is also on. A BLUE thermometer = normal
+      cold engine (no fault). A bare CEL with no temp/overheat symptom => check_engine_light.
+    examples_a:   # engine_temperature_light
+      - "red thermometer light on, temp gauge near H, running hot"
+      - "'ENGINE HOT STOP SAFELY' message came up"
+    examples_b:   # check_engine_light
+      - "just the check engine light, temp is normal, no overheating"
+
+  - pair: [traction_control_stability_light, multiple_warning_lights_at_once]
+    discriminating_fact: warning_light_behavior
+    discriminating_question: "Is it just this one light (and maybe its ABS sibling), or did SEVERAL different lights light up with the car cranking hard / lights dimming?"
+    hedge_rule: >
+      Traction/stability alone, or with its ABS sibling, or with a 'no AWD' message riding along =>
+      traction_control_stability_light (one concern). SEVERAL different lights + electrical distress
+      (dimming, hard crank, rough run, died) => multiple_warning_lights_at_once (charging cascade).
+    examples_a:   # traction_control_stability_light
+      - "traction control light staying on, everything else normal"
+      - "SERVICE STABILTRAC light on, no other warning lights"
+    examples_b:   # multiple_warning_lights_at_once
+      - "all the lights on the cluster came on while driving, then it started dimming"
+      - "whole dashboard lit up — engine, brakes, battery — and it cranks slow now"
+
+  - pair: [multiple_warning_lights_at_once, check_engine_light]
+    discriminating_fact: warning_light_behavior
+    discriminating_question: "Are several different lights on together with dimming/hard-cranking, or is it really just the one engine light?"
+    hedge_rule: >
+      A charging/voltage cascade (several lights + dim_or_flickering + hard crank) =>
+      multiple_warning_lights_at_once. An all-ADAS message set (driver-assist messages, NO electrical
+      distress) is a different root cause => the ADAS route (interim check_engine_light until an ADAS
+      subcategory exists), NOT multiple_*. A single named engine light => check_engine_light.
+    examples_a:   # multiple_warning_lights_at_once
+      - "a bunch of lights came on at once and the headlights are flickering"
+    examples_b:   # check_engine_light (single) / ADAS interim
+      - "just the check engine light on, nothing else"
+      - "'Lane Keep Unavailable' + 'Blind Spot Error' messages, no dimming (ADAS, interim CEL route)"
+
+  - pair: [brake_system_red_light, accessory_doesnt_work]
+    discriminating_fact: warning_light_named
+    discriminating_question: "Is this a WARNING LIGHT on your dashboard, or a brake BULB at the back of the car?"
+    hedge_rule: >
+      A red BRAKE warning telltale ON THE DASH => brake_system_red_light. A rear brake-LAMP bulb burned out
+      with NOTHING on the dash => accessory_doesnt_work (single dead electrical item,
+      electrical_testing_general) — never brake_system_red_light, never an advisor null-route.
+    examples_a:   # brake_system_red_light
+      - "brake warning light on my dash lit up, the rear brake lights themselves work fine"
+    examples_b:   # accessory_doesnt_work
+      - "one of my rear brake lights is out, need a new bulb, dash shows nothing"
+
+  - pair: [power_steering_eps_light, abs_anti_lock_brake_light]
+    discriminating_fact: warning_light_named
+    discriminating_question: "Which light is on — a STEERING-WHEEL icon (with !), or the letters ABS?"
+    hedge_rule: >
+      A steering-wheel-with-exclamation icon => power_steering_eps_light. The letters ABS =>
+      abs_anti_lock_brake_light. 'Steering feels heavier' is a co-symptom (steering_feel), it does NOT rename
+      an ABS light to power steering — route on the light the customer actually names.
+    examples_a:   # power_steering_eps_light
+      - "steering wheel light with an exclamation point came on, wheel is hard to turn"
+    examples_b:   # abs_anti_lock_brake_light
+      - "ABS LIGHT ON, steering feels a bit more difficult"
+
+# ===========================================================================
+# GOLDEN CASES (10 total; incl. 2 inference-traps + 1 null-route + 1 self-test non-fault)
+# Schema mirrors scheduler-app/scripts/eval/eval-cases.json.
+# ===========================================================================
+golden_cases:
+  - text: "check engine light is FLASHING and the car is bucking and shaking when i give it gas"
+    tags: [fact_rich, cel_flashing, boundary:cel-steady-vs-flashing]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing]
+      stage2_subcategory_slug: engine_misfire_or_bucking_feeling
+      stage3_facts:
+        warning_light_named: "*"
+        warning_light_behavior: flashing_or_blinking
+        engine_running: misfiring
+      route: testing_service
+
+  - text: "check engine light on steady, no issues driving the vehicle at all"
+    tags: [moderate, cel_steady, boundary:cel-steady-vs-flashing]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing]
+      stage2_subcategory_slug: check_engine_light
+      stage3_facts:
+        warning_light_named: "*"
+        warning_light_behavior: steady_on
+      route: testing_service
+
+  - text: "MAINT REQD light is on, the car runs perfect, i think it's just telling me service is due"
+    tags: [moderate, reminder_not_fault, boundary:cel-vs-reminder]
+    expected:
+      stage1_category_key: warning_light_general
+      stage1_acceptable: [warning_light_general, check_engine_light_testing]
+      stage2_subcategory_slug: service_engine_soon_or_maintenance_required_light
+      stage3_facts:
+        warning_light_named: "*"
+      route: testing_service
+
+  - text: "red brake light AND the yellow abs light both came on, is it safe to drive to work??"
+    tags: [fact_rich, both_lights, boundary:red-brake-vs-abs, safety]
+    expected:
+      stage1_category_key: brake_inspection_warning_light
+      stage1_acceptable: [brake_inspection_warning_light, abs_traction_stability_testing]
+      stage2_subcategory_slug: brake_system_red_light
+      stage3_facts:
+        warning_light_named: "*"
+        warning_light_behavior: multiple_lights_at_once
+      route: testing_service
+
+  - text: "all the lights on my dash came on at once while i was driving and now the headlights are dimming and it cranks slow"
+    tags: [fact_rich, cascade, boundary:multiple-vs-single]
+    expected:
+      stage1_category_key: charging_starting_testing
+      stage1_acceptable: [charging_starting_testing, warning_light_general]
+      stage2_subcategory_slug: multiple_warning_lights_at_once
+      stage3_facts:
+        warning_light_behavior: multiple_lights_at_once
+        lights_state: dim_or_flickering
+      route: testing_service
+
+  - text: "just the abs and traction control lights are both on, brakes and everything else feel totally normal"
+    tags: [moderate, sibling_pair, boundary:multiple-vs-single]
+    expected:
+      stage1_category_key: abs_traction_stability_testing
+      stage1_acceptable: [abs_traction_stability_testing]
+      stage2_subcategory_slug: abs_anti_lock_brake_light
+      stage3_facts:
+        warning_light_named: "*"
+      # NOTE: two lights, but a SIBLING pair (shared WSS) = ONE concern, NOT multiple_warning_lights_at_once.
+      route: testing_service
+
+  - text: "theres a yellow light like a little car with squiggly wavy lines under it, no idea what it is"
+    tags: [sparse, icon_nickname, traction_control_stability_light]
+    expected:
+      stage1_category_key: abs_traction_stability_testing
+      stage1_acceptable: [abs_traction_stability_testing, warning_light_general]
+      stage2_subcategory_slug: traction_control_stability_light
+      stage3_facts:
+        warning_light_named: "*"
+      route: testing_service
+
+  - text: "dash says oil life 5% and oil change due soon, engine drives completely normal"
+    tags: [inference_trap, oil-pressure-vs-oil-life, boundary:reminder-not-fault]
+    expected:
+      stage1_category_key: warning_light_general
+      stage1_acceptable: [warning_light_general]
+      stage2_subcategory_slug: service_engine_soon_or_maintenance_required_light
+      stage3_facts:
+        warning_light_named: "*"
+      # TRAP: 'oil' tempts oil_pressure_light. But 'oil life % / change due' is the maintenance REMINDER, not a
+      # pressure-damage light — do NOT route to oil_pressure_light_testing, do NOT set a pressure/level fact.
+      route: testing_service
+
+  - text: "my brake warning light on the dash lit up today but the brake lights out back are working fine"
+    tags: [inference_trap, dash-vs-tail-lamp, boundary:red-light-vs-accessory]
+    expected:
+      stage1_category_key: brake_inspection_warning_light
+      stage1_acceptable: [brake_inspection_warning_light]
+      stage2_subcategory_slug: brake_system_red_light
+      stage3_facts:
+        warning_light_named: "*"
+      # TRAP: 'brake lights out back working fine' is about EXTERIOR tail lamps — the DASH telltale is the
+      # concern. Do NOT route to accessory_doesnt_work and do NOT set pedal_feel/parking_brake/fluid facts.
+      route: testing_service
+
+  - text: "one of my rear brake lights is burned out, need a new bulb, nothing is lit up on the dashboard"
+    tags: [null_route_adjacent, exterior_bulb, boundary:accessory-vs-red-light]
+    expected:
+      stage1_category_key: electrical_testing_general
+      stage1_acceptable: [electrical_testing_general]
+      stage2_subcategory_slug: accessory_doesnt_work
+      stage3_facts: {}
+      # Exterior brake-LAMP bulb out, NOTHING on the dash => a single dead electrical item, NOT
+      # brake_system_red_light and NOT an advisor null-route. Pairs with the trap case above (same 'brake
+      # light' wording, opposite route).
+      route: testing_service

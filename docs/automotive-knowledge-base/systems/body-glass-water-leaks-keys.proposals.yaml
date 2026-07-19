@@ -1,0 +1,379 @@
+system: body-glass-water-leaks-keys
+# Every op binds to an existing snapshot slug/service/slot (00-current-scheduler-taxonomy.md +
+# extracted-facts.ts) OR is an explicit *propose* op. routes_to on every negative example names a real
+# Stage-2 subcat slug or 'advisor' (never a testing_services service_key). Synthetic phrasings flagged in
+# provenance; authored eval-cases.json phrasings map to `synthetic` (the enum has no `eval` value).
+#
+# SCOPE-OVERLAP DEDUP (see dossier §1): `body-electrical-accessories` is the CANONICAL owner of
+# `accessory_doesnt_work`, `multiple_random_electrical_glitches`, and the `key fob` / `power door locks`
+# Stage-1 keyword + synonym ops. This file does NOT re-emit those; ops that touch a shared slug carry
+# `defer_to: body-electrical-accessories` so Wave C dedups instead of applying two conflicting texts. This
+# file emits only its DELTA: the immobilizer/security no-start fence, the electric trunk/liftgate release,
+# the anti-theft ALARM-sounding language, and the water<->electrical overlap.
+#
+# Free-text slots (`warning_light_named`, `accessory_affected` are z.string() in extracted-facts.ts) get
+# `stage3.slot.guidance.add` (describe-text steering), NOT `stage3.slot.value.add` (there is no enum to
+# extend). Only true enum slots (noise_descriptor) use value.add.
+#
+# Question-level required_facts ops are NOT emitted: the live question_ids require the Supabase snapshot
+# (MCP auth unavailable this session); the required_facts derivations are carried as prose in dossier §5/§9
+# for Wave C to bind against real ids. This is the one unavoidable gap; flagged for Wave C, not silently dropped.
+
+ops:
+
+  # =====================================================================
+  # STAGE 1 — keyword adds (electrical half only; body half must NOT gain paid-test keywords)
+  # NOTE: 'key fob' and 'power door locks' are DELIBERATELY NOT emitted here — body-electrical-accessories
+  #       already owns them (its proposals.yaml lines ~59/79). Re-emitting would be a duplicate op.
+  # =====================================================================
+  - op: stage1.keyword.add
+    category_key: electrical_testing_general
+    phrase: "keyless entry"
+    rationale: "Keyless-entry receiver/antenna faults are electrical accessory scope. (Not owned by the sibling.)"
+    evidence: "synthetic (flagged): 'have to be right next to the car for the remote to work'"
+  - op: stage1.keyword.add
+    category_key: electrical_testing_general
+    phrase: "trunk release"
+    rationale: "Electric trunk/liftgate release solenoid is electrical; distinguishes from a mechanical latch (advisor). (Not owned by the sibling.)"
+    evidence: "tekmetric: 'TRUNK WILL NOT OPEN' (electric-release variant)"
+  # 'worse after it rains' REMOVED as a Stage-1 keyword: it is a high-frequency CONDITION phrase (fires on
+  # wiper-after-car-wash, interior-water-after-rain, body concerns) — exactly the FM-1 body traffic this
+  # dossier wants to keep OUT of a paid electrical test. Weather correlation is a fact-slot cue, not a keyword.
+
+  # =====================================================================
+  # STAGE 1 — confusable-pair hedges
+  # =====================================================================
+  - op: stage1.hedge.add
+    category_a: no_start_testing
+    category_b: charging_starting_testing
+    rule: "If the customer names a SECURITY / anti-theft / theft / key light AND the battery is otherwise normal (lights bright, no jump needed, engine CRANKS but won't fire), treat as immobilizer/security no-start, NOT a battery no-start. Prefer no_start_testing and flag the proposed key subcategory; do NOT route to charging_starting_testing."
+    discriminating_fact: "warning_light_named=security|anti-theft|theft|key + engine_running=wont_start + lights_state!=dim_or_flickering"
+  - op: stage1.hedge.add
+    category_a: ac_leak_testing
+    category_b: coolant_leak_testing
+    rule: "Water complaint that is INSIDE the cabin (wet carpet/headliner/footwell), clear and odorless, correlated with rain or a car wash, is a BODY water leak (no catalog fit -> advisor / proposed water_leaking_inside_the_car). Only route to ac_leak_testing when the water is a puddle UNDER the car and A/C-correlated; only coolant_leak_testing when sweet-smelling / colored / foggy-film."
+    discriminating_fact: "sound_or_smoke_location_zone=passenger_footwell|inside_cabin_general + fluid_color=clear_no_color + weather_condition=rainy_or_wet (body) vs fluid_under_car_location=under_* (AC) vs smell_descriptor=sweet_or_maple_syrup (coolant)"
+  - op: stage1.hedge.add
+    category_a: windshield_inop_testing
+    category_b: electrical_testing_general
+    rule: "A cracked/chipped WINDSHIELD (glass condition) has no catalog fit -> advisor. windshield_inop_testing is for WIPER operation only. Do not route glass damage to it."
+    discriminating_fact: "glass-damage wording with no accessory_affected=wipers -> advisor"
+
+  # =====================================================================
+  # STAGE 2 — description revisions (sharpen boundaries so the body half stops mis-routing)
+  # =====================================================================
+  - op: stage2.description.revise
+    subcat_slug: clear_odorless_puddle_water_or_ac_condensation
+    text: "Clear, odorless, water-like fluid seen as a puddle or drip UNDER the vehicle (typically A/C condensation from the evaporator drain, which is normal). This is for water OUTSIDE, on the ground. If the water is INSIDE the cabin — wet carpet, wet floor mat, damp headliner, water by the customer's feet — that is a body water-intrusion leak, not this; route to advisor (proposed water_leaking_inside_the_car)."
+    why: "Corpus shows customers describe both under-car puddles (this slug) and inside-carpet wetness (a different, no-fit body problem). Without the INSIDE/OUTSIDE boundary the body leak is silently mis-labeled as harmless AC condensation."
+  - op: stage2.description.revise
+    subcat_slug: rattling_underneath_the_car
+    text: "A tinny/loose rattle from UNDERNEATH the vehicle at idle or over bumps (heat shield, exhaust hanger, loose bracket, skid plate). This is for underbody sources. A rattle from INSIDE the cabin — a door panel, dash trim, headliner, or a loose item in the trunk/cargo area — is a body/trim rattle, not this; route to advisor."
+    why: "Body/interior rattles (FM-3) have no home and are the nearest wrong bucket. Naming 'underneath only' keeps interior rattles out."
+  # accessory_doesnt_work description is OWNED by body-electrical-accessories (its proposals.yaml ~line 116).
+  # This file does NOT emit a competing full-text revision (that produced two conflicting texts for one slug).
+  # Instead it requests a DELTA amend to the sibling's canonical text, applied by Wave C after dedup:
+  - op: stage2.description.amend
+    subcat_slug: accessory_doesnt_work
+    defer_to: body-electrical-accessories
+    amend_request: "To the sibling's canonical accessory_doesnt_work description, ensure two additions are present: (1) the ELECTRIC trunk/liftgate release and the anti-theft ALARM/horn-sounding-on-its-own belong here; (2) an explicit FENCE — if the car WON'T START and a security/anti-theft light is on, that is an immobilizer no-start (FM-7), NOT a dead accessory; route per the no-start path, not here."
+    why: "The sibling already covers power locks/key fob/liftgate; this delta adds the trunk-release + alarm language and, critically, fences the immobilizer no-start so a no-start is not mislabeled as a dead accessory. Single-owner text avoids the Wave-C conflict."
+
+  # =====================================================================
+  # STAGE 2 — positive examples (real-voice; synthetic capped & flagged)
+  # =====================================================================
+  # shared-slug positives -> defer_to sibling (additive, but keep single-owner for dedup). The delta this
+  # dossier uniquely contributes is the trunk-release + alarm language and the real multi-glitch corpus line.
+  - op: stage2.example.positive.add
+    subcat_slug: accessory_doesnt_work
+    defer_to: body-electrical-accessories
+    phrase: "trunk wont open when i press the button, doesnt even click"
+    provenance: forum-paraphrase
+  - op: stage2.example.positive.add
+    subcat_slug: accessory_doesnt_work
+    defer_to: body-electrical-accessories
+    phrase: "horn keeps honking on its own, had to pull the fuse to make it stop"
+    provenance: synthetic
+  # real-corpus multi-glitch (real-162) — replaces the authored eval line that was mislabeled 'tekmetric'
+  - op: stage2.example.positive.add
+    subcat_slug: multiple_random_electrical_glitches
+    defer_to: body-electrical-accessories
+    phrase: "the radio and clock quit working, then the power door locks quit with the fob, then more little things started acting up"
+    provenance: tekmetric
+  - op: stage2.example.positive.add
+    subcat_slug: multiple_random_electrical_glitches
+    defer_to: body-electrical-accessories
+    phrase: "bunch of random electrical stuff acting up after i ran it through the car wash"
+    provenance: synthetic
+
+  # =====================================================================
+  # STAGE 2 — negative examples (routes_to REQUIRED on every one)
+  # =====================================================================
+  - op: stage2.example.negative.add
+    subcat_slug: clear_odorless_puddle_water_or_ac_condensation
+    phrase: "my carpet on the passenger side is soaked and it smells musty, gets wet every time it rains"
+    routes_to: advisor            # proposed water_leaking_inside_the_car (body water intrusion)
+  - op: stage2.example.negative.add
+    subcat_slug: clear_odorless_puddle_water_or_ac_condensation
+    phrase: "theres a sweet smell and greenish fluid, windshield fogs up with an oily film"
+    routes_to: green_orange_yellow_or_pink_puddle_coolant
+  - op: stage2.example.negative.add
+    subcat_slug: rattling_underneath_the_car
+    phrase: "rattle sounds like its in the dash or a door panel when i go over bumps"
+    routes_to: advisor            # body/interior trim rattle, no catalog fit
+  - op: stage2.example.negative.add
+    subcat_slug: accessory_doesnt_work
+    phrase: "car cranks but wont start and the security light is flashing on the dash"
+    routes_to: advisor   # immobilizer no-start (proposed key_or_fob_not_recognized_wont_start); NOT a dead accessory and NOT wont_crank_just_clicks (that slug = NO crank / just clicking, the opposite of cranks-but-won't-fire)
+  - op: stage2.example.negative.add
+    subcat_slug: wont_crank_just_clicks
+    phrase: "wont start and the anti-theft / security light is on, but the battery and lights are totally fine"
+    routes_to: advisor   # immobilizer no-start (proposed key_or_fob_not_recognized_wont_start); no_start_testing is a SERVICE key, not a Stage-2 slug
+  - op: stage2.example.negative.add
+    subcat_slug: slow_crank_sluggish_start
+    phrase: "it cranks normally, doesnt fire, and theres a key/security symbol flashing"
+    routes_to: advisor   # security no-start (proposed key_or_fob_not_recognized_wont_start), not a slow/weak-battery crank
+  - op: stage2.example.negative.add
+    subcat_slug: accessory_doesnt_work
+    phrase: "my drivers window is stuck halfway down and grinds when i hold the switch"
+    routes_to: window_inop_testing   # power-window GLASS motion, not a generic accessory
+
+  # =====================================================================
+  # STAGE 2 — synonyms (>=2 tokens OR domain single-token; no bare high-freq words)
+  # =====================================================================
+  # 'key fob' and 'power door locks' NOT emitted — owned by body-electrical-accessories (dup). Only the
+  # delta-unique domain phrases are added, deferred for dedup:
+  - op: stage2.synonym.add
+    subcat_slug: accessory_doesnt_work
+    defer_to: body-electrical-accessories
+    term: "keyless entry"
+  - op: stage2.synonym.add
+    subcat_slug: accessory_doesnt_work
+    defer_to: body-electrical-accessories
+    term: "trunk release"
+  # 'remote start' NOT added as a synonym: aftermarket remote-start is a distinct installed system (see §2/FM-6),
+  # so collapsing it into this slug loses that distinction. 'worse after rain' / 'after the car wash' REMOVED:
+  # high-frequency CONDITION phrases (they fire on wiper-after-car-wash and interior-water-after-rain) — the
+  # weather/water correlation belongs in fact slots (weather_condition, recent_action), not as a symptom synonym.
+
+  # =====================================================================
+  # STAGE 2 — subcategory proposals (new Stage-2 slugs; Chris-gated at catalog level)
+  # =====================================================================
+  - op: stage2.subcategory.propose
+    category: leak
+    name: water_leaking_inside_the_car
+    description: "Clear, odorless water getting INSIDE the cabin — wet carpet, wet floor mat, damp headliner, water by the feet — correlated with rain or a car wash. Body water intrusion (sunroof/cowl drains, door weatherstrip/vapor barrier, windshield/body seal), NOT an under-car A/C puddle and NOT coolant."
+    examples:
+      - "Water is leaking into the driver's side of my car. The floor is full of water!"        # tekmetric (real; corpus mislabeled ac_performance_check)
+      - "front floor board, passenger side, under floor mat, you can visibly see water standing" # tekmetric (real; corpus came back ambiguous ac_leak/multi)
+      - "headliner is damp and it smells musty after storms"                                     # synthetic (flagged)
+    synthetic_share: "1/3 (~33%, flagged) — 2 real-corpus interior-water utterances anchor it."
+    why_existing_insufficient: "The only water slug (clear_odorless_puddle_water_or_ac_condensation) is explicitly an UNDER-CAR puddle treated as normal AC condensation. Interior wetness has no home and is currently mis-labeled harmless — proven by two real corpus cases that misrouted to AC."
+  - op: stage2.subcategory.propose
+    category: warning_light
+    name: security_or_anti_theft_light
+    description: "The security / anti-theft / immobilizer dash light (customer nicknames: 'security light', 'theft light', 'key light', 'car-with-a-key symbol'). Solid = system info/armed; flashing during start = immobilizer blocking the engine. Pairs with a no-start when flashing."
+    examples:
+      - "the little security light is flashing and the car wont start"  # synthetic (flagged)
+      - "a red car-with-a-key symbol keeps blinking on my dash"         # synthetic (flagged)
+      - "anti-theft light came on and now the remote start wont work"   # forum-paraphrase
+    synthetic_share: "2/3 (~67%, flagged) — OVER the ~30% cap. The Jeff's corpus contains no real immobilizer/security-light no-start utterance, so real anchoring is not yet possible."
+    real_voice_backlog: "Mine NHTSA ODI 'ELECTRICAL SYSTEM' / 'VEHICLE SPEED CONTROL:ELECTRONIC THROTTLE' and anti-theft complaint narratives (provenance: nhtsa) before this subcat ships, to bring synthetic share under cap."
+    why_existing_insufficient: "warning_light (12) has no security/anti-theft/immobilizer entry; the light currently has nowhere to land and its no-start pairing is invisible to Stage-2."
+  - op: stage2.subcategory.propose
+    category: electrical
+    name: key_or_fob_not_recognized_wont_start
+    description: "The car will not start because the key/fob is not recognized by the immobilizer (transponder/keyless), a security light is on/flashing, or the key will not turn in the ignition — while the battery and charging are normal. Distinct from a battery/starter no-start and from a fob that only fails to lock/unlock (that stays accessory_doesnt_work)."
+    examples:
+      - "car cranks but wont start and the security light is flashing"  # synthetic (flagged)
+      - "wont start, key wont turn in the ignition"                     # synthetic (flagged)
+      - "push-button car wont start, says key not detected, fob battery might be dead"  # synthetic (flagged)
+    synthetic_share: "3/3 (100%, flagged) — OVER the ~30% cap. No real FM-7 immobilizer-no-start utterance exists in the Jeff's corpus (a real gap, not an authoring shortcut)."
+    real_voice_backlog: "REQUIRED before ship: harvest NHTSA ODI anti-theft/immobilizer no-start narratives (provenance: nhtsa) to anchor this subcat in real voice; until then it is a synthetic-only proposal and must be labeled as such to Chris."
+    why_existing_insufficient: "Immobilizer no-start is currently split between no_start_testing and electrical with no Stage-2 home, so it is chronically confused with a battery no-start (the system's #1 confusable, §5 D1)."
+
+  # =====================================================================
+  # STAGE 3 — FREE-TEXT slot guidance (warning_light_named & accessory_affected are z.string(), NOT enums —
+  # there is no value list to extend, so these are describe-text steering edits, emitted as
+  # stage3.slot.guidance.add, not stage3.slot.value.add). See extracted-facts.ts.
+  # =====================================================================
+  - op: stage3.slot.guidance.add
+    slot: warning_light_named
+    guidance: "Capture the immobilizer/anti-theft dash light in the customer's own words as free text. Recognize these nicknames as valid warning_light_named text (do NOT invent an enum): 'security light', 'theft light', 'anti-theft light', 'key light', 'car-with-a-key symbol'."
+    literal_cues: ["security light", "theft light", "anti-theft light", "antitheft light", "key light", "car with a key symbol", "key not recognized light"]
+  - op: stage3.slot.guidance.add
+    slot: accessory_affected
+    guidance: "Capture these body-electrical accessories as free-text accessory_affected. Keep them DISTINCT — do not collapse 'remote start' (often an AFTERMARKET installed system, see §2/FM-6) into 'key fob'. Alarm/horn-sounding lands here for FM-10."
+    literal_cues:
+      - "key fob"          # OE fob lock/unlock
+      - "the fob"
+      - "keyless entry"
+      - "remote start"     # keep separate from key fob (aftermarket-system risk)
+      - "power door locks"
+      - "door lock/unlock"
+      - "trunk release"
+      - "liftgate wont open"
+      - "hatch wont open"
+      - "alarm"            # FM-10 anti-theft alarm sounding
+      - "horn"             # FM-10 horn honking on its own
+
+  # =====================================================================
+  # STAGE 3 — new slot proposal (>=3 questions; CONTINGENT on key subcategory approval)
+  # =====================================================================
+  - op: stage3.slot.propose
+    name: security_or_key_state
+    type: enum
+    values: [security_light_flashing, key_not_recognized, key_wont_turn, fob_dead_or_no_response, spare_key_also_fails, cranks_but_wont_start_security]
+    literal_cues:
+      - "security light is flashing"                 # -> security_light_flashing
+      - "says key not recognized / key not detected"  # -> key_not_recognized
+      - "key wont turn in the ignition"               # -> key_wont_turn
+      - "fob is dead / no response from the remote"    # -> fob_dead_or_no_response
+      - "spare key doesnt start it either"             # -> spare_key_also_fails
+      - "cranks but wont start with the theft light"   # -> cranks_but_wont_start_security
+    questions_unlocked:
+      - "Is a security/anti-theft/key light on, and is it flashing?"
+      - "Does a spare key start the car?"
+      - "Does the engine crank/turn over, or make no sound at all?"
+      - "Is this a push-button/keyless car, and could the fob battery be dead?"
+    note: "CONTINGENT: create ONLY if key_or_fob_not_recognized_wont_start lands. The security-vs-battery discriminator (D1) does NOT need this slot (warning_light_named + engine_running + lights_state suffice); this slot exists only for the deeper immobilizer triage. Honors the >=3-question rule (4 questions)."
+
+  # =====================================================================
+  # STAGE 3 — low-priority slot-value gap (logged, not urgent)
+  # =====================================================================
+  - op: stage3.slot.value.add
+    slot: noise_descriptor
+    value: "whistling_wind"
+    literal_cues: ["whistling", "wind noise", "air whistling", "whistle at highway speed"]
+    # LOW PRIORITY: wind noise (FM-2) is thin in the corpus; advisor-routing is adequate. Add only if wind/whistle volume grows.
+
+  # =====================================================================
+  # CATALOG — service proposals (Chris-gated)
+  # =====================================================================
+  - op: catalog.service.propose
+    name: body_water_leak_testing
+    demand_evidence: "eval + forum wet-carpet/interior-water cases (FM-1); the only water slug is an under-car AC puddle, leaving interior leaks with no bookable diagnostic. Water intrusion also causes downstream electrical gremlins (FM-8) and mold."
+    fee_rationale: "Water-leak trace is labor (controlled hose test, one zone at a time; sometimes smoke test) comparable to the $109-$179 diagnostic tier; suggest ~$109-$149. Chris to set."
+  - op: catalog.service.propose
+    name: key_immobilizer_antitheft_testing
+    demand_evidence: "FM-7 immobilizer no-starts + security-light concerns; currently misrouted to battery/no-start tests. Alternative to a new service: explicitly widen electrical_testing_general scope text to name immobilizer/keys/security."
+    fee_rationale: "Scan for immobilizer/security codes + antenna/key verification; aligns with the $179.95 no_start/electrical diagnostic tier. Chris to set."
+
+# =====================================================================
+# GOLDEN CASES (11; inference-traps: GC-01 water-literalness, GC-03 immobilizer, GC-09 glass, GC-11 alarm;
+# GC-10 is a null-route work-order line)
+# expected mirrors scheduler-app/scripts/eval/eval-cases.json. For no-catalog-fit body items, the
+# CURRENT-taxonomy expectation is route: advisor with an empty stage1 (the proposal would change this).
+# =====================================================================
+golden_cases:
+
+  # INFERENCE TRAP (literalness): the text never states a fluid COLOR or even the word "water" — it says
+  # carpet soaked + musty + rains. The extractor must NOT set fluid_color (that slot is under-car only), and
+  # must NOT invent 'water'. Only what is literally stated: smell + inside-location + rain.
+  - text: "the carpet on my passenger side is soaked and it smells kinda musty, happens every time it rains"
+    tags: [fact_rich, no_catalog_fit, body_water_leak, inference_trap]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []          # proposed: water_leaking_inside_the_car (leak)
+      stage2_subcategory_slug: null
+      stage3_facts: { smell_descriptor: musty_or_mildew, sound_or_smoke_location_zone: passenger_footwell, weather_condition: rainy_or_wet }   # NO fluid_color: under-car-only slot; customer stated no color
+      route: advisor
+
+  - text: "found a small puddle under the passenger side of my car, completely clear no smell, dries up quick"
+    tags: [moderate, under_car_water]
+    expected:
+      stage1_category_key: ac_leak_testing
+      stage1_acceptable: [ac_leak_testing, coolant_leak_testing]
+      stage2_subcategory_slug: clear_odorless_puddle_water_or_ac_condensation
+      stage3_facts: { fluid_color: clear_no_color, fluid_under_car_location: under_passenger_side }
+      route: testing_service
+
+  # INFERENCE TRAP: "cranks but won't start" + "security light" — must set engine_running=wont_start
+  # (NOT wont_crank_just_clicks), must NOT invent a dead battery, must NOT route to charging/battery.
+  - text: "my car cranks over fine but wont actually start, and theres a little security light flashing on the dash. battery seems fine, lights are bright"
+    tags: [fact_rich, inference_trap, immobilizer_no_start]
+    expected:
+      stage1_category_key: no_start_testing
+      stage1_acceptable: [no_start_testing, electrical_testing_general]   # proposed: key_or_fob_not_recognized_wont_start
+      stage2_subcategory_slug: null
+      stage3_facts: { engine_running: wont_start, warning_light_named: "security", warning_light_behavior: flashing_or_blinking, lights_state: normal }
+      route: testing_service
+
+  # CONTRAST to GC-03: real battery no-start — clicks, dim, jumped. Must NOT be called security.
+  - text: "turn the key and it just clicks, dash lights go dim, had to get a jump this morning"
+    tags: [fact_rich, battery_no_start, confusable]
+    expected:
+      stage1_category_key: no_start_testing
+      stage1_acceptable: [no_start_testing, charging_starting_testing]
+      stage2_subcategory_slug: wont_crank_just_clicks
+      stage3_facts: { engine_running: wont_crank_just_clicks, lights_state: dim_or_flickering, recent_action: jump_started }
+      route: testing_service
+
+  - text: "my key fob wont lock or unlock the doors anymore, car still starts and drives fine though"
+    tags: [moderate, fob_electronics]
+    expected:
+      stage1_category_key: electrical_testing_general
+      stage1_acceptable: [electrical_testing_general]
+      stage2_subcategory_slug: accessory_doesnt_work
+      stage3_facts: { accessory_affected: "key fob" }
+      route: testing_service
+
+  - text: "somethings up with my electrical, radio resets itself, the door locks click on their own, gauges jump around, always worse after it rains"
+    tags: [moderate, water_gremlin]
+    expected:
+      stage1_category_key: electrical_testing_general
+      stage1_acceptable: [electrical_testing_general]
+      stage2_subcategory_slug: multiple_random_electrical_glitches
+      stage3_facts: { onset_timing: intermittent, weather_condition: rainy_or_wet }
+      route: testing_service
+
+  - text: "trunk wont open when i hit the button, doesnt click or anything"
+    tags: [sparse, trunk_release]
+    expected:
+      stage1_category_key: electrical_testing_general
+      stage1_acceptable: [electrical_testing_general]     # electric release; a purely mechanical latch would be advisor
+      stage2_subcategory_slug: accessory_doesnt_work
+      stage3_facts: { accessory_affected: "trunk release" }
+      route: testing_service
+
+  - text: "theres a loud whistling wind noise coming from the driver door when im on the highway"
+    tags: [moderate, wind_noise, no_catalog_fit]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      stage3_facts: { speed_band: highway, onset_timing: during_driving, location_side: left }
+      route: advisor
+
+  # INFERENCE TRAP: cracked windshield GLASS must route to advisor, NOT windshield_inop_testing (wipers).
+  # Must NOT set accessory_affected=wipers and must NOT invent a wiper problem.
+  - text: "got a big crack across my windshield from a rock on the freeway, its starting to spread"
+    tags: [moderate, inference_trap, glass_damage, no_catalog_fit]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      stage3_facts: {}
+      route: advisor
+
+  # NULL-ROUTE: internal work-order fragment, not a customer symptom.
+  - text: "check body control module per tech, testing auth 179"
+    tags: [null_route, work_order]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      stage3_facts: {}
+      route: advisor
+
+  # FM-10 anti-theft ALARM sounding. INFERENCE TRAP: an alarm honking on its own is an electrical accessory
+  # fault — the car starts fine — so the extractor must NOT set engine_running and must NOT treat "security"
+  # wording as an immobilizer NO-START. Routes to the electrical test (accessory_doesnt_work, sibling-owned).
+  - text: "my car alarm keeps going off randomly at night for no reason and the horn honks, i had to pull the fuse to stop it. car runs fine otherwise"
+    tags: [moderate, inference_trap, anti_theft_alarm]
+    expected:
+      stage1_category_key: electrical_testing_general
+      stage1_acceptable: [electrical_testing_general]
+      stage2_subcategory_slug: accessory_doesnt_work
+      stage3_facts: { accessory_affected: "alarm, horn", onset_timing: intermittent }   # NO engine_running: the car starts/runs fine
+      route: testing_service

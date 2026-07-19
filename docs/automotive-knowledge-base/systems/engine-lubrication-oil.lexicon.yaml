@@ -1,0 +1,191 @@
+system: engine-lubrication-oil
+# phrase -> normalized -> routes_to[] (subcategory slug) -> ambiguity -> provenance
+# ambiguity: unambiguous | needs-fact:<slot> | cross-system:<slug>
+# provenance: tekmetric | nhtsa | forum-paraphrase | synthetic
+entries:
+  # ---------------- OIL PUDDLE / LEAK ----------------
+  - phrase: "oil leaking. severe potential drain plug?"
+    normalized: heavy engine-oil leak, suspects drain plug
+    routes_to: [brown_or_black_puddle_engine_oil]
+    ambiguity: unambiguous
+    provenance: tekmetric   # tkc-070
+
+  - phrase: "Find and fix oil leak"
+    normalized: engine-oil leak, wants it found and fixed
+    routes_to: [brown_or_black_puddle_engine_oil]
+    ambiguity: unambiguous
+    provenance: tekmetric   # tkc-243
+
+  - phrase: "under vehicle leak"
+    normalized: unspecified leak under the car
+    routes_to: [brown_or_black_puddle_engine_oil]
+    ambiguity: needs-fact:fluid_color
+    provenance: tekmetric   # tkc-061 (color/smell unknown -> could be coolant/trans)
+
+  # (removed a "dark brown puddle under my engine when i park" entry that was verbatim an existing DB
+  #  positive_example of brown_or_black_puddle_engine_oil — it is pre-existing enrichment, not new
+  #  corpus/tekmetric evidence, so it is not re-added here.)
+
+  - phrase: "oil dripping off a plastic cover near the front, 3-4 inch spots on the driveway"
+    normalized: front oil drip pooling on a cover, driveway spots
+    routes_to: [brown_or_black_puddle_engine_oil]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase   # 2carpros honda odyssey oil leak
+
+  - phrase: "constantly drips oil from the bottom where the engine and transmission bolt up, underneath soaked front to back"
+    normalized: rear-main / bell-housing oil leak, heavy
+    routes_to: [brown_or_black_puddle_engine_oil]
+    ambiguity: cross-system:red_or_pink_puddle_transmission_or_power_steering   # rear-main is often mistaken for trans; color decides
+    provenance: forum-paraphrase   # 2carpros major oil leak
+
+  - phrase: "car has sat for a month and i woke up to a puddle of oil under it"
+    normalized: oil puddle after the car sat unused
+    routes_to: [brown_or_black_puddle_engine_oil]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase   # cartalk oil leak sitting
+
+  - phrase: "leaks something that looks and feels like oil but smells like nothing and my levels arent dropping"
+    normalized: oily-looking clear drip, no odor, no level loss
+    routes_to: [brown_or_black_puddle_engine_oil, clear_odorless_puddle_water_or_ac_condensation]
+    ambiguity: needs-fact:fluid_color   # INFERENCE TRAP: no color named -> could be AC condensation/water
+    provenance: forum-paraphrase   # cartalk car leak looks like oil
+
+  # ---------------- OIL PRESSURE LIGHT ----------------
+  - phrase: "oil light came on when driving to shop check oil level prior to doing oil change"
+    normalized: oil-pressure light on while driving, wants level checked
+    routes_to: [oil_pressure_light]
+    ambiguity: unambiguous
+    provenance: tekmetric   # tkc-039
+
+  - phrase: "AFTER VEHICLE IS WARMED UP AND SITTING AT IDLE low engine oil pressure light comes on"
+    normalized: oil-pressure light on when warm at idle
+    routes_to: [oil_pressure_light]
+    ambiguity: unambiguous
+    provenance: tekmetric   # tkc-283
+
+  - phrase: "oil light comes on at idle and goes out when i speed up, only after its warm"
+    normalized: oil-pressure light flickers at warm idle, clears with RPM
+    routes_to: [oil_pressure_light]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase   # 2carpros oil light at idle
+
+  - phrase: "oil pressure light flickers when the rpms drop at a stoplight"
+    normalized: intermittent oil-pressure light at low RPM
+    routes_to: [oil_pressure_light]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase   # cartalk oil pressure intermittent
+
+  # (removed a "red genie lamp light with a drop is glowing on my dash" entry — it was labeled synthetic
+  #  but is near-verbatim two existing DB positive_examples of oil_pressure_light ("Little red
+  #  genie-lamp-shaped icon on my dash, the one with a drop" / "Red light with an oil can and drip is
+  #  glowing"). The "genie lamp light" nickname is ALSO already a DB synonym, so this added nothing.)
+
+  - phrase: "RESET OIL MAINT LIGHT (Not due yet)"
+    normalized: reset the oil-life / maintenance reminder
+    routes_to: [service_engine_soon_or_maintenance_required_light]
+    ambiguity: cross-system:service_engine_soon_or_maintenance_required_light   # NOT oil pressure; maintenance reminder
+    provenance: tekmetric   # tkc-011
+
+  # ---------------- BURNT-OIL SMELL ----------------
+  # NOTE: the corpus has NO clean burnt-oil-smell line; tkc-049 is an oil-change/TPMS work-order labeled
+  # multiple_symptoms_not_sure_what_category (NOT burnt oil). The DB already carries good burnt-oil
+  # positive_examples ("Burning oil smell after I drive, especially in parking lots"; "I keep smelling oil
+  # burning — like a drip on the exhaust manifold") — those are pre-existing enrichment, not re-added here.
+  # New voice below is forum-paraphrase + one flagged synthetic (1/4 = 25% synthetic for this subcat).
+  - phrase: "burning oil smell every time i get out of the car, like somethings cooking on the engine"
+    normalized: burnt-oil odor at rest after driving
+    routes_to: [burnt_oil_smell]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+
+  - phrase: "smell burnt oil when i stop at lights, worse in the summer"
+    normalized: burnt-oil odor at stops, heat-related
+    routes_to: [burnt_oil_smell]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+
+  - phrase: "hot oily smell under the hood after ive been on the highway a while, aint seen smoke though"
+    normalized: burnt-oil odor under hood, no visible smoke
+    routes_to: [burnt_oil_smell]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+
+  - phrase: "burning smell from under the hood, kinda greasy"
+    normalized: greasy burning odor under hood
+    routes_to: [burnt_oil_smell]
+    ambiguity: needs-fact:smell_descriptor   # greasy vs sharp/plastic vs rubbery must be resolved
+    provenance: synthetic
+
+  # ---------------- BLUE SMOKE (oil burn) ----------------
+  - phrase: "puff of blue smoke out the tailpipe when i first start it in the morning, smells like burning oil, been adding a quart every few weeks"
+    normalized: startup blue smoke, burnt-oil smell, oil consumption
+    routes_to: [blue_or_gray_smoke_from_tailpipe]
+    ambiguity: cross-system:check_engine_light_testing   # stage1 service is check_engine_light_testing per taxonomy
+    provenance: tekmetric   # eval check_engine_light_testing-005
+
+  # (removed a "cloud of blue-gray smoke every time i floor it onto the highway" entry — it was labeled
+  #  synthetic but is verbatim an existing DB positive_example of blue_or_gray_smoke_from_tailpipe. The
+  #  startup-vs-load ring cue it illustrated is captured as a discriminating question in the dossier §5,
+  #  not as a duplicate example.)
+
+  # ---------------- SMOKE UNDER HOOD (oil on manifold) ----------------
+  # (removed an "i see smoke around the engine and it smells like burning oil" entry — verbatim an existing
+  #  DB positive_example of smoke_from_under_the_hood, mislabeled provenance: tekmetric. Not re-added.)
+  - phrase: "oil pooling right under the exhaust manifold at the back of the engine, wisps of smoke at idle"
+    normalized: oil leak onto manifold, light under-hood smoke
+    routes_to: [smoke_from_under_the_hood, burnt_oil_smell]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase   # 2carpros oil leak from underneath manifold
+
+  # ---------------- CROSS-SYSTEM NEGATIVES (route elsewhere) ----------------
+  - phrase: "bright green puddle under the radiator and it smells sweet"
+    normalized: coolant puddle, sweet smell
+    routes_to: [green_orange_yellow_or_pink_puddle_coolant]
+    ambiguity: cross-system:coolant_leak_testing
+    provenance: tekmetric   # coolant, NOT oil
+
+  - phrase: "bright red oily fluid under the middle of the car"
+    normalized: red fluid mid-car (trans/PS)
+    routes_to: [red_or_pink_puddle_transmission_or_power_steering]
+    ambiguity: cross-system:transmission_testing
+    provenance: synthetic
+
+  - phrase: "amber colored drips near my front tire and the brake pedal feels soft lately"
+    normalized: amber/light-brown drip near a wheel + soft pedal (brake fluid, SAFETY)
+    routes_to: [clear_yellow_or_light_brown_puddle_brake_fluid]
+    ambiguity: needs-fact:fluid_under_car_location   # amber alone is oil-vs-brake-fluid; near-a-wheel + soft pedal decides brake fluid
+    provenance: forum-paraphrase   # documents the "amber" collision (DB brake-fluid positive: "Amber-colored drips on the driver side near the firewall")
+
+  - phrase: "ticking from the engine bay that gets quieter when it warms up and the exhaust sounds louder"
+    normalized: exhaust-manifold-gasket tick + louder exhaust
+    routes_to: [exhaust_manifold_tick_or_puff]
+    ambiguity: cross-system:exhaust_system_testing   # NOT oil; noise+louder-exhaust decide
+    provenance: forum-paraphrase
+
+  - phrase: "burning rubber smell coming from one of the wheels after i braked a lot downhill"
+    normalized: hot-brake/rubber smell at a wheel
+    routes_to: [burning_rubber_hot_brake_smell]
+    ambiguity: cross-system:brake_inspection
+    provenance: synthetic
+
+  - phrase: "thick white smoke pouring from the tailpipe, smells sweet"
+    normalized: white tailpipe smoke, sweet (coolant)
+    routes_to: [white_smoke_from_tailpipe]
+    ambiguity: cross-system:coolant_leak_testing   # blue=oil vs white=coolant
+    provenance: tekmetric   # eval coolant_leak_testing-001
+
+  # ---------------- NULL / MAINTENANCE (must not hit oil_leak_testing) ----------------
+  # These are NON-CONCERN work-order lines: no leak/drip/burnt cue -> advisor/booking, customer_request_type
+  # = routine_maintenance. There is no positive Stage-1 key for "routine maintenance", so ambiguity is
+  # "unambiguous" (unambiguously a non-concern), NOT a cross-system:<slug> (no such slug exists).
+  - phrase: "Inspection and Oil Change"
+    normalized: routine oil-change + inspection request
+    routes_to: []   # no concern; advisor/booking, routine_maintenance
+    ambiguity: unambiguous
+    provenance: tekmetric   # tkc-054 (verbatim). cf. tkc-285 "Inspection, emission and oil change 15 off web coup"
+
+  - phrase: "i am in need of an oil change"
+    normalized: routine oil-change request
+    routes_to: []
+    ambiguity: unambiguous
+    provenance: tekmetric   # tkc-246

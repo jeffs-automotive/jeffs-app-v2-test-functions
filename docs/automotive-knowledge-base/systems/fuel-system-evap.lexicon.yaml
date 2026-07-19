@@ -1,0 +1,212 @@
+system: fuel-system-evap
+# phrase -> normalized -> routes_to[] -> ambiguity -> provenance
+# ambiguity: unambiguous | needs-fact:<slot> | cross-system:<slug> | null-route
+# provenance enum (template): tekmetric | nhtsa | forum-paraphrase | synthetic
+#   - tekmetric  = verbatim / near-verbatim from a REAL corpus id (id noted in the comment)
+#   - synthetic  = invented, OR adapted from an eval-cases.json authored case, OR from a DB
+#                  positive_examples seed — none are Tekmetric-corpus verbatim. Capped ~30%/subcategory
+#                  as a target; where a subcategory has zero corpus rows the share is honestly higher
+#                  (see dossier §11).
+entries:
+  # ---- EVAP / loose gas cap / CEL (warning_light/check_engine_light) ----
+  - phrase: "oil change, also check engine light, believe it is an EVAP issue, will need a loaner"
+    normalized: CEL customer suspects EVAP, mixed with maintenance request
+    routes_to: [check_engine_light]
+    ambiguity: unambiguous
+    provenance: tekmetric   # tkc-002 (verbatim-ish)
+  - phrase: "check engine light on, recently got gas, the light is steady"
+    normalized: steady CEL shortly after a fill-up (loose-cap suspicion)
+    routes_to: [check_engine_light]
+    ambiguity: needs-fact:recent_action
+    provenance: tekmetric   # tkc-116 ("Recently got gas. The check engine light is steady.")
+  - phrase: "check engine light came on right after i filled up gas, tightened the cap but its still on solid"
+    normalized: steady CEL post-fill-up, cap already tightened
+    routes_to: [check_engine_light]
+    ambiguity: unambiguous
+    provenance: synthetic   # eval-authored (not corpus verbatim)
+  - phrase: "p0446 evap code keeps setting in vehicle, can not isolate leak"
+    normalized: recurring EVAP vent code
+    routes_to: [check_engine_light]
+    ambiguity: unambiguous
+    provenance: tekmetric   # tkc-148 (verbatim-ish)
+  - phrase: "cel came on, client changed out a valve canister and it came back on"
+    normalized: EVAP purge-canister replaced, CEL returned
+    routes_to: [check_engine_light]
+    ambiguity: unambiguous
+    provenance: tekmetric   # tka-060 (real; judged hesitation, but the CEL/EVAP language is verbatim)
+  - phrase: "orange engine symbol came on right after i filled up at the pump"
+    normalized: amber CEL immediately post-fuel-fill
+    routes_to: [check_engine_light]
+    ambiguity: unambiguous
+    provenance: synthetic
+  # ---- trouble fueling / gas won't go in (NO FIT -> proposed subcategory) ----
+  - phrase: "CAN NOT FILL WITH GAS, when trying to refuel gas squirts back out"
+    normalized: cannot fill tank, fuel spits back at pump
+    routes_to: [trouble_fueling_gas_wont_go_in]   # PROPOSED slug (pending Chris)
+    ambiguity: cross-system:check_engine_light    # judged CEL + null subcategory
+    provenance: tekmetric   # tka-046 (verbatim-ish; CEL, null subcategory)
+  - phrase: "when filling up gas it comes back out after $14"
+    normalized: pump clicks off early / fuel backs out during fill
+    routes_to: [trouble_fueling_gas_wont_go_in]   # PROPOSED slug (pending Chris)
+    ambiguity: cross-system:after_recent_service  # judged after_recent_service (text led with "replaced fuel pump last service")
+    provenance: tekmetric   # tka-137 (fill-failure symptom masked by a recent-service label)
+  - phrase: "gas pump keeps clicking off when i try to fill up, takes forever to fuel"
+    normalized: repeated early pump shutoff during fueling
+    routes_to: [trouble_fueling_gas_wont_go_in]   # PROPOSED slug (pending Chris)
+    ambiguity: unambiguous
+    provenance: synthetic
+  # ---- null-route (shop / work-order notes, NOT a customer concern) ----
+  - phrase: "vehicle driven twice to get monitors to set, evap and cat monitors still not set, will drive it and bring back for retest"
+    normalized: readiness-monitor drive-cycle note (internal)
+    routes_to: []
+    ambiguity: null-route
+    provenance: tekmetric   # tkc-127 (verbatim-ish)
+  - phrase: "smoke test evap system, verify repair, testing auth 179"
+    normalized: shop work-order line, not a symptom
+    routes_to: []
+    ambiguity: null-route
+    provenance: synthetic
+  # ---- gasoline / fuel smell (smell/gasoline_fuel_smell) ----
+  # NOTE: this subcategory has ZERO Tekmetric-corpus rows -> all entries below are synthetic (flagged, dossier §11)
+  - phrase: "i smell gas inside my car when im driving"
+    normalized: raw gasoline odor in cabin while driving
+    routes_to: [gasoline_fuel_smell]
+    ambiguity: unambiguous
+    provenance: synthetic
+  - phrase: "whole garage smells like gasoline when i park"
+    normalized: strong raw-fuel odor around parked car
+    routes_to: [gasoline_fuel_smell]
+    ambiguity: unambiguous
+    provenance: synthetic
+  - phrase: "gas fumes when i start the car cold in the morning"
+    normalized: raw-fuel fumes on cold start
+    routes_to: [gasoline_fuel_smell]
+    ambiguity: needs-fact:onset_timing
+    provenance: synthetic
+  - phrase: "i smell raw gas inside the car when the heater is running and it makes me lightheaded"
+    normalized: fuel odor with HVAC on, lightheadedness (confusable w/ exhaust-in-cabin)
+    routes_to: [gasoline_fuel_smell]
+    ambiguity: cross-system:exhaust_fumes_inside_the_cabin
+    provenance: synthetic   # US voice; previously UK "petrol" (removed per style guide)
+  # ---- black (rich) smoke (smoke/black_smoke_from_tailpipe) ----
+  # NOTE: this subcategory has ZERO Tekmetric-corpus rows -> all entries below are synthetic (flagged, dossier §11)
+  - phrase: "my truck started blowing black smoke, not sure whats going on"
+    normalized: black tailpipe smoke, vague
+    routes_to: [black_smoke_from_tailpipe]
+    ambiguity: needs-fact:onset_timing
+    provenance: synthetic   # eval-authored check_engine_light_testing-007
+  - phrase: "black smoke pours out when i stomp on the gas and it smells like raw gas"
+    normalized: black smoke under acceleration + raw-fuel smell (rich)
+    routes_to: [black_smoke_from_tailpipe]
+    ambiguity: unambiguous
+    provenance: synthetic
+  - phrase: "fuel mileage tanked and theres black smoke from the back"
+    normalized: dropping mileage + black smoke (rich)
+    routes_to: [black_smoke_from_tailpipe]
+    ambiguity: unambiguous
+    provenance: synthetic
+  - phrase: "diesel is blowing thick black smoke even at idle"
+    normalized: persistent diesel black smoke at idle (fault, not turbo puff)
+    routes_to: [black_smoke_from_tailpipe]
+    ambiguity: needs-fact:vehicle_powertrain
+    provenance: synthetic
+  # ---- hard start hot / vapor lock (performance/hard_to_start_when_hot) ----
+  - phrase: "after getting gas has to crank vehicle multiple times to get started"
+    normalized: hard restart after a short fuel stop (hot)
+    routes_to: [hard_to_start_when_hot]
+    ambiguity: needs-fact:onset_timing
+    provenance: tekmetric   # tka-020 (verbatim-ish)
+  - phrase: "if i stop for gas after driving the car cranks and cranks but wont catch, i smell gas around the engine, starts fine after it sits"
+    normalized: hot-restart no-catch + raw-fuel smell, recovers after cooling
+    routes_to: [hard_to_start_when_hot]
+    ambiguity: unambiguous
+    provenance: synthetic   # eval-authored
+  # ---- hard start cold (performance/hard_to_start_when_cold) ----
+  # NOTE: this subcategory has ZERO Tekmetric-corpus rows -> all entries below are synthetic (flagged, dossier §11)
+  - phrase: "cranks forever in the morning before it finally fires up, but starts fine once its warmed up"
+    normalized: long cold crank, normal once warm
+    routes_to: [hard_to_start_when_cold]
+    ambiguity: unambiguous
+    provenance: synthetic
+  - phrase: "my truck cranks for like 5-6 seconds first thing in the morning before it fires up, starts fine rest of the day"
+    normalized: extended cold-only crank time
+    routes_to: [hard_to_start_when_cold]
+    ambiguity: unambiguous
+    provenance: synthetic   # eval-authored
+  # ---- contaminated / bad fuel after a fill-up (FM-12) ----
+  - phrase: "got gas sunday, next day the car was chugging and now it wont start, saw smoke under the hood"
+    normalized: no-start + rough running shortly after a fill-up (bad-fuel suspicion)
+    routes_to: []   # no clean subcategory: Stage-1 no_start_testing, judged null
+    ambiguity: needs-fact:recent_action
+    provenance: tekmetric   # tkc-098 (no_start_testing, null subcategory)
+  # ---- no-start / crank-no-fire (NO FIT: no_start_testing, null subcategory) ----
+  # A bare crank-no-fire matches NEITHER stalling_* NOR hard_start_* -> do NOT shoehorn. routes_to left empty;
+  # Stage-1 no_start_testing keyword covers it. Judges left tka-170/tkc-172/tka-061/tkc-276 at null subcategory.
+  - phrase: "tow in, cranks but will not start"
+    normalized: engine cranks normally, no fire (fuel/spark/crank-signal) — no subcategory fit
+    routes_to: []
+    ambiguity: needs-fact:engine_running
+    provenance: tekmetric   # tka-170 (no_start_testing, null subcategory; AAA said timing belt)
+  - phrase: "intermitent no start"
+    normalized: intermittent crank-no-fire — no subcategory fit
+    routes_to: []
+    ambiguity: needs-fact:onset_timing
+    provenance: tekmetric   # tkc-172 (no_start_testing, null subcategory)
+  # ---- stall under load / low power (fuel pump/pressure) ----
+  - phrase: "lost power while driving, will attempt to start now but has very rough idle and stalls out"
+    normalized: power loss then rough idle + stall (proposed read; judges deadlocked to null)
+    routes_to: [stalling_while_driving_under_load]
+    ambiguity: needs-fact:engine_running
+    provenance: tekmetric   # tka-114 (consensus_category null; proposed symptom read)
+  - phrase: "vehicle losing power going uphills, client believes it may be high pressure fuel pump"
+    normalized: sustained power loss on load, customer suspects HP fuel pump
+    routes_to: [low_power_or_wont_accelerate_normally]
+    ambiguity: unambiguous
+    provenance: tekmetric   # tkc-133 (verbatim-ish)
+  # ---- rich/lean idle, misfire, surge (performance) ----
+  - phrase: "cel coming on and off, vehicle stalls when idling coming to a stop, client pulled rich codes"
+    normalized: intermittent CEL + idle stall, rich codes
+    routes_to: [stalling_at_idle_or_when_stopping]
+    ambiguity: unambiguous
+    provenance: tekmetric   # tka-084 (verbatim-ish)
+  - phrase: "engine sputters and runs rough when im stopped at red lights, rpm bounces, check engine light on, sometimes a rotten egg smell"
+    normalized: rough idle + bouncing rpm + CEL + intermittent sulfur
+    routes_to: [rough_idle_or_shaking_at_a_stop]
+    ambiguity: unambiguous
+    provenance: synthetic   # eval-authored check_engine_light_testing-004
+  - phrase: "misfire on start up"
+    normalized: misfire present at startup
+    routes_to: [engine_misfire_or_bucking_feeling]
+    ambiguity: needs-fact:onset_timing
+    provenance: tekmetric   # tkc-124 (verbatim)
+  - phrase: "car runs sputters when idling, when i accelerate it sounds like backfiring in the engine compartment"
+    normalized: rough idle + backfire/misfire under accel
+    routes_to: [engine_misfire_or_bucking_feeling, rough_idle_or_shaking_at_a_stop]
+    ambiguity: needs-fact:onset_timing
+    provenance: forum-paraphrase
+  # ---- confusable NEGATIVES (what these are NOT) ----
+  - phrase: "turn the key and all i get is a click click click, wont turn over at all"
+    normalized: no-crank, starter click (NOT our cranks-but-wont-fire)
+    routes_to: [wont_crank_just_clicks]
+    ambiguity: cross-system:wont_crank_just_clicks
+    provenance: synthetic
+  - phrase: "thick white smoke from the tailpipe and it smells sweet like syrup"
+    normalized: coolant-in-combustion white smoke (NOT rich black)
+    routes_to: [white_smoke_from_tailpipe]
+    ambiguity: cross-system:white_smoke_from_tailpipe
+    provenance: synthetic   # eval-authored coolant_leak_testing-001
+  - phrase: "puff of blue smoke when i first start it in the morning, smells like burning oil"
+    normalized: oil-burn blue smoke (NOT rich black)
+    routes_to: [blue_or_gray_smoke_from_tailpipe]
+    ambiguity: cross-system:blue_or_gray_smoke_from_tailpipe
+    provenance: synthetic   # eval-authored check_engine_light_testing-005
+  - phrase: "i smell exhaust fumes inside the car when im driving, smoky burnt smell"
+    normalized: exhaust/tailpipe smell in cabin (NOT raw gas)
+    routes_to: [exhaust_fumes_inside_the_cabin]
+    ambiguity: cross-system:exhaust_fumes_inside_the_cabin
+    provenance: synthetic
+  - phrase: "my car smells like rotten eggs from the exhaust, worse under acceleration"
+    normalized: sulfur/H2S smell (cat), NOT raw gasoline
+    routes_to: [rotten_egg_sulfur_smell]
+    ambiguity: cross-system:rotten_egg_sulfur_smell
+    provenance: synthetic

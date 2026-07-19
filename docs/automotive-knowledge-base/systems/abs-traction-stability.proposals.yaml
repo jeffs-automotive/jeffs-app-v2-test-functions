@@ -1,0 +1,409 @@
+system: abs-traction-stability
+# Typed change-ops bound to the live snapshot (2026-07-18, shop 7476).
+# Question IDs: abs_anti_lock_brake_light = 413-419; brake_system_red_light = 420-426;
+# traction_control_stability_light = 434-440.
+# Services: abs_traction_stability_testing (example_keywords EMPTY in DB),
+#           brake_inspection_warning_light (example_keywords=["Red brake light on"]).
+
+ops:
+  # =========================================================================
+  # L1 — Stage-1 keywords (abs_traction_stability_testing.example_keywords is EMPTY)
+  # =========================================================================
+  - op: stage1.keyword.add
+    category_key: abs_traction_stability_testing
+    phrase: "ABS light"
+    rationale: "Primary telltale name; service has zero keywords today."
+    evidence: "tekmetric: 'ABS LIGHT ON TESTING...', 'ABS & TRAC LIGHTS COMING ON'"
+  - op: stage1.keyword.add
+    category_key: abs_traction_stability_testing
+    phrase: "traction control light"
+    rationale: "Second-most-common phrasing for this service."
+    evidence: "tekmetric: 'TRACTION CONTROL LIGHT STAYING ON'"
+  - op: stage1.keyword.add
+    category_key: abs_traction_stability_testing
+    phrase: "stability control light"
+    rationale: "Stability half of the ESC function."
+    evidence: "tekmetric: 'SERVICE STABILTRAC LIGHT ON'"
+  - op: stage1.keyword.add
+    category_key: abs_traction_stability_testing
+    phrase: "StabiliTrak"
+    rationale: "Domain single-token GM brand name; high-signal."
+    evidence: "tekmetric: 'SERVICE STABILTRAC LIGHT ON'"
+  - op: stage1.keyword.add
+    category_key: abs_traction_stability_testing
+    phrase: "ESC light"
+    rationale: "Brand acronym; appears in corpus."
+    evidence: "tekmetric: 'transmission light and esc off' (real-concerns-tekmetric-labeled-v2.json)"
+  # NOTE: 'VSC light', 'anti-lock brake light', and 'slip indicator light' were REMOVED as stage1
+  # keywords — none has a corpus occurrence in real-concerns-tekmetric-labeled-v2.json / -forums.json,
+  # so they failed the "corpus occurrence or cited misroute" discipline (§11). VSC/VSA/slip-indicator
+  # survive as Stage-2 SYNONYMS (domain telltale tokens, no corpus bar) instead.
+  - op: stage1.keyword.add
+    category_key: abs_traction_stability_testing
+    phrase: "traction control staying on"
+    rationale: "Steady-on fault phrasing (vs normal flash)."
+    evidence: "tekmetric: 'TRACTION CONTROL LIGHT STAYING ON' (verbatim, real-concerns-tekmetric-labeled-v2.json)"
+  - op: stage1.keyword.add
+    category_key: abs_traction_stability_testing
+    phrase: "abs and traction light"
+    rationale: "The shared-WSS co-illumination pattern."
+    evidence: "tekmetric: 'abs / trac / no AWD message', 'ABS & TRAC LIGHTS COMING ON' (real-concerns-tekmetric-labeled-v2.json)"
+  - op: stage1.keyword.add
+    category_key: brake_inspection_warning_light
+    phrase: "red brake light coming on"
+    rationale: "Common red-BRAKE phrasing; service has only 'Red brake light on' today."
+    evidence: "tekmetric verbatim: 'RED BRAKE LIGHT WAS COMING ON AND OFF FOR A FEW DAYS...' (real-concerns-tekmetric-labeled-v2.json)"
+
+  # =========================================================================
+  # Stage-1 hedges (confusable pairs)
+  # =========================================================================
+  - op: stage1.hedge.add
+    category_a: brake_inspection_warning_light
+    category_b: abs_traction_stability_testing
+    rule: >
+      Route on light COLOR + LABEL. A RED light with the word BRAKE or a red (!) => brake_inspection_warning_light
+      (base hydraulic, safety). A YELLOW/AMBER light with the letters ABS, or a sliding-car/skid icon, or
+      TCS/ESC/VSC/StabiliTrak => abs_traction_stability_testing. When BOTH a red brake light AND a yellow ABS
+      light are reported, ALWAYS route to brake_inspection_warning_light (safety-first).
+    discriminating_fact: warning_light_named
+  - op: stage1.hedge.add
+    category_a: abs_traction_stability_testing
+    category_b: brake_inspection
+    rule: >
+      A DASH LIGHT (warning_light_named set to abs/traction/stability) => abs_traction_stability_testing.
+      A pedal-FEEL or noise complaint with NO dash light (squeal, grinding, spongy/sinking pedal, brake-only
+      vibration) => brake_inspection. Presence of a named telltale is the tie-breaker.
+    discriminating_fact: warning_light_named
+  - op: stage1.hedge.add
+    category_a: abs_traction_stability_testing
+    category_b: warning_light_general
+    rule: >
+      If the customer emphasizes SEVERAL DIFFERENT lights beyond ABS + its sibling traction light (e.g. ABS +
+      airbag + TPMS + check-engine together), prefer the multiple_warning_lights_at_once subcategory rather
+      than treating it as an isolated ABS/traction fault.
+    discriminating_fact: warning_light_behavior
+  - op: stage1.hedge.add
+    category_a: abs_traction_stability_testing
+    category_b: awd_4x4_testing
+    rule: >
+      An 'AWD disabled' / 'no AWD' / 'hill-assist unavailable' MESSAGE that rides WITH a lit ABS, traction,
+      or stability (TCS/ESC/VSC/StabiliTrak) telltale => abs_traction_stability_testing: the message is a
+      downstream consequence of the shared wheel-speed-sensor fault, not an AWD-driveline complaint. Route to
+      awd_4x4_testing ONLY when the complaint is about the AWD/4WD SYSTEM ITSELF not functioning — 'AWD won't
+      engage', 'my 4WD light is on', '4x4 won't kick in', 'AWD stopped working' — with NO ABS/traction/stability
+      warning light named. If both an AWD-not-engaging complaint AND an ABS/stability light are present, keep it
+      here (WSS-shared) and let the tech confirm the driveline.
+    discriminating_fact: warning_light_named
+
+  # =========================================================================
+  # L2 — Stage-2 description revisions (sharpen, do not rewrite)
+  # =========================================================================
+  - op: stage2.description.revise
+    subcat_slug: abs_anti_lock_brake_light
+    text: >
+      (APPEND to current description) Also route here for an UNEXPECTED ANTI-LOCK ACTIVATION FEEL from a
+      degrading wheel-speed sensor: the pedal pulses, kicks back, or grinds ONLY in the last few feet as the
+      car creeps to a stop on DRY, warm pavement (no ice to justify real anti-lock), often with the ABS light
+      on. Distinguish from a warped-rotor complaint (brakes pulsating_or_vibrating_pedal), which pulses at
+      driving speed under firmer braking, not only at the final crawl to a stop.
+    why: "Captures FM-3, a common degraded-WSS signature that currently misroutes to a base-brake vibration subcat."
+  - op: stage2.description.revise
+    subcat_slug: traction_control_stability_light
+    text: >
+      (APPEND) An 'AWD disabled' / 'no AWD' / 'hill-assist unavailable' message that appears ALONGSIDE a lit
+      traction/stability (or ABS) telltale frequently rides along with the fault because these features share
+      the wheel-speed-sensor network — treat such a message as corroboration for THIS subcategory, not a
+      separate concern. CAVEAT: if the customer instead reports the AWD/4WD system itself not engaging
+      ('AWD won't turn on', '4WD light on', '4x4 won't kick in') with NO ABS/traction/stability light named,
+      that is an AWD-driveline complaint and belongs to awd_4x4_testing, not here.
+    why: "tekmetric 'abs / trac / no AWD message' + forum 'hill assist lights' co-illumination; caveat guards the awd_4x4_testing boundary."
+
+  # =========================================================================
+  # L3 — Stage-2 positive examples (real customer voice; synthetic flagged, <=30%)
+  # =========================================================================
+  - op: stage2.example.positive.add
+    subcat_slug: traction_control_stability_light
+    phrase: "SERVICE STABILTRAC LIGHT ON. No other warning lights are present"
+    provenance: tekmetric
+  - op: stage2.example.positive.add
+    subcat_slug: traction_control_stability_light
+    phrase: "TRACTION CONTROL LIGHT STAYING ON"
+    provenance: tekmetric
+  - op: stage2.example.positive.add
+    subcat_slug: traction_control_stability_light
+    phrase: "esc off light popped on, car drives fine"
+    provenance: synthetic
+  # 'abs / trac / no AWD message' is NOT installed as a one-sided abs positive: the lexicon routes it
+  # DUALLY (abs + traction, needs-fact:warning_light_named), so a one-sided Stage-2 positive would bias the
+  # pick against the traction sibling. It stays a needs-fact lexicon entry instead.
+  - op: stage2.example.positive.add
+    subcat_slug: abs_anti_lock_brake_light
+    phrase: "ABS LIGHT ON TESTING. STEERING FEELS MORE DIFFICULT AUTH 179"
+    provenance: tekmetric
+  # FM-3 (low-speed ABS-activation feel) is trained via the negative example on pulsating_or_vibrating_pedal
+  # + the stage2.description.revise above + golden inference-trap #2, NOT a one-sided synthetic positive here.
+  - op: stage2.example.positive.add
+    subcat_slug: brake_system_red_light
+    phrase: "RED BRAKE LIGHT WAS COMING ON AND OFF, found fluid was low and topped off, light back on now"
+    provenance: tekmetric
+
+  # =========================================================================
+  # L3 — Stage-2 negative examples (routes_to REQUIRED)
+  # =========================================================================
+  - op: stage2.example.negative.add
+    subcat_slug: pulsating_or_vibrating_pedal
+    phrase: "brakes shudder and grind ONLY in the last couple feet as I roll to a stop on dry pavement, ABS light on"
+    routes_to: abs_anti_lock_brake_light
+  - op: stage2.example.negative.add
+    subcat_slug: brake_system_red_light
+    phrase: "one of my brake lights out back is burned out, need a new bulb"
+    routes_to: accessory_doesnt_work
+  - op: stage2.example.negative.add
+    subcat_slug: abs_anti_lock_brake_light
+    phrase: "an 'AWD disabled' message with the sliding-car skid icon, no ABS letters"
+    routes_to: traction_control_stability_light
+  - op: stage2.example.negative.add
+    subcat_slug: traction_control_stability_light
+    phrase: "yellow letters ABS in a circle lit up, brakes still work fine"
+    routes_to: abs_anti_lock_brake_light
+  - op: stage2.example.negative.add
+    subcat_slug: abs_anti_lock_brake_light
+    phrase: "steering wheel is heavy and the power steering light is the one that's on"
+    routes_to: power_steering_eps_light
+
+  # =========================================================================
+  # L4 — Stage-2 synonyms (>=2 tokens OR domain single token; no bare words)
+  # =========================================================================
+  - op: stage2.synonym.add
+    subcat_slug: traction_control_stability_light
+    term: "StabiliTrak"          # GM stability-control telltale; corpus 'SERVICE STABILTRAC LIGHT ON'
+  - op: stage2.synonym.add
+    subcat_slug: traction_control_stability_light
+    term: "VSA light"            # Honda stability domain token
+  - op: stage2.synonym.add
+    subcat_slug: traction_control_stability_light
+    term: "VSC light"            # Toyota stability domain token (moved from a stage1 keyword — no corpus bar for synonyms)
+  - op: stage2.synonym.add
+    subcat_slug: traction_control_stability_light
+    term: "slip indicator light" # Nissan SLIP telltale; full 3-token phrase, won't false-fire on transmission 'slipping'
+  - op: stage2.synonym.add
+    subcat_slug: traction_control_stability_light
+    term: "hill assist light"    # forum L690 co-illumination
+  # REMOVED: synonym 'no AWD message' (ambiguous with genuine awd_4x4_testing complaints — see the awd hedge);
+  # REMOVED: synonym 'ABS module light' (mechanic voice, no corpus support — customers don't name the module).
+  - op: stage2.synonym.add
+    subcat_slug: brake_system_red_light
+    term: "red exclamation brake light"   # customer descriptor of the red (!) ISO base-brake telltale
+
+  # =========================================================================
+  # L5 — Stage-3 slot value add (no new SLOT; extend an existing enum)
+  # =========================================================================
+  - op: stage3.slot.value.add
+    slot: recent_action
+    value: suspension_lift_or_leveling
+    literal_cues:
+      - "got my truck leveled"
+      - "after my leveling kit"
+      - "since I put a lift on it"
+      - "installed a lift kit"
+    # Rationale: leveling/lift changes ride height + can knock steering-angle/WSS calibration -> ESC/ABS light
+    # (FM-4). Corpus: forum 'started after I got my truck leveled'. Distinct from 'alignment'. Unlocks a clean
+    # tag on the traction post-service question (Q438) without adding a slot.
+
+  # =========================================================================
+  # Workstream-Q — required_facts for empty questions (SAFE/PARTIAL) + intentionally_empty
+  # =========================================================================
+  # Q413 is NEVER per binding/required-facts-map.q3.md (row 413: "Safety confirmation; always ask"). It asks
+  # whether the car still STOPS normally — pedal_feel=normal (e.g. 'pedal feels fine') does NOT confirm stopping
+  # performance, so gating a skip on pedal_feel would wrongfully skip a safety-critical question. Reconciled to
+  # intentionally_empty to match the committed q3 map (its NEVER is the defensible position).
+  - op: question.intentionally_empty
+    question_id: 413   # "Are the regular brakes still working normally when you press the pedal?"
+    reason: >
+      q3-map class NEVER. Safety confirmation about STOPPING performance; not equivalent to pedal_feel=normal
+      (a customer can report a normal-feeling pedal yet longer stopping distance). Always ask.
+  - op: question.intentionally_empty
+    question_id: 414   # "Is the red BRAKE light on too, or just the yellow ABS light?"
+    reason: >
+      q3-map class PARTIAL (narrows via warning_light_named but cannot safely skip). A customer naming only 'ABS'
+      has NOT confirmed the red light is OFF, and warning_light_behavior=multiple_lights_at_once only fires when
+      they explicitly said several — naming one light never asserts the sibling's absence. Leave empty / always
+      ask this safety-critical red/yellow discrimination.
+  - op: question.intentionally_empty
+    question_id: 422   # "Have you checked the brake fluid reservoir... near MIN or below?"
+    reason: "q3-map class NEVER. No fluid-LEVEL slot exists; confirmatory reservoir-check. Always ask."
+  - op: question.intentionally_empty
+    question_id: 423   # "Is the yellow ABS light on at the same time?"
+    reason: >
+      q3-map class PARTIAL. Same structural limit as Q414 — naming one light doesn't confirm the sibling is OFF
+      (warning_light_named can't safely skip an 'is Y also on' question). Leave empty / always ask.
+  - op: question.intentionally_empty
+    question_id: 424   # "Does the car still stop normally, or does it take longer than usual?"
+    reason: "q3-map class NEVER. Stopping-distance/effectiveness is not in any slot; safety-confirmatory. Always ask."
+  - op: question.intentionally_empty
+    question_id: 435   # "Is the ABS light on at the same time, or just the traction/stability light?"
+    reason: >
+      q3-map class PARTIAL. Sibling-light co-illumination not safely inferable from one slot (as Q414/Q423).
+      Leave empty / always ask.
+  - op: question.intentionally_empty
+    question_id: 436   # "Have you noticed the car feeling slippery, losing grip, wheels spinning?"
+    reason: "q3-map class NEVER. No traction-LOSS-event slot exists; single-question need (<3), so no slot proposal. Always ask."
+  - op: question.intentionally_empty
+    question_id: 439   # "Did you accidentally press the traction-control button to turn it off?"
+    reason: "q3-map class NEVER. No button-state slot; single-question confirmatory. Always ask."
+  - op: question.intentionally_empty
+    question_id: 440   # "Does the steering feel heavier, or have other warning lights joined?"
+    reason: "q3-map class NEVER. Compound question (steering_feel OR more lights); partial coverage on steering_feel alone would unsafely skip the second clause."
+
+  # =========================================================================
+  # Catalog note (NOT a mutation) — no new subcategory/service needed
+  # =========================================================================
+  # This system binds fully to abs_anti_lock_brake_light / traction_control_stability_light /
+  # brake_system_red_light. No catalog.service.propose and no stage2.subcategory.propose: the only weak-fit
+  # mode (FM-3 low-speed ABS activation) is resolved by enrichment + a negative example, not new taxonomy.
+
+# ===========================================================================
+# GOLDEN CASES (11 total; incl. inference-trap x2 + the exterior-bulb contract case)
+# ===========================================================================
+golden_cases:
+  - text: "yellow abs light popped on right after i smacked a big pothole, brakes still feel normal when i press the pedal"
+    tags: [fact_rich, abs_anti_lock_brake_light]
+    # pedal_feel=normal is LITERAL here ('brakes still feel normal when i press the pedal'); earlier draft said
+    # 'brakes still stop fine', which is a stopping-performance claim, NOT a pedal-feel claim — that would have
+    # been the very over-assertion the literalness guard forbids. Text realigned to eval-001's actual wording.
+    expected:
+      stage1_category_key: abs_traction_stability_testing
+      stage1_acceptable: [abs_traction_stability_testing]
+      stage2_subcategory_slug: abs_anti_lock_brake_light
+      stage3_facts:
+        warning_light_named: "*"
+        recent_action: hit_pothole_or_curb
+        pedal_feel: normal
+      route: testing_service
+
+  - text: "TCS light came on right after the tire shop put just one new tire on"
+    tags: [moderate, traction_control_stability_light]
+    expected:
+      stage1_category_key: abs_traction_stability_testing
+      stage1_acceptable: [abs_traction_stability_testing]
+      stage2_subcategory_slug: traction_control_stability_light
+      stage3_facts:
+        warning_light_named: "*"
+        recent_action: tire_rotation_or_replacement
+      route: testing_service
+
+  - text: "theres a yellow light like a little car with squiggly lines under it, no idea what it means"
+    tags: [sparse, icon_description_only, traction_control_stability_light]
+    expected:
+      stage1_category_key: abs_traction_stability_testing
+      stage1_acceptable: [abs_traction_stability_testing]
+      stage2_subcategory_slug: traction_control_stability_light
+      stage3_facts: {}
+      route: testing_service
+
+  - text: "red BRAKE light stays on, parking brake is all the way off and the pedal feels mushy"
+    tags: [fact_rich, red_vs_abs_boundary]
+    expected:
+      stage1_category_key: brake_inspection_warning_light
+      stage1_acceptable: [brake_inspection_warning_light]
+      stage2_subcategory_slug: brake_system_red_light
+      stage3_facts:
+        warning_light_named: "*"
+        warning_light_behavior: steady_on
+        parking_brake_state: released
+        pedal_feel: soft_spongy
+      route: testing_service
+
+  - text: "the red brake light and the yellow ABS light both came on at once, is it even safe to drive to work??"
+    tags: [moderate, both_lights, boundary:red-vs-abs]
+    expected:
+      stage1_category_key: brake_inspection_warning_light
+      stage1_acceptable: [brake_inspection_warning_light, abs_traction_stability_testing]
+      stage2_subcategory_slug: brake_system_red_light
+      stage3_facts:
+        warning_light_named: "*"
+        warning_light_behavior: multiple_lights_at_once
+      route: testing_service
+
+  - text: "red brake light keeps coming on and off, i topped off the fluid but its back on now"
+    tags: [moderate, red_light_low_fluid]
+    expected:
+      stage1_category_key: brake_inspection_warning_light
+      stage1_acceptable: [brake_inspection_warning_light]
+      stage2_subcategory_slug: brake_system_red_light
+      stage3_facts:
+        warning_light_named: "*"
+        warning_light_behavior: comes_and_goes
+      route: testing_service
+
+  - text: "abs light came on this morning after i drove through a big flooded puddle last night"
+    tags: [moderate, abs_anti_lock_brake_light]
+    expected:
+      stage1_category_key: abs_traction_stability_testing
+      stage1_acceptable: [abs_traction_stability_testing]
+      stage2_subcategory_slug: abs_anti_lock_brake_light
+      stage3_facts:
+        warning_light_named: "*"
+        recent_action: car_wash_or_driven_through_water
+        started_when: today
+      route: testing_service
+
+  - text: "the traction light flashes for a second when its rainy then goes off, is something wrong with it?"
+    tags: [moderate, normal_intervention, traction_control_stability_light]
+    expected:
+      stage1_category_key: abs_traction_stability_testing
+      stage1_acceptable: [abs_traction_stability_testing]
+      stage2_subcategory_slug: traction_control_stability_light
+      stage3_facts:
+        warning_light_named: "*"
+        warning_light_behavior: flashing_or_blinking
+        weather_condition: rainy_or_wet
+      route: testing_service
+
+  # ---- INFERENCE TRAP #1: dash BRAKE telltale vs exterior tail lamps ----
+  - text: "my brake light is on but the brake lights out back are working fine"
+    tags: [inference_trap, dash-vs-tail-lamp]
+    expected:
+      stage1_category_key: brake_inspection_warning_light
+      stage1_acceptable: [brake_inspection_warning_light]
+      stage2_subcategory_slug: brake_system_red_light
+      stage3_facts:
+        warning_light_named: "*"
+      # TRAP: 'brake lights out back working fine' is about EXTERIOR tail lamps. The extractor must NOT set
+      # pedal_feel, parking_brake_state, or fluid facts, and must NOT route to an exterior-lamp/accessory concern
+      # just because 'brake lights' appears — the on-dash telltale is the actual concern.
+      route: testing_service
+
+  # ---- INFERENCE TRAP #2: low-speed ABS activation — the trap is a STAGE-1/2 misroute, NOT fact suppression ----
+  - text: "when i creep up to a stop the brakes shudder and grind the last couple feet, but its dry and warm out and my abs light is on"
+    tags: [inference_trap, fm3_low_speed_abs, boundary:abs-vs-brake_vibration]
+    expected:
+      stage1_category_key: abs_traction_stability_testing
+      stage1_acceptable: [abs_traction_stability_testing, brake_inspection]
+      stage2_subcategory_slug: abs_anti_lock_brake_light
+      stage3_facts:
+        warning_light_named: "*"
+        onset_timing: when_braking
+        speed_band: low_speed
+        pedal_feel: pulsating
+        noise_descriptor: grinding_metallic   # 'grind' is LITERALLY stated — extract it; do NOT suppress
+      # TRAP: 'grind' tempts a base-brake grinding ROUTE (metallic_grinding / a base-brake vibration subcat).
+      # The extraction contract cuts both ways — noise_descriptor=grinding_metallic MUST be set because the
+      # customer literally said 'grind'; suppressing it would penalize a correctly literal extractor. The
+      # misroute is defended at Stage 1/2 (the ABS light + pulse ONLY in the final dry-pavement creep => degraded
+      # WSS ABS activation; see the negative example on pulsating_or_vibrating_pedal), NOT by dropping the fact.
+      # Still do NOT invent a location the customer never named.
+      route: testing_service
+
+  # ---- BULB-CONTRACT case: exterior brake LAMP bulb out => accessory_doesnt_work (single dead electrical item) ----
+  # ONE consistent contract for an exterior brake-lamp bulb across all three files: it routes to
+  # accessory_doesnt_work (electrical_testing_general), NOT to advisor and NOT to brake_system_red_light. This
+  # pairs with inference-trap #1 above (same 'brake light' wording, but there the DASH telltale is lit => red).
+  - text: "one of my rear brake lights is burned out, need a new bulb, customer says the dash isn't showing anything"
+    tags: [inference_trap, dash-vs-tail-lamp, exterior_bulb, boundary:accessory-vs-red-light]
+    expected:
+      stage1_category_key: electrical_testing_general
+      stage1_acceptable: [electrical_testing_general]
+      stage2_subcategory_slug: accessory_doesnt_work
+      stage3_facts: {}
+      route: testing_service

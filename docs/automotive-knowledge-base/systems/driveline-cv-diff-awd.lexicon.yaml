@@ -1,0 +1,268 @@
+system: driveline-cv-diff-awd
+# phrase -> normalized -> routes_to[] (subcategory slugs) -> ambiguity -> provenance
+# ambiguity: unambiguous | needs-fact:<slot> | cross-system:<slug-or-service>
+# provenance: tekmetric | nhtsa | forum-paraphrase | synthetic
+#
+# SCHEMA (machine-readable — no routing hint lives in a comment):
+#   routes_to:        list of CURRENT live subcategory slugs the phrase should land in. [] = no correct
+#                     current subcategory exists (do NOT put a known-wrong slug here — Wave C would
+#                     aggregate it as ground truth).
+#   route:            service-level route when there is NO subcategory (e.g. awd_4x4_testing has none),
+#                     or the 'other'/advisor bucket for situational/null-route lines. Machine field.
+#   proposed_reroute: the PROPOSED subcategory slug this phrase SHOULD map to once the corresponding
+#                     proposals.yaml op lands. Machine field, never a bare comment.
+# awd_4x4_testing routes with NO subcategory; shown as route: awd_4x4_testing.
+
+entries:
+  # ---- Outer CV joint: click on turn -> popping_or_clicking_when_turning ----
+  - phrase: "clicking noise from the front only when i turn in parking lots"
+    normalized: CV click on low-speed turns
+    routes_to: [popping_or_clicking_when_turning]
+    ambiguity: unambiguous
+    provenance: tekmetric
+
+  - phrase: "tick tick tick when i make a sharp turn, faster the tighter i go"
+    normalized: rhythmic CV click scaling with turn angle
+    routes_to: [popping_or_clicking_when_turning]
+    ambiguity: unambiguous
+    provenance: synthetic
+
+  - phrase: "clacking from the driver side when im backing up and turning"
+    normalized: one-sided CV clack, reverse + turn
+    routes_to: [popping_or_clicking_when_turning]
+    ambiguity: needs-fact:location_side
+    provenance: forum-paraphrase
+
+  - phrase: "clicking axle when turning, i see grease flung on the inside of the tire"
+    normalized: torn CV boot, grease slung, click on turn
+    routes_to: [popping_or_clicking_when_turning]
+    ambiguity: unambiguous
+    provenance: synthetic
+
+  - phrase: "popping when i corner but nothing when the wheels are straight"
+    normalized: turn-only pop, absent straight
+    routes_to: [popping_or_clicking_when_turning]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+
+  - phrase: "clicking sound turning both left and right, gets louder the sharper i turn"
+    normalized: CV click both directions, scales with angle
+    routes_to: [popping_or_clicking_when_turning]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+
+  - phrase: "there is a clicking sound when i turn"
+    normalized: bare turn-click, no side/speed named (sparse)
+    routes_to: [popping_or_clicking_when_turning]
+    ambiguity: cross-system:power_steering_eps_testing
+    provenance: forum-paraphrase
+  # popping_or_clicking_when_turning: 7 entries, 2 synthetic = ~29% (<=30% cap)
+
+  # ---- Inner/tripod CV: accel shudder -> vibration ----
+  - phrase: "whole car shudders when i punch it from a stop, smooths out once rolling"
+    normalized: tripod CV shudder on hard acceleration
+    routes_to: [shaking_when_speeding_up_or_going_uphill]
+    ambiguity: cross-system:transmission_testing
+    provenance: synthetic
+
+  # ---- Wheel bearing / center bearing hum -> humming_or_whirring_at_speed ----
+  - phrase: "very noticeable humming from the rear end, most noticeable 30 to 40 mph, sounds like snow tires"
+    normalized: bearing/diff hum rising with road speed
+    routes_to: [humming_or_whirring_at_speed]
+    ambiguity: needs-fact:location_side
+    provenance: tekmetric
+
+  - phrase: "humming that gets louder curving left and quieter curving right, feel it in the floor"
+    normalized: wheel-bearing hum, steering-load sensitive
+    routes_to: [humming_or_whirring_at_speed]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+
+  - phrase: "loud humming at low speed on the driver side, less at higher speed, almost like a tire bulge"
+    normalized: bearing hum, side-specific
+    routes_to: [humming_or_whirring_at_speed]
+    ambiguity: needs-fact:location_side
+    provenance: forum-paraphrase
+
+  - phrase: "sounds like an airplane taking off from the rear when im on the highway"
+    normalized: roaring bearing hum at speed
+    routes_to: [humming_or_whirring_at_speed]
+    ambiguity: needs-fact:location_axle
+    provenance: synthetic
+
+  # ---- Hub-bearing-induced ABS/traction light -> abs_traction_stability_testing (integral wheel-speed sensor) ----
+  - phrase: "abs / trac / no AWD message"
+    normalized: ABS + traction light, customer notes no AWD message (hub-bearing wheel-speed-sensor cluster)
+    routes_to: [abs_anti_lock_brake_light]
+    route: abs_traction_stability_testing
+    ambiguity: cross-system:abs_traction_stability_testing
+    provenance: tekmetric
+
+  - phrase: "abs and traction light came on and theres a growling humming from one of the front wheels"
+    normalized: hub bearing tripping ABS/traction light + growl (one fault, not two)
+    routes_to: [humming_or_whirring_at_speed]
+    route: abs_traction_stability_testing
+    ambiguity: cross-system:abs_traction_stability_testing
+    provenance: forum-paraphrase
+
+  # ---- Differential pinion whine -> humming_or_whirring_at_speed (load-phase cue) ----
+  - phrase: "whine when accelerating that stops when i let off the gas, they said maybe the differential"
+    normalized: diff whine, accel/drive-side (ring & pinion mesh)
+    routes_to: [humming_or_whirring_at_speed]
+    ambiguity: cross-system:transmission_testing
+    provenance: forum-paraphrase
+
+  - phrase: "whirring noise only when i coast or let off the gas, quiet on the throttle"
+    normalized: coast-side diff whine (pinion bearing preload)
+    routes_to: [humming_or_whirring_at_speed]
+    ambiguity: cross-system:transmission_testing
+    provenance: forum-paraphrase
+
+  - phrase: "gear whine that gets louder going up hills and doesnt match the engine rpm"
+    normalized: diff/gear whine tracking road speed not rpm
+    routes_to: [humming_or_whirring_at_speed]
+    ambiguity: cross-system:transmission_testing
+    provenance: forum-paraphrase
+
+  - phrase: "rear end is whining and theres dark oil dripping back there"
+    normalized: diff whine + gear-oil leak co-symptom
+    routes_to: [humming_or_whirring_at_speed, thick_dark_brown_puddle_gear_or_differential_oil]
+    ambiguity: needs-fact:fluid_color
+    provenance: synthetic
+
+  # ---- U-joint / ring-pinion backlash clunk -> NO correct current subcat; propose driveline_engagement_clunk_or_bind ----
+  # NOTE: clunking_over_bumps is a MIS-FIT (bump-triggered, not torque-triggered). routes_to left []
+  # so Wave C does not learn the misroute as ground truth; current service route + proposed reroute below.
+  - phrase: "clunking noise when putting the car into drive from park or turning left"
+    normalized: driveline backlash clunk on gear engagement
+    routes_to: []
+    route: suspension_steering_check
+    proposed_reroute: driveline_engagement_clunk_or_bind
+    ambiguity: needs-fact:onset_timing
+    provenance: tekmetric
+
+  - phrase: "loud clunk from the driveline every time i shift into reverse and when i take off"
+    normalized: U-joint/backlash clunk on torque reversal
+    routes_to: []
+    route: suspension_steering_check
+    proposed_reroute: driveline_engagement_clunk_or_bind
+    ambiguity: needs-fact:onset_timing
+    provenance: synthetic
+
+  - phrase: "jerking in the driveline when backing up or on tight turns"
+    normalized: driveline jerk/bind on engagement + tight turns
+    routes_to: []
+    route: awd_4x4_testing
+    proposed_reroute: driveline_engagement_clunk_or_bind
+    ambiguity: cross-system:awd_4x4_testing
+    provenance: tekmetric
+
+  - phrase: "felt like the driveshaft slips when i take off fast, and it jerks when shifting"
+    normalized: driveshaft/U-joint slip + shift jerk
+    routes_to: []
+    route: suspension_steering_check
+    proposed_reroute: driveline_engagement_clunk_or_bind
+    ambiguity: cross-system:transmission_testing
+    provenance: forum-paraphrase
+
+  # ---- Limited-slip / posi chatter in tight turns (mimics AWD windup) -> suspension_steering_check ----
+  - phrase: "shuddering chatter feeling only in tight turns, its a rear wheel drive with a posi rear end"
+    normalized: LSD/posi clutch chatter on corners (no 4WD hardware)
+    routes_to: []
+    route: suspension_steering_check
+    proposed_reroute: driveline_engagement_clunk_or_bind
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+
+  # ---- Broken / snapped axle shaft -> total failure, tow (drivable_state=not_drivable_needs_tow) ----
+  - phrase: "heard a loud bang and now it wont move, engine revs but the car goes nowhere"
+    normalized: snapped axle shaft, engine free-revs, no motion
+    routes_to: []
+    route: suspension_steering_check
+    ambiguity: needs-fact:drivable_state
+    provenance: forum-paraphrase
+
+  # ---- AWD / 4WD engagement + bind -> route awd_4x4_testing (no subcat) ----
+  - phrase: "skipping feeling when turning and driving, feels like a truck stuck in 4x4"
+    normalized: AWD driveline windup / bind in turns
+    routes_to: []
+    route: awd_4x4_testing
+    ambiguity: unambiguous
+    provenance: tekmetric
+
+  - phrase: "my 4 wheel drive wont engage, the 4wd light just flashes and i hear grinding"
+    normalized: 4WD engagement failure + warning light
+    routes_to: []
+    route: awd_4x4_testing
+    ambiguity: unambiguous
+    provenance: tekmetric
+
+  - phrase: "truck feels stuck in 4 wheel drive and binds up when im turning"
+    normalized: stuck-in-4WD bind
+    routes_to: []
+    route: awd_4x4_testing
+    ambiguity: unambiguous
+    provenance: tekmetric
+
+  - phrase: "awd system malfunction message came up and it dropped into 2wd"
+    normalized: AWD electronic fault, 2WD limp
+    routes_to: []
+    route: awd_4x4_testing
+    ambiguity: cross-system:check_engine_light_testing
+    provenance: tekmetric
+
+  - phrase: "somethings off with my four wheel drive, it doesnt kick in when i switch to 4hi"
+    normalized: vague 4WD non-engagement
+    routes_to: []
+    route: awd_4x4_testing
+    ambiguity: unambiguous
+    provenance: tekmetric
+
+  # ---- Gear-oil / axle-seal leak -> thick_dark_brown_puddle_gear_or_differential_oil ----
+  - phrase: "thick dark fluid under the rear axle and it smells like rotten eggs"
+    normalized: gear-oil leak, sulfur smell, rear
+    routes_to: [thick_dark_brown_puddle_gear_or_differential_oil]
+    ambiguity: unambiguous
+    provenance: tekmetric
+
+  - phrase: "rear axle seal leak"
+    normalized: axle seal gear-oil leak (work-order voice)
+    routes_to: [thick_dark_brown_puddle_gear_or_differential_oil]
+    ambiguity: unambiguous
+    provenance: tekmetric
+
+  - phrase: "rear differential leak inspect and advise"
+    normalized: diff leak inspection request (work-order voice)
+    routes_to: [thick_dark_brown_puddle_gear_or_differential_oil]
+    ambiguity: unambiguous
+    provenance: tekmetric
+
+  - phrase: "sticky black greasy mess dripping from the pumpkin on the back axle"
+    normalized: diff housing gear-oil seep
+    routes_to: [thick_dark_brown_puddle_gear_or_differential_oil]
+    ambiguity: unambiguous
+    provenance: synthetic
+
+  # ---- Situational OVERRIDE: recent service ties to the symptom -> after_recent_service_or_repair_work (advisor) ----
+  # taxonomy 3b PRIORITY-ORDER: situational cue OVERRIDES the leak symptom keyword.
+  - phrase: "client just had rear differential serviced elsewhere and now sees fluid leaking everywhere"
+    normalized: gear-oil leak APPEARING right after a rear-diff service (situational override)
+    routes_to: []
+    route: after_recent_service_or_repair_work
+    ambiguity: cross-system:after_recent_service_or_repair_work
+    provenance: tekmetric
+
+  # ---- Null-route / maintenance (work-order lines, NOT a concern) ----
+  - phrase: "rear diff service"
+    normalized: scheduled differential fluid service (maintenance)
+    routes_to: []
+    route: advisor
+    ambiguity: unambiguous
+    provenance: tekmetric
+
+  - phrase: "all wheel / 4wd drive system service, rear differential fluid and transfer case fluid"
+    normalized: declined-service upsell line (maintenance, no symptom)
+    routes_to: []
+    route: advisor
+    ambiguity: unambiguous
+    provenance: tekmetric

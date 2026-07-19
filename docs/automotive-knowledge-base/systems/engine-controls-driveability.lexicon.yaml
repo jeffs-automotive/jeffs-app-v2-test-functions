@@ -1,0 +1,195 @@
+system: engine-controls-driveability
+# phrase -> normalized -> routes_to[] (subcategory slugs) -> ambiguity -> provenance
+# ambiguity: unambiguous | needs-fact:<slot> | cross-system:<neighbor-slug-or-dossier>
+# provenance: tekmetric | forum-paraphrase | nhtsa | synthetic
+entries:
+  # --- stall at idle ---
+  - phrase: "engine dies every time I come to a stop at a red light"
+    normalized: engine stalls at idle when stopping
+    routes_to: [stalling_at_idle_or_when_stopping]
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "stalls out right as I pull up to a stop sign but starts right back up"
+    normalized: stalls approaching a stop, restarts immediately
+    routes_to: [stalling_at_idle_or_when_stopping]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  - phrase: "IDLE IS DROPPING VERY LOW AND ALMOST STALLING"
+    normalized: low unstable idle nearly stalling
+    routes_to: [stalling_at_idle_or_when_stopping, rough_idle_or_shaking_at_a_stop]
+    ambiguity: needs-fact:engine_running
+    provenance: tekmetric
+  - phrase: "while idling my car will shut off unless I press on the gas"
+    normalized: stalls at idle unless throttle held
+    routes_to: [stalling_at_idle_or_when_stopping]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  # --- stall under load ---
+  - phrase: "car keeps stalling while driving and at idle"
+    normalized: stalls both while driving and at idle
+    routes_to: [stalling_while_driving_under_load, stalling_at_idle_or_when_stopping]
+    ambiguity: needs-fact:speed_band
+    provenance: tekmetric
+  - phrase: "was driving on the highway and the engine just shut off, had to coast to the shoulder"
+    normalized: engine died while driving at speed
+    routes_to: [stalling_while_driving_under_load]
+    ambiguity: unambiguous
+    provenance: synthetic
+  - phrase: "stalled out while turning into the parking lot and would not restart"
+    normalized: stalled under low-speed load, no restart
+    routes_to: [stalling_while_driving_under_load]
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "car dies while driving, battery and oil light come on, then it restarts and they go off"
+    normalized: stall accompanied by battery/charging warning lights
+    routes_to: [car_died_while_driving_electrical]
+    ambiguity: cross-system:electrical-charging-starting
+    provenance: tekmetric
+  # --- surge / hunting ---
+  - phrase: "RPMs go up and down on their own when I'm sitting at a red light"
+    normalized: idle RPM oscillates without throttle input
+    routes_to: [surging_or_rpms_going_up_and_down]
+    ambiguity: unambiguous
+    provenance: synthetic
+  - phrase: "when in park something seems to rev up"
+    normalized: engine revs on its own in park
+    routes_to: [surging_or_rpms_going_up_and_down]
+    ambiguity: needs-fact:engine_running
+    provenance: tekmetric
+  - phrase: "runs too high of an idle and idle searching"
+    normalized: high hunting idle
+    routes_to: [surging_or_rpms_going_up_and_down]
+    ambiguity: unambiguous   # "idle searching" = hunting/oscillation, so surging fits. NOTE: a STEADY high idle with NO hunting has no clean home -- nearest-fit is still surging_or_rpms_going_up_and_down (same service), logged as a coverage gap in dossier §3.3/§9.
+    provenance: forum-paraphrase
+  # --- hesitation ---
+  - phrase: "the engine hesitates when accelerating but not all the time"
+    normalized: intermittent acceleration hesitation
+    routes_to: [hesitation_or_lag_when_accelerating]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  - phrase: "hesitates when accelerating especially uphill"
+    normalized: hesitation under load / uphill
+    routes_to: [hesitation_or_lag_when_accelerating]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  - phrase: "little hiccup right when I take off from a stop sign"
+    normalized: momentary tip-in stumble off the line
+    routes_to: [hesitation_or_lag_when_accelerating]
+    ambiguity: unambiguous
+    provenance: synthetic
+  # --- low power / limp ---
+  - phrase: "went into limp mode and doesnt go over a certain speed"
+    normalized: limp mode speed ceiling
+    routes_to: [low_power_or_wont_accelerate_normally]
+    ambiguity: needs-fact:engine_running
+    provenance: tekmetric
+  - phrase: "car is not accelerating, the rpms only go to 3"
+    normalized: severe power loss, RPM ceiling
+    routes_to: [low_power_or_wont_accelerate_normally]
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "not accelerating well and feels like it is getting stuck"
+    normalized: sustained weak acceleration
+    routes_to: [low_power_or_wont_accelerate_normally]
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "revs up high but the car barely picks up speed"
+    normalized: engine revs without road speed gain
+    routes_to: [low_power_or_wont_accelerate_normally]
+    ambiguity: cross-system:automatic-transmission
+    provenance: forum-paraphrase
+  - phrase: "revs up and doesn't have power when accelerating, thinks the clutch failed"
+    normalized: RPM flare without acceleration, customer blames clutch
+    routes_to: [low_power_or_wont_accelerate_normally]
+    ambiguity: cross-system:automatic-transmission
+    provenance: tekmetric
+  # --- misfire / bucking ---
+  - phrase: "blinking check engine light, car is rumbling, feels like spark plugs and coils"
+    normalized: flashing MIL with misfire feel
+    routes_to: [engine_misfire_or_bucking_feeling]
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "vehicle feels like it is skipping on accel, revs up then goes"
+    normalized: misfire/skip under acceleration
+    routes_to: [engine_misfire_or_bucking_feeling]
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "misfire on start up"
+    normalized: misfire at startup
+    routes_to: [engine_misfire_or_bucking_feeling]
+    ambiguity: needs-fact:onset_timing
+    provenance: tekmetric
+  - phrase: "engine bucks and jerks when I press the gas like its skipping a beat"
+    normalized: bucking misfire under load
+    routes_to: [engine_misfire_or_bucking_feeling]
+    ambiguity: unambiguous
+    provenance: synthetic
+  - phrase: "traction control light came on as well for a short second, struggles at low speeds/idle"
+    normalized: brief traction/stability flicker secondary to an engine driveability symptom
+    routes_to: [rough_idle_or_shaking_at_a_stop, stalling_at_idle_or_when_stopping, engine_misfire_or_bucking_feeling]
+    ambiguity: needs-fact:engine_running   # the traction flicker is SECONDARY to the engine symptom (crank-speed irregularity trips it); route by the engine drive-feel, not as an ABS/traction fault (dossier §6)
+    provenance: tekmetric   # verbatim: "TRACTION CONTROL LIGHT CAME ON AS WELL FOR A SHORT SECOND. ... STRUGGLES AT LOW SPEEDS/ IDLE"
+  # --- rough idle ---
+  - phrase: "check engine light on, running rough"
+    normalized: MIL with rough running
+    routes_to: [rough_idle_or_shaking_at_a_stop, check_engine_light]
+    ambiguity: needs-fact:speed_band
+    provenance: tekmetric
+  - phrase: "car idles rough and shakes but runs down the road fine"
+    normalized: rough idle that smooths at speed
+    routes_to: [rough_idle_or_shaking_at_a_stop]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  # --- hard start cold / hot ---
+  - phrase: "cranks forever in the morning before it fires, then fine once warmed up"
+    normalized: hard cold start, cranks-but-slow-to-fire
+    routes_to: [hard_to_start_when_cold]
+    ambiguity: unambiguous
+    provenance: synthetic
+  - phrase: "after getting gas has to crank the vehicle multiple times to get started"
+    normalized: hard hot restart after fuel stop
+    routes_to: [hard_to_start_when_hot]
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "trouble starting after getting hot and resting a couple hours, takes longer to turn over"
+    normalized: heat-soak hard hot start
+    routes_to: [hard_to_start_when_hot]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  - phrase: "weak/extended crank"
+    normalized: long/weak crank before start
+    routes_to: [hard_to_start_when_cold, hard_to_start_when_hot]
+    ambiguity: needs-fact:weather_condition
+    provenance: tekmetric   # verbatim Tekmetric concern line: "CLIENT HAS BEEN NOTICING A WEAK/EXTENDED CRANK" (advisor-written channel voice, kept as-is)
+  # --- CEL / SES ---
+  - phrase: "check engine light on"
+    normalized: MIL illuminated, no other detail
+    routes_to: [check_engine_light]
+    ambiguity: needs-fact:warning_light_behavior
+    provenance: tekmetric
+  - phrase: "check engine light keeps turning on and going off, not blinking"
+    normalized: intermittent steady MIL (comes and goes)
+    routes_to: [check_engine_light]
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "check engine light came on right after I filled up with gas"
+    normalized: MIL after fuel fill-up (EVAP/gas-cap cue)
+    routes_to: [check_engine_light]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  - phrase: "dash says service engine soon, just hit 75k, car runs fine"
+    normalized: SES telltale, drives fine, make unknown
+    routes_to: [check_engine_light, service_engine_soon_or_maintenance_required_light]
+    ambiguity: "oem-legend: on GM/Nissan/older Ford 'SERVICE ENGINE SOON' IS the MIL (a fault), not a reminder -- needs vehicle make to disambiguate; when unknown, lean check_engine_light (scan). See dossier §2/§3.11."
+    provenance: synthetic
+  - phrase: "little wrench light on the dash, car drives perfectly"
+    normalized: wrench/maintenance reminder
+    routes_to: [service_engine_soon_or_maintenance_required_light]
+    ambiguity: unambiguous
+    provenance: synthetic
+  # --- null-route (non-concern maintenance request) ---
+  - phrase: "I just want my spark plugs replaced, they're probably due"
+    normalized: maintenance/parts request, no drivability symptom
+    routes_to: []
+    ambiguity: cross-system:advisor-maintenance-request
+    provenance: synthetic

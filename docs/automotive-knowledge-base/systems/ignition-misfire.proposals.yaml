@@ -1,0 +1,393 @@
+system: ignition-misfire
+# Typed change-ops binding this system's findings onto the live taxonomy snapshot
+# (00-current-scheduler-taxonomy.md + the DB enrichment pulled 2026-07-18).
+# Every op is a retraining lever (L1-L5). routes_to REQUIRED on negatives; synonyms >=2 tokens
+# or a domain single-token; fact cues literal.
+
+ops:
+  # ============================================================
+  # L1 — Stage-1 keywords (testing_services.example_keywords is EMPTY for
+  # check_engine_light_testing today; these are discriminating adds, all
+  # domain-specific, none bare high-frequency words)
+  # ============================================================
+  - op: stage1.keyword.add
+    category_key: check_engine_light_testing
+    phrase: "misfire"
+    rationale: "Domain single-token; strongest ignition-side signal. Corpus-frequent (misfire on start up, misfire cylinder 1/4)."
+    evidence: "real-concerns-tekmetric-labeled-v2.json lines 2899, 5135, 8349"
+  - op: stage1.keyword.add
+    category_key: check_engine_light_testing
+    phrase: "misfiring"
+    rationale: "Inflected form of the domain token."
+    evidence: "tekmetric line 5047 'still misfiring'"
+  - op: stage1.keyword.add
+    category_key: check_engine_light_testing
+    phrase: "running rough"
+    rationale: "Two-token; high-signal for rough_idle/misfire pool. Corpus verbatim (all-caps)."
+    evidence: "tekmetric line 320 'RUNNING ROUGH'; line 9339 'STARTED RUNNING ROUGH'"
+  - op: stage1.keyword.add
+    category_key: check_engine_light_testing
+    phrase: "rough idle"
+    rationale: "Two-token; direct subcategory cue."
+    evidence: "subcategory rough_idle_or_shaking_at_a_stop synonyms"
+  - op: stage1.keyword.add
+    category_key: check_engine_light_testing
+    phrase: "engine bucking"
+    rationale: "Two-token; misfire feel. Distinguishes from smooth surge/low-power."
+    evidence: "tekmetric line 9870 'SHAKING AND BUCKING'; line 931 'does a type of buck'"
+  - op: stage1.keyword.add
+    category_key: check_engine_light_testing
+    phrase: "flashing engine light"
+    rationale: "Two-token; the safety-critical active-misfire signal (flashing MIL = catalyst damage)."
+    evidence: "tekmetric line 1357 'Blinking check engine light'"
+  - op: stage1.keyword.add
+    category_key: check_engine_light_testing
+    phrase: "spark plugs"
+    rationale: "Two-token domain phrase; frequent in concern + prior-history text."
+    evidence: "tekmetric lines 1357, 5436, 6009, 11574"
+  - op: stage1.keyword.add
+    category_key: check_engine_light_testing
+    phrase: "ignition coil"
+    rationale: "Two-token domain phrase; common customer-named misfire cause."
+    evidence: "tekmetric line 1357 'spark plugs and ignition coils'"
+  - op: stage1.keyword.add
+    category_key: check_engine_light_testing
+    phrase: "cylinder misfire"
+    rationale: "Two-token; verbatim customer relay of P030x codes."
+    evidence: "tekmetric line 5135 'misfire on cylinder 1... cylinder 4'"
+
+  # ============================================================
+  # L2 — Stage-1 confusable-pair hedges
+  # ============================================================
+  - op: stage1.hedge.add
+    category_a: check_engine_light_testing
+    category_b: transmission_testing
+    rule: "If the jerk/buck is tied to GEAR CHANGES or shifting ('jerks when it shifts', 'in lower gears'), hedge toward transmission_testing. If the buck/skip is tied to ACCELERATION/LOAD or paired with a flashing CEL or spark-plug/coil mention, hedge toward check_engine_light_testing (misfire)."
+    discriminating_fact: "engine_running=misfiring (misfire) vs a gear/shift phrasing with no misfire cue"
+  - op: stage1.hedge.add
+    category_a: check_engine_light_testing
+    category_b: no_start_testing
+    rule: "If the car STARTS and then runs rough/misfires ('starts but shakes', 'misfire on start up'), stay check_engine_light_testing. If it CRANKS and never fires ('cranks but won't start', 'wont start when cold/hot'), hedge toward no_start_testing."
+    discriminating_fact: "engine_running=misfiring/rough_idle (ours) vs engine_running=wont_start (no_start)"
+  - op: stage1.hedge.add
+    category_a: check_engine_light_testing
+    category_b: suspension_steering_check
+    rule: "At-idle shake: if the ENGINE sounds rough/sputtery or a CEL is present, route check_engine_light_testing (rough_idle). If the customer says the WHOLE CAR shakes while the engine sounds normal or names a motor/engine mount, route suspension_steering_check (shaking_at_idle_while_stopped)."
+    discriminating_fact: "engine_running=rough_idle/misfiring present vs engine_running=normal"
+  - op: stage1.hedge.add
+    category_a: check_engine_light_testing
+    category_b: warning_light_general
+    rule: "A flashing/blinking CEL is a live severe misfire — keep on check_engine_light_testing even if the customer can't name the light. Only use warning_light_general when the customer truly cannot identify the light AND it is not the engine-outline icon."
+    discriminating_fact: "warning_light_named=check engine + warning_light_behavior=flashing_or_blinking"
+
+  # ============================================================
+  # L2 — Stage-2 description revisions (sharpen boundaries only; both are
+  # already populated — these tighten the misfire-vs-mount and flashing-vs-steady seams)
+  # ============================================================
+  - op: stage2.description.revise
+    subcat_slug: engine_misfire_or_bucking_feeling
+    text: "A JERKY, BUCKING, KICKING, or skip-a-beat feeling — the car jerks then catches, repeatedly, like it's skipping or running on fewer cylinders. Worst under load: acceleration, climbing hills, merging, in wet weather, or at certain RPMs. Often paired with a check engine light; a FLASHING/blinking light means a severe active misfire that damages the catalytic converter — reduce power and get it towed. Caused when a cylinder fails to fire: worn/fouled spark plug, failing ignition coil, cracked plug boot/wire (worse when wet), leaking injector, vacuum leak, or low compression. Distinct from hesitation_or_lag_when_accelerating (a SMOOTH one-time pause, not repeated jerks), from surging_or_rpms_going_up_and_down (smooth RPM oscillation, no violent jerk), from rough_idle_or_shaking_at_a_stop (rough only while stopped, not bucking under way), and from shaking_at_idle_while_stopped (whole car shakes but the ENGINE sounds normal — that's motor mounts)."
+    why: "Adds the wet-weather (boot/wire) cause, the flashing-MIL safety line, and an explicit mount-shake exclusion — the two required confusable pairs."
+  - op: stage2.description.revise
+    subcat_slug: rough_idle_or_shaking_at_a_stop
+    text: "The ENGINE runs rough, uneven, or sputtery while the car is stopped or idling in park/drive — RPM needle bounces, the note sounds choppy, and shudder comes through the wheel/seat but smooths out once moving. Often a misfiring plug/coil, vacuum leak, dirty injector, or carbon-fouled throttle body; a check engine light may be on. Distinct from shaking_at_idle_while_stopped (WHOLE CAR shakes while the engine itself sounds normal — usually broken engine/motor mounts), from stalling_at_idle_or_when_stopping (the engine actually DIES), and from engine_misfire_or_bucking_feeling (which is bucking/jerking UNDER WAY, not just rough at a stop)."
+    why: "Sharpens the engine-rough vs whole-car-mount-shake seam and the rough-vs-bucking-under-load seam."
+
+  # ============================================================
+  # L3 — Positive examples (corpus-first, real voice)
+  # ============================================================
+  - op: stage2.example.positive.add
+    subcat_slug: engine_misfire_or_bucking_feeling
+    phrase: "Blinking check engine light and the car is rumbling, its had spark plug and ignition coil problems before and feels the same"
+    provenance: tekmetric
+  # NOTE: a pure scan-code relay ("ran the codes and got a misfire on cyl 1/4") is intentionally NOT a
+  # positive example here — with no felt driveability symptom it routes to check_engine_light, not
+  # engine_misfire (see golden case 2 + the felt-vs-reported discriminator, dossier section 5).
+  - op: stage2.example.positive.add
+    subcat_slug: engine_misfire_or_bucking_feeling
+    phrase: "going up any incline the car pulls back, does a type of buck and eventually picks up"
+    provenance: tekmetric
+  - op: stage2.example.positive.add
+    subcat_slug: engine_misfire_or_bucking_feeling
+    phrase: "misfire on start up"
+    provenance: tekmetric
+  - op: stage2.example.positive.add
+    subcat_slug: engine_misfire_or_bucking_feeling
+    phrase: "bucks and jerks a lot worse when its raining or the road is wet"
+    provenance: synthetic
+  - op: stage2.example.positive.add
+    subcat_slug: rough_idle_or_shaking_at_a_stop
+    phrase: "no check engine light but the idle drops real low and it almost stalls when im stopped"
+    provenance: tekmetric
+  - op: stage2.example.positive.add
+    subcat_slug: rough_idle_or_shaking_at_a_stop
+    phrase: "check engine light on and its running rough"
+    provenance: tekmetric
+  - op: stage2.example.positive.add
+    subcat_slug: hesitation_or_lag_when_accelerating
+    phrase: "when i step on the gas theres like a second delay before the car actually goes, started suddenly out of nowhere"
+    provenance: tekmetric
+  - op: stage2.example.positive.add
+    subcat_slug: check_engine_light
+    phrase: "check engine light on, no driveability concerns, just the light being on"
+    provenance: tekmetric
+
+  # ============================================================
+  # L3 — Negative examples (routes_to REQUIRED)
+  # ============================================================
+  - op: stage2.example.negative.add
+    subcat_slug: engine_misfire_or_bucking_feeling
+    phrase: "whole car shakes at a stop light but the engine sounds smooth, i think its a motor mount"
+    routes_to: shaking_at_idle_while_stopped
+  - op: stage2.example.negative.add
+    subcat_slug: engine_misfire_or_bucking_feeling
+    phrase: "car has no power at all, i floor it and it barely moves, but it doesnt jerk or buck"
+    routes_to: low_power_or_wont_accelerate_normally
+  # NOTE: "the car jerks while switching gears" (corpus tkc-262, consensus=transmission_testing) is NOT
+  # added as an engine_misfire negative routing to a peer performance subcategory — the correct destination
+  # is Stage-1 transmission_testing, which has NO shift-quality Stage-2 subcategory (coverage gap). Rebinding
+  # it to hesitation/misfire would fight the L2 stage1.hedge.add and the corpus label. It is handled by that
+  # Stage-1 hedge + the Chris-gated stage2.subcategory.propose below.
+  - op: stage2.example.negative.add
+    subcat_slug: rough_idle_or_shaking_at_a_stop
+    phrase: "the whole car shudders at a red light but the engine runs smooth, probably a broken mount"
+    routes_to: shaking_at_idle_while_stopped
+  - op: stage2.example.negative.add
+    subcat_slug: rough_idle_or_shaking_at_a_stop
+    phrase: "the rpms rise and fall on their own at idle without me touching the gas"
+    routes_to: surging_or_rpms_going_up_and_down
+  - op: stage2.example.negative.add
+    subcat_slug: check_engine_light
+    phrase: "check engine light is flashing and the car is bucking and jerking bad"
+    routes_to: engine_misfire_or_bucking_feeling
+
+  # ============================================================
+  # L4 — Synonyms (>=2 tokens or domain single-token)
+  # ============================================================
+  - op: stage2.synonym.add
+    subcat_slug: engine_misfire_or_bucking_feeling
+    term: "misfire on cylinder"
+  - op: stage2.synonym.add
+    subcat_slug: engine_misfire_or_bucking_feeling
+    term: "misfire on startup"
+  - op: stage2.synonym.add
+    subcat_slug: engine_misfire_or_bucking_feeling
+    term: "coil pack"
+  - op: stage2.synonym.add
+    subcat_slug: engine_misfire_or_bucking_feeling
+    term: "misfires when cold"
+  - op: stage2.synonym.add
+    subcat_slug: engine_misfire_or_bucking_feeling
+    term: "bucks going uphill"
+  - op: stage2.synonym.add
+    subcat_slug: rough_idle_or_shaking_at_a_stop
+    term: "idle dropping low"
+  - op: stage2.synonym.add
+    subcat_slug: rough_idle_or_shaking_at_a_stop
+    term: "almost stalling at idle"
+
+  # ============================================================
+  # L5 — question.required_facts.set  (attack the over-asking problem:
+  # these misfire/idle/hesitation questions ship with EMPTY required_facts[]
+  # today, so the mapper can never skip them. Skip classes are conservative.)
+  # ============================================================
+  - op: question.required_facts.set
+    question_id: 513
+    facts: [onset_timing]
+    skip_class: PARTIAL
+    derivation_note: "'Does the misfire happen at certain speeds, under hard acceleration, or randomly?' is answered when the customer already stated onset_timing=when_accelerating (load) or intermittent/always. speed_band is secondary; keep the question when only speed_band is present. multi_select=true, so PARTIAL."
+  - op: question.required_facts.set
+    question_id: 516
+    facts: [recent_action]
+    skip_class: PARTIAL
+    derivation_note: "'How long since spark plugs were replaced?' is answered only when the customer volunteered recent plug/tune-up work (recent_action=general_service, e.g. 'spark plugs were just done'). Absence of a mention cannot be inferred, so PARTIAL — skip on a positive mention, otherwise ask."
+  - op: question.required_facts.set
+    question_id: 460
+    facts: [engine_running]
+    skip_class: PARTIAL
+    derivation_note: "Hesitation cross-check 'Does it ever feel like the car jerks, bucks, or stumbles?' is answered when engine_running=misfiring is already stated. PARTIAL because a null engine_running still needs the ask."
+  - op: question.required_facts.set
+    question_id: 461
+    facts: [onset_timing]
+    skip_class: PARTIAL
+    derivation_note: "'Does the problem happen all the time or only sometimes?' maps to onset_timing=always vs intermittent. PARTIAL."
+  - op: question.required_facts.set
+    question_id: 468
+    facts: [recent_action]
+    skip_class: PARTIAL
+    derivation_note: "'When did you last have spark plugs or a tune-up done?' (rough_idle) — same logic as q516; skip only on a volunteered recent_action=general_service."
+  - op: question.required_facts.set
+    question_id: 463
+    facts: [engine_running]
+    skip_class: PARTIAL
+    derivation_note: "'Does the shaking get better/worse/go away in Neutral or Park?' is the misfire-vs-mount discriminator; engine_running=rough_idle/misfiring vs normal partially answers whether it is an engine-load vs mount issue. PARTIAL — mount confirmation still benefits from the ask."
+
+  # ============================================================
+  # L5 — question.intentionally_empty (leave empty ON PURPOSE — no slot expresses these)
+  # ============================================================
+  - op: question.intentionally_empty
+    question_id: 455
+    reason: "'When you first press the gas vs only under hard passing/merging' is a tip-in-vs-WOT sub-distinction of onset_timing=when_accelerating that no slot value separates. Setting onset_timing here would wrongly skip it. Keep empty."
+  - op: question.intentionally_empty
+    question_id: 514
+    reason: "'Does it get worse in rain/humidity/wet weather?' already carries required_facts=[weather_condition] in the live DB — no change needed; recorded here so the verifier does not re-flag it as empty."
+
+  # ============================================================
+  # Subcategory proposal (CHRIS-GATED — propose, never assume)
+  # The ignition/misfire space is otherwise fully covered by existing performance +
+  # warning_light subcategories and check_engine_light_testing. The ONE genuine seam:
+  # shift-tied jerks route to Stage-1 transmission_testing, but the performance pool
+  # has NO shift-quality Stage-2 subcategory, so they have no correct Stage-2 home.
+  # ============================================================
+  - op: stage2.subcategory.propose
+    category: performance
+    service_key: transmission_testing
+    proposed_slug: jerks_or_hard_shifts_between_gears
+    rationale: "Shift-quality complaints tied to gear changes belong at Stage-1 transmission_testing, but performance has no shift subcategory, so today they leak into hesitation/misfire. A dedicated subcategory closes the misfire<->transmission seam and gives Stage-2 a correct home."
+    evidence: "real-concerns-tekmetric-labeled-v2.json tkc-262 ('the car jerks while switching gears in the lower gears... gets jerky when easing off the pedal to coast', consensus_category=transmission_testing) + tkc-025 ('hesitates when shifting gears... only when shifting gears')"
+    gated: chris
+    note: "Until approved, the misfire<->transmission boundary is held by the L2 stage1.hedge.add (check_engine_light_testing <-> transmission_testing) ONLY. No engine_misfire negative_example is used to rebind shift-jerks — that would fight the Stage-1 hedge and the corpus consensus label."
+  # No catalog.service.propose, no stage3.slot.propose.
+  # ============================================================
+
+golden_cases:
+  - text: "check engine light is flashing and the car is bucking and jerking really bad, feels like its gonna stall, scared to drive it"
+    tags: [fact_rich, safety, flashing_mil]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      # no_start_testing is NOT acceptable: the car STARTS and then bucks/misfires (dossier hedge L2 #2 keeps
+      # a starts-then-runs-rough car on check_engine_light_testing). transmission_testing is the defensible
+      # alternate for a bucking-under-load feel (cf. case 5).
+      stage1_acceptable: [check_engine_light_testing, transmission_testing]
+      stage2_subcategory_slug: engine_misfire_or_bucking_feeling
+      stage3_facts:
+        engine_running: misfiring
+        warning_light_named: "check engine"
+        warning_light_behavior: flashing_or_blinking
+        drivable_state: drivable_but_concerned
+      route: testing_service
+
+  # ---- INFERENCE TRAP #1: pure scan-code relay, no felt symptom, no named light ----
+  - text: "ran the codes and it gave back 3 codes, a misfire, misfire on cylinder 1, and misfire on cylinder 4"
+    tags: [inference_trap, customer_relayed_codes]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing]
+      stage2_subcategory_slug: check_engine_light
+      stage3_facts:
+        customer_request_type: fix_a_known_problem
+        # engine_running INTENTIONALLY NULL — a scan REPORTED a misfire; the customer never described feeling one
+        # warning_light_named INTENTIONALLY NULL — the text names no dashboard light ("ran the codes", not "check engine light")
+      route: testing_service
+    trap_note: "Reported scan codes with NO felt driveability symptom and NO named light -> check_engine_light, engine_running NULL, warning_light_named NULL. Do NOT set engine_running=misfiring from a reported code (felt-vs-reported discriminator, dossier section 5). This is exactly the over-assertion the inference-trap forbids."
+
+  - text: "engine sputters and runs rough when im stopped at red lights, rpm needle bounces all over, check engine light is on and sometimes i get a rotten egg smell"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing]
+      stage2_subcategory_slug: rough_idle_or_shaking_at_a_stop
+      stage3_facts:
+        engine_running: rough_idle
+        speed_band: stopped
+        onset_timing: when_idling
+        warning_light_named: "check engine"
+        # warning_light_behavior INTENTIONALLY NULL — "check engine light is on" is existence, not behavior
+        smell_descriptor: rotten_egg_or_sulfur
+      route: testing_service
+
+  - text: "when i step on the gas theres like a second delay before the car actually goes. started suddenly out of nowhere"
+    tags: [moderate]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing, transmission_testing]
+      stage2_subcategory_slug: hesitation_or_lag_when_accelerating
+      stage3_facts:
+        onset_timing: when_accelerating
+        started_when: sudden_onset
+      route: testing_service
+
+  - text: "going up any incline the car pulls back, does a type of buck and eventually picks up"
+    tags: [moderate, load_dependent]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing, transmission_testing]
+      stage2_subcategory_slug: engine_misfire_or_bucking_feeling
+      stage3_facts:
+        engine_running: misfiring
+        onset_timing: when_accelerating
+      route: testing_service
+
+  - text: "couple times the check engine light came on and it misfired bad, both times it was cold out and i was going downhill, i shut it off and restarted and it ran fine"
+    tags: [fact_rich, cold_misfire, intermittent]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing]
+      stage2_subcategory_slug: engine_misfire_or_bucking_feeling
+      stage3_facts:
+        engine_running: misfiring
+        warning_light_named: "check engine"
+        # "couple times... came on... ran fine" = TWO+ occurrences = comes_and_goes, NOT came_on_then_off
+        # (which the ontology defines as appeared ONCE and is now off)
+        warning_light_behavior: comes_and_goes
+        weather_condition: cold_weather
+        onset_timing: intermittent
+      route: testing_service
+
+  - text: "check engine light on, no driveability concerns, just the light being on, want to know what it is"
+    tags: [light_only, no_symptom]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing, warning_light_general]
+      stage2_subcategory_slug: check_engine_light
+      stage3_facts:
+        warning_light_named: "check engine"
+        # warning_light_behavior INTENTIONALLY NULL — "just the light being on" is existence, not behavior
+        engine_running: normal
+        drivable_state: drivable_normally
+        customer_request_type: diagnose_problem
+      route: testing_service
+
+  # ---- INFERENCE TRAP #2: second-hand misfire code, customer feels nothing ----
+  # The extractor MUST NOT set engine_running=misfiring (the customer did NOT
+  # experience a misfire; a scan reported it). A light being 'on' is EXISTENCE,
+  # not behavior, so warning_light_behavior stays NULL (not steady_on, not
+  # flashing). It routes to the warning-light subcategory, not engine_misfire,
+  # because there is no felt driveability symptom.
+  - text: "autozone told me it has a misfire but honestly the car drives totally fine to me, the engine light is on"
+    tags: [inference_trap, second_opinion]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing]
+      stage2_subcategory_slug: check_engine_light
+      stage3_facts:
+        warning_light_named: "check engine"
+        # warning_light_behavior INTENTIONALLY NULL — "the engine light is on" is existence, not behavior
+        customer_request_type: second_opinion
+        # engine_running INTENTIONALLY NULL — misfire is reported, not felt
+      route: testing_service
+    trap_note: "Do NOT set engine_running=misfiring from a reported scan result; a light being 'on' is existence, not behavior, so warning_light_behavior stays NULL (not steady_on, and certainly not flashing)."
+
+  # ---- BOUNDARY: mount shake, not misfire (misfire-shake vs mount-shake pair) ----
+  - text: "whole car shakes at a stop light but the engine sounds smooth to me, i think its a motor mount"
+    tags: [boundary, misfire_vs_mount]
+    expected:
+      stage1_category_key: suspension_steering_check
+      stage1_acceptable: [suspension_steering_check, check_engine_light_testing]
+      stage2_subcategory_slug: shaking_at_idle_while_stopped
+      stage3_facts:
+        engine_running: normal
+        onset_timing: when_idling
+      route: testing_service
+    trap_note: "Engine sounds smooth -> engine_running=normal, NOT rough_idle; whole-car idle shake with a normal engine is mounts (vibration), not a misfire."
+
+  # ---- NULL-ROUTE: work-order line, not a customer concern ----
+  - text: "Previously declined>Remove & Replace Spark Plugs (Replacement due every 40k miles. No history at 40k or 80k.)"
+    tags: [null_route, non_concern, work_order]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      stage3_facts: {}
+      route: advisor
+    trap_note: "Declined maintenance RO line with no symptom -> NON-CONCERN; empty Stage-1, hand to advisor. Do not classify as a misfire just because 'spark plugs' appears."

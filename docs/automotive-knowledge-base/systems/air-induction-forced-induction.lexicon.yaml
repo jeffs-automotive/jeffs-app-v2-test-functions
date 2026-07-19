@@ -1,0 +1,120 @@
+system: air-induction-forced-induction
+# phrase -> normalized -> routes_to[] (subcategory slugs) -> ambiguity -> provenance
+# ambiguity: unambiguous | needs-fact:<slot> | cross-system:<slug> | non-concern
+#
+# SYNTHETIC-SHARE DISCLOSURE (customer-voice-style-guide rule 3): forced induction is a documented
+# catalog coverage gap — the Tekmetric corpus contains only FOUR forced-induction utterances total
+# (6774 turbo-whistle, 7409 limp-mode, 9757 puddle-under-turbos, 7910 CEL+booster) and ZERO for
+# supercharger / boost-leak / MAF. Real voice is used wherever it exists (tekmetric + forum-paraphrase
+# of the forums corpus); the boost/turbo/supercharger-SPECIFIC rows are irreducibly synthetic. Actual
+# share below is 7/17 synthetic (~41%), OVER the ~30% target — disclosed here, NOT hidden. Per-subcategory
+# breakdown is in the dossier §11 self-check.
+entries:
+  # ---- FM-2/FM-3 boost loss / whistle / limp (tekmetric first) ----
+  - phrase: "when stepping on gas vehicle not accelerating (we just replaced turbo wastegate actuator last service) also hears whistling on accel (did not happen before)"
+    normalized: power loss + whistle on acceleration, right after a turbo wastegate-actuator service
+    routes_to: [low_power_or_wont_accelerate_normally]
+    ambiguity: needs-fact:onset_timing   # the literal recent-service parenthetical is a situational cue -> can override to after_recent_service_or_repair_work
+    provenance: tekmetric   # corpus 6774 (quoted in full so the recent-service cue is actually present in the text)
+
+  - phrase: "vehicle doesnt go over a certain speed / went into limp mode a lot of dash lights came on but are now off"
+    normalized: limp mode, speed cap, multiple lights came on then off
+    routes_to: [multiple_warning_lights_at_once, low_power_or_wont_accelerate_normally]
+    ambiguity: needs-fact:warning_light_behavior
+    provenance: tekmetric   # corpus 7409
+
+  - phrase: "reduced engine power light, wont rev past 3k"
+    normalized: limp / reduced-power mode, RPM cap
+    routes_to: [low_power_or_wont_accelerate_normally]
+    ambiguity: unambiguous
+    provenance: synthetic
+
+  - phrase: "hear a whoosh and hissing when i floor it then it bogs"
+    normalized: charge-air/boost leak hiss under load, power loss
+    routes_to: [low_power_or_wont_accelerate_normally]
+    ambiguity: needs-fact:onset_timing
+    provenance: synthetic
+
+  # ---- FM-1 turbo / supercharger whine (the big confusable) ----
+  - phrase: "whine noise when running"
+    normalized: under-hood whine present while running
+    routes_to: [high_pitched_whining_under_the_hood]
+    ambiguity: cross-system:starting-charging   # alternator/serpentine-belt whine is the dominant cause
+    provenance: tekmetric   # corpus 7192
+
+  - phrase: "whining noise when i shut the car off, can hear it slightly while running, kind of metal on metal"
+    normalized: whine most audible on shutdown (a bearing/water-pump cue), faint while running
+    routes_to: [high_pitched_whining_under_the_hood]
+    ambiguity: cross-system:engine-mechanical   # a spin-down whine on shutoff is NOT a turbo/boost cue
+    provenance: tekmetric   # corpus 697 (paraphrased lightly; tekmetric-sourced)
+
+  - phrase: "whine while accelerating that doesnt match the wheels, real loud going up hills"
+    normalized: rising whine under load, louder uphill (does not track engine RPM cleanly)
+    routes_to: [high_pitched_whining_under_the_hood]
+    ambiguity: cross-system:driveline-cv-diff-awd
+    provenance: forum-paraphrase   # forums 490
+
+  - phrase: "my supercharger whines louder the more i give it gas"
+    normalized: supercharger whine rising with RPM/load
+    routes_to: [high_pitched_whining_under_the_hood]
+    ambiguity: needs-fact:onset_timing
+    provenance: synthetic
+
+  # ---- FM-4 dirty MAF / intake (hesitation) ----
+  - phrase: "hesitates when i step on it, started after they changed my air filter"
+    normalized: tip-in hesitation after air-filter/intake service (MAF cue)
+    routes_to: [hesitation_or_lag_when_accelerating]
+    ambiguity: needs-fact:recent_action
+    provenance: synthetic
+
+  - phrase: "it hesitates when accelerating, especially uphill, and not all the time"
+    normalized: intermittent tip-in hesitation, worse under load/uphill
+    routes_to: [hesitation_or_lag_when_accelerating]
+    ambiguity: needs-fact:onset_timing
+    provenance: forum-paraphrase   # forums 1650/1770
+
+  # ---- FM-5 vacuum / PCV / intake leak (idle whistle) ----
+  - phrase: "theres a hissing whistle at idle and it idles rough"
+    normalized: intake/vacuum leak whistle at idle, rough idle, lean
+    routes_to: [rough_idle_or_shaking_at_a_stop]
+    ambiguity: needs-fact:onset_timing
+    provenance: synthetic
+
+  - phrase: "it stalls, runs rough and hesitates on acceleration, sometimes a rotten egg smell"
+    normalized: stall + rough idle + hesitation (lean / unmetered-air pattern), sulfur smell
+    routes_to: [rough_idle_or_shaking_at_a_stop, hesitation_or_lag_when_accelerating]
+    ambiguity: needs-fact:onset_timing
+    provenance: forum-paraphrase   # forums 1690
+
+  # ---- FM-7 turbo oil-seal blue smoke (color owns route) ----
+  - phrase: "possible oil and coolant leaks, puddle under both turbos and the oil cooler, coolant and oil both low"
+    normalized: oil (and coolant) leak at turbo/oil-cooler housing, low oil
+    routes_to: [brown_or_black_puddle_engine_oil]
+    ambiguity: cross-system:engine-lubrication-oil
+    provenance: tekmetric   # corpus 9757
+
+  - phrase: "blue smoke out the back and burning oil smell, its a turbo car"
+    normalized: turbo seal oil burn, blue tailpipe smoke
+    routes_to: [blue_or_gray_smoke_from_tailpipe]
+    ambiguity: cross-system:exhaust-emissions
+    provenance: synthetic
+
+  # ---- FM-6 clogged air filter + maintenance/request null-routes ----
+  - phrase: "previously declined>replace engine air filter"
+    normalized: maintenance work-order line, not a customer concern
+    routes_to: []
+    ambiguity: non-concern
+    provenance: tekmetric   # corpus 2460
+
+  - phrase: "i just need a new engine air filter please"
+    normalized: explicit part-replacement request (air filter)
+    routes_to: []
+    ambiguity: non-concern   # customer_request_type=replace_specific_part -> advisor
+    provenance: synthetic
+
+  # ---- Cross-system negative anchor (brake booster != turbo boost) ----
+  - phrase: "check engine light on. was told needed a booster by dealer"
+    normalized: check engine light + dealer said 'booster' (BRAKE booster, NOT turbo boost)
+    routes_to: [check_engine_light]   # route on the stated CEL; 'booster' is a red-herring brakes part, no brake symptom stated
+    ambiguity: cross-system:brakes-friction-hydraulic
+    provenance: tekmetric   # corpus 7910

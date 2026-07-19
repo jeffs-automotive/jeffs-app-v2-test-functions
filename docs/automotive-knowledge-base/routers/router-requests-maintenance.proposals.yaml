@@ -1,0 +1,466 @@
+system: router-requests-maintenance
+# Wave B router. This router routes AWAY from services (to situational buckets / advisor / null),
+# so its ops are dominated by stage1.hedge.add (the situational overrides + non-concern rule) and
+# stage2.example.negative.add on the 6 other/* situational subcategory slugs. Pure work-order
+# null-routes CANNOT be stage2.example.negative.add (that op REQUIRES a routes_to subcat slug, and a
+# null-route names none) -> they are trained as golden `null_match` cases at the bottom.
+# provenance enum: tekmetric | nhtsa | forum-paraphrase | synthetic  (source-policy.md)
+
+ops:
+  # ============================================================
+  # L1 — Stage-1 HEDGES: the situational-cue overrides (taxonomy §3b PRIORITY-ORDER) + the
+  # NON-CONCERN work-order rejection + the tire-buying gap. These sharpen the live prompt rules
+  # with the causal-tie discipline and corpus-grounded boundaries.
+  # ============================================================
+
+  - op: stage1.hedge.add
+    category_a: after_recent_service_or_repair_work
+    category_b: check_engine_light_testing   # representative symptom service; rule generalizes to ANY symptom service
+    rule: "Recent shop/part work named as the STATED CAUSE of a symptom that STARTED or PERSISTS ('after service, CEL on'; 'multiple repairs completed STILL misfiring'; 'we replaced rear brakes, client STILL reports squeal') -> after_recent_service_or_repair_work FIRST; if a specific testable symptom is ALSO clearly described, return the situational key first + the symptom service second (2-candidate clarify). A recent repair mentioned only as BACKSTORY to a fresh testable symptom ('Carmax already replaced the strut' before an isolate-the-noise ask) does NOT fire the bucket -> route the symptom."
+    discriminating_fact: recent_action   # general_service + CAUSAL-BLAME framing (fact alone insufficient)
+
+  - op: stage1.hedge.add
+    category_a: after_a_recent_accident_or_impact
+    category_b: suspension_steering_check   # representative; generalizes to abs/tires/steering symptom services
+    rule: "An accident/impact/pothole/curb named as the STATED CAUSE ('slid into a curb, NOW hears a rotational thump'; 'since I got rear-ended it pulls') -> after_a_recent_accident_or_impact. A collision framing with airbag deployment / real damage / insurance / 'check the whole car' dominates even when a light is present. An impact mentioned in passing before a clean testable symptom -> route the symptom."
+    discriminating_fact: recent_action   # accident_or_impact / hit_pothole_or_curb + causal framing
+
+  - op: stage1.hedge.add
+    category_a: safety_concern_dont_feel_safe_driving_it
+    category_b: brake_inspection   # representative safety-system service
+    rule: "Fear DOMINATES with no diagnosable symptom named, OR a total loss of a safety system ('brakes gave out', 'NO BRAKE PRESSURE', 'DO NOT DRIVE', 'scared to drive it') -> safety_concern_dont_feel_safe_driving_it (a safety-system loss is NOT a routine inspection). A NAMED, testable symptom plus a passing 'is it safe to drive?' stays at the symptom service -> a safety question alone does NOT override a named symptom/light."
+    discriminating_fact: drivable_state   # not_drivable_needs_tow/stranded_now + absence of a named symptom
+
+  - op: stage1.hedge.add
+    category_a: car_has_been_sitting_unused_for_a_long_time
+    category_b: charging_starting_testing   # + no_start_testing
+    rule: "Long storage as the FRAMING ('sat for two years', 'sat outside all winter, not sure what it needs before I start using it') -> car_has_been_sitting_unused_for_a_long_time (set recent_action=car_sat_unused). If instead a SPECIFIC start/electrical symptom leads and the sitting is only backstory ('had to jump it, sat for awhile' where the actionable ask is the dead battery) offer the charging/no-start service too (2-candidate). Pure 'make it road-ready after sitting' with no single symptom -> the bucket."
+    discriminating_fact: recent_action   # car_sat_unused as framing vs a specific start symptom leading
+
+  - op: stage1.hedge.add
+    category_a: general_check_up_or_pre_trip_inspection
+    category_b: null   # boundary is against the NON-CONCERN null-route, not another service
+    rule: "An OPEN-ENDED 'look the car over' request -- wellness / pre-trip / road-trip / peace-of-mind / just-bought once-over ('wellness check, driving to Boston'; 'just purchased, overall check up'; 'warranty expiring, make sure everything ok') -> general_check_up_or_pre_trip_inspection (advisor_handoff). A BARE regulatory service line -- 'State Inspection', 'State Inspection and Emissions', 'Reinspection' -- with no condition-assessment intent is a bookable work-order line -> null_match (Stage-1 []). 'Annual/yearly inspection' framed as a general check leans to the bucket."
+    discriminating_fact: customer_request_type   # pre_trip_inspection / open-ended framing (bucket) vs bare regulatory noun-phrase (null)
+
+  - op: stage1.hedge.add
+    category_a: multiple_symptoms_not_sure_what_category
+    category_b: check_engine_light_testing   # representative single-symptom service
+    rule: "SEVERAL co-equal problems with no single primary, or an explicit 'not sure what's wrong', or a cross-category mix the customer can't parse ('rattle over bumps, heat smells funny, AND the steering...'; 'A/C not cooling, maybe a fuse, ALSO oil change') -> multiple_symptoms_not_sure_what_category. ONE dominant testable symptom with minor asides -> route the dominant symptom. A dashboard of many lights the customer names -> defer to router-warning-lights (multiple_warning_lights_at_once) when it is a LIGHTS complaint."
+    discriminating_fact: warning_light_behavior   # multiple_lights_at_once cue vs a single dominant symptom
+
+  - op: stage1.hedge.add
+    category_a: just_want_new_tires   # tire-buying gap: no bookable service -> null-route (advisor quote)
+    category_b: tire_repair
+    rule: "A request for NEW tires, or aged/dry-rotted/worn-out tires named as the thing to replace ('quote for 4 new tires', 'TIRE REPLACEMENT', 'sidewalls all cracked and dry rotted') -> the tire-buying gap: Stage-1 [] (null_match) with latent_subcategory just_want_new_tires / dry_rot_sidewall_cracking, because tire_repair EXPLICITLY excludes worn/aged/sidewall tires and no other service fits. A repairable defect (nail/screw/puncture, losing air, patchable) -> tire_repair. Coordination: wheels-tires-tpms-bearings owns tire_repair and the Chris-gated tire_sales_consultation proposal; do NOT re-propose it here."
+    discriminating_fact: customer_request_type   # just_get_new_tires / tire_state=sidewall_cracking -> null; tire_state=visible_damage + repair intent -> tire_repair
+
+  # NON-CONCERN work-order rejection is a Stage-1 RULE, not a pairwise hedge to a service (it routes to
+  # NO candidate). It is documented in the dossier §3 rule 5 and trained via the golden null_match cases
+  # below. Not emitted as a stage1.hedge.add because it has no category_b service to hedge against.
+
+  # ============================================================
+  # L3 — Negative examples on the SITUATIONAL subcategory slugs (each names a routes_to). These sharpen
+  # the bucket boundaries so a fresh testable symptom (backstory-only cue) is NOT swallowed by the bucket.
+  # NOTE: work-order/tire-buying null-routes are NOT here (no routes_to slug) -> golden cases only.
+  # ============================================================
+
+  - op: stage2.example.negative.add
+    subcat_slug: after_recent_service_or_repair_work
+    phrase: "carmax already replaced the right front strut a while back, but now i just need you to isolate a fresh noise when i turn"
+    routes_to: noise_when_turning_the_steering_wheel   # prior repair is backstory; fresh testable symptom leads
+
+  - op: stage2.example.negative.add
+    subcat_slug: after_recent_service_or_repair_work
+    phrase: "tow in, transmission failed, does not shift at all"
+    routes_to: red_or_pink_puddle_transmission_or_power_steering   # tow/arrival is not the concern; the specific symptom is (routes to transmission_testing pool)
+
+  - op: stage2.example.negative.add
+    subcat_slug: after_a_recent_accident_or_impact
+    phrase: "hit a pothole last month but that's not why i'm here — the check engine light is flashing right now"
+    routes_to: check_engine_light   # impact in passing; a fresh diagnosable light leads
+
+  - op: stage2.example.negative.add
+    subcat_slug: safety_concern_dont_feel_safe_driving_it
+    phrase: "my abs light is on, brakes seem fine, is it safe to drive to my appointment?"
+    routes_to: abs_anti_lock_brake_light   # a NAMED diagnosable light + a passing safety question stays at the light
+
+  - op: stage2.example.negative.add
+    subcat_slug: general_check_up_or_pre_trip_inspection
+    phrase: "my brakes are grinding metal on metal and i want them looked at before my road trip"
+    routes_to: metallic_grinding   # a specific testable symptom dominates; the trip is only context
+
+  - op: stage2.example.negative.add
+    subcat_slug: multiple_symptoms_not_sure_what_category
+    phrase: "check engine light is on and it's running rough, everything else is fine"
+    routes_to: check_engine_light   # one dominant symptom, not a co-equal multi-symptom case
+
+  - op: stage2.example.negative.add
+    subcat_slug: car_has_been_sitting_unused_for_a_long_time
+    phrase: "it sat a couple days and now won't crank, just clicks once when i turn the key"
+    routes_to: wont_crank_just_clicks   # short sit is backstory; a specific no-crank symptom leads
+
+  # Mirror negatives: a fresh symptom subcat that should hand OFF to a situational bucket when the cue
+  # is the stated cause. (These live on the SYMPTOM subcats; the router supplies them cross-system.)
+  - op: stage2.example.negative.add
+    subcat_slug: high_pitched_squealing
+    phrase: "you replaced my rear brakes under warranty last service and they are STILL squealing"
+    routes_to: after_recent_service_or_repair_work   # recent shop work named as the persistent cause
+
+  - op: stage2.example.negative.add
+    subcat_slug: check_engine_light
+    phrase: "the check engine light came back on right after the repairs you did last month"
+    routes_to: after_recent_service_or_repair_work   # causal tie to recent work
+
+  # ============================================================
+  # L4 — Synonyms (>=2 tokens or domain single-token) that help Stage-1 recognize the situational /
+  # request framing. Added on the situational subcategory slugs (which back the 'other/*' Stage-1 keys).
+  # ============================================================
+  - op: stage2.synonym.add
+    subcat_slug: general_check_up_or_pre_trip_inspection
+    term: "wellness check"
+  - op: stage2.synonym.add
+    subcat_slug: general_check_up_or_pre_trip_inspection
+    term: "pre trip inspection"
+  - op: stage2.synonym.add
+    subcat_slug: general_check_up_or_pre_trip_inspection
+    term: "road trip check"
+  - op: stage2.synonym.add
+    subcat_slug: general_check_up_or_pre_trip_inspection
+    term: "peace of mind check"
+  - op: stage2.synonym.add
+    subcat_slug: after_recent_service_or_repair_work
+    term: "still not fixed after service"
+  - op: stage2.synonym.add
+    subcat_slug: after_recent_service_or_repair_work
+    term: "came back on after repairs"
+  - op: stage2.synonym.add
+    subcat_slug: after_a_recent_accident_or_impact
+    term: "after fender bender"
+  - op: stage2.synonym.add
+    subcat_slug: car_has_been_sitting_unused_for_a_long_time
+    term: "been sitting unused"
+  - op: stage2.synonym.add
+    subcat_slug: safety_concern_dont_feel_safe_driving_it
+    term: "dont feel safe driving"
+  - op: stage2.synonym.add
+    subcat_slug: multiple_symptoms_not_sure_what_category
+    term: "not sure whats wrong"
+
+  # ============================================================
+  # L5 — Fact-slot notes (NO new slot proposed; NO required_facts.set). The situational-bucket questions
+  # are already triaged NEVER (intentionally-empty, advisor-routed elicitation) in binding/
+  # required-facts-map.q3.md lines 137-166 -- this router does NOT re-tag them. customer_request_type,
+  # recent_action, and drivable_state already exist and hold everything this router needs.
+  # ============================================================
+  - op: stage3.slot.value.add
+    slot: customer_request_type
+    value: just_get_new_tires   # ALREADY in the enum; recorded here only to bind the literal cues for the tire-buying gap
+    literal_cues:
+      - "quote for 4 new tires"
+      - "want to put new tires on"
+      - "TIRE REPLACEMENT"
+      - "need new rubber on it"
+      - "get a set of tires"
+    # NOTE: this value already exists in extracted-facts.ts -- this op is a CUE-BINDING no-op-if-present,
+    # NOT a schema change. Included so Wave C can attach the tire-buying literal cues to the slot.
+
+# ============================================================
+# CONFUSABLE MATRIX ROWS (machine form of dossier §5). This router OWNS these rows for
+# binding/confusable-matrix.yaml. Each: {pair, discriminating_fact, discriminating_question, hedge_rule,
+# examples_a, examples_b}. examples_* are customer-voice; provenance noted where not tekmetric.
+# ============================================================
+confusable_matrix_rows:
+  - pair: [null_match_work_order_line, real_symptom_concern]
+    discriminating_fact: customer_request_type   # replace_specific_part/routine_maintenance + ALL symptom slots null
+    discriminating_question: "Are you describing a problem the car is having, or naming a specific job for us to do?"
+    hedge_rule: "A named ACTION with no described symptom ('rack replacement', 'reset oil maint light', 'Previously declined> flush', 'State Inspection') -> null_match (Stage-1 []). Any symptom slot set (a noise/leak/feel/light-behavior) flips it back to a concern -- incl. the '...ALSO a symptom' exception ('we serviced it recently, STILL not cold')."
+    examples_a:   # WORK-ORDER null-route
+      - "rack replacement"                              # tekmetric tkc-108
+      - "Previously declined>REPLACE AIR FILTER"        # tekmetric tkc-015
+      - "RESET OIL MAINT LIGHT (Not due yet)"           # tekmetric tkc-011
+      - "State Inspection and Emissions"                # tekmetric tkc-287
+      - "Tire Rotation & Balance"                       # tekmetric tkc-060
+    examples_b:   # REAL concern (route the symptom)
+      - "AC recharged a couple months ago, now blowing hot again"   # tekmetric-style; symptom present
+      - "brakes grinding metal on metal, need them looked at asap"  # symptom present
+      - "oil light came on when driving, check oil level"           # tekmetric tkc-039
+
+  - pair: [after_recent_service_or_repair_work, symptom_service]
+    discriminating_fact: recent_action   # general_service + causal-blame framing
+    discriminating_question: "Did recent work CAUSE this (started or still happening because of the work), or is the work just something that happened before a new problem?"
+    hedge_rule: "Cue as STATED CAUSE ('after service, CEL on'; 'STILL misfiring after multiple repairs') -> after_recent_service_or_repair_work (add the symptom service as a 2nd candidate if a testable symptom is also present). Cue in passing before a fresh testable symptom -> route the symptom."
+    examples_a:
+      - "CLIENT STILL REPORTING BRAKE SQUEAL. WE REPLACED REAR BRAKES UNDER WARRANTY LAST SERVICE"  # tkc-037
+      - "Check engine light ON AFTER SERVICE"           # tekmetric tkc-084
+      - "vehicle overheated after valve cover replacement check and advise"   # tkc-196
+      - "multiple repairs completed still misfiring"    # tkc-220
+    examples_b:
+      - "ISOLATE NOISE WHEN TURNING LEFT OR RIGHT (Carmax already replaced right front strut)"  # tkc-016
+      - "tow in. client was taking a turn and heard noise, now hears metal on metal"            # tkc-119
+
+  - pair: [after_a_recent_accident_or_impact, symptom_service]
+    discriminating_fact: recent_action   # accident_or_impact / hit_pothole_or_curb + causal framing
+    discriminating_question: "Did an accident, pothole, or curb cause this, or is a specific problem the main thing you want checked?"
+    hedge_rule: "Impact as the STATED CAUSE, or a collision framing (airbags deployed / damage / insurance / 'check the whole car') -> after_a_recent_accident_or_impact even with a light present. A minor bump + a lone diagnosable light the customer wants checked, or an impact mentioned in passing -> route the symptom/light."
+    examples_a:
+      - "CLIENT WAS DRIVING, THE VEHICLE SLID INTO A CURB/SIDEWALK. CLIENT HEARS A ROATIONAL THUMB"  # tkc-088
+      - "Got rear ended last weekend, bumper looks fine but the car drives different now"            # authored other-accident-1
+      - "hit a really bad pothole yesterday and now the front end feels off, no warning lights"      # authored other-accident-2
+    examples_b:
+      - "just tapped a curb, no airbags went off, car drives fine, i only want the airbag light checked"  # authored (airbag dossier)
+
+  - pair: [safety_concern_dont_feel_safe_driving_it, named_diagnosable_symptom]
+    discriminating_fact: drivable_state   # not_drivable/stranded + no named symptom
+    discriminating_question: "Is it that you don't feel safe and aren't sure what's wrong, or is there a specific thing (a light, a noise, the brakes) you want us to check?"
+    hedge_rule: "Fear dominates with NO diagnosable symptom named, or a total loss of a safety system -> safety_concern_dont_feel_safe_driving_it. A NAMED testable symptom + a passing 'is it safe?' stays at the symptom -- a safety question alone does not override a named symptom/light."
+    examples_a:
+      - "The brakes gave out on our 2011 Nissan Frontier"                       # tkc-255
+      - "something feels seriously wrong and i dont feel safe driving it, im scared"  # authored other-safety-1
+      - "started making an awful noise on the highway so i pulled over, too scared to drive it"  # authored other-safety-2
+    examples_b:
+      - "abs light is on, brakes seem fine tho, do we need an appointment right away?"  # diagnose-concern negative example #8
+
+  - pair: [car_has_been_sitting_unused_for_a_long_time, charging_starting_or_no_start]
+    discriminating_fact: recent_action   # car_sat_unused as framing vs a specific start symptom leading
+    discriminating_question: "Do you mainly want it made road-ready after sitting, or is there one specific problem (won't crank, won't start) that started?"
+    hedge_rule: "Long storage as the FRAMING with no single symptom ('sat two years, get it safe to drive') -> car_has_been_sitting_unused_for_a_long_time (set recent_action=car_sat_unused). A specific start/crank symptom leading with sitting only as backstory -> the charging/no-start service (offer the bucket 2nd if genuinely mixed)."
+    examples_a:
+      - "My dads truck has been sitting in his garage for about two years, want to get it safe to drive"  # authored other-sitting-1
+      - "car sat outside all winter w/o being driven, not sure what it needs before i start using it"     # authored other-sitting-2
+    examples_b:
+      - "CLIENT HAD TO JUMP START VEHICLE (Sat for awhile)"   # tkc-118 -- the actionable ask is the dead battery
+
+  - pair: [general_check_up_or_pre_trip_inspection, null_match_regulatory_inspection]
+    discriminating_fact: customer_request_type   # pre_trip_inspection/open-ended (bucket) vs bare regulatory line (null)
+    discriminating_question: "Do you want us to look the whole car over and tell you how it's doing, or do you need a specific state/emissions inspection booked?"
+    hedge_rule: "Open-ended 'look it over' / wellness / pre-trip / peace-of-mind / just-bought once-over -> general_check_up_or_pre_trip_inspection (advisor_handoff). A bare regulatory service line ('State Inspection', 'Emissions', 'Reinspection') with no condition-assessment intent -> null_match. 'Annual/yearly inspection' framed as a general check leans to the bucket."
+    examples_a:
+      - "I generally am looking for a wellness check as I'll be driving to Boston soon"  # tkc-005
+      - "just purchased a used 2010 Ford Focus and would like an overall check up and oil change"  # tkc-242
+      - "FACTORY WARRANTY EXPIRING (Wants to make sure everything ok)"    # tkc-048
+    examples_b:
+      - "State Inspection and Emissions"    # tkc-287 -> null_match
+      - "Reinspection. Already passed Emissions and fixed all failed safety inspection issues"  # tkc-192 -> null_match
+
+  - pair: [multiple_symptoms_not_sure_what_category, single_dominant_symptom]
+    discriminating_fact: warning_light_behavior   # multiple_lights_at_once cue vs one dominant symptom
+    discriminating_question: "Is there one main problem you want us to start with, or several things going on at once with no clear main one?"
+    hedge_rule: "Several co-equal problems / an explicit 'not sure what's wrong' / a cross-category mix -> multiple_symptoms_not_sure_what_category. One dominant testable symptom with minor asides -> route it. A dashboard of many LIGHTS the customer names -> defer to router-warning-lights (multiple_warning_lights_at_once)."
+    examples_a:
+      - "my car has like 3 problems at once, squeaks when i brake, hesitates when i give it gas, and something..."  # authored other-multi-2
+      - "A/C not cooling, maybe a fuse/relay. Also Oil change"    # tkc-122
+      - "Coolant leak, window motor stuck, oil change and many more"  # tkc-151
+    examples_b:
+      - "check engine light is on and it's running rough, everything else is fine"   # one dominant symptom -> check_engine_light_testing
+
+  - pair: [just_want_new_tires_or_dry_rot, tire_repair]   # taxonomy §5 #9 -- the tire-BUYING gap (this router owns it)
+    discriminating_fact: customer_request_type   # just_get_new_tires / tire_state=sidewall_cracking -> null-route; tire_state=visible_damage -> tire_repair
+    discriminating_question: "Do you want us to fix or patch a specific tire (a nail, a screw, losing air), or do you want new tires because they're worn out or old?"
+    hedge_rule: "A request for NEW tires, or aged/dry-rotted/cracked-sidewall tires named as the thing to replace -> the tire-buying gap: null_match (Stage-1 []) with latent_subcategory just_want_new_tires / dry_rot_sidewall_cracking (tire_repair EXCLUDES worn/aged/sidewall tires; no service fits). A repairable defect (nail/screw/puncture, losing air, patchable) -> tire_repair. Do NOT re-propose tire_sales_consultation here (wheels dossier owns it)."
+    examples_a:
+      - "4 NEW TIRES AND ALIGNMENT (would like entry level tire)"   # tkc-138
+      - "TIRE REPLACEMENT"                                          # tka-125
+      - "sidewalls are all cracked, tires are old and dry-rotted"   # synthetic
+    examples_b:
+      - "found a screw sticking out of my rear left tire, still holds air, drives fine"  # eval tpms_testing-001 -> tire_repair
+      - "left rear tire keeps losing air, have to fill it every week"                    # tkc-style -> tire_repair
+
+# ============================================================
+# GOLDEN CASES (>=8; incl. >=1 inference-trap + >=1 null-route). Schema mirrors eval-cases.json.
+# route enum: testing_service | advisor_handoff | null_match.  latent_subcategory = soft KB target on
+# the tire-buying gap only (per the harness invariant: no null-Stage-1 with a non-null Stage-2).
+# ============================================================
+golden_cases:
+  # ---- situational bucket: recent service, causal tie (override) ----
+  - text: "check engine light came back on right after the repairs you did last month, want to know if it's related"
+    tags: [situational, recent_service, override]
+    expected:
+      stage1_category_key: after_recent_service_or_repair_work
+      stage1_acceptable: [after_recent_service_or_repair_work, check_engine_light_testing]
+      stage2_subcategory_slug: after_recent_service_or_repair_work
+      stage3_facts:
+        recent_action: general_service
+        warning_light_named: "check engine"
+      route: advisor_handoff
+      # Causal tie ('right after the repairs') fires the bucket first; CEL service is an acceptable 2nd candidate.
+
+  # ---- situational bucket: recent accident, causal tie ----
+  - text: "slid into a curb yesterday and now i hear a rotational thumping from the front, drives different"
+    tags: [situational, accident, override]
+    expected:
+      stage1_category_key: after_a_recent_accident_or_impact
+      stage1_acceptable: [after_a_recent_accident_or_impact, suspension_steering_check]
+      stage2_subcategory_slug: after_a_recent_accident_or_impact
+      stage3_facts:
+        recent_action: hit_pothole_or_curb
+        noise_descriptor: humming_or_whirring
+        location_axle: front
+      route: advisor_handoff
+
+  # ---- situational bucket: safety fear dominates ----
+  - text: "the brakes basically gave out on our frontier, im scared to drive it, please help"
+    tags: [situational, safety]
+    expected:
+      stage1_category_key: safety_concern_dont_feel_safe_driving_it
+      stage1_acceptable: [safety_concern_dont_feel_safe_driving_it, brake_inspection]
+      stage2_subcategory_slug: safety_concern_dont_feel_safe_driving_it
+      stage3_facts:
+        drivable_state: not_drivable_needs_tow
+      route: advisor_handoff
+      # A total loss of a safety system + fear -> safety bucket (NOT a routine brake inspection).
+
+  # ---- situational bucket: car has been sitting ----
+  - text: "my dads truck sat in the garage for like two years, we want to get it safe to drive again but not sure what it needs"
+    tags: [situational, sitting]
+    expected:
+      stage1_category_key: car_has_been_sitting_unused_for_a_long_time
+      stage1_acceptable: [car_has_been_sitting_unused_for_a_long_time]
+      stage2_subcategory_slug: car_has_been_sitting_unused_for_a_long_time
+      stage3_facts:
+        recent_action: car_sat_unused
+      route: advisor_handoff
+
+  # ---- situational bucket: pre-trip / general check-up ----
+  - text: "nothing wrong that i know of, were driving to florida next month and i just want a once over before the trip"
+    tags: [situational, pre_trip, request_type]
+    expected:
+      stage1_category_key: general_check_up_or_pre_trip_inspection
+      stage1_acceptable: [general_check_up_or_pre_trip_inspection]
+      stage2_subcategory_slug: general_check_up_or_pre_trip_inspection
+      stage3_facts:
+        customer_request_type: pre_trip_inspection
+      route: advisor_handoff
+      # 'next month' is a plan, NOT a driving condition -> do NOT set weather/onset. 'once over' = the bucket.
+
+  # ---- situational bucket: multiple co-equal symptoms ----
+  - text: "honestly not sure whats wrong, it rattles over bumps, the heat smells funny, and the steering feels loose. bunch of stuff"
+    tags: [situational, multiple_symptoms]
+    expected:
+      stage1_category_key: multiple_symptoms_not_sure_what_category
+      stage1_acceptable: [multiple_symptoms_not_sure_what_category]
+      stage2_subcategory_slug: multiple_symptoms_not_sure_what_category
+      stage3_facts:
+        onset_timing: over_bumps
+      route: advisor_handoff
+      # Three co-equal cross-category symptoms, no single primary -> the multi bucket (do not force one service).
+
+  # ---- NULL-ROUTE: bare work-order line (no symptom) ----
+  - text: "Previously declined>REPLACE ENGINE AIR FILTER (Replacement due every 60k miles)"
+    tags: [null_route, work_order]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      stage3_facts:
+        customer_request_type: replace_specific_part
+      route: null_match
+      # NON-CONCERN rejection: a named action, no symptom -> Stage-1 [] -> advisor, no guessed service.
+
+  # ---- NULL-ROUTE: regulatory inspection line ----
+  - text: "State Inspection and Emissions"
+    tags: [null_route, work_order, regulatory]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      route: null_match
+      # A bare regulatory service line with no condition-assessment intent -> null_match (NOT the pre-trip bucket).
+
+  # ---- NULL-ROUTE: not-a-vehicle-concern (logistics) ----
+  - text: "hi i need to reschedule my appt from friday to sometime next week, is tuesday morning open? thanks"
+    tags: [null_route, off_topic]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      route: null_match
+
+  # ---- NULL-ROUTE: price/hours question (not a concern) ----
+  - text: "how much do u charge for an oil change and tire rotation?"
+    tags: [null_route, off_topic]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      route: null_match
+
+  # ---- TIRE-BUYING GAP: pure sales request ----
+  - text: "hey can i get a quote for 4 new tires, want to put a set on before winter, entry level is fine"
+    tags: [tire_buying_gap, sales_request]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      latent_subcategory: just_want_new_tires
+      stage3_facts:
+        customer_request_type: just_get_new_tires
+      route: null_match
+      # THE TIRE-BUYING GAP. No service fits (tire_repair excludes new-tire sales) -> null_match; correct
+      # tires-pool bucket recorded as latent_subcategory (soft KB target until tire_sales_consultation lands).
+      # 'before winter' is a DEADLINE, not a driving condition -> must NOT set weather_condition=cold_weather.
+
+  # ---- TIRE-BUYING GAP: dry rot ----
+  - text: "the sidewalls on all my tires are cracked and dry rotted, car sat outside a long time, need new tires"
+    tags: [tire_buying_gap, dry_rot]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      latent_subcategory: dry_rot_sidewall_cracking
+      stage3_facts:
+        tire_state: sidewall_cracking
+        recent_action: car_sat_unused
+        customer_request_type: just_get_new_tires
+      route: null_match
+
+  # ---- REQUEST-TYPE OVERLAY: named system + second opinion -> route the system, NOT advisor ----
+  - text: "dealership said i need wheel bearings, i want a second opinion, 89 auth ok"
+    tags: [request_overlay, second_opinion]
+    expected:
+      stage1_category_key: suspension_steering_check
+      stage1_acceptable: [suspension_steering_check]
+      stage2_subcategory_slug: humming_or_whirring_at_speed
+      stage3_facts:
+        customer_request_type: second_opinion
+      route: testing_service
+      # A named system + second_opinion routes to that SYSTEM (the request type is metadata, not a route).
+
+  # ---- REQUEST-TYPE OVERLAY: told-by-dealer, fix-known -> route the system ----
+  - text: "was told by the dealer my rear brakes are getting low, want them inspected"
+    tags: [request_overlay, fix_known]
+    expected:
+      stage1_category_key: brake_inspection
+      stage1_acceptable: [brake_inspection]
+      stage2_subcategory_slug: null
+      stage3_facts:
+        customer_request_type: fix_a_known_problem
+        location_axle: rear
+      route: testing_service
+
+  # ---- INFERENCE-TRAP: work-order-shaped but a symptom IS present -> real concern, not null ----
+  - text: "AC recharged a couple months ago, now its blowing straight hot again"
+    tags: [inference_trap, work_order_exception]
+    expected:
+      stage1_category_key: ac_performance_check
+      stage1_acceptable: [ac_performance_check]
+      stage2_subcategory_slug: ac_blows_warm_or_hot_air
+      stage3_facts:
+        recent_action: ac_recharge_or_service
+      route: testing_service
+      # TRAP: the 'recharge' work-order framing must NOT trigger a null-route -- a fresh symptom ('blowing
+      # hot again') is present -> real concern. Also must NOT set customer_request_type (contacting the
+      # shop about broken AC is not a literal request-type statement -- diagnose-concern negative example #6).
+
+  # ---- NEAR-MISS: passing cue + a fresh testable symptom -> route the symptom, not the bucket ----
+  - text: "carmax replaced my strut a while back but thats not the issue, i just need you to find a fresh clunk when i turn the wheel"
+    tags: [near_miss, passing_cue]
+    expected:
+      stage1_category_key: suspension_steering_check
+      stage1_acceptable: [suspension_steering_check]
+      stage2_subcategory_slug: noise_when_turning_the_steering_wheel
+      stage3_facts:
+        noise_descriptor: clunking
+        onset_timing: when_turning
+      route: testing_service
+      # The prior repair is explicitly disclaimed as the cause -> the situational bucket must NOT fire.

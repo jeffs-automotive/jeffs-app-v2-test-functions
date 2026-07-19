@@ -1,0 +1,391 @@
+system: engine-lubrication-oil
+# Typed change-ops bound to the live snapshot (2026-07-18, shop 7476). Question IDs are real
+# concern_questions.id values pulled from the DB. routes_to on every negative; synonyms >=2 tokens
+# or a domain token. Catalog/subcategory items are Chris-gated proposals, never assumed.
+
+ops:
+  # =====================================================================
+  # L1 — Stage-1 keywords
+  # IMPORTANT (taxonomy §1/§2): the two oil services have EMPTY example_keywords[] in the DB, BUT their
+  # Stage-1 keyword line is already populated via the subcategory synonyms[] UNION (40-cap). The oil
+  # subcategory synonyms already include "oil leak", "oil pan leak", "valve cover leak" (brown_or_black
+  # puddle), "burnt oil smell"/"burning oil smell" (burnt_oil_smell), and "oil pressure light", "oil can
+  # light", "genie lamp light", "low oil pressure light/warning" (oil_pressure_light). Re-adding those as
+  # example_keywords is a no-op refill (taxonomy §2: "improve, don't refill"). So ONLY genuinely-new domain
+  # tokens NOT already in any bound subcategory's synonym union are proposed here, each cited to a
+  # LINGUISTIC authority (corpus/forum/synthetic) — never a Tier-2 diagnostic source.
+  - op: stage1.keyword.add
+    category_key: oil_leak_testing
+    phrase: "oil on the ground"
+    rationale: "Service-level driveway/garage-floor leak cue not covered by the puddle/drip synonyms; ≥2 tokens; genuinely new to the Stage-1 union."
+    evidence: forum-paraphrase:cartalk-oil-leak-sitting
+  # ("rear main seal leak" is NOT added here — it is proposed as a stage2.synonym.add on
+  #  brown_or_black_puddle_engine_oil below, which ALREADY unions into the Stage-1 keyword line AND helps
+  #  the Stage-2 pick, so a duplicate example_keyword would be a no-op refill.)
+  # (Dropped as redundant with the synonym union: "oil leak", "oil pan leak", "valve cover leak",
+  #  "burnt oil smell", "oil pressure light", "oil can light", "genie lamp light", plus near-duplicates
+  #  "oil dripping"/"oil puddle"/"oil light on"/"low oil pressure". Dropped "burnt oil smell" ALSO because
+  #  its prior evidence tekmetric:tkc-049 was false — tkc-049 is an oil-change/TPMS work-order labeled
+  #  multiple_symptoms_not_sure_what_category, no burnt-oil language. No genuinely-new oil_pressure_light_
+  #  testing token remains: its subcategory synonym set already saturates the Stage-1 line.)
+
+  # =====================================================================
+  # Stage-1 hedges (confusable pairs — §5/§7)
+  # =====================================================================
+  - op: stage1.hedge.add
+    category_a: oil_leak_testing
+    category_b: exhaust_system_testing
+    rule: "Oil residue / burnt-oil SMELL / visible drip -> oil_leak_testing. A metallic TICK that quiets when warm plus a louder-than-normal exhaust -> exhaust_system_testing. Oil dripping ONTO the manifold (burnt-oil smell, oil film) is oil_leak_testing even though it is 'at the exhaust'."
+    discriminating_fact: "smell_descriptor=burnt_oil (oil) vs noise_descriptor=ticking_or_tapping + louder exhaust (exhaust)"
+  - op: stage1.hedge.add
+    category_a: oil_leak_testing
+    category_b: coolant_leak_testing
+    rule: "Puddle color + smell decides: brown/black + petroleum/burnt -> oil_leak_testing; bright green/orange/pink + sweet -> coolant_leak_testing."
+    discriminating_fact: "fluid_color=brown_or_black + smell_descriptor=burnt_oil vs fluid_color=green_or_orange_or_yellow_or_pink + smell_descriptor=sweet_or_maple_syrup"
+  - op: stage1.hedge.add
+    category_a: check_engine_light_testing
+    category_b: coolant_leak_testing
+    rule: "Tailpipe smoke: BLUE/GRAY (oily/burnt-oil smell) -> check_engine_light_testing; thick WHITE (sweet smell, topping coolant) -> coolant_leak_testing; BLACK (raw-gas smell) -> check_engine_light_testing."
+    discriminating_fact: "smoke_color=blue_or_gray vs white vs black"
+  - op: stage1.hedge.add
+    category_a: oil_pressure_light_testing
+    category_b: warning_light_general
+    rule: "A RED oil-can-with-a-drip that came on while driving -> oil_pressure_light_testing (critical). A 'SERVICE DUE' / 'OIL LIFE %' / 'MAINT REQD' message is a maintenance reminder, NOT this light -> route to service_engine_soon_or_maintenance_required_light."
+    discriminating_fact: "warning_light_named='oil pressure' + warning_light_behavior=steady_on vs warning_light_named='service'/'maintenance required'"
+  # (Removed a hedge with category_b: none_routine_maintenance — that is NOT a valid Stage-1 key. Stage-1
+  #  keys are testing_services.service_key OR one of the 6 'other' buckets (taxonomy §3a/§3b); "routine
+  #  maintenance" is none of these — a bare oil-change request is a NON-CONCERN work-order line that the
+  #  Stage-1 NON-CONCERN rejection rule sends to advisor handoff (EMPTY Stage-1). That behavior is enforced
+  #  by the null-route golden case + the stage2 negative examples, not by a two-category hedge.)
+
+  # =====================================================================
+  # L2/L3/L4 — Stage-2 enrichment (sharpen, don't duplicate)
+  # =====================================================================
+  # --- brown_or_black_puddle_engine_oil ---
+  - op: stage2.example.positive.add
+    subcat_slug: brown_or_black_puddle_engine_oil
+    phrase: "constantly drips oil from the bottom where the engine and transmission bolt up, underneath is soaked front to back"
+    provenance: forum-paraphrase
+  - op: stage2.example.positive.add
+    subcat_slug: brown_or_black_puddle_engine_oil
+    phrase: "oil dripping off a plastic cover near the front, three or four inch spots on the driveway"
+    provenance: forum-paraphrase
+  - op: stage2.example.negative.add
+    subcat_slug: brown_or_black_puddle_engine_oil
+    phrase: "clear oily-feeling drip with no smell and my oil level never drops"
+    routes_to: clear_odorless_puddle_water_or_ac_condensation
+  - op: stage2.example.negative.add
+    subcat_slug: brown_or_black_puddle_engine_oil
+    phrase: "bright red fluid under the middle of the car"
+    routes_to: red_or_pink_puddle_transmission_or_power_steering
+  - op: stage2.example.negative.add
+    subcat_slug: brown_or_black_puddle_engine_oil
+    phrase: "amber colored drips near a front wheel and the brake pedal feels soft"   # ⚠ amber collision: brake fluid, SAFETY
+    routes_to: clear_yellow_or_light_brown_puddle_brake_fluid
+  - op: stage2.synonym.add
+    subcat_slug: brown_or_black_puddle_engine_oil
+    term: "rear main seal leak"
+  - op: stage2.synonym.add
+    subcat_slug: brown_or_black_puddle_engine_oil
+    term: "drain plug leak"
+  # --- oil_pressure_light ---
+  - op: stage2.example.positive.add
+    subcat_slug: oil_pressure_light
+    phrase: "oil light comes on at idle and goes out when i speed up, only after it's warm"
+    provenance: forum-paraphrase
+  - op: stage2.example.positive.add
+    subcat_slug: oil_pressure_light
+    phrase: "oil pressure light flickers when the rpms drop at a stoplight"
+    provenance: forum-paraphrase
+  - op: stage2.example.negative.add
+    subcat_slug: oil_pressure_light
+    phrase: "dashboard says SERVICE DUE and oil life is at 5 percent, i think i'm due for an oil change"
+    routes_to: service_engine_soon_or_maintenance_required_light
+  - op: stage2.example.negative.add
+    subcat_slug: oil_pressure_light
+    phrase: "deep knocking from the engine and no warning light is on"
+    routes_to: deep_knocking_from_the_engine
+  - op: stage2.synonym.add
+    subcat_slug: oil_pressure_light
+    term: "red teapot light"
+  # --- burnt_oil_smell ---
+  - op: stage2.example.negative.add
+    subcat_slug: burnt_oil_smell
+    phrase: "the exhaust is louder than normal and ticks on a cold start"
+    routes_to: exhaust_manifold_tick_or_puff
+  - op: stage2.example.negative.add
+    subcat_slug: burnt_oil_smell
+    phrase: "burning rubber smell from a wheel after braking downhill"
+    routes_to: burning_rubber_hot_brake_smell
+  # --- blue_or_gray_smoke_from_tailpipe ---
+  - op: stage2.example.positive.add
+    subcat_slug: blue_or_gray_smoke_from_tailpipe
+    phrase: "puff of blue smoke on cold startup that clears after a minute, been topping off oil"
+    provenance: forum-paraphrase   # paraphrased startup-seal pattern; NOT a verbatim corpus/DB line (do not mislabel tekmetric)
+  - op: stage2.example.negative.add
+    subcat_slug: blue_or_gray_smoke_from_tailpipe
+    phrase: "thick white smoke from the tailpipe that smells sweet"
+    routes_to: white_smoke_from_tailpipe
+  - op: stage2.synonym.add
+    subcat_slug: blue_or_gray_smoke_from_tailpipe
+    term: "burning oil out the tailpipe"
+  # --- smoke_from_under_the_hood ---
+  - op: stage2.example.positive.add
+    subcat_slug: smoke_from_under_the_hood
+    phrase: "oil pooling under the exhaust manifold, wisps of smoke at idle"
+    provenance: forum-paraphrase
+  - op: stage2.example.negative.add
+    subcat_slug: smoke_from_under_the_hood
+    phrase: "burning oil smell but no smoke i can actually see"
+    routes_to: burnt_oil_smell
+
+  # =====================================================================
+  # L5 — required_facts SET (close over-asking) + intentionally_empty
+  # RECONCILED against the committed binding maps (binding/required-facts-map.q1/q2/q3.md). Where a map
+  # classes a question NEVER / NO-SLOT / left-empty, this file does NOT set it (that would make two
+  # committed artifacts disagree, and always in the unsafe direction — skipping a safety question). The
+  # ONLY set ops are (a) unconditional facts a map does not forbid, and (b) facts on the proposed
+  # oil_consumption_state slot, which are EXPLICITLY conditional on that slot being adopted, with a stated
+  # fallback so a rejected slot leaves the question always-ask.
+  # =====================================================================
+  # --- Reconciled to intentionally_empty to MATCH the binding maps (were wrongly SET in the prior draft) ---
+  - op: question.intentionally_empty
+    question_id: 232   # burnt-smell: "smell it most after a long drive / running hard?"
+    reason: "binding/required-facts-map.q2 classes 232 NO-SLOT ('Onset-condition; no slot'). 'after a long drive' is a leak/burn onset CONDITION, not a clean onset_timing enum value -> keep always-ask (do NOT set onset_timing)."
+  - op: question.intentionally_empty
+    question_id: 325   # oil-puddle: "smelled burning or seen smoke under the hood while driving?"
+    reason: "binding/required-facts-map.q1 leaves 325 EMPTY on purpose: NEW-symptom discovery; a pre-existing unrelated smell_descriptor/smoke_color value would WRONG-SKIP this. Keep always-ask (do NOT set smell_descriptor)."
+  - op: question.intentionally_empty
+    question_id: 303   # smoke-under-hood: "temp gauge into the red / hot-engine warning?"
+    reason: "binding/required-facts-map.q3 classes 303 NEVER ('Compound gauge+light sequence; safety-diagnostic, always ask'). Do NOT set warning_light_named."
+  - op: question.intentionally_empty
+    question_id: 308   # smoke-under-hood: "popping, hissing, or boiling sounds?"
+    reason: "binding/required-facts-map.q3 classes 308 NEVER ('Compound noise+smoke diagnostic; noise_descriptor alone can't answer'). Do NOT set noise_descriptor."
+  - op: question.intentionally_empty
+    question_id: 236   # burnt-smell: "oil light on, OR topping off between changes?"
+    reason: "binding/required-facts-map.q2 classes 236 PARTIAL/unsafe ('OR + specific-light'). Adopting oil_consumption_state answers only the topping-off half; the oil-light half stays unmodeled, so the compound OR is NOT safely skippable. Keep always-ask (EXCLUDED from oil_consumption_state's unlocked set)."
+  # --- oil_consumption_state SET ops: CONDITIONAL on the slot proposal below; fallback if rejected ---
+  - op: question.required_facts.set
+    question_id: 291   # blue-smoke: "adding oil between changes, how often?"
+    facts: [oil_consumption_state]
+    skip_class: PARTIAL
+    conditional_on: "stage3.slot.propose:oil_consumption_state"
+    fallback: intentionally_empty   # binding map q1 classes 291 NEVER ('no slot') TODAY; the slot is the fix
+    derivation_note: "Directly answered by oil_consumption_state=adding_frequently/topped_off_recently. Until/unless the slot is adopted, 291 stays always-ask (matches binding map q1: NEVER, no slot)."
+  - op: question.required_facts.set
+    question_id: 327   # oil-puddle: "adding oil between changes / dipstick low?"
+    facts: [oil_consumption_state]
+    skip_class: PARTIAL
+    conditional_on: "stage3.slot.propose:oil_consumption_state"
+    fallback: intentionally_empty   # binding map q1 classes 327 NEVER ('Consumable-level check; no slot')
+    derivation_note: "Answered by oil_consumption_state (adding_* + dipstick_low_or_empty). Fallback = always-ask (matches binding map q1: NEVER, no slot)."
+  - op: question.required_facts.set
+    question_id: 393   # oil-light: "checked the dipstick — low/empty/normal?"
+    facts: [oil_consumption_state]
+    skip_class: PARTIAL
+    conditional_on: "stage3.slot.propose:oil_consumption_state"
+    fallback: intentionally_empty   # binding map q3 classes 393 NEVER ('Inspection prompt') TODAY
+    derivation_note: "Directly answered by oil_consumption_state=dipstick_low_or_empty / not_adding_normal. Handled IDENTICALLY to 291/327/394 (prior draft left 393 intentionally_empty while setting the others — that inconsistency is fixed). Fallback = always-ask (matches binding map q3: NEVER)."
+  - op: question.required_facts.set
+    question_id: 394   # oil-light: "last oil change; burning/leaking oil between changes?"
+    facts: [recent_action, oil_consumption_state]
+    skip_class: PARTIAL
+    conditional_on: "stage3.slot.propose:oil_consumption_state"   # applies to the oil_consumption_state fact
+    fallback: "required_facts.set: [recent_action]"   # recent_action is unconditional; not in any binding map
+    derivation_note: "recent_action=oil_change covers the last-oil-change half unconditionally; oil_consumption_state covers the burn/leak half only if the slot is adopted. If rejected, keep just [recent_action]."
+  - op: question.intentionally_empty
+    question_id: 235   # "oil drops/spots on the ground where you park?"
+    reason: "binding/required-facts-map.q2 classes 235 PARTIAL/unsafe (presence of spots is a different dimension than fluid_color/fluid_under_car_location); presence is unmodeled by any of the 29 slots -> keep always-ask."
+  - op: question.intentionally_empty
+    question_id: 237   # "smell stronger right after you shut off and walk away?"
+    reason: "Post-shutoff heat-soak timing has no slot value; keep as an always-ask discriminator."
+  - op: question.intentionally_empty
+    question_id: 324   # "thick and slippery between your fingers like cooking oil?"
+    reason: "Fluid texture/feel is not modeled; complements fluid_color, keep always-ask."
+  - op: question.intentionally_empty
+    question_id: 328   # "how big is the spot?"
+    reason: "Leak size/severity is unmodeled; no slot; keep."
+  - op: question.intentionally_empty
+    question_id: 329   # "leaks after driving vs fresh drops after sitting overnight?"
+    reason: "Leak-timing (running vs parked) is not the same as symptom onset_timing enum; no clean value."
+  - op: question.intentionally_empty
+    question_id: 290   # blue-smoke: "when coasting/letting off gas downhill?"
+    reason: "Deceleration/coast has no onset_timing enum value; do NOT shoehorn into during_driving (§9)."
+  - op: question.intentionally_empty
+    question_id: 294   # blue-smoke: "oily film around the tailpipe tip?"
+    reason: "Tailpipe-residue check has no slot; keep always-ask."
+  # (q393 moved above to a CONDITIONAL required_facts.set on oil_consumption_state — handled identically to
+  #  291/327/394, fallback intentionally_empty if the slot is rejected.)
+  - op: question.intentionally_empty
+    question_id: 397   # oil-light: "oil spots on your driveway or garage floor?"
+    reason: "Ground-spot presence unmodeled; keep always-ask."
+  - op: question.intentionally_empty
+    question_id: 305   # smoke-under-hood: "one spot or billowing all around?"
+    reason: "Smoke-distribution has no slot; keep always-ask."
+
+  # =====================================================================
+  # L5 — new fact slot (>=3-question rule satisfied)
+  # =====================================================================
+  - op: stage3.slot.propose
+    name: oil_consumption_state
+    type: enum
+    values: [adding_frequently, topped_off_recently, dipstick_low_or_empty, not_adding_normal, unsure]
+    literal_cues:
+      - "adding a quart every few weeks"           # -> adding_frequently
+      - "keep having to add oil"                    # -> adding_frequently
+      - "topped it off recently"                    # -> topped_off_recently
+      - "dipstick was low"                          # -> dipstick_low_or_empty
+      - "dipstick was empty / no oil on the stick"  # -> dipstick_low_or_empty
+      - "haven't had to add any"                    # -> not_adding_normal
+      - "not sure if it's burning oil"              # -> unsure
+    questions_unlocked: [291, 327, 393, 394]   # 4 questions (>= 3); q236 EXCLUDED (compound OR, unsafe)
+    note: "If Chris rejects this slot, all four referencing required_facts.set ops fall back to intentionally_empty (their binding-map classification TODAY), so no artifact is left inconsistent."
+
+  # =====================================================================
+  # Catalog / service-scope (Chris-gated)
+  # =====================================================================
+  - op: catalog.service.propose
+    name: "Extend oil_pressure_light_testing.concern_categories to include 'noise' (scope change, NOT a new service)"
+    demand_evidence: "§8 NO-FIT row: oil-STARVATION that a customer leads with as a NOISE (a lifter tick escalating to a rod knock — dossier §3.7/§3.8) must reach the noise subcategories engine_ticking_or_tapping / deep_knocking_from_the_engine. DB-verified oil_pressure_light_testing.concern_categories = [warning_light, leak, performance] — 'noise' is absent, and NO current service reaches engine knock/tick noise, so a knock-led oil-starvation utterance DEAD-ENDS at Stage 2. Adding 'noise' to this service's concern_categories routes those cases to the mechanical oil-pressure test that would actually catch a failing pump / worn bearings. Left as a proposal because concern_categories edits change Stage-1 candidate reach across the catalog."
+    fee_rationale: "No new fee — same $179.95 oil_pressure_light_testing service; only its Stage-2 subcategory reach widens."
+  - op: catalog.service.propose
+    name: "Oil change / routine maintenance booking (non-diagnostic)"
+    demand_evidence: "High-frequency routine oil-change lines collide with the oil vocabulary in the Stage-1 keyword union: tkc-011 ('RESET OIL MAINT LIGHT (Not due yet)'), tkc-054 ('Inspection and Oil Change'), tkc-285 ('Inspection, emission and oil change 15 off web coup'), tkc-246 ('I am in need of an oil change.'), plus many mixed lines pairing 'oil change' with a real symptom. A dedicated non-diagnostic path stops maintenance requests from competing with the oil-leak diagnostic and lets the wizard skip symptom questions."
+    fee_rationale: "No diagnostic fee — routine maintenance / booking flow; price per Jeff's standard oil-change menu, set by Chris."
+
+# =========================================================================
+# GOLDEN CASES (>=8; 3 inference-traps + 1 null-route). Schema mirrors eval-cases.json.
+# Texts are authored/reworded to NOT mirror existing DB positive_examples or eval cases (generalization,
+# not memorization). Inference traps: #1 burnt-smell must not set smoke_color; #2 "looks like oil" is not a
+# named fluid_color; #3 oil light + "pulled over" must not set warning_light_behavior or drivable_state.
+# =========================================================================
+golden_cases:
+  - text: "dark brown puddle under the front of my car when i park and the little red oil can light came on"
+    tags: [fact_rich, exact_required_facts]
+    expected:
+      stage1_category_key: oil_leak_testing
+      stage1_acceptable: [oil_leak_testing, oil_pressure_light_testing]
+      stage2_subcategory_slug: brown_or_black_puddle_engine_oil
+      stage3_facts:
+        fluid_color: brown_or_black
+        fluid_under_car_location: under_engine_front
+        warning_light_named: "oil pressure"
+      route: testing_service
+
+  # ----- INFERENCE TRAP #3: do NOT infer warning_light_behavior or drivable_state from "pulled over" -----
+  - text: "was on my way to work and the oil light popped on, so i got off at the next exit and killed the engine"
+    tags: [safety, inference_trap]
+    expected:
+      stage1_category_key: oil_pressure_light_testing
+      stage1_acceptable: [oil_pressure_light_testing]
+      stage2_subcategory_slug: oil_pressure_light
+      stage3_facts:
+        warning_light_named: "oil pressure"
+      # TRAP: the customer named the oil light (warning_light_named="oil pressure") but did NOT say whether
+      # it was steady vs flickering -> do NOT set warning_light_behavior (extracted-facts.ts: "only if the
+      # customer described the behavior"). "Got off and killed the engine" is what they DID, not a stated
+      # driveability verdict -> do NOT set drivable_state=not_drivable_needs_tow (extracted-facts.ts: "most
+      # descriptions don't mention this — leave null"). Advisor safety-messaging can still treat an oil
+      # light as stop-driving without the extractor fabricating the slot.
+      route: testing_service
+
+  - text: "once the engine's been running a while my oil light blinks on when im just sitting in traffic, then quits as soon as i give it gas"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: oil_pressure_light_testing
+      stage1_acceptable: [oil_pressure_light_testing]
+      stage2_subcategory_slug: oil_pressure_light
+      stage3_facts:
+        warning_light_named: "oil pressure"
+        warning_light_behavior: comes_and_goes   # "blinks on ... then quits" literally states intermittent behavior
+        onset_timing: after_warming_up            # "once the engine's been running a while" literally states warm
+      route: testing_service
+
+  - text: "smells like hot burning oil under the hood after a highway run, strongest when i park, no puddle i can find"
+    tags: [moderate]
+    expected:
+      stage1_category_key: oil_leak_testing
+      stage1_acceptable: [oil_leak_testing]
+      stage2_subcategory_slug: burnt_oil_smell
+      stage3_facts:
+        smell_descriptor: burnt_oil
+        sound_or_smoke_location_zone: under_hood
+        onset_timing: after_warming_up
+      route: testing_service
+
+  # (reworded from the near-verbatim eval case check_engine_light_testing-005 to test generalization, not memorization)
+  - text: "first thing in the morning theres a puff of blueish smoke out the back when i start it, been having to top off oil like every couple weeks and it smells oily"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing]
+      stage2_subcategory_slug: blue_or_gray_smoke_from_tailpipe
+      stage3_facts:
+        smoke_color: blue_or_gray               # "blueish smoke" literally states color
+        onset_timing: cold_start                 # "first thing in the morning ... when i start it" literally states cold start
+        smell_descriptor: burnt_oil              # "smells oily" + oil consumption context
+        sound_or_smoke_location_zone: from_tailpipe   # "out the back"
+      route: testing_service
+
+  - text: "ticking noise from the engine bay that quiets down once it warms up and the exhaust sounds louder than normal"
+    tags: [cross_system]
+    expected:
+      stage1_category_key: exhaust_system_testing
+      stage1_acceptable: [exhaust_system_testing]
+      stage2_subcategory_slug: exhaust_manifold_tick_or_puff
+      stage3_facts:
+        noise_descriptor: ticking_or_tapping
+        sound_or_smoke_location_zone: under_hood
+        # NOTE: onset_timing is deliberately NOT set. "quiets down once it warms up" is a warm-state
+        # observation, not a literal statement that the noise ONSETS at cold start — setting
+        # onset_timing=cold_start would be an inference the extractor must not make (literalness).
+      route: testing_service
+
+  - text: "bright green puddle under the front by the radiator and it smells sweet like syrup"
+    tags: [cross_system]
+    expected:
+      stage1_category_key: coolant_leak_testing
+      stage1_acceptable: [coolant_leak_testing]
+      stage2_subcategory_slug: green_orange_yellow_or_pink_puddle_coolant
+      stage3_facts:
+        fluid_color: green_or_orange_or_yellow_or_pink
+        fluid_under_car_location: under_engine_front
+        smell_descriptor: sweet_or_maple_syrup
+      route: testing_service
+
+  # ----- INFERENCE TRAP #1: burnt-oil smell must NOT set smoke_color (no smoke stated) -----
+  - text: "i think oil is dripping onto my exhaust because it smells burnt when i stop, under the hood"
+    tags: [inference_trap]
+    expected:
+      stage1_category_key: oil_leak_testing
+      stage1_acceptable: [oil_leak_testing]
+      stage2_subcategory_slug: burnt_oil_smell
+      stage3_facts:
+        smell_descriptor: burnt_oil
+        sound_or_smoke_location_zone: under_hood
+      # TRAP: do NOT set smoke_color (customer never said they saw smoke), and do NOT
+      # assert a specific gasket/leak point the customer did not name.
+      route: testing_service
+
+  # ----- INFERENCE TRAP #2: "looks like oil" is not a stated color -> do NOT set fluid_color -----
+  - text: "leaks a little fluid that looks like oil and feels like oil, but it smells like nothing and my oil level never drops"
+    tags: [inference_trap, sparse]
+    expected:
+      stage1_category_key: oil_leak_testing
+      stage1_acceptable: [oil_leak_testing, ac_leak_testing]
+      stage2_subcategory_slug: brown_or_black_puddle_engine_oil
+      stage3_facts: {}
+      # TRAP: "looks like oil" is a resemblance, NOT a named color -> do NOT set
+      # fluid_color=brown_or_black; no odor + no level loss keeps clear-water/AC-condensation live.
+      route: testing_service
+
+  # ----- NULL ROUTE: routine oil-change maintenance line, not a concern -----
+  - text: "Oil Change, Inspection"
+    tags: [null_route, work_order]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      stage3_facts:
+        customer_request_type: routine_maintenance
+      route: advisor

@@ -1,0 +1,209 @@
+system: body-electrical-accessories
+# phrase → normalized → routes_to[] → ambiguity → provenance
+# NOTE: window_inop_testing and windshield_inop_testing are DIRECT-TO-SERVICE (Stage-2 subcat = null),
+# so their routes_to names the SERVICE KEY, not a subcategory slug. electrical_testing_general routes to a
+# subcategory (accessory_doesnt_work / multiple_random_electrical_glitches / electrical_buzzing).
+# ambiguity: unambiguous | needs-fact:<slot> | cross-system:<slug-or-service>
+# provenance: tekmetric (real customer RO from real-concerns-tekmetric-labeled-v2.json)
+#           | eval-authored (a fixture written for eval-cases.json — part of the eval corpus but NOT a real
+#                            customer utterance; counts toward the non-real/synthetic share, NOT toward
+#                            real-voice share. Relabeled 2026-07-18 from an over-broad `tekmetric` tag.)
+#           | forum-paraphrase | nhtsa | synthetic
+# NORMALIZED = a literal restatement of what the customer said. It MUST NOT embed a mechanism/cause the
+# customer did not state (no "(water intrusion)", "(shared node)", "seized"): those are for the human §3
+# reader, never the normalized gloss.
+
+entries:
+  # ---- POWER WINDOWS (direct → window_inop_testing) ----
+  - phrase: "Passenger Side Window won't go down"
+    normalized: power window glass will not move
+    routes_to: [window_inop_testing]
+    ambiguity: unambiguous
+    provenance: tekmetric      # tkc-067
+
+  - phrase: "DRIVER REAR WINDOW INOP"
+    normalized: rear driver power window inoperative
+    routes_to: [window_inop_testing]
+    ambiguity: unambiguous
+    provenance: tekmetric      # tka-194
+
+  - phrase: "window motor stuck"
+    normalized: customer reports the power window not moving ("motor stuck")
+    routes_to: [window_inop_testing]
+    ambiguity: unambiguous
+    provenance: tekmetric      # tkc-151 ("Coolant leak, window motor stuck, oil change and many more" — isolated from multi-symptom line)
+
+  - phrase: "drivers side window is stuck halfway down and wont go back up, makes a horrible grinding noise when i hold the switch"
+    normalized: window stalled partway with grinding on switch hold
+    routes_to: [window_inop_testing]
+    ambiguity: unambiguous
+    provenance: eval-authored  # eval-cases.json window_inop_testing-001 (authored fixture, not a real RO)
+
+  - phrase: "both back windows stopped rolling down, the switches dont do anything anymore"
+    normalized: both rear windows dead at the switch
+    routes_to: [window_inop_testing]
+    ambiguity: unambiguous
+    provenance: eval-authored  # eval-cases.json window_inop_testing-003 (authored fixture, not a real RO)
+
+  - phrase: "power window wont roll up"
+    normalized: power window will not raise
+    routes_to: [window_inop_testing]
+    ambiguity: unambiguous
+    provenance: synthetic
+
+  # ---- WIPERS / WASHER (direct → windshield_inop_testing) ----
+  - phrase: "Wipers stopped working"
+    normalized: wipers inoperative
+    routes_to: [windshield_inop_testing]
+    ambiguity: unambiguous
+    provenance: tekmetric      # tkc-107
+
+  - phrase: "WIPERS NOT SPRAYING"
+    normalized: washer spray not functioning
+    routes_to: [windshield_inop_testing]
+    ambiguity: unambiguous
+    provenance: tekmetric      # tka-111
+
+  - phrase: "Rear wiper starts to go and stops halfway"
+    normalized: rear wiper parks mid-sweep
+    routes_to: [windshield_inop_testing]
+    ambiguity: unambiguous
+    provenance: tekmetric      # tkc-281
+
+  - phrase: "wipers barely work when its raining, they squeak dragging across the glass and the passenger side one hardly moves"
+    normalized: weak wiper sweep, one side lagging
+    routes_to: [windshield_inop_testing]
+    ambiguity: unambiguous
+    provenance: eval-authored  # eval-cases.json windshield_inop_testing-001 (authored fixture, not a real RO)
+
+  - phrase: "windshield wipers totally quit working right after I went thru the car wash"
+    normalized: wipers stopped working right after a car wash
+    routes_to: [windshield_inop_testing]
+    ambiguity: unambiguous
+    provenance: eval-authored  # eval-cases.json windshield_inop_testing-002 (authored fixture, not a real RO)
+
+  # ---- SINGLE ACCESSORY DEAD (→ accessory_doesnt_work) ----
+  - phrase: "HORN INOPERABLE"
+    normalized: horn does not work
+    routes_to: [accessory_doesnt_work]
+    ambiguity: unambiguous
+    provenance: tekmetric      # tkc-153 / tka-166
+
+  - phrase: "my radio is just dead, screen wont turn on and no sound at all, everything else in the car works fine"
+    normalized: head unit dead, other accessories fine
+    routes_to: [accessory_doesnt_work]
+    ambiguity: unambiguous
+    provenance: eval-authored  # eval-cases.json electrical_testing_general-002 (authored fixture, not a real RO)
+
+  - phrase: "RIGHT REAR TURN SIGNAL NOT WORKING INTERMITTENTLY, bumped it and it worked then went out"
+    normalized: intermittent turn-signal circuit fault
+    routes_to: [accessory_doesnt_work]
+    ambiguity: needs-fact:onset_timing
+    provenance: tekmetric      # tka-035
+
+  - phrase: "dome light stays on even after closing the door"
+    normalized: courtesy light will not extinguish
+    routes_to: [accessory_doesnt_work]
+    ambiguity: unambiguous
+    provenance: tekmetric      # tka-018 (INFERENCE TRAP: NOT a warning light; dome-light fragment isolated from a two-concern line — other half is "TRACTION CONTROL LIGHT STAYING ON", a warning-light-lane concern)
+
+  - phrase: "cigarette lighter fuse keeps blowing"
+    normalized: accessory outlet circuit repeatedly blows fuse
+    routes_to: [accessory_doesnt_work]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+
+  - phrase: "power door locks quit working with the key fob"
+    normalized: power locks / fob remote not working
+    routes_to: [accessory_doesnt_work]
+    ambiguity: cross-system:body-glass-water-leaks-keys   # SHARED surface: routes here only if the car still STARTS; fob-dead + car-won't-start / flashing security light → their immobilizer lane (their D6 discriminator = starts vs. won't start)
+    provenance: forum-paraphrase
+
+  - phrase: "heated seat on the driver side stopped working"
+    normalized: single heated-seat load dead
+    routes_to: [accessory_doesnt_work]
+    ambiguity: unambiguous
+    provenance: synthetic
+
+  - phrase: "my sunroof wont slide closed"
+    normalized: sunroof panel actuator inoperative
+    routes_to: [accessory_doesnt_work]
+    ambiguity: cross-system:window_inop_testing   # TRAP: sunroof is NOT a side glass window
+    provenance: synthetic
+
+  # ---- SHARED-CIRCUIT SIMULTANEOUS (→ accessory_doesnt_work, hedge multiple_random) ----
+  - phrase: "the power window controls and radio both stopped working, checked the fuses"
+    normalized: two loads on one circuit dead together
+    routes_to: [accessory_doesnt_work, multiple_random_electrical_glitches]
+    ambiguity: needs-fact:onset_timing
+    provenance: forum-paraphrase
+
+  # ---- RANDOM GREMLINS (→ multiple_random_electrical_glitches) ----
+  - phrase: "one day the radio resets itself, next day the door locks click on their own, next day the gauges jump around, random stuff always worse after rain"
+    normalized: varied accessories glitch intermittently, weather-linked
+    routes_to: [multiple_random_electrical_glitches]
+    ambiguity: unambiguous
+    provenance: eval-authored  # eval-cases.json electrical_testing_general-004 (authored fixture, not a real RO)
+
+  - phrase: "the radio and clock quit working, then the power door locks quit with the fob, then more stuff"
+    normalized: cascading multi-accessory intermittent faults
+    routes_to: [multiple_random_electrical_glitches]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+
+  - phrase: "during damp or cold conditions the windows, wipers, door chime and dome lights all quit, then a click and they come back"
+    normalized: several systems drop out in damp/cold weather then return after a click
+    routes_to: [multiple_random_electrical_glitches]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+
+  # ---- ELECTRICAL BUZZ (→ electrical_buzzing) ----
+  - phrase: "theres this weird electrical buzzing sound in my car, kinda sounds like a beehive"
+    normalized: electrical buzz, relay/actuator cue
+    routes_to: [electrical_buzzing]
+    ambiguity: unambiguous
+    provenance: eval-authored  # eval-cases.json electrical_testing_general-006 (authored fixture, not a real RO)
+
+  - phrase: "with the key turned to on it makes a buzzing or humming noise"
+    normalized: key-on buzz/hum
+    routes_to: [electrical_buzzing]
+    ambiguity: needs-fact:sound_or_smoke_location_zone
+    provenance: forum-paraphrase
+
+  - phrase: "buzzing coming from behind the dash"
+    normalized: buzz localized behind dashboard
+    routes_to: [electrical_buzzing]
+    ambiguity: cross-system:strange_noise_from_vents   # rule out HVAC blend-door if tied to temp/airflow
+    provenance: synthetic
+
+  # ---- CROSS-SYSTEM EXCLUSIONS (route AWAY from this system) ----
+  - phrase: "interior and dash lights flicker and dim when the car idles, brighten when i rev it"
+    normalized: RPM-linked light dimming (charging system)
+    routes_to: [dim_or_flickering_lights]
+    ambiguity: cross-system:charging_starting_testing
+    provenance: forum-paraphrase
+
+  - phrase: "the whole car went dark and shut off while i was driving"
+    normalized: total electrical loss in motion
+    routes_to: [car_died_while_driving_electrical]
+    ambiguity: cross-system:car_died_while_driving_electrical
+    provenance: forum-paraphrase
+
+  - phrase: "clicking behind the dash when i switch from heat to ac"
+    normalized: blend-door actuator click tied to HVAC mode
+    routes_to: [strange_noise_from_vents]
+    ambiguity: cross-system:strange_noise_from_vents
+    provenance: synthetic
+
+  # ---- NULL ROUTE (work-order, not a concern → advisor) ----
+  - phrase: "REPLACE THE RIGHT FRONT TURN SIGNAL. CHECK LIGHTS"
+    normalized: task order to replace a signal, no fault described
+    routes_to: []
+    ambiguity: cross-system:advisor   # non-concern work-order line; empty Stage-1
+    provenance: tekmetric      # tka-141
+
+  - phrase: "REPLACE WIPERS IF NEEDED"
+    normalized: conditional wiper-blade replacement task
+    routes_to: []
+    ambiguity: cross-system:advisor
+    provenance: tekmetric      # tka-053

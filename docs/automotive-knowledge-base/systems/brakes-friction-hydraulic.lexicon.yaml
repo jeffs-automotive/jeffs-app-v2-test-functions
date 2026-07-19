@@ -1,0 +1,234 @@
+system: brakes-friction-hydraulic
+# phrase -> normalized -> routes_to[] (subcategory slug) -> ambiguity -> provenance
+# ambiguity: unambiguous | needs-fact:<slot> | cross-system:<subcategory_slug>
+# provenance: tekmetric | eval-corpus | forum-paraphrase | synthetic
+#   eval-corpus = near-verbatim from the authored eval-cases.json corpus (real linguistic authority);
+#   synthetic   = invented for this dossier (only 2 entries: the misspelled squeal + the down-a-hill smell).
+entries:
+  # ---- SQUEAL (FM-1) ----
+  - phrase: "brake inspection squeek"
+    normalized: brake squeal on application
+    routes_to: [high_pitched_squealing]
+    ambiguity: needs-fact:location_axle
+    provenance: tekmetric   # tkc-082
+  - phrase: "CHECK BRAKES SQUEALING"
+    normalized: brake squeal
+    routes_to: [high_pitched_squealing]
+    ambiguity: unambiguous
+    provenance: tekmetric   # tka-134
+  - phrase: "brakes squeal every time I come to a stop, worse the first few in the morning"
+    normalized: brake squeal, cold-first-stop pattern
+    routes_to: [high_pitched_squealing]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  - phrase: "my breaks are squeeking when i slow down"
+    normalized: brake squeal on deceleration (misspelled)
+    routes_to: [high_pitched_squealing]
+    ambiguity: unambiguous
+    provenance: synthetic
+
+  # ---- GRINDING (FM-2) ----
+  - phrase: "brake inspection grinding when stopping"
+    normalized: metallic grinding when braking
+    routes_to: [metallic_grinding]
+    ambiguity: unambiguous
+    provenance: tekmetric   # tkc-063
+  - phrase: "Brake Inspection (LEFT REAR BRAKE GRINDING)"
+    normalized: metallic grinding, left rear
+    routes_to: [metallic_grinding]
+    ambiguity: unambiguous
+    provenance: tekmetric   # tkc-085
+  - phrase: "BRAKE NOISE WHEN BACKING UP SOUNDS LIKE SLIGHT GRINDING NOISE"
+    normalized: grinding noise, on reverse braking
+    routes_to: [metallic_grinding]
+    ambiguity: unambiguous
+    provenance: tekmetric   # tka-023
+  - phrase: "when I brake I hear a grinding noise I think I need brakes"
+    normalized: grinding on braking + self-diagnosis request
+    routes_to: [metallic_grinding]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  - phrase: "sounds like metal on metal every time I press the brake pedal"
+    normalized: metal-on-metal grinding, every application
+    routes_to: [metallic_grinding]
+    ambiguity: unambiguous
+    provenance: eval-corpus   # brake_inspection-002 (near-verbatim)
+
+  # ---- PULSATION / BRAKE SHUDDER (FM-3) ----
+  - phrase: "BRAKE PEDAL ALSO VIBRATES AT HIGHWAY SPEEDS WHEN BRAKING"
+    normalized: pedal pulsation, highway-speed braking
+    routes_to: [pulsating_or_vibrating_pedal]
+    ambiguity: unambiguous
+    provenance: tekmetric   # tka-002
+  - phrase: "slight pulsation at high speeds, can be felt in the steering wheel, whole vehicle jerks while braking"
+    normalized: brake pulsation felt in wheel + body
+    routes_to: [pulsating_or_vibrating_pedal, vibration_or_pulsing_when_braking]
+    ambiguity: needs-fact:pedal_feel
+    provenance: tekmetric   # tka-168
+  - phrase: "client is reporting shaking when applying brakes"
+    normalized: whole-car shake, brake-triggered
+    routes_to: [vibration_or_pulsing_when_braking]
+    ambiguity: unambiguous
+    provenance: tekmetric   # tkc-150
+  - phrase: "violently shakes and shudders when I apply the brakes, regardless of how fast"
+    normalized: severe brake shudder, all speeds
+    routes_to: [vibration_or_pulsing_when_braking]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  - phrase: "when I hit the brake at or over 65 mph the steering wheel starts to vibrate"
+    normalized: steering shake, brake-triggered at highway speed
+    routes_to: [vibration_or_pulsing_when_braking]
+    ambiguity: unambiguous   # note: brake-triggered -> NOT balance shake
+    provenance: forum-paraphrase
+
+  # ---- SOFT / SPONGY (FM-4/10) ----
+  - phrase: "brake pedal has felt really soft and mushy, I have to pump it a couple times"
+    normalized: spongy pedal, pumps to firm
+    routes_to: [spongy_or_soft_pedal]
+    ambiguity: unambiguous
+    provenance: eval-corpus   # brake_inspection-004 (near-verbatim)
+  - phrase: "brakes feel squishy, kind of like stepping on a sponge"
+    normalized: spongy pedal
+    routes_to: [spongy_or_soft_pedal]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  - phrase: "pedal goes down farther than it used to before the car starts slowing"
+    normalized: low/long pedal travel
+    routes_to: [spongy_or_soft_pedal]
+    ambiguity: needs-fact:pedal_feel
+    provenance: forum-paraphrase
+
+  # ---- SINKING (FM-5/6) ----
+  - phrase: "Brake pedal not holding, it sinks to the floor"
+    normalized: pedal sinks under held pressure
+    routes_to: [pedal_sinks_to_floor]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  - phrase: "after about ten seconds the brake pedal slowly sinks and lets the van move forward"
+    normalized: pedal creeps down at stop
+    routes_to: [pedal_sinks_to_floor]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  - phrase: "pedal slowly creeps down toward the floor while im pressing on it"
+    normalized: continuous sink under steady pressure
+    routes_to: [pedal_sinks_to_floor]
+    ambiguity: unambiguous
+    provenance: eval-corpus   # brake_inspection-005 (near-verbatim)
+
+  # ---- HARD PEDAL (FM-7) ----
+  - phrase: "the brake pedal is crazy stiff, feels like stepping on a rock, have to stand on it"
+    normalized: hard/unresponsive pedal, high effort
+    routes_to: [hard_or_unresponsive_pedal]
+    ambiguity: unambiguous
+    provenance: eval-corpus   # brake_inspection-006 (near-verbatim)
+  - phrase: "pedal feels like wood, no give at all"
+    normalized: hard pedal, no travel
+    routes_to: [hard_or_unresponsive_pedal]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+
+  # ---- GRABBY / JUMPY (FM-11) — pedal_feel=grabby; NO dedicated subcat (gated grabby_or_jumpy_brakes proposed) ----
+  - phrase: "my brakes grab really hard and jerk the car even when i barely touch the pedal"
+    normalized: grabby/over-sensitive brake bite
+    routes_to: []   # no brakes/* subcat describes grab; Stage-1 brake_inspection + Stage-3 pedal_feel=grabby (dossier §8 NO-SUBCAT-FIT)
+    ambiguity: needs-fact:pedal_feel
+    provenance: synthetic   # illustrative; grab is thin in the corpus, flagged pending demand (2nd of 2 invented entries)
+
+  # ---- PULL ON BRAKING (FM-8) ----
+  - phrase: "car pulls hard to the left every time i hit the brakes, drives straight otherwise"
+    normalized: directional pull only under braking
+    routes_to: [pulling_only_when_braking]
+    ambiguity: unambiguous
+    provenance: eval-corpus   # brake_inspection-008 (near-verbatim)
+  - phrase: "pulls to the left when I have to suddenly brake, a shop said a caliper locked on the front right"
+    normalized: brake pull, suspected stuck caliper
+    routes_to: [pulling_only_when_braking]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+
+  # ---- HOT-BRAKE SMELL / SMOKE FROM WHEEL (FM-9) ----
+  - phrase: "smoke coming off my rear right wheel, I think I left the parking brake on"
+    normalized: smoke from a wheel, dragging parking brake
+    routes_to: [smoke_or_burning_smell_from_a_wheel]
+    ambiguity: unambiguous
+    provenance: eval-corpus   # brake_inspection-003 (near-verbatim)
+  - phrase: "burning rubber smell from one of my wheels after I drove down a hill"
+    normalized: hot-brake smell from a wheel, no visible smoke
+    routes_to: [burning_rubber_hot_brake_smell]
+    ambiguity: needs-fact:sound_or_smoke_location_zone
+    provenance: synthetic
+
+  # ---- BRAKE-FLUID LEAK (FM-6) ----
+  - phrase: "ATTEMPTED TO ADD BRAKE FLUID AND LEAKS RIGHT OUT"
+    normalized: brake fluid leak, fluid won't hold
+    routes_to: [clear_yellow_or_light_brown_puddle_brake_fluid]
+    ambiguity: unambiguous
+    provenance: tekmetric   # tka-181
+  - phrase: "leak appears to be near lines close to brake fluid"
+    normalized: leak at brake lines
+    routes_to: [clear_yellow_or_light_brown_puddle_brake_fluid]
+    ambiguity: needs-fact:fluid_color
+    provenance: tekmetric   # tkc-261
+  - phrase: "brown liquid that looks yellow when it dries, maybe brake fluid"
+    normalized: clear-yellow oily puddle, suspected brake fluid
+    routes_to: [clear_yellow_or_light_brown_puddle_brake_fluid]
+    ambiguity: needs-fact:fluid_under_car_location
+    provenance: forum-paraphrase
+
+  # ---- RED LIGHT + MECHANICAL (brake_inspection_warning_light) ----
+  - phrase: "RED BRAKE LIGHT COMING ON AND OFF, found fluid low and topped off, light back on"
+    normalized: red brake light + low fluid, recurring
+    routes_to: [brake_system_red_light]
+    ambiguity: unambiguous
+    provenance: tekmetric   # tka-192
+  - phrase: "BRAKE INSPECTION (Warning light coming on dash)"
+    normalized: brake symptom + unspecified dash light
+    routes_to: [brake_system_red_light]
+    ambiguity: needs-fact:warning_light_named
+    provenance: tekmetric   # tkc-154
+  - phrase: "Brakes have been squeaking for a couple weeks and now the red BRAKE light just came on, e-brake is off"
+    normalized: squeal escalating to red brake light
+    routes_to: [brake_system_red_light]
+    ambiguity: unambiguous   # RED light dominates -> warning_light service
+    provenance: eval-corpus   # nearmiss-001 (near-verbatim)
+
+  # ---- SAFETY / TOTAL LOSS (situational override) ----
+  - phrase: "NO BRAKE PRESSURE. DO NOT DRIVE."
+    normalized: total brake failure, not drivable
+    routes_to: [safety_concern_dont_feel_safe_driving_it]
+    ambiguity: cross-system:safety_concern_dont_feel_safe_driving_it
+    provenance: tekmetric   # tka-065
+  - phrase: "the brakes gave out"
+    normalized: reported brake loss (vague severity)
+    routes_to: [safety_concern_dont_feel_safe_driving_it]
+    ambiguity: needs-fact:drivable_state
+    provenance: tekmetric   # tkc-255
+
+  # ---- VAGUE (route to needs-fact, not a confident pick) ----
+  - phrase: "WANTS TO MAKE SURE BRAKES ARE OK (Making some noise)"
+    normalized: unspecified brake noise, inspection request
+    routes_to: [high_pitched_squealing, metallic_grinding]
+    ambiguity: needs-fact:noise_descriptor
+    provenance: tekmetric   # tkc-047
+  - phrase: "Brake Inspection. Wobbles?"
+    normalized: unspecified brake wobble
+    routes_to: [pulsating_or_vibrating_pedal, vibration_or_pulsing_when_braking]
+    ambiguity: needs-fact:onset_timing
+    provenance: tekmetric   # tkc-298
+
+  # ---- CROSS-SYSTEM TRAPS (look brake-ish, are NOT brakes) ----
+  - phrase: "HEARS A LOUD SQUEAL WHEN TURNING"
+    normalized: squeal on steering input, not braking
+    routes_to: [noise_when_turning_the_steering_wheel]
+    ambiguity: cross-system:noise_when_turning_the_steering_wheel
+    provenance: tekmetric   # tka-157 (live eligible services: power_steering_eps_testing + suspension_steering_check)
+  - phrase: "steering wheel shakes really bad at 65 but not when braking"
+    normalized: speed-triggered steering shake, no brake
+    routes_to: [steering_wheel_shake_at_highway_speed]
+    ambiguity: cross-system:steering_wheel_shake_at_highway_speed
+    provenance: forum-paraphrase
+  - phrase: "yellow ABS light came on after I hit a pothole, brakes still stop fine"
+    normalized: ABS light only, brakes normal
+    routes_to: [abs_anti_lock_brake_light]
+    ambiguity: cross-system:abs_anti_lock_brake_light
+    provenance: eval-corpus   # nearmiss-002 (near-verbatim)

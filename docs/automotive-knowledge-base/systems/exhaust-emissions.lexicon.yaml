@@ -1,0 +1,111 @@
+system: exhaust-emissions
+# phrase -> normalized -> routes_to[] (subcategory slugs) -> ambiguity -> provenance
+# ambiguity: unambiguous | needs-fact:<slot> | cross-system:<slug/router>
+# provenance: tekmetric | nhtsa | forum-paraphrase | synthetic   (synthetic <=~30% per subcat, flagged)
+#
+# PROVENANCE RULE (fixed this revision): the enum has NO 'eval' value. Authored eval-cases.json lines are
+# hand-written eval gold, NOT real customer utterances, so they are labelled `synthetic` (synthetic-class)
+# with the source file+line noted in a comment. Only real-customer Tekmetric-corpus lines are `tekmetric`;
+# real forum lines paraphrased to first person are `forum-paraphrase`. Per-subcat synthetic share is
+# reported in the dossier §11 self-check (louder 20%, manifold-tick 33%, rotten-egg 33%, cabin-fumes 0%).
+entries:
+  # ---- exhaust_louder_or_rumbling (noise) ---- [tekmetric x4 (1 shared) + synthetic x1 = ~20%]
+  - phrase: "SEEMS LOUDER THAN NORMAL, SEEMS TO BE STRUGGLING TO DRIVE, CLIENT THINKS EXHAUST ISSUE"
+    normalized: exhaust louder than normal, customer suspects exhaust
+    routes_to: [exhaust_louder_or_rumbling]
+    ambiguity: unambiguous
+    provenance: tekmetric   # real-concerns-tekmetric-labeled-v2.json:8370
+  - phrase: "the car makes a noise sometimes when driving. it appears to be the muffler that is loose"
+    normalized: intermittent driving noise, loose muffler
+    routes_to: [exhaust_louder_or_rumbling]
+    ambiguity: unambiguous
+    provenance: tekmetric   # real-concerns-tekmetric-labeled-v2.json:4331
+  - phrase: "not sure but my car is rumbling. i think there's something wrong with the alignment"
+    normalized: rumble, misattributed to alignment
+    routes_to: [exhaust_louder_or_rumbling]
+    ambiguity: needs-fact:noise_descriptor   # rumble(exhaust) vs tire/bearing roar -> suspension_steering_check
+    provenance: tekmetric   # real-concerns-tekmetric-labeled-v2.json:5804
+  - phrase: "the client hears an exhaust leak and thinks it may be coming from one of the flanges"
+    normalized: audible exhaust leak, suspected flange
+    routes_to: [exhaust_louder_or_rumbling, exhaust_manifold_tick_or_puff]
+    ambiguity: needs-fact:onset_timing
+    provenance: tekmetric   # real-concerns-tekmetric-labeled-v2.json:10405
+  - phrase: "the car got crazy loud all of a sudden, sounds like a motorcycle now. pretty sure the muffler rusted out"
+    normalized: sudden loud exhaust, suspected rusted muffler
+    routes_to: [exhaust_louder_or_rumbling]
+    ambiguity: unambiguous
+    provenance: synthetic   # authored eval-cases.json:1238 (exhaust_system_testing-004); synthetic-class, FLAGGED
+
+  # ---- exhaust_manifold_tick_or_puff (noise) ---- [tekmetric x1 (shared) + forum-paraphrase x1 + synthetic x1 = 33%]
+  - phrase: "making a ticking noise when driving"
+    normalized: ticking noise while driving (temp behavior UNSTATED)
+    routes_to: [exhaust_manifold_tick_or_puff, engine_ticking_or_tapping]
+    ambiguity: needs-fact:onset_timing   # cold+fades-warm => manifold; persists-warm => valvetrain
+    provenance: tekmetric   # real-concerns-tekmetric-labeled-v2.json:6155 (BARE line; no cold/warm clause in the corpus)
+  - phrase: "i think i have an exhaust manifold leak, it ticks at startup"
+    normalized: suspected manifold-gasket leak, tick at startup
+    routes_to: [exhaust_manifold_tick_or_puff]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase   # paraphrased forum pattern (not verbatim)
+  - phrase: "my engine makes a fast ticking noise when i first start it cold in the morning, goes away after it warms up a few minutes"
+    normalized: cold-start tick that fades when warm
+    routes_to: [exhaust_manifold_tick_or_puff]
+    ambiguity: unambiguous
+    provenance: synthetic   # authored eval-cases.json:1217; synthetic-class, FLAGGED
+
+  # ---- rotten_egg_sulfur_smell (smell) ---- [forum-paraphrase x2 + synthetic x1 = 33% (was 67%)]
+  - phrase: "my car smells like rotten eggs from the exhaust"
+    normalized: rotten-egg sulfur smell from exhaust
+    routes_to: [rotten_egg_sulfur_smell]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase   # ubiquitous real pattern; corroborated by real-concerns-forums.json:1690
+  - phrase: "getting a rotten egg smell from the catalytic converter"
+    normalized: rotten-egg/sulfur smell attributed to the cat
+    routes_to: [rotten_egg_sulfur_smell]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase   # real forum line paraphrased to first person: real-concerns-forums.json:1690
+  - phrase: "strong sulfur smell when i drive, especially under acceleration"
+    normalized: sulfur smell under load
+    routes_to: [rotten_egg_sulfur_smell]
+    ambiguity: unambiguous
+    provenance: synthetic   # FLAGGED
+  - phrase: "engine sputters and runs rough when im stopped at red lights, rpm needle bounces all over. check engine light is on and sometimes i get a rotten egg smell"
+    normalized: rough idle + CEL LEAD, secondary rotten-egg smell
+    routes_to: [check_engine_light]   # LEAD is rough-run + CEL -> check_engine_light_testing, NOT the smell slug
+    ambiguity: cross-system:router-warning-lights
+    provenance: synthetic   # authored eval-cases.json:913; synthetic-class, FLAGGED
+
+  # ---- exhaust_fumes_inside_the_cabin (smell) ---- [tekmetric x1 = 0% synthetic; corpus has only ONE cabin-fumes line]
+  - phrase: "CUSTOMER STATES THERE IS AN EXHAUST SMELL COMING THROUGH THE HEATER AFTER IT IS WARMED UP AND AT IDLE. HEAT NEEDS TO BE ON."
+    normalized: exhaust smell in cabin, worse warm + heat on + idle
+    routes_to: [exhaust_fumes_inside_the_cabin]
+    ambiguity: unambiguous
+    provenance: tekmetric   # real-concerns-tekmetric-labeled-v2.json:8458 (the ONLY real cabin-fumes utterance in the corpus)
+  # NOTE: prior 'headaches driving to work' + 'makes me lightheaded' entries were REMOVED — the first was
+  # authored eval content (eval-cases.json:1192, synthetic-class) and the second had no traceable corpus
+  # basis (it echoed a catalog-snapshot positive example, not a customer utterance). The CO-symptom percept
+  # is retained in a GOLDEN CASE (not the lexicon, which is corpus-provenance-only).
+
+  # ---- cross-system / CEL-emissions (routes to check_engine_light_testing) ----
+  - phrase: "da - check engine light on for a couple days, no unusual sounds, smells, or performance issues, recently filled up with fuel, steady light"
+    normalized: steady CEL, no drivability symptom (cat/O2 code candidate)
+    routes_to: [check_engine_light]
+    ambiguity: cross-system:router-warning-lights
+    provenance: tekmetric   # real-concerns-tekmetric-labeled-v2.json:4486
+  - phrase: "auto parts store said my catalytic converter code P0420, want a second opinion"
+    normalized: reported P0420, second-opinion request
+    routes_to: [check_engine_light]
+    ambiguity: cross-system:router-warning-lights
+    provenance: synthetic   # FLAGGED
+
+  # ---- null-route (work-order / inspection request, NOT a symptom concern) ----
+  - phrase: "State Inspection and Emissions Already have a current emissions sticker. Just need the inspection."
+    normalized: state safety/emissions inspection request (no symptom)
+    routes_to: []          # advisor / null-route: inspection request, not a diagnostic concern
+    ambiguity: cross-system:router-requests-maintenance
+    provenance: tekmetric   # real-concerns-tekmetric-labeled-v2.json:4440
+  - phrase: "MAKE SURE NO EXHAUST LEAKS"
+    normalized: inspection ask (check for exhaust leaks), NOT a symptom report
+    routes_to: []          # FIXED: was mis-routed to exhaust_louder_or_rumbling; this is an inspection ask -> advisor
+    ambiguity: cross-system:router-requests-maintenance
+    provenance: tekmetric   # real-concerns-tekmetric-labeled-v2.json:10701

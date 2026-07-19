@@ -1,0 +1,544 @@
+system: router-smoke-smells
+# Wave B router. OWNS the smoke-color/source + smell-descriptor disambiguation. Emits the cross-system
+# Stage-1 hedges and Stage-2 negative examples (with routes_to), the confusable_matrix_rows for every
+# owned pair, and golden cases. Positive examples for each smoke/smell subcategory are OWNED by the
+# Wave A system dossiers (engine-lubrication-oil, cooling-system, exhaust-emissions, fuel-system-evap,
+# hvac-climate, brakes-friction-hydraulic, body-electrical-accessories) — NOT re-emitted here to avoid
+# duplicate ops in Wave C. This file adds only cross-system routing material.
+#
+# Binds ONLY to 00-current-scheduler-taxonomy.md (2026-07-18) slugs/services/slots. Literalness governs
+# every fact cue. routes_to on a negative names a subcategory slug; where the correct target is a
+# direct-to-service (no Stage-2 slug) or a REJECT, that is flagged inline.
+
+ops:
+
+  # ---------------------------------------------------------------------------
+  # CATALOG (Chris-gated) — REINFORCES the Wave A op; NOT a new/duplicate proposal
+  # ---------------------------------------------------------------------------
+  - op: catalog.service.concern_category.add
+    service: check_engine_light_testing
+    add: smoke
+    status: reinforcing            # fuel-system-evap §8 + cooling-system §8 already filed this; router seconds it
+    rationale: >
+      The taxonomy assigns black (rich fuel) and blue/gray (oil burn) TAILPIPE smoke to
+      check_engine_light_testing, but its concern_categories = [warning_light, performance] exclude
+      `smoke`, so those two smoke subcategories are only reachable via coolant_leak_testing /
+      oil_leak_testing (wrong diagnostics for rich-fuel black smoke). Adding `smoke` makes the router's
+      S1/S4 routes reachable through the correct service. Cross-ref: fuel-system-evap.proposals,
+      cooling-system.proposals (do not double-apply).
+    evidence: eval check_engine_light_testing-007 (black smoke → check_engine_light_testing → black_smoke_from_tailpipe)
+
+  # ---------------------------------------------------------------------------
+  # STAGE-1 HEDGES  {category_a, category_b, rule, discriminating_fact}
+  # ---------------------------------------------------------------------------
+  - op: stage1.hedge.add
+    category_a: coolant_leak_testing
+    category_b: check_engine_light_testing
+    rule: >
+      WHITE tailpipe smoke that persists past warm-up + a SWEET/maple-syrup smell + coolant loss =
+      coolant/head-gasket → coolant_leak_testing. BLUE/GRAY tailpipe smoke + an OILY/burnt-oil smell =
+      oil burn → check_engine_light_testing. (Taxonomy confusable pair #4.)
+    discriminating_fact: "smell_descriptor: sweet_or_maple_syrup vs burnt_oil (secondary: smoke_color white vs blue_or_gray)"
+
+  - op: stage1.hedge.add
+    category_a: check_engine_light_testing
+    category_b: coolant_leak_testing
+    rule: >
+      BLACK sooty tailpipe smoke + a RAW-GAS smell + mpg drop = running rich → check_engine_light_testing
+      (black_smoke_from_tailpipe). WHITE thick smoke + SWEET smell = coolant → coolant_leak_testing.
+    discriminating_fact: "smoke_color: black vs white; smell_descriptor: gasoline_or_fuel vs sweet_or_maple_syrup"
+
+  - op: stage1.hedge.add
+    category_a: oil_leak_testing
+    category_b: check_engine_light_testing
+    rule: >
+      Smoke/burnt-oil smell UNDER THE HOOD (oil dripping onto the hot manifold, often no ground puddle)
+      = oil_leak_testing (smoke_from_under_the_hood / burnt_oil_smell). Blue/gray smoke FROM THE TAILPIPE
+      (oil passing internally) = check_engine_light_testing (blue_or_gray_smoke_from_tailpipe).
+    discriminating_fact: "sound_or_smoke_location_zone: under_hood vs from_tailpipe"
+
+  - op: stage1.hedge.add
+    category_a: coolant_leak_testing
+    category_b: oil_leak_testing
+    rule: >
+      UNDER-HOOD smoke/steam: sweet smell + temp gauge high/in-the-red + coolant loss + hissing = coolant
+      boil-over → coolant_leak_testing. Greasy burnt-oil smell + no overheat + no ground puddle = oil on
+      the manifold → oil_leak_testing. Customers rarely name a color under the hood — resolve on smell+temp.
+    discriminating_fact: "smell_descriptor: sweet_or_maple_syrup vs burnt_oil (+ temperature_gauge_state, cooling-proposed)"
+
+  - op: stage1.hedge.add
+    category_a: exhaust_system_testing
+    category_b: oil_leak_testing
+    rule: >
+      ROTTEN-EGG/sulfur smell (or a louder-exhaust/ticking note) from the exhaust = exhaust_system_testing.
+      GREASY hot-oil smell from under the hood + oil residue = oil_leak_testing. (Taxonomy pair #5 family.)
+    discriminating_fact: "smell_descriptor: rotten_egg_or_sulfur vs burnt_oil"
+
+  - op: stage1.hedge.add
+    category_a: exhaust_system_testing
+    category_b: check_engine_light_testing
+    rule: >
+      ROTTEN-EGG/sulfur smell = catalytic-converter H2S → exhaust_system_testing (rotten_egg_sulfur_smell).
+      FRESH raw-GASOLINE/pump smell = fuel/EVAP leak → check_engine_light_testing (gasoline_fuel_smell).
+      Raw gas is unburned+sharp; rotten-egg is burnt+sulfurous.
+    discriminating_fact: "smell_descriptor: rotten_egg_or_sulfur vs gasoline_or_fuel"
+
+  - op: stage1.hedge.add
+    category_a: coolant_leak_testing
+    category_b: ac_performance_check
+    rule: >
+      SWEET/maple-syrup smell UNDER THE HOOD or on the ground = coolant → coolant_leak_testing. The SAME
+      sweet smell blowing THROUGH THE VENTS with the HEAT on (+ foggy glass / wet carpet) = leaking heater
+      core → ac_performance_check (bad_smell_from_vents). Heater core is a cooling part, but the vent-tied
+      report routes HVAC.
+    discriminating_fact: "sound_or_smoke_location_zone: under_hood/under_car vs from_vents (+ hvac_mode=heat)"
+
+  - op: stage1.hedge.add
+    category_a: electrical_testing_general
+    category_b: ac_performance_check
+    rule: >
+      BURNING-ELECTRICAL/plastic smell NOT tied to the vents (behind the dash, by the fuse box, key-on) =
+      electrical_testing_general (burning_electrical_plastic_smell). The same burning smell THROUGH THE
+      VENTS with the FAN running = failing blower motor/resistor → ac_performance_check (bad_smell_from_vents).
+    discriminating_fact: "sound_or_smoke_location_zone: from_vents (+ hvac_mode set) vs behind_dashboard/inside_cabin_general"
+
+  - op: stage1.hedge.add
+    category_a: brake_inspection
+    category_b: oil_leak_testing
+    rule: >
+      BURNING-RUBBER/hot-brake smell (or visible smoke) FROM A WHEEL + a left-on/partial parking brake +
+      one wheel much hotter = dragging brake → brake_inspection. GREASY burnt-oil smell from UNDER THE HOOD
+      = oil on hot metal → oil_leak_testing.
+    discriminating_fact: "sound_or_smoke_location_zone: from_a_wheel vs under_hood (+ parking_brake_state)"
+
+  - op: stage1.hedge.add
+    category_a: exhaust_system_testing
+    category_b: ac_performance_check
+    rule: >
+      SMOKY/burnt EXHAUST smell INSIDE the cabin (worse on heat/recirculate, at idle, after warm-up) =
+      exhaust breach → exhaust_system_testing (exhaust_fumes_inside_the_cabin) — SAFETY/CO. MUSTY/mildew
+      "dirty-socks" smell from the vents on AC = evaporator growth → ac_performance_check (bad_smell_from_vents).
+    discriminating_fact: "smell_descriptor: exhaust_inside_cabin vs musty_or_mildew"
+
+  - op: stage1.hedge.add
+    category_a: exhaust_system_testing
+    category_b: check_engine_light_testing
+    rule: >
+      SMOKY exhaust fumes INSIDE the cabin = exhaust breach → exhaust_system_testing
+      (exhaust_fumes_inside_the_cabin), SAFETY. FRESH raw-gasoline smell (inside or under hood) = fuel leak
+      → check_engine_light_testing (gasoline_fuel_smell). Burnt/smoky vs fresh/sharp.
+    discriminating_fact: "smell_descriptor: exhaust_inside_cabin vs gasoline_or_fuel"
+
+  # ---------------------------------------------------------------------------
+  # STAGE-2 NEGATIVE EXAMPLES  {subcat_slug, phrase, routes_to}  (routes_to REQUIRED)
+  # ---------------------------------------------------------------------------
+
+  # --- tailpipe smoke color triad + benign steam ---
+  - op: stage2.example.negative.add
+    subcat_slug: white_smoke_from_tailpipe
+    phrase: "puff of blue smoke out the tailpipe when i first start it in the morning, smells oily"
+    routes_to: blue_or_gray_smoke_from_tailpipe
+  - op: stage2.example.negative.add
+    subcat_slug: white_smoke_from_tailpipe
+    phrase: "black sooty smoke when i stomp on the gas and it smells like raw fuel"
+    routes_to: black_smoke_from_tailpipe
+  - op: stage2.example.negative.add
+    subcat_slug: white_smoke_from_tailpipe
+    phrase: "little white steam on cold mornings that clears up within a minute, no smell"
+    routes_to: "REJECT (advisor — benign cold-start condensation, NOT white_smoke; empty Stage-1)"
+  - op: stage2.example.negative.add
+    subcat_slug: blue_or_gray_smoke_from_tailpipe
+    phrase: "thick white smoke that keeps coming even after 20 min, smells kinda sweet"
+    routes_to: white_smoke_from_tailpipe
+  - op: stage2.example.negative.add
+    subcat_slug: blue_or_gray_smoke_from_tailpipe
+    phrase: "black smoke when i floor it and it smells like gas, mileage dropped"
+    routes_to: black_smoke_from_tailpipe
+  - op: stage2.example.negative.add
+    subcat_slug: blue_or_gray_smoke_from_tailpipe
+    phrase: "gray smoke coming up from under the hood, no drips, smells like burning oil"
+    routes_to: smoke_from_under_the_hood
+  - op: stage2.example.negative.add
+    subcat_slug: black_smoke_from_tailpipe
+    phrase: "blue puff on cold startup that clears, oily burning smell"
+    routes_to: blue_or_gray_smoke_from_tailpipe
+  - op: stage2.example.negative.add
+    subcat_slug: black_smoke_from_tailpipe
+    phrase: "thick white sweet-smelling smoke and my coolant keeps going down"
+    routes_to: white_smoke_from_tailpipe
+
+  # --- under-hood smoke ---
+  - op: stage2.example.negative.add
+    subcat_slug: smoke_from_under_the_hood
+    phrase: "smoke coming off my rear wheel, i think i left the parking brake on"
+    routes_to: smoke_or_burning_smell_from_a_wheel
+  - op: stage2.example.negative.add
+    subcat_slug: smoke_from_under_the_hood
+    phrase: "haze inside the car and a sharp burning plastic smell behind the dash"
+    routes_to: smoke_or_strong_smell_inside_the_cabin
+  - op: stage2.example.negative.add
+    subcat_slug: smoke_from_under_the_hood
+    phrase: "white smoke from the tailpipe that keeps going, smells sweet"
+    routes_to: white_smoke_from_tailpipe
+
+  # --- wheel smoke/smell ---
+  - op: stage2.example.negative.add
+    subcat_slug: smoke_or_burning_smell_from_a_wheel
+    phrase: "gray smoke from under the hood with a burning oil smell"
+    routes_to: smoke_from_under_the_hood
+  - op: stage2.example.negative.add
+    subcat_slug: smoke_or_burning_smell_from_a_wheel
+    phrase: "burning rubber smell but i dont actually see any smoke"
+    routes_to: burning_rubber_hot_brake_smell
+
+  # --- cabin smoke/smell ---
+  - op: stage2.example.negative.add
+    subcat_slug: smoke_or_strong_smell_inside_the_cabin
+    phrase: "exhaust smell inside the car, way worse when the heater is on"
+    routes_to: exhaust_fumes_inside_the_cabin
+  - op: stage2.example.negative.add
+    subcat_slug: smoke_or_strong_smell_inside_the_cabin
+    phrase: "musty gym-sock smell from the vents every time i turn on the AC"
+    routes_to: bad_smell_from_vents
+  - op: stage2.example.negative.add
+    subcat_slug: smoke_or_strong_smell_inside_the_cabin
+    phrase: "sweet maple smell blowing from the vents when i run the heat, windows fogging"
+    routes_to: bad_smell_from_vents
+
+  # --- sweet (coolant) ---
+  - op: stage2.example.negative.add
+    subcat_slug: sweet_smell_maple_syrup_antifreeze
+    phrase: "greasy burnt oil smell from under the hood after a long drive"
+    routes_to: burnt_oil_smell
+  - op: stage2.example.negative.add
+    subcat_slug: sweet_smell_maple_syrup_antifreeze
+    phrase: "sweet smell blowing through the vents when the heat is on and the glass fogs up"
+    routes_to: bad_smell_from_vents
+
+  # --- burnt oil ---
+  - op: stage2.example.negative.add
+    subcat_slug: burnt_oil_smell
+    phrase: "rotten egg / sulfur smell coming from the exhaust"
+    routes_to: rotten_egg_sulfur_smell
+  - op: stage2.example.negative.add
+    subcat_slug: burnt_oil_smell
+    phrase: "burning rubber smell from one of my wheels after braking down a hill"
+    routes_to: burning_rubber_hot_brake_smell
+  - op: stage2.example.negative.add
+    subcat_slug: burnt_oil_smell
+    phrase: "sharp acrid burning plastic smell behind the dash"
+    routes_to: burning_electrical_plastic_smell
+  - op: stage2.example.negative.add
+    subcat_slug: burnt_oil_smell
+    phrase: "sweet maple syrup smell and my coolant is low"
+    routes_to: sweet_smell_maple_syrup_antifreeze
+
+  # --- gasoline / fuel ---
+  - op: stage2.example.negative.add
+    subcat_slug: gasoline_fuel_smell
+    phrase: "rotten egg sulfur smell from the tailpipe under acceleration"
+    routes_to: rotten_egg_sulfur_smell
+  - op: stage2.example.negative.add
+    subcat_slug: gasoline_fuel_smell
+    phrase: "smoky exhaust smell inside the cabin, worse with the heater running"
+    routes_to: exhaust_fumes_inside_the_cabin
+
+  # --- rotten egg ---
+  - op: stage2.example.negative.add
+    subcat_slug: rotten_egg_sulfur_smell
+    phrase: "fresh raw gasoline smell like standing at the pump"
+    routes_to: gasoline_fuel_smell
+  - op: stage2.example.negative.add
+    subcat_slug: rotten_egg_sulfur_smell
+    phrase: "greasy hot-oil smell from under the hood"
+    routes_to: burnt_oil_smell
+  - op: stage2.example.negative.add
+    subcat_slug: rotten_egg_sulfur_smell
+    phrase: "thick dark puddle near the back axle that smells sulfury"
+    routes_to: thick_dark_brown_puddle_gear_or_differential_oil   # puddle-led → router-leaks
+
+  # --- burning electrical / plastic ---
+  - op: stage2.example.negative.add
+    subcat_slug: burning_electrical_plastic_smell
+    phrase: "greasy hot oil smell from under the hood after driving"
+    routes_to: burnt_oil_smell
+  - op: stage2.example.negative.add
+    subcat_slug: burning_electrical_plastic_smell
+    phrase: "burning rubber / hot brake smell from a wheel"
+    routes_to: burning_rubber_hot_brake_smell
+  - op: stage2.example.negative.add
+    subcat_slug: burning_electrical_plastic_smell
+    phrase: "burning plastic smell coming through the vents when the fan runs"
+    routes_to: bad_smell_from_vents   # vent-tied blower → hvac
+
+  # --- burning rubber / hot brake ---
+  - op: stage2.example.negative.add
+    subcat_slug: burning_rubber_hot_brake_smell
+    phrase: "greasy burnt oil smell from under the hood, no drips on the ground"
+    routes_to: burnt_oil_smell
+  - op: stage2.example.negative.add
+    subcat_slug: burning_rubber_hot_brake_smell
+    phrase: "i can actually see smoke coming off the wheel"
+    routes_to: smoke_or_burning_smell_from_a_wheel   # visible smoke → smoke slug
+  - op: stage2.example.negative.add
+    subcat_slug: burning_rubber_hot_brake_smell
+    phrase: "sharp acrid burning plastic smell behind the dash"
+    routes_to: burning_electrical_plastic_smell
+
+  # --- musty ---
+  - op: stage2.example.negative.add
+    subcat_slug: musty_mildew_smell_from_vents
+    phrase: "smoky exhaust smell inside the car, worse with the heat on"
+    routes_to: exhaust_fumes_inside_the_cabin
+  - op: stage2.example.negative.add
+    subcat_slug: musty_mildew_smell_from_vents
+    phrase: "musty dirty-socks smell blowing right out of the vents when i turn on the AC"
+    routes_to: bad_smell_from_vents   # vent-tied musty → hvac (DB routing rule)
+
+  # --- exhaust fumes in cabin (SAFETY) ---
+  - op: stage2.example.negative.add
+    subcat_slug: exhaust_fumes_inside_the_cabin
+    phrase: "fresh raw gasoline smell inside the car when im driving"
+    routes_to: gasoline_fuel_smell
+  - op: stage2.example.negative.add
+    subcat_slug: exhaust_fumes_inside_the_cabin
+    phrase: "musty mildew dirty-socks smell from the vents on the AC"
+    routes_to: musty_mildew_smell_from_vents
+  - op: stage2.example.negative.add
+    subcat_slug: exhaust_fumes_inside_the_cabin
+    phrase: "sweet maple syrup smell through the vents with the heat on and foggy glass"
+    routes_to: bad_smell_from_vents   # heater core → hvac
+
+# =============================================================================
+# CONFUSABLE MATRIX ROWS (this router OWNS these)
+# {pair, discriminating_fact, discriminating_question, hedge_rule, examples_a, examples_b}
+# =============================================================================
+confusable_matrix_rows:
+
+  - pair: [white_smoke_from_tailpipe, blue_or_gray_smoke_from_tailpipe]
+    discriminating_fact: "smell_descriptor (sweet_or_maple_syrup vs burnt_oil); smoke_color (white vs blue_or_gray)"
+    discriminating_question: "Does the exhaust smoke smell sweet/syrupy, or oily like burning oil?"
+    hedge_rule: "sweet + white + persists past warm-up + coolant loss = coolant → coolant_leak_testing; oily + blue/gray = oil burn → check_engine_light_testing"
+    examples_a: ["thick white smoke pouring out my tailpipe even after 20 min, smells kinda sweet", "white smoke and my coolant tank keeps getting low"]
+    examples_b: ["puff of blue smoke on cold startup that clears, smells like burning oil", "blueish gray smoke when I take off from a light"]
+
+  - pair: [blue_or_gray_smoke_from_tailpipe, black_smoke_from_tailpipe]
+    discriminating_fact: "smoke_color (blue_or_gray vs black); smell_descriptor (burnt_oil vs gasoline_or_fuel)"
+    discriminating_question: "Is the smoke blue/gray with an oily burnt smell, or black/sooty smelling like raw gas?"
+    hedge_rule: "blue/gray + burnt_oil = oil burn; black + gasoline_or_fuel + mpg drop = running rich (both → check_engine_light_testing, different subcat/repair)"
+    examples_a: ["blue puff on cold startup, smells oily, adding a quart every few weeks"]
+    examples_b: ["black smoke when i stomp on the gas and it smells like raw gas", "fuel mileage tanked and theres black smoke from the back"]
+
+  - pair: [white_smoke_from_tailpipe, black_smoke_from_tailpipe]
+    discriminating_fact: "smoke_color (white vs black); smell_descriptor (sweet vs gasoline_or_fuel)"
+    discriminating_question: "Is the smoke thick white and sweet, or black/sooty with a gas smell?"
+    hedge_rule: "white + sweet = coolant → coolant_leak_testing; black + raw-gas = rich → check_engine_light_testing"
+    examples_a: ["thick white sweet smoke, coolant low"]
+    examples_b: ["my truck started blowing black smoke", "black smoke and smells like fuel when i accelerate"]
+
+  - pair: [white_smoke_from_tailpipe, "REJECT-benign-cold-steam"]
+    discriminating_fact: "smoke_color (white persistent vs steam_thin_wispy); onset_timing=cold_start + weather_condition=cold_weather; no smell; no coolant loss"
+    discriminating_question: "Does it keep smoking after 10-15 min of driving, or clear up within a minute and have no smell?"
+    hedge_rule: "persists + sweet + coolant loss = white_smoke (head gasket); clears fast + no smell + cold morning = NORMAL condensation → REJECT/advisor (do NOT upgrade to smoke_color=white)"
+    examples_a: ["thick white smoke even after driving 20 minutes, smells sweet"]
+    examples_b: ["little white steam on cold mornings that goes away", "wispy vapor from the tailpipe when its cold out, clears right up, no smell"]
+
+  - pair: [smoke_from_under_the_hood, smoke_from_under_the_hood]   # same slug, two causes/services
+    discriminating_fact: "smell_descriptor (sweet_or_maple_syrup vs burnt_oil) + temperature_gauge_state (in_the_red vs normal)"
+    discriminating_question: "Is the temp gauge high / coolant low with hissing steam, or is it a greasy burning-oil smell with the temp normal?"
+    hedge_rule: "steam + overheat/coolant loss + sweet = coolant boil-over → coolant_leak_testing; burnt_oil + no overheat + no puddle = oil on manifold → oil_leak_testing"
+    examples_a: ["smoke from under the hood and the temp gauge went all the way into the red", "hissing and steam under the hood, coolant overheating message"]
+    examples_b: ["gray smoke from under the hood and it smells like burning oil", "wisps of smoke at idle, oil pooling under the manifold, no drips on the ground"]
+
+  - pair: [burning_electrical_plastic_smell, burning_rubber_hot_brake_smell]
+    discriminating_fact: "smell_descriptor (burning_electrical_or_plastic vs burning_rubber_or_hot_brakes); sound_or_smoke_location_zone (behind_dashboard vs from_a_wheel)"
+    discriminating_question: "Is it a sharp acrid melting-plastic smell, or a hot rubbery smell from a wheel?"
+    hedge_rule: "acrid/plastic behind dash/fuse box = electrical → electrical_testing_general; rubbery/hot from a wheel + parking brake = dragging brake → brake_inspection"
+    examples_a: ["sharp burning plastic smell behind the dash", "burning smell by the fuse box"]
+    examples_b: ["burning rubber smell from a wheel after a long downhill", "hot brake smell, think i left the e-brake on"]
+
+  - pair: [burning_electrical_plastic_smell, burnt_oil_smell]
+    discriminating_fact: "smell_descriptor (burning_electrical_or_plastic vs burnt_oil)"
+    discriminating_question: "Is it a sharp acrid smell like hot wires/plastic, or a greasy hot-oil smell?"
+    hedge_rule: "acrid/plastic = electrical → electrical_testing_general; greasy/oil under the hood = oil on hot metal → oil_leak_testing"
+    examples_a: ["sharp electrical burning smell, like hot wires", "burning plastic smell from behind the dash"]
+    examples_b: ["greasy burnt oil smell from under the hood after long drives"]
+
+  - pair: [sweet_smell_maple_syrup_antifreeze, burnt_oil_smell]
+    discriminating_fact: "smell_descriptor (sweet_or_maple_syrup vs burnt_oil); fluid color if a puddle is seen (bright vs dark)"
+    discriminating_question: "Is it a sweet maple-syrup smell, or a greasy burning-oil smell?"
+    hedge_rule: "sweet + coolant low = coolant → coolant_leak_testing; greasy + under hood = oil → oil_leak_testing"
+    examples_a: ["somethin smells like maple syrup around my car, coolant keeps getting low"]
+    examples_b: ["been noticing a burnt oil smell lately, greasy from under the hood"]
+
+  - pair: [rotten_egg_sulfur_smell, gasoline_fuel_smell]
+    discriminating_fact: "smell_descriptor (rotten_egg_or_sulfur vs gasoline_or_fuel)"
+    discriminating_question: "Is it a rotten-egg / sulfur smell, or a fresh raw-gasoline pump smell?"
+    hedge_rule: "rotten-egg/sulfur (burnt) = catalytic converter → exhaust_system_testing; fresh/sharp raw gas (unburned) = fuel/EVAP leak → check_engine_light_testing"
+    examples_a: ["smells like rotten eggs from the exhaust", "sulfur/sewer smell under acceleration"]
+    examples_b: ["i smell gas inside my car when im driving", "whole garage smells like gasoline when i park"]
+
+  - pair: [rotten_egg_sulfur_smell, burnt_oil_smell]
+    discriminating_fact: "smell_descriptor (rotten_egg_or_sulfur vs burnt_oil); zone (from_tailpipe/exhaust vs under_hood)"
+    discriminating_question: "Is it rotten-egg from the exhaust, or greasy hot-oil from under the hood?"
+    hedge_rule: "rotten-egg from exhaust = cat → exhaust_system_testing; greasy oil under hood = oil → oil_leak_testing"
+    examples_a: ["rotten egg smell from the catalytic converter area"]
+    examples_b: ["greasy burning oil smell from under the hood"]
+
+  - pair: [burnt_oil_smell, burning_rubber_hot_brake_smell]
+    discriminating_fact: "sound_or_smoke_location_zone (under_hood vs from_a_wheel); parking_brake_state"
+    discriminating_question: "Is the burning smell from under the hood, or from a wheel?"
+    hedge_rule: "under hood + greasy = oil → oil_leak_testing; from a wheel + rubbery + parking brake = dragging brake → brake_inspection"
+    examples_a: ["greasy burnt oil smell from under the hood, no drips"]
+    examples_b: ["burning rubber smell from one of my wheels after braking downhill"]
+
+  - pair: [musty_mildew_smell_from_vents, bad_smell_from_vents]   # smell/ vs hvac/ — vent-tie splits
+    discriminating_fact: "sound_or_smoke_location_zone (inside_cabin_general/carpet/trunk vs from_vents) + hvac_mode=ac"
+    discriminating_question: "Does the musty smell blow through the dash VENTS when the AC/fan is on, or come from the seats/carpet/trunk?"
+    hedge_rule: "vent-tied musty on AC = evaporator → ac_performance_check (bad_smell_from_vents); carpet/trunk not through vents = smell/musty_mildew_smell_from_vents (or water-intrusion → body-glass-water-leaks-keys)"
+    examples_a: ["musty smell from the back seat carpet, especially when it rains"]
+    examples_b: ["nasty musty dirty-socks smell from the vents every time i first turn on the AC"]
+
+  - pair: [exhaust_fumes_inside_the_cabin, gasoline_fuel_smell]
+    discriminating_fact: "smell_descriptor (exhaust_inside_cabin vs gasoline_or_fuel)"
+    discriminating_question: "Is it a smoky/burnt tailpipe smell inside, or a fresh raw-gasoline smell?"
+    hedge_rule: "smoky/burnt inside, worse on heat/recirc/idle = exhaust breach → exhaust_system_testing (SAFETY/CO); fresh raw gas = fuel leak → check_engine_light_testing"
+    examples_a: ["exhaust smell inside my car, worse when the heater is running", "EXHAUST SMELL COMING THROUGH THE HEATER AT IDLE"]
+    examples_b: ["i smell raw gas inside the cabin when im driving"]
+
+  - pair: [exhaust_fumes_inside_the_cabin, musty_mildew_smell_from_vents]
+    discriminating_fact: "smell_descriptor (exhaust_inside_cabin vs musty_or_mildew)"
+    discriminating_question: "Is it a smoky exhaust smell, or a musty mildew dirty-socks smell?"
+    hedge_rule: "smoky exhaust inside = exhaust breach → exhaust_system_testing (SAFETY); musty from vents on AC = evaporator → ac_performance_check"
+    examples_a: ["smoky exhaust fumes in the cabin, worse on the highway with heat on"]
+    examples_b: ["musty gym-sock smell from the vents when the AC first comes on"]
+
+  - pair: [exhaust_fumes_inside_the_cabin, sweet_smell_maple_syrup_antifreeze]
+    discriminating_fact: "smell_descriptor (exhaust_inside_cabin vs sweet_or_maple_syrup); zone (cabin-general vs from_vents on heat)"
+    discriminating_question: "Is it a smoky exhaust smell, or a sweet maple-syrup smell through the vents with the heat on?"
+    hedge_rule: "smoky exhaust = exhaust breach → exhaust_system_testing (SAFETY); sweet through vents on heat + foggy glass = leaking heater core → ac_performance_check (bad_smell_from_vents)"
+    examples_a: ["exhaust fumes inside the cabin at idle with the heat on"]
+    examples_b: ["sweet maple syrup smell from the vents when i run the heat, windows fog up"]
+
+  - pair: [smoke_or_burning_smell_from_a_wheel, burning_rubber_hot_brake_smell]
+    discriminating_fact: "visible smoke stated vs smell only (smoke slug vs smell slug); both → brake_inspection"
+    discriminating_question: "Do you actually SEE smoke/haze from the wheel, or just SMELL burning?"
+    hedge_rule: "sees smoke = smoke_or_burning_smell_from_a_wheel; smells only = burning_rubber_hot_brake_smell; both route to brake_inspection"
+    examples_a: ["theres smoke coming off my rear right wheel, think the parking brake stuck on"]
+    examples_b: ["burning rubber smell from a wheel but i dont see any smoke"]
+
+# =============================================================================
+# GOLDEN CASES (schema mirrors eval-cases.json; Wave C aggregates)
+# Facts use ONLY live 29-slot values. Includes inference-traps + a safety/null route.
+# =============================================================================
+golden_cases:
+  - text: "puff of blue smoke out the tailpipe when i first start it in the morning, smells like burning oil"
+    tags: [fact_rich, router_smoke]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing, oil_leak_testing]
+      stage2_subcategory_slug: blue_or_gray_smoke_from_tailpipe
+      stage3_facts: { smoke_color: blue_or_gray, smell_descriptor: burnt_oil, sound_or_smoke_location_zone: from_tailpipe, onset_timing: cold_start }
+      route: testing_service
+
+  - text: "thick white smoke pouring out my tailpipe even after driving 20 min and it smells kinda sweet"
+    tags: [fact_rich, router_smoke]
+    expected:
+      stage1_category_key: coolant_leak_testing
+      stage1_acceptable: [coolant_leak_testing, check_engine_light_testing]
+      stage2_subcategory_slug: white_smoke_from_tailpipe
+      stage3_facts: { smoke_color: white, smell_descriptor: sweet_or_maple_syrup, sound_or_smoke_location_zone: from_tailpipe }
+      route: testing_service
+
+  - text: "black smoke when i stomp on the gas and it smells like raw gas, mileage tanked"
+    tags: [fact_rich, router_smoke]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing]
+      stage2_subcategory_slug: black_smoke_from_tailpipe
+      stage3_facts: { smoke_color: black, smell_descriptor: gasoline_or_fuel, onset_timing: when_accelerating }
+      route: testing_service
+
+  - text: "little white steam from my tailpipe on cold mornings that clears up in a minute, no smell"
+    tags: [inference_trap, reject, router_smoke]
+    note: "Benign cold-start condensation. Extractor must NOT set smoke_color=white or assert head gasket."
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      stage3_facts: { smoke_color: steam_thin_wispy, onset_timing: cold_start, weather_condition: cold_weather }
+      route: advisor
+
+  - text: "there is a burning smell coming from my engine"
+    tags: [inference_trap, needs_fact, router_smell]
+    note: "Bare 'burning smell' — smell_descriptor stays UNSET; clarify what it smells like + where. No confident pick."
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: [oil_leak_testing, electrical_testing_general, check_engine_light_testing]
+      stage2_subcategory_slug: null
+      stage3_facts: { sound_or_smoke_location_zone: under_hood }
+      route: clarify
+
+  - text: "theres an exhaust smell inside my car and its a lot worse when the heater is running, at idle"
+    tags: [fact_rich, safety, router_smell]
+    expected:
+      stage1_category_key: exhaust_system_testing
+      stage1_acceptable: [exhaust_system_testing]
+      stage2_subcategory_slug: exhaust_fumes_inside_the_cabin
+      stage3_facts: { smell_descriptor: exhaust_inside_cabin, sound_or_smoke_location_zone: inside_cabin_general, hvac_mode: heat, onset_timing: when_idling }
+      route: testing_service
+
+  - text: "nasty musty smell like dirty gym socks from the vents every time i first turn on the AC"
+    tags: [fact_rich, router_smell]
+    expected:
+      stage1_category_key: ac_performance_check
+      stage1_acceptable: [ac_performance_check]
+      stage2_subcategory_slug: bad_smell_from_vents
+      stage3_facts: { smell_descriptor: musty_or_mildew, sound_or_smoke_location_zone: from_vents, hvac_mode: ac, onset_timing: at_first_turn_on }
+      route: testing_service
+
+  - text: "theres smoke coming off my rear right wheel, i think i left the parking brake on"
+    tags: [fact_rich, router_smoke]
+    expected:
+      stage1_category_key: brake_inspection
+      stage1_acceptable: [brake_inspection]
+      stage2_subcategory_slug: smoke_or_burning_smell_from_a_wheel
+      stage3_facts: { sound_or_smoke_location_zone: from_a_wheel, location_side: right, location_axle: rear, parking_brake_state: engaged_or_partially_engaged }
+      route: testing_service
+
+  - text: "gray smoke coming up from under the hood and it smells like burning oil, no drips on the ground"
+    tags: [fact_rich, router_smoke]
+    expected:
+      stage1_category_key: oil_leak_testing
+      stage1_acceptable: [oil_leak_testing, coolant_leak_testing]
+      stage2_subcategory_slug: smoke_from_under_the_hood
+      stage3_facts: { smell_descriptor: burnt_oil, sound_or_smoke_location_zone: under_hood }
+      route: testing_service
+
+  - text: "sharp burning plastic smell coming from behind the dash"
+    tags: [fact_rich, router_smell]
+    expected:
+      stage1_category_key: electrical_testing_general
+      stage1_acceptable: [electrical_testing_general, ac_performance_check]
+      stage2_subcategory_slug: burning_electrical_plastic_smell
+      stage3_facts: { smell_descriptor: burning_electrical_or_plastic, sound_or_smoke_location_zone: behind_dashboard }
+      route: testing_service
+
+  - text: "smells like rotten eggs from the exhaust, worse under acceleration"
+    tags: [fact_rich, router_smell]
+    expected:
+      stage1_category_key: exhaust_system_testing
+      stage1_acceptable: [exhaust_system_testing]
+      stage2_subcategory_slug: rotten_egg_sulfur_smell
+      stage3_facts: { smell_descriptor: rotten_egg_or_sulfur, sound_or_smoke_location_zone: from_tailpipe, onset_timing: when_accelerating }
+      route: testing_service
+
+  - text: "was driving and it stopped running, saw smoke towards the back of the car, wont restart now"
+    tags: [safety, null_subcat, router_smoke]
+    note: "Safety/no-start lead overrides smoke color. Do NOT force a smoke-color subcategory."
+    expected:
+      stage1_category_key: no_start_testing
+      stage1_acceptable: [no_start_testing, safety_concern_dont_feel_safe_driving_it]
+      stage2_subcategory_slug: null
+      stage3_facts: { drivable_state: not_drivable_needs_tow }
+      route: testing_service

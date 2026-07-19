@@ -1,0 +1,195 @@
+system: body-glass-water-leaks-keys
+# phrase -> normalized -> routes_to[] (subcategory slug or 'advisor' for no-fit) -> ambiguity -> provenance
+# ambiguity: unambiguous | needs-fact:<slot> | cross-system:<slug-or-advisor>
+entries:
+
+  # ---- FM-1 water intrusion INTO cabin (no-fit -> advisor / proposed water_leaking_inside_the_car) ----
+  - phrase: "front floor board, passenger side, under floor mat, you can visibly see water standing"
+    normalized: clear water standing inside on the passenger floor
+    routes_to: [advisor]        # proposed: water_leaking_inside_the_car; corpus came back ambiguous ac_leak/multi
+    ambiguity: cross-system:clear_odorless_puddle_water_or_ac_condensation
+    provenance: tekmetric
+  - phrase: "carpet is soaked on the driver side every time it rains"
+    normalized: interior carpet wet, rain-correlated
+    routes_to: [advisor]        # proposed: water_leaking_inside_the_car
+    ambiguity: needs-fact:weather_condition
+    provenance: forum-paraphrase
+  # genuine real-corpus interior-water cases (currently MISROUTED to AC in the corpus)
+  - phrase: "Water is leaking into the driver's side of my car. The floor is full of water!"
+    normalized: water intrusion flooding interior floor
+    routes_to: [advisor]        # proposed: water_leaking_inside_the_car; corpus mislabeled ac_performance_check
+    ambiguity: cross-system:ac_performance_check
+    provenance: tekmetric
+  - phrase: "smells musty inside and the headliner is damp after storms"
+    normalized: damp headliner + musty smell after rain
+    routes_to: [advisor]
+    ambiguity: cross-system:musty_mildew_smell_from_vents
+    provenance: synthetic
+  - phrase: "water pours in by my feet when it rains hard"
+    normalized: water enters passenger footwell in rain
+    routes_to: [advisor]
+    ambiguity: unambiguous
+    provenance: synthetic
+  # boundary: clear water UNDER the car is usually normal AC condensation (NOT this system)
+  - phrase: "found a small puddle under the passenger side of my car, completely clear with no smell, feels just like plain water"
+    normalized: clear odorless puddle under car
+    routes_to: [clear_odorless_puddle_water_or_ac_condensation]
+    ambiguity: cross-system:clear_odorless_puddle_water_or_ac_condensation
+    provenance: synthetic        # authored eval-cases.json (no 'eval' enum value); NOT real Tekmetric
+
+  # ---- FM-2 wind noise (no-fit -> advisor) ----
+  - phrase: "loud whistling air noise from the driver door at highway speed"
+    normalized: wind whistle from door at speed
+    routes_to: [advisor]
+    ambiguity: needs-fact:sound_or_smoke_location_zone
+    provenance: synthetic
+  - phrase: "theres a wind noise around the windshield that got worse after the glass was replaced"
+    normalized: wind noise near windshield after glass R&R
+    routes_to: [advisor]
+    ambiguity: unambiguous
+    provenance: synthetic
+
+  # ---- FM-3 cabin / trunk rattle (weak/no-fit -> advisor) ----
+  - phrase: "NOISE IN REAR OF VEHICLE ONLY HAPPENS DURING WINTER SEEMS TO GO AWAY DURING SUMMER SOUNDS LIKE SOMETHING AROUND IN TRUNK"
+    normalized: rattle/loose item in trunk, seasonal
+    routes_to: [advisor]
+    ambiguity: cross-system:rattling_underneath_the_car
+    provenance: tekmetric
+  - phrase: "rattle from the dash or door panel over bumps"
+    normalized: interior trim rattle over bumps
+    routes_to: [advisor]
+    ambiguity: cross-system:rattling_underneath_the_car
+    provenance: forum-paraphrase
+
+  # ---- FM-4 doors / trunk / latch ----
+  - phrase: "TRUNK IS INOPERABLE"
+    normalized: trunk will not open
+    routes_to: [accessory_doesnt_work, advisor]
+    ambiguity: needs-fact:accessory_affected     # electric release -> test; mechanical -> advisor
+    provenance: tekmetric
+  - phrase: "TRUNK WILL NOT OPEN"
+    normalized: trunk will not open
+    routes_to: [accessory_doesnt_work, advisor]
+    ambiguity: needs-fact:accessory_affected
+    provenance: tekmetric
+  - phrase: "TRUNK POPS OPEN WHEN CLOSING (Has to close very lightly or it pops back open)"
+    normalized: trunk latch will not hold closed
+    routes_to: [advisor]
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "drivers door wont latch shut, have to slam it"
+    normalized: door latch will not hold
+    routes_to: [advisor]
+    ambiguity: unambiguous
+    provenance: synthetic
+
+  # ---- FM-5 power locks (electrical -> accessory_doesnt_work) ----
+  - phrase: "power door locks quit working with the key fob then with the switch"
+    normalized: all power locks inoperative from fob and switch
+    routes_to: [accessory_doesnt_work]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  - phrase: "only the passenger door lock stopped working"
+    normalized: single power-lock actuator dead
+    routes_to: [accessory_doesnt_work]
+    ambiguity: needs-fact:location_side
+    provenance: synthetic
+
+  # ---- FM-6 key fob / keyless / remote-start electronics (electrical) ----
+  - phrase: "are you able to determine why my key fob will not activate the remote start?"
+    normalized: fob remote-start function inoperative (car still runs)
+    routes_to: [accessory_doesnt_work]
+    ambiguity: needs-fact:accessory_affected
+    provenance: tekmetric
+  - phrase: "my key fob stopped locking and unlocking the doors, might be the fob battery"
+    normalized: fob remote lock/unlock inoperative
+    routes_to: [accessory_doesnt_work]
+    ambiguity: unambiguous
+    provenance: synthetic
+  - phrase: "have to be right next to the car for the remote to work now"
+    normalized: keyless entry short range / weak
+    routes_to: [accessory_doesnt_work]
+    ambiguity: unambiguous
+    provenance: synthetic
+
+  # ---- FM-7 security / immobilizer NO-START (weak/no-fit -> propose; contrast battery) ----
+  - phrase: "car cranks but wont start and the little security light is flashing"
+    normalized: immobilizer no-start, security light flashing, engine cranks
+    routes_to: [advisor]        # proposed: key_or_fob_not_recognized_wont_start (no immobilizer subcat exists yet); no_start_testing is a SERVICE key, not a Stage-2 slug
+    ambiguity: needs-fact:warning_light_named
+    provenance: synthetic
+  - phrase: "wont start, key wont turn in the ignition"
+    normalized: key will not turn / no-start
+    routes_to: [advisor]        # proposed: key_or_fob_not_recognized_wont_start
+    ambiguity: unambiguous
+    provenance: synthetic
+  - phrase: "my key is stuck in the ignition and wont come out"
+    normalized: key stuck in ignition (interlock / worn cylinder)
+    routes_to: [advisor]        # proposed: key_or_fob_not_recognized_wont_start (key-cylinder cousin, FM-7)
+    ambiguity: unambiguous
+    provenance: synthetic
+  - phrase: "no run or start, intermittent dash lights, ABS traction airbag and security light also no power locks or windows"
+    normalized: multi-module comms loss with security light, no-start
+    routes_to: [multiple_random_electrical_glitches, advisor]   # multiple_random_electrical_glitches is a real subcat; advisor for the no-start half (no immobilizer subcat yet)
+    ambiguity: cross-system:multiple_warning_lights_at_once
+    provenance: forum-paraphrase
+  # boundary: battery/charging no-start is NOT this system
+  - phrase: "turn the key, just clicks, dash lights go dim, had to jump it"
+    normalized: battery no-start, clicks, dim lights, jump-started
+    routes_to: [wont_crank_just_clicks]
+    ambiguity: cross-system:wont_crank_just_clicks
+    provenance: forum-paraphrase
+
+  # ---- FM-8 water-intrusion electrical gremlins (electrical) ----
+  - phrase: "one day the radio resets itself, next day the door locks click on their own, next day the gauges jump around, always worse after it rains"
+    normalized: multiple random electrical glitches, worse after rain
+    routes_to: [multiple_random_electrical_glitches]
+    ambiguity: unambiguous
+    provenance: synthetic        # authored eval-cases.json (line ~1132), NOT real Tekmetric
+  # genuine real-corpus multi-glitch (real-162)
+  - phrase: "the radio and clock quit working, then the power door locks quit with the fob, then more little things started acting up"
+    normalized: several accessories dropping out over time
+    routes_to: [multiple_random_electrical_glitches]
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "electrical stuff acts up after a car wash"
+    normalized: intermittent electrical faults after car wash / water
+    routes_to: [multiple_random_electrical_glitches]
+    ambiguity: needs-fact:recent_action
+    provenance: synthetic
+
+  # ---- FM-10 anti-theft ALARM sounding / horn honking / won't disarm (electrical; delta owned here) ----
+  - phrase: "the alarm goes off randomly in the middle of the night for no reason"
+    normalized: anti-theft alarm sounds on its own, intermittent
+    routes_to: [accessory_doesnt_work]   # defer_to: body-electrical-accessories (shared slug)
+    ambiguity: needs-fact:accessory_affected
+    provenance: synthetic
+  - phrase: "horn keeps honking on its own, i had to pull the fuse to make it stop"
+    normalized: horn/alarm honking on its own; customer disabled it
+    routes_to: [accessory_doesnt_work]
+    ambiguity: unambiguous
+    provenance: synthetic
+  - phrase: "car alarm wont shut off / wont disarm even with the fob"
+    normalized: alarm will not disarm
+    routes_to: [accessory_doesnt_work]
+    ambiguity: unambiguous
+    provenance: synthetic
+  - phrase: "while the security light was on i couldnt use remote start, and if i tried it the horn would honk"
+    normalized: security-state interlock, horn honks on remote-start attempt
+    routes_to: [accessory_doesnt_work]
+    ambiguity: needs-fact:accessory_affected
+    provenance: forum-paraphrase
+
+  # ---- FM-9 cracked glass (no-fit -> advisor; NOT wipers) ----
+  - phrase: "windshield cracked from a rock on the highway"
+    normalized: windshield glass cracked (chip spreading)
+    routes_to: [advisor]
+    ambiguity: cross-system:windshield_inop_testing
+    provenance: forum-paraphrase
+
+  # ---- null-route: work-order fragment, not a customer concern ----
+  - phrase: "check body control module per tech, testing auth 179"
+    normalized: internal work-order line, no customer symptom
+    routes_to: [advisor]
+    ambiguity: unambiguous
+    provenance: tekmetric

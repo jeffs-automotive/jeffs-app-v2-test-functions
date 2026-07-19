@@ -1,0 +1,154 @@
+system: manual-trans-clutch
+# phrase -> normalized -> routes_to[] -> ambiguity -> provenance
+# routes_to is the CORRECTED destination. For NO-FIT failure modes that is the
+# *proposed* Chris-gated slug (flagged below), NEVER the current wrong subcat --
+# routing to the current wrong subcat would train the routings the dossier calls
+# wrong (see dossier §8). Proposed slugs (see proposals.yaml): manual_clutch_slipping,
+# grinding_or_hard_shift_gears, clutch_pedal_or_engagement_feel.
+# ambiguity: unambiguous | needs-fact:<slot> | cross-system:<slug> | null-route
+entries:
+  # ---- FM-1 clutch slip (real tekmetric verbatim first) ----
+  - phrase: "CLIENT STATES CLUTCH IS SLIPPING"
+    normalized: clutch slipping, driver-reported
+    routes_to: [manual_clutch_slipping]   # proposed; today falls into low_power_or_wont_accelerate_normally (weak fit)
+    ambiguity: unambiguous
+    provenance: tekmetric
+
+  - phrase: "customer states the clutch has failed. revs up and doesn't have power when accelerating"
+    normalized: clutch slip - engine revs without speed gain under acceleration
+    routes_to: [manual_clutch_slipping]   # proposed
+    ambiguity: unambiguous
+    provenance: tekmetric
+
+  - phrase: "manual transmission started slipping in 4-high and first gear, fine in 4-low and 2-high"
+    normalized: RANGE-DEPENDENT slip (only in one 4WD range) - transfer-case/4WD signature, NOT a clutch
+    routes_to: [awd_4x4_testing]
+    ambiguity: cross-system:awd_4x4_testing
+    provenance: forum-paraphrase
+
+  - phrase: "clutch slips going up hills and i smell somthing burning"
+    normalized: clutch slip under load with vague burning smell (other_burning, not brake/rubber)
+    routes_to: [manual_clutch_slipping]   # proposed
+    ambiguity: cross-system:other_burning
+    provenance: synthetic
+
+  - phrase: "revs but no go, feels like the clutch isnt grabbing"
+    normalized: clutch slip - no torque transfer
+    routes_to: [manual_clutch_slipping]   # proposed
+    ambiguity: unambiguous
+    provenance: synthetic
+
+  # ---- FM-2 chatter / judder on engagement ----
+  - phrase: "shudders when i let the clutch out pulling away from a stop"
+    normalized: clutch chatter on engagement from standstill
+    routes_to: [clutch_pedal_or_engagement_feel]   # proposed
+    ambiguity: needs-fact:onset_timing
+    provenance: synthetic
+
+  - phrase: "car judders and shakes as the clutch catches when i take off"
+    normalized: clutch judder at engagement point
+    routes_to: [clutch_pedal_or_engagement_feel]   # proposed
+    ambiguity: needs-fact:onset_timing
+    provenance: synthetic
+
+  # ---- FM-3 clutch drag / won't disengage ----
+  - phrase: "grinds every time i put it in first"
+    normalized: grind into gear - clutch drag or synchro
+    routes_to: [grinding_or_hard_shift_gears]   # proposed
+    ambiguity: needs-fact:clutch_or_gear_engagement
+    provenance: forum-paraphrase
+
+  - phrase: "wont go into gear with the engine running but its fine when its off"
+    normalized: clutch not disengaging (drag), engine-on only
+    routes_to: [grinding_or_hard_shift_gears]   # proposed
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+
+  # ---- FM-4 synchro hard / notchy shift ----
+  - phrase: "hard to get it into gear when its cold, have to force it"
+    normalized: hard/notchy cold shift - synchro
+    routes_to: [grinding_or_hard_shift_gears]   # proposed
+    ambiguity: needs-fact:weather_condition
+    provenance: forum-paraphrase
+
+  - phrase: "grinds going into 2nd on quick shifts"
+    normalized: single-gear synchro grind on fast shift
+    routes_to: [grinding_or_hard_shift_gears]   # proposed
+    ambiguity: needs-fact:clutch_or_gear_engagement
+    provenance: forum-paraphrase
+
+  # ---- FM-5 release / throwout bearing noise (APPEARS on pedal depression) ----
+  - phrase: "chirping when i push the clutch pedal down"
+    normalized: release/throwout-bearing chirp APPEARS as the pedal is pressed to the engagement point (bearing contacts pressure-plate fingers); quiet with pedal up
+    routes_to: [clutch_pedal_or_engagement_feel]   # proposed
+    ambiguity: needs-fact:clutch_pedal_feel
+    provenance: synthetic
+
+  # ---- FM-7 input-shaft bearing noise (present pedal-UP in neutral, GONE on press) ----
+  - phrase: "squealing that goes away when i push the clutch pedal in"
+    normalized: input-shaft-bearing noise - present in neutral with the pedal UP, STOPS when the clutch is pressed (disengaged). NOT the release/throwout bearing (that appears ON depression) and NOT a belt.
+    routes_to: [clutch_pedal_or_engagement_feel]   # proposed
+    ambiguity: cross-system:high_pitched_whining_under_the_hood
+    provenance: synthetic
+
+  # ---- FM-6 pilot bearing noise (ONLY pedal fully down, in gear) ----
+  - phrase: "whirring only when i hold the clutch down in gear"
+    normalized: pilot-bearing whirr, pedal-fully-pressed-in-gear only
+    routes_to: [clutch_pedal_or_engagement_feel]   # proposed
+    ambiguity: cross-system:humming_or_whirring_at_speed
+    provenance: synthetic
+
+  # ---- FM-10 dual-mass flywheel rattle ----
+  - phrase: "rattles and raps at idle, sounds like a diesel, quiets when i push the clutch in"
+    normalized: DMF idle rattle/rap, clutch-pedal-linked; not an engine knock
+    routes_to: [clutch_pedal_or_engagement_feel]   # proposed
+    ambiguity: needs-fact:noise_descriptor
+    provenance: synthetic
+
+  # ---- FM-8 pops out of gear ----
+  - phrase: "pops out of 3rd gear on the highway"
+    normalized: jumps out of gear under load
+    routes_to: [grinding_or_hard_shift_gears]   # proposed
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+
+  # ---- FM-13 shifter linkage / bushing slop ----
+  - phrase: "shifter feels really sloppy and notchy, hard to find gears"
+    normalized: external shift-linkage/bushing slop - vague/notchy shifter
+    routes_to: [grinding_or_hard_shift_gears]   # proposed
+    ambiguity: needs-fact:clutch_or_gear_engagement
+    provenance: synthetic
+
+  # ---- FM-9 clutch actuation loss (pedal) ----
+  - phrase: "clutch pedal went to the floor and stays there, cant get in gear"
+    normalized: clutch hydraulic/cable failure - pedal to floor, no engagement
+    routes_to: [clutch_pedal_or_engagement_feel]   # proposed
+    ambiguity: unambiguous
+    provenance: synthetic
+
+  - phrase: "clutch pedal has no pressure, feels soft and drops to the floor"
+    normalized: clutch actuation loss - no pedal pressure
+    routes_to: [clutch_pedal_or_engagement_feel]   # proposed
+    ambiguity: needs-fact:clutch_pedal_feel
+    provenance: synthetic
+
+  # ---- FM-12 clutch hydraulic-fluid (brake-fluid) leak ----
+  - phrase: "thin clear fluid leaking near the clutch and the pedal is going soft"
+    normalized: hydraulic-clutch leak - clutch master/slave runs DOT brake fluid, so reads as brake fluid
+    routes_to: [clear_yellow_or_light_brown_puddle_brake_fluid]
+    ambiguity: needs-fact:fluid_under_car_location
+    provenance: synthetic
+
+  # ---- FM-11 manual gearbox gear-oil leak ----
+  - phrase: "thick dark oil under the middle of my stick shift, smells like sulfur"
+    normalized: manual gearbox gear-oil leak, mid-car
+    routes_to: [thick_dark_brown_puddle_gear_or_differential_oil]
+    ambiguity: needs-fact:fluid_under_car_location
+    provenance: synthetic
+
+  # ---- work-order / non-concern (null route) ----
+  - phrase: "install customer supplied clutch kit"
+    normalized: work-order instruction, not a customer symptom
+    routes_to: []
+    ambiguity: null-route
+    provenance: tekmetric

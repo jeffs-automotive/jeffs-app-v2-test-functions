@@ -1,0 +1,412 @@
+system: router-leaks
+# Wave B fluid-leak router. Owns the cross-fluid disambiguation the per-system dossiers cannot.
+# All slugs verified against 00-current-scheduler-taxonomy.md §4; enum values against extracted-facts.ts
+# (fluid_color, fluid_under_car_location, smell_descriptor), 2026-07-18.
+# Op schema per dossier-template.md §proposals. routes_to REQUIRED on every negative.
+
+ops:
+  # ---------------------------------------------------------------------------
+  # STAGE-1 HEDGES — cross-service fluid confusions keyed on color/location/smell.
+  # category_a / category_b are testing_services.service_key. discriminating_fact in enum vocab.
+  # ---------------------------------------------------------------------------
+  - op: stage1.hedge.add
+    category_a: oil_leak_testing
+    category_b: coolant_leak_testing
+    rule: >
+      A dark-brown/black greasy puddle with a petroleum or burnt-oil smell is engine oil
+      (oil_leak_testing); a bright green/orange/yellow/pink puddle that smells sweet is coolant
+      (coolant_leak_testing). Do not let the bare word "leak" pick either — require a color or smell cue.
+    discriminating_fact: fluid_color (brown_or_black vs green_or_orange_or_yellow_or_pink) + smell_descriptor (burnt_oil vs sweet_or_maple_syrup)
+
+  - op: stage1.hedge.add
+    category_a: oil_leak_testing
+    category_b: brake_inspection
+    rule: >
+      SAFETY. Fresh clean engine oil AND brake fluid are both amber/light-brown, so amber ALONE is
+      ambiguous. A slick amber drip near a WHEEL with a soft/low/sinking pedal is brake fluid
+      (brake_inspection, clear_yellow_or_light_brown_puddle_brake_fluid) — treat as urgent; an amber/dark
+      drip under the engine up front with a normal pedal is engine oil (oil_leak_testing). Never upgrade a
+      bare "amber" to a confident engine-oil pick.
+    discriminating_fact: fluid_under_car_location (under_a_wheel vs under_engine_front) + pedal_feel (soft/sinks vs normal)
+
+  - op: stage1.hedge.add
+    category_a: coolant_leak_testing
+    category_b: ac_leak_testing
+    rule: >
+      A bright-colored puddle that smells sweet is coolant (coolant_leak_testing); a truly clear, odorless,
+      watery puddle under the mid/passenger side after the A/C has run is normal A/C condensation
+      (clear_odorless_puddle_water_or_ac_condensation) and is usually NOT a fault — reject unless water is
+      pooling INSIDE the cabin.
+    discriminating_fact: fluid_color (green_or_orange_or_yellow_or_pink vs clear_no_color) + smell_descriptor (sweet_or_maple_syrup vs none)
+
+  - op: stage1.hedge.add
+    category_a: oil_leak_testing
+    category_b: transmission_testing
+    rule: >
+      A dark-brown/black greasy puddle under the engine/front is engine oil (oil_leak_testing); a bright-red
+      thinner oily puddle toward the middle/rear is transmission fluid
+      (red_or_pink_puddle_transmission_or_power_steering, transmission_testing). Color + location split them.
+    discriminating_fact: fluid_color (brown_or_black vs red_or_pink) + fluid_under_car_location (under_engine_front vs under_middle/under_rear)
+
+  - op: stage1.hedge.add
+    category_a: coolant_leak_testing
+    category_b: power_steering_eps_testing
+    rule: >
+      Pink is a trap — many long-life coolants (Dex-Cool, Toyota SLLC) are pink/red like PS fluid. Watery
+      bright-neon + sweet smell + overheating/temp-gauge-hot is coolant (coolant_leak_testing); oily red up
+      front WITH heavy or whining steering is power-steering fluid (power_steering_eps_testing). Color alone
+      does not settle it.
+    discriminating_fact: smell_descriptor (sweet_or_maple_syrup) + steering_feel (heavy_or_hard_to_turn) + fluid_under_car_location (under_engine_front)
+
+  - op: stage1.hedge.add
+    category_a: oil_leak_testing
+    category_b: exhaust_system_testing
+    rule: >
+      Cross-ref router-smoke-smells. Liquid oil on the ground or oil residue on the manifold (burnt-oil
+      smell, often NO ground puddle) is oil_leak_testing; a louder exhaust with a ticking/tapping and no
+      fluid is an exhaust breach (exhaust_system_testing). When no puddle exists, this is a smoke/smell
+      decision — defer to router-smoke-smells.
+    discriminating_fact: smell_descriptor (burnt_oil + oil residue) vs noise_descriptor (ticking_or_tapping + louder exhaust, no fluid)
+
+  # ---------------------------------------------------------------------------
+  # STAGE-2 NEGATIVE EXAMPLES — teach each leak/* subcategory what does NOT belong.
+  # Every routes_to is a real leak/* sibling slug (taxonomy §4). Customer-voice, real/paraphrase.
+  # ---------------------------------------------------------------------------
+  # --- on brown_or_black_puddle_engine_oil ---
+  - op: stage2.example.negative.add
+    subcat_slug: brown_or_black_puddle_engine_oil
+    phrase: "bright green sweet-smelling puddle at the front of my car"
+    routes_to: green_orange_yellow_or_pink_puddle_coolant
+  - op: stage2.example.negative.add
+    subcat_slug: brown_or_black_puddle_engine_oil
+    phrase: "bright red oily drip under the middle of the car"
+    routes_to: red_or_pink_puddle_transmission_or_power_steering
+  - op: stage2.example.negative.add
+    subcat_slug: brown_or_black_puddle_engine_oil
+    phrase: "thick dark sticky oil under the rear axle, smells like rotten eggs"
+    routes_to: thick_dark_brown_puddle_gear_or_differential_oil
+  - op: stage2.example.negative.add
+    subcat_slug: brown_or_black_puddle_engine_oil
+    phrase: "amber drip near my front wheel and the brake pedal feels soft"
+    routes_to: clear_yellow_or_light_brown_puddle_brake_fluid   # SAFETY collision
+
+  # --- on green_orange_yellow_or_pink_puddle_coolant ---
+  - op: stage2.example.negative.add
+    subcat_slug: green_orange_yellow_or_pink_puddle_coolant
+    phrase: "dark brown greasy slick under the motor"
+    routes_to: brown_or_black_puddle_engine_oil
+  - op: stage2.example.negative.add
+    subcat_slug: green_orange_yellow_or_pink_puddle_coolant
+    phrase: "clear odorless water under the passenger side after running the AC"
+    routes_to: clear_odorless_puddle_water_or_ac_condensation
+  - op: stage2.example.negative.add
+    subcat_slug: green_orange_yellow_or_pink_puddle_coolant
+    phrase: "bright red oily fluid up front and the steering feels heavy"
+    routes_to: red_or_pink_puddle_transmission_or_power_steering
+
+  # --- on red_or_pink_puddle_transmission_or_power_steering ---
+  - op: stage2.example.negative.add
+    subcat_slug: red_or_pink_puddle_transmission_or_power_steering
+    phrase: "bright neon pink watery puddle that smells sweet like syrup"
+    routes_to: green_orange_yellow_or_pink_puddle_coolant
+  - op: stage2.example.negative.add
+    subcat_slug: red_or_pink_puddle_transmission_or_power_steering
+    phrase: "dark brown black oil under the engine"
+    routes_to: brown_or_black_puddle_engine_oil
+
+  # --- on clear_yellow_or_light_brown_puddle_brake_fluid (SAFETY) ---
+  - op: stage2.example.negative.add
+    subcat_slug: clear_yellow_or_light_brown_puddle_brake_fluid
+    phrase: "clear plain water under the passenger side after the AC was on"
+    routes_to: clear_odorless_puddle_water_or_ac_condensation
+  - op: stage2.example.negative.add
+    subcat_slug: clear_yellow_or_light_brown_puddle_brake_fluid
+    phrase: "dark black oily puddle under the engine, no change in the pedal"
+    routes_to: brown_or_black_puddle_engine_oil
+
+  # --- on clear_odorless_puddle_water_or_ac_condensation ---
+  - op: stage2.example.negative.add
+    subcat_slug: clear_odorless_puddle_water_or_ac_condensation
+    phrase: "slick amber drip by the front wheel and the pedal goes to the floor"
+    routes_to: clear_yellow_or_light_brown_puddle_brake_fluid   # SAFETY collision
+  - op: stage2.example.negative.add
+    subcat_slug: clear_odorless_puddle_water_or_ac_condensation
+    phrase: "bright green sweet puddle up front where I park"
+    routes_to: green_orange_yellow_or_pink_puddle_coolant
+
+  # --- on thick_dark_brown_puddle_gear_or_differential_oil ---
+  - op: stage2.example.negative.add
+    subcat_slug: thick_dark_brown_puddle_gear_or_differential_oil
+    phrase: "dark oil under the ENGINE up front with a petroleum smell"
+    routes_to: brown_or_black_puddle_engine_oil
+  - op: stage2.example.negative.add
+    subcat_slug: thick_dark_brown_puddle_gear_or_differential_oil
+    phrase: "bright red thin oily drip toward the middle of the car"
+    routes_to: red_or_pink_puddle_transmission_or_power_steering
+
+  # --- on blue_or_light_blue_puddle_washer_fluid (blue-coolant collision, resolve on smell) ---
+  - op: stage2.example.negative.add
+    subcat_slug: blue_or_light_blue_puddle_washer_fluid
+    phrase: "bright colored puddle up front that smells sweet like antifreeze"
+    routes_to: green_orange_yellow_or_pink_puddle_coolant
+
+  # ---------------------------------------------------------------------------
+  # SYNONYMS — domain color-word phrases (>=2 tokens) that set fluid identity.
+  # No bare "leak"/"fluid"/"puddle" (banned high-frequency singletons).
+  # ---------------------------------------------------------------------------
+  - op: stage2.synonym.add
+    subcat_slug: thick_dark_brown_puddle_gear_or_differential_oil
+    term: "rear axle seal leak"        # corpus-attested work-order voice
+  - op: stage2.synonym.add
+    subcat_slug: thick_dark_brown_puddle_gear_or_differential_oil
+    term: "rear differential leak"     # corpus-attested
+  - op: stage2.synonym.add
+    subcat_slug: clear_yellow_or_light_brown_puddle_brake_fluid
+    term: "brake fluid leak"           # corpus-attested (near the lines)
+  - op: stage2.synonym.add
+    subcat_slug: blue_or_light_blue_puddle_washer_fluid
+    term: "washer fluid leaking"       # corpus-attested
+
+# =============================================================================
+# CONFUSABLE MATRIX ROWS — this router OWNS these pairs. Machine form of §5.
+# =============================================================================
+confusable_matrix_rows:
+  - pair: [brown_or_black_puddle_engine_oil, green_orange_yellow_or_pink_puddle_coolant]
+    discriminating_fact: fluid_color + smell_descriptor
+    discriminating_question: "Is the puddle dark brown/black and greasy, or bright green/orange/pink and does it smell sweet?"
+    hedge_rule: "brown_or_black + burnt_oil/petroleum -> engine oil; green_or_orange_or_yellow_or_pink + sweet_or_maple_syrup -> coolant."
+    examples_a:
+      - "oil leaking. severe potential drain plug?"
+      - "black oily stain on my driveway in the morning"
+      - "OIL LEAK FOUND NEAR THE REAR MAIN SEAL"
+    examples_b:
+      - "LARGE PUDDLE OF ANTIFREEZE"
+      - "CLIENT SEES LEAK AT LOWER LINE ON RADIATOR"
+      - "bright green sweet-smelling puddle at the front"
+
+  - pair: [brown_or_black_puddle_engine_oil, thick_dark_brown_puddle_gear_or_differential_oil]
+    discriminating_fact: fluid_under_car_location + smell_descriptor
+    discriminating_question: "Is the dark oil under the ENGINE up front, or under the REAR axle and does it smell like rotten eggs?"
+    hedge_rule: "under_engine_front + burnt_oil/petroleum -> engine oil; under_rear + rotten_egg_or_sulfur + thick/sticky -> gear/diff oil."
+    examples_a:
+      - "dark brown puddle under my engine when I park"
+      - "oil under the motor, petroleum smell"
+    examples_b:
+      - "thick dark sticky oil under the rear axle, smells like rotten eggs"
+      - "rear axle seal leak"
+      - "REAR DIFFERENTIAL LEAK INSPECT AND ADVISE"
+
+  - pair: [red_or_pink_puddle_transmission_or_power_steering, green_orange_yellow_or_pink_puddle_coolant]
+    discriminating_fact: fluid_color(consistency) + smell_descriptor
+    discriminating_question: "Is it thin/oily and slick, or watery and bright-neon smelling sweet like syrup?"
+    hedge_rule: "oily red/pink -> trans/PS; watery bright-neon + sweet_or_maple_syrup -> coolant (many OAT coolants are pink)."
+    examples_a:
+      - "bright red oily drip under the middle of my car"
+      - "TRANSMISSION COOLER LINE LEAKING"
+    examples_b:
+      - "bright neon pink watery puddle that smells sweet like syrup"
+      - "pink antifreeze up front, sweet smell"
+
+  - pair: [clear_yellow_or_light_brown_puddle_brake_fluid, red_or_pink_puddle_transmission_or_power_steering]
+    discriminating_fact: fluid_color + fluid_under_car_location + pedal_feel
+    discriminating_question: "Is the drip near a WHEEL with a soft pedal, or bright red toward the middle/front?"
+    hedge_rule: "SAFETY. clear_yellow_or_light_brown + under_a_wheel + soft/sinking pedal_feel -> brake fluid (urgent); red_or_pink + under_middle -> trans/PS."
+    examples_a:
+      - "ATTEMPTED TO ADD BRAKE FLUID AND LEAKS RIGHT OUT"
+      - "amber drip near the front wheel and the pedal feels soft"
+      - "TOW IN NO BRAKES FOUND BRAKE FLUID EMPTY"
+    examples_b:
+      - "bright red oily drip toward the back"
+      - "red fluid under the middle, car slips shifting"
+
+  - pair: [clear_yellow_or_light_brown_puddle_brake_fluid, clear_odorless_puddle_water_or_ac_condensation]
+    discriminating_fact: fluid_color + fluid_under_car_location + pedal_feel
+    discriminating_question: "Is it slick/oily near a wheel with any pedal change, or thin plain water under the passenger side after the A/C ran?"
+    hedge_rule: "SAFETY. clear_yellow_or_light_brown (slick) + under_a_wheel + pedal_feel change -> brake fluid; clear_no_color (watery) + under_passenger_side + odorless -> AC condensation (usually normal)."
+    examples_a:
+      - "slick amber drip by the front wheel and the pedal goes to the floor"
+      - "leak appears to be near lines close to brake fluid"
+    examples_b:
+      - "clear plain water under the passenger side after the AC was on"
+      - "just water dripping under the middle when the ac runs"
+
+  - pair: [brown_or_black_puddle_engine_oil, clear_yellow_or_light_brown_puddle_brake_fluid]
+    discriminating_fact: fluid_under_car_location + pedal_feel
+    discriminating_question: "Is the amber drip up front by the engine, or near a wheel with the pedal gone low/soft?"
+    hedge_rule: "SAFETY amber collision. Fresh clean oil AND brake fluid are both amber. amber ALONE = needs-fact. under_engine_front + normal pedal -> engine oil; under_a_wheel + soft/sinking pedal_feel -> brake fluid. Never set fluid_color=brown_or_black from a bare 'amber'."
+    examples_a:
+      - "amber-ish drip under the engine, oil looks low"
+      - "brownish oil spot up front where I park"
+    examples_b:
+      - "amber drip by the wheel, brownish-yellow when it dries, pedal is low"
+      - "cust stated may be oil of brake fluid, leak near lines close to brake fluid"
+
+  - pair: [brown_or_black_puddle_engine_oil, exhaust_system_testing]
+    discriminating_fact: fluid presence + smell_descriptor vs noise_descriptor
+    discriminating_question: "Is there liquid oil on the ground / oil residue, or is the exhaust louder with a ticking and no puddle?"
+    hedge_rule: "Cross-ref router-smoke-smells. Liquid oil / oil residue + burnt_oil -> oil_leak_testing; louder exhaust + ticking_or_tapping + NO fluid -> exhaust_system_testing (smoke/smell router owns the no-puddle call)."
+    examples_a:
+      - "oil dripping off a plastic cover near the front, spots on the driveway"
+      - "oil filter housing is leaking oil onto the exhaust"
+    examples_b:
+      - "exhaust got a lot louder with a ticking sound"
+      - "smell exhaust fumes, no puddle anywhere"
+
+  - pair: [blue_or_light_blue_puddle_washer_fluid, green_orange_yellow_or_pink_puddle_coolant]
+    discriminating_fact: smell_descriptor
+    discriminating_question: "Does the blue fluid smell soapy/odorless like washer, or sweet/slimy like antifreeze?"
+    hedge_rule: "fluid_color has NO coolant-blue value, so blue color cannot settle it -> resolve on smell. soapy/odorless -> washer; sweet_or_maple_syrup/slimy -> coolant."
+    examples_a:
+      - "bright blue windshield fluid leaking under the front"
+      - "WASHER FLUID LEAKING. TESTING AUTH"
+    examples_b:
+      - "bright blue puddle up front that smells sweet like antifreeze"
+
+  - pair: [red_or_pink_puddle_transmission_or_power_steering, red_or_pink_puddle_transmission_or_power_steering]
+    note: "within-slug split: transmission vs power steering (same subcategory, different service)"
+    discriminating_fact: fluid_under_car_location + steering_feel
+    discriminating_question: "Is the red puddle toward the middle/back, or up front with heavy/whining steering?"
+    hedge_rule: "under_middle/under_rear -> transmission (transmission_testing); under_engine_front + steering_feel=heavy_or_hard_to_turn / whine-on-turn -> power steering (power_steering_eps_testing)."
+    examples_a:
+      - "red fluid under the middle, car hesitates shifting"
+      - "TRANSMISSION COOLER LINE LEAKING"
+    examples_b:
+      - "bright red under the front, wheel is hard to turn and whines"
+      - "POWER STEERING PUMP BADLY LEAKING FLUID"
+
+  - pair: [clear_odorless_puddle_water_or_ac_condensation, green_orange_yellow_or_pink_puddle_coolant]
+    discriminating_fact: fluid_color + smell_descriptor
+    discriminating_question: "Is it clear plain water with no smell, or bright colored and sweet-smelling?"
+    hedge_rule: "clear_no_color + odorless -> AC condensation (usually normal drainage); green_or_orange_or_yellow_or_pink + sweet_or_maple_syrup -> coolant."
+    examples_a:
+      - "clear water dripping under the car after the ac runs"
+      - "wet spot under the passenger side, looks like plain water"
+    examples_b:
+      - "greenish puddle up front, kind of sweet smell"
+      - "leaking coolant, having to top off"
+
+# =============================================================================
+# GOLDEN CASES — leak-router scenarios incl. inference-traps + a null-route.
+# =============================================================================
+golden_cases:
+  - text: "dark brown greasy puddle under the engine when I park, smells like oil"
+    tags: [fact_rich, leak]
+    expected:
+      stage1_category_key: oil_leak_testing
+      stage1_acceptable: [oil_leak_testing]
+      stage2_subcategory_slug: brown_or_black_puddle_engine_oil
+      stage3_facts: { fluid_color: brown_or_black, fluid_under_car_location: under_engine_front, smell_descriptor: burnt_oil }
+      route: testing_service
+
+  - text: "LARGE PUDDLE OF ANTIFREEZE, bright green up front, smells sweet"
+    tags: [leak]
+    expected:
+      stage1_category_key: coolant_leak_testing
+      stage1_acceptable: [coolant_leak_testing, coolant_leak_testing_euro]
+      stage2_subcategory_slug: green_orange_yellow_or_pink_puddle_coolant
+      stage3_facts: { fluid_color: green_or_orange_or_yellow_or_pink, fluid_under_car_location: under_engine_front, smell_descriptor: sweet_or_maple_syrup }
+      route: testing_service
+
+  - text: "bright red oily drip toward the middle of the car and it hesitates shifting"
+    tags: [leak, cross_system]
+    expected:
+      stage1_category_key: transmission_testing
+      stage1_acceptable: [transmission_testing, power_steering_eps_testing]
+      stage2_subcategory_slug: red_or_pink_puddle_transmission_or_power_steering
+      stage3_facts: { fluid_color: red_or_pink, fluid_under_car_location: under_middle }
+      route: testing_service
+
+  - text: "thick dark sticky oil under the rear axle, stinks like rotten eggs"
+    tags: [leak]
+    expected:
+      stage1_category_key: oil_leak_testing
+      stage1_acceptable: [oil_leak_testing]
+      stage2_subcategory_slug: thick_dark_brown_puddle_gear_or_differential_oil
+      stage3_facts: { fluid_color: thick_dark_brown, fluid_under_car_location: under_rear, smell_descriptor: rotten_egg_or_sulfur }
+      route: testing_service
+
+  # SAFETY inference-trap: amber near a wheel + soft pedal -> brake fluid, NOT engine oil
+  - text: "amber-ish drip near my front wheel and the brake pedal feels soft lately"
+    tags: [inference_trap, safety, leak]
+    expected:
+      stage1_category_key: brake_inspection
+      stage1_acceptable: [brake_inspection, brake_inspection_warning_light]
+      stage2_subcategory_slug: clear_yellow_or_light_brown_puddle_brake_fluid
+      stage3_facts: { fluid_color: clear_yellow_or_light_brown, fluid_under_car_location: under_a_wheel, pedal_feel: soft_spongy }
+      route: testing_service
+
+  # inference-trap: bare amber, no location/pedal/smell -> do NOT set fluid_color; needs-fact
+  - text: "theres a little amber colored drip under my car, not sure from where"
+    tags: [inference_trap, leak, needs_fact]
+    expected:
+      stage1_category_key: oil_leak_testing
+      stage1_acceptable: [oil_leak_testing, brake_inspection]
+      stage2_subcategory_slug: null
+      stage3_facts: { }   # amber ALONE sets nothing; no fluid_color, no location asserted
+      route: testing_service
+
+  # inference-trap: clear water after AC = normal; must not assert coolant or brake fluid
+  - text: "clear water dripping under the passenger side after I run the ac, no smell"
+    tags: [inference_trap, leak]
+    expected:
+      stage1_category_key: ac_performance_check
+      stage1_acceptable: [ac_performance_check, ac_leak_testing]
+      stage2_subcategory_slug: clear_odorless_puddle_water_or_ac_condensation
+      stage3_facts: { fluid_color: clear_no_color, fluid_under_car_location: under_passenger_side }
+      route: testing_service
+
+  # vague leak -> needs-fact, not force-picked to oil
+  - text: "I have a leak under the front of the vehicle. I am not sure what the cause of the leak is."
+    tags: [leak, needs_fact, corpus]
+    expected:
+      stage1_category_key: oil_leak_testing
+      stage1_acceptable: [oil_leak_testing, coolant_leak_testing]
+      stage2_subcategory_slug: null
+      stage3_facts: { fluid_under_car_location: under_engine_front }   # location stated; color/smell NOT
+      route: testing_service
+
+  # null-route: leak right after service = situational override, advisor
+  - text: "CLIENT JUST HAD REAR DIFFERENTIAL SERVICED ELSEWHERE AND NOW SEES FLUID LEAKING EVERYWHERE"
+    tags: [null_route, situational_override, corpus]
+    expected:
+      stage1_category_key: after_recent_service_or_repair_work
+      stage1_acceptable: [after_recent_service_or_repair_work]
+      stage2_subcategory_slug: null
+      route: advisor
+
+  # blue-fluid smell split
+  - text: "bright blue puddle up front, honestly not sure if its washer fluid or antifreeze, kinda sweet smell"
+    tags: [inference_trap, leak]
+    expected:
+      stage1_category_key: coolant_leak_testing
+      stage1_acceptable: [coolant_leak_testing, coolant_leak_testing_euro]
+      stage2_subcategory_slug: green_orange_yellow_or_pink_puddle_coolant
+      stage3_facts: { smell_descriptor: sweet_or_maple_syrup }   # sweet smell decides; blue color does NOT set fluid_color
+      route: testing_service
+
+provenance_notes:
+  # Linguistic provenance for examples/synonyms above.
+  tekmetric_verbatim:
+    - "oil leaking. severe potential drain plug?"
+    - "OIL LEAK FOUND NEAR THE REAR MAIN SEAL"
+    - "LARGE PUDDLE OF ANTIFREEZE"
+    - "CLIENT SEES LEAK AT LOWER LINE ON RADIATOR"
+    - "TRANSMISSION COOLER LINE LEAKING"
+    - "ATTEMPTED TO ADD BRAKE FLUID AND LEAKS RIGHT OUT"
+    - "TOW IN NO BRAKES FOUND BRAKE FLUID EMPTY"
+    - "leak appears to be near lines close to brake fluid"
+    - "cust stated may be oil of brake fluid. rodents suspected. leak appears to be near lines close to brake fluid."
+    - "rear axle seal leak"
+    - "REAR DIFFERENTIAL LEAK INSPECT AND ADVISE ON POTENTIAL REPLACEMENT"
+    - "WASHER FLUID LEAKING. TESTING AUTH"
+    - "I have a leak under the front of the vehicle. I am not sure what the cause of the leak is."
+    - "CLIENT JUST HAD REAR DIFFERENTIAL SERVICED ELSEWHERE AND NOW SEES FLUID LEAKING EVERYWHERE"
+    - "oil filter housing is leaking oil onto the exhaust"
+    - "POWER STEERING PUMP BADLY LEAKING FLUID"   # tka-118, cited for phrasing only (situational override)
+  forum_paraphrase:
+    - "black oily stain on my driveway in the morning"
+    - "bright neon pink watery puddle that smells sweet like syrup"
+    - "slick amber drip by the front wheel and the pedal goes to the floor"
+    - "clear water dripping under the passenger side after the ac runs"
+  synthetic_flagged:   # <30% share; disambiguation-only phrasings not found verbatim in corpus
+    - "tick-tick color-word variants used in negative examples above"

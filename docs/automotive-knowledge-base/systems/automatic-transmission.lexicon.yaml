@@ -1,0 +1,241 @@
+system: automatic-transmission
+# phrase -> normalized -> routes_to[] (subcategory slugs) -> ambiguity -> provenance
+# ambiguity: unambiguous | needs-fact:<slot> | cross-system:<neighbor-dossier-slug> | null-route
+# provenance: tekmetric | nhtsa | forum-paraphrase | synthetic | eval-corpus | catalog
+#   tekmetric      = verbatim-style from real-concerns-tekmetric-labeled-v2.json (real corpus voice)
+#   eval-corpus    = near-verbatim from the authored eval-cases.json (real linguistic authority)
+#   catalog        = EXISTING DB subcategory enrichment (positive_examples) — authored, already live,
+#                    NOT raw customer corpus. Kept here to show the confusable catalog text, honestly labeled.
+#   forum-paraphrase / synthetic per source-policy.md.
+# routes_to targets EXISTING slugs today. Where a PROPOSED slug fits better, it is EXISTING-routed with the
+#   proposed slug in a trailing comment (proposed: <slug>). Literalness: a phrase only implies
+#   transmission_behavior when it literally states the behavior.
+# Neighbor-dossier slugs used below are the REAL files under systems/: manual-trans-clutch,
+#   driveline-cv-diff-awd, steering-power-steering, engine-controls-driveability, starting-charging.
+entries:
+
+  # ---- M1 slipping (rev/speed split) -------------------------------------------------
+  - phrase: "when driving up a hill trans slips"
+    normalized: transmission slips under load uphill
+    routes_to: [low_power_or_wont_accelerate_normally]
+    ambiguity: needs-fact:transmission_behavior
+    provenance: tekmetric
+  - phrase: "engine revs high but the car barely picks up speed, especially on hills"
+    normalized: rpm outruns road speed (slip)
+    routes_to: [low_power_or_wont_accelerate_normally]
+    ambiguity: needs-fact:transmission_behavior
+    provenance: catalog     # existing low_power_or_wont_accelerate_normally positive_example (authored, live), NOT raw corpus
+  - phrase: "revs but doesnt go / revs up and don't move"
+    normalized: engine revs without moving
+    routes_to: [low_power_or_wont_accelerate_normally]
+    ambiguity: needs-fact:transmission_behavior
+    provenance: forum-paraphrase
+  - phrase: "feels like its slipping when i accelerate"
+    normalized: acceleration slip
+    routes_to: [low_power_or_wont_accelerate_normally]
+    ambiguity: needs-fact:transmission_behavior
+    provenance: synthetic
+  - phrase: "clutch is slipping"
+    normalized: slip (manual clutch OR auto internal clutch)
+    routes_to: [low_power_or_wont_accelerate_normally]
+    ambiguity: cross-system:manual-trans-clutch
+    provenance: tekmetric
+
+  # ---- M2 TCC shudder / M3 CVT judder ------------------------------------------------
+  - phrase: "car shudders pretty bad whenever i give it gas going uphill, smooths right out as soon as i let off"
+    normalized: load-dependent shudder that clears off-throttle
+    routes_to: [shaking_when_speeding_up_or_going_uphill]
+    ambiguity: needs-fact:transmission_behavior
+    provenance: tekmetric
+  - phrase: "shuttering transmission issue"
+    normalized: transmission shudder
+    routes_to: [shaking_when_speeding_up_or_going_uphill]
+    ambiguity: needs-fact:transmission_behavior
+    provenance: tekmetric
+  - phrase: "shudders around 40 like driving over rumble strips"
+    normalized: TCC lockup shudder at cruise
+    routes_to: [shaking_when_speeding_up_or_going_uphill]
+    ambiguity: needs-fact:speed_band
+    provenance: forum-paraphrase
+  - phrase: "judder when i take off from a stop"
+    normalized: CVT/DCT low-speed takeoff judder
+    routes_to: [shaking_when_speeding_up_or_going_uphill]
+    ambiguity: cross-system:driveline-cv-diff-awd
+    provenance: forum-paraphrase
+  - phrase: "car shudders when the transmission is working hard on hills"
+    normalized: shudder under transmission load
+    routes_to: [shaking_when_speeding_up_or_going_uphill]
+    ambiguity: unambiguous
+    provenance: catalog     # existing shaking_when_speeding_up_or_going_uphill positive_example ("Whole car shudders when the transmission is working hard on hills"), authored/live
+
+  # ---- M4 delayed engagement ---------------------------------------------------------
+  - phrase: "car hesitates when putting in gear after sitting for awhile"
+    normalized: delayed engagement after cold soak
+    routes_to: [hesitation_or_lag_when_accelerating]
+    ambiguity: needs-fact:transmission_behavior
+    provenance: tekmetric
+  - phrase: "felt like it was in neutral"
+    normalized: no drive after selecting gear (delayed/no engagement)
+    routes_to: [low_power_or_wont_accelerate_normally]
+    ambiguity: needs-fact:transmission_behavior
+    provenance: tekmetric
+  - phrase: "takes a few seconds to engage when i shift into drive or reverse"
+    normalized: delayed engagement on selection
+    routes_to: [hesitation_or_lag_when_accelerating]
+    ambiguity: needs-fact:transmission_behavior
+    provenance: forum-paraphrase
+  - phrase: "wont engage until i tap the gas then it drives fine"
+    normalized: delayed engagement, engages on throttle
+    routes_to: [hesitation_or_lag_when_accelerating]
+    ambiguity: needs-fact:transmission_behavior
+    provenance: forum-paraphrase
+
+  # ---- M5 harsh / hard shift ---------------------------------------------------------
+  - phrase: "the car jerks while switching gears in the lower gears"
+    normalized: jerk on the gear change — dual read (harsh shift OR engine buck/misfire under load)
+    routes_to: [engine_misfire_or_bucking_feeling]   # (proposed: harsh_delayed_or_no_shift if the jerk is ON the shift specifically)
+    ambiguity: needs-fact:transmission_behavior
+    provenance: tekmetric
+  - phrase: "shifts hard / slams into gear"
+    normalized: harsh (bang) shift
+    routes_to: [low_power_or_wont_accelerate_normally]
+    ambiguity: needs-fact:transmission_behavior
+    provenance: forum-paraphrase
+  - phrase: "hard shift between second and third"
+    normalized: harsh 2-3 upshift
+    routes_to: [low_power_or_wont_accelerate_normally]
+    ambiguity: needs-fact:transmission_behavior
+    provenance: forum-paraphrase
+  - phrase: "jerks really hard and turns off when i put it in drive and reverse"
+    normalized: harsh engagement + stall on selection
+    routes_to: [stalling_at_idle_or_when_stopping]
+    ambiguity: cross-system:engine-controls-driveability
+    provenance: forum-paraphrase
+
+  # ---- M6 no engagement / won't move -------------------------------------------------
+  - phrase: "vehicle starts but does not shift into gear"
+    normalized: no engagement
+    routes_to: [low_power_or_wont_accelerate_normally]
+    ambiguity: needs-fact:transmission_behavior
+    provenance: tekmetric
+  - phrase: "tow in does not shift client states transmission failed"
+    normalized: no engagement / failure, not drivable
+    routes_to: [low_power_or_wont_accelerate_normally]
+    ambiguity: needs-fact:drivable_state
+    provenance: tekmetric
+  - phrase: "gets stuck in park will have to go back and forth with shifter to get into gear"
+    normalized: won't select gear / stuck in park
+    routes_to: [low_power_or_wont_accelerate_normally]
+    ambiguity: needs-fact:transmission_behavior
+    provenance: tekmetric
+  - phrase: "wont go into gear / car wont move"
+    normalized: no engagement
+    routes_to: [low_power_or_wont_accelerate_normally]
+    ambiguity: needs-fact:transmission_behavior
+    provenance: forum-paraphrase
+  - phrase: "drives fine going forward but wont move in reverse"
+    normalized: reverse-only no-engagement
+    routes_to: [low_power_or_wont_accelerate_normally]   # (proposed: harsh_delayed_or_no_shift)
+    ambiguity: needs-fact:transmission_behavior
+    provenance: synthetic
+
+  # ---- M7 stuck in gear / limp mode / pops out of gear -------------------------------
+  - phrase: "vehicle doesnt go over a certain speed / went into limp mode. a lot of dash board lights came on"
+    normalized: limp mode speed cap with multiple lights
+    routes_to: [low_power_or_wont_accelerate_normally]
+    ambiguity: needs-fact:transmission_behavior
+    provenance: tekmetric
+  - phrase: "stuck in gear / wont shift out of 3rd"
+    normalized: holds one gear
+    routes_to: [low_power_or_wont_accelerate_normally]
+    ambiguity: needs-fact:transmission_behavior
+    provenance: forum-paraphrase
+  - phrase: "the rpms only go to 3 and it wont accelerate"
+    normalized: rpm-capped, won't accelerate (limp/failsafe)
+    routes_to: [low_power_or_wont_accelerate_normally]
+    ambiguity: needs-fact:transmission_behavior
+    provenance: tekmetric
+  - phrase: "car pops out of gear on its own while im driving"
+    normalized: pops/jumps out of gear while moving
+    routes_to: [low_power_or_wont_accelerate_normally]   # (proposed: harsh_delayed_or_no_shift)
+    ambiguity: needs-fact:transmission_behavior
+    provenance: forum-paraphrase
+
+  # ---- M8 flare ----------------------------------------------------------------------
+  - phrase: "revs up between gears then catches"
+    normalized: flare on upshift
+    routes_to: [low_power_or_wont_accelerate_normally]
+    ambiguity: needs-fact:transmission_behavior
+    provenance: forum-paraphrase
+
+  # ---- M9 external ATF leak ----------------------------------------------------------
+  - phrase: "bright red puddle under the middle of my car"
+    normalized: ATF leak, mid-underbody
+    routes_to: [red_or_pink_puddle_transmission_or_power_steering]
+    ambiguity: needs-fact:fluid_under_car_location
+    provenance: eval-corpus     # authored eval-cases.json line ("found a bright red puddle under the middle of my car this morning...") — also the live red_or_pink catalog example
+  - phrase: "transmission cooler line leaking"
+    normalized: ATF cooler line leak
+    routes_to: [red_or_pink_puddle_transmission_or_power_steering]
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "pink oily fluid leaking under the front, hard to turn the wheel now"
+    normalized: red fluid front + heavy steering (power steering, not trans)
+    routes_to: [red_or_pink_puddle_transmission_or_power_steering]
+    ambiguity: cross-system:steering-power-steering
+    provenance: catalog     # existing red_or_pink_puddle_transmission_or_power_steering positive_example, authored/live
+  - phrase: "red oily drip toward the back under the transmission"
+    normalized: ATF pan/seal leak
+    routes_to: [red_or_pink_puddle_transmission_or_power_steering]
+    ambiguity: unambiguous
+    provenance: synthetic
+
+  # ---- M10 overheat / trans temp -----------------------------------------------------
+  - phrase: "transmission hot idle engine light was coming on"
+    normalized: trans overheat + intermittent CEL
+    routes_to: [check_engine_light]
+    ambiguity: needs-fact:warning_light_behavior
+    provenance: tekmetric
+
+  # ---- M11 transmission noise (whine / reverse grind / CVT whine) --------------------
+  # Shares the noise-category home high_pitched_whining_under_the_hood with PS-pump / belt / bearing whine
+  # (see dossier D8 / §7). transmission_testing does NOT advertise the `noise` category today -> P3 gap.
+  - phrase: "whining noise that gets louder the faster i drive, in every gear"
+    normalized: speed-dependent transmission/gear whine
+    routes_to: [high_pitched_whining_under_the_hood, humming_or_whirring_at_speed]
+    ambiguity: cross-system:steering-power-steering   # PS-pump whine tracks engine RPM/turns; trans whine tracks road speed
+    provenance: synthetic
+  - phrase: "grinding sound when i put it in reverse"
+    normalized: internal transmission grind in reverse
+    routes_to: []          # NO noise subcat fits an internal trans gear grind; transmission_testing excludes `noise` (P3 gap) -> advisor / needs-fact
+    ambiguity: needs-fact:noise_descriptor
+    provenance: forum-paraphrase
+  - phrase: "cvt whines like a turbo when i speed up"
+    normalized: CVT belt/pulley whine rising with speed
+    routes_to: [high_pitched_whining_under_the_hood]
+    ambiguity: needs-fact:vehicle_powertrain
+    provenance: forum-paraphrase
+
+  # ---- vague / mixed -----------------------------------------------------------------
+  - phrase: "aaa tow in. possible transmission concern."
+    normalized: vague transmission concern, towed
+    routes_to: [low_power_or_wont_accelerate_normally]
+    ambiguity: needs-fact:transmission_behavior
+    provenance: tekmetric
+  - phrase: "sounds like a jetski out of water, in reverse or drive seems as if i am stepping on the gas"
+    normalized: mixed noise + slip feel + prior battery
+    routes_to: [low_power_or_wont_accelerate_normally, wont_crank_just_clicks]
+    ambiguity: cross-system:starting-charging
+    provenance: tekmetric
+
+  # ---- null-route (work-order / maintenance, NOT a concern) ---------------------------
+  - phrase: "transmission fluid was flushed and i was told it would need to be done again"
+    normalized: transmission flush maintenance note (no active symptom)
+    routes_to: []
+    ambiguity: null-route
+    provenance: tekmetric
+  - phrase: "recs from dealer: transmission flush, brake fluid, front brake pads and rotors"
+    normalized: dealer recommendation list (work order, not a concern)
+    routes_to: []
+    ambiguity: null-route
+    provenance: tekmetric

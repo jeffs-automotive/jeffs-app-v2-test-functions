@@ -1,0 +1,150 @@
+system: ignition-misfire
+# phrase -> normalized -> routes_to[] (subcategory slugs) -> ambiguity -> provenance
+# ambiguity: unambiguous | needs-fact:<slot> | cross-system:<slug-or-note>
+# provenance: tekmetric | nhtsa | forum-paraphrase | synthetic  (synthetic <=30% share)
+entries:
+  # ---- engine_misfire_or_bucking_feeling (performance) ----
+  - phrase: "Blinking check engine light, car is rumbling. Has had issues with spark plugs and ignition coils in the past and feels similar"
+    normalized: flashing CEL with rough running, prior plug/coil misfire history
+    routes_to: [engine_misfire_or_bucking_feeling]
+    ambiguity: needs-fact:engine_running
+    provenance: tekmetric
+  - phrase: "misfire on start up"
+    normalized: misfire present at startup
+    routes_to: [engine_misfire_or_bucking_feeling]
+    ambiguity: needs-fact:onset_timing
+    provenance: tekmetric
+  - phrase: "customer states vehicle is shaking and bucking"
+    normalized: shaking and bucking (misfire feel)
+    routes_to: [engine_misfire_or_bucking_feeling]
+    ambiguity: needs-fact:onset_timing
+    provenance: tekmetric
+  - phrase: "going up any incline the car pulls back, does a type of buck and eventually picks up"
+    normalized: bucking under load / on hills
+    routes_to: [engine_misfire_or_bucking_feeling]
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "2 times the check engine light came on and caused a bad misfire, both times cold and going downhill, shut it off and it ran fine"
+    normalized: intermittent cold misfire, self-clears on restart
+    routes_to: [engine_misfire_or_bucking_feeling]
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "feels like its running on 3 cylinders, keeps skipping a beat at speed"
+    normalized: dead-cylinder misfire under way
+    routes_to: [engine_misfire_or_bucking_feeling]
+    ambiguity: unambiguous
+    provenance: synthetic
+  - phrase: "bucks and jerks way worse when its raining or the roads wet"
+    normalized: wet-weather misfire (secondary ignition tracking)
+    routes_to: [engine_misfire_or_bucking_feeling]
+    ambiguity: needs-fact:weather_condition
+    provenance: synthetic
+
+  # ---- rough_idle_or_shaking_at_a_stop (performance) ----
+  - phrase: "check engine light on. running rough"
+    normalized: CEL on, engine running rough
+    routes_to: [rough_idle_or_shaking_at_a_stop, engine_misfire_or_bucking_feeling]
+    ambiguity: needs-fact:speed_band
+    provenance: tekmetric
+  - phrase: "no check engine light, idle is dropping very low and almost stalling"
+    normalized: low unstable idle, nearly stalls
+    routes_to: [rough_idle_or_shaking_at_a_stop]
+    ambiguity: needs-fact:engine_running
+    provenance: tekmetric
+  - phrase: "engine sputters and runs rough at red lights, rpm needle bounces all over, sometimes a rotten egg smell"
+    normalized: rough sputtering idle with cat smell
+    routes_to: [rough_idle_or_shaking_at_a_stop]
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "idles real choppy and the steering wheel trembles when im stopped, smooths out when i drive"
+    normalized: rough idle felt through wheel, clears when moving
+    routes_to: [rough_idle_or_shaking_at_a_stop]
+    ambiguity: unambiguous
+    provenance: synthetic
+
+  # ---- hesitation_or_lag_when_accelerating (performance) ----
+  - phrase: "when i step on the gas theres like a second delay before the car actually goes, started suddenly"
+    normalized: tip-in hesitation, sudden onset
+    routes_to: [hesitation_or_lag_when_accelerating]
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "little hiccup right when i take off from a stop, then it catches and drives fine"
+    normalized: brief off-the-line stumble
+    routes_to: [hesitation_or_lag_when_accelerating]
+    ambiguity: unambiguous
+    provenance: synthetic
+  - phrase: "vehicle was hesitating at low speeds around 25mph and the check engine light came on"
+    normalized: low-speed hesitation with CEL
+    routes_to: [hesitation_or_lag_when_accelerating]
+    ambiguity: needs-fact:speed_band
+    provenance: tekmetric
+  - phrase: "the engine hesitates when i accelerate, not all the time, only when im giving it gas and moving"
+    normalized: intermittent hesitation on acceleration
+    routes_to: [hesitation_or_lag_when_accelerating]
+    ambiguity: needs-fact:onset_timing
+    provenance: forum-paraphrase
+
+  # ---- check_engine_light (warning_light) — light only, drives fine ----
+  - phrase: "check engine light on, no driveability concerns, just the light being on"
+    normalized: steady CEL, no felt symptom
+    routes_to: [check_engine_light]
+    ambiguity: cross-system:performance
+    provenance: tekmetric
+  - phrase: "the check engine light is on and has been coming on and off for a week or two, no change in how it drives"
+    normalized: intermittent CEL, no driveability change
+    routes_to: [check_engine_light]
+    ambiguity: cross-system:performance
+    provenance: tekmetric
+  - phrase: "autozone said its a misfire but the car drives totally fine to me, engine light is on"
+    normalized: second-hand misfire code, customer feels nothing
+    routes_to: [check_engine_light]
+    ambiguity: cross-system:engine_misfire_or_bucking_feeling
+    provenance: tekmetric
+  - phrase: "check engine light, ran the codes it gave 3 codes: 1 misfire, one misfire cylinder 1, one misfire cylinder 4"
+    normalized: reported misfire codes, NO felt driveability symptom stated (reported != felt)
+    routes_to: [check_engine_light]
+    # reported-vs-felt: routes to engine_misfire ONLY if the customer ALSO describes feeling it buck/skip;
+    # a scan-reported code alone is a CEL/light-testing case, engine_running stays NULL
+    ambiguity: cross-system:engine_misfire_or_bucking_feeling
+    provenance: tekmetric
+
+  # ---- boundary / cross-system negatives (for disambiguation training) ----
+  # NOTE: these are cross-system NEGATIVES, not positive examples of any ignition subcategory, so the
+  # ~30% per-subcategory synthetic cap (positive_examples) does not apply to them. Two remain synthetic
+  # by necessity (motor-mount idle-shake; self-clearing idle RPM surge) — the linguistic corpus holds no
+  # clean customer utterance for either (verified by search); both are flagged `synthetic`.
+  - phrase: "whole car shakes at a stop light but the engine sounds smooth, i think its a motor mount"
+    normalized: whole-car idle shake, engine normal (mounts)
+    routes_to: [shaking_at_idle_while_stopped]
+    ambiguity: cross-system:shaking_at_idle_while_stopped
+    provenance: synthetic
+  - phrase: "the rpms go up and down on their own at idle without me touching the gas"
+    normalized: smooth idle surge (not misfire)
+    routes_to: [surging_or_rpms_going_up_and_down]
+    ambiguity: cross-system:surging_or_rpms_going_up_and_down
+    provenance: synthetic
+  - phrase: "when i press down steady on the gas it barely accelerates and there is no jerking or bucking"
+    normalized: sustained power loss on acceleration, no bucking
+    routes_to: [low_power_or_wont_accelerate_normally]
+    ambiguity: cross-system:low_power_or_wont_accelerate_normally
+    provenance: forum-paraphrase
+  - phrase: "the car jerks while switching gears in the lower gears"
+    normalized: jerk tied to gear changes (transmission shift quality; corpus tkc-262 consensus=transmission_testing)
+    routes_to: []
+    # Stage-1 -> transmission_testing. The performance pool has NO shift-quality Stage-2 subcategory
+    # (coverage gap). Do NOT rebind to hesitation/misfire (that fights the Stage-1 hedge + corpus label).
+    # See proposals.yaml stage2.subcategory.propose (Chris-gated).
+    ambiguity: cross-system:transmission_testing
+    provenance: tekmetric
+
+  # ---- null-route (non-concern work-order phrasings) ----
+  - phrase: "Previously declined>Remove & Replace Spark Plugs (Replacement due every 40k miles.)"
+    normalized: declined maintenance line item, not a customer concern
+    routes_to: []
+    ambiguity: cross-system:non-concern-advisor
+    provenance: tekmetric
+  - phrase: "spark plugs or poss cel testing"
+    normalized: internal service note, no symptom
+    routes_to: []
+    ambiguity: cross-system:non-concern-advisor
+    provenance: tekmetric

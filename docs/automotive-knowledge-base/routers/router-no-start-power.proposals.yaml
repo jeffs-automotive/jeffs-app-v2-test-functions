@@ -1,0 +1,410 @@
+system: router-no-start-power
+# Typed change-ops owned by the no-start/power router (Wave B). Binds to the live taxonomy snapshot
+# (00-current-scheduler-taxonomy.md) + extracted-facts.ts enums, verified 2026-07-18.
+#
+# CONVENTION: stage1.hedge category_a/category_b are testing_services.service_key. stage2 subcat_slug and
+# routes_to are concern_subcategories.slug. discriminating_fact names live fact slots + enum values.
+#
+# CONSOLIDATION NOTE for Wave C: several hedges here restate a hedge a Wave A per-system dossier also
+# emitted (starting-charging, hybrid-ev). Each such op carries `consolidates:` naming the sibling op so
+# Wave C DEDUPS to this router's authoritative version rather than double-applying. The router owns the
+# cross-system routing seam; the per-system dossier's copy is the redundant one.
+#
+# PROPOSED-SLUG NOTE: where a routes_to / subcat target does not exist in the live taxonomy yet it is marked
+# `routes_to_status: proposed` (+ the owning dossier). The single subcategory this router ORIGINATES is
+# cranks_but_wont_fire; all hybrid/security subcats are DELEGATED (referenced, not re-proposed here).
+
+ops:
+
+  # =========================================================================
+  # Stage-1 hedges — the confusable service pairs this router OWNS.
+  # =========================================================================
+  - op: stage1.hedge.add
+    category_a: charging_starting_testing
+    category_b: no_start_testing
+    rule: >
+      Split on what happens when the customer turns the key / presses start (engine_running).
+      If the engine ROTATES at normal speed but never fires (engine_running=wont_start) ->
+      no_start_testing (fuel/spark/crank-cam). If the engine does NOT rotate, rotates SLOWLY, is dead,
+      only clicks, makes NO sound, dies-while-driving with electrical precursors, or shows dim lights /
+      a battery light (engine_running in {wont_crank_just_clicks, slow_crank, no_sound_at_all,
+      died_while_driving}) -> charging_starting_testing. When the customer says only "won't start /
+      no start / dead" with NO crank detail, engine_running=null -> offer BOTH as clarify chips.
+    discriminating_fact: engine_running
+    consolidates: "starting-charging.proposals.yaml stage1.hedge.add (charging_starting_testing <-> no_start_testing)"
+
+  - op: stage1.hedge.add
+    category_a: charging_starting_testing
+    category_b: no_start_testing
+    rule: >
+      SECURITY / IMMOBILIZER override. If the customer names a SECURITY / anti-theft / theft / KEY light
+      (warning_light_named ~ security|anti-theft|theft|key), especially flashing, AND the battery is
+      otherwise fine (lights_state=normal, no jump needed) -> this is an immobilizer no-start, route
+      no_start_testing (interim; Stage-2 body-glass FM-7 -> key_or_fob_not_recognized_wont_start), NOT a
+      battery no-start. If the battery state is unstated, keep charging_starting_testing as a clarify chip.
+      A named security light + a normally-charged battery is NEVER a dead battery.
+    discriminating_fact: warning_light_named
+    # Router-originated (body-glass delegates Stage-1 keywords; no Wave A dossier emitted this hedge).
+
+  - op: stage1.hedge.add
+    category_a: charging_starting_testing
+    category_b: check_engine_light_testing
+    rule: >
+      "Died while driving" splits on the FIRST sign. Dimming lights / a battery-charge light / the
+      dashboard going dark BEFORE shutdown (lights_state=dim_or_flickering OR warning_light_named~
+      battery|charge|alt) -> charging_starting_testing (car_died_while_driving_electrical). Engine
+      sputter / stumble / hesitation with NO electrical warning -> check_engine_light_testing
+      (stalling_while_driving_under_load). Precursor unstated -> offer both.
+    discriminating_fact: lights_state
+    consolidates: "starting-charging.proposals.yaml stage1.hedge.add (charging_starting_testing <-> check_engine_light_testing)"
+
+  - op: stage1.hedge.add
+    category_a: charging_starting_testing
+    category_b: check_engine_light_testing
+    rule: >
+      HYBRID / EV won't-go-to-READY override. On a LITERALLY stated hybrid/electric vehicle
+      (vehicle_powertrain in {hybrid, electric}) that "won't power on / won't go to READY" with no engine
+      crank, check the 12 V AUXILIARY battery FIRST -> charging_starting_testing / battery_test. Flip to
+      the HV path (check_engine_light_testing; Stage-2 hybrid-ev hybrid_or_ev_wont_power_on /
+      hybrid_system_warning_light) ONLY if a turtle / Check-Hybrid-System / red-triangle / hybrid warning
+      is named OR a 12 V jump did NOT fix it. NEVER encode "hybrid + won't start -> HV battery."
+    discriminating_fact: recent_action
+    consolidates: "hybrid-ev-high-voltage.proposals.yaml stage1.hedge.add (charging_starting_testing <-> check_engine_light_testing)"
+
+  # =========================================================================
+  # Stage-2 subcategory this router ORIGINATES (Chris-gated).
+  # =========================================================================
+  - op: stage2.subcategory.propose
+    category: performance
+    name: cranks_but_wont_fire
+    description: >
+      The engine TURNS OVER at normal speed but never catches / fires — a bare cranks-but-won't-start
+      concern with no cold/hot/fill-up timing and no security or hybrid cue. This is the fuel/spark/
+      crank-cam no-start (no_start_testing) that today drops into a NULL subcategory. Distinct from
+      slow_crank_sluggish_start (engine spins SLOWLY = battery/starter), wont_crank_just_clicks (NO
+      rotation, clicking), hard_to_start_when_cold/_hot (timing-specific), and the immobilizer no-start
+      (named security light + normal battery). Route: no_start_testing.
+      examples:
+        - "TOW IN. CRANKS BUT WILL NOT START"
+        - "cranks and cranks but wont fire up, turns over normal speed"
+        - "intermitent no start, turns over but doesnt catch"
+    why_existing_insufficient: >
+      no_start_testing has NO subcategory for a bare crank-no-fire; the corpus routes it to a null
+      subcat (tka-170 "CRANKS BUT WILL NOT START", tkc-172 "intermitent no start", tka-061 "NO CRANK NO
+      START", tkc-276, plus "TOW IN NO START ... battery seems ok"). Both fuel-system-evap (§7/§8) and
+      engine-controls-driveability flagged this NO-FIT but declined to propose it per-system; the
+      no-start router aggregates the demand and surfaces it. Chris-gated (changes the Stage-2 label space).
+
+  # =========================================================================
+  # Stage-2 negative examples (each names routes_to) — reinforce the fork seams.
+  # routes_to_status: proposed marks a not-yet-shipped target slug.
+  # =========================================================================
+  - op: stage2.example.negative.add
+    subcat_slug: wont_crank_just_clicks
+    phrase: "it cranks over fine at normal speed, just wont fire up and start"
+    routes_to: cranks_but_wont_fire
+    routes_to_status: proposed   # this router; interim = no_start_testing null subcat
+  - op: stage2.example.negative.add
+    subcat_slug: wont_crank_just_clicks
+    phrase: "its fine all day but dead every morning after sitting, needs a jump daily"
+    routes_to: battery_drains_overnight
+  - op: stage2.example.negative.add
+    subcat_slug: wont_crank_just_clicks
+    phrase: "wont start and theres a flashing security light on the dash, battery is fine and lights are bright"
+    routes_to: key_or_fob_not_recognized_wont_start
+    routes_to_status: proposed   # body-glass-water-leaks-keys FM-7; interim = no_start_testing
+  - op: stage2.example.negative.add
+    subcat_slug: wont_crank_just_clicks
+    phrase: "my hybrid wont go to ready, the dash lights all come on but theres no crank at all"
+    routes_to: hybrid_or_ev_wont_power_on
+    routes_to_status: proposed   # hybrid-ev-high-voltage §3.1; interim = wont_crank_just_clicks (12 V first)
+  - op: stage2.example.negative.add
+    subcat_slug: slow_crank_sluggish_start
+    phrase: "it cranks at normal speed but wont catch when its cold in the morning"
+    routes_to: hard_to_start_when_cold
+  - op: stage2.example.negative.add
+    subcat_slug: slow_crank_sluggish_start
+    phrase: "just one loud click and it doesnt turn over at all"
+    routes_to: wont_crank_just_clicks
+  - op: stage2.example.negative.add
+    subcat_slug: slow_crank_sluggish_start
+    phrase: "hard to start when cold but it turns over at normal speed, it does not crank slow"
+    routes_to: hard_to_start_when_cold
+  - op: stage2.example.negative.add
+    subcat_slug: hard_to_start_when_cold
+    phrase: "engine turns over real slow, rrr rrr, before it finally starts"
+    routes_to: slow_crank_sluggish_start
+  - op: stage2.example.negative.add
+    subcat_slug: hard_to_start_when_cold
+    phrase: "hard to restart right after i drove it and stopped for gas, fine after it cools off"
+    routes_to: hard_to_start_when_hot
+  - op: stage2.example.negative.add
+    subcat_slug: hard_to_start_when_hot
+    phrase: "hard to start first thing in the morning when its cold, totally fine once its warmed up"
+    routes_to: hard_to_start_when_cold
+  - op: stage2.example.negative.add
+    subcat_slug: battery_drains_overnight
+    phrase: "one time it just wouldnt crank, jumped it once and its been totally fine since"
+    routes_to: wont_crank_just_clicks
+  - op: stage2.example.negative.add
+    subcat_slug: car_died_while_driving_electrical
+    phrase: "engine sputtered and stumbled and lost power going uphill, no warning lights, then it quit"
+    routes_to: stalling_while_driving_under_load
+  - op: stage2.example.negative.add
+    subcat_slug: stalling_while_driving_under_load
+    phrase: "everything went dark, dash and radio dimmed and the battery light came on, then it just shut off"
+    routes_to: car_died_while_driving_electrical
+  - op: stage2.example.negative.add
+    subcat_slug: battery_charging_light
+    phrase: "cranks and cranks at normal speed but wont fire, i dont see any battery or charge light"
+    routes_to: cranks_but_wont_fire
+    routes_to_status: proposed   # this router; interim = no_start_testing null subcat
+
+  # =========================================================================
+  # Slot dependency (referenced, NOT re-emitted — owned by hybrid-ev).
+  # =========================================================================
+  - op: stage3.slot.value.add
+    slot: engine_running
+    value: wont_power_on_no_crank
+    literal_cues:
+      - "won't go to ready"
+      - "won't power on"
+      - "pushed the button and nothing"
+      - "everything lights up but it won't start / won't go"
+    delegated_to: hybrid-ev-high-voltage
+    note: >
+      This router DEPENDS ON but does not own this proposed engine_running value (hybrid-ev §9). Until it
+      ships, the hybrid won't-go-to-READY case falls to engine_running=no_sound_at_all. Re-listed here only
+      so the decision tree's branch D.hyb has a named target; Wave C should keep the single hybrid-ev copy.
+
+# =============================================================================
+# CONFUSABLE MATRIX ROWS — the machine-form disambiguation for every pair this
+# router owns. Consumed into binding/confusable-matrix.yaml by Wave C.
+# pair members are the natural identifier per seam: service_key for Stage-1
+# service collisions, subcategory slug for Stage-2 collisions ([PROPOSED] noted).
+# =============================================================================
+confusable_matrix_rows:
+  - pair: [no_start_testing, charging_starting_testing]
+    seam: stage1_service
+    discriminating_fact: engine_running (wont_start vs wont_crank_just_clicks/slow_crank/no_sound_at_all)
+    discriminating_question: "When you turn the key, does the engine turn over at NORMAL speed but never fire, or does it barely/not turn over (slow, just clicks, or no sound)?"
+    hedge_rule: "engine_running=wont_start (spins normal, no fire) -> no_start_testing (fuel/spark). wont_crank_just_clicks / slow_crank / no_sound_at_all -> charging_starting_testing (battery/starter/charging). Unstated crank quality -> offer both."
+    examples_a:   # no_start_testing (cranks-but-won't-fire)
+      - "TOW IN. CRANKS BUT WILL NOT START. AAA DRIVER TOLD CLIENT MAY BE TIMING BELT"
+      - "TOW IN NO START ... AAA Driver stated battery seems ok"
+      - "turns over fine but just wont catch and start"
+    examples_b:   # charging_starting_testing
+      - "NO CRANK NO START TESTING AUTH 89 TO START"
+      - "BATTERY SEEMS TO GIVE A SLOW CRANK, CHECK AND ADVISE"
+      - "just fast clicking, wont turn over, jumped it and it started"
+
+  - pair: [wont_crank_just_clicks, slow_crank_sluggish_start]
+    seam: stage2_subcategory
+    discriminating_fact: engine_running (wont_crank_just_clicks vs slow_crank)
+    discriminating_question: "Does the engine SPIN/turn over at all — just slowly — or does it only CLICK with no spinning?"
+    hedge_rule: "engine rotates (slowly) = slow_crank -> slow_crank_sluggish_start. No rotation, clicking = wont_crank_just_clicks. Both -> charging_starting_testing service."
+    examples_a:   # wont_crank_just_clicks
+      - "just clicks, click-click-click, wont turn over at all"
+      - "one loud click then nothing, no crank"
+    examples_b:   # slow_crank_sluggish_start
+      - "CLIENT HAS BEEN NOTICING A WEAK/EXTENDED CRANK"
+      - "cranks real slow, rrr rrr, before it finally catches"
+
+  - pair: [wont_crank_just_clicks_dead_battery, wont_crank_just_clicks_bad_starter]
+    seam: within_subcategory   # same subcat wont_crank_just_clicks; lights_state splits the mechanism
+    discriminating_fact: lights_state (dim_or_flickering vs normal)
+    discriminating_question: "Is it RAPID clicking with the dash lights DIMMING, or ONE click with the lights staying BRIGHT?"
+    hedge_rule: "rapid click + lights_state=dim_or_flickering -> weak battery/connection; single click + lights_state=normal -> starter/severe resistance. Same subcat (wont_crank_just_clicks); lights_state is the mechanism cue, both -> charging_starting_testing."
+    examples_a:   # dead/weak battery
+      - "rapid clicking like a machine gun and the dash lights dim when i try it"
+      - "click click click and the interior lights go dim"
+    examples_b:   # bad starter / resistance
+      - "one loud click and then nothing, but the headlights stay nice and bright"
+      - "single clunk when i turn the key, lights are all normal"
+
+  - pair: [wont_crank_just_clicks, no_sound_at_all]
+    seam: stage3_fact_value   # both map to wont_crank_just_clicks subcat; the fact value differs
+    discriminating_fact: engine_running (wont_crank_just_clicks vs no_sound_at_all)
+    discriminating_question: "When you turn the key, do you get any CLICK, or ABSOLUTELY no sound at all?"
+    hedge_rule: "a click (rapid or single) = wont_crank_just_clicks; total silence = no_sound_at_all. Silent + lights_state=completely_dead -> flat battery/open cable; silent + lights_state=normal -> ignition switch/interlock/open wire. Both -> charging_starting_testing (subcat wont_crank_just_clicks) unless a security light (immobilizer) is named."
+    examples_a:   # clicking
+      - "just hear one click nothing else when i turn the key"
+      - "keeps clicking but wont crank"
+    examples_b:   # silent
+      - "turn the key and absolutely nothing, no click no crank, totally dead"
+      - "everything lights up but it does nothing at all when i turn the key"
+
+  - pair: [no_start_testing, cranks_but_wont_fire]
+    seam: stage2_subcategory   # [PROPOSED] cranks_but_wont_fire is the Stage-2 home for bare crank-no-fire
+    discriminating_fact: onset_timing / weather_condition / warning_light_named (bare vs cold/hot/security)
+    discriminating_question: "Does the crank-no-fire happen ONLY when cold in the morning, ONLY right after driving when hot, or ANY time with no pattern?"
+    hedge_rule: "cold-morning-after-sitting -> hard_to_start_when_cold; right-after-driving-then-cools -> hard_to_start_when_hot; named security light + battery fine -> key_or_fob_not_recognized_wont_start [PROPOSED]; else bare -> cranks_but_wont_fire [PROPOSED] (interim: no_start_testing null subcat). All service=no_start_testing."
+    examples_a:   # timing/security-specific (existing slugs)
+      - "hard to start when cold, crank it a few times before it catches, fine once warm"
+      - "wont start after i stop for gas, cranks and cranks, fine after 20 min"
+    examples_b:   # bare cranks-no-fire (proposed slug)
+      - "TOW IN. CRANKS BUT WILL NOT START"
+      - "intermitent no start, turns over but doesnt catch"
+
+  - pair: [key_or_fob_not_recognized_wont_start, wont_crank_just_clicks]
+    seam: stage1_service   # security/immobilizer (no_start_testing) vs battery (charging_starting_testing)
+    discriminating_fact: warning_light_named (security/anti-theft/key) + lights_state + recent_action
+    discriminating_question: "Is a SECURITY / anti-theft / key light on (often flashing), and is the battery otherwise fine — lights bright, no jump needed?"
+    hedge_rule: "named security/theft/key light + normal battery (lights_state=normal, no jump) = immobilizer -> no_start_testing (Stage-2 key_or_fob_not_recognized_wont_start [PROPOSED]). Dim lights / rapid click / a jump fixed it / no security light = battery -> charging_starting_testing / wont_crank_just_clicks."
+    examples_a:   # security / immobilizer
+      - "car cranks but wont start and the little security light is flashing"
+      - "wont start, key wont turn in the ignition, dash lights are fine"
+    examples_b:   # battery
+      - "just clicks and the dash lights dim, jumped it and it started right up"
+      - "Had to jump start, test batt"
+
+  - pair: [hybrid_or_ev_wont_power_on, hybrid_system_warning_light]
+    seam: stage2_subcategory   # [PROPOSED both] 12 V aux vs HV traction, on a stated hybrid/EV
+    discriminating_fact: recent_action (jump_started) vs warning_light_named (turtle/check hybrid system)
+    discriminating_question: "Did jump-starting the small 12 V battery get it going, or is there a turtle / Check-Hybrid-System / red-triangle warning?"
+    hedge_rule: "stated hybrid/EV won't-go-to-READY: recent_action=jump_started fixed it -> 12 V aux (charging_starting_testing/battery_test; hybrid_or_ev_wont_power_on [PROPOSED]). turtle/hybrid warning named OR 12 V jump did NOT fix -> HV (check_engine_light_testing; hybrid_system_warning_light [PROPOSED]). Never assume HV battery."
+    examples_a:   # 12 V aux (rule-out-first, low cost)
+      - "my leaf wouldnt power on, jumped the 12v in the back and then it was fine"
+      - "prius wont go to ready this morning, think its the little 12 volt battery"
+    examples_b:   # HV traction warning
+      - "red triangle came on and it says check hybrid system, wont go"
+      - "turtle light is on and my ev wont power up"
+
+  - pair: [hybrid_or_ev_wont_power_on, wont_crank_just_clicks]
+    seam: stage1_service   # hybrid won't-power-on vs ICE no-crank; vehicle_powertrain is the flip
+    discriminating_fact: vehicle_powertrain (hybrid/electric) + engine_running (wont_power_on_no_crank vs wont_crank_just_clicks)
+    discriminating_question: "Is the vehicle a hybrid or fully electric, and does an ENGINE crank/turn over at all, or does it just NOT power on with no cranking sound?"
+    hedge_rule: "LITERAL hybrid/electric + 'won't power on / won't go to READY' + no crank -> hybrid path (12 V first). A gasoline/unstated car with a crank or click -> ICE charging path (wont_crank_just_clicks). A model name alone (Prius/Leaf) does NOT set vehicle_powertrain -> stays ICE interim."
+    examples_a:   # stated hybrid/EV
+      - "my hybrid wont start, all the dash lights come on but it wont go to ready and it wont move"
+      - "my electric car wont power on, everything lights up but nothing happens"
+    examples_b:   # ICE no-crank
+      - "wont crank, just clicking, dash lights dim"
+      - "turn the key and one click then nothing"
+
+  - pair: [car_died_while_driving_electrical, stalling_while_driving_under_load]
+    seam: stage1_service   # charging_starting_testing vs check_engine_light_testing
+    discriminating_fact: lights_state / warning_light_named (electrical precursor) vs engine sputter
+    discriminating_question: "BEFORE it died, did the lights/dash DIM or a battery light come on, or did the engine SPUTTER / stumble / lose power first?"
+    hedge_rule: "electrical precursor (lights_state=dim_or_flickering OR warning_light_named~battery/charge) -> car_died_while_driving_electrical (charging_starting_testing). Engine sputter/stumble, no electrical warning -> stalling_while_driving_under_load (check_engine_light_testing)."
+    examples_a:   # electrical
+      - "DIED WHILE DRIVING. ALL WARNING LIGHTS CAME ON AND THEN VEHICLE JUST SHUT OFF"
+      - "dash and radio and headlights all went dim then the engine just quit on the highway"
+    examples_b:   # engine-side stall
+      - "engine sputtered and bogged down going uphill then stalled, no warning lights"
+      - "lost power and stumbled then died, no dash warnings at all"
+
+# =============================================================================
+# Golden cases (router-focused: the branches this router uniquely disambiguates —
+# security, hybrid 12V-vs-HV, silent-vs-click, cranks-no-fire, died-driving).
+# Includes >=1 inference-trap + >=1 null-route. Schema mirrors eval-cases.json.
+# (Complementary to starting-charging's golden cases; these stress the FORK.)
+# =============================================================================
+golden_cases:
+  - text: "car cranks over fine but wont start and theres a little security light flashing on the dash. battery is good, lights are bright, didnt need a jump"
+    tags: [discriminator, security]
+    expected:
+      stage1_category_key: no_start_testing
+      stage1_acceptable: [no_start_testing, charging_starting_testing]
+      stage2_subcategory_slug: null   # interim; key_or_fob_not_recognized_wont_start [PROPOSED] once it ships
+      stage3_facts:
+        engine_running: wont_start
+        warning_light_named: "security"
+        warning_light_behavior: flashing_or_blinking
+        lights_state: normal
+      route: testing_service
+
+  - text: "TOW IN. CRANKS BUT WILL NOT START"
+    tags: [fact_rich, cranks_no_fire]
+    expected:
+      stage1_category_key: no_start_testing
+      stage1_acceptable: [no_start_testing]
+      stage2_subcategory_slug: null   # interim; cranks_but_wont_fire [PROPOSED] once it ships
+      stage3_facts:
+        engine_running: wont_start
+        drivable_state: not_drivable_needs_tow
+      route: testing_service
+
+  - text: "turn the key and absolutely nothing, no click, no crank, totally dead, no lights on the dash at all"
+    tags: [fact_rich, discriminator]
+    expected:
+      stage1_category_key: charging_starting_testing
+      stage1_acceptable: [charging_starting_testing]
+      stage2_subcategory_slug: wont_crank_just_clicks
+      stage3_facts:
+        engine_running: no_sound_at_all
+        lights_state: completely_dead
+      route: testing_service
+
+  - text: "everything lights up bright on the dash but it makes no sound at all when i turn the key, starter does nothing"
+    tags: [discriminator]
+    expected:
+      stage1_category_key: charging_starting_testing
+      stage1_acceptable: [charging_starting_testing]
+      stage2_subcategory_slug: wont_crank_just_clicks
+      stage3_facts:
+        engine_running: no_sound_at_all
+        lights_state: normal   # bright + silent -> ignition switch / interlock / open control wire, not a flat battery
+      route: testing_service
+
+  - text: "my hybrid wont start this morning, all the dash lights come on but it wont go to ready and it wont move. jumped the little 12 volt battery in the back and it fired right up"
+    tags: [fact_rich, hybrid]
+    expected:
+      stage1_category_key: charging_starting_testing
+      stage1_acceptable: [charging_starting_testing, battery_test]
+      stage2_subcategory_slug: wont_crank_just_clicks   # interim; hybrid_or_ev_wont_power_on [PROPOSED]
+      stage3_facts:
+        vehicle_powertrain: hybrid
+        recent_action: jump_started
+        # engine_running: wont_power_on_no_crank [PROPOSED]; falls to no_sound_at_all today.
+        # MUST NOT assert the HV/traction battery — a 12 V jump fixing it is the 12 V-first confirmation.
+      route: testing_service
+
+  - text: "red triangle warning came on and my dash says check hybrid system, the car has barely any power and a turtle light is on"
+    tags: [hybrid, discriminator]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing, charging_starting_testing]
+      stage2_subcategory_slug: null   # interim; hybrid_system_warning_light [PROPOSED]
+      stage3_facts:
+        vehicle_powertrain: hybrid
+        warning_light_named: "check hybrid system, turtle"
+        warning_light_behavior: steady_on
+        drivable_state: drivable_but_concerned
+      route: testing_service
+
+  - text: "died while driving, all the warning lights came on and the dash went dim then it just shut off on the highway. wont crank now"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: charging_starting_testing
+      stage1_acceptable: [charging_starting_testing, check_engine_light_testing]
+      stage2_subcategory_slug: car_died_while_driving_electrical
+      stage3_facts:
+        engine_running: died_while_driving
+        lights_state: dim_or_flickering
+        speed_band: highway
+      route: testing_service
+
+  # ---- INFERENCE TRAP: "hard to start when cold" must NOT set slow_crank or a battery fact. ----
+  - text: "its hard to start when its cold in the mornings, gotta crank it a few times before it catches. totally fine once its warmed up"
+    tags: [inference_trap]
+    expected:
+      stage1_category_key: no_start_testing
+      stage1_acceptable: [no_start_testing, charging_starting_testing]
+      stage2_subcategory_slug: hard_to_start_when_cold
+      stage3_facts:
+        engine_running: wont_start   # cranks (normal speed) but won't FIRE — customer did NOT say slow
+        weather_condition: cold_weather
+        onset_timing: cold_start
+        # MUST NOT set engine_running=slow_crank, lights_state, recent_action, or any battery fact.
+      route: testing_service
+
+  # ---- NULL-ROUTE: staff work-order line, not a customer concern -> advisor, empty stage1. ----
+  - text: "NO START TESTING AUTH 179"
+    tags: [null_route, work_order]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      stage3_facts: {}
+      route: advisor

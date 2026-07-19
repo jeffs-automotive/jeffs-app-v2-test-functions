@@ -1,0 +1,453 @@
+system: driveline-cv-diff-awd
+# Typed change-ops bound to the live snapshot (00-current-scheduler-taxonomy.md + DB slugs/IDs).
+# Every diagnostic rationale traces to the dossier §3/§5/§7; every phrase to the lexicon provenance.
+
+ops:
+  # =========================================================================
+  # L1 — Stage-1 keyword population (awd_4x4_testing has EMPTY example_keywords)
+  # =========================================================================
+  - op: stage1.keyword.add
+    category_key: awd_4x4_testing
+    phrase: "4wd won't engage"
+    rationale: Service has no lexical hook for the #1 4WD complaint; give Stage-1 a domain anchor.
+    evidence: tekmetric "VEHICLE NO LONGER GOES INTO 4WD"; eval awd_4x4_testing-004
+  - op: stage1.keyword.add
+    category_key: awd_4x4_testing
+    phrase: "stuck in 4x4"
+    rationale: Distinctive part-time-4WD bind phrasing; maps only to this service.
+    evidence: tekmetric tkc-086 "feels like a truck stuck in 4X4"; eval awd_4x4_testing-002
+  - op: stage1.keyword.add
+    category_key: awd_4x4_testing
+    phrase: "awd malfunction"
+    rationale: Electronic AWD fault message; anchors the warning-message variant.
+    evidence: tekmetric "AWD System Malfuntion 2WD Mode Engaged"
+  - op: stage1.keyword.add
+    category_key: awd_4x4_testing
+    phrase: "binds up in tight turns"
+    rationale: >
+      AWD driveline-windup cue (dossier §3.9). Tightened from the earlier "binds when turning" because
+      that bare phrase also matches a STEERING bind (heavy/hard steering -> hard_to_turn_heavy_steering /
+      power_steering_eps_testing). "in tight turns" pins the low-speed AWD-windup sense. See the
+      CV/steering hedge; a steering-bind vs AWD-windup collision is noted there.
+    evidence: eval awd_4x4_testing-002 "binds up when I'm turning" (in tight low-speed turns)
+  - op: stage1.keyword.add
+    category_key: awd_4x4_testing
+    phrase: "jerking in driveline"
+    rationale: Driveline engagement jerk; two-token domain phrase.
+    evidence: tekmetric tkc-269 "jerking in driveline when backing up or tight turns"
+  # NOTE: a bare "transfer case" keyword was DROPPED this revision. Its only corpus attestation
+  # (tkc-072) is a DECLINED-SERVICE maintenance line ("transfer case fluid service"), i.e. NON-CONCERN
+  # work-order text; adding the bare term risks pulling maintenance lines into the $179.95 diagnostic
+  # route. The concern-voice transfer-case symptoms are already covered by "stuck in 4x4" / "4wd won't
+  # engage". Bare transfer-case-fluid/service lines are handled by the Stage-1 NON-CONCERN rejection rule
+  # (they null-route to advisor — see lexicon).
+  - op: stage1.keyword.add
+    category_key: awd_4x4_testing
+    phrase: "4hi won't kick in"
+    rationale: Real vague 4WD non-engagement phrasing.
+    evidence: eval awd_4x4_testing-004 "doesnt really kick in anymore when i switch it into 4hi"
+
+  # Suspension/steering service already broad; add only tight domain hooks for bearing/diff hum.
+  - op: stage1.keyword.add
+    category_key: suspension_steering_check
+    phrase: "wheel bearing hum"
+    rationale: Two-token domain phrase for the speed-tracking hum that lands here (dossier §3.8).
+    evidence: forum-paraphrase bearing hum patterns; corpus rear-end hum tkc-113
+  - op: stage1.keyword.add
+    category_key: suspension_steering_check
+    phrase: "CV joint clicking"
+    rationale: Domain phrase for the turn-click that routes to popping_or_clicking_when_turning.
+    evidence: dossier §3.1; forum CV click patterns
+
+  # =========================================================================
+  # L1 — Stage-1 confusable-pair hedges (this dossier OWNS two pairs)
+  # =========================================================================
+  - op: stage1.hedge.add
+    category_a: suspension_steering_check   # CV click / turning noise
+    category_b: power_steering_eps_testing  # steering-column/PS turning noise
+    rule: >
+      A repeating CLICK/POP that appears only while DRIVING THROUGH a turn (parking-lot speed) is a
+      CV-joint cue -> suspension_steering_check / popping_or_clicking_when_turning. A creak, whine, or
+      groan that occurs when turning the wheel while PARKED or stationary is steering ->
+      noise_when_turning_the_steering_wheel / power_steering_eps_testing. When ambiguous, surface both.
+    discriminating_fact: onset_timing=when_turning + speed_band (low_speed moving vs stopped)
+  - op: stage1.hedge.add
+    category_a: awd_4x4_testing
+    category_b: check_engine_light_testing
+    rule: >
+      When a customer reports an AWD/4WD malfunction message, surface awd_4x4_testing even if a
+      check-engine light is also mentioned; AWD faults commonly co-illuminate a CEL. Keep both when the
+      CEL is the lead symptom.
+    discriminating_fact: warning_light_named contains "awd"/"4wd"
+  - op: stage1.hedge.add
+    category_a: suspension_steering_check          # failing hub bearing (integral wheel-speed sensor)
+    category_b: abs_traction_stability_testing     # the ABS/traction light it trips
+    rule: >
+      The wheel-speed (ABS) sensor is integral to modern hub bearing assemblies, so a worn hub bearing
+      can set an ABS and/or traction-control light on its own (bearing play changes the sensor air gap
+      -> signal dropouts -> code + light). When an ABS/traction light is reported ALONGSIDE a humming or
+      growling wheel noise, surface BOTH suspension_steering_check (the bearing) and
+      abs_traction_stability_testing (the light). When the customer reports the light ONLY (no wheel
+      noise), prefer abs_traction_stability_testing. Corpus tkc-120 "abs / trac / no AWD message" — the
+      "no AWD message" explicitly rules out the AWD path and points at the bearing/ABS-sensor path.
+    discriminating_fact: noise_descriptor=humming_or_whirring present + warning_light_named in {"abs","traction"}
+
+  # =========================================================================
+  # L2/L3/L4 — Subcategory sharpening: popping_or_clicking_when_turning
+  # =========================================================================
+  - op: stage2.description.revise
+    subcat_slug: popping_or_clicking_when_turning
+    text: >
+      A repeating pop, click, or clack that happens ONLY while the car is MOVING through a turn — most
+      noticeable at low speed in parking lots, U-turns, and tight cornering, and often worse under a
+      little acceleration mid-turn. The rhythm speeds up and gets louder the tighter the turn, and is
+      usually one-sided. Classic worn CV (constant-velocity) joint or torn CV boot slinging grease
+      (look for grease on the inside of the wheel/tire). Distinct from clunking_over_bumps (bump-
+      triggered, not turn-triggered) and from squeaking_or_creaking_over_bumps (a rubbery squeak).
+      KEY BOUNDARY: a creak, whine, or pop that occurs when turning the steering wheel while PARKED or
+      stopped is the steering column / power-steering system -> steering/noise_when_turning_the_
+      steering_wheel, NOT this. A bind, hop, or shudder (not a discrete click) in tight turns is an
+      AWD/4WD driveline concern -> awd_4x4_testing.
+    why: Adds the moving-vs-parked CV/steering boundary and the AWD-bind exclusion (owned confusable pair).
+  # Both added positives are real-voice (forum-paraphrase); with the 2 synthetic entries out of 7 total
+  # in the lexicon for this subcat, synthetic share is ~29% (<=30% cap) — see §11 self-check.
+  - op: stage2.example.positive.add
+    subcat_slug: popping_or_clicking_when_turning
+    phrase: "clicking sound turning both left and right, gets louder the sharper i turn"
+    provenance: forum-paraphrase
+  - op: stage2.example.positive.add
+    subcat_slug: popping_or_clicking_when_turning
+    phrase: "popping when i corner but nothing when the wheels are straight"
+    provenance: forum-paraphrase
+  - op: stage2.example.negative.add
+    subcat_slug: popping_or_clicking_when_turning
+    phrase: "creak or groan when i turn the wheel while parked in the driveway"
+    routes_to: noise_when_turning_the_steering_wheel
+  - op: stage2.example.negative.add
+    subcat_slug: popping_or_clicking_when_turning
+    phrase: "the whole car binds and hops when i make a tight turn, feels stuck in 4x4"
+    routes_to: driveline_engagement_clunk_or_bind   # non-null (required). PROPOSED target:
+    target_status: proposed                          # today service-routes to awd_4x4_testing (no live subcat)
+    routes_to_current_fallback: null                 # no correct live subcategory today (service-level route)
+  - op: stage2.synonym.add
+    subcat_slug: popping_or_clicking_when_turning
+    term: "CV joint"
+  - op: stage2.synonym.add
+    subcat_slug: popping_or_clicking_when_turning
+    term: "clicking axle"
+  - op: stage2.synonym.add
+    subcat_slug: popping_or_clicking_when_turning
+    term: "torn CV boot"
+
+  # =========================================================================
+  # L2/L3/L4 — Subcategory sharpening: humming_or_whirring_at_speed
+  # =========================================================================
+  - op: stage2.description.revise
+    subcat_slug: humming_or_whirring_at_speed
+    text: >
+      A steady humming, whirring, droning, growling, or roaring from the wheel/axle area that gets
+      louder the faster you drive — usually from ~30-40 mph, intensifying with ROAD speed (not engine
+      RPM). Wheel-bearing cue when it CHANGES with steering load (louder turning one way, quieter the
+      other). Differential/gear cue when it is more of a WHINE that changes with throttle — rising when
+      you get on the gas, changing or fading when you coast/lift off. Tire cue when it stays the same
+      no matter how you steer and the tires are worn/cupped. Distinct from high_pitched_whining_under_
+      the_hood (engine-bay, tracks engine RPM) and rattling_underneath_the_car (discrete shake, not a
+      continuous hum). Cross-category: a whine that tracks ENGINE rpm / trans shifts, not road speed,
+      belongs to transmission (transmission_testing).
+    why: Adds bearing(steering-load) vs diff(throttle-load) vs tire vs transmission(rpm) discriminators.
+  - op: stage2.example.positive.add
+    subcat_slug: humming_or_whirring_at_speed
+    phrase: "humming that gets louder curving left and quieter curving right, feel it in the floor"
+    provenance: forum-paraphrase
+  - op: stage2.example.positive.add
+    subcat_slug: humming_or_whirring_at_speed
+    phrase: "whine when accelerating that stops when i let off the gas, they said maybe the differential"
+    provenance: forum-paraphrase
+  - op: stage2.example.negative.add
+    subcat_slug: humming_or_whirring_at_speed
+    phrase: "whine under the hood that goes up and down with the engine rpm, not with speed"
+    routes_to: high_pitched_whining_under_the_hood
+  - op: stage2.example.negative.add
+    subcat_slug: humming_or_whirring_at_speed
+    phrase: "clicking that only shows up when i turn in a parking lot"
+    routes_to: popping_or_clicking_when_turning
+  - op: stage2.synonym.add
+    subcat_slug: humming_or_whirring_at_speed
+    term: "wheel bearing noise"
+  - op: stage2.synonym.add
+    subcat_slug: humming_or_whirring_at_speed
+    term: "differential whine"
+  - op: stage2.synonym.add
+    subcat_slug: humming_or_whirring_at_speed
+    term: "rear end howl"
+
+  # =========================================================================
+  # L2/L3 — gear-oil leak sharpening
+  # =========================================================================
+  - op: stage2.example.positive.add
+    subcat_slug: thick_dark_brown_puddle_gear_or_differential_oil
+    phrase: "rear axle seal leak"
+    provenance: tekmetric
+  - op: stage2.example.positive.add
+    subcat_slug: thick_dark_brown_puddle_gear_or_differential_oil
+    phrase: "sticky black greasy mess dripping from the pumpkin on the back axle"
+    provenance: synthetic
+  - op: stage2.example.negative.add
+    subcat_slug: thick_dark_brown_puddle_gear_or_differential_oil
+    phrase: "thin brown oily drip right under the engine, smells like petroleum"
+    routes_to: brown_or_black_puddle_engine_oil
+  - op: stage2.synonym.add
+    subcat_slug: thick_dark_brown_puddle_gear_or_differential_oil
+    term: "axle seal leak"
+  # "pinion seal leak" REMOVED this revision: mechanic/work-order voice with no corpus attestation
+  # (corpus has "rear axle seal leak", never "pinion"). "axle seal leak" is corpus-attested and kept.
+
+  # =========================================================================
+  # New subcategory proposal (Chris-gated) — the NO-FIT driveline modes
+  # =========================================================================
+  - op: stage2.subcategory.propose
+    category: noise
+    name: driveline_engagement_clunk_or_bind
+    description: >
+      A hard clunk, jerk, or bind tied to TORQUE — when shifting into drive/reverse, taking off from a
+      stop, snapping on/off the throttle, or binding/hopping/chattering in tight low-speed turns. Cues
+      worn U-joints, a worn driveshaft/center-support bearing, excess differential backlash
+      (ring-and-pinion or spider gears), limited-slip/posi clutch chatter, or an AWD/4WD
+      coupler/transfer-case fault. Distinct from clunking_over_bumps (bump-triggered ride clunk) and from
+      transmission shift concerns (internal trans -> transmission_testing).
+    reachability_note: >
+      Placed under category 'noise'. VERIFIED against catalog-snapshot.json: 'noise' is reachable from
+      suspension_steering_check but NOT from awd_4x4_testing (concern_categories =
+      performance/electrical/warning_light). So the U-joint/diff/LSD-clunk half routes via
+      suspension_steering_check today. The AWD-windup half genuinely belongs to awd_4x4_testing —
+      reaching this subcategory from awd_4x4_testing REQUIRES the Chris-gated catalog.category_mapping.add
+      op below (add 'noise' to awd_4x4_testing.concern_categories). Until that lands, this subcategory is
+      reachable ONLY through suspension_steering_check.
+    examples:
+      - "clunk every time i shift into reverse and when i take off from a stop"   # tekmetric-adjacent
+      - "jerking in the driveline when backing up or on tight turns"              # tekmetric tkc-269
+      - "driveshaft feels like it slips when i take off fast, jerks when shifting"# forum-paraphrase
+    why_existing_insufficient: >
+      Take-off/torque-reversal clunk and AWD windup bind currently split ambiguously between
+      clunking_over_bumps (wrong: bump-triggered) and null (no subcategory). Corpus tkc-269 and tkc-275
+      show real demand; both were left unjudged/unresolved by consensus, evidence of the gap.
+    chris_gated: true
+
+  # ---- Catalog change REQUIRED for the AWD-windup half of the subcategory above to be reachable ----
+  - op: catalog.category_mapping.add
+    service_key: awd_4x4_testing
+    add_concern_category: noise
+    rationale: >
+      awd_4x4_testing.concern_categories is currently [performance, electrical, warning_light] (verified
+      in catalog-snapshot.json), so it cannot reach ANY 'noise' subcategory — including the proposed
+      driveline_engagement_clunk_or_bind, whose AWD-windup/bind half is genuine awd_4x4_testing work.
+      Adding 'noise' makes the new subcategory (and the take-off-clunk/windup phrasings) reachable from
+      the AWD service. This is a catalog edit, not just enrichment — hence explicitly Chris-gated; do NOT
+      apply automatically.
+    chris_gated: true
+    depends_on: stage2.subcategory.propose:driveline_engagement_clunk_or_bind
+
+  # =========================================================================
+  # L5 — Stage-3 slot ops
+  # =========================================================================
+  - op: stage3.slot.value.add
+    slot: onset_timing
+    value: on_gear_engagement_or_take_off
+    literal_cues:
+      - "when i put it in drive"
+      - "putting car into drive from park"
+      - "shifting into gear"
+      - "into reverse"
+      - "when i take off from a stop"
+      - "when i hit the gas from a stop"
+      - "backing up"
+    # Distinguishes driveline backlash clunk from over_bumps suspension clunk (dossier §5).
+    # >=3 questions need it: proposed subcategory Qs + existing clunking Q82.
+
+  - op: stage3.slot.propose
+    name: driveline_behavior
+    type: enum
+    values:
+      - binds_or_hops_in_turns
+      - clunk_on_engagement
+      - wont_engage_4wd
+      - stuck_in_4wd
+      - jerking_or_skipping
+      - whine_changes_with_load
+    literal_cues:
+      - "binds up when turning"        # binds_or_hops_in_turns
+      - "feels stuck in 4x4"           # stuck_in_4wd
+      - "4wd wont engage"              # wont_engage_4wd
+      - "jerking in the driveline"     # jerking_or_skipping
+      - "clunks when i shift into drive" # clunk_on_engagement
+      - "whine gets louder on the gas, quiets when i coast" # whine_changes_with_load
+    questions_unlocked: []   # ZERO existing questions today. (Q82 is NOT here — it is answered by
+                             # onset_timing per the question.required_facts.set op below, not by this slot.)
+    questions_unlocked_after_subcategory: ">=3 new questions authored on the proposed driveline_engagement_clunk_or_bind subcategory (binds/hops in turns; won't-engage vs stuck; clunk-on-engagement) + the AWD engagement Qs"
+    chris_gated: true
+    # CONDITIONAL / GATED: this slot has 0 existing questions, so it does NOT meet the >=3-question rule
+    # standalone. It becomes valid ONLY once driveline_engagement_clunk_or_bind lands AND its >=3
+    # questions are authored to require it. Do NOT add the slot before the subcategory + its questions
+    # exist. Flagged for Chris. (Earlier draft listed [82] here, which was inconsistent: Q82 is a
+    # clunking_over_bumps question answered by onset_timing, not by driveline_behavior.)
+
+  # =========================================================================
+  # L5 — required_facts tagging (reduce over-asking) + intentional empties
+  # =========================================================================
+  - op: question.required_facts.set
+    question_id: 82   # clunking_over_bumps: "Does the clunk also happen when you start moving from a stop or when you come to a stop?"
+    facts: [onset_timing]
+    skip_class: PARTIAL
+    derivation_note: >
+      Answerable once onset_timing gains on_gear_engagement_or_take_off; "start moving from a stop"
+      maps to that value, "come to a stop" maps to at_stop. Skip when either is already extracted.
+  - op: question.intentionally_empty
+    question_id: 116   # popping_when_turning: "Does it happen going forward, in reverse, or both?"
+    reason: >
+      Direction-of-travel (forward/reverse) is not modeled in the 29 slots and is not worth a new slot
+      (single question). Keep asked; leave required_facts empty by design.
+  - op: question.intentionally_empty
+    question_id: 86    # humming_at_speed: "Does the noise change when you turn the steering wheel left versus right?"
+    reason: >
+      Steering-load sensitivity (the bearing-vs-tire discriminator) has no slot yet and only ~2
+      questions need it (< the 3-question rule). Logged as a backlog slot candidate for the NVH router;
+      keep asked in the meantime.
+
+golden_cases:
+  - text: "clicking noise from the front only when I turn in parking lots, faster the tighter I go"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: suspension_steering_check
+      stage1_acceptable: [suspension_steering_check]
+      stage2_subcategory_slug: popping_or_clicking_when_turning
+      stage3_facts: { noise_descriptor: popping_or_clicking, location_axle: front, onset_timing: when_turning, speed_band: low_speed }
+      route: testing_service
+
+  - text: "very noticeable humming from the rear end, most noticeable 30 to 40 mph, sounds like snow tires"
+    tags: [moderate, corpus_tkc-113]
+    expected:
+      stage1_category_key: suspension_steering_check
+      stage1_acceptable: [suspension_steering_check]
+      stage2_subcategory_slug: humming_or_whirring_at_speed
+      stage3_facts: { noise_descriptor: humming_or_whirring, location_axle: rear, speed_band: specific_mph, speed_specific_mph: 30 }
+      route: testing_service
+
+  - text: "humming that gets louder curving left and quieter curving right, feel it in the floor on the highway"
+    tags: [fact_rich, bearing_load_test]
+    expected:
+      stage1_category_key: suspension_steering_check
+      stage1_acceptable: [suspension_steering_check]
+      stage2_subcategory_slug: humming_or_whirring_at_speed
+      stage3_facts: { noise_descriptor: humming_or_whirring, speed_band: highway }
+      route: testing_service
+
+  - text: "whine when accelerating that stops when I let off the gas, another shop said maybe the differential"
+    tags: [fact_rich, cross_system_trap, literalness_trap]
+    expected:
+      stage1_category_key: suspension_steering_check
+      stage1_acceptable: [suspension_steering_check, transmission_testing, awd_4x4_testing]
+      stage2_subcategory_slug: humming_or_whirring_at_speed
+      # LITERALNESS: do NOT set customer_request_type=second_opinion. "another shop said maybe the
+      # differential" reports a prior opinion but does NOT literally request verification (contrast
+      # tkc-102 "wants second opinion", which does). Leave customer_request_type null.
+      stage3_facts: { noise_descriptor: whining, onset_timing: when_accelerating }
+      route: testing_service
+
+  - text: "skipping feeling when turning and driving, feels like a truck stuck in 4x4"
+    tags: [fact_rich, no_subcategories_in_category, corpus_tkc-086]
+    expected:
+      stage1_category_key: awd_4x4_testing
+      stage1_acceptable: [awd_4x4_testing]
+      stage2_subcategory_slug: null
+      stage3_facts: { onset_timing: when_turning }
+      route: testing_service
+
+  - text: "my 4 wheel drive won't engage, the 4WD light just flashes and I hear a grinding noise"
+    tags: [fact_rich, no_subcategories_in_category]
+    expected:
+      stage1_category_key: awd_4x4_testing
+      stage1_acceptable: [awd_4x4_testing]
+      stage2_subcategory_slug: null
+      stage3_facts: { warning_light_named: "4wd", warning_light_behavior: flashing_or_blinking, noise_descriptor: grinding_metallic }
+      route: testing_service
+
+  - text: "thick dark fluid under the rear axle and it smells like rotten eggs"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: oil_leak_testing
+      # awd_4x4_testing REMOVED from acceptable: its concern_categories (performance/electrical/
+      # warning_light) cannot reach the 'leak' subcategory pool, so the expected stage2 slug would be
+      # unreachable from it. The gear-oil-leak subcat is reachable from oil_leak_testing/coolant_leak_testing.
+      stage1_acceptable: [oil_leak_testing, coolant_leak_testing]
+      stage2_subcategory_slug: thick_dark_brown_puddle_gear_or_differential_oil
+      stage3_facts: { fluid_color: thick_dark_brown, fluid_under_car_location: under_rear, smell_descriptor: rotten_egg_or_sulfur }
+      route: testing_service
+
+  # GATED case: hard-codes a PROPOSED subcategory + PROPOSED onset value. Split into current vs proposed
+  # so it can run against the CURRENT catalog (expected_current) and against the post-proposal catalog
+  # (expected_proposed). Wave C: grade against expected_current unless the listed proposals have landed.
+  - text: "loud clunk from the driveline every time I shift into reverse and when I take off from a stop"
+    tags: [moderate, proposed_subcategory, gated]
+    requires_proposals:
+      - "stage2.subcategory.propose:driveline_engagement_clunk_or_bind"
+      - "stage3.slot.value.add:onset_timing=on_gear_engagement_or_take_off"
+    expected_current:   # runnable against today's catalog (subcat + onset value do NOT exist yet)
+      stage1_category_key: suspension_steering_check
+      stage1_acceptable: [suspension_steering_check, awd_4x4_testing, transmission_testing]
+      stage2_subcategory_slug: null   # no correct current subcat (clunking_over_bumps is a mis-fit)
+      stage3_facts: { noise_descriptor: clunking }   # onset has no fitting CURRENT value
+      route: testing_service
+    expected_proposed:  # after the two proposals above land
+      stage1_category_key: suspension_steering_check
+      stage1_acceptable: [suspension_steering_check, awd_4x4_testing, transmission_testing]
+      stage2_subcategory_slug: driveline_engagement_clunk_or_bind
+      stage3_facts: { noise_descriptor: clunking, onset_timing: on_gear_engagement_or_take_off }
+      route: testing_service
+
+  # ---- INFERENCE-TRAP: "clicking when I turn" tempts a location/side over-assertion ----
+  - text: "theres a clicking sound when I turn"
+    tags: [sparse, inference_trap]
+    expected:
+      stage1_category_key: suspension_steering_check
+      stage1_acceptable: [suspension_steering_check, power_steering_eps_testing]
+      stage2_subcategory_slug: popping_or_clicking_when_turning
+      stage3_facts: { noise_descriptor: popping_or_clicking, onset_timing: when_turning }
+      # TRAP: do NOT set location_side/location_axle/speed_band — customer named none. "when I turn"
+      # sets onset_timing only; it does NOT imply front, a side, or that the car is moving.
+      route: testing_service
+
+  # ---- SITUATIONAL OVERRIDE: leak symptom, but recent service is the causal cue (taxonomy 3b) ----
+  - text: "client just had the rear differential serviced somewhere else and now it's leaking everywhere"
+    tags: [situational_override, corpus_tka-034]
+    expected:
+      # The after_recent_service_or_repair_work situational bucket OVERRIDES the gear-oil-leak keyword
+      # (Stage-1 PRIORITY-ORDER rule) because the leak is causally tied to the recent diff service.
+      # All 3 judges confirmed tka-034 as after_recent_service_or_repair_work.
+      stage1_category_key: after_recent_service_or_repair_work
+      stage1_acceptable: [after_recent_service_or_repair_work]
+      stage2_subcategory_slug: null
+      stage3_facts: { recent_action: general_service, fluid_color: thick_dark_brown }
+      route: advisor
+
+  # ---- HUB-BEARING trips the ABS/traction light (integral wheel-speed sensor); "no AWD message" ----
+  - text: "abs and traction light on, no awd message"
+    tags: [moderate, corpus_tkc-120, cross_system_bearing_abs]
+    expected:
+      # Integral wheel-speed sensor in the hub bearing can trip these lights; "no AWD message" rules out
+      # the AWD path. Lead symptom is the light -> abs_traction_stability_testing; surface
+      # suspension_steering_check as acceptable (a failing hub bearing is a live differential).
+      stage1_category_key: abs_traction_stability_testing
+      stage1_acceptable: [abs_traction_stability_testing, suspension_steering_check]
+      stage2_subcategory_slug: abs_anti_lock_brake_light
+      stage3_facts: { warning_light_named: "abs" }
+      route: testing_service
+
+  # ---- NULL-ROUTE: work-order maintenance line, not a concern ----
+  - text: "REAR DIFF SERVICE"
+    tags: [null_route, work_order_voice, corpus]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      stage3_facts: {}
+      route: advisor

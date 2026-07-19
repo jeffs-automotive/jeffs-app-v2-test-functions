@@ -1,0 +1,499 @@
+system: suspension-ride-alignment
+# Every op binds to a live slug/service/question id from 00-current-scheduler-taxonomy.md + the DB snapshot.
+# routes_to on negative examples is REQUIRED. Synonyms are >=2 tokens or domain tokens.
+# Proposed-but-not-yet-created slugs are prefixed PROPOSED: and depend on the matching *.propose op.
+
+ops:
+  # =========================================================================
+  # L1 — Stage-1 example_keywords for suspension_steering_check
+  # (multi-token / domain only; each shows corpus occurrence)
+  # =========================================================================
+  - op: stage1.keyword.add
+    category_key: suspension_steering_check
+    phrase: "clunking in front end"
+    rationale: "Most common corpus framing for suspension clunk; currently relies on generic 'clunk'."
+    evidence: "tekmetric: 'Vehicle has clunking in front end when driving'"
+  - op: stage1.keyword.add
+    category_key: suspension_steering_check
+    phrase: "noise over bumps"
+    rationale: "Core trigger phrasing shared by clunk/creak/bounce modes."
+    evidence: "tekmetric: 'suspension noise mainly over bumps', 'SQUEAKING NOISE GOING OVER BUMPS'"
+  - op: stage1.keyword.add
+    category_key: suspension_steering_check
+    phrase: "front end feels loose"
+    rationale: "Wander / worn-linkage cue distinct from steering-effort complaints."
+    evidence: "tekmetric: 'PLAY IN STEERING WHEEL AND CLUNKING IN SUSPENSION'; forum: 'began to wander badly'"
+  - op: stage1.keyword.add
+    category_key: suspension_steering_check
+    phrase: "bouncy ride"
+    rationale: "Worn-damper ride-quality cue; today can misroute to generic vibration."
+    evidence: "forum: 'ride was more bouncy and floaty than before'"
+  - op: stage1.keyword.add
+    category_key: suspension_steering_check
+    phrase: "creaking over bumps"
+    rationale: "Dry-bushing squeak/creak trigger; disambiguates from brake squeal."
+    evidence: "tekmetric: 'CHECK CREAKING NOISE OVER BUMPS'"
+  - op: stage1.keyword.add
+    category_key: suspension_steering_check
+    phrase: "sway bar link"
+    rationale: "Customer part-name guess that reliably indicates suspension clunk."
+    evidence: "forum: 'assumed it was sway bar links or bushings'"
+  - op: stage1.keyword.add
+    category_key: suspension_steering_check
+    phrase: "ball joint"
+    rationale: "Domain token; customer/prior-shop guess pointing to suspension clunk/wander/tire-edge wear."
+    evidence: "moog Tier-2 symptom family; corpus part-name guesses ('failing tie rod ends')"
+  - op: stage1.keyword.add
+    category_key: suspension_steering_check
+    phrase: "wheel alignment check"
+    rationale: "Explicit alignment request; anchors the pulling/uneven-wear pool."
+    evidence: "tekmetric: 'WHEEL ALIGNMENT CHECK', 'ALIGNMENT CHECK'"
+  - op: stage1.keyword.add
+    category_key: suspension_steering_check
+    phrase: "pulls to the right"
+    rationale: "Dominant steady-pull phrasing; multi-token so it will not fire on bare 'pull'."
+    evidence: "tekmetric: 'if you hold steering wheel straight car will go to the right'"
+  - op: stage1.keyword.add
+    category_key: suspension_steering_check
+    phrase: "uneven tire wear"
+    rationale: "Alignment/worn-shock evidence framing that leads customers to book."
+    evidence: "tekmetric: 'tires have been having uneven wear', 'worn on edges'"
+
+  # =========================================================================
+  # L1 — Stage-1 confusable hedges
+  # =========================================================================
+  - op: stage1.hedge.add
+    category_a: suspension_steering_check
+    category_b: brake_inspection
+    rule: "Bump-triggered shake/bounce/clunk is suspension; a shudder/pulsation felt while pressing the brake pedal is brakes. If both are stated, hedge and let Stage-3 onset_timing decide."
+    discriminating_fact: "onset_timing = over_bumps (suspension) vs when_braking (brakes)"
+  - op: stage1.hedge.add
+    category_a: suspension_steering_check
+    category_b: awd_4x4_testing
+    rule: "A clunk triggered by BUMPS is suspension; a clunk on shift-into-gear / on-off throttle (no bump) is driveline (U-joint/diff/mount) — today partly awd_4x4_testing, otherwise the proposed driveline service. Hedge when the trigger is throttle/shift, not bumps."
+    discriminating_fact: "onset_timing = over_bumps (suspension) vs when_accelerating / at_stop (driveline)"
+  - op: stage1.hedge.add
+    category_a: suspension_steering_check
+    category_b: after_a_recent_accident_or_impact
+    rule: "When the customer ties a vague front-end symptom to a fresh curb/pothole/collision and asks to 'make sure nothing is bent', the recent-impact situational bucket OVERRIDES the suspension symptom keyword (taxonomy priority-order rule)."
+    discriminating_fact: "recent_action = hit_pothole_or_curb / accident_or_impact + no discrete symptom named"
+
+  # =========================================================================
+  # L2 — Stage-2 description revisions (sharpen confusable boundaries only;
+  # DB descriptions are already strong, so these are surgical additions)
+  # =========================================================================
+  - op: stage2.description.revise
+    subcat_slug: clunking_over_bumps
+    text: "APPEND to existing description: 'A clunk that is triggered by SHIFTING INTO GEAR, taking off, or lifting off the gas (NOT by bumps) is a driveline complaint (U-joint / differential / motor or transmission mount), not suspension — route it to the driveline clunk subcategory, not here.'"
+    why: "Corpus shows shift/throttle clunks ('putting car into drive', 'as I accelerated') contaminating this bump-triggered subcategory; onset_timing is the separator."
+  - op: stage2.description.revise
+    subcat_slug: drift_that_follows_the_roads_slope
+    text: "APPEND: 'The definitive test is the flat empty parking lot — crown drift GOES AWAY on flat ground and REVERSES when the road tilts the other way; a pull that persists on flat ground is steady_drift_while_cruising instead.'"
+    why: "Encodes the one discriminating test into the description; supports the proposed pull_road_dependence slot."
+
+  # =========================================================================
+  # L3 — Stage-2 positive examples (real customer voice; provenance tagged)
+  # =========================================================================
+  - op: stage2.example.positive.add
+    subcat_slug: clunking_over_bumps
+    phrase: "Vehicle has clunking in front end when driving, thinks it might be failing tie rod ends"
+    provenance: tekmetric
+  - op: stage2.example.positive.add
+    subcat_slug: clunking_over_bumps
+    phrase: "suspension noise mainly over bumps"
+    provenance: tekmetric
+  - op: stage2.example.positive.add
+    subcat_slug: squeaking_or_creaking_over_bumps
+    phrase: "check squeaking in rear over bumps, can hear it if you push down on the bumper"
+    provenance: tekmetric
+  - op: stage2.example.positive.add
+    subcat_slug: squeaking_or_creaking_over_bumps
+    phrase: "chassis squeaking, does it need lube?"
+    provenance: tekmetric
+  - op: stage2.example.positive.add
+    subcat_slug: shaking_or_bouncing_over_bumps_and_rough_roads
+    phrase: "when I hit a bump at highway speed I get a violent shake"
+    provenance: tekmetric
+  - op: stage2.example.positive.add
+    subcat_slug: shaking_or_bouncing_over_bumps_and_rough_roads
+    phrase: "the ride got bouncy and floaty and now I feel every bump and road crack"
+    provenance: forum-paraphrase
+  - op: stage2.example.positive.add
+    subcat_slug: steady_drift_while_cruising
+    phrase: "if I hold the steering wheel straight the car pulls to the right"
+    provenance: tekmetric
+  - op: stage2.example.positive.add
+    subcat_slug: wandering_or_drifting_in_both_directions
+    phrase: "it started to wander badly especially at highway speeds and now I dont feel safe"
+    provenance: forum-paraphrase
+  - op: stage2.example.positive.add
+    subcat_slug: uneven_tire_wear_bald_spots
+    phrase: "uneven wear on the inside edge of my front tires"
+    provenance: tekmetric
+
+  # =========================================================================
+  # L3 — Stage-2 negative examples (routes_to REQUIRED)
+  # =========================================================================
+  - op: stage2.example.negative.add
+    subcat_slug: clunking_over_bumps
+    phrase: "clunk only when I shift into drive or take off from a stop, not over bumps"
+    routes_to: "PROPOSED:driveline_clunk_on_shift_or_acceleration"   # depends on the stage2.subcategory.propose below
+  - op: stage2.example.negative.add
+    subcat_slug: clunking_over_bumps
+    phrase: "speed-dependent humming from the rear that gets louder the faster I go"
+    routes_to: humming_or_whirring_at_speed
+  - op: stage2.example.negative.add
+    subcat_slug: shaking_or_bouncing_over_bumps_and_rough_roads
+    phrase: "shudder I only feel through the brake pedal when I slow down"
+    routes_to: vibration_or_pulsing_when_braking
+  - op: stage2.example.negative.add
+    subcat_slug: shaking_or_bouncing_over_bumps_and_rough_roads
+    phrase: "steady shake in the steering wheel at 65 on smooth highway, goes away when I slow down"
+    routes_to: steering_wheel_shake_at_highway_speed
+  - op: stage2.example.negative.add
+    subcat_slug: squeaking_or_creaking_over_bumps
+    phrase: "creak only when I turn the steering wheel while sitting still"
+    routes_to: noise_when_turning_the_steering_wheel
+  - op: stage2.example.negative.add
+    subcat_slug: steady_drift_while_cruising
+    phrase: "drifts right on the highway but tracks straight in a flat empty parking lot"
+    routes_to: drift_that_follows_the_roads_slope
+  - op: stage2.example.negative.add
+    subcat_slug: wandering_or_drifting_in_both_directions
+    phrase: "pulls steady to the same side every road, does not wander"
+    routes_to: steady_drift_while_cruising
+
+  # =========================================================================
+  # L4 — Stage-2 synonyms (>=2 tokens or domain token; no bare high-freq words)
+  # =========================================================================
+  - op: stage2.synonym.add
+    subcat_slug: clunking_over_bumps
+    term: "front end clunk"
+  - op: stage2.synonym.add
+    subcat_slug: clunking_over_bumps
+    term: "sway bar link"
+  - op: stage2.synonym.add
+    subcat_slug: clunking_over_bumps
+    term: "end link"
+  - op: stage2.synonym.add
+    subcat_slug: clunking_over_bumps
+    term: "ball joint"
+  - op: stage2.synonym.add
+    subcat_slug: squeaking_or_creaking_over_bumps
+    term: "chassis squeak"
+  - op: stage2.synonym.add
+    subcat_slug: squeaking_or_creaking_over_bumps
+    term: "creaking over bumps"
+  - op: stage2.synonym.add
+    subcat_slug: shaking_or_bouncing_over_bumps_and_rough_roads
+    term: "floaty ride"
+  - op: stage2.synonym.add
+    subcat_slug: shaking_or_bouncing_over_bumps_and_rough_roads
+    term: "feel every bump"
+  - op: stage2.synonym.add
+    subcat_slug: steady_drift_while_cruising
+    term: "veers to one side"
+  - op: stage2.synonym.add
+    subcat_slug: wandering_or_drifting_in_both_directions
+    term: "all over the lane"
+
+  # =========================================================================
+  # Stage-2 subcategory proposals (Chris-gated — fill NO-FIT gaps from §8)
+  # =========================================================================
+  - op: stage2.subcategory.propose
+    category: noise
+    name: driveline_clunk_on_shift_or_acceleration
+    description: "A clunk, thud, or bang that happens when shifting into gear (park-to-drive/reverse), taking off from a stop, or lifting on/off the gas — NOT triggered by bumps. Points at driveline slack: worn U-joints, differential/carrier, CV/axle, or engine/transmission mounts. Distinct from noise/clunking_over_bumps (bump-triggered, suspension)."
+    examples: ["clunking when I put it in drive from park", "loud clunk when I take off from a stop", "clunk when I get on and off the gas"]
+    why_existing_insufficient: "clunking_over_bumps is explicitly bump-triggered (onset_timing=over_bumps); there is no home for shift/throttle-triggered clunk, so those corpus lines contaminate suspension routing."
+  - op: stage2.subcategory.propose
+    category: warning_light
+    name: suspension_service_message
+    reached_via_service: warning_light_general   # suspension_steering_check has NO warning_light category; this new warning_light subcat is reachable today only through warning_light_general ($179.95). A dedicated air-suspension diagnosis service is a separate catalog proposal below.
+    description: "A dashboard 'service suspension' / 'air suspension' warning message on electronic or AIR-RIDE vehicles, often with the ride-height compressor cycling / airing up at random. Distinct from mechanical suspension noise/ride complaints (no light) AND from a broken coil/leaf spring on a conventional car (a low corner with NO dash message -> that is suspension_steering_check, dossier 3k)."
+    examples: ["service suspension message keeps popping up", "air compressor keeps running and airing up the suspension at random", "air ride light on and the back end won't stay up"]
+    why_existing_insufficient: "2 strong air-ride corpus lines ('SUSPENSION FAULT/SERVICE messages ... air compressor coming on and airing up at random'; 'POPPING NOISE ... from the air suspension') describe air/electronic-suspension dash messages with no catalog home; today they fall into general warning-light with no matching test. (The 'sitting low on one corner' corpus line is NOT evidence here -- on a conventional car that is a broken spring routed to suspension_steering_check.)"
+
+  # =========================================================================
+  # Catalog concern_categories extension (Chris-gated) — make the alignment
+  # service able to own uneven-wear-as-evidence (dossier 8 NO-FIT #3)
+  # =========================================================================
+  - op: catalog.service.concern_categories.extend
+    service_key: suspension_steering_check
+    add_category: tires
+    rationale: "suspension_steering_check.concern_categories = [noise, steering, pulling, vibration] in the live DB, so it CANNOT reach uneven_tire_wear_bald_spots (tires pool). But uneven/cupped wear is the downstream EVIDENCE of alignment / worn dampers that this very service diagnoses. Adding `tires` lets the alignment service own the uneven-wear-as-framing utterance instead of forcing it through tire_repair."
+    demand_evidence: "tekmetric: 'uneven wear on inside edge of front tires, alignment okay if needed'; 'WHEEL ALIGNMENT CHECK (rear tires worn on edges)'; 'Alignment (tires have been having uneven wear)'."
+    risk_note: "Adds one subcategory (uneven_tire_wear_bald_spots) to this service's Stage-2 pool; does NOT pull in tire-damage/dry-rot/new-tire subcats (those stay tire_repair/advisor). Until accepted, the utterance routes via tire_repair (golden case 8)."
+
+  # =========================================================================
+  # L5 — Stage-3 NEW fact-slot proposals (each unlocks >=3 questions; literal cues only)
+  # =========================================================================
+  - op: stage3.slot.propose
+    name: ride_damping_symptom
+    type: "enum (nullable, multi-select)"
+    values: [continued_bounce_after_bump, nose_dive_under_braking, rear_squat_under_accel, excessive_body_roll, bottoming_out]
+    literal_cues:
+      - "keeps bouncing two or three times after a bump  -> continued_bounce_after_bump"
+      - "the front dives down hard when I brake  -> nose_dive_under_braking"
+      - "the back squats when I hit the gas  -> rear_squat_under_accel"
+      - "leans / sways a lot in corners  -> excessive_body_roll"
+      - "it bottoms out over bumps  -> bottoming_out"
+    questions_unlocked: [703, 704, 705, 169, 174, 81]
+    note: "Worn-damper tells have no slot today. MUST NOT be set from a bare 'rough ride' or 'bouncy' — only when the specific behavior is literally stated. Multi-select because #704 asks nose-dive AND rear-squat."
+  - op: stage3.slot.propose
+    name: pull_road_dependence
+    type: "enum (nullable)"
+    values: [persists_on_flat_ground, only_on_certain_roads, reverses_with_road_tilt]
+    literal_cues:
+      - "still pulls in a flat empty parking lot  -> persists_on_flat_ground"
+      - "goes straight on flat ground / doesn't pull in the flat parking lot  -> only_on_certain_roads (the pull is road-dependent; it is NOT present on flat ground — this is evidence AGAINST persists_on_flat_ground)"
+      - "only pulls on certain roads, fine on others  -> only_on_certain_roads"
+      - "the pull reverses when the road tilts the other way / pulls the other way in the other lane  -> reverses_with_road_tilt"
+    questions_unlocked: [1224, 1225, 1226, 1230, 196]
+    note: "Single-select; pick the MOST specific literal cue when several apply (a stated reversal -> reverses_with_road_tilt outranks a bare 'only on some roads'). Separates crown drift (drift_that_follows_the_roads_slope) from a real alignment pull (steady_drift_while_cruising). Literal only — do not infer from a generic 'it pulls'."
+
+  # =========================================================================
+  # Workstream Q — required_facts for empty questions in this system's subcats.
+  # SAFE tags marked (dep) become live only if the referenced slot proposal is accepted.
+  # =========================================================================
+  # clunking_over_bumps
+  - op: question.required_facts.set
+    question_id: 81
+    facts: [ride_damping_symptom]
+    skip_class: SAFE
+    derivation_note: "(dep: ride_damping_symptom) 'feeling bouncy/unsettled after bumps' == continued_bounce_after_bump; skip only when that behavior is literally stated."
+  - op: question.intentionally_empty
+    question_id: 78
+    reason: "Severity/frequency gradation ('every bump vs only big ones') is not modeled by any slot and is a confirmatory probe."
+  - op: question.intentionally_empty
+    question_id: 82
+    reason: "Probes an ADDITIONAL trigger (start/stop = driveline cue). Presence-only mapper would wrongly skip it whenever onset_timing=over_bumps was extracted; must always ask."
+  # clunking_knocking_or_rough_ride_over_bumps
+  - op: question.required_facts.set
+    question_id: 703
+    facts: [ride_damping_symptom]
+    skip_class: SAFE
+    derivation_note: "(dep: ride_damping_symptom) 'keeps bouncing 2-3 times after a bump' == continued_bounce_after_bump."
+  - op: question.required_facts.set
+    question_id: 704
+    facts: [ride_damping_symptom]
+    skip_class: SAFE
+    derivation_note: "(dep: ride_damping_symptom, multi-select) nose-dive-under-braking / rear-squat-under-accel are both values; skip when either is literally stated."
+  - op: question.required_facts.set
+    question_id: 705
+    facts: [ride_damping_symptom]
+    skip_class: SAFE
+    derivation_note: "(dep: ride_damping_symptom) 'leans/sways in corners' == excessive_body_roll."
+  - op: question.intentionally_empty
+    question_id: 702
+    reason: "Severity/frequency gradation, same as #78 — not modeled, confirmatory."
+  - op: question.intentionally_empty
+    question_id: 707
+    reason: "Confirmatory VISUAL check (oily streaks down the strut post); customers rarely state it and no slot holds it."
+  - op: question.intentionally_empty
+    question_id: 708
+    reason: "Asks mileage + prior-suspension-work; mileage is not a slot and this is a history/confirmatory probe."
+  # shaking_or_bouncing_over_bumps_and_rough_roads
+  - op: question.required_facts.set
+    question_id: 169
+    facts: [ride_damping_symptom]
+    skip_class: SAFE
+    derivation_note: "(dep: ride_damping_symptom) 'keeps bouncing after a bump' == continued_bounce_after_bump."
+  - op: question.required_facts.set
+    question_id: 174
+    facts: [ride_damping_symptom]
+    skip_class: SAFE
+    derivation_note: "(dep: ride_damping_symptom) 'front end dives when I brake hard' == nose_dive_under_braking."
+  - op: question.intentionally_empty
+    question_id: 170
+    reason: "Probes a co-occurring clunk/knock; noise_descriptor presence could be a DIFFERENT noise (humming), so presence-skip is unsafe — must ask."
+  - op: question.intentionally_empty
+    question_id: 172
+    reason: "Subjective comparative ('rougher than it used to be'); no slot, and it is the baseline probe for this subcategory."
+  - op: question.intentionally_empty
+    question_id: 173
+    reason: "Confirmatory visual (oily fluid near the shocks); no slot."
+  # squeaking_or_creaking_over_bumps
+  - op: question.required_facts.set
+    question_id: 130
+    facts: [location_side, location_axle]
+    skip_class: SAFE
+    derivation_note: "'one corner or all around' is answered only when the customer localized BOTH side and axle; require both present (matches the sibling clunking_over_bumps location tagging)."
+  - op: question.intentionally_empty
+    question_id: 129
+    reason: "Timbre nuance (dry-rubber vs metal-on-metal) both largely map to noise_descriptor=creaking_or_squeaking within this subcategory; presence-skip would lose the metal-rub escalation cue."
+  - op: question.intentionally_empty
+    question_id: 133
+    reason: "Load condition ('worse with passengers/heavy loads') is not modeled by any slot."
+  # steady_drift_while_cruising
+  - op: question.required_facts.set
+    question_id: 196
+    facts: [pull_road_dependence]
+    skip_class: SAFE
+    derivation_note: "(dep: pull_road_dependence) 'drifts even when I let go on a flat empty parking lot' == persists_on_flat_ground."
+  # drift_that_follows_the_roads_slope
+  - op: question.required_facts.set
+    question_id: 1224
+    facts: [pull_road_dependence]
+    skip_class: SAFE
+    derivation_note: "(dep: pull_road_dependence) flat-lot behavior is exactly what this slot encodes."
+  - op: question.required_facts.set
+    question_id: 1225
+    facts: [pull_road_dependence]
+    skip_class: SAFE
+    derivation_note: "(dep: pull_road_dependence) 'only on certain roads/lanes' == only_on_certain_roads."
+  - op: question.required_facts.set
+    question_id: 1226
+    facts: [pull_road_dependence]
+    skip_class: SAFE
+    derivation_note: "(dep: pull_road_dependence) direction changing by lane/road == only_on_certain_roads / reverses_with_road_tilt."
+  - op: question.required_facts.set
+    question_id: 1230
+    facts: [pull_road_dependence]
+    skip_class: SAFE
+    derivation_note: "(dep: pull_road_dependence) 'pull reverses on a tilted bridge' == reverses_with_road_tilt."
+  - op: question.intentionally_empty
+    question_id: 1227
+    reason: "Correction-effort probe ('constantly making small corrections') overlaps wander and has no clean slot; keep asking."
+  - op: question.intentionally_empty
+    question_id: 1228
+    reason: "Third-party corroboration ('has anyone else noticed') is a confirmatory question with no slot."
+  # wandering_or_drifting_in_both_directions
+  - op: question.intentionally_empty
+    question_id: 220
+    reason: "Co-occurring clunk probe; noise_descriptor presence could be a different noise — presence-skip unsafe (same rationale as #170)."
+  - op: question.intentionally_empty
+    question_id: 221
+    reason: "Comparative 'worse on rough/uneven road' is not fully captured by onset_timing=over_bumps and is a confirmatory probe."
+
+  # =========================================================================
+  # Catalog proposals (Chris-gated — business decision on fee/capacity)
+  # =========================================================================
+  - op: catalog.service.propose
+    name: "Driveline / CV / differential / U-joint / mount diagnosis"
+    demand_evidence: "Corpus: 'Clunking noise when putting car into drive from park/turning left'; forum 'transmission made a loud CLUNK as I accelerated'; 'roar and clicking/tapping'; 'sounds like a wheel bearing'; 'Diff carrier bushing torn'. These currently mis-route into suspension_steering_check or awd_4x4_testing with no matching test."
+    fee_rationale: "Sits between suspension_steering_check ($89.95) and the $179.95 diagnostic tier; road-test + lift inspection of U-joints/CV/diff/mounts. Chris sets the fee. Pairs with the proposed driveline_clunk_on_shift_or_acceleration subcategory."
+
+# ===========================================================================
+# GOLDEN CASES (>=8; >=1 inference-trap, >=1 null-route) — eval-cases.json schema
+# ===========================================================================
+golden_cases:
+  - text: "theres a loud clunk from the front driver side every time i go over a bump or a pothole, been doing it for a couple weeks"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: suspension_steering_check
+      stage1_acceptable: [suspension_steering_check]
+      stage2_subcategory_slug: clunking_over_bumps
+      stage3_facts: { noise_descriptor: clunking, location_axle: front, location_side: left, onset_timing: over_bumps, started_when: weeks_ago }
+      route: testing_service
+
+  - text: "check squeaking in the rear over bumps, you can hear it if you push down on the bumper"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: suspension_steering_check
+      stage1_acceptable: [suspension_steering_check]
+      stage2_subcategory_slug: squeaking_or_creaking_over_bumps
+      stage3_facts: { noise_descriptor: creaking_or_squeaking, location_axle: rear, onset_timing: over_bumps }
+      route: testing_service
+
+  - text: "the car bounces like three or four times after every bump and the ride is way rougher than it used to be"
+    tags: [fact_rich, needs_new_slot]
+    expected:
+      stage1_category_key: suspension_steering_check
+      stage1_acceptable: [suspension_steering_check]
+      stage2_subcategory_slug: shaking_or_bouncing_over_bumps_and_rough_roads
+      # NOTE: NO started_when. "rougher than it used to be" is a comparative baseline, not a literal onset;
+      # the extractor reserves started_when=gradually for "got worse little by little" only.
+      stage3_facts: { onset_timing: over_bumps, ride_damping_symptom: continued_bounce_after_bump }
+      route: testing_service
+
+  - text: "every bump comes right up through the steering wheel and the wheel kicks back when i hit a pothole"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: suspension_steering_check
+      stage1_acceptable: [suspension_steering_check]
+      stage2_subcategory_slug: clunking_knocking_or_rough_ride_over_bumps
+      stage3_facts: { onset_timing: over_bumps }
+      route: testing_service
+
+  - text: "if i hold the steering wheel straight the car pulls to the right, and it still does it on a flat empty parking lot"
+    tags: [fact_rich, needs_new_slot, inference_trap]
+    expected:
+      stage1_category_key: suspension_steering_check
+      stage1_acceptable: [suspension_steering_check]
+      stage2_subcategory_slug: steady_drift_while_cruising
+      # NOTE: NO steering_feel. Holding the wheel straight while the car pulls does NOT state that the wheel
+      # itself sits cocked/off-center (extractor: wheel_off_center_while_straight = "steering wheel cocked
+      # when driving straight"). Only pull_direction + the road-independence are literally stated.
+      stage3_facts: { pull_direction: right, pull_road_dependence: persists_on_flat_ground }
+      route: testing_service
+
+  - text: "it drifts right on the highway but goes perfectly straight in an empty flat parking lot, and it pulls the other way in the other lane"
+    tags: [confusable_pair, needs_new_slot]
+    expected:
+      stage1_category_key: suspension_steering_check
+      stage1_acceptable: [suspension_steering_check]
+      stage2_subcategory_slug: drift_that_follows_the_roads_slope
+      # "pulls the other way in the other lane" is a LITERAL reversal statement -> reverses_with_road_tilt,
+      # which outranks the bare road-dependence (single-select; most-specific cue wins, per the slot note).
+      stage3_facts: { pull_direction: right, pull_road_dependence: reverses_with_road_tilt }
+      route: testing_service
+
+  - text: "the car wanders all over the lane, the steering feels loose and im constantly correcting, worse at highway speed"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: suspension_steering_check
+      stage1_acceptable: [suspension_steering_check]
+      stage2_subcategory_slug: wandering_or_drifting_in_both_directions
+      stage3_facts: { pull_direction: varies_or_wanders, steering_feel: loose_or_sloppy, speed_band: highway }
+      route: testing_service
+
+  - text: "my tires are wearing on the inside edge of the front, want the alignment checked"
+    tags: [request_plus_symptom, taxonomy_gap]
+    expected:
+      # uneven_tire_wear_bald_spots is a `tires`-pool slug; suspension_steering_check.concern_categories =
+      # [noise, steering, pulling, vibration] CANNOT reach it today. tire_repair DOES reach the tires pool,
+      # so anchor Stage-1 there to keep this case passable on the CURRENT taxonomy; suspension_steering_check
+      # becomes the preferred anchor IF the catalog.service.concern_categories.extend (+tires) proposal lands.
+      stage1_category_key: tire_repair
+      stage1_acceptable: [tire_repair, suspension_steering_check]
+      stage2_subcategory_slug: uneven_tire_wear_bald_spots
+      stage3_facts: { tire_state: uneven_wear, location_axle: front }
+      route: testing_service
+
+  # --- INFERENCE TRAP: situational-override + strict literalness ---
+  # Tempts a suspension/clunk pick and tempts inventing noise/location/damage the
+  # customer never stated. Correct route is the recent-impact situational bucket,
+  # and Stage-3 must extract ONLY the two facts literally present.
+  - text: "hit a really bad pothole yesterday and now the front end feels off, no noises or warning lights, just want someone to make sure nothing got bent"
+    tags: [inference_trap, situational_override]
+    expected:
+      stage1_category_key: after_a_recent_accident_or_impact
+      stage1_acceptable: [after_a_recent_accident_or_impact, suspension_steering_check]
+      stage2_subcategory_slug: null
+      # "yesterday" -> days_ago (the closest enum); NOT today. Extractor: 'started today' -> today, 'a few days' -> days_ago.
+      stage3_facts: { recent_action: hit_pothole_or_curb, started_when: days_ago }
+      route: advisor
+    trap_note: "Do NOT set noise_descriptor (none stated), location_side/axle (only 'front end' vague), tire_state, or pull_direction. 'feels off' is not a fact, and 'yesterday' is days_ago not today. The pothole + 'make sure nothing is bent' triggers the recent-impact situational override."
+
+  # --- SECOND INFERENCE TRAP: part-name misuse must not become a diagnosis ---
+  - text: "pretty sure my struts are shot, the ride is rough"
+    tags: [inference_trap]
+    expected:
+      stage1_category_key: suspension_steering_check
+      stage1_acceptable: [suspension_steering_check]
+      stage2_subcategory_slug: shaking_or_bouncing_over_bumps_and_rough_roads
+      stage3_facts: {}
+      route: testing_service
+    trap_note: "'struts' is a customer part-name guess, not an extractable fact. 'ride is rough' alone does NOT set ride_damping_symptom (no specific damping behavior stated) or onset_timing. Extract nothing; still route to the rough-ride subcategory on the language."
+
+  # --- NULL-ROUTE: shop-internal work-order line, not a customer concern ---
+  - text: "check tire wear for alignment, tire wear looks good, no camber or toe wear"
+    tags: [null_route, work_order]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      stage3_facts: {}
+      route: advisor
+    trap_note: "This is a technician/work-order note (a finished inspection result), not a customer symptom description. Empty Stage-1, hand to advisor — do not treat 'tire wear'/'alignment'/'camber' keywords as a concern."

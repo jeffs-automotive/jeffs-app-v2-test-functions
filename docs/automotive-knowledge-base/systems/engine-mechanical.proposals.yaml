@@ -1,0 +1,465 @@
+system: engine-mechanical
+# Typed change-ops binding to the 2026-07-03 snapshot (catalog-snapshot.json) and
+# 00-current-scheduler-taxonomy.md. routes_to is REQUIRED on every negative example.
+# Synonyms are >=2 tokens or domain tokens. Diagnostic rationale is cited in the dossier.
+#
+# BINDING GROUND TRUTH (verified in catalog-snapshot.json 2026-07-03):
+#   - engine_ticking_or_tapping.eligible_testing_service_keys = [check_engine_light_testing, oil_pressure_light_testing]
+#   - deep_knocking_from_the_engine.eligible_testing_service_keys = [check_engine_light_testing]
+#   - white_smoke_from_tailpipe.eligible = [coolant_leak_testing, check_engine_light_testing]
+#   - blue_or_gray_smoke_from_tailpipe.eligible = [check_engine_light_testing]
+#   - burnt_oil_smell.eligible = [oil_leak_testing]
+#   - exhaust_manifold_tick_or_puff.eligible = [exhaust_system_testing]
+# Service.concern_categories do NOT gate subcategory reachability — the explicit eligibility list does.
+# Therefore engine-INTERNAL-NOISE keyword adds ARE valid on check_engine_light_testing /
+# oil_pressure_light_testing (both already reach the noise subcategories). No "withheld" keywords remain.
+# All ops below are DIFFED against the live enrichment; duplicates of existing synonyms/negatives are omitted.
+
+ops:
+  # =========================================================================
+  # L1 — Stage-1 keyword adds (example_keywords[] on a testing service)
+  #      Bound to services that ALREADY reach the target subcategory (verified above).
+  # =========================================================================
+  # blue/gray tailpipe smoke -> check_engine_light_testing (owns blue_or_gray_smoke_from_tailpipe)
+  - op: stage1.keyword.add
+    category_key: check_engine_light_testing
+    phrase: "blue smoke tailpipe"
+    rationale: "Reaches blue_or_gray_smoke_from_tailpipe; direct cold-start/oil-burn tailpipe cue."
+    evidence: "tekmetric eval CEL-005, nearmiss-008"
+  - op: stage1.keyword.add
+    category_key: check_engine_light_testing
+    phrase: "burning oil smoke"
+    rationale: "Oil-in-combustion cue routing to blue_or_gray_smoke_from_tailpipe."
+    evidence: "tekmetric eval CEL-005"
+  # NOTE: 'adding a quart' was DROPPED as a check_engine_light_testing keyword. The only real-corpus
+  # instance of that idiom (tka-019) has corpus consensus oil_leak_testing / smoke_from_under_the_hood
+  # (smoke from the grille, not the tailpipe), so it is a mis-routing risk as a blue-tailpipe cue.
+  - op: stage1.keyword.add
+    category_key: check_engine_light_testing
+    phrase: "engine misfire"
+    rationale: "Reaches engine_misfire_or_bucking_feeling (performance)."
+    evidence: "tekmetric tkc-124, tkc-224"
+  - op: stage1.keyword.add
+    category_key: check_engine_light_testing
+    phrase: "misfire on startup"
+    rationale: "Verbatim corpus phrasing for cold mechanical/ignition misfire."
+    evidence: "tekmetric tkc-124"
+  # engine-INTERNAL-NOISE cues -> check_engine_light_testing (reaches BOTH engine_ticking_or_tapping AND
+  # deep_knocking_from_the_engine). Previously (incorrectly) withheld; now unblocked by the eligibility check.
+  - op: stage1.keyword.add
+    category_key: check_engine_light_testing
+    phrase: "rod knock"
+    rationale: "Reaches deep_knocking_from_the_engine; domain term for bottom-end bearing knock."
+    evidence: "forum rod-knock narratives; catalog deep_knocking synonym set"
+  - op: stage1.keyword.add
+    category_key: check_engine_light_testing
+    phrase: "engine knocking"
+    rationale: "Reaches deep_knocking_from_the_engine; plain customer phrasing."
+    evidence: "forum-paraphrase; tka-044 RATTLE AT IDLE (adjacent noise demand)"
+  - op: stage1.keyword.add
+    category_key: check_engine_light_testing
+    phrase: "lifter tick"
+    rationale: "Reaches engine_ticking_or_tapping; domain term (also a live subcat synonym)."
+    evidence: "tekmetric tkc-117, tkc-268"
+  - op: stage1.keyword.add
+    category_key: check_engine_light_testing
+    phrase: "engine tapping noise"
+    rationale: "Reaches engine_ticking_or_tapping; plain top-end tick phrasing."
+    evidence: "tekmetric tkc-117, tkc-268"
+  # oil-light + tick cues -> oil_pressure_light_testing (reaches engine_ticking_or_tapping AND oil_pressure_light)
+  - op: stage1.keyword.add
+    category_key: oil_pressure_light_testing
+    phrase: "tapping with oil light"
+    rationale: "Reaches engine_ticking_or_tapping and oil_pressure_light; low-oil-pressure lifter-tick pattern."
+    evidence: "tekmetric eval oil_pressure_light_testing-001 (tapping + oil light)"
+  - op: stage1.keyword.add
+    category_key: oil_pressure_light_testing
+    phrase: "lifter tick"
+    rationale: "Reaches engine_ticking_or_tapping; domain term for the oil-pressure-linked tick."
+    evidence: "tekmetric eval oil_pressure_light_testing-001"
+
+  # =========================================================================
+  # L1/hedge — Stage-1 confusable-pair hedge (blue vs white smoke = pair #4)
+  # =========================================================================
+  - op: stage1.hedge.add
+    category_a: check_engine_light_testing        # blue/gray = oil (reaches blue_or_gray_smoke_from_tailpipe)
+    category_b: coolant_leak_testing              # white = coolant (reaches white_smoke_from_tailpipe)
+    rule: >
+      Route blue/gray, oily/burnt-oil-smelling tailpipe smoke (esp. cold-start puff or under
+      acceleration, with oil top-offs) to check_engine_light_testing. Route THICK WHITE,
+      sweet/syrupy smoke that persists past warm-up, with coolant loss or overheating, to
+      coolant_leak_testing. Thin white vapor that clears in a minute is benign condensation
+      (steam_thin_wispy) — route to neither as a fault (advisor / reassurance).
+    discriminating_fact: "smell_descriptor (burnt_oil vs sweet_or_maple_syrup); smoke_color (blue_or_gray vs white vs steam_thin_wispy)"
+
+  # =========================================================================
+  # L2 — Stage-2 description revisions (sharpen confusable boundaries)
+  #      'why' claims are diffed against the CURRENT live description text.
+  # =========================================================================
+  - op: stage2.description.revise
+    subcat_slug: engine_ticking_or_tapping
+    text: >
+      Light, rapid tapping/ticking from the TOP of the engine (valvetrain), rate tracking engine
+      speed — "sewing machine", "typewriter". Loudest at cold start and/or idle; may quiet slightly
+      as oil pressure builds but typically NEVER fully disappears, and often pairs with oil-pressure
+      concerns. Common causes: low/dirty/aerated oil, worn or stuck hydraulic lifters, excess valve
+      lash, injector click, or a cold timing-chain/tensioner rattle. KEY BOUNDARY vs
+      exhaust_manifold_tick_or_puff: a tick that goes AWAY COMPLETELY once the engine is fully warm
+      (manifold metal expands and seals) is an exhaust-manifold leak, NOT valvetrain — route there.
+      Distinct from deep_knocking_from_the_engine (deeper, slower, lower-block, load-driven) and from
+      electrical_buzzing (continuous tone, no discrete tap rhythm).
+    why: >
+      Live text already notes partial quieting and the tick-vs-knock/buzzing distinctions; this adds
+      the two things it does NOT carry — the explicit exhaust_manifold complete-quiet BOUNDARY (present
+      only on the manifold subcat's side today) and the oil-pressure pairing / cold timing-chain rattle.
+  - op: stage2.description.revise
+    subcat_slug: deep_knocking_from_the_engine
+    text: >
+      Deep, heavy, rhythmic hammering from the LOWER engine block — "someone banging inside the
+      engine", slower and more forceful than a tick. Louder under load (accelerating, climbing hills)
+      and often paired with an oil-pressure warning. Most often connecting-rod- or main-bearing wear
+      (rod knock) from low oil pressure / oil starvation; also piston slap — a COLD knock that fades as
+      pistons warm and expand. Typically a DO-NOT-DRIVE warning. Distinct from engine_ticking_or_tapping
+      (light, fast, top-of-engine) and from clunking_over_bumps (suspension, bump-triggered not
+      load-triggered). Spark-knock/detonation-pinging on low-octane fuel is a lighter metallic rattle —
+      NOT this deep bottom-end knock.
+    why: >
+      Live text lacks the piston-slap (cold-fades) variant; adds it. The load-vs-bump discriminator is
+      already in the live text and is retained, not claimed as new; the pinging boundary is restated to
+      match the live negative example that already pushes 'pinging on cheap gas' out.
+
+  # =========================================================================
+  # L3 — Stage-2 positive examples (corpus-first; synthetic flagged)
+  #      Net-new vs live positive_examples (checked against snapshot).
+  # =========================================================================
+  - op: stage2.example.positive.add
+    subcat_slug: engine_ticking_or_tapping
+    phrase: "My car has started making an intermittent tapping. It does it for a few seconds and then stops, and then does it again"
+    provenance: tekmetric
+  - op: stage2.example.positive.add
+    subcat_slug: engine_ticking_or_tapping
+    phrase: "making a ticking noise when driving"
+    provenance: tekmetric
+  - op: stage2.example.positive.add
+    subcat_slug: deep_knocking_from_the_engine
+    phrase: "knocking sound coming from the motor, only gets louder when i give it gas"
+    provenance: forum-paraphrase
+  - op: stage2.example.positive.add
+    subcat_slug: blue_or_gray_smoke_from_tailpipe
+    phrase: "Blueish gray smoke puffs out the tailpipe when I take off from a light, and it smells like burning oil"
+    provenance: tekmetric
+  - op: stage2.example.positive.add
+    subcat_slug: burnt_oil_smell
+    phrase: "greasy burning oil smell from under the hood after long drives, no drips on the ground that ive seen"
+    provenance: tekmetric
+  - op: stage2.example.positive.add
+    subcat_slug: engine_misfire_or_bucking_feeling
+    phrase: "check engine light on, ran the codes and got misfire on cylinder 1 and cylinder 4"
+    provenance: tekmetric
+
+  # =========================================================================
+  # L3 — Stage-2 negative examples (routes_to REQUIRED)
+  #      Only NET-NEW negatives kept. The live enrichment already carries the
+  #      tick-vs-knock, knock-vs-bump, blue-vs-white, blue-vs-burnt-oil, and
+  #      burnt-oil-vs-rubber/puddle negatives, so those ops were DROPPED as duplicates.
+  # =========================================================================
+  - op: stage2.example.negative.add
+    subcat_slug: engine_ticking_or_tapping
+    phrase: "Ticking on cold mornings that goes away completely after about five minutes"
+    routes_to: exhaust_manifold_tick_or_puff
+    note: "NET-NEW: live engine_ticking negatives carry no warm-up/manifold boundary case; the reverse (valvetrain->engine_ticking) already exists on exhaust_manifold_tick_or_puff, so this completes the pair."
+  # DROPPED as exact/near-duplicates of existing live negatives (diffed against snapshot):
+  #   - engine_ticking_or_tapping <- "Deep heavy knock from down low that gets worse when I accelerate"
+  #       (EXACT duplicate of an existing engine_ticking negative)
+  #   - deep_knocking_from_the_engine <- "Light fast tapping from the top of the engine that is always there"
+  #       (near-dup of existing "Light rapid tapping from the top of the engine")
+  #   - deep_knocking_from_the_engine <- "Clunk only when I drive over bumps or potholes"
+  #       (near-dup of existing "Clunk from the suspension when I hit a bump")
+  #   - blue_or_gray_smoke_from_tailpipe <- "Thick white smoke that smells sweet and I keep adding coolant"
+  #       (near-dup of existing "White smoke from the tailpipe with a sweet smell")
+  #   - blue_or_gray_smoke_from_tailpipe <- "Burning oil smell from under the hood but no smoke from the tailpipe"
+  #       (near-dup of existing "Burning oil smell but I don't see smoke")
+  #   - white_smoke_from_tailpipe <- "Blue smoke on cold startup ... add a quart every few weeks"
+  #       (near-dup of existing "Blue smoke from the tailpipe when I start it up")
+  #   - burnt_oil_smell <- "Rubbery burning smell coming from one of the wheels after braking"
+  #       (near-dup of existing "Burning rubber smell from one of the wheels after braking")
+  #   - burnt_oil_smell <- "Dark brown oily puddle on the driveway where I park"
+  #       (near-dup of existing "Dark brown oily puddle in my driveway")
+  # REMOVED ENTIRELY (mis-routing): white_smoke_from_tailpipe <- "Thin white vapor ... clears up after a minute"
+  #   had routes_to: blue_or_gray_smoke_from_tailpipe with an inline admission it was wrong. Benign
+  #   condensation (steam_thin_wispy) has NO fault subcategory, so routing it into the OIL-smoke bucket is
+  #   incorrect. The absence of a benign-steam destination is itself the finding (handled by the §hedge
+  #   'route to neither as a fault' rule and the white_smoke live description's steam caveat).
+
+  # =========================================================================
+  # L4 — Stage-2 synonyms (>=2 tokens or domain-specific single token)
+  #      Diffed against live synonym sets; duplicates and mechanic-voice terms removed.
+  # =========================================================================
+  - op: stage2.synonym.add
+    subcat_slug: engine_ticking_or_tapping
+    term: "engine tapping noise"
+  - op: stage2.synonym.add
+    subcat_slug: deep_knocking_from_the_engine
+    term: "knocking under acceleration"
+  - op: stage2.synonym.add
+    subcat_slug: blue_or_gray_smoke_from_tailpipe
+    term: "burns a quart of oil"
+  # DROPPED as duplicates / mechanic-voice (diffed against live synonyms):
+  #   - engine_ticking_or_tapping <- "hydraulic lifter tick"  (mechanic voice; near-dup of existing "lifter tick")
+  #   - deep_knocking_from_the_engine <- "rod knock"          (already a live synonym)
+  #   - white_smoke_from_tailpipe <- "head gasket smoke"       (already a live synonym)
+
+  # =========================================================================
+  # L5 — Stage-3 slot proposal (NEW slot; >=3 questions unlocked)
+  # =========================================================================
+  - op: stage3.slot.propose
+    name: symptom_warmup_trend
+    type: "enum (nullable)"
+    values: [quiets_when_warm, worsens_when_warm, no_change]
+    literal_cues:
+      - "goes away after it warms up"
+      - "goes away completely after five minutes"
+      - "quiets down once the engine is warm"
+      - "still there / still ticking after fifteen minutes of driving"
+      - "gets worse as it heats up"
+      - "only for the first minute or two then disappears"
+    questions_unlocked: [76, 122, 281, 282]
+    rationale: >
+      The discriminator for valvetrain-tick vs exhaust-manifold-tick, and for head-gasket white smoke vs
+      benign cold-start steam, is whether the symptom QUIETS/CLEARS as the engine warms. onset_timing only
+      APPROXIMATES this (cold_start~quiets, after_warming_up~worsens, always~no_change) and cannot express
+      it cleanly: cold_start per extracted-facts.ts is "only first thing in the morning / after sitting
+      overnight" — it bundles warm-up behavior with a time-of-day condition, and cannot encode PARTIAL
+      quieting ("loud cold, quieter but never fully gone"), which is the single most common tick utterance.
+      Four active questions (76, 122, 281, 282) literally ask a warm-up-trend yes/no, so per the
+      >=3-question rule this warrants a dedicated slot rather than overloading onset_timing. NOT proposed
+      because onset_timing is empty — it is a sharpening slot.
+
+  # =========================================================================
+  # L5 — question.required_facts.set  (kill over-asking; skip when fact present)
+  # =========================================================================
+  # --- GROUP A: genuine EMPTY -> filled (live required_facts = [] in snapshot 2026-07-03) ---
+  - op: question.required_facts.set
+    question_id: 282          # white_smoke: "keep happening after 10-15 min?"  (live required_facts = [])
+    facts: [symptom_warmup_trend]
+    skip_class: SAFE
+    change: empty_to_filled
+    depends_on: "stage3.slot.propose symptom_warmup_trend (apply only if the slot is accepted)"
+    derivation_note: "no_change/persists answers this directly; currently EMPTY so it always asks."
+  - op: question.required_facts.set
+    question_id: 75           # engine_ticking_or_tapping: "oil pressure light flicker?"  (live required_facts = [])
+    facts: [warning_light_named]
+    skip_class: PARTIAL
+    change: empty_to_filled
+    derivation_note: "Answered when the customer named the oil-pressure light; currently EMPTY. Uses an existing live slot."
+  - op: question.required_facts.set
+    question_id: 125          # deep_knocking: "deep heavy thumping or lighter faster tapping?"  (live required_facts = [])
+    facts: [noise_descriptor]
+    skip_class: SAFE
+    change: empty_to_filled
+    derivation_note: "knocking_deep vs ticking_or_tapping already encodes this when stated; currently EMPTY. Uses an existing live slot."
+  # --- GROUP B: REPLACE an existing NON-EMPTY binding (live required_facts = ['onset_timing']) ---
+  # These three are NOT empty->filled. They currently skip when onset_timing is known, which is a
+  # MIS-SKIP: onset_timing=cold_start does not answer "does it QUIET when warm" (a cold_start tick can
+  # persist warm). Replacing with symptom_warmup_trend targets the fact the question actually asks.
+  # Contingent on the slot being accepted; until then LEAVE the live ['onset_timing'] binding in place.
+  - op: question.required_facts.set
+    question_id: 76           # engine_ticking_or_tapping: "quieter/go away once warm?"
+    facts: [symptom_warmup_trend]
+    skip_class: SAFE
+    change: replace_nonempty
+    replaces: ["onset_timing"]   # live value in snapshot 2026-07-03
+    depends_on: "stage3.slot.propose symptom_warmup_trend (apply only if the slot is accepted)"
+    migration_note: >
+      REPLACE, not append. Dropping onset_timing is intentional: onset_timing does not answer whether the
+      tick quiets when warm, so the current binding causes the question to be skipped for customers who
+      stated only a cold-start onset — leaving the valvetrain-vs-manifold discriminator unresolved.
+      symptom_warmup_trend is the fact this question actually elicits. Do NOT append onset_timing (that
+      would require BOTH facts and over-ask).
+  - op: question.required_facts.set
+    question_id: 122          # deep_knocking_from_the_engine: "louder or quieter when warms up?"
+    facts: [symptom_warmup_trend]
+    skip_class: SAFE
+    change: replace_nonempty
+    replaces: ["onset_timing"]   # live value in snapshot 2026-07-03
+    depends_on: "stage3.slot.propose symptom_warmup_trend (apply only if the slot is accepted)"
+    migration_note: >
+      REPLACE, not append. Same rationale as Q76 — distinguishes piston slap (fades warm) from rod knock
+      (does not), which onset_timing cannot express. Leave live ['onset_timing'] until the slot lands.
+  - op: question.required_facts.set
+    question_id: 281          # white_smoke: "only first minute then disappears?"
+    facts: [symptom_warmup_trend]
+    skip_class: SAFE
+    change: replace_nonempty
+    replaces: ["onset_timing"]   # live value in snapshot 2026-07-03
+    depends_on: "stage3.slot.propose symptom_warmup_trend (apply only if the slot is accepted)"
+    migration_note: >
+      REPLACE, not append. quiets_when_warm => benign steam; no_change => coolant breach. onset_timing
+      cannot separate the two (both can read cold_start). Leave live ['onset_timing'] until the slot lands.
+
+  # =========================================================================
+  # L5 — question.intentionally_empty  (genuinely un-slottable; document why)
+  # =========================================================================
+  - op: question.intentionally_empty
+    question_id: 72           # "does the ticking speed change as you press the gas?"
+    reason: "Tick-rate-tracks-RPM has no slot; onset_timing captures WHEN, not rate-coupling."
+  - op: question.intentionally_empty
+    question_id: 73           # "top of the engine or the lower part?"
+    reason: "Engine vertical zone (top vs lower block) is not modeled; only 1 question needs it (<3). noise_descriptor partly covers it (tick=top, knock=bottom)."
+  - op: question.intentionally_empty
+    question_id: 123          # "what grade of gasoline?"
+    reason: "Fuel-octane grade (spark-knock discriminator) is outside the 29-slot ontology; single question. Serves the bench, not routing."
+  - op: question.intentionally_empty
+    question_id: 290          # blue smoke: "when slowing/coasting foot off gas?"
+    reason: "onset_timing has no when_decelerating value; single question — backlog if more accrue."
+  - op: question.intentionally_empty
+    question_id: 291          # blue smoke: "adding oil between changes, how often?"
+    reason: "Oil-consumption-rate is not a slot; single question (<3)."
+  - op: question.intentionally_empty
+    question_id: 287          # white smoke: "milky/frothy on oil filler cap?"
+    reason: "Under-hood inspection observation, not a stated-symptom slot."
+
+  # =========================================================================
+  # Catalog: NO PROPOSAL.
+  #   The earlier catalog.service.propose (add `noise` to check_engine_light_testing OR a new
+  #   'Engine mechanical evaluation' service) rested on a FALSE premise and is WITHDRAWN.
+  #   catalog-snapshot.json (2026-07-03) shows check_engine_light_testing already reaches
+  #   engine_ticking_or_tapping AND deep_knocking_from_the_engine, and oil_pressure_light_testing
+  #   already reaches engine_ticking_or_tapping. Every engine-internal symptom has an eligible Stage-1
+  #   service, so there is no catalog gap. The residual (service labels don't advertise "engine noise")
+  #   is a soft UX/label observation addressed by the L1 engine-noise keyword adds above, not a service
+  #   proposal — see dossier §8. A customer-facing "Engine mechanical evaluation" label, if ever wanted,
+  #   is a business decision for Chris, not a routing fix.
+
+# ===========================================================================
+# GOLDEN CASES (>=8; 1 inference-trap, 1 null-route). Schema mirrors eval-cases.json.
+# stage3_facts include ONLY live slots (symptom_warmup_trend is proposed, not asserted here).
+# All stage1 -> stage2 pairs verified reachable in catalog-snapshot.json (2026-07-03).
+# ===========================================================================
+golden_cases:
+  - text: "engine sounds like a sewing machine at idle, quiets a little as it warms up but never fully goes away, oil light flickered once"
+    tags: [fact_rich, confusable_pair]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing, oil_pressure_light_testing]   # both reach engine_ticking_or_tapping; oil-light cue makes oil_pressure_light_testing acceptable
+      stage2_subcategory_slug: engine_ticking_or_tapping
+      stage3_facts:
+        noise_descriptor: ticking_or_tapping
+        onset_timing: when_idling
+        warning_light_named: "oil pressure"
+        warning_light_behavior: came_on_then_off   # "flickered once" = came_on_then_off, NOT comes_and_goes (no recurrence stated)
+      route: testing_service
+
+  - text: "ticking from the engine bay only on cold mornings, goes away completely after about five minutes"
+    tags: [confusable_pair]
+    expected:
+      stage1_category_key: exhaust_system_testing   # reaches exhaust_manifold_tick_or_puff
+      stage1_acceptable: [exhaust_system_testing]
+      stage2_subcategory_slug: exhaust_manifold_tick_or_puff
+      stage3_facts:
+        noise_descriptor: ticking_or_tapping
+        onset_timing: cold_start
+      route: testing_service
+
+  - text: "deep heavy knocking from down low, gets louder every time i accelerate or go up a hill, oil pressure light is on and i dont think i should keep driving it"
+    tags: [fact_rich, safety]
+    expected:
+      stage1_category_key: check_engine_light_testing   # ONLY service reaching deep_knocking_from_the_engine
+      stage1_acceptable: [check_engine_light_testing, oil_pressure_light_testing]   # oil-light-on is the strongest routing cue; oil_pressure_light_testing is an acceptable stage1 (would land on oil_pressure_light)
+      stage2_subcategory_slug: deep_knocking_from_the_engine
+      stage3_facts:
+        noise_descriptor: knocking_deep
+        onset_timing: when_accelerating
+        warning_light_named: "oil pressure"
+        warning_light_behavior: steady_on   # "oil pressure light is on"
+        drivable_state: drivable_but_concerned
+      route: testing_service
+
+  - text: "puff of blue smoke out the tailpipe when i first start it in the morning, smells like burning oil, been adding a quart every few weeks too"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing]
+      stage2_subcategory_slug: blue_or_gray_smoke_from_tailpipe
+      stage3_facts:
+        smoke_color: blue_or_gray
+        onset_timing: cold_start
+        smell_descriptor: burnt_oil
+        sound_or_smoke_location_zone: from_tailpipe
+      route: testing_service
+
+  - text: "cloud of blue gray smoke every time i floor it onto the highway, the car is turbocharged"
+    tags: [moderate]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing]
+      stage2_subcategory_slug: blue_or_gray_smoke_from_tailpipe
+      stage3_facts:
+        smoke_color: blue_or_gray
+        onset_timing: when_accelerating
+        vehicle_powertrain: turbocharged
+      route: testing_service
+
+  - text: "thick white smoke from the exhaust even after driving twenty minutes, smells sweet, ive had to add coolant twice this week and the temp gauge is creeping up"
+    tags: [fact_rich, safety]
+    expected:
+      stage1_category_key: coolant_leak_testing
+      stage1_acceptable: [coolant_leak_testing, check_engine_light_testing]   # both reach white_smoke_from_tailpipe
+      stage2_subcategory_slug: white_smoke_from_tailpipe
+      stage3_facts:
+        smoke_color: white
+        smell_descriptor: sweet_or_maple_syrup
+        # onset_timing intentionally OMITTED: "even after driving twenty minutes" states PERSISTENCE, which
+        # no live onset_timing value captures literally (not 'always'=continuous, not 'after_warming_up').
+        # The warm-persistence is exactly what the proposed symptom_warmup_trend=no_change would encode.
+      route: testing_service
+
+  - text: "greasy burning oil smell from under the hood after long drives, no drips on the ground that ive seen"
+    tags: [moderate]
+    expected:
+      stage1_category_key: oil_leak_testing
+      stage1_acceptable: [oil_leak_testing]
+      stage2_subcategory_slug: burnt_oil_smell
+      stage3_facts:
+        smell_descriptor: burnt_oil
+        sound_or_smoke_location_zone: under_hood
+      route: testing_service
+
+  - text: "check engine light is flashing and the car is bucking and jerking when i step on the gas"
+    tags: [fact_rich, safety]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing]
+      stage2_subcategory_slug: engine_misfire_or_bucking_feeling
+      stage3_facts:
+        warning_light_named: "check engine"
+        warning_light_behavior: flashing_or_blinking
+        engine_running: misfiring
+        onset_timing: when_accelerating
+      route: testing_service
+
+  # --- INFERENCE-TRAP: customer guesses a cause + part; extractor must NOT populate those slots ---
+  - text: "my engine is ticking, its probably the lifters or its low on oil"
+    tags: [inference_trap]
+    expected:
+      stage1_category_key: check_engine_light_testing        # reaches engine_ticking_or_tapping (exhaust_system_testing does NOT)
+      stage1_acceptable: [check_engine_light_testing, oil_pressure_light_testing]
+      stage2_subcategory_slug: engine_ticking_or_tapping
+      stage3_facts:
+        noise_descriptor: ticking_or_tapping
+        # TRAP: do NOT set recent_action=oil_change (no service stated), do NOT set warning_light_named
+        # (no light stated), do NOT set any oil-level fact ("low on oil" is the customer's GUESS, not an
+        # observed dashboard/fluid fact). onset_timing stays null (no when stated).
+      route: testing_service
+
+  # --- NULL-ROUTE: shop work-order line, not a customer symptom ---
+  - text: "valve cover removal inspect for engine damage"
+    tags: [null_route, non_concern]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      stage3_facts:
+        customer_request_type: diagnose_problem   # "inspect for engine damage" is a diagnostic/inspection line, NOT fix_a_known_problem
+      route: advisor
+</content>

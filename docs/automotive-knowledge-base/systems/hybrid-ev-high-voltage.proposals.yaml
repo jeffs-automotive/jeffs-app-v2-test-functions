@@ -1,0 +1,453 @@
+system: hybrid-ev-high-voltage
+# Typed change-ops binding this dossier's findings to the live taxonomy snapshot (2026-07-18,
+# docs/automotive-knowledge-base/00-current-scheduler-taxonomy.md). Every op references a §-section
+# in hybrid-ev-high-voltage.dossier.md.
+#
+# BINDING NOTE: the live Supabase project requires interactive OAuth (unavailable this run), so
+# concern_questions.id values could not be pulled. No numeric-id question.required_facts.set ops are
+# emitted (never-guess); required_facts wiring is given as guidance in the dossier §9 + the comments
+# below for Wave C to resolve against the DB. All service_keys and subcategory slugs used in
+# stage1.keyword.add / stage2.example.* are verified to EXIST in the snapshot; new subcats/services
+# are emitted only under stage2.subcategory.propose / catalog.service.propose. Every stage2.example.negative
+# routes_to a not-yet-shipped slug carries the `propose:` prefix.
+#
+# ROUTING POLICY (one policy, consistent across dossier + lexicon + these ops; §3.1/§9.2):
+#   STATED hybrid/EV -> propose: hybrid/EV slug (+ set vehicle_powertrain).
+#   powertrain NOT stated (model-name-only or generic) -> interim EXISTING ICE slug; powertrain stays NULL.
+#
+# SAFETY: routing-only. No op instructs any high-voltage repair or DIY test.
+
+ops:
+  # =========================================================================
+  # L1 — Stage-1 example_keywords on EXISTING service keys. Every phrase is a
+  #      domain token or >=2 tokens, in customer voice (§3, §6).
+  # =========================================================================
+  # -- Hybrid/EV won't-power-on is a 12V-aux job first -> charging_starting_testing / battery_test --
+  - op: stage1.keyword.add
+    category_key: charging_starting_testing
+    phrase: "won't go to ready"
+    rationale: "Hybrid/EV headline no-power cue; the 12V aux wakes the system before the HV pack (§3.1) [DOE AFDC, Tier 1]."
+    evidence: "forum-paraphrase pattern: customers say the car 'wont go to ready' / 'wont power on' (no engine crank to describe)."
+  - op: stage1.keyword.add
+    category_key: charging_starting_testing
+    phrase: "won't power on"
+    rationale: "EV/hybrid dead-electronics no-power (§3.1); no engine crank to describe."
+    evidence: "forum-paraphrase pattern: 'pushed the power button and nothing happens'."
+  - op: stage1.keyword.add
+    category_key: charging_starting_testing
+    phrase: "12 volt battery"
+    rationale: "The low-cost, rule-out-first hybrid/EV no-start culprit (§3.1); domain 2-token."
+    evidence: "forum-paraphrase pattern: 'jumped the little 12 volt battery'."
+  # (Dropped the OEM-voice 'auxiliary battery' keyword: it is technician language and its only evidence was a
+  #  diagnostic-authority cite (DOE AFDC), which source-policy forbids mixing into customer-language artifacts.
+  #  'little battery' / '12 volt battery' already cover the customer phrasing.)
+  - op: stage1.keyword.add
+    category_key: battery_test
+    phrase: "hybrid 12v battery"
+    rationale: "Explicit 12V-test request on a hybrid maps to the free battery_test (§3.1); domain 3-token."
+    evidence: "forum-paraphrase pattern: customers ask to test the 12 V battery on a hybrid after a jump (no verbatim corpus line — hybrid corpus gap, flagged)."
+  # -- HV reduced-power / turtle / hybrid warning -> check_engine_light_testing (owns performance+warning_light, scan-based) --
+  - op: stage1.keyword.add
+    category_key: check_engine_light_testing
+    phrase: "turtle mode"
+    rationale: "EV/hybrid reduced-power icon nickname (§3.2/§6); domain token [Nissan LEAF OM, Tier 1]."
+    evidence: "nhtsa pattern: 'a turtle light came on'; forum-paraphrase: 'turtle icon'."
+  - op: stage1.keyword.add
+    category_key: check_engine_light_testing
+    phrase: "reduced power"
+    rationale: "Turtle/limp reduced-power event on hybrid/EV (§3.2); 2-token. (ICE cars also use this wording -> Stage-2 split, see description.revise.)"
+    evidence: "nhtsa pattern: 'went into reduced power mode on the highway'."
+  - op: stage1.keyword.add
+    category_key: check_engine_light_testing
+    phrase: "check hybrid system"
+    rationale: "Hybrid master-warning message (§3.3); needs HV diagnosis, not generic P-code scan; domain phrase."
+    evidence: "forum-paraphrase pattern: 'it says check hybrid system'."
+  - op: stage1.keyword.add
+    category_key: check_engine_light_testing
+    phrase: "service high voltage"
+    rationale: "Real corpus HV-charging message (§3.3/§6); domain phrase."
+    evidence: "tekmetric (real corpus line): 'message service high voltage charging system'."
+
+  # =========================================================================
+  # Stage-1 hedge — ONE valid service-key pair (charging_starting_testing vs
+  # check_engine_light_testing). The EV-reduced-power vs ICE-low-power split is
+  # NOT here: both route to check_engine_light_testing at Stage-1, so it is a
+  # Stage-2 disambiguation (handled by stage2.description.revise + negatives on
+  # low_power_or_wont_accelerate_normally below). The earlier hedge whose
+  # category_b was the SUBCATEGORY low_power_or_wont_accelerate_normally was
+  # invalid (not a Stage-1 key) and has been removed.
+  # =========================================================================
+  - op: stage1.hedge.add
+    category_a: charging_starting_testing
+    category_b: check_engine_light_testing
+    rule: >
+      A hybrid/EV that "won't start / won't go to READY" splits on WHICH battery. If jump-starting the
+      small 12V battery makes it start (recent_action=jump_started) OR there is no HV/turtle warning ->
+      12V aux path (charging_starting_testing / battery_test; the low-cost, rule-out-first case per DOE
+      AFDC aux-battery role). If there is a turtle / Check-Hybrid-System / red-triangle / "service high
+      voltage" warning and it still won't power/move -> HV path (check_engine_light_testing; propose:
+      hybrid_system_warning_light / hybrid_ev_high_voltage_testing). Do NOT assume the HV traction battery
+      on a bare "hybrid won't start" -- mechanistically the 12 V aux GATES READY and must be ruled out
+      first (§3.1); this is a mechanism/cost-ordering point, not a frequency claim.
+    discriminating_fact: recent_action
+
+  # =========================================================================
+  # L2 — sharpen the ICE subcat description to carve OUT the hybrid/EV case
+  #      (this is where the EV-reduced-power vs ICE-low-power Stage-2 split lives).
+  # =========================================================================
+  - op: stage2.description.revise
+    subcat_slug: low_power_or_wont_accelerate_normally
+    text: >
+      The engine/vehicle lacks normal power -- hesitates, bogs, or won't accelerate as it should,
+      especially under load or uphill. For a GASOLINE/DIESEL vehicle this is fuel delivery, a clogged
+      catalytic converter, a boost/turbo fault, or ignition. IMPORTANT: if the customer states the
+      vehicle is a HYBRID or ELECTRIC, or names a TURTLE / reduced-power / "check hybrid system" warning,
+      this is a high-voltage reduced-power / limp ("turtle") derate, NOT an ICE fuel/turbo problem --
+      route to the hybrid/EV reduced-power path. Never infer hybrid/EV from make or model; require an
+      explicit "hybrid"/"electric" statement or an HV/turtle warning. "Reduced power" wording alone, with
+      no stated powertrain and no HV icon, STAYS here (ICE cars also enter reduced-power/limp).
+    why: "The reduced-power wording is word-for-word identical across ICE and electrified causes and both route to check_engine_light_testing at Stage-1; make the vehicle_powertrain / turtle cue the decisive Stage-2 signal (§5/§7)."
+
+  # -- Regen-feel addendum on the brakes slug that hybrid/EV regen traffic lands on (§3.4/§8). --
+  - op: stage2.description.revise
+    subcat_slug: pulsating_or_vibrating_pedal
+    text: >
+      [APPEND to the existing description -- do NOT replace; current DB text was not retrievable this run.]
+      Also the interim home for a REGEN-braking feel change on a STATED hybrid/EV: brakes feel grabby /
+      different / "let go then grab," worse when cold or with a full battery, with NO grinding or squeal
+      and NO speed-linked shudder. That is a regen/friction blending effect (the car shifts braking to the
+      friction brakes when regen is limited), NOT a warped-rotor pulsation. Regen feel has no dedicated
+      subcategory yet, so it stays here with this note.
+    why: "Regen feel on a stated hybrid/EV currently mis-reads as warped-rotor pulsation; give it an explicit in-slug note + a positive example instead of a self-referential negative (§3.4/§8)."
+
+  # =========================================================================
+  # L3 — negative examples (each names routes_to; `propose:` prefix for not-yet-
+  #      shipped slugs) that push hybrid/EV phrasings OFF the ICE slugs.
+  # =========================================================================
+  - op: stage2.example.negative.add
+    subcat_slug: low_power_or_wont_accelerate_normally
+    phrase: "my electric car suddenly lost power and a turtle light came on, wont go over 40"
+    routes_to: "propose:hybrid_or_ev_reduced_power_or_limp_mode"
+  - op: stage2.example.negative.add
+    subcat_slug: wont_crank_just_clicks
+    phrase: "my hybrid wont go to ready, all the lights come on inside but it wont start or move, no cranking sound"
+    routes_to: "propose:hybrid_or_ev_wont_power_on"
+  - op: stage2.example.negative.add
+    subcat_slug: check_engine_light
+    phrase: "red triangle came on and it says check hybrid system"
+    routes_to: "propose:hybrid_system_warning_light"
+  - op: stage2.example.negative.add
+    subcat_slug: multiple_warning_lights_at_once
+    phrase: "the little battery in my hybrid died, jumped the 12 volt and it started right up"
+    routes_to: "propose:hybrid_or_ev_wont_power_on"   # STATED hybrid 12V-jump -> the won't-power-on slug (NOT wont_crank_just_clicks, whose wording §8 grades weak)
+
+  # -- POSITIVE example replacing the former self-referential pulsating_or_vibrating_pedal negative. --
+  - op: stage2.example.positive.add
+    subcat_slug: pulsating_or_vibrating_pedal
+    phrase: "my ev brakes feel grabby and different when its cold out, no shaking at speed and no grinding"
+    provenance: forum-paraphrase
+    # (Was a negative example that routed_to its OWN slug -- contradictory per the style guide. It is a
+    #  phrasing that legitimately STAYS in pulsating_or_vibrating_pedal as the interim regen-feel home, so
+    #  it is a positive example + the description addendum above, not a negative.)
+
+  # =========================================================================
+  # L4 — synonyms (>=2 tokens or domain token) for the EXISTING slugs that
+  #      hybrid/EV traffic legitimately lands on (interim, until subcats ship).
+  # =========================================================================
+  - op: stage2.synonym.add
+    subcat_slug: low_power_or_wont_accelerate_normally
+    term: "reduced power mode"
+  - op: stage2.synonym.add
+    subcat_slug: low_power_or_wont_accelerate_normally
+    term: "turtle mode"
+  - op: stage2.synonym.add
+    subcat_slug: wont_crank_just_clicks
+    term: "won't go to ready"
+  - op: stage2.synonym.add
+    subcat_slug: check_engine_light
+    term: "check hybrid system"
+
+  # =========================================================================
+  # Stage-2 subcategory proposals (§8). Demand evidence is thin + honestly-labeled.
+  # =========================================================================
+  - op: stage2.subcategory.propose
+    category: performance
+    name: hybrid_or_ev_reduced_power_or_limp_mode
+    description: >
+      A stated HYBRID or ELECTRIC vehicle suddenly loses power / won't accelerate normally and is limited
+      to a crawl, typically with a TURTLE / reduced-power / hybrid warning icon. This is a high-voltage
+      safety derate (battery/inverter/motor too hot or cold, very low charge, or a detected HV fault),
+      NOT an ICE fuel/turbo problem. Route to HV-capable diagnosis (proposed hybrid_ev_high_voltage_testing;
+      interim check_engine_light_testing). SAFETY: routing only.
+    examples:
+      - "driving my electric car and it suddenly lost power, a turtle light came on and it wont go over 40"   # nhtsa
+      - "my hybrid went into reduced power mode on the highway and could barely keep going"                    # nhtsa
+      - "ev is crawling, turtle icon on the dash, feels like theres no power at all"                           # forum-paraphrase
+    why_existing_insufficient: >
+      low_power_or_wont_accelerate_normally conflates ICE fuel/turbo/exhaust causes with an HV thermal/
+      fault derate; the two need different diagnosis and the ICE slug offers no HV route. Discriminator is
+      vehicle_powertrain + a turtle/hybrid warning (§5/§7). The derate is documented literally by an OEM
+      owner's manual [Nissan LEAF OM "Power limitation indicator light," Tier 1: "the power provided to the
+      traction motor is reduced ... reduced power and vehicle speed"].
+  - op: stage2.subcategory.propose
+    category: electrical
+    name: hybrid_or_ev_wont_power_on
+    description: >
+      A stated HYBRID or ELECTRIC vehicle will NOT enter READY / won't power on: pressing start lights up
+      the dash (or throws scattered warnings) but there is NO engine crank and the car won't move. A
+      depleted 12V AUXILIARY battery is a routine, low-cost cause -- it wakes the computers that close the
+      HV contactors, so the car can't reach READY even with a healthy HV pack [DOE AFDC, Tier 1]. Strong
+      tell: jump-starting the small 12V battery makes it start. Route to a 12V battery/charging test FIRST
+      (charging_starting_testing / battery_test); do NOT assume the high-voltage traction battery.
+    examples:
+      - "my hybrid wont start, all the dash lights come on but it wont go to ready and it wont move"          # synthetic
+      - "pushed the power button and nothing, everything lights up inside but the car is dead"                # forum-paraphrase
+      - "my leaf wouldnt power on, jumped the 12v and then it was fine"                                       # forum-paraphrase
+    why_existing_insufficient: >
+      wont_crank_just_clicks asserts a crank/click an EV cannot make and a hybrid doesn't do (it enters
+      READY, it doesn't crank); the slug wording actively mis-describes the symptom and pushes customers
+      toward an HV-battery fear. A dedicated slug keeps the check-the-12V-first discipline (§3.1
+      misattribution) [DOE AFDC aux-battery role, Tier 1]. NOTE: this slug requires a STATED hybrid/EV;
+      model-name-only phrasings ("my prius won't start") stay on the interim wont_crank_just_clicks with
+      vehicle_powertrain NULL.
+  - op: stage2.subcategory.propose
+    category: warning_light
+    name: hybrid_system_warning_light
+    description: >
+      A stated HYBRID/EV shows a hybrid master warning -- "Check Hybrid System" / "Hybrid System
+      Malfunction" message, a RED TRIANGLE (with exclamation), a turtle master-warning, or a "service
+      high voltage" message (sometimes alongside the ordinary check-engine light). Needs HV-capable
+      scan/diagnosis, not a generic P-code CEL scan. The car may still drive (message only) or drop to
+      turtle. SAFETY: routing only.
+    examples:
+      - "red triangle light came on and it says check hybrid system, is it safe to drive?"                    # forum-paraphrase
+      - "message service high voltage charging system with the check engine light"                            # tekmetric
+      - "big red triangle with an exclamation point on my prius dash"                                         # forum-paraphrase
+    why_existing_insufficient: >
+      check_engine_light / multiple_warning_lights_at_once route to a generic CEL scan; a hybrid master
+      warning points at HV-side subsystems (battery/inverter/motor-generator/DC-DC per DOE AFDC, Tier 1)
+      and a distinct customer-facing scope. Splitting it mirrors how the taxonomy already separates
+      ABS/SRS/charging lights from the generic CEL (§3.3/§6). (A bare red triangle with only a MODEL name
+      and no "hybrid"/HV words stays on the generic warning slug + needs-fact:vehicle_powertrain.)
+  # -- THIN, advisor-gated subcats giving the two NO-FIT modes a Stage-2 landing spot (§3.5/§3.6/§8). --
+  - op: stage2.subcategory.propose
+    category: electrical
+    name: hybrid_or_ev_wont_charge
+    description: >
+      A PHEV/BEV will NOT charge / charging stopped / the charge port won't lock / the port light is red /
+      only charges to a low %. This is an EVSE, on-board-charger, charge-port-handshake, HV-contactor, or
+      BMS matter -- distinct from the 12V start/charge that charging_starting_testing covers. THIN /
+      advisor-gated: no service covers it today; route to ADVISOR unless the proposed
+      hybrid_ev_high_voltage_testing service ships (and the shop services HV vehicles). SAFETY: routing only.
+    examples:
+      - "my ev wont charge at home anymore, the charger clicks but nothing happens and the port light is red"  # nhtsa
+      - "plug in my plug-in hybrid overnight and it didnt charge, wont lock onto the charger"                  # forum-paraphrase
+      - "the charging light on my ev stays red and it stopped charging at like 20 percent"                     # synthetic
+    why_existing_insufficient: >
+      No existing service or subcategory covers on-board-charging / EVSE faults (charging_starting_testing
+      is 12V start/charge only). Demand is ~0 in the corpus and many ICE shops decline EV work, so this is
+      advisor-gated -- but §3.5 still needs a Stage-2 home so the "every NO FIT -> a proposal" contract is met.
+  - op: stage2.subcategory.propose
+    category: performance
+    name: hybrid_or_ev_battery_degradation_range_loss
+    description: >
+      A stated HYBRID/EV whose ELECTRIC RANGE, fuel economy, or charge-holding has fallen noticeably over
+      time -- "range dropped a lot," "mpg way down on my hybrid," "battery doesn't hold a charge like it
+      used to." Traction-pack capacity fade / cell-block imbalance; a capacity test is an HV-shop job.
+      THIN / advisor-gated: advisor/quote today. SAFETY: routing only.
+    examples:
+      - "my hybrid battery isnt holding a charge, gas mileage tanked over the last few months"                # forum-paraphrase
+      - "electric range dropped from 200 to like 130, is the battery going bad?"                              # nhtsa
+      - "my hybrids mileage used to be great and now its way worse, is the battery wearing out?"              # synthetic
+    why_existing_insufficient: >
+      Capacity/range/economy loss of the traction pack has no existing symptom category and is an HV-shop
+      capacity-test job; advisor/quote today. Category placement under `performance` is best-fit among
+      imperfect options (the taxonomy has no economy/range or hybrid/EV category); Chris may prefer a
+      dedicated one. Given §8, this exists so §3.6 has a Stage-2 landing spot, not because demand is proven.
+
+  # =========================================================================
+  # L5 — Fact slots.
+  # =========================================================================
+  - op: stage3.slot.value.add
+    slot: engine_running
+    value: wont_power_on_no_crank
+    literal_cues:
+      - "won't go to ready"
+      - "won't power on"
+      - "pushed the button and nothing happens"
+      - "everything lights up but it won't start"
+      - "it won't go / won't turn on"   # for a stated electric/hybrid, no engine to crank
+    # Distinct from wont_crank_just_clicks (asserts a crank/click an EV can't make) and from
+    # no_sound_at_all (under-describes a dash that DOES light up). Set ONLY when the customer states a
+    # hybrid/EV OR explicitly describes press-start-with-no-crank. NEVER infer from make/model, and do NOT
+    # set it from a bare "won't start" that names no press-start and no absence-of-cranking (see the Prius
+    # inference-trap golden case, which leaves it NULL).
+
+  # ---- vehicle_powertrain literalness (POLICY note lives in dossier prose §9.2, NOT as an op) ----
+  # The model-name-vs-powertrain slot rule ("DO NOT infer vehicle_powertrain from make/model") and the two
+  # options for Chris (curated single-powertrain-model allowlist vs keep-the-rule) are documented in the
+  # dossier §9.2. This dossier's golden cases respect the keep-the-rule option (Prius stays powertrain=NULL).
+  # No question.intentionally_empty op is emitted for it: that op expects a real DB concern_questions.id,
+  # and a non-numeric placeholder is off-schema (would break Wave C aggregation).
+
+  # ---- required_facts wiring guidance (descriptive; IDs resolved by Wave C against the live DB) ----
+  # On low_power_or_wont_accelerate_normally questions that ask "gas/diesel/what kind of vehicle":
+  #   set required_facts=[vehicle_powertrain], skip_class: SAFE.
+  # On the proposed hybrid/EV subcats' questions:
+  #   tag [vehicle_powertrain, warning_light_named, engine_running|drivable_state] so a fact-rich
+  #   hybrid/EV description skips the obvious re-asks.
+  # Deferred slots (do NOT propose until subcats+questions exist, >=3-question rule): hv_system_state
+  #   (ready/reduced_power/turtle/hv_warning), ev_charging_state (wont_charge/port_fault/charge_limit).
+
+  # =========================================================================
+  # Catalog service proposal (CHRIS-GATED).
+  # =========================================================================
+  - op: catalog.service.propose
+    name: hybrid_ev_high_voltage_testing
+    demand_evidence: >
+      THIN + honestly labeled: the 500-line Tekmetric corpus has exactly TWO hybrid/EV lines (the CEL
+      "service high voltage charging system" concern + a Tesla brake-caliper work-order) and 0 BEV
+      concerns; Jeff's is an ICE-dominant US shop. This is a "be-ready" proposal, not a build-now mandate.
+      If the shop declines EV/HV work, the five proposed hybrid/EV subcategories + the EVSE (§3.5) and
+      degradation (§3.6) cases route to ADVISOR instead.
+    fee_rationale: >
+      If offered, price in line with the other scan-based diagnostics (check_engine_light_testing /
+      no_start_testing $179.95 tier), reflecting HV-trained-tech time + equipment; a plain 12V test on a
+      hybrid stays under the existing battery_test (FREE) / charging_starting_testing ($89.95) because the
+      low-cost, rule-out-first no-power cause is the 12V aux (§3.1). Chris to set the final fee and confirm
+      the shop will service HV vehicles at all. SAFETY: this service is HV-trained-tech-only; the
+      classifier's role ends at routing.
+
+# =============================================================================
+# Golden cases (>=8, incl. 1 inference-trap + 1 null-route (work-order) + 1 ICE-control case).
+# Schema mirrors scheduler-app/scripts/eval/eval-cases.json. Stage-2 slugs prefixed "propose:" do not
+# yet exist -- until the subcats ship, stage1_acceptable lists the interim EXISTING route. stage1_acceptable
+# holds only Stage-1 KEYS (testing_services.service_key or the 6 'other' bucket slugs), never subcategory slugs.
+# =============================================================================
+golden_cases:
+  - text: "im driving my electric car and it suddenly lost power, a turtle light popped up on the dash and now it wont go over 40. had to pull over"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing]
+      stage2_subcategory_slug: "propose:hybrid_or_ev_reduced_power_or_limp_mode"
+      stage3_facts:
+        vehicle_powertrain: electric
+        warning_light_named: "turtle"
+        drivable_state: drivable_but_concerned
+        onset_timing: during_driving
+      route: testing_service
+
+  - text: "my hybrid wont start this morning, all the dash lights come on inside but it wont go to ready and it wont move. no cranking sound at all"
+    tags: [fact_rich, discriminator]
+    expected:
+      stage1_category_key: charging_starting_testing
+      stage1_acceptable: [charging_starting_testing, battery_test]
+      stage2_subcategory_slug: "propose:hybrid_or_ev_wont_power_on"
+      stage3_facts:
+        vehicle_powertrain: hybrid
+        engine_running: wont_power_on_no_crank   # PROPOSED value: STATED hybrid + explicit "no cranking sound"
+        # NOTE: no lights_state -- "the dash lights come on inside" is a warning-icon scatter, NOT a
+        # statement that brightness is `normal`; leave lights_state NULL (literalness).
+      route: testing_service
+
+  - text: "my hybrid was dead, jumped the little 12 volt battery in the back and it started right up. want to make sure the 12v is ok"
+    tags: [fact_rich, discriminator]
+    expected:
+      stage1_category_key: charging_starting_testing
+      stage1_acceptable: [charging_starting_testing, battery_test]
+      stage2_subcategory_slug: "propose:hybrid_or_ev_wont_power_on"
+      stage3_facts:
+        vehicle_powertrain: hybrid   # STATED "my hybrid"
+        recent_action: jump_started   # 12V jump fixed it -> aux battery, NOT the HV pack
+        customer_request_type: diagnose_problem
+      route: testing_service
+
+  - text: "a big red triangle with an exclamation point came on and the screen says check hybrid system. car still drives ok, is it safe?"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing]
+      stage2_subcategory_slug: "propose:hybrid_system_warning_light"
+      stage3_facts:
+        vehicle_powertrain: hybrid   # "check hybrid system" literally names the hybrid system
+        warning_light_named: "check hybrid system, red triangle"
+        warning_light_behavior: steady_on
+        drivable_state: drivable_but_concerned
+      route: testing_service
+
+  - text: "my ev in reduced power mode dropped to walking speed on the highway then wouldnt move at all, had to get it towed. turtle icon was flashing"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing]
+      stage2_subcategory_slug: "propose:hybrid_or_ev_reduced_power_or_limp_mode"
+      stage3_facts:
+        vehicle_powertrain: electric
+        warning_light_named: "turtle"
+        warning_light_behavior: flashing_or_blinking
+        speed_band: highway
+        drivable_state: not_drivable_needs_tow
+      route: testing_service
+
+  - text: "the brakes on my hybrid feel grabby and different, worse first thing on a cold morning. no grinding or squealing and no shaking at speed"
+    tags: [moderate, discriminator]
+    expected:
+      stage1_category_key: brake_inspection
+      stage1_acceptable: [brake_inspection]
+      stage2_subcategory_slug: pulsating_or_vibrating_pedal   # existing; interim regen-feel home
+      stage3_facts:
+        vehicle_powertrain: hybrid
+        pedal_feel: grabby
+        weather_condition: cold_weather
+      route: testing_service
+
+  # ---- ICE-CONTROL: bare low-power, no powertrain stated -> must STAY on the ICE slug ----
+  - text: "my car has no power going up hills all of a sudden, feels gutless and bogs down when i press the gas"
+    tags: [moderate, discriminator]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing]   # dropped no_start_testing: the car starts, runs, and drives (cranks-but-won't-fire cannot fit)
+      stage2_subcategory_slug: low_power_or_wont_accelerate_normally   # ICE default when powertrain unstated
+      stage3_facts:
+        onset_timing: when_accelerating
+        # MUST NOT set vehicle_powertrain (customer did not state it) and MUST NOT route hybrid/EV.
+      route: testing_service
+
+  # ---- INFERENCE TRAP: model name only -> powertrain NULL; interim ICE slug; do NOT assert HV battery ----
+  - text: "my prius wont start, lights come on inside but it just wont go. what could it be?"
+    tags: [inference_trap]
+    expected:
+      stage1_category_key: charging_starting_testing
+      stage1_acceptable: [charging_starting_testing, battery_test]
+      stage2_subcategory_slug: wont_crank_just_clicks   # INTERIM EXISTING slug -- NOT the stated-hybrid-only propose slug
+      stage3_facts:
+        customer_request_type: diagnose_problem   # "what could it be?" is literally a diagnose request
+        # MUST NOT set vehicle_powertrain=hybrid -- "Prius" is a MODEL; the slot rule forbids inferring
+        #   powertrain from make/model (§9.2).
+        # MUST NOT set engine_running=wont_power_on_no_crank -- the customer states neither a press-start nor
+        #   the absence of cranking; leave it NULL (literalness).
+        # MUST NOT set lights_state -- "lights come on" is not a brightness=normal statement.
+        # MUST NOT assert the high-voltage traction battery -- the 12V aux is the rule-out-first cause (§3.1).
+      route: testing_service
+
+  # ---- EVSE won't-charge: NO catalog fit today -> advisor (proposed landing spot: hybrid_or_ev_wont_charge) ----
+  - text: "my ev wont charge at home anymore. the charger clicks but nothing happens and the charge port light is red"
+    tags: [catalog_gap]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null   # advisor today; would land on propose:hybrid_or_ev_wont_charge IF the HV service ships
+      stage3_facts:
+        vehicle_powertrain: electric
+      route: advisor
+
+  # ---- NULL-ROUTE: real Tekmetric declined-maintenance work-order line, not a customer concern -> advisor ----
+  - text: "Previously declined>LUBRICATE AND SERVICE BRAKE CALIPERS REAR AXLE [TESLA]"
+    tags: [null_route, work_order]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      stage3_facts: {}
+      route: advisor

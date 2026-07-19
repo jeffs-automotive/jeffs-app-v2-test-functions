@@ -1,0 +1,188 @@
+system: lighting-visibility
+# phrase -> normalized -> routes_to[] (subcategory slug, or service-level note) -> ambiguity -> provenance
+# ambiguity: unambiguous | needs-fact:<slot> | cross-system:<slug>
+# NB: windshield_inop_testing has NO stage-2 subcategory (stage2 = null); those entries route at the
+#     service level and are marked routes_to: [windshield_inop_testing:service].
+entries:
+
+  # -------------------- Exterior bulb / lamp out --------------------
+  - phrase: "DRIVER HEADLIGHT OUT, CLIENT REPLACED HEADLIGHT AND BULB IS STILL OUT"
+    normalized: headlight still dark after bulb replacement (socket/ground/wiring)
+    routes_to: [accessory_doesnt_work]
+    ambiguity: needs-fact:accessory_affected
+    provenance: tekmetric
+  - phrase: "CHECK TAIL LIGHTS"
+    normalized: taillight(s) out
+    routes_to: [accessory_doesnt_work]
+    ambiguity: needs-fact:accessory_affected
+    provenance: tekmetric
+  - phrase: "RIGHT REAR TURN SIGNAL NOT WORKING INTERMITTENTLY. CHECK CONNECTIONS"
+    normalized: turn signal intermittent, one corner
+    routes_to: [accessory_doesnt_work]
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "left plate lamp"
+    normalized: license-plate lamp out
+    routes_to: [accessory_doesnt_work]
+    ambiguity: needs-fact:accessory_affected
+    provenance: tekmetric   # real corpus line; the one (terse) plate-lamp instance in the 500-line set
+  - phrase: "one of my brake lights is out"
+    normalized: brake-light BULB out (not the dash telltale)
+    routes_to: [accessory_doesnt_work]
+    ambiguity: cross-system:brakes-friction-hydraulic   # neighbor-dossier slug; the red BRAKE dash light lives there
+    provenance: synthetic
+  # (Trimmed the synthetic "blinker" and "fog light bulb" phrasings to hold the accessory_doesnt_work
+  #  synthetic share at ~20% — 'blinker'/'fog light out' coverage stays via the stage1 keywords +
+  #  synonyms in the proposals file; see dossier §11.)
+  # Two more in-scope failure modes — lamp STUCK ON (§3.14, dome/headlight won't shut off -> battery
+  # drain) and BOTH headlights out at once (§3.16, shared switch/relay/stalk/BCM/ground) — are fully
+  # documented in dossier §3, §5 (discriminators) and §8, but are NOT duplicated here as synthetic
+  # lexicon lines: they have zero corpus support, and adding them would push the accessory_doesnt_work
+  # positive pool past the ~30% synthetic cap (§11). The stuck-dome corpus line actually rode a
+  # multi-symptom concern (consensus multiple_symptoms_not_sure_what_category), so a clean accessory
+  # route for it would be over-confident anyway.
+  - phrase: "my headlights look really cloudy and yellowed and seem dim at night"
+    normalized: oxidized/hazy headlight LENSES (optical dimness) -- NOT an electrical fault
+    routes_to: []   # advisor / lens restoration; NEGATIVE for dim_or_flickering_lights + electrical_testing_general
+    ambiguity: cross-system:router-requests-maintenance
+    provenance: synthetic
+
+  # -------------------- Whole-system dim / flicker --------------------
+  - phrase: "my headlights keep going dimmer and brighter on there own at night, its kinda freaky"
+    normalized: headlight brightness pulsing
+    routes_to: [dim_or_flickering_lights]
+    ambiguity: cross-system:starting-charging   # eval charging_starting_testing-005: stage1 charging, stage2 dim
+    provenance: eval   # authored eval case (was mislabeled forum-paraphrase)
+  - phrase: "headlights & dash lights flicker almost all the time"
+    normalized: all lights flickering together
+    routes_to: [dim_or_flickering_lights]
+    ambiguity: needs-fact:lights_state
+    provenance: forum-paraphrase
+  - phrase: "headlights and interior lights start to flicker while driving and the radio cuts out sometimes"
+    normalized: whole-system flicker with accessory dropout
+    routes_to: [dim_or_flickering_lights]
+    ambiguity: needs-fact:lights_state
+    provenance: forum-paraphrase   # 2carpros flicker-thread pattern, paraphrased (not verbatim)
+  - phrase: "headlights pulse brighter and dimmer at stoplights, brighten when I rev"
+    normalized: brightness tracks RPM (alternator cue)
+    routes_to: [dim_or_flickering_lights]
+    ambiguity: cross-system:starting-charging   # mechanism is charging; captured via lights_state
+    provenance: synthetic
+  - phrase: "only the driver-side headlight is out, the other one is fine"
+    normalized: single lamp out, not a brightness problem
+    routes_to: [accessory_doesnt_work]
+    ambiguity: unambiguous   # NEGATIVE for dim_or_flickering_lights
+    provenance: synthetic
+  - phrase: "headlights got dim and then the car shut off on the highway, wont restart"
+    normalized: dim precursor then dead
+    routes_to: [car_died_while_driving_electrical]
+    ambiguity: cross-system:starting-charging   # INFERENCE TRAP: not the dim subcat
+    provenance: synthetic
+
+  # -------------------- Wipers / washers (operation) --------------------
+  - phrase: "Wipers stopped working"
+    normalized: wipers do not move
+    routes_to: [windshield_inop_testing:service]
+    ambiguity: needs-fact:accessory_affected
+    provenance: tekmetric
+  - phrase: "WIPERS NOT SPRAYING TESTING AUTH UP TO 179 IF NEEDED"
+    normalized: washers do not spray (operation, not a leak)
+    routes_to: [windshield_inop_testing:service]
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "WASHERS NOT SPRAYING."
+    normalized: washers do not spray
+    routes_to: [windshield_inop_testing:service]
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "wipers barely work when its raining and the passenger side one hardly moves"
+    normalized: weak wiper sweep, one side worse
+    routes_to: [windshield_inop_testing:service]
+    ambiguity: needs-fact:location_side
+    provenance: eval   # windshield_inop_testing-001 (was mislabeled forum-paraphrase)
+  - phrase: "windshield wipers are moving way slower than normal and sometimes stall halfway up the glass"
+    normalized: slow wiper, stalls mid-sweep
+    routes_to: [windshield_inop_testing:service]
+    ambiguity: unambiguous
+    provenance: eval   # windshield_inop_testing-004 (was mislabeled forum-paraphrase)
+  - phrase: "my wipers quit right after i went thru the car wash"
+    normalized: wipers dead after water intrusion
+    routes_to: [windshield_inop_testing:service]
+    ambiguity: needs-fact:recent_action
+    provenance: eval   # windshield_inop_testing-002 (was mislabeled forum-paraphrase)
+  - phrase: "nasty grinding noise from my wipers when i turn them on"
+    normalized: wiper grind / drag
+    routes_to: [windshield_inop_testing:service]
+    ambiguity: needs-fact:noise_descriptor
+    provenance: eval   # windshield_inop_testing-003 (was mislabeled forum-paraphrase)
+  - phrase: "my wipers wont shut off, they keep going after i turn the switch off"
+    normalized: wipers won't park / won't turn off (park-switch or motor fault)
+    routes_to: [windshield_inop_testing:service]
+    ambiguity: unambiguous
+    provenance: synthetic
+
+  # -------------------- Washer-fluid leak (blue) --------------------
+  - phrase: "WASHER FLUID LEAKING. TESTING AUTH"
+    normalized: washer fluid puddle/leak
+    routes_to: [blue_or_light_blue_puddle_washer_fluid]
+    ambiguity: needs-fact:fluid_color   # judges labeled this ambiguous (leak vs service)
+    provenance: tekmetric
+  - phrase: "Light blue watery puddle near my front tire, washer fluid won't spray anymore"
+    normalized: blue watery puddle + empty washer
+    routes_to: [blue_or_light_blue_puddle_washer_fluid]
+    ambiguity: unambiguous
+    provenance: db-positive   # live-DB positive_example (verified absent from the Tekmetric corpus)
+  - phrase: "looks like windex leaking under the car"
+    normalized: washer-fluid-colored leak
+    routes_to: [blue_or_light_blue_puddle_washer_fluid]
+    ambiguity: needs-fact:fluid_color
+    provenance: db-positive   # live-DB positive_example (not a corpus line)
+  - phrase: "bright blue slimy fluid right under the radiator, smells sweet"
+    normalized: Asian-OEM coolant (NOT washer)
+    routes_to: [green_orange_yellow_or_pink_puddle_coolant]
+    ambiguity: cross-system:cooling-system   # NEGATIVE for washer fluid
+    provenance: synthetic
+
+  # -------------------- Defog / fog --------------------
+  - phrase: "inside of my windshield keeps fogging up when it rains and the defroster barely clears it"
+    normalized: persistent interior fog, defrost ineffective
+    routes_to: [foggy_or_hard_to_defog_windows]
+    ambiguity: needs-fact:weather_condition
+    provenance: tekmetric
+  - phrase: "windows fog up bad in the rain, defrost barely helps"
+    normalized: interior fog in wet weather
+    routes_to: [foggy_or_hard_to_defog_windows]
+    ambiguity: needs-fact:weather_condition
+    provenance: db-positive   # live-DB positive_example (not a corpus line)
+  - phrase: "Rear window defroster doesn't work, lines on the back glass dont heat up"
+    normalized: rear defogger grid dead
+    routes_to: [foggy_or_hard_to_defog_windows]
+    ambiguity: needs-fact:accessory_affected   # binned in fog subcat per DB, not accessory_doesnt_work
+    provenance: db-positive   # live-DB positive_example (not a corpus line)
+  - phrase: "inside of the windshield has a greasy film i cant wipe off"
+    normalized: oily film on glass (heater-core clue)
+    routes_to: [foggy_or_hard_to_defog_windows, sweet_smell_maple_syrup_antifreeze]
+    ambiguity: needs-fact:smell_descriptor
+    provenance: db-positive   # live-DB positive_example (not a corpus line)
+
+  # -------------------- Null-route work-order lines --------------------
+  - phrase: "REPLACE DRIVERS SIDE LOW BEAM"
+    normalized: "work-order: replace a bulb (not a diagnostic concern)"
+    routes_to: []
+    ambiguity: unambiguous   # null-route / advisor; empty stage1
+    provenance: tekmetric
+  - phrase: "Previously declined>Remove & Replace Fog Lamp Bulb"
+    normalized: declined work-order line
+    routes_to: []
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "REPLACE WIPERS IF NEEDED."
+    normalized: maintenance/parts request, no fault stated
+    routes_to: []
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "do not top off washer fluid"
+    normalized: advisor instruction, not a concern
+    routes_to: []
+    ambiguity: unambiguous
+    provenance: tekmetric

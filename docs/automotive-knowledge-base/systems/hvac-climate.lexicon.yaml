@@ -1,0 +1,283 @@
+system: hvac-climate
+# phrase -> normalized -> routes_to[] (subcategory slugs) -> ambiguity -> provenance
+# ambiguity: unambiguous | needs-fact:<slot> | cross-system:<slug> | null-route | inference-trap
+# Customer voice preserved verbatim-style (ALL-CAPS, misspellings, "freon", "luke-cold").
+# Tekmetric first, then forum-paraphrase (pattern only, no verbatim copy), synthetic flagged & capped.
+
+entries:
+  # ---------------- ac_blows_warm_or_hot_air (no cooling at all) ----------------
+  - phrase: "A/C BLOWING WARM AIR (PERF CHECK AUTH)"
+    normalized: AC blows warm, no cooling
+    routes_to: [ac_blows_warm_or_hot_air]
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "CLIENT IS REPORTING AC IS NOT BLOWING COLD"
+    normalized: AC not blowing cold
+    routes_to: [ac_blows_warm_or_hot_air]
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "A/C not getting cold (air was warmer out of driver side)"
+    normalized: AC not cold, warmer on one side
+    routes_to: [ac_blows_warm_or_hot_air, one_zone_works_but_another_doesnt]
+    ambiguity: needs-fact:location_side
+    provenance: tekmetric
+  - phrase: "AC quit all of a sudden, blows straight hot air like its not even on"
+    normalized: AC failed suddenly, hot air
+    routes_to: [ac_blows_warm_or_hot_air]
+    ambiguity: needs-fact:started_when
+    provenance: forum-paraphrase
+  - phrase: "compressor isnt kicking in, no click when I turn AC on"
+    normalized: compressor clutch not engaging
+    routes_to: [ac_blows_warm_or_hot_air]
+    ambiguity: unambiguous
+    provenance: synthetic
+  - phrase: "refrigerant is full, compressor is turning, but it just blows hot air"
+    normalized: charged and running yet no cool
+    routes_to: [ac_blows_warm_or_hot_air]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  - phrase: "AC blows hot air in the summer even turned all the way to cold, like the heat is stuck on"
+    normalized: AC blows HOT with cold selected (blend door stuck full-hot, §3.12 — NOT low refrigerant)
+    routes_to: [ac_blows_warm_or_hot_air]
+    ambiguity: unambiguous   # cause is blend-door-stuck-hot, not a recharge; §5 hedge prevents the mis-spend
+    provenance: forum-paraphrase
+
+  # ---------------- ac_is_weak_not_cold_enough (partial cooling) ----------------
+  - phrase: "AC isnt as cold as it used to be"
+    normalized: cooling degraded, still partial
+    routes_to: [ac_is_weak_not_cold_enough]
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "blows warm for about 20 mins, then will cool down"
+    normalized: AC blows warm at first, then cools after ~20 min (warm->cool as literally stated; do NOT assert evaporator-freeze, whose signature is cold->warm->cold)
+    routes_to: [ac_is_weak_not_cold_enough]
+    ambiguity: unambiguous   # warm-then-cool weak-cool pattern; cycling probe Q567 is intentionally_empty (no slot)
+    provenance: tekmetric
+  - phrase: "cools fine on the highway but barely cools at stoplights"
+    normalized: cooling weak at idle, better moving
+    routes_to: [ac_is_weak_not_cold_enough]
+    ambiguity: needs-fact:speed_band
+    provenance: eval
+  - phrase: "blows cold on cooler days, but hot air at 85+ degrees"
+    normalized: cooling fails only on hot days (low charge)
+    routes_to: [ac_is_weak_not_cold_enough]
+    ambiguity: needs-fact:weather_condition
+    provenance: forum-paraphrase
+  - phrase: "AC back to not working properly. We recharged system last July"
+    normalized: cooling lost again after prior recharge (symptom subcat ac_is_weak; SERVICE is ac_leak_testing)
+    routes_to: [ac_is_weak_not_cold_enough]
+    ambiguity: needs-fact:recent_action   # recharge-recurrence (ac_recharge_or_service) is the leak-service signal; ac_leak_testing is a SERVICE key, not a subcategory slug
+    provenance: tekmetric
+  - phrase: "put in refrigerant with dye, the AC just stopped working again"
+    normalized: recharged with dye, failed again (symptom subcat ac_blows_warm; SERVICE is ac_leak_testing)
+    routes_to: [ac_blows_warm_or_hot_air]
+    ambiguity: needs-fact:recent_action   # recharge-recurrence is the leak-service signal; ac_leak_testing is a SERVICE key, not a subcategory slug
+    provenance: tekmetric
+
+  # ---------------- heat_doesnt_work (HVAC owns heat) ----------------
+  - phrase: "HEAT BLOWING COLD AIR"
+    normalized: heater blows cold
+    routes_to: [heat_doesnt_work]
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "Heat only works when vehicle is moving, as soon as it stops goes cold"
+    normalized: heat present at speed, cold at idle (low coolant/flow)
+    routes_to: [heat_doesnt_work]
+    ambiguity: needs-fact:temperature_gauge_state
+    provenance: tekmetric
+  - phrase: "NO HEAT. GAUGE SOMETIMES GOES UP"
+    normalized: no heat plus rising temp gauge
+    routes_to: [heat_doesnt_work, engine_temperature_light]
+    ambiguity: cross-system:engine_temperature_light
+    provenance: tekmetric
+  - phrase: "no hot air from heater, antifreeze level is good"
+    normalized: no heat, coolant full (thermostat/heater core)
+    routes_to: [heat_doesnt_work]
+    ambiguity: needs-fact:temperature_gauge_state
+    provenance: forum-paraphrase
+  - phrase: "takes forever to get any warm air and its never really hot"
+    normalized: slow/insufficient heat (stuck-open thermostat)
+    routes_to: [heat_doesnt_work]
+    ambiguity: needs-fact:temperature_gauge_state
+    provenance: forum-paraphrase
+  - phrase: "no heat but the a/c works perfectly"
+    normalized: heat dead, AC fine (heat-side only)
+    routes_to: [heat_doesnt_work]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+
+  # ---------------- vents_dont_blow_strongly (airflow volume) ----------------
+  - phrase: "blower only works on high & is very noisy"
+    normalized: fan only on highest speed (resistor) + noise
+    routes_to: [vents_dont_blow_strongly]
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "fan only blows on the highest setting, speeds 1 2 3 do nothing"
+    normalized: blower resistor failure (only-high)
+    routes_to: [vents_dont_blow_strongly]
+    ambiguity: unambiguous
+    provenance: eval
+  - phrase: "AC Fan motor not working"
+    normalized: blower motor inoperative
+    routes_to: [vents_dont_blow_strongly]
+    ambiguity: needs-fact:airflow_state
+    provenance: tekmetric
+  - phrase: "no air blowing from vents, blower motor and resistor changed with no luck"
+    normalized: no airflow, parts already swapped
+    routes_to: [vents_dont_blow_strongly]
+    ambiguity: needs-fact:airflow_state
+    provenance: forum-paraphrase
+  - phrase: "air gets very weak after about 20 minutes, hardly blowing even on high"
+    normalized: airflow fades after warmup (icing/filter)
+    routes_to: [vents_dont_blow_strongly]
+    ambiguity: needs-fact:started_when
+    provenance: forum-paraphrase
+  - phrase: "BLOWER NOT WORKING ON ANY SPEEDS SINCE VEHICLE WAS PICKED UP AFTER STARTER & BATTERY"
+    normalized: blower dead after unrelated service
+    routes_to: [vents_dont_blow_strongly]
+    ambiguity: needs-fact:recent_action
+    provenance: tekmetric
+  - phrase: "air only comes out the defroster no matter what setting I pick, wont switch to the dash vents"
+    normalized: air stuck on wrong outlets, mode door not moving (§3.11); airflow volume normal
+    routes_to: [vents_dont_blow_strongly]
+    ambiguity: needs-fact:airflow_state   # maps to only_one_zone_blows (distribution), NOT weak volume
+    provenance: forum-paraphrase
+
+  # ---------------- bad_smell_from_vents (hvac category) ----------------
+  - phrase: "nasty musty smell like dirty gym socks from the vents when I first turn the AC on"
+    normalized: musty vent odor on AC start (evaporator)
+    routes_to: [bad_smell_from_vents]
+    ambiguity: unambiguous
+    provenance: eval
+  - phrase: "when I turn on the A/C the air stinks like a mildew order"
+    normalized: mildew vent odor with AC
+    routes_to: [bad_smell_from_vents]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  - phrase: "CUSTOMER STATES THERE IS A BURNING SMELL WHEN TURNING ON THE A/C"
+    normalized: burning vent smell on AC (blower/resistor)
+    routes_to: [bad_smell_from_vents]
+    ambiguity: needs-fact:smell_descriptor
+    provenance: tekmetric
+  - phrase: "gym-bag smell with recirc on, goes away when I turn recirc off"
+    normalized: musty evaporator odor (customer notes it tracks recirc, but there is NO air-source slot; recirc-dependence probe Q971 is intentionally_empty)
+    routes_to: [bad_smell_from_vents]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  - phrase: "sweet smell like maple syrup comes out when the heater is on, windows fog up"
+    normalized: sweet vent odor with heat (heater core)
+    routes_to: [bad_smell_from_vents]
+    ambiguity: cross-system:sweet_smell_maple_syrup_antifreeze
+    provenance: forum-paraphrase
+
+  # ---------------- musty_mildew_smell_from_vents (smell category — NOT vent-routed) ----------------
+  - phrase: "musty smell from the back seat carpet, especially when it rains"
+    normalized: mildew from carpet, not vents
+    routes_to: [musty_mildew_smell_from_vents]
+    ambiguity: cross-system:bad_smell_from_vents
+    provenance: forum-paraphrase
+  - phrase: "moldy smell from the trunk after I had water back there"
+    normalized: mildew from wet trunk, not vents
+    routes_to: [musty_mildew_smell_from_vents]
+    ambiguity: unambiguous
+    provenance: synthetic
+
+  # ---------------- one_zone_works_but_another_doesnt (blend door) ----------------
+  - phrase: "passenger side vents blow warm but the driver side is ice cold, turning the passenger dial doesnt change anything"
+    normalized: one-side temp wrong, dial dead (blend actuator)
+    routes_to: [one_zone_works_but_another_doesnt]
+    ambiguity: unambiguous
+    provenance: eval
+  - phrase: "CHECK A/C. WORKS WELL ON THE PASSENGER SIDE BUT NOT SO WELL ON DRIVER'S SIDE"
+    normalized: cooling asymmetric between zones
+    routes_to: [one_zone_works_but_another_doesnt]
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "CLIENT REPORTS PASSENGER SIDE ONLY BLOWS LUKE-COLD, A/C CHECK OK"
+    normalized: one zone under-cools, other fine
+    routes_to: [one_zone_works_but_another_doesnt]
+    ambiguity: needs-fact:location_side
+    provenance: tekmetric
+  - phrase: "A/C not cooling out of the drivers side only"
+    normalized: driver-zone no cool, passenger fine
+    routes_to: [one_zone_works_but_another_doesnt]
+    ambiguity: needs-fact:location_side
+    provenance: tekmetric
+
+  # ---------------- strange_noise_from_vents ----------------
+  - phrase: "tick tick tick from the dash right after I start the car and when I move the temperature dial"
+    normalized: actuator clicking on temp change
+    routes_to: [strange_noise_from_vents]
+    ambiguity: needs-fact:noise_descriptor
+    provenance: synthetic
+  - phrase: "whistling sound coming out of the air vents at higher fan speeds"
+    normalized: vent whistle at high fan (duct/filter)
+    routes_to: [strange_noise_from_vents]
+    ambiguity: needs-fact:noise_descriptor
+    provenance: forum-paraphrase
+  - phrase: "vents make a rattling sound when the fan is on, stops when I turn it off"
+    normalized: fan-dependent rattle (debris in blower)
+    routes_to: [strange_noise_from_vents]
+    ambiguity: unambiguous
+    provenance: synthetic
+  - phrase: "LOUD NOISE WHEN A/C ON SEEMS TO HESITATE"
+    normalized: noise on AC engage, engine drags (compressor load?)
+    routes_to: [strange_noise_from_vents]
+    ambiguity: cross-system:high_pitched_whining_under_the_hood
+    provenance: tekmetric
+  - phrase: "sounds like water sloshing around behind the dash when I turn or come to a stop"
+    normalized: condensate slosh/gurgle behind dash (clogged evaporator drain, §3.10)
+    routes_to: [strange_noise_from_vents]
+    ambiguity: unambiguous   # sloshing/gurgling has NO noise_descriptor value (single-question, below >=3 bar)
+    provenance: forum-paraphrase
+
+  # ---------------- foggy_or_hard_to_defog_windows ----------------
+  - phrase: "inside of my windshield keeps fogging up when it rains and the defroster barely clears it"
+    normalized: persistent fog, defrost ineffective
+    routes_to: [foggy_or_hard_to_defog_windows]
+    ambiguity: needs-fact:weather_condition
+    provenance: eval
+  - phrase: "inside of the windshield has a greasy film I cant wipe off"
+    normalized: oily film on glass (heater core vapor)
+    routes_to: [foggy_or_hard_to_defog_windows]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  - phrase: "rear window defroster doesnt work, the lines on the back glass dont heat up"
+    normalized: rear defroster grid dead (electrical)
+    routes_to: [foggy_or_hard_to_defog_windows]
+    ambiguity: unambiguous
+    provenance: synthetic
+
+  # ---------------- AC condensation water (leak category) + inside-cabin weak-fit (§8) ----------------
+  - phrase: "found a small puddle under the passenger side, completely clear no smell, just like plain water"
+    normalized: clear odorless water under car (AC drain, normal)
+    routes_to: [clear_odorless_puddle_water_or_ac_condensation]
+    ambiguity: unambiguous
+    provenance: eval
+  - phrase: "slow drip onto the passenger side carpet when the a/c is on"
+    normalized: AC water INSIDE cabin (clogged evaporator drain)
+    routes_to: [clear_odorless_puddle_water_or_ac_condensation]
+    ambiguity: cross-system:water_leaking_inside_cabin_ac_on (PROPOSED)   # Chris-gated subcat (dossier §8); force-fits onto the UNDER-car clear-water slug until approved
+    provenance: forum-paraphrase
+  - phrase: "floor is full of water, only happens when I drive with the air conditioning on"
+    normalized: cabin flooding on AC (evaporator drain)
+    routes_to: [clear_odorless_puddle_water_or_ac_condensation]
+    ambiguity: cross-system:water_leaking_inside_cabin_ac_on (PROPOSED)   # Chris-gated subcat (dossier §8); force-fits onto the UNDER-car clear-water slug until approved
+    provenance: forum-paraphrase
+
+  # ---------------- null-route work-order lines (advisor) ----------------
+  - phrase: "recharge a/c system"
+    normalized: AC recharge work-order (no symptom)
+    routes_to: []
+    ambiguity: null-route
+    provenance: tekmetric
+  - phrase: "REPLACE CABIN AIR FILTER (Replacement due every 2 years 20k miles)"
+    normalized: cabin filter maintenance work-order
+    routes_to: []
+    ambiguity: null-route
+    provenance: tekmetric
+  - phrase: "$35 Off AC Service of $200 or More"
+    normalized: promo/marketing line (not a concern)
+    routes_to: []
+    ambiguity: null-route
+    provenance: tekmetric

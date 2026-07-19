@@ -1,0 +1,445 @@
+system: starting-charging
+# Typed change-ops binding this dossier's findings to the live taxonomy snapshot (2026-07-18).
+# Every op is grounded in §-references to starting-charging.dossier.md.
+# Question IDs, subcat slugs, service keys, and slot names are all verified against the live DB
+# (re-verified 2026-07-18: q879 already carries started_when and q389 already carries recent_action —
+# both reconciled below so no op is a no-op).
+
+ops:
+  # =========================================================================
+  # L1 — Stage-1 example_keywords (ALL THREE services have EMPTY example_keywords[]
+  #      in the live DB → the single biggest Stage-1 gap for this system).
+  #      Every phrase is >=2 tokens OR a domain token (customer voice, not mechanic).
+  # =========================================================================
+  - op: stage1.keyword.add
+    category_key: charging_starting_testing
+    phrase: "just clicks"
+    rationale: "Rapid/single click is the top no-crank signature; empty keyword list today (§3.1/3.2)."
+    evidence: "tekmetric+forum: 'just hear one click', 'rapid clicking like a machine gun'"
+  - op: stage1.keyword.add
+    category_key: charging_starting_testing
+    phrase: "won't crank"
+    rationale: "Engine does not rotate = charging/starting side (§3.1)."
+    evidence: "corpus: 'wont turn over', 'no crank'"
+  - op: stage1.keyword.add
+    category_key: charging_starting_testing
+    phrase: "slow crank"
+    rationale: "Labored cranking speed = battery/starter draw (§3.3)."
+    evidence: "tekmetric: 'BATTERY SEEMS TO GIVE A SLOW CRANK', 'WEAK/EXTENDED CRANK'"
+  - op: stage1.keyword.add
+    category_key: charging_starting_testing
+    phrase: "had to jump it"
+    rationale: "Jump-start recovery is a strong battery/charging cue (§3.1/3.4)."
+    evidence: "tekmetric: 'Had to jump start', 'CLIENT HAD TO JUMP START VEHICLE'"
+  - op: stage1.keyword.add
+    category_key: charging_starting_testing
+    phrase: "battery keeps dying"
+    rationale: "Repeated discharge = drain or charging failure (§3.4)."
+    evidence: "forum: 'battery keeps dying when the car sits'"
+  - op: stage1.keyword.add
+    category_key: charging_starting_testing
+    phrase: "battery light"
+    rationale: "Charge/battery dash icon (§3.5); domain 2-token phrase."
+    evidence: "tekmetric: 'dash battery light came on', 'BATTERY LIGHT ON'"
+  - op: stage1.keyword.add
+    category_key: charging_starting_testing
+    phrase: "dim headlights"
+    rationale: "Alternator dim/flicker cue (§3.6)."
+    evidence: "forum: 'headlights & dash lights flicker almost all the time'"
+  - op: stage1.keyword.add
+    category_key: charging_starting_testing
+    phrase: "alternator"
+    rationale: "Domain single token; customers name it directly."
+    evidence: "tekmetric: 'ALTERNATOR BELT BROKE', 'since alternator replacement'"
+  - op: stage1.keyword.add
+    category_key: charging_starting_testing
+    phrase: "dead battery"
+    rationale: "Direct battery-state cue (§3.1)."
+    evidence: "forum: 'battery acts dead', 'totally dead this morning'"
+  - op: stage1.keyword.add
+    category_key: charging_starting_testing
+    phrase: "died while driving"
+    rationale: "Electrical shutdown-in-motion (§3.7); shared with performance — hedge below."
+    evidence: "tekmetric: 'DIED WHILE DRIVING. ALL WARNING LIGHTS CAME ON'"
+  - op: stage1.keyword.add
+    category_key: no_start_testing
+    phrase: "cranks but won't start"
+    rationale: "Normal crank, no fire = fuel/spark no-start, no_start_testing's core signature (§3.8/§7)."
+    evidence: "tekmetric: 'CRANKS BUT WILL NOT START'; forum: 'crank but not start'"
+  - op: stage1.keyword.add
+    category_key: no_start_testing
+    phrase: "turns over but won't fire"
+    rationale: "Same signature, alternate phrasing."
+    evidence: "corpus: 'turns over really slow and doesnt start' (contrast) / 'crank but not start'"
+  - op: stage1.keyword.add
+    category_key: no_start_testing
+    phrase: "won't start when hot"
+    rationale: "Hot restart / vapor lock routes to no_start_testing (§3.9)."
+    evidence: "tekmetric: 'hesitates to turn back on ... short errands'"
+  - op: stage1.keyword.add
+    category_key: battery_test
+    phrase: "test my battery"
+    rationale: "Explicit request-type maps to the free battery_test service; empty keyword list today."
+    evidence: "tekmetric: 'TEST BATTERY (JUST WANT TO MAKE SURE IT IS OK)'"
+  - op: stage1.keyword.add
+    category_key: battery_test
+    phrase: "check my battery"
+    rationale: "Request-type synonym for battery_test."
+    evidence: "tekmetric: 'TEST BATTERY (No concerns)'"
+
+  # =========================================================================
+  # Stage-1 hedge — the mandated confusable pair.
+  # =========================================================================
+  - op: stage1.hedge.add
+    category_a: charging_starting_testing
+    category_b: no_start_testing
+    rule: >
+      If the engine ROTATES at normal speed but will not fire (engine_running=wont_start) ->
+      no_start_testing (fuel/spark/crank-cam). If the engine does NOT rotate, rotates SLOWLY, is
+      dead, only clicks, dies-while-driving with electrical precursors, or shows dim lights / a
+      battery light (engine_running in {wont_crank_just_clicks, slow_crank, died_while_driving,
+      no_sound_at_all}) -> charging_starting_testing. When the customer says only "won't start"
+      with no crank detail, offer BOTH as clarify chips.
+    discriminating_fact: engine_running
+  - op: stage1.hedge.add
+    category_a: charging_starting_testing
+    category_b: check_engine_light_testing
+    rule: >
+      "Died while driving" splits on the FIRST sign: dimming lights / battery light / dashboard
+      going dark before shutdown -> charging_starting_testing (car_died_while_driving_electrical);
+      engine sputter/stumble/hesitation with no electrical warning -> engine-side
+      (check_engine_light_testing / stalling_while_driving_under_load).
+    discriminating_fact: lights_state
+
+  # =========================================================================
+  # L2/L3 — sharpen Stage-2 descriptions & examples on the confusable seams.
+  # (Enrichment already strong; these are targeted sharpenings + real-voice positives.)
+  # =========================================================================
+  - op: stage2.description.revise
+    subcat_slug: hard_to_start_when_cold
+    text: >
+      After the car has SAT (typically overnight) so the engine is cold, the engine CRANKS AT
+      NORMAL SPEED but takes many seconds / several tries to fire, and may run rough for the first
+      minute. Trigger is a COLD engine; it starts fine later once warmed up. IMPORTANT: this is a
+      cranks-but-won't-CATCH problem (fuel/spark/cold-enrichment), NOT slow cranking. If the
+      customer says the engine turns over SLOWLY ("rrr rrr"), that is slow_crank_sluggish_start
+      (a battery/starter issue), not this. If the customer only says "hard to start when cold"
+      without stating crank speed, the crank quality is unknown and must be asked.
+    why: "Corpus 'hard to start when cold' is routinely conflated with slow-crank; make the literal crank-speed cue decisive (§3.8 inference trap)."
+  - op: stage2.example.positive.add
+    subcat_slug: slow_crank_sluggish_start
+    phrase: "battery seems to give a slow crank, check and advise"
+    provenance: tekmetric
+  - op: stage2.example.positive.add
+    subcat_slug: slow_crank_sluggish_start
+    phrase: "client has been noticing a weak/extended crank"
+    provenance: tekmetric
+  - op: stage2.example.positive.add
+    subcat_slug: wont_crank_just_clicks
+    phrase: "every time i turn the ignition i just hear one click nothing else"
+    provenance: forum-paraphrase
+  - op: stage2.example.positive.add
+    subcat_slug: battery_drains_overnight
+    phrase: "if you leave it sit a couple days the battery is totally dead, and replacing it didnt fix anything"
+    provenance: forum-paraphrase
+  - op: stage2.example.positive.add
+    subcat_slug: car_died_while_driving_electrical
+    phrase: "died while driving, all the warning lights came on and then it just shut off"
+    provenance: tekmetric
+  - op: stage2.example.positive.add
+    subcat_slug: battery_charging_light
+    phrase: "dash battery light came on"
+    provenance: tekmetric   # verbatim corpus; an earlier draft appended "...headlights getting dim" (invented) -> trimmed to the real line
+  - op: stage2.example.positive.add
+    subcat_slug: battery_charging_light
+    phrase: "check engine light on, message service high voltage charging system"
+    provenance: tekmetric   # overcharge / regulator overvoltage presentation (§3.11)
+  - op: stage2.example.positive.add
+    subcat_slug: hard_to_start_when_hot
+    phrase: "it hesitates to turn back on if i turn it off while running short errands"
+    provenance: tekmetric
+
+  # Negative examples (each names routes_to) — reinforce the confusable seams.
+  - op: stage2.example.negative.add
+    subcat_slug: slow_crank_sluggish_start
+    phrase: "cranks at normal speed but wont catch when its cold in the morning"
+    routes_to: hard_to_start_when_cold
+  - op: stage2.example.negative.add
+    subcat_slug: slow_crank_sluggish_start
+    phrase: "just one click and it doesnt turn over at all"
+    routes_to: wont_crank_just_clicks
+  - op: stage2.example.negative.add
+    subcat_slug: hard_to_start_when_cold
+    phrase: "engine turns over real slow, rrr rrr, before it finally starts"
+    routes_to: slow_crank_sluggish_start
+  - op: stage2.example.negative.add
+    subcat_slug: hard_to_start_when_cold
+    phrase: "hard to restart right after i drove it and stopped for gas"
+    routes_to: hard_to_start_when_hot
+  - op: stage2.example.negative.add
+    subcat_slug: wont_crank_just_clicks
+    phrase: "its fine all day but dead every morning after sitting, needs a jump daily"
+    routes_to: battery_drains_overnight
+  - op: stage2.example.negative.add
+    subcat_slug: battery_charging_light
+    phrase: "headlights just look dim and flickery, i dont see any specific warning light"
+    routes_to: dim_or_flickering_lights
+  - op: stage2.example.negative.add
+    subcat_slug: car_died_while_driving_electrical
+    phrase: "engine sputtered and stumbled and lost power going uphill, no warning lights"
+    routes_to: stalling_while_driving_under_load
+  - op: stage2.example.negative.add
+    subcat_slug: dim_or_flickering_lights
+    phrase: "only the driver side headlight is out, the other one works fine"
+    routes_to: accessory_doesnt_work
+
+  # Synonyms (>=2 tokens or domain token).
+  # Dropped the over-broad synonym "wont turn over" for wont_crank_just_clicks: in customer speech it
+  # frequently means "won't start" GENERICALLY (including cranks-but-won't-fire), which would pull
+  # fuel/spark no-starts (the no_start_testing side of our OWN primary confusable, §5/§7) into this
+  # subcategory. Replaced with an unambiguous ≥2-token domain synonym; the Stage-1 hedge on
+  # engine_running + the "just clicks"/"won't crank" keywords carry the real signal.
+  - op: stage2.synonym.add
+    subcat_slug: wont_crank_just_clicks
+    term: "just keeps clicking"
+  - op: stage2.synonym.add
+    subcat_slug: slow_crank_sluggish_start
+    term: "weak crank"
+  - op: stage2.synonym.add
+    subcat_slug: hard_to_start_when_hot
+    term: "hard to start at the gas station"
+  - op: stage2.synonym.add
+    subcat_slug: dim_or_flickering_lights
+    term: "brighten when i rev"
+
+  # =========================================================================
+  # L5 — Fact slots.
+  # =========================================================================
+  - op: stage3.slot.propose
+    name: battery_age
+    type: enum
+    values: [new_under_2yr, "2_to_4yr", over_4yr, just_replaced, unsure]
+    literal_cues:
+      - "battery is new"
+      - "just put a new battery in"
+      - "replaced the battery last year"
+      - "battery is about 5 years old"
+      - "few months old"
+      - "AAA installed the battery last November"
+    questions_unlocked: [528, 537, 877]   # 3 LITERAL battery-age questions -> meets >=3 rule.
+    # q389 EXCLUDED: it already carries required_facts=[recent_action] and only partly asks battery age
+    # ("jump-started recently, or replaced the battery in the last couple of years?") -> not a battery_age unlock.
+    note: >
+      Distinct from recent_action=battery_or_alternator_work (that is WORK just performed). battery_age
+      captures the customer stating the battery's age/recency even with no shop work. Set ONLY on a
+      literal age/recency statement; never infer from vehicle year.
+  - op: stage3.slot.value.add
+    slot: recent_action
+    value: aftermarket_electrical_install
+    literal_cues:
+      - "put in a dash cam"
+      - "installed a remote starter"
+      - "added an alarm"
+      - "aftermarket stereo"
+      - "hardwired a dash cam"
+    # Unlocks the parasitic-draw follow-up q534.
+
+  # =========================================================================
+  # Question required_facts — reduce over-asking (battery_drains_overnight is
+  # 6/7 EMPTY today). Set where a slot can hold the answer; mark the rest
+  # intentionally_empty so the mapper stops treating them as "never skippable
+  # by accident."
+  # =========================================================================
+  - op: question.required_facts.set
+    question_id: 534   # "anything added recently - dash cam, remote starter, alarm, stereo, trailer wiring?"
+    facts: [recent_action]
+    skip_class: PARTIAL
+    derivation_note: "Skippable once recent_action=aftermarket_electrical_install is stated; else ask."
+  # q879 ("sudden with no warning, or getting harder over days/weeks?") ALREADY carries
+  # required_facts=[started_when] in the live DB (verified 2026-07-18) -> NO op needed. Recorded here so
+  # the diff shows it was checked, not missed (an earlier draft proposed setting it = a no-op; removed).
+  - op: question.intentionally_empty
+    question_id: 536   # "radio/headlights/wipers ever staying on for a moment after key-off + door shut?"
+    reason: "Direct observation of accessories not powering down (a parasitic-draw cue); no fact slot holds it -> keep asking. This is the last of battery_drains_overnight's 6 empty-required_facts questions to be terminated by an op."
+  - op: question.intentionally_empty
+    question_id: 532   # "how long can it sit before the battery dies?"
+    reason: "Sit-duration has no slot and is a genuine diagnostic follow-up; not pre-answerable reliably."
+  - op: question.intentionally_empty
+    question_id: 533   # "after a jump does it run normally the rest of the day?"
+    reason: "Observational confirmation of the parasitic-draw pattern; no slot; keep asking."
+  - op: question.intentionally_empty
+    question_id: 535   # "do you see an interior/glovebox/trunk light still on?"
+    reason: "Direct observation request; no slot; keep asking."
+  - op: question.intentionally_empty
+    question_id: 537   # "how old is the battery, replaced once already for this?"
+    reason: "Superseded once battery_age slot ships; until then keep asking (no slot to hold it)."
+
+# =============================================================================
+# Golden cases (>=8, incl. 1 inference-trap + 1 null-route + 1 request-type).
+# Schema mirrors scheduler-app/scripts/eval/eval-cases.json.
+# =============================================================================
+golden_cases:
+  - text: "turn the key and all i get is fast clicking, click-click-click, wont turn over at all. dash lights come on but go real dim when i try it. jumped it and it started right up."
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: charging_starting_testing
+      stage1_acceptable: [charging_starting_testing, no_start_testing]
+      stage2_subcategory_slug: wont_crank_just_clicks
+      stage3_facts:
+        engine_running: wont_crank_just_clicks
+        lights_state: dim_or_flickering
+        recent_action: jump_started
+      route: testing_service
+
+  - text: "one loud click and then nothing, engine wont crank, but the headlights and dash stay nice and bright"
+    tags: [fact_rich, discriminator]
+    expected:
+      stage1_category_key: charging_starting_testing
+      stage1_acceptable: [charging_starting_testing]
+      stage2_subcategory_slug: wont_crank_just_clicks
+      stage3_facts:
+        engine_running: wont_crank_just_clicks
+        lights_state: normal   # bright lights + single click = starter/severe-resistance, not weak battery
+      route: testing_service
+
+  - text: "engine cranks super slow, rrr rrr rrr, before it finally catches. way worse when its cold out and the headlights look dim while its cranking"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: charging_starting_testing
+      stage1_acceptable: [charging_starting_testing]
+      stage2_subcategory_slug: slow_crank_sluggish_start
+      stage3_facts:
+        engine_running: slow_crank
+        weather_condition: cold_weather
+        lights_state: dim_or_flickering
+        # NO onset_timing: the text says "when its cold out" (weather_condition=cold_weather) but never
+        # "first thing in the morning / after sitting overnight", which is what cold_start literally means
+        # in extracted-facts.ts. Asserting onset_timing=cold_start here would penalize a correctly-literal
+        # extractor (the same trap the inference-trap case below guards against).
+      route: testing_service
+
+  - text: "something keeps draining my battery overnight. i jump it in the morning, drive all day fine, come back next day and its dead again. already put a new battery in and it didnt help"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: charging_starting_testing
+      stage1_acceptable: [charging_starting_testing]
+      stage2_subcategory_slug: battery_drains_overnight
+      stage3_facts:
+        recent_action: jump_started
+        battery_age: just_replaced   # proposed slot: "already put a new battery in" -> battery_age,
+        # which frees recent_action for jump_started. ACCEPTABLE ALTERNATIVE (before battery_age ships):
+        # recent_action=battery_or_alternator_work is equally literal for "put a new battery in" -- the
+        # harness should accept either recent_action value here, since both are literally stated.
+      route: testing_service
+
+  - text: "red battery light is on in my dash and i can hear a squealing sound under the hood, headlights getting dim. is it ok to keep driving?"
+    tags: [moderate]
+    expected:
+      stage1_category_key: charging_starting_testing
+      stage1_acceptable: [charging_starting_testing]
+      stage2_subcategory_slug: battery_charging_light
+      stage3_facts:
+        warning_light_named: "battery"
+        warning_light_behavior: steady_on
+        noise_descriptor: squealing_high_pitched
+        lights_state: dim_or_flickering
+        drivable_state: drivable_but_concerned
+      route: testing_service
+
+  - text: "my headlights keep going dimmer and brighter on their own, brighter when i rev the engine and dimmer at stoplights. i dont see any warning light though"
+    tags: [moderate, discriminator]
+    expected:
+      stage1_category_key: charging_starting_testing
+      stage1_acceptable: [charging_starting_testing]
+      stage2_subcategory_slug: dim_or_flickering_lights
+      stage3_facts:
+        lights_state: dim_at_idle_brighten_when_revving
+      route: testing_service
+
+  - text: "everything went dark while i was driving, dash and radio and headlights all went dim then the engine just quit on the highway. wont crank now, only clicks"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: charging_starting_testing
+      stage1_acceptable: [charging_starting_testing]
+      stage2_subcategory_slug: car_died_while_driving_electrical
+      stage3_facts:
+        engine_running: died_while_driving
+        # ACCEPTABLE ALTERNATIVE: engine_running=wont_crank_just_clicks is ALSO literally stated ("wont
+        # crank now, only clicks") — the text describes two states over time. died_while_driving is the
+        # routing-decisive one (car_died_while_driving_electrical); the harness should accept either.
+        lights_state: dim_or_flickering
+        speed_band: highway
+      route: testing_service
+
+  # ---- INFERENCE TRAP: "hard to start when cold" must NOT set slow_crank or battery facts. ----
+  - text: "hard to start when its cold in the mornings, i gotta crank it a few times before it catches. once its warmed up its totally fine"
+    tags: [inference_trap]
+    expected:
+      stage1_category_key: no_start_testing
+      stage1_acceptable: [no_start_testing, charging_starting_testing]
+      stage2_subcategory_slug: hard_to_start_when_cold
+      stage3_facts:
+        engine_running: wont_start   # cranks (normal speed) but won't FIRE -- customer did not say slow
+        weather_condition: cold_weather
+        onset_timing: cold_start
+        # MUST NOT set: engine_running=slow_crank, lights_state, recent_action, battery_age.
+        # "hard to start when cold" does not literally state crank speed or a weak battery.
+      route: testing_service
+
+  - text: "wont start back up when i stop for gas after driving a while, it cranks and cranks but wont fire. if i let it cool 20 minutes it starts fine"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: no_start_testing
+      stage1_acceptable: [no_start_testing]
+      stage2_subcategory_slug: hard_to_start_when_hot
+      stage3_facts:
+        engine_running: wont_start
+        weather_condition: hot_weather
+      route: testing_service
+
+  # ---- REQUEST-TYPE: explicit battery test, no symptom -> battery_test service. ----
+  - text: "i just want to get my battery tested, want to make sure its good before a road trip"
+    tags: [request_type]
+    expected:
+      stage1_category_key: battery_test
+      stage1_acceptable: [battery_test, charging_starting_testing]
+      stage2_subcategory_slug: null
+      stage3_facts:
+        customer_request_type: pre_trip_inspection
+      route: testing_service
+
+  # ---- OVERCHARGE (§3.11): "high voltage charging system" message -> still charging_starting. ----
+  - text: "check engine light is on and theres a message on my dash that says service high voltage charging system"
+    tags: [moderate, corpus_attested]
+    expected:
+      stage1_category_key: charging_starting_testing
+      stage1_acceptable: [charging_starting_testing, check_engine_light_testing]
+      stage2_subcategory_slug: battery_charging_light
+      stage3_facts:
+        warning_light_named: "check engine"   # literal: they named the CEL + a charging-system message
+        warning_light_behavior: steady_on
+        # MUST NOT set warning_light_named="battery": the customer did not name a battery light.
+      route: testing_service
+
+  # ---- STARTER GRIND on start (§3.12): grind tied to STARTING is ours, not the noise router. ----
+  - text: "when i go to start my car theres a loud grinding noise like the gears arent catching, takes a couple tries before it turns over"
+    tags: [discriminator]
+    expected:
+      stage1_category_key: charging_starting_testing
+      stage1_acceptable: [charging_starting_testing]
+      stage2_subcategory_slug: wont_crank_just_clicks
+      stage3_facts:
+        noise_descriptor: grinding_metallic
+        engine_running: wont_crank_just_clicks   # intermittent no-crank / grind before it catches
+        # Grinding is tied to the START attempt -> charging_starting_testing, NOT the noise router.
+      route: testing_service
+
+  # ---- NULL-ROUTE: staff work-order line, not a customer concern -> advisor, empty stage1. ----
+  - text: "STARTING AND CHARGING SYSTEM TESTING AUTH 89"
+    tags: [null_route, work_order]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      stage3_facts: {}
+      route: advisor

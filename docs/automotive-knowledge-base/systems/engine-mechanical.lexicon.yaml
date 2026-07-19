@@ -1,0 +1,133 @@
+system: engine-mechanical
+# phrase -> normalized -> routes_to[] (subcategory slugs) -> ambiguity -> provenance
+# ambiguity: unambiguous | needs-fact:<slot> | cross-system:<slug>
+# provenance: tekmetric | nhtsa | forum-paraphrase | synthetic
+# NOTE: entries marked "(mirrors live catalog positive_example)" are attested in catalog-snapshot.json
+#       (corpus-seeded) — provenance tekmetric, NOT synthetic; they anchor routing, they are not new coverage.
+#       Where a REAL Tekmetric case's corpus consensus differs from the route here, it is disclosed inline.
+entries:
+  # --- valvetrain / lifter tick -------------------------------------------
+  - phrase: "My car has started making an intermittent tapping. It does it for a few seconds and then stops, and then does it again"
+    normalized: intermittent engine tapping
+    routes_to: [engine_ticking_or_tapping]
+    ambiguity: needs-fact:onset_timing
+    provenance: tekmetric   # tkc-117; corpus consensus = ambiguous (used as tick-language evidence only)
+  - phrase: "making a ticking noise when driving"
+    normalized: engine ticking while driving
+    routes_to: [engine_ticking_or_tapping]
+    ambiguity: needs-fact:sound_or_smoke_location_zone
+    provenance: tekmetric   # tkc-268; consensus category-only (subcategory unresolved)
+  - phrase: "roar and clicking/tapping"
+    normalized: roar plus clicking/tapping
+    routes_to: [humming_or_whirring_at_speed]
+    ambiguity: cross-system:suspension_steering_check   # tkc-218 corpus CONSENSUS = suspension_steering_check (the "roar" dominates) — NOT engine-internal; do not route to engine tick
+    provenance: tekmetric
+  - phrase: "engine sounds like a sewing machine when i first start it in the morning"
+    normalized: sewing-machine tick on cold start
+    routes_to: [engine_ticking_or_tapping]
+    ambiguity: needs-fact:symptom_warmup_trend   # a cold sewing-machine sound ties with exhaust_manifold_tick until warm-up trend is known
+    provenance: tekmetric   # (mirrors live catalog positive_example)
+  - phrase: "lifter tick that quiets down after about a minute of driving"
+    normalized: lifter tick partially easing after warm-up
+    routes_to: [engine_ticking_or_tapping]
+    ambiguity: needs-fact:symptom_warmup_trend   # PARTIAL quieting (not "goes away completely") keeps it valvetrain, not manifold
+    provenance: tekmetric   # (mirrors live catalog positive_example)
+  - phrase: "sounds like a typewriter up top when it idles"
+    normalized: rapid top-end tapping at idle
+    routes_to: [engine_ticking_or_tapping]
+    ambiguity: unambiguous
+    provenance: synthetic
+  # the confusable-pair boundary (goes away COMPLETELY when warm => exhaust manifold, not valvetrain)
+  - phrase: "ticking from the engine bay on cold mornings that goes away completely after five minutes"
+    normalized: cold-start tick that fully clears when warm
+    routes_to: [exhaust_manifold_tick_or_puff]
+    ambiguity: unambiguous   # phrase LITERALLY states the full warm-up clear => unambiguous for the manifold slug
+    provenance: synthetic   # authored-derived (mirrors eval-cases exhaust_system_testing-003), not real Tekmetric text
+  # --- deep knock / rod knock ---------------------------------------------
+  - phrase: "knocking sound coming from the motor"
+    normalized: knock from the engine
+    routes_to: [deep_knocking_from_the_engine]
+    ambiguity: cross-system:wont_crank_just_clicks   # forum case paired it with slow-crank no-start
+    provenance: forum-paraphrase
+  - phrase: "deep heavy banging from down low that gets worse when i accelerate"
+    normalized: load-dependent bottom-end knock
+    routes_to: [deep_knocking_from_the_engine]
+    ambiguity: unambiguous
+    provenance: synthetic
+  - phrase: "sounds like someone is hammering inside the engine and the oil light flickered"
+    normalized: bottom-end hammer with oil-pressure light
+    routes_to: [deep_knocking_from_the_engine]
+    ambiguity: unambiguous
+    provenance: tekmetric   # (mirrors live catalog positive_example "Sounds like someone is hammering inside the engine")
+  - phrase: "engine is knocking, thought it was the transmission"
+    normalized: engine knock misattributed to transmission
+    routes_to: [deep_knocking_from_the_engine]
+    ambiguity: cross-system:low_power_or_wont_accelerate_normally
+    provenance: forum-paraphrase
+  # --- blue / gray (oil) smoke --------------------------------------------
+  - phrase: "puff of blue smoke out the tailpipe when i first start it in the morning, smells like burning oil. been adding a quart every few weeks too"
+    normalized: cold-start blue smoke with oil consumption
+    routes_to: [blue_or_gray_smoke_from_tailpipe]
+    ambiguity: unambiguous
+    provenance: tekmetric   # eval CEL-005
+  - phrase: "Blueish gray smoke puffs out the tailpipe when I take off from a light, and it smells like burning oil"
+    normalized: blue-gray smoke under acceleration, burnt-oil smell
+    routes_to: [blue_or_gray_smoke_from_tailpipe]
+    ambiguity: unambiguous
+    provenance: tekmetric   # eval nearmiss-008
+  - phrase: "burns a lot of oil and has to fill up the oil about every few months"
+    normalized: high oil consumption, no stated smoke location
+    routes_to: [smoke_from_under_the_hood, blue_or_gray_smoke_from_tailpipe]
+    ambiguity: needs-fact:sound_or_smoke_location_zone   # tka-019 corpus CONSENSUS = oil_leak_testing / smoke_from_under_the_hood (smoke was from the GRILLE, not the tailpipe); high consumption alone does NOT confirm tailpipe blue smoke
+    provenance: tekmetric   # tka-019 (excerpt); routed to match consensus, not force-fit to tailpipe
+  - phrase: "cloud of blue-gray smoke every time i floor it, car has a turbo"
+    normalized: blue smoke under boost on a turbo
+    routes_to: [blue_or_gray_smoke_from_tailpipe]
+    ambiguity: unambiguous
+    provenance: tekmetric   # (mirrors live catalog positive_example "Cloud of blue-gray smoke every time I floor it onto the highway")
+  # --- white (coolant) smoke ----------------------------------------------
+  - phrase: "thick white smoke from the exhaust even after driving twenty minutes and it smells sweet"
+    normalized: persistent sweet white smoke
+    routes_to: [white_smoke_from_tailpipe]
+    ambiguity: unambiguous
+    provenance: tekmetric   # (mirrors live catalog positive_examples for white_smoke_from_tailpipe)
+  - phrase: "blowing white smoke and ive had to add coolant twice this week, temp gauge running high"
+    normalized: white smoke with coolant loss and overheating
+    routes_to: [white_smoke_from_tailpipe]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  # --- burnt-oil smell (external, no tailpipe smoke) ----------------------
+  - phrase: "greasy burning oil smell from under the hood after long drives. no drips on the ground that ive seen"
+    normalized: burnt-oil smell under hood, no visible puddle
+    routes_to: [burnt_oil_smell]
+    ambiguity: unambiguous
+    provenance: tekmetric   # eval oil_leak-003
+  - phrase: "smells like hot oil under the hood, kind of greasy and burnt when i idle for a while"
+    normalized: hot-oil smell at idle
+    routes_to: [burnt_oil_smell]
+    ambiguity: unambiguous
+    provenance: tekmetric   # (mirrors live catalog positive_example "Smells like hot oil under the hood, kind of greasy and burnt")
+  # --- mechanical misfire / bucking (boundary) ----------------------------
+  - phrase: "misfire on start up"
+    normalized: misfire at startup
+    routes_to: [engine_misfire_or_bucking_feeling]
+    ambiguity: needs-fact:warning_light_behavior
+    provenance: tekmetric   # tkc-124
+  - phrase: "check engine light flashing and the car is bucking when i accelerate"
+    normalized: flashing-CEL active misfire under load
+    routes_to: [engine_misfire_or_bucking_feeling]
+    ambiguity: unambiguous
+    provenance: synthetic
+  - phrase: "car idles rough, shakes, seems to run fine down the road, sometimes shuts off at a stop"
+    normalized: rough idle with occasional stall
+    routes_to: [rough_idle_or_shaking_at_a_stop]
+    ambiguity: cross-system:stalling_at_idle_or_when_stopping
+    provenance: forum-paraphrase
+  # --- null-route (work-order line, NOT a customer concern) ---------------
+  - phrase: "valve cover removal inspect for engine damage"
+    normalized: shop work-order line (valve cover R&R for inspection)
+    routes_to: []
+    ambiguity: cross-system:advisor-null-route
+    provenance: tekmetric   # tkc-155
+# Synthetic share: 4 of 23 entries (~17%) are provenance:synthetic — within the ~30% cap.
+</content>

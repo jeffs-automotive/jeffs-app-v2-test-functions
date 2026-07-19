@@ -1,0 +1,521 @@
+system: adas-driver-assist
+# Binds to the live snapshot (2026-07-18, shop 7476). ADAS is a COMPLETE catalog gap: no subcategory
+# references any driver-assist feature; target services warning_light_general + electrical_testing_general
+# carry EMPTY example_keywords. Every op below is disciplined to real slugs/services; the new subcategory
+# is a proposal (Chris-gated for catalog), and the calibration service is explicitly Chris-gated.
+
+ops:
+  # ------------------------------------------------------------------ #
+  # (A) The core gap fix — one new subcategory                          #
+  # ------------------------------------------------------------------ #
+  - op: stage2.subcategory.propose
+    category: warning_light
+    name: adas_driver_assist_warning_or_malfunction
+    description: >
+      A dash MESSAGE or icon about a DRIVER-ASSIST feature — lane-departure / lane-keep assist,
+      forward-collision warning or automatic emergency braking (AEB), ADAPTIVE / radar cruise control
+      (NOT plain set-speed cruise), blind-spot warning, rear cross-traffic, or parking sensors / park
+      assist — OR the assist
+      feature behaving wrongly (falsely activating, or unavailable/disabled). Typical wording:
+      "Front Radar Obstruction", "Driving Aids Unavailable", "Lane Keep Assist Unavailable",
+      "Pre-Collision System: Service Required", "Adaptive Cruise Unavailable", "Blind Spot System
+      Error", or a small-car-with-sensor-beams icon. Common causes: (1) sensor blocked by
+      snow/ice/mud/road-spray (often self-clears after cleaning); (2) calibration / relearn lost after a
+      windshield replacement, wheel alignment, suspension work, bumper/sensor R&R, collision, OR a
+      battery replacement / dead-battery power loss (steering-angle / camera relearn);
+      (3) a genuine camera/radar/module electrical fault or stored ADAS trouble code; (4) false
+      "phantom" activation (car brakes itself / tugs the wheel / warns with nothing ahead). The base
+      vehicle almost always still steers and brakes normally; only the ASSIST is affected. Route the
+      shop to a code scan (warning_light_general); when a calibration trigger (windshield / alignment /
+      suspension / bumper / collision / battery power-loss) is present, FLAG that OEM-specified ADAS
+      calibration or relearn may be required (sublet or in-house per shop policy).
+      DISTINCT from check_engine_light (engine-outline icon / "check engine" wording — not an assist
+      feature). DISTINCT from multiple_warning_lights_at_once (that is a charging/alternator voltage
+      cascade with dim lights + hard cranking; route HERE when the multiple messages are ALL
+      driver-assist features). DISTINCT from accessory_doesnt_work (a screen/part simply dead with no
+      assist/warning framing, e.g. a black backup-camera display; AND a plain set-speed "cruise control"
+      that quit on a car with NO adaptive/radar feature and no assist message). DISTINCT from
+      airbag_srs_light (SRS/airbag icon = passive restraint, not active collision-avoidance).
+    examples:
+      - "message says front radar obstruction, driving aids unavailable"        # nhtsa
+      - "pre-collision system problem, the car braked itself for no reason"       # nhtsa
+      - "just got a new windshield and now the lane assist light is on"          # nhtsa-paraphrase
+      - "adaptive cruise control stopped working and there's a warning about it" # nhtsa
+      - "blind spot light on the mirror stays lit all the time now"             # synthetic
+      - "lane departure warning keeps flashing even when i'm in my lane"        # nhtsa
+    routes_to_service: warning_light_general
+    chris_gated: true   # new subcategory + its questions are a catalog change
+    why_existing_insufficient: >
+      Live sweep returned zero ADAS-referencing subcategories; the warning_light category's 12 slugs
+      are all classic named lights (engine/ABS/traction/airbag/battery/oil/temp/TPMS/brake). ADAS
+      complaints currently mis-route to check_engine_light, multiple_warning_lights_at_once (wrong
+      root cause), or accessory_doesnt_work. warning_light_general is the correct SERVICE but has no
+      subcategory to receive the pick.
+
+  # ------------------------------------------------------------------ #
+  # (B) Stage-1 keyword adds (services carry EMPTY example_keywords)    #
+  #     All phrases are >=2 tokens or domain-specific single tokens.    #
+  # ------------------------------------------------------------------ #
+  - op: stage1.keyword.add
+    category_key: warning_light_general
+    phrase: "lane departure warning"
+    rationale: LDW is a top ADAS message; no current keyword reaches it.
+    evidence: NHTSA driver-assistance nomenclature (Tier 1, accessed 2026-07-18)
+  - op: stage1.keyword.add
+    category_key: warning_light_general
+    phrase: "lane keep assist"
+    rationale: LKA feature name customers read off the dash.
+    evidence: NHTSA/SAE J3063 nomenclature (Tier 1, accessed 2026-07-18)
+  - op: stage1.keyword.add
+    category_key: warning_light_general
+    phrase: "collision warning light"
+    rationale: FCW; distinguishes from generic warning light.
+    evidence: NHTSA nomenclature (Tier 1, accessed 2026-07-18)
+  - op: stage1.keyword.add
+    category_key: warning_light_general
+    phrase: "pre-collision system"
+    rationale: OEM message wording (Toyota/others) for AEB/FCW faults.
+    evidence: OEM message text (Tier 1, accessed 2026-07-18)
+  - op: stage1.keyword.add
+    category_key: warning_light_general
+    phrase: "front radar obstruction"
+    rationale: verbatim OEM "sensor blocked" message (FM-1).
+    evidence: OEM owner docs / TSB MC-11004973 (Tier 1, accessed 2026-07-18)
+  - op: stage1.keyword.add
+    category_key: warning_light_general
+    phrase: "driving aids unavailable"
+    rationale: verbatim OEM obstruction/disabled message.
+    evidence: OEM message text (Tier 1, accessed 2026-07-18)
+  - op: stage1.keyword.add
+    category_key: warning_light_general
+    phrase: "blind spot warning"
+    rationale: BSW system message/indicator.
+    evidence: NHTSA nomenclature (Tier 1, accessed 2026-07-18)
+  - op: stage1.keyword.add
+    category_key: warning_light_general
+    phrase: "adaptive cruise control"
+    rationale: ACC fault/unavailable message.
+    evidence: NHTSA nomenclature (Tier 1, accessed 2026-07-18)
+  # customer-voice calibration phrasings (NOT shop jargon "ADAS calibration" — customers say these):
+  - op: stage1.keyword.add
+    category_key: warning_light_general
+    phrase: "camera calibration"
+    rationale: post-service trigger in customer voice ("do I need the camera calibration").
+    evidence: I-CAR RTS windshield/camera calibration (Tier 2, accessed 2026-07-18)
+  - op: stage1.keyword.add
+    category_key: warning_light_general
+    phrase: "calibrate the sensors"
+    rationale: post-service calibration ask, customer voice.
+    evidence: I-CAR RTS (Tier 2, accessed 2026-07-18)
+  # messy/slang feature names customers actually type (operationalizes the §4 messiness list):
+  - op: stage1.keyword.add
+    category_key: warning_light_general
+    phrase: "lane assist"
+    rationale: shortened customer form of lane-keep/lane-departure assist.
+    evidence: NHTSA nomenclature + corpus-style variant (Tier 1, accessed 2026-07-18)
+  - op: stage1.keyword.add
+    category_key: warning_light_general
+    phrase: "auto brake"
+    rationale: customer slang for AEB / automatic emergency braking.
+    evidence: NHTSA AEB nomenclature (Tier 1, accessed 2026-07-18)
+  - op: stage1.keyword.add
+    category_key: warning_light_general
+    phrase: "self braking"
+    rationale: customer slang for AEB phantom activation ("the self-braking").
+    evidence: NHTSA ODI phantom-AEB investigations PE22-003/EA22-002 (Tier 1, accessed 2026-07-18)
+  - op: stage1.keyword.add
+    category_key: warning_light_general
+    phrase: "parking sensors"
+    # MOVED from electrical_testing_general -> warning_light_general: the ADAS subcategory lives ONLY
+    # under the warning_light category, and its Stage-1 service is warning_light_general. Keying park-
+    # sensor complaints to electrical_testing_general (concern_categories=[electrical]) would make the
+    # ADAS Stage-2 pick UNREACHABLE (the internal-contradiction the verifier flagged). Golden case 10
+    # therefore lands on warning_light_general.
+    rationale: ultrasonic park-assist false-alarm / inop is an ADAS park-assist symptom; must reach the ADAS subcat.
+    evidence: OEM owner-manual park-assist guidance (Tier 1 OEM, accessed 2026-07-18)
+
+  # ------------------------------------------------------------------ #
+  # (C) Stage-1 confusable hedge — ADAS warning vs generic/other light #
+  # ------------------------------------------------------------------ #
+  - op: stage1.hedge.add
+    category_a: warning_light_general   # receives the proposed ADAS subcat
+    category_b: check_engine_light_testing
+    rule: >
+      If the customer names a DRIVER-ASSIST feature (lane/collision/AEB/blind spot/adaptive cruise/
+      parking) or a "driving aids"/"pre-collision"/"sensor blocked" message, prefer warning_light_general
+      (ADAS subcategory) even if they call it an "engine" or "system" problem. Only prefer
+      check_engine_light_testing when the icon is an engine outline or the words "check engine" appear.
+    discriminating_fact: warning_light_named
+  # NOTE: the former ADAS-multi-message hedge with category_a == category_b == warning_light_general
+  # was DROPPED — a Stage-1 hedge between a service key and itself binds nothing. The ADAS-multi-message
+  # vs multiple_warning_lights_at_once distinction is a Stage-2 discrimination and is already covered by
+  # the (D) negative example on multiple_warning_lights_at_once + the subcategory description in (A).
+  - op: stage1.hedge.add
+    category_a: warning_light_general      # ADAPTIVE / radar cruise fault or message -> ADAS subcat
+    category_b: electrical_testing_general  # plain set-speed cruise inop (no radar/adaptive) -> accessory_doesnt_work
+    rule: >
+      "Cruise control" is ambiguous. If the customer names ADAPTIVE / radar cruise, says it keeps
+      distance from cars ahead, or reports a dash MESSAGE about it -> warning_light_general (ADAS
+      subcategory). If it is plain set-speed cruise that simply stopped holding speed on a car with NO
+      adaptive/radar feature and NO assist message -> electrical_testing_general (a control/electrical
+      inop). If it is unclear which, ASK — do NOT route the bare word "cruise" to ADAS by default.
+    discriminating_fact: warning_light_named
+
+  # ------------------------------------------------------------------ #
+  # (D) Negative examples on EXISTING confusable subcats (routes_to required) #
+  # ------------------------------------------------------------------ #
+  - op: stage2.example.negative.add
+    subcat_slug: check_engine_light
+    phrase: "dash says pre-collision system problem / driving aids unavailable"
+    routes_to: adas_driver_assist_warning_or_malfunction
+  - op: stage2.example.negative.add
+    subcat_slug: multiple_warning_lights_at_once
+    phrase: "adaptive cruise, collision, and lane departure all say 'system problem' at once, car runs and cranks fine"
+    routes_to: adas_driver_assist_warning_or_malfunction
+  - op: stage2.example.negative.add
+    subcat_slug: accessory_doesnt_work
+    phrase: "blind spot warning stays lit and the collision assist is disabled"
+    routes_to: adas_driver_assist_warning_or_malfunction
+  - op: stage2.example.negative.add
+    subcat_slug: airbag_srs_light
+    phrase: "pre-collision / automatic emergency braking warning is on (not the airbag icon)"
+    routes_to: adas_driver_assist_warning_or_malfunction
+  - op: stage2.example.negative.add
+    subcat_slug: traction_control_stability_light
+    phrase: "little car with sensor beams out front, message about collision assist"
+    routes_to: adas_driver_assist_warning_or_malfunction
+  # phantom-STEER vs mechanical pull: keep self-initiated lane-keep tugging OUT of the steering pull subcat
+  - op: stage2.example.negative.add
+    subcat_slug: pulling_drifting_or_wandering_on_the_road
+    phrase: "lane assist keeps tugging the wheel by itself with a lane departure message (I'm not pulling, it steers on its own)"
+    routes_to: adas_driver_assist_warning_or_malfunction
+  # boundary the OTHER way #1: keep a genuinely-dead camera on accessory_doesnt_work
+  - op: stage2.example.positive.add
+    subcat_slug: accessory_doesnt_work
+    phrase: "backup camera screen is just black, no warning messages"
+    provenance: synthetic
+  # boundary the OTHER way #2: keep PLAIN set-speed cruise (no radar/adaptive, no message) on accessory_doesnt_work
+  - op: stage2.example.negative.add
+    subcat_slug: adas_driver_assist_warning_or_malfunction
+    phrase: "my cruise control quit holding speed (older car, no adaptive/radar cruise, no warning message)"
+    routes_to: accessory_doesnt_work
+  - op: stage2.example.positive.add
+    subcat_slug: accessory_doesnt_work
+    phrase: "regular cruise control stopped working, no warning lights, car has no adaptive cruise"
+    provenance: synthetic
+
+  # ------------------------------------------------------------------ #
+  # (E) Synonyms for the proposed subcategory (>=2 tokens / domain)     #
+  # ------------------------------------------------------------------ #
+  - op: stage2.synonym.add
+    subcat_slug: adas_driver_assist_warning_or_malfunction
+    term: "lane departure warning"
+  - op: stage2.synonym.add
+    subcat_slug: adas_driver_assist_warning_or_malfunction
+    term: "lane keep assist"
+  - op: stage2.synonym.add
+    subcat_slug: adas_driver_assist_warning_or_malfunction
+    term: "forward collision warning"
+  - op: stage2.synonym.add
+    subcat_slug: adas_driver_assist_warning_or_malfunction
+    term: "automatic emergency braking"
+  - op: stage2.synonym.add
+    subcat_slug: adas_driver_assist_warning_or_malfunction
+    term: "pre-collision system"
+  - op: stage2.synonym.add
+    subcat_slug: adas_driver_assist_warning_or_malfunction
+    term: "adaptive cruise control"
+  - op: stage2.synonym.add
+    subcat_slug: adas_driver_assist_warning_or_malfunction
+    term: "blind spot warning"
+  - op: stage2.synonym.add
+    subcat_slug: adas_driver_assist_warning_or_malfunction
+    term: "front radar obstruction"
+  - op: stage2.synonym.add
+    subcat_slug: adas_driver_assist_warning_or_malfunction
+    term: "driving aids unavailable"
+  - op: stage2.synonym.add
+    subcat_slug: adas_driver_assist_warning_or_malfunction
+    term: "sensor blocked"
+  # customer-voice calibration phrasings (replaces shop jargon "ADAS calibration", which was REMOVED):
+  - op: stage2.synonym.add
+    subcat_slug: adas_driver_assist_warning_or_malfunction
+    term: "camera calibration"
+  - op: stage2.synonym.add
+    subcat_slug: adas_driver_assist_warning_or_malfunction
+    term: "get the camera calibrated"
+  - op: stage2.synonym.add
+    subcat_slug: adas_driver_assist_warning_or_malfunction
+    term: "calibrate the sensors"
+  # messy / slang feature names customers actually type (operationalizes the §4 messiness list):
+  - op: stage2.synonym.add
+    subcat_slug: adas_driver_assist_warning_or_malfunction
+    term: "lane assist"
+  - op: stage2.synonym.add
+    subcat_slug: adas_driver_assist_warning_or_malfunction
+    term: "lane keep"
+  - op: stage2.synonym.add
+    subcat_slug: adas_driver_assist_warning_or_malfunction
+    term: "auto brake"
+  - op: stage2.synonym.add
+    subcat_slug: adas_driver_assist_warning_or_malfunction
+    term: "self braking"
+  - op: stage2.synonym.add
+    subcat_slug: adas_driver_assist_warning_or_malfunction
+    term: "back up camera warning"   # 4 tokens; the WARNING form, distinct from a dead-screen accessory
+  - op: stage2.synonym.add
+    subcat_slug: adas_driver_assist_warning_or_malfunction
+    term: "blindspot warning"
+
+  # ------------------------------------------------------------------ #
+  # (F) Fact-slot ops                                                   #
+  # ------------------------------------------------------------------ #
+  - op: stage3.slot.value.add
+    slot: recent_action
+    value: windshield_or_glass_replacement
+    literal_cues:
+      - "after my windshield was replaced"
+      - "just got a new windshield"
+      - "the glass shop put in new glass"
+      - "new windshield and now the light is on"
+    # Justification: windshield R&R is the single most common ADAS calibration trigger; current values
+    # (general_service, accident_or_impact) mis-frame it. Literal-only; no inference.
+    # NOTE: the OTHER common ADAS trigger — a battery replacement / dead-battery power loss forcing a
+    # steering-angle/camera relearn — needs NO new value: it reuses the EXISTING recent_action value
+    # `battery_or_alternator_work` (literal cues "new battery", "after the battery died"). Wired into
+    # FM-2 and question NEW:adas-q3 below.
+
+  # NOTE (deferred, intentionally NOT emitted as stage3.slot.propose):
+  #   candidate slot `adas_behavior` {false_activation, disabled_or_unavailable, warning_only, intermittent}
+  #   would separate FM-4 (phantom braking) from FM-1/FM-3. Only <=2 questions in the single proposed
+  #   subcategory need it -> below the >=3-question bar. Logged in dossier section 9; revisit if ADAS is
+  #   later split into multiple subcategories.
+
+  # ------------------------------------------------------------------ #
+  # (G) required_facts for the proposed subcategory's questions         #
+  #     (forward-looking; question_ids assigned at catalog-insert time) #
+  # ------------------------------------------------------------------ #
+  # AGGREGATOR/WAVE-C NOTE: question_id values NEW:adas-q1..q5 are PLACEHOLDERS — these questions do not
+  # exist until the subcategory in op (A) is inserted and its questions are created. The Wave-C tooling
+  # MUST special-case the `NEW:` prefix: resolve each placeholder to the real question_id minted at
+  # subcategory-insert time (by display_order q1..q5), then apply required_facts. Do NOT attempt to look
+  # up a `NEW:adas-qN` id in the live catalog — it will 404. This whole op-group is gated on op (A)
+  # (chris_gated) landing first.
+  - op: question.required_facts.set
+    question_id: NEW:adas-q1   # "Does a message name a driver-assist feature? What does it say?"
+    facts: [warning_light_named]
+    skip_class: SAFE
+    derivation_note: >
+      If the customer already quoted the feature/message (e.g. "lane keep assist unavailable"),
+      warning_light_named is filled -> skip.
+  - op: question.required_facts.set
+    question_id: NEW:adas-q2   # "Is it steady on, flashing, or does it come and go / clear after cleaning?"
+    facts: [warning_light_behavior]
+    skip_class: SAFE
+    derivation_note: obstruction (came_on_then_off) vs defect/calibration (steady_on).
+  - op: question.required_facts.set
+    question_id: NEW:adas-q3   # "Did it start right after a windshield, alignment, suspension, bumper, collision, or new battery?"
+    facts: [recent_action]
+    skip_class: PARTIAL
+    derivation_note: >
+      calibration/relearn trigger (FM-2/FM-6) — includes the battery_or_alternator_work value (new
+      battery / dead-battery relearn). PARTIAL because "after service" narrows but does not fully
+      resolve obstruction vs calibration; weather may still need asking.
+  - op: question.required_facts.set
+    question_id: NEW:adas-q4   # "Did it appear after snow, ice, mud, or a car wash — and clear when cleaned?"
+    facts: [weather_condition]
+    skip_class: SAFE
+    derivation_note: obstruction cue (FM-1).
+  - op: question.required_facts.set
+    question_id: NEW:adas-q5   # "Can you still steer and brake the car normally?"
+    facts: [drivable_state]
+    skip_class: SAFE
+    derivation_note: separates a paused assist (drivable_but_concerned) from a genuine safety loss.
+
+  # ------------------------------------------------------------------ #
+  # (H) Chris-gated catalog service                                     #
+  # ------------------------------------------------------------------ #
+  - op: catalog.service.propose
+    name: ADAS calibration diagnostic
+    demand_evidence: >
+      FORWARD-LOOKING, low current volume: corpus shows zero ADAS traffic today, but Jeff's inbound mix
+      is modernizing on a GROWING-FLEET basis (NOT a current mandate): 20 automakers voluntarily
+      committed in 2016 to make AEB standard on virtually all new US light vehicles by ~Sept 2022
+      (voluntary commitment, not a rule), and NHTSA's binding AEB mandate (FMVSS 127, finalized April
+      2024) does not take effect until ~Sept 2029 — so the ADAS-equipped share of the on-road fleet is
+      climbing fast either way. warning_light_general is a generic code-scan and does not scope ADAS
+      calibration (targets, static vs dynamic road drive, per-feature aim) or price it. A dedicated
+      service captures the growing post-windshield/post-alignment/post-collision calibration demand.
+      [NHTSA FMVSS 127 final rule (April 2024) + 2016 20-automaker voluntary AEB commitment, Tier 1;
+      AAA Cost of ADAS Repairs 2023, Tier 2; I-CAR RTS, Tier 2; GM windshield position statement,
+      Tier 1 OEM — accessed 2026-07-18]
+    fee_rationale: >
+      Anchor the diagnostic/verification step to the existing $179.95 diagnostic tier (matches
+      warning_light_general); calibration labor itself (static/dynamic) quoted or sublet separately per
+      OEM procedure. Chris sets final fee + in-house vs sublet policy.
+
+golden_cases:
+  # 1 — fact-rich calibration-after-windshield (binds recent_action value add)
+  - text: "just got a new windshield put in and now my lane keep assist warning light is on steady"
+    tags: [fact_rich, calibration]
+    expected:
+      stage1_category_key: warning_light_general
+      stage1_acceptable: [warning_light_general]
+      stage2_subcategory_slug: adas_driver_assist_warning_or_malfunction
+      stage3_facts: { warning_light_named: "lane keep assist", warning_light_behavior: steady_on, recent_action: windshield_or_glass_replacement }
+      route: testing_service
+
+  # 2 — obstruction after snow (self-clearing; weather cue)
+  - text: "after the snowstorm a message popped up saying front radar obstruction, driving aids unavailable"
+    tags: [fact_rich, obstruction]
+    expected:
+      stage1_category_key: warning_light_general
+      stage1_acceptable: [warning_light_general]
+      stage2_subcategory_slug: adas_driver_assist_warning_or_malfunction
+      stage3_facts: { warning_light_named: "front radar obstruction", weather_condition: after_snow_or_ice }
+      route: testing_service
+
+  # 3 — phantom braking WITH a named system (cross-system tempt to brakes)
+  - text: "pre-collision system problem message came on and the car slammed the brakes for no reason on the highway"
+    tags: [fact_rich, phantom_activation]
+    expected:
+      stage1_category_key: warning_light_general
+      stage1_acceptable: [warning_light_general]
+      stage2_subcategory_slug: adas_driver_assist_warning_or_malfunction
+      stage3_facts: { warning_light_named: "pre-collision", speed_band: highway }
+      route: testing_service
+    note: >
+      pedal_feel MUST stay null — the customer described the car braking ITSELF, not a bad pedal on
+      their own application. drivable_state MUST also stay null — unlike case 4 ("kinda scary"), this
+      text states NO drivability/concern; "for no reason" is not a drivability statement. Only
+      warning_light_named and speed_band ("on the highway") are literally supported.
+
+  # 4 — INFERENCE TRAP: phantom braking, NOTHING named
+  - text: "my car brakes by itself sometimes, its kinda scary"
+    tags: [inference_trap]
+    expected:
+      stage1_category_key: warning_light_general
+      stage1_acceptable: [warning_light_general, safety_concern_dont_feel_safe_driving_it]
+      stage2_subcategory_slug: adas_driver_assist_warning_or_malfunction
+      stage3_facts: { drivable_state: drivable_but_concerned }
+      route: testing_service
+    note: >
+      TRAP — do NOT set warning_light_named (no light/message named), do NOT set pedal_feel (no pedal
+      complaint), do NOT assert "AEB" as a stated fact. Only drivable_state is literally supported
+      ("scary"). Everything else stays null; the wizard must ASK which feature/message.
+
+  # 5 — multi-assist message set vs multiple_warning_lights_at_once
+  - text: "adaptive cruise problem and collision mitigation problem and lane departure problem all showed up at once, but the car runs and starts fine"
+    tags: [fact_rich, confusable]
+    expected:
+      stage1_category_key: warning_light_general
+      stage1_acceptable: [warning_light_general]
+      stage2_subcategory_slug: adas_driver_assist_warning_or_malfunction
+      stage3_facts: { warning_light_named: "adaptive cruise, collision mitigation, lane departure", warning_light_behavior: multiple_lights_at_once }
+      route: testing_service
+    note: >
+      NOT multiple_warning_lights_at_once — these are ALL driver-assist features and the car cranks/
+      runs fine (rules out the charging/alternator cascade that owns that subcategory).
+
+  # 6 — blind spot indicator stuck (defect)
+  - text: "the blind spot light on my side mirror stays lit all the time now, never used to"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: warning_light_general
+      stage1_acceptable: [warning_light_general]
+      stage2_subcategory_slug: adas_driver_assist_warning_or_malfunction
+      stage3_facts: { warning_light_named: "blind spot", warning_light_behavior: steady_on }
+      route: testing_service
+    note: >
+      SCOPE-EXTENSION (disclosed): the extractor scopes warning_light_named to "dashboard warning
+      indicators only," but the BSW telltale is MIRROR-mounted. We still fill warning_light_named="blind
+      spot" because it is the customer-named warning indicator regardless of physical location. See
+      dossier §9 "scope-extension note" — flagged for a possible slot-description broadening.
+
+  # 7 — BOUNDARY: dead camera routes AWAY to accessory_doesnt_work
+  - text: "my backup camera screen is just black now, no warning lights or messages"
+    tags: [boundary, confusable]
+    expected:
+      stage1_category_key: electrical_testing_general
+      stage1_acceptable: [electrical_testing_general]
+      stage2_subcategory_slug: accessory_doesnt_work
+      stage3_facts: { accessory_affected: "backup camera" }
+      route: testing_service
+    note: >
+      A screen simply dead with no assist/warning framing is a single-circuit electrical dead-item,
+      NOT an ADAS warning. Demonstrates we do not over-capture to the ADAS subcategory.
+
+  # 8 — NULL ROUTE: work-order line, not a customer concern
+  - text: "PERFORM FORWARD CAMERA CALIBRATION AFTER ALIGNMENT"
+    tags: [null_route, work_order]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      route: advisor
+    note: >
+      All-caps advisor/technician work-order note (Tekmetric concern channel is ~24% work-order noise).
+      Not a customer symptom -> empty stage1, advisor handoff. No facts extracted.
+
+  # 9 — request phrasing (service-need inquiry; slot-expressibility gap)
+  - text: "i had my windshield replaced somewhere else, do i still need the camera calibrated?"
+    tags: [request, calibration]
+    expected:
+      stage1_category_key: warning_light_general
+      stage1_acceptable: [warning_light_general, after_recent_service_or_repair_work]
+      stage2_subcategory_slug: adas_driver_assist_warning_or_malfunction
+      stage3_facts: { recent_action: windshield_or_glass_replacement }
+      route: testing_service
+    note: >
+      customer_request_type MUST stay null. "do I still need it calibrated?" is a service-NEED INQUIRY:
+      no known problem was identified (so NOT fix_a_known_problem, whose enum requires the customer or a
+      prior shop to have identified an issue), no specific part named, and it is not a "diagnose this
+      symptom" ask either. The 7-value enum cannot express "should I do this maintenance step?" — leave
+      null per the slot's symptom-only→null guidance. Logged as an ontology gap in dossier §9. Only
+      recent_action is literally supported.
+
+  # 10 — parking sensor false alarm (ultrasonic)
+  - text: "the parking sensors beep like crazy even in an empty parking lot"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: warning_light_general
+      stage1_acceptable: [warning_light_general]
+      stage2_subcategory_slug: adas_driver_assist_warning_or_malfunction
+      stage3_facts: { speed_band: low_speed }
+      route: testing_service
+    note: >
+      onset_timing MUST stay null — nothing states intermittency ("beep like crazy... in a lot" implies
+      it happens every time if anything, NOT random). speed_band=low_speed IS literally supported ("in a
+      parking lot" per the slot description). stage1_acceptable is warning_light_general ONLY: the ADAS
+      subcategory lives solely under the warning_light category, so electrical_testing_general
+      (concern_categories=[electrical]) cannot reach it — matches the op (B) keyword move.
+
+  # 11 — BOUNDARY: plain set-speed cruise (NO adaptive/radar) routes AWAY to accessory_doesnt_work
+  - text: "my cruise control quit working, no warning lights, it's an older car with regular cruise not the adaptive kind"
+    tags: [boundary, confusable]
+    expected:
+      stage1_category_key: electrical_testing_general
+      stage1_acceptable: [electrical_testing_general]
+      stage2_subcategory_slug: accessory_doesnt_work
+      stage3_facts: { accessory_affected: "cruise control" }
+      route: testing_service
+    note: >
+      The bare word "cruise" must NOT pull to ADAS. The customer explicitly says regular (not adaptive)
+      cruise and NO warning message — a plain control/electrical inop. Only ADAPTIVE/radar cruise (or a
+      message naming it) is ADAS. Demonstrates the cruise hedge (op C) + the (A) subcat description +
+      the (D) plain-cruise negative example do not over-capture.
+
+  # 12 — INFERENCE TRAP / confusable: phantom lane-keep STEER vs a mechanical pull
+  - text: "the lane assist keeps tugging my steering wheel by itself on the highway with a lane departure message, im not the one pulling it"
+    tags: [inference_trap, confusable]
+    expected:
+      stage1_category_key: warning_light_general
+      stage1_acceptable: [warning_light_general]
+      stage2_subcategory_slug: adas_driver_assist_warning_or_malfunction
+      stage3_facts: { warning_light_named: "lane departure", speed_band: highway }
+      route: testing_service
+    note: >
+      TRAP — this is a SELF-INITIATED assist intervention tied to a named lane-departure message, NOT a
+      mechanical pull. Do NOT set pull_direction (the customer says the CAR steers itself, not that it
+      drifts one way) and do NOT set steering_feel. It must NOT route to
+      pulling_drifting_or_wandering_on_the_road (see the op D negative example there). Only
+      warning_light_named and speed_band are literally supported.

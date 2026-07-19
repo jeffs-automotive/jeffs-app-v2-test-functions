@@ -1,0 +1,413 @@
+system: engine-controls-driveability
+# Typed change-ops binding to the live taxonomy snapshot (2026-07-18, shop 7476).
+# Every negative example names routes_to; every synonym is >=2 tokens or a domain single-token.
+
+ops:
+  # =========================================================================
+  # L1 — Stage-1 keyword adds (both target services have EMPTY example_keywords[])
+  # =========================================================================
+  - op: stage1.keyword.add
+    category_key: check_engine_light_testing
+    phrase: "check engine light on"
+    rationale: "Service has no example_keywords; this is the single most common driveability opener in the Tekmetric corpus."
+    evidence: tekmetric
+  - op: stage1.keyword.add
+    category_key: check_engine_light_testing
+    phrase: "engine light flashing"
+    rationale: "Flashing MIL is the severe-misfire signal; must land on CEL testing, not SES."
+    evidence: tekmetric
+  - op: stage1.keyword.add
+    category_key: check_engine_light_testing
+    phrase: "running rough"
+    rationale: "Frequent CEL companion ('CHECK ENGINE LIGHT ON. RUNNING ROUGH'); ties drive-feel to the scan service."
+    evidence: tekmetric
+  - op: stage1.keyword.add
+    category_key: check_engine_light_testing
+    phrase: "limp mode"
+    rationale: "Low-power/limp complaints belong to CEL/performance diagnosis; domain token."
+    evidence: tekmetric
+  - op: stage1.keyword.add
+    category_key: check_engine_light_testing
+    phrase: "engine stalling"
+    rationale: "Stall-at-idle and stall-under-load route through the CEL/performance scan."
+    evidence: tekmetric
+  - op: stage1.keyword.add
+    category_key: no_start_testing
+    phrase: "cranks but won't start"
+    rationale: "Service has no example_keywords; this is the defining no-start phrasing (cranks, no fire)."
+    evidence: tekmetric
+  - op: stage1.keyword.add
+    category_key: no_start_testing
+    phrase: "won't fire up"
+    rationale: "Distinguishes cranks-no-fire (no_start) from just-clicks (electrical)."
+    evidence: forum-paraphrase
+  - op: stage1.keyword.add
+    category_key: no_start_testing
+    phrase: "hard to start when hot"
+    rationale: "Heat-soak hard-start (CKP/vapor-lock) belongs to no-start diagnosis."
+    evidence: forum-paraphrase
+
+  # =========================================================================
+  # Stage-1 confusable-pair hedges
+  # =========================================================================
+  - op: stage1.hedge.add
+    category_a: no_start_testing
+    category_b: charging_starting_testing
+    rule: "If the engine CRANKS/turns over but won't fire (or is slow to fire when hot/cold), prefer no_start_testing. If it WON'T crank / just clicks / makes no sound / had to be jump-started / battery keeps dying, prefer charging_starting_testing."
+    discriminating_fact: engine_running
+  - op: stage1.hedge.add
+    category_a: check_engine_light_testing
+    category_b: charging_starting_testing
+    rule: "An engine that dies WHILE DRIVING with a battery/charging warning light and dimming/flickering lights is a charging-system (alternator) failure -> charging_starting_testing, NOT a fuel/sensor stall."
+    discriminating_fact: warning_light_named
+  - op: stage1.hedge.add
+    category_a: check_engine_light_testing
+    category_b: transmission_testing
+    rule: "'Engine revs up but the car doesn't pick up speed / RPM flares on shifts' is transmission slip -> transmission_testing. Route engine-controls low-power only when the engine will NOT rev / bogs down (no rev-speed split)."
+    discriminating_fact: transmission_behavior   # + engine_running
+    depends_on_proposed_slot: transmission_behavior
+    reconciliation_note: "Uses transmission_behavior=slipping (rev/speed split -> trans) vs engine_running=low_power_or_limp (engine bogs -> here). transmission_behavior is a PROPOSED slot OWNED by the automatic-transmission dossier (its stage3.slot.propose); this dossier's earlier competing power_delivery_feel proposal is WITHDRAWN. Do not bind this hedge until transmission_behavior lands. engine_running=low_power_or_limp is proposed in this file (stage3.slot.value.add) and is partially usable now."
+  - op: stage1.hedge.add
+    category_a: check_engine_light_testing
+    category_b: abs_traction_stability_testing
+    rule: "A traction-control / stability light that flickers BRIEFLY together with a misfire/bucking/rough-run (engine symptom present) is the traction system reading crankshaft-speed irregularity from the misfire -- route the engine path (check_engine_light_testing / engine_misfire_or_bucking_feeling), NOT an ABS/traction fault. Route abs_traction_stability_testing only when the traction/stability light is the PRIMARY, standalone complaint with no engine drive-feel."
+    discriminating_fact: engine_running
+  - op: stage1.hedge.add
+    category_a: check_engine_light_testing
+    category_b: coolant_leak_testing
+    rule: "A rough-run/stall accompanied by a high temperature gauge or temp/overheat message is overheating protection -> coolant_leak_testing."
+    discriminating_fact: warning_light_named
+  - op: stage1.hedge.add
+    category_a: check_engine_light_testing
+    category_b: warning_light_general
+    rule: "An UNAMBIGUOUS maintenance reminder -- the wrench icon, 'MAINT REQD', a Honda Maintenance Minder A/B code, or oil-life % -- with the car driving fine is a service reminder (service_engine_soon_or_maintenance_required_light subcategory), not a stored-fault MIL. BUT the bare phrase 'SERVICE ENGINE SOON' is make-ambiguous: on GM, Nissan/Infiniti, and older Ford it IS the MIL legend (a stored fault), so 'service engine soon + drives fine' on an unknown/GM/Nissan vehicle should prefer check_engine_light (scan), NOT the reminder subcategory. Any drive symptom (rough-run/misfire/stall/smell) -> check_engine_light regardless."
+    discriminating_fact: warning_light_named
+
+  # =========================================================================
+  # L2 — Stage-2 description revisions (sharpen the highest-confusion boundaries)
+  # =========================================================================
+  - op: stage2.description.revise
+    subcat_slug: low_power_or_wont_accelerate_normally
+    text: "Append a sharper transmission-slip boundary: 'If the ENGINE RPM rises higher than normal while the car does NOT gain speed (revs flare, car crawls), that is transmission slipping -> route transmission, not engine power loss. This subcategory is for the engine BOGGING / not being able to rev / a hard speed or RPM ceiling (limp mode).'"
+    why: "Corpus repeatedly mislabels transmission slip as 'no power'/'clutch failed'; the current text mentions trans slip only in passing. This makes the discriminator explicit."
+  - op: stage2.description.revise
+    subcat_slug: service_engine_soon_or_maintenance_required_light
+    text: "Keep existing text; add front matter: 'ROUTE HERE ONLY IF the car drives fine AND the telltale is an UNAMBIGUOUS maintenance reminder -- the wrench icon, MAINT REQD, a Honda Maintenance Minder A/B code, or oil-life %. IMPORTANT: the bare words SERVICE ENGINE SOON are NOT sufficient on their own -- on GM, Nissan/Infiniti, and older Ford SERVICE ENGINE SOON is the CHECK-ENGINE (MIL) legend, i.e. a stored fault. When the customer says only service engine soon (no make, or a GM/Nissan vehicle), prefer check_engine_light (scan). Engine-outline icon OR any rough-run/misfire/stall/smell -> check_engine_light.'"
+    why: "The prior revision wrongly treated all SERVICE ENGINE SOON wording as a reminder; on a large slice of the US fleet those words ARE the MIL. This encodes the OEM-legend ambiguity so bare-SES + drives-fine does not silently skip a scan (verifier fact-error, 2026-07-18)."
+
+  # =========================================================================
+  # L3 — Stage-2 positive examples (real customer voice)
+  # =========================================================================
+  - op: stage2.example.positive.add
+    subcat_slug: stalling_while_driving_under_load
+    phrase: "stalled out while turning into the parking lot and would not restart"
+    provenance: tekmetric
+  - op: stage2.example.positive.add
+    subcat_slug: low_power_or_wont_accelerate_normally
+    phrase: "went into limp mode and it doesn't go over a certain speed"
+    provenance: tekmetric
+  - op: stage2.example.positive.add
+    subcat_slug: low_power_or_wont_accelerate_normally
+    phrase: "not accelerating well and feels like it's getting stuck"
+    provenance: tekmetric
+  - op: stage2.example.positive.add
+    subcat_slug: surging_or_rpms_going_up_and_down
+    phrase: "when it's in park something seems to rev up on its own"
+    provenance: tekmetric
+  - op: stage2.example.positive.add
+    subcat_slug: hesitation_or_lag_when_accelerating
+    phrase: "hesitates when accelerating, but not all the time, especially uphill"
+    provenance: forum-paraphrase
+  - op: stage2.example.positive.add
+    subcat_slug: engine_misfire_or_bucking_feeling
+    phrase: "vehicle feels like it's skipping on acceleration — revs up then goes"
+    provenance: tekmetric
+  - op: stage2.example.positive.add
+    subcat_slug: hard_to_start_when_hot
+    phrase: "after getting gas it has to crank multiple times before it'll start"
+    provenance: tekmetric
+  - op: stage2.example.positive.add
+    subcat_slug: check_engine_light
+    phrase: "check engine light keeps turning on and going off — it's not blinking"
+    provenance: tekmetric
+
+  # =========================================================================
+  # L3 — Stage-2 negative examples (each names routes_to)
+  # =========================================================================
+  - op: stage2.example.negative.add
+    subcat_slug: stalling_while_driving_under_load
+    phrase: "car dies while driving and the battery/charging light comes on and the lights dim"
+    routes_to: car_died_while_driving_electrical
+  - op: stage2.example.negative.add
+    subcat_slug: low_power_or_wont_accelerate_normally
+    phrase: "car hesitates for a second when I press the gas, then catches up and goes normally"
+    routes_to: hesitation_or_lag_when_accelerating
+    # NOTE: the transmission-slip case ('revs high but no speed') has NO real subcategory to route to
+    # (transmission is a bare service with no perf subcategory) — handled via the stage1.hedge + the
+    # low_power description revision instead of a negative_example. See catalog_gaps.
+  - op: stage2.example.negative.add
+    subcat_slug: surging_or_rpms_going_up_and_down
+    phrase: "engine bucks and jerks like it's misfiring when I press the gas"
+    routes_to: engine_misfire_or_bucking_feeling
+  - op: stage2.example.negative.add
+    subcat_slug: rough_idle_or_shaking_at_a_stop
+    phrase: "the whole car shakes at idle but the engine itself sounds normal"
+    routes_to: shaking_at_idle_while_stopped
+  - op: stage2.example.negative.add
+    subcat_slug: stalling_at_idle_or_when_stopping
+    phrase: "engine runs rough at idle but never actually shuts off"
+    routes_to: rough_idle_or_shaking_at_a_stop
+  - op: stage2.example.negative.add
+    subcat_slug: service_engine_soon_or_maintenance_required_light
+    phrase: "yellow engine-shaped light and the car is running rough / misfiring"
+    routes_to: check_engine_light
+  - op: stage2.example.negative.add
+    subcat_slug: hard_to_start_when_cold
+    phrase: "won't crank at all, just a click when I turn the key"
+    routes_to: wont_crank_just_clicks
+  - op: stage2.example.negative.add
+    subcat_slug: check_engine_light
+    phrase: "dash says MAINT REQD and I'm just due for an oil change, drives fine, no other light"
+    routes_to: service_engine_soon_or_maintenance_required_light
+    # Uses the UNAMBIGUOUS reminder wording (MAINT REQD), not bare 'SERVICE ENGINE SOON' -- the latter
+    # is the MIL legend on GM/Nissan/older Ford and must NOT be a negative example against check_engine_light.
+  - op: stage2.example.negative.add
+    subcat_slug: traction_control_stability_light
+    phrase: "traction control light flickered for a second while the engine was bucking and the check engine light was flashing"
+    routes_to: engine_misfire_or_bucking_feeling
+    # A traction/stability flicker DURING a misfire is the traction system reading crank-speed
+    # irregularity, not a standalone traction fault (dossier §6). Binds that §6 observation to an op.
+
+  # =========================================================================
+  # L4 — Stage-2 synonym adds (>=2 tokens or domain single-token; only genuinely-missing)
+  # =========================================================================
+  - op: stage2.synonym.add
+    subcat_slug: surging_or_rpms_going_up_and_down
+    term: "idle searching"
+  - op: stage2.synonym.add
+    subcat_slug: engine_misfire_or_bucking_feeling
+    term: "skipping on acceleration"
+  - op: stage2.synonym.add
+    subcat_slug: stalling_while_driving_under_load
+    term: "stalled and would not restart"
+    # Lengthened from the over-broad "would not restart" (which also matches no-start / dead-battery /
+    # electrical-death traffic) so the synonym carries the STALL context that anchors this subcategory.
+
+  # =========================================================================
+  # L5 — Stage-3 slot ontology
+  # =========================================================================
+  - op: stage3.slot.value.add
+    slot: engine_running
+    value: low_power_or_limp
+    literal_cues:
+      - "no power"
+      - "limp mode"
+      - "reduced engine power"
+      - "won't go over 40"
+      - "won't rev past 3000"
+      - "the rpms only go to 3"
+      - "feels weak and dragging"
+    # NOTE: literal only. "feels like the e-brake is on" is a SIMILE -> do NOT set parking_brake_state.
+  # WITHDRAWN (2026-07-18 revision): stage3.slot.propose power_delivery_feel.
+  # It collided with the automatic-transmission dossier's stage3.slot.propose `transmission_behavior`
+  # (which claims the SAME questions 1183/1186 plus 995/168 and value `slipping`). Two competing slots
+  # for the same questions cannot both be applied. RECONCILIATION:
+  #   - rev/speed split (engine revs climb, no road speed)  -> transmission_behavior=slipping
+  #       (slot OWNED by systems/automatic-transmission.proposals.yaml; do NOT re-propose it here).
+  #   - engine bogs / can't rev / hard ceiling, no split    -> engine_running=low_power_or_limp
+  #       (the stage3.slot.value.add above -- this dossier's real contribution).
+  # This dossier therefore proposes NO new slot for the discriminator; it binds q1183/q1186 and the
+  # trans-slip hedge to transmission_behavior (dependency-annotated) so the two dossiers agree.
+  - op: stage3.slot.note
+    slot: transmission_behavior
+    owned_by: automatic-transmission
+    note: "Cross-dossier discriminator for low_power_or_wont_accelerate_normally (engine low-power vs transmission slip). This dossier reconciles to it rather than proposing a competing slot; see the WITHDRAWN power_delivery_feel note above and dossier §9."
+
+  # =========================================================================
+  # question.required_facts.set — close over-asking gaps that ARE slot-expressible
+  # =========================================================================
+  - op: question.required_facts.set
+    question_id: 1182            # low_power: "Is the loss of power constant, or does it come and go?"
+    facts: [onset_timing]
+    skip_class: PARTIAL
+    derivation_note: "PARTIAL, not SAFE: binding/required-facts-map.q2.md:93 holds q1182 as PARTIAL pending a candidate `symptom_constancy` slot -- for a low-power complaint onset_timing is likely overloaded to when_accelerating, which does NOT answer constant-vs-intermittent. Skip only if onset_timing was set to an explicit always|intermittent value. Reconciled to the sibling artifact (was incorrectly SAFE in the prior draft)."
+  # q2222 correction (2026-07-18): the prior op mapped q2222 -> drivable_state SAFE, describing it as
+  # "Does the car drive completely normal otherwise." That is the WRONG question. Per the DB snapshot in
+  # binding/required-facts-map.q3.md:114, q2222 is "came on at round-number mileage?" (SES subcat),
+  # skip-class NEVER, NO slot -- a maintenance-reminder cue no fact models. Applying the old op would
+  # silently skip the mileage question whenever drivable_state was extracted. Corrected to
+  # intentionally_empty to match the map.
+  - op: question.intentionally_empty
+    question_id: 2222
+    reason: "'Came on at a round-number mileage?' (service_engine_soon subcat) is a maintenance-reminder cue; no fact slot models service-mileage timing. Matches required-facts-map.q3.md (NEVER / no-slot)."
+  - op: question.required_facts.set
+    question_id: 460
+    facts: [engine_running]
+    skip_class: PARTIAL
+    derivation_note: "Cross-check for bucking; if engine_running=misfiring already extracted, the hesitation-vs-misfire check is answered."
+  - op: question.required_facts.set
+    question_id: 513
+    facts: [onset_timing]
+    skip_class: PARTIAL
+    derivation_note: "'At certain speeds / hard acceleration / random' partly answered by onset_timing (when_accelerating|intermittent); speed_band covers the rest but question is multi-select."
+  - op: question.required_facts.set
+    question_id: 1183           # low_power: "revs high but no speed?"
+    facts: [transmission_behavior]
+    skip_class: PARTIAL
+    depends_on_proposed_slot: transmission_behavior
+    derivation_note: "Depends on the PROPOSED transmission_behavior slot (owned by automatic-transmission dossier). 'revs high but doesn't pick up speed' == transmission_behavior=slipping. PARTIAL because a customer can describe low power without stating the rev/speed split. MATCHES automatic-transmission.proposals.yaml q1183 op exactly (same slot, same skip_class) -- reconciled, not competing (was power_delivery_feel in the prior draft)."
+  - op: question.required_facts.set
+    question_id: 1186           # low_power: "feels stuck in a lower gear?"
+    facts: [transmission_behavior]
+    skip_class: PARTIAL
+    depends_on_proposed_slot: transmission_behavior
+    derivation_note: "Depends on transmission_behavior; 'stuck in lower gear / held back' -> stuck_in_gear/slipping cues. PARTIAL because 'held back' can also be engine-power phrasing. MATCHES automatic-transmission.proposals.yaml q1186 op exactly -- reconciled (was power_delivery_feel in the prior draft)."
+
+  # =========================================================================
+  # question.intentionally_empty — genuinely unmappable (documents WHY, prevents churn)
+  # =========================================================================
+  - op: question.intentionally_empty
+    question_id: 516
+    reason: "'How long since spark plugs replaced' is service-history detail; no fact slot models maintenance history."
+  - op: question.intentionally_empty
+    question_id: 468
+    reason: "'When was your last spark plug/tune-up' — service history; no slot."
+  - op: question.intentionally_empty
+    question_id: 480
+    reason: "'How much fuel was in the tank' — no fuel-level slot; low-value to model."
+  - op: question.intentionally_empty
+    question_id: 1185
+    reason: "'Sudden drop in gas mileage' — no fuel_economy_change slot exists (only ~2 questions would use one, below the >=3 slot bar). Logged as backlog."
+  - op: question.intentionally_empty
+    question_id: 463
+    reason: "'Better/worse in Neutral or Park' — engine-mount-vs-rough-idle discriminator; single-question, no slot holds it. Logged as candidate."
+
+# ===========================================================================
+# Golden cases (>=8; incl. 2 inference-traps + 1 null-route + 1 cross-system)
+# ===========================================================================
+golden_cases:
+  - text: "Was driving on the highway and the engine just shut off — had to coast to the shoulder. It sputtered for a second first. Started back up after it sat a bit."
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing, no_start_testing]
+      stage2_subcategory_slug: stalling_while_driving_under_load
+      stage3_facts: { engine_running: died_while_driving, speed_band: highway, onset_timing: during_driving }
+      route: testing_service
+
+  - text: "Every time I stop at a red light the engine dies, but it fires right back up. It's worse when the AC is on and when it's hot out."
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing, no_start_testing]
+      stage2_subcategory_slug: stalling_at_idle_or_when_stopping
+      stage3_facts: { engine_running: stalls, onset_timing: at_stop, hvac_mode: ac, weather_condition: hot_weather }
+      route: testing_service
+
+  - text: "The RPMs go up and down on their own when I'm sitting at a light — the needle bounces between like 800 and 1500 and I'm not even touching the gas."
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing]
+      stage2_subcategory_slug: surging_or_rpms_going_up_and_down
+      stage3_facts: { engine_running: surging, speed_band: idle, onset_timing: when_idling }
+      route: testing_service
+
+  - text: "Car has no power at all — feels like the emergency brake is stuck on. It won't go over about 40 anymore and my gas mileage tanked."
+    tags: [fact_rich, inference_trap, depends_slot_engine_running_low_power_or_limp]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing, transmission_testing]
+      stage2_subcategory_slug: low_power_or_wont_accelerate_normally
+      # TRAP: "feels like the emergency brake is on" is a SIMILE — parking_brake_state MUST stay null.
+      # speed_band=specific_mph + speed_specific_mph=40 are the only literal speed facts.
+      stage3_facts: { speed_band: specific_mph, speed_specific_mph: 40, engine_running: low_power_or_limp }
+      route: testing_service
+
+  - text: "Engine bucks and jerks when I press the gas, and the check engine light is flashing. Feels like it's skipping a beat."
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing]
+      stage2_subcategory_slug: engine_misfire_or_bucking_feeling
+      stage3_facts: { engine_running: misfiring, warning_light_named: "check engine", warning_light_behavior: flashing_or_blinking, onset_timing: when_accelerating }
+      route: testing_service
+
+  - text: "Right after driving a while I stop for gas and it won't start back up — it cranks and cranks but won't fire. Fine the next morning though."
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: no_start_testing
+      stage1_acceptable: [no_start_testing, check_engine_light_testing]
+      stage2_subcategory_slug: hard_to_start_when_hot
+      # LITERALNESS: "right after driving a while" is now stated in the text, which is what licenses
+      # onset_timing=after_warming_up (the prior text implied warmth via 'stop for gas' but never stated
+      # it -- an entailment the strict-literalness rule forbids). recent_action=fuel_fill_up is literal
+      # ("stop for gas"). MAPPING NOTE: engine_running=wont_start is used for this hard-start even though
+      # the engine ultimately fires -- per dossier §3.8/§3.9, 'cranks but won't fire / slow to catch' maps
+      # to wont_start (engine_running has no 'cranks-then-eventually-catches' value; the map holds q1176 as
+      # PARTIAL for exactly this gap). This is a deliberate mapping decision, not an extractor error.
+      stage3_facts: { engine_running: wont_start, recent_action: fuel_fill_up, onset_timing: after_warming_up }
+      route: testing_service
+
+  - text: "Cranks forever in the morning before it finally starts, then runs rough for the first minute. It's worse when it's cold out."
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: no_start_testing
+      stage1_acceptable: [no_start_testing, check_engine_light_testing, charging_starting_testing]
+      stage2_subcategory_slug: hard_to_start_when_cold
+      stage3_facts: { engine_running: wont_start, onset_timing: cold_start, weather_condition: cold_weather }
+      route: testing_service
+
+  - text: "My check engine light came on but the car drives totally fine — no weird sounds or shaking or anything."
+    tags: [sparse, inference_trap]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing, warning_light_general]
+      stage2_subcategory_slug: check_engine_light
+      # TRAP: do NOT infer engine_running=rough_idle/misfiring. Customer said it drives fine.
+      stage3_facts: { warning_light_named: "check engine", drivable_state: drivable_normally }
+      route: testing_service
+
+  - text: "Dash says SERVICE ENGINE SOON, I just hit 75,000 miles and the car runs perfect."
+    tags: [fact_rich, inference_trap, confusable_ses_vs_cel]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing, warning_light_general]
+      stage2_subcategory_slug: check_engine_light
+      # TRAP: the round-number mileage + "runs perfect" bait toward the reminder subcategory, but the
+      # bare words "SERVICE ENGINE SOON" with NO make stated are make-ambiguous: on GM / Nissan / older
+      # Ford that phrase IS the MIL (a stored fault), and Honda/Toyota use different reminder wording
+      # (wrench / MAINT REQD / Maintenance Minder) -- so bare SES actually leans MIL. Per dossier §3.11,
+      # prefer check_engine_light (scan); do NOT route service_engine_soon on wording+drives-fine alone.
+      # warning_light_named="service engine soon" is literal; drivable_state=drivable_normally is literal.
+      stage3_facts: { warning_light_named: "service engine soon", drivable_state: drivable_normally }
+      route: testing_service
+
+  - text: "The little wrench light came on and it says MAINT REQD — I'm right at 5,000 miles since my last oil change. Car drives perfectly, no other lights."
+    tags: [fact_rich, confusable_ses_vs_cel]
+    expected:
+      stage1_category_key: warning_light_general
+      stage1_acceptable: [warning_light_general, check_engine_light_testing]
+      stage2_subcategory_slug: service_engine_soon_or_maintenance_required_light
+      # CLEAN reminder: the wrench icon + MAINT REQD wording is unambiguous (not the SES/MIL legend), the
+      # car drives fine, and there is no engine-outline light -> the maintenance-reminder subcategory.
+      stage3_facts: { warning_light_named: "maintenance required", drivable_state: drivable_normally }
+      route: testing_service
+
+  - text: "Car dies while I'm driving — the battery light and oil light come on right before it quits, then it restarts and they go off."
+    tags: [fact_rich, confusable_cross_system]
+    expected:
+      stage1_category_key: charging_starting_testing
+      stage1_acceptable: [charging_starting_testing]
+      stage2_subcategory_slug: car_died_while_driving_electrical
+      stage3_facts: { engine_running: died_while_driving, warning_light_named: "battery, oil pressure" }
+      route: testing_service
+
+  - text: "I just want to get my spark plugs replaced — they're probably due by now."
+    tags: [null_route, non_concern]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      stage3_facts: { customer_request_type: replace_specific_part }
+      route: advisor

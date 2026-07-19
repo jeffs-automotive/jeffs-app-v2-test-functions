@@ -1,0 +1,432 @@
+system: hvac-climate
+# Typed change-ops binding this system's findings back onto the live taxonomy snapshot
+# (00-current-scheduler-taxonomy.md). Every diagnostic claim is cited in the dossier §3/§10.
+# The 8 hvac slugs + smell/musty are already fully enriched; these SHARPEN confusable boundaries,
+# add ONE noise value (noise_descriptor += whistling), and surface the inside-cabin AC-water weak-fit.
+# NO air-source slot is proposed — under the presence-based mapper a "current mode" value can't answer a
+# change-on-switch question and a generic dependence slot cross-dimension wrong-skips, so Q575/Q606/Q947/
+# Q971/Q269 stay intentionally_empty (see dossier §9.1 + required-facts-map.q1/q2).
+# temperature_gauge_state + coolant_level_state are proposed AND their question ops (Q939/Q940) are
+# EMITTED by the cooling-system dossier; this file only REFERENCES them (no slot re-propose, no duplicate
+# question ops).
+
+ops:
+  # ============================================================
+  # L1 — Stage-1 keyword adds. A keyword must be >=2 tokens or a domain token (customer-voice §1).
+  # ============================================================
+  - op: stage1.keyword.add
+    category_key: ac_performance_check
+    phrase: "no cold air"
+    rationale: "Most common no-cool lead-in; heavily attested and short enough to under-trigger today."
+    evidence: tekmetric ("AC IS NOT BLOWING COLD", "AC not getting cold")
+  - op: stage1.keyword.add
+    category_key: ac_performance_check
+    phrase: "blows warm air"
+    rationale: "Canonical AC-warm phrasing across the corpus."
+    evidence: tekmetric ("A/C BLOWING WARM AIR", "AC BLOWIN WARMER AIR THAN NORMAL")
+  - op: stage1.keyword.add
+    category_key: ac_performance_check
+    phrase: "heat blows cold"
+    rationale: "HVAC owns heat complaints; keyword ensures no-heat lands on ac_performance_check not cooling."
+    evidence: tekmetric ("HEAT BLOWING COLD AIR", "NO HEAT")
+  - op: stage1.keyword.add
+    category_key: ac_performance_check
+    phrase: "blower only on high"
+    rationale: "Domain-specific blower-resistor cue; disambiguates airflow-volume vs cooling."
+    evidence: tekmetric ("blower only works on high"), eval ("fan only blows on the highest setting")
+  - op: stage1.keyword.add
+    category_key: ac_performance_check
+    phrase: "musty smell from vents"
+    rationale: "Domain multi-token cue for evaporator odor; keeps vent-tied musty on HVAC not smell/."
+    evidence: eval ("musty smell ... from the vents"), forum-paraphrase ("mildew order" on AC)
+  - op: stage1.keyword.add
+    category_key: ac_leak_testing
+    phrase: "recharged and quit again"
+    rationale: "The leak-recurrence cue that separates ac_leak_testing from ac_performance_check."
+    evidence: tekmetric ("We recharged system last July. AC back to not working", "put in refrigerant with dye ... stopped working again")
+  - op: stage1.keyword.add
+    category_key: ac_leak_testing
+    phrase: "keeps losing refrigerant"
+    rationale: "Domain multi-token cue for a repeating refrigerant leak."
+    evidence: tekmetric ("recharged ... not working again"), forum-paraphrase
+
+  # ============================================================
+  # L1 — Stage-1 hedges (confusable-pair disambiguation). This system engages pairs #2 and #3.
+  # ============================================================
+  - op: stage1.hedge.add
+    category_a: ac_performance_check
+    category_b: coolant_leak_testing
+    rule: "For a 'no heat / heater blows cold' complaint, default to ac_performance_check (HVAC owns heat). Route to coolant_leak_testing ONLY when a coolant symptom is ALSO present: the temp gauge/light is abnormal (high OR stays low), coolant is low/topped-off, a front-center puddle, or a sweet smell. This is the SAME hedge stated by the cooling-system dossier (consistency)."
+    discriminating_fact: temperature_gauge_state   # cooling-proposed: stays_low => thermostat/cooling; normal => HVAC heater core/actuator
+  - op: stage1.hedge.add
+    category_a: ac_performance_check
+    category_b: ac_leak_testing
+    rule: "A warm/weak-AC SYMPTOM defaults to ac_performance_check. Route to ac_leak_testing when the customer signals a REFRIGERANT LEAK: it was recharged before and lost cold again, 'keeps needing freon', dye was added, or they explicitly ask to find a leak. The symptom SUBCATEGORY (ac_blows_warm_or_hot_air / ac_is_weak_not_cold_enough) is unchanged; only the SERVICE differs."
+    discriminating_fact: recent_action   # ac_recharge_or_service + recurrence language
+  - op: stage1.hedge.add
+    category_a: ac_leak_testing
+    category_b: coolant_leak_testing
+    rule: "A clear, odorless water puddle UNDER the car after AC use is normal AC condensation => ac_leak_testing/clear_odorless_puddle_water_or_ac_condensation. Do NOT route to coolant_leak_testing unless the fluid is bright/sweet (fluid_color green_or_orange_or_yellow_or_pink). This is the AC-condensation vs coolant pair (dossier §7.3) — distinct from hedge #2's ac_performance_check vs ac_leak_testing service split."
+    discriminating_fact: fluid_color   # clear_no_color (AC drain) vs green_...pink (coolant)
+
+  # ============================================================
+  # L2 — Stage-2 description revisions (SHARPEN; existing text is already strong)
+  # ============================================================
+  - op: stage2.description.revise
+    subcat_slug: clear_odorless_puddle_water_or_ac_condensation
+    text: "Clear, odorless, colorless water — the customer says it looks and feels like plain water, dries quickly, no sweet or oily quality. A puddle UNDER the car (mid/passenger area) after running the A/C is normal evaporator condensation drainage. ALSO route here when the customer reports clear odorless water INSIDE the cabin — dripping onto the passenger/driver floor or a soaked carpet that appears when the A/C runs — which is a clogged or misrouted evaporator drain (a real repair), UNTIL a dedicated hvac/water_leaking_inside_cabin_ac_on subcategory exists. Distinct from green/orange/pink coolant (bright + sweet => green_orange_yellow_or_pink_puddle_coolant) and from red transmission/PS fluid. Key tell: clear + odorless + watery, tied to A/C use."
+    why: "Interim fix for the §8 weak-fit: inside-cabin AC water has no clean home and the fluid_under_car_location slot only models under-vehicle positions. Makes the force-fit explicit until Chris rules on the new subcategory. Adds the tied-to-AC tell."
+  - op: stage2.description.revise
+    subcat_slug: ac_is_weak_not_cold_enough
+    text: "Customer says the AC IS cooling, just not as cold as it used to be or not cold enough for the weather — 'lukewarm', 'barely cool', 'cools on the highway but warms at stoplights', 'cold on cool days, useless on hot days'. The cold-for-15-20-min-then-warm cycling is a classic low-charge evaporator-freeze pattern. Common causes: slow refrigerant leak (partial charge), clogged cabin filter, dirty condenser, weak cooling fan. Distinct from ac_blows_warm_or_hot_air (ZERO cooling) and vents_dont_blow_strongly (airflow VOLUME weak; here air is cool but inadequate). NOTE ON SERVICE ROUTING: if the customer signals a repeating refrigerant leak (recharged before and lost cold again, 'keeps needing freon', dye added), the SERVICE is ac_leak_testing though this symptom subcategory still applies."
+    why: "Adds the leak-recurrence service note (pair #2 hedge) and keeps the evaporator-freeze cycling pattern explicit, without changing the existing boundary language."
+
+  # ============================================================
+  # L3 — Positive examples (real customer voice) on confusable-heavy slugs
+  # ============================================================
+  - op: stage2.example.positive.add
+    subcat_slug: ac_is_weak_not_cold_enough
+    phrase: "cools fine on the highway but barely cool sitting at a red light, useless on hot days"
+    provenance: eval
+  - op: stage2.example.positive.add
+    subcat_slug: ac_blows_warm_or_hot_air
+    phrase: "AC quit all of a sudden, blows straight hot air like its not even on"
+    provenance: forum-paraphrase
+  - op: stage2.example.positive.add
+    subcat_slug: heat_doesnt_work
+    phrase: "heat only works when the car is moving, goes cold as soon as I stop"
+    provenance: tekmetric
+  - op: stage2.example.positive.add
+    subcat_slug: vents_dont_blow_strongly
+    phrase: "blower only works on high and is very noisy, low speeds do nothing"
+    provenance: tekmetric
+  - op: stage2.example.positive.add
+    subcat_slug: one_zone_works_but_another_doesnt
+    phrase: "works well on the passenger side but not so well on the drivers side"
+    provenance: tekmetric
+  - op: stage2.example.positive.add
+    subcat_slug: strange_noise_from_vents
+    phrase: "whistling sound coming out of the air vents at higher fan speeds"
+    provenance: forum-paraphrase
+  # ---- positives binding the three newly-documented failure modes (§3.10 slosh, §3.11 mode door, §3.12 blend-full-hot) ----
+  - op: stage2.example.positive.add
+    subcat_slug: strange_noise_from_vents
+    phrase: "sounds like water sloshing around behind the dash when I turn or come to a stop"
+    provenance: forum-paraphrase
+  - op: stage2.example.positive.add
+    subcat_slug: vents_dont_blow_strongly
+    phrase: "air only comes out the defroster no matter what setting I pick, wont switch to the dash vents"
+    provenance: forum-paraphrase
+  - op: stage2.example.positive.add
+    subcat_slug: ac_blows_warm_or_hot_air
+    phrase: "AC blows hot air in the summer even turned all the way to cold, like the heat is stuck on"
+    provenance: forum-paraphrase
+
+  # ============================================================
+  # L3 — Negative examples (each MUST name routes_to)
+  # ============================================================
+  - op: stage2.example.negative.add
+    subcat_slug: ac_blows_warm_or_hot_air
+    phrase: "AC still blows kinda cool, just not as cold as last summer"
+    routes_to: ac_is_weak_not_cold_enough
+  - op: stage2.example.negative.add
+    subcat_slug: ac_is_weak_not_cold_enough
+    phrase: "AC blows totally warm, outside air, no cooling at all"
+    routes_to: ac_blows_warm_or_hot_air
+  - op: stage2.example.negative.add
+    subcat_slug: vents_dont_blow_strongly
+    phrase: "driver side blows cold but the passenger side stays warm, plenty of air though"
+    routes_to: one_zone_works_but_another_doesnt
+  - op: stage2.example.negative.add
+    subcat_slug: one_zone_works_but_another_doesnt
+    phrase: "fan only blows on the highest speed, temperature is fine when it blows"
+    routes_to: vents_dont_blow_strongly
+  - op: stage2.example.negative.add
+    subcat_slug: heat_doesnt_work
+    phrase: "no heat and the temp gauge/light is high, engine ran hot"
+    routes_to: engine_temperature_light
+  - op: stage2.example.negative.add
+    subcat_slug: bad_smell_from_vents
+    phrase: "musty smell from the back seat carpet and trunk, not through the dash vents"
+    routes_to: musty_mildew_smell_from_vents
+  - op: stage2.example.negative.add
+    subcat_slug: musty_mildew_smell_from_vents
+    phrase: "musty dirty-sock smell that comes through the vents when I turn the AC on"
+    routes_to: bad_smell_from_vents
+  - op: stage2.example.negative.add
+    subcat_slug: strange_noise_from_vents
+    phrase: "squealing from under the hood when the AC compressor kicks on"
+    routes_to: high_pitched_whining_under_the_hood
+  - op: stage2.example.negative.add
+    subcat_slug: foggy_or_hard_to_defog_windows
+    phrase: "clear odorless water pooling on the passenger floor when the AC runs"
+    routes_to: clear_odorless_puddle_water_or_ac_condensation
+  - op: stage2.example.negative.add
+    subcat_slug: clear_odorless_puddle_water_or_ac_condensation
+    phrase: "bright green sweet puddle under the front near the radiator"
+    routes_to: green_orange_yellow_or_pink_puddle_coolant
+
+  # ============================================================
+  # L4 — Synonym adds (>=2 tokens or domain token; only genuinely NEW vs current DB synonyms)
+  # ============================================================
+  - op: stage2.synonym.add
+    subcat_slug: ac_is_weak_not_cold_enough
+    term: "blows cold then warm"
+  - op: stage2.synonym.add
+    subcat_slug: ac_is_weak_not_cold_enough
+    term: "cold on the highway warm at stoplights"
+  - op: stage2.synonym.add
+    subcat_slug: ac_blows_warm_or_hot_air
+    term: "no click from the compressor"
+  # NOTE: synonyms (L4) bind to SUBCATEGORY slugs only. "keeps losing refrigerant" is a leak-recurrence
+  # SYMPTOM phrasing → bind to the symptom subcat (ac_is_weak_not_cold_enough). The leak SERVICE still
+  # gets the cue via the stage1.keyword.add on ac_leak_testing above (keywords bind to services).
+  - op: stage2.synonym.add
+    subcat_slug: ac_is_weak_not_cold_enough
+    term: "keeps losing refrigerant"
+  - op: stage2.synonym.add
+    subcat_slug: one_zone_works_but_another_doesnt
+    term: "passenger dial does nothing"
+  - op: stage2.synonym.add
+    subcat_slug: foggy_or_hard_to_defog_windows
+    term: "defroster wont clear the windshield"
+  - op: stage2.synonym.add
+    subcat_slug: strange_noise_from_vents
+    term: "whistle from the vents"
+
+  # ============================================================
+  # L5 — Stage-3 slot value-add (the ONE live slot change)
+  # An air-source slot was CONSIDERED and WITHDRAWN (dossier §9.1): under the presence-based mapper a
+  # "current air-source mode" value cannot answer a change-on-switch question, and a generic "air-source
+  # dependence" value would cross-dimension wrong-skip (a smell-dependence statement would silently skip
+  # the cooling/airflow questions). So Q575/Q606/Q947/Q971/Q269 are intentionally_empty (below), matching
+  # required-facts-map.q1 (NEVER) / q2 (NO-SLOT). No stage3.slot.propose is emitted here.
+  # ============================================================
+  - op: stage3.slot.value.add
+    slot: noise_descriptor
+    value: whistling
+    literal_cues:
+      - "whistling from the vents"
+      - "high-pitched whistle from the dash"
+      - "whistling noise on high fan"
+      - "whistling sound out of the air vents"
+
+  # ============================================================
+  # L5 — question.required_facts.set (skip over-asking) — the ONE SAFE tag in this system
+  # ============================================================
+  - op: question.required_facts.set
+    question_id: 602
+    facts: [noise_descriptor]
+    skip_class: SAFE
+    derivation_note: "Q602 offers clicking/whistling/grinding/rattling/buzzing; with noise_descriptor (incl. the proposed 'whistling' value) a literal noise word fully answers it. SAFE — any noise value answers a 'what is the noise' question (no cross-dimension wrong-skip)."
+
+  # NOTE — Q939 (temperature_gauge_state) + Q940 (coolant_level_state): the required_facts.set ops for
+  # these are OWNED BY cooling-system.proposals.yaml (which proposes the two slots). They are NOT emitted
+  # here — emitting them in both files would hand Wave-C duplicate ops for the same question IDs. This
+  # dossier only records the dependence (§9.3).
+
+  # ---- questions that are genuine binary/probe/confirmatory asks with no clean slot (NEVER) ----
+  # The five air-source-dependence questions land here (not required_facts.set): a "current mode" value
+  # cannot answer a change-on-switch question and a generic dependence slot cross-dimension wrong-skips
+  # under the presence-based mapper (dossier §9.1). Matches required-facts-map.q1 (575/606/947/971 NEVER)
+  # + q2 (269 NO-SLOT).
+  - op: question.intentionally_empty
+    question_id: 575
+    reason: "'colder on recirculate / max AC?' — a change-on-air-source probe; no slot answers 'does it CHANGE when switched', and a generic air-source-dependence slot would wrong-skip on an unrelated (e.g. smell) dependence (required-facts-map.q1 NEVER)."
+  - op: question.intentionally_empty
+    question_id: 606
+    reason: "'noise change fresh-air vs recirculate?' — change-on-air-source probe; no slot (required-facts-map.q1 NEVER)."
+  - op: question.intentionally_empty
+    question_id: 947
+    reason: "'air stronger on recirculate?' — change-on-air-source probe; no slot (required-facts-map.q1 NEVER)."
+  - op: question.intentionally_empty
+    question_id: 971
+    reason: "'smell go away or worsen on recirculate?' — change-on-air-source probe; no slot (required-facts-map.q1 NEVER)."
+  - op: question.intentionally_empty
+    question_id: 269
+    reason: "'smell goes away on fresh-air vs recirc?' — change-on-air-source probe; hvac_mode has no fresh/recirc value and a dependence slot cross-dimension wrong-skips (required-facts-map.q2 NO-SLOT)."
+  - op: question.intentionally_empty
+    question_id: 568
+    reason: "'do you hear a click under the hood when AC turns on' — binary compressor-clutch probe; no slot cleanly holds a yes/no click observation."
+  - op: question.intentionally_empty
+    question_id: 567
+    reason: "'warm all the time vs cools then warms after a few minutes' — evaporator-freeze cycling pattern; <3 questions and not an airflow_state value, so no slot proposal justified."
+  - op: question.intentionally_empty
+    question_id: 573
+    reason: "'warm from every vent or just some (dash/floor/defrost)' — vent-outlet-group probe; customers rarely state which outlet, no clean literal slot."
+  - op: question.intentionally_empty
+    question_id: 945
+    reason: "'when was the cabin air filter last replaced' — maintenance-history confirmatory; recent_action is single-select and this is rarely volunteered."
+  - op: question.intentionally_empty
+    question_id: 975
+    reason: "'clicking/tapping behind the dash when you change temperature' — blend-door-actuator probe; a diagnostic ask the customer performs, not a fact typically volunteered."
+  - op: question.intentionally_empty
+    question_id: 598
+    reason: "'wet carpet on the passenger floor' — heater-core/evaporator-drain probe; binary observation with no dedicated slot (fluid_under_car_location is under-vehicle only)."
+  - op: question.intentionally_empty
+    question_id: 600
+    reason: "'does the rear-window defroster (grid lines) work' — electrical rear-defroster probe; distinct sub-issue, no slot, low volume."
+
+  # ============================================================
+  # Catalog / subcategory proposal (Chris-gated)
+  # ============================================================
+  - op: stage2.subcategory.propose
+    category: hvac
+    name: water_leaking_inside_cabin_ac_on
+    description: "Clear, odorless water pooling INSIDE the cabin — dripping onto the passenger/driver floor or soaking the carpet — appearing when the A/C runs. Caused by a clogged or misrouted evaporator condensate drain (a real repair), distinct from the normal clear puddle UNDER the car and from a coolant/heater-core leak (which is bright and/or sweet). Routes to ac_leak_testing / ac_performance_check."
+    examples:
+      - "water drips onto the passenger floor and soaks the carpet whenever the AC is on"
+      - "floor is full of water, only when I drive with the air conditioning on"
+      - "clear water standing under the passenger floor mat, no smell"
+    why_existing_insufficient: "clear_odorless_puddle_water_or_ac_condensation is described as an UNDER-car puddle in the leak category and the fluid_under_car_location slot models only under-vehicle positions; an interior-flooding report (clogged evaporator drain) has no natural Stage-2 home. >=3 distinct real utterances (forum linguistic authority, dossier §8)."
+
+golden_cases:
+  - text: "AC is blowing straight hot air, no cold at all, and I dont hear any click when I turn it on. Started all of a sudden yesterday."
+    tags: [fact_rich, hvac]
+    expected:
+      stage1_category_key: ac_performance_check
+      stage1_acceptable: [ac_performance_check, ac_leak_testing]
+      stage2_subcategory_slug: ac_blows_warm_or_hot_air
+      stage3_facts:
+        hvac_mode: ac
+        started_when: sudden_onset
+      route: testing_service
+
+  # ---- Confusable #2: AC-weak SYMPTOM but leak-recurrence => ac_leak_testing SERVICE ----
+  - text: "My AC cools ok on the highway but barely at stoplights, and we already recharged it back in may and its warm again."
+    tags: [moderate, confusable_ac_weak_vs_leak]
+    expected:
+      stage1_category_key: ac_leak_testing
+      stage1_acceptable: [ac_leak_testing, ac_performance_check]
+      stage2_subcategory_slug: ac_is_weak_not_cold_enough
+      stage3_facts:
+        hvac_mode: ac
+        speed_band: stopped
+        recent_action: ac_recharge_or_service
+      route: testing_service
+
+  - text: "the fan only blows on the highest setting, speeds 1 2 and 3 do nothing at all. the AC air is cold when it does blow though"
+    tags: [moderate, hvac]
+    expected:
+      stage1_category_key: ac_performance_check
+      stage2_subcategory_slug: vents_dont_blow_strongly
+      stage3_facts:
+        airflow_state: only_on_highest_setting
+      route: testing_service
+
+  - text: "every time i first turn the AC on theres a nasty musty smell like dirty gym socks from the vents. fades after a few min. doesnt do it with heat, only AC"
+    tags: [fact_rich, hvac]
+    expected:
+      stage1_category_key: ac_performance_check
+      stage2_subcategory_slug: bad_smell_from_vents
+      stage3_facts:
+        smell_descriptor: musty_or_mildew
+        onset_timing: at_first_turn_on
+        hvac_mode: ac
+      route: testing_service
+
+  # ---- Confusable #3: no-heat defaults HVAC; gauge-stays-low leans cooling but heat is the lead ----
+  - text: "heater just blows cold no matter how long I drive, but the temp gauge stays down low the whole time"
+    tags: [moderate, confusable_hvac_vs_coolant]
+    expected:
+      stage1_category_key: ac_performance_check
+      stage1_acceptable: [ac_performance_check, coolant_leak_testing]
+      stage2_subcategory_slug: heat_doesnt_work
+      stage3_facts:
+        hvac_mode: heat
+        # PENDING SLOT: "temp gauge stays down low" would set temperature_gauge_state=stays_low, but that
+        # slot is cooling-PROPOSED and NOT in today's 29-slot extractor — asserting it would fail the eval
+        # harness. Dropped to this comment until the slot lands; re-add on the same Wave-C pass that
+        # approves temperature_gauge_state. hvac_mode=heat is the only slot in today's ontology here.
+      route: testing_service
+
+  - text: "driver side blows ice cold but the passenger side stays warm, and turning the passenger dial doesnt change anything"
+    tags: [moderate, hvac, confusable_blower_vs_blend]
+    expected:
+      stage1_category_key: ac_performance_check
+      stage2_subcategory_slug: one_zone_works_but_another_doesnt
+      stage3_facts:
+        airflow_state: uneven_temperature_between_zones
+        # NO location_side: the customer named BOTH sides (driver ice-cold AND passenger warm) and never
+        # stated the MODE — with heat selected the DRIVER side would be the fault, so "passenger = the bad
+        # side" is an inference, not a literal fact. "passenger dial doesnt change anything" is a control
+        # observation, not a stated symptom-SIDE. Setting location_side=right here is the same class of
+        # over-assertion the clicking-noise inference-trap forbids. uneven_temperature_between_zones is the
+        # one literal fact.
+      route: testing_service
+
+  - text: "inside of my windshield keeps fogging up when it rains and the defroster barely clears it"
+    tags: [sparse, hvac]
+    expected:
+      stage1_category_key: ac_performance_check
+      stage2_subcategory_slug: foggy_or_hard_to_defog_windows
+      stage3_facts:
+        weather_condition: rainy_or_wet
+      route: testing_service
+
+  # ---- INFERENCE-TRAP: literalness — a click + temp-dial trigger is NOT a stated zone asymmetry ----
+  - text: "theres a tick tick tick clicking from behind the dash right after I start the car and when I move the temperature dial"
+    tags: [inference_trap, hvac]
+    expected:
+      stage1_category_key: ac_performance_check
+      stage2_subcategory_slug: strange_noise_from_vents
+      stage3_facts:
+        noise_descriptor: popping_or_clicking
+        sound_or_smoke_location_zone: behind_dashboard
+      # TRAP: a blend-door actuator often causes BOTH a click AND a one-zone temperature split, but the
+      # customer named only a NOISE + a temp-dial trigger. The extractor must NOT set location_side or
+      # airflow_state (no side/asymmetry stated) and must NOT route one_zone_works_but_another_doesnt.
+      # The actuator inference is for the tech, not the extractor.
+      route: testing_service
+
+  # ---- Cross-system: clear odorless AC water INSIDE the cabin (§8 weak-fit) ----
+  - text: "every time I run the AC theres clear water dripping onto the passenger floor and the carpet is soaked, no smell at all"
+    tags: [moderate, confusable_water_vs_coolant]
+    expected:
+      stage1_category_key: ac_leak_testing
+      stage1_acceptable: [ac_leak_testing, ac_performance_check]
+      stage2_subcategory_slug: clear_odorless_puddle_water_or_ac_condensation
+      stage3_facts:
+        hvac_mode: ac
+        fluid_color: clear_no_color
+      # NOTE: this is the §8 weak-fit — inside-cabin AC water (clogged evaporator drain). It force-fits
+      # onto the UNDER-car clear-water slug today; fluid_under_car_location is left NULL (the water is
+      # inside, not under the car). Chris-gated hvac/water_leaking_inside_cabin_ac_on would own it.
+      route: testing_service
+
+  # ---- §3.12 heat-stuck-hot INFERENCE-TRAP: "AC blows hot" is NOT automatically low refrigerant ----
+  - text: "my ac blows hot air in the summer even when I turn it all the way to cold, feels like the heat is stuck on"
+    tags: [inference_trap, hvac, confusable_blend_vs_refrigerant]
+    expected:
+      stage1_category_key: ac_performance_check
+      stage2_subcategory_slug: ac_blows_warm_or_hot_air
+      stage3_facts:
+        hvac_mode: ac
+        weather_condition: hot_weather
+      # TRAP: "blows hot ... like the heat is stuck on" is the blend-door-full-hot signature (§3.12), NOT a
+      # refrigerant symptom. The extractor must NOT set recent_action=ac_recharge_or_service and must NOT
+      # imply low charge. The subcat is right (ac_blows_warm_or_hot_air); the CAUSE inference is the tech's.
+      route: testing_service
+
+  # ---- §3.11 wrong-outlets (mode door): distribution fault, airflow VOLUME is fine ----
+  - text: "no matter what setting I choose the air only comes out the defroster, it wont blow out the dash vents, but theres plenty of air"
+    tags: [moderate, hvac]
+    expected:
+      stage1_category_key: ac_performance_check
+      stage2_subcategory_slug: vents_dont_blow_strongly
+      stage3_facts:
+        airflow_state: only_one_zone_blows
+      # Distribution stuck on defrost = mode-door failure (§3.11). "plenty of air" rules out weak_overall /
+      # no_airflow — the fault is WHERE the air goes, not HOW MUCH. only_one_zone_blows is the literal fact.
+      route: testing_service
+
+  # ---- NULL-ROUTE: pure maintenance work-order line, not a diagnostic concern ----
+  - text: "REPLACE CABIN AIR FILTER (due for service)"
+    tags: [null_route, work_order]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      stage3_facts:
+        customer_request_type: routine_maintenance
+      route: advisor

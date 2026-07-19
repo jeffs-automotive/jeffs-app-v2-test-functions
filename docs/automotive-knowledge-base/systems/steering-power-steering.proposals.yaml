@@ -1,0 +1,359 @@
+system: steering-power-steering
+# Typed change-ops bound to the live snapshot (00-current-scheduler-taxonomy.md + catalog-snapshot.json 2026-07-18).
+# Enrichment is ALREADY populated and strong; these ops were diffed against the live subcategory
+# enrichment and reduced to only the deltas that add signal. Ops that merely re-stated content already
+# present in the DB (duplicate synonyms/positives/negatives) were removed in the 2026-07-18 revision.
+# Corpus ids use the tka-NNN / tkc-NNN scheme (NOT file line numbers); each cite was re-verified.
+
+ops:
+  # ============================================================
+  # L1 — Stage-1 keyword adds (service example_keywords)
+  # NOTE: stage-1 keywords = example_keywords UNION each reachable subcategory's synonyms
+  # (taxonomy §1). Adds that merely duplicate an existing subcategory synonym were dropped
+  # ("whine when turning", "hard to turn the wheel", "EPS light" already flow in via synonyms).
+  # ============================================================
+  - op: stage1.keyword.add
+    category_key: power_steering_eps_testing
+    phrase: "power steering fluid leaking"
+    rationale: a named PS-fluid leak should reach the PS service (and the red/pink leak subcat), not the generic oil/coolant leak paths; the multi-token phrase is not an existing synonym on any reachable subcategory.
+    evidence: >
+      forums PS-leak ids (real-concerns-forums.json lines 626/634); corpus tka-118 uses the
+      tech-shorthand "POWER STEERING PUMP BADLY LEAKING FLUID" (note — tka-118's own consensus label is
+      the situational bucket car_has_been_sitting_unused_for_a_long_time, cited for phrasing only, not routing).
+  - op: stage1.keyword.add
+    category_key: suspension_steering_check
+    phrase: "play in the wheel"
+    rationale: routes loose/sloppy play (tie rod / rack) to the mechanical-steering service, away from PS.
+    evidence: eval suspension_steering_check-005; DB synonyms for loose_or_sloppy_steering
+  - op: stage1.keyword.add
+    category_key: suspension_steering_check
+    phrase: "steering wheel crooked going straight"
+    rationale: routes off-center (alignment) to the mechanical service.
+    evidence: eval suspension_steering_check-007
+
+  # ============================================================
+  # L1/L2 — Stage-1 confusable hedges (the mandated pairs + neighbors)
+  # ============================================================
+  - op: stage1.hedge.add
+    category_a: power_steering_eps_testing
+    category_b: charging_starting_testing
+    rule: >
+      A whine/groan is PS only when it occurs specifically ON TURNING and fades when the wheel is
+      straight. A continuous whine that rises and falls with engine RPM (present when NOT turning) is a
+      belt/alternator noise -> charging_starting_testing / high_pitched_whining_under_the_hood. Do not
+      route a "whine when running" to power steering.
+    discriminating_fact: onset_timing (when_turning => PS; during_driving/RPM-tied => belt/alternator)
+  - op: stage1.hedge.add
+    category_a: power_steering_eps_testing
+    category_b: suspension_steering_check
+    rule: >
+      DEPRIORITIZATION HEURISTIC (not an absolute): steering EFFORT / NOISE-on-turn / FLUID / LIGHT
+      lean power_steering_eps_testing; steering PLAY, wheel POSITION (off-center), or a directional
+      PULL/WANDER lean suspension_steering_check (alignment/linkage). For a steady directional pull,
+      prefer alignment first WHEN effort is normal, there is no whine, and no light is set — that
+      profile is overwhelmingly alignment/tire/brake. Caveat: a power-assist fault CAN produce a steady
+      pull (unbalanced steering-gear / rotary-valve leakage = "memory steer"/lead; EPS torque-sensor or
+      pull-compensation faults), so do NOT hard-exclude PS when the pull is paired with heavy/uneven
+      effort, a whine, or a steering light.
+    discriminating_fact: steering_feel + warning_light_named + noise_descriptor (heavy/whine/light present with a pull => keep PS in play; normal effort + no whine + no light + steady pull => alignment first)
+  - op: stage1.hedge.add
+    category_a: power_steering_eps_testing
+    category_b: transmission_testing
+    rule: >
+      A red/pink puddle is shared between the two. Location + accompanying symptom decide the STAGE-1
+      service: fluid_under_car_location=under_engine_front with heavy steering or a whine-on-turn =>
+      power_steering_eps_testing; fluid_under_car_location=under_middle with slipping/hesitation/harsh
+      shifts => transmission_testing. Both still land on the same shared subcategory
+      red_or_pink_puddle_transmission_or_power_steering at stage 2.
+    discriminating_fact: fluid_under_car_location (under_engine_front => PS; under_middle => transmission)
+  - op: stage1.hedge.add
+    category_a: power_steering_eps_testing
+    category_b: brake_inspection
+    rule: >
+      "Pulls when I brake" is a brake fault (pulling_only_when_braking), not steering. Route to
+      brake_inspection when the pull is gated on brake application.
+    discriminating_fact: onset_timing (when_braking => brakes)
+
+  # ============================================================
+  # L2 — Stage-2 description revise (narrow delta only)
+  # ============================================================
+  - op: stage2.description.revise
+    subcat_slug: noise_when_turning_the_steering_wheel
+    text: >
+      A noise that occurs SPECIFICALLY when the steering wheel is turned — most often a whine, groan,
+      moan, hum, growl, creak, squeak, squeal, or pop coming from the engine bay or steering column.
+      Often most noticeable turning lock-to-lock at low speed (parking, three-point turns) or when
+      turning while parked with the engine running. Most commonly caused by low power-steering fluid,
+      air in the power-steering system, a failing pump, or a worn steering shaft / U-joint — OR by a dry
+      strut bearing, which typically produces a creak/squeal on turn with NORMAL steering effort (no
+      assist fault). Distinct from popping_or_clicking_when_turning (a sharp CV-joint click only while
+      rolling) and from high_pitched_whining_under_the_hood (a continuous RPM-tied whine present even
+      when not turning).
+    why: current DB text already lists whine/groan/moan/hum/growl/creak/pop and column + dry-strut
+      sources; the genuine delta is only adding "squeal" (a real corpus phrasing, tka-157) and the
+      explicit "normal steering effort" tell that separates a dry-bearing squeal from a pump fault.
+
+  # ============================================================
+  # L3 — Stage-2 positive examples (real-voice first; diffed against live positives, dups removed)
+  # ============================================================
+  - op: stage2.example.positive.add
+    subcat_slug: hard_to_turn_heavy_steering
+    phrase: "STEERING WHEEL FEELS TIGHT"
+    provenance: tekmetric   # tka-000 (verbatim fragment of "STEERING WHEEL FEELS TIGHT  TESTING AUTH 89 TO START")
+  - op: stage2.example.positive.add
+    subcat_slug: noise_when_turning_the_steering_wheel
+    phrase: "loud squeal when i turn the wheel"
+    provenance: forum-paraphrase   # first-person paraphrase of tka-157 "HEARS A LOUD SQUEAL WHEN TURNING"; adds "squeal" (dry-bearing) which live positives lack
+  - op: stage2.example.positive.add
+    subcat_slug: red_or_pink_puddle_transmission_or_power_steering
+    phrase: "drips and small puddles of power steering fluid under the front driver side"
+    provenance: forum-paraphrase   # not present in live positives; adds a named-PS-fluid + front-driver location
+
+  # dropped in 2026-07-18 revision (already in live enrichment, near-verbatim):
+  #  - noise_when_turning "creak from the steering column when i turn the wheel while parked"
+  #      (live positive: "Creak from the steering column when I turn the wheel while parked")
+  #  - loose_or_sloppy_steering "the car kind of lags behind the wheel..."
+  #      (live positive: "Car kind of lags behind the steering wheel — I turn and then it turns a second later")
+  # dropped (would COLLIDE with a neighbor slug's existing enrichment):
+  #  - pulling_drifting "got new tires and an alignment and it still pulls..."
+  #      collides with pull_that_started_after_recent_tire_or_service_work positives
+  #  - pulling_drifting "the car began to wander badly especially at highway speeds"
+  #      collides with wandering_or_drifting_in_both_directions positive AND pulling_drifting's own negative
+
+  # ============================================================
+  # L3 — Stage-2 negative examples (each names routes_to; diffed against live negatives, dups removed)
+  # ============================================================
+  - op: stage2.example.negative.add
+    subcat_slug: hard_to_turn_heavy_steering
+    phrase: "power steering warning light is on and the wheel is heavy"
+    routes_to: power_steering_eps_light   # not present in live hard_to_turn negatives; splits heavy+light off to the EPS-light slug
+
+  # dropped in 2026-07-18 revision (already in live enrichment):
+  #  - noise_when_turning "whine under the hood all the time, gets louder with RPM..." (dup of live neg)
+  #  - noise_when_turning "rhythmic click-click ... only while rolling through a turn" (dup of live CV-click neg)
+  #  - hard_to_turn "wheel feels loose with a lot of play, not hard to turn" (dup of live loose-play neg)
+  #  - power_steering_eps_light "hard to turn ... no warning light" (dup of live neg)
+  #  - power_steering_eps_light "several lights came on at once..." (dup of live multiple-lights neg)
+  #  - pulling_drifting "only pulls ... when i brake" (dup of live "Only pulls when I brake" neg)
+  #  - steering_wheel_off_center "straight but the car pulls to the right" (dup of live neg)
+  # converted: the red_or_pink self-referential negative was a no-op (routes_to == same slug); the real
+  #  distinction is the STAGE-1 service, now expressed as the power_steering_eps_testing <-> transmission_testing
+  #  hedge above (keyed on fluid_under_car_location).
+
+  # ============================================================
+  # L4 — Stage-2 synonym adds (>=2 tokens or domain single-token; diffed against live synonyms)
+  # ============================================================
+  - op: stage2.synonym.add
+    subcat_slug: noise_when_turning_the_steering_wheel
+    term: "squeal when turning"   # live synonyms have whine/groan/moan/growl/hum/creak "when turning" but NOT squeal
+  - op: stage2.synonym.add
+    subcat_slug: hard_to_turn_heavy_steering
+    term: "wheel feels tight"     # live synonyms have "tight steering" but not the "wheel feels tight" framing
+
+  # dropped in 2026-07-18 revision:
+  #  - power_steering_eps_light "EPAS light"  (already a live synonym)
+  #  - power_steering_eps_light "PSCM light"  (already a live synonym; also module jargon, not a customer phrase)
+  #  - pulling_drifting "still pulls after alignment"  (COLLIDES with pull_that_started_after_recent_tire_or_service_work
+  #      synonyms "pulls after alignment" / "post-alignment pull")
+
+  # ============================================================
+  # L5 — question.required_facts.set (attack the empty-RF over-asking problem)
+  # (verified clean against catalog-snapshot.json: ids + question text + empty required_facts)
+  # ============================================================
+  - op: question.required_facts.set
+    question_id: 667   # loose: "Can you wiggle the wheel side-to-side before the car turns?"
+    facts: [steering_feel]
+    skip_class: SAFE
+    derivation_note: steering_feel=loose_or_sloppy literally answers the wiggle/play question; skip when set.
+  - op: question.required_facts.set
+    question_id: 669   # loose: "Does it feel floaty or disconnected?"
+    facts: [steering_feel]
+    skip_class: PARTIAL
+    derivation_note: steering_feel=loose_or_sloppy covers the floaty/disconnected framing; safe to skip if already stated.
+  - op: question.required_facts.set
+    question_id: 671   # loose: "front tires wearing more on inside/outside edges?"
+    facts: [tire_state]
+    skip_class: PARTIAL
+    derivation_note: tire_state=uneven_wear answers the edge-wear probe; skip only when tire_state set.
+  - op: question.required_facts.set
+    question_id: 666   # hard_to_turn: "battery dying / warning lights recently?"
+    facts: [warning_light_named]
+    skip_class: PARTIAL
+    derivation_note: if the customer named a dash light, the light half is answered; still ask if only battery-history is unknown.
+
+  # ---- questions correctly left empty (no slot can hold the answer) ----
+  - op: question.intentionally_empty
+    question_id: 665   # "power steering you can feel quitting vs always felt stiff since you got it?"
+    reason: distinguishes a NEW assist failure from a car that never had power assist; no slot encodes "vehicle always had manual feel" (started_when=since_purchase is close but not equivalent).
+  - op: question.intentionally_empty
+    question_id: 668   # loose: "constantly making small corrections to keep straight?"
+    reason: correction behavior straddles loose-play AND wander/alignment; mapping to steering_feel would over-skip a real alignment cue.
+  - op: question.intentionally_empty
+    question_id: 673   # loose: mileage / when front-end last inspected
+    reason: service-history probe; no fact slot for mileage or last-inspection date.
+  - op: question.intentionally_empty
+    question_id: 683   # noise: "louder held at full lock?"
+    reason: lock-to-lock loudness has no slot; single consumer -> below the >=3-question bar for a new slot.
+  - op: question.intentionally_empty
+    question_id: 684   # noise: "happens when parked, just turning the wheel?"
+    reason: standstill-turn distinction not cleanly expressible (speed_band=stopped conflates rolling-stop with parked-turn).
+  - op: question.intentionally_empty
+    question_id: 686   # noise: "checked PS fluid level / is it low?"
+    reason: customer-side fluid-level check; no slot for reservoir level.
+  - op: question.intentionally_empty
+    question_id: 442   # eps_light: "heavy all the time or only when light on?"
+    reason: correlation-with-light timing has no slot.
+  - op: question.intentionally_empty
+    question_id: 697   # pulling: "flat roads too or mostly roads that slope?"
+    reason: road-crown/slope dependence has no slot; only 2 questions need it (see slot watch-item in dossier §9), below the >=3 bar.
+  - op: question.intentionally_empty
+    question_id: 679   # off-center: "all four tires same brand/model/age?"
+    reason: tire-matching probe; no slot.
+  - op: question.intentionally_empty
+    question_id: 680   # off-center: "when last had tire pressures checked?"
+    reason: maintenance-history probe; no slot.
+
+# ============================================================
+# GOLDEN CASES (>=8 contributed; includes >=1 inference-trap + >=1 null-route)
+# 2026-07-18 revision: removed 4 cases that were near-verbatim copies of eval-cases.json
+# (power_steering_eps_testing-001/-002/-003, suspension_steering_check-005) and the genuinely
+# two-way "wanders + fighting the wheel" case (no stage2-acceptable list to express the ambiguity).
+# Replaced with 4 boundary-teaching cases the corpus/enrichment did not already cover.
+# ============================================================
+golden_cases:
+  # ---- KEEP: real tekmetric squeal-on-turn (adds the "squeal" delta) ----
+  - text: "HEARS A LOUD SQUEAL WHEN TURNING"
+    tags: [real_tekmetric, noise_when_turning_the_steering_wheel, fragment_allcaps]
+    expected:
+      stage1_category_key: power_steering_eps_testing
+      stage1_acceptable: [power_steering_eps_testing, suspension_steering_check]
+      stage2_subcategory_slug: noise_when_turning_the_steering_wheel
+      stage3_facts:
+        noise_descriptor: squealing_high_pitched
+        onset_timing: when_turning
+      route: testing_service
+    note: verbatim tka-157 (consensus_category power_steering_eps_testing, majority). Squeal-on-turn is
+      a dry-strut-bearing tell as much as a pump one, hence suspension_steering_check is also acceptable.
+
+  # ---- KEEP: off-center after alignment, explicitly no pull ----
+  - text: "just had an alignment and now the steering wheel sits crooked when im driving straight, but the car doesnt pull"
+    tags: [fact_rich, steering_wheel_off_center_when_driving_straight]
+    expected:
+      stage1_category_key: suspension_steering_check
+      stage1_acceptable: [suspension_steering_check]
+      stage2_subcategory_slug: steering_wheel_off_center_when_driving_straight
+      stage3_facts:
+        steering_feel: wheel_off_center_while_straight
+        recent_action: alignment
+        pull_direction: no_pull
+      route: testing_service
+
+  # ---- KEEP (note fixed): confusable — whine NOT gated on turning ----
+  - text: "WHINE NOISE WHEN RUNNING"
+    tags: [real_tekmetric, confusable, fragment_allcaps]
+    expected:
+      stage1_category_key: charging_starting_testing
+      stage1_acceptable: [charging_starting_testing, exhaust_system_testing, power_steering_eps_testing]
+      stage2_subcategory_slug: high_pitched_whining_under_the_hood
+      stage3_facts:
+        noise_descriptor: whining
+      route: testing_service
+    note: >
+      Verbatim tka-013. The corpus labelers reached NO consensus (votes null / null /
+      multiple_symptoms) and the text states no RPM or turning linkage — so the expected label here is
+      AUTHORIAL disambiguation applying the "whine present while running, not gated on turning => not
+      power steering" rule, NOT a corpus-proven label. power_steering_eps_testing is left acceptable
+      precisely because a customer could still mean a turn-only whine.
+
+  # ---- KEEP: INFERENCE-TRAP — red puddle, steering explicitly normal (contrast to transmission_testing-002) ----
+  - text: "found a bright red puddle under the front of my car this morning. steering feels totally normal, not hard to turn at all. can you figure out whats leaking?"
+    tags: [inference_trap, red_or_pink_puddle_transmission_or_power_steering]
+    expected:
+      stage1_category_key: power_steering_eps_testing
+      stage1_acceptable: [power_steering_eps_testing, transmission_testing]
+      stage2_subcategory_slug: red_or_pink_puddle_transmission_or_power_steering
+      stage3_facts:
+        fluid_color: red_or_pink
+        fluid_under_car_location: under_engine_front
+        steering_feel: normal
+      route: testing_service
+    trap: >
+      Model must NOT set steering_feel=heavy_or_hard_to_turn or invent a pump-failure — the customer
+      literally said steering is normal. Set steering_feel=normal (stated) and leave pump/assist facts
+      unset. Red fluid + FRONT location leans PS over transmission (which would be under_middle), but
+      does not by itself prove it — hence transmission_testing stays acceptable.
+
+  # ---- KEEP: INFERENCE-TRAP #2 — heavy steering only, nothing else stated ----
+  - text: "my steering is really hard to turn lately"
+    tags: [inference_trap, sparse, hard_to_turn_heavy_steering]
+    expected:
+      stage1_category_key: power_steering_eps_testing
+      stage1_acceptable: [power_steering_eps_testing]
+      stage2_subcategory_slug: hard_to_turn_heavy_steering
+      stage3_facts:
+        steering_feel: heavy_or_hard_to_turn
+      route: testing_service
+    trap: >
+      Only steering_feel is literally stated. Do NOT set speed_band, started_when, warning_light_named,
+      fluid_color, or noise_descriptor — none were mentioned. The wizard should still ASK those.
+
+  # ---- NEW: boundary teacher — pull that STARTED after recent tire work (routes to the neighbor, NOT pulling_drifting) ----
+  - text: "got new tires put on last week and its been pulling hard to the right ever since"
+    tags: [boundary, pull_that_started_after_recent_tire_or_service_work]
+    expected:
+      stage1_category_key: suspension_steering_check
+      stage1_acceptable: [suspension_steering_check]
+      stage2_subcategory_slug: pull_that_started_after_recent_tire_or_service_work
+      stage3_facts:
+        pull_direction: right
+        recent_action: tire_rotation_or_replacement
+      route: testing_service
+    note: >
+      A pull whose onset is tied to recent tire/service work is its OWN subcategory (tire conicity /
+      post-service), distinct from the generic pulling_drifting_or_wandering_on_the_road. This case
+      exists to hold that boundary, which the prior draft's "still pulls after alignment" ops blurred.
+
+  # ---- NEW: stiff ONE direction only (covers steering_feel=stiff_one_direction_only / memory steer) ----
+  - text: "the wheel is way harder to turn to the left than it is to the right, feels normal turning right"
+    tags: [moderate, hard_to_turn_heavy_steering, one_direction]
+    expected:
+      stage1_category_key: power_steering_eps_testing
+      stage1_acceptable: [power_steering_eps_testing]
+      stage2_subcategory_slug: hard_to_turn_heavy_steering
+      stage3_facts:
+        steering_feel: stiff_one_direction_only
+      route: testing_service
+    note: >
+      Unequal effort by direction points at an unbalanced steering gear / rotary-valve (hydraulic) or a
+      torque-sensor bias (EPS) — the "memory steer"/lead family. steering_feel=stiff_one_direction_only
+      is the literal cue; do NOT invent a side-specific fluid/light fact.
+
+  # ---- NEW: pink-fluid-vs-COOLANT trap (neighbor green_orange_yellow_or_pink_puddle_coolant) ----
+  - text: "theres a pink puddle under the front of my car and my temperature gauge has been running hot lately"
+    tags: [inference_trap, cross_system, green_orange_yellow_or_pink_puddle_coolant]
+    expected:
+      stage1_category_key: coolant_leak_testing
+      stage1_acceptable: [coolant_leak_testing, power_steering_eps_testing]
+      stage2_subcategory_slug: green_orange_yellow_or_pink_puddle_coolant
+      stage3_facts:
+        fluid_color: red_or_pink
+        fluid_under_car_location: under_engine_front
+      route: testing_service
+    trap: >
+      "Pink" is NOT automatically PS/ATF — many long-life coolants (Toyota SLLC, some OAT) are pink.
+      The overheating tell + front location routes this to the coolant leak surface, not power steering.
+      Do NOT set steering_feel; the customer named no steering symptom.
+
+  # ---- NULL-ROUTE: bare work-order / part request, no symptom ----
+  - text: "rack replacement"
+    tags: [null_route, work_order, real_tekmetric]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      stage3_facts:
+        customer_request_type: replace_specific_part
+      route: advisor
+    note: >
+      A bare part-replacement line with no symptom is a work-order, not a diagnostic concern. Empty
+      stage1 -> advisor handoff for a quote, per the NON-CONCERN rejection rule.

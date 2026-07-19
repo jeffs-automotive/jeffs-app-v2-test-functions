@@ -1,0 +1,167 @@
+system: cooling-system
+# phrase -> normalized -> routes_to[] (subcategory slugs) -> ambiguity -> provenance
+# ambiguity: unambiguous | needs-fact:<slot> | cross-system:<slug> | inference-trap
+# Customer voice preserved verbatim/near-verbatim where corpus-sourced (ALL-CAPS, misspellings kept).
+entries:
+  # ---- External coolant leak / puddle ----
+  - phrase: "LARGE PUDDLE OF ANTIFREEZE under the car"
+    normalized: bright coolant puddle under front of vehicle
+    routes_to: [green_orange_yellow_or_pink_puddle_coolant]
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "CLIENT SEES LEAK AT LOWER LINE ON RADIATOR"
+    normalized: coolant leaking at radiator hose/line
+    routes_to: [green_orange_yellow_or_pink_puddle_coolant]
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "bright green puddle right under the front by the radiator, smells sweet"
+    normalized: green coolant puddle front-center with sweet smell
+    routes_to: [green_orange_yellow_or_pink_puddle_coolant]
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "coolant leak, having to top off a few times"
+    normalized: recurring coolant loss requiring top-offs
+    routes_to: [green_orange_yellow_or_pink_puddle_coolant]
+    ambiguity: unambiguous   # phrase already STATES both the leak and the topping-off level state; routes cleanly
+    provenance: tekmetric
+  - phrase: "bright blue coolant looking stuff under my Honda"
+    normalized: blue coolant puddle
+    routes_to: [green_orange_yellow_or_pink_puddle_coolant]
+    ambiguity: cross-system:blue_or_light_blue_puddle_washer_fluid   # resolve on smell, not color
+    provenance: tekmetric
+  - phrase: "add water into the reserve it pours out the bottom of the engine"
+    normalized: coolant added but leaks straight out (gasket/freeze plug)
+    routes_to: [green_orange_yellow_or_pink_puddle_coolant]
+    ambiguity: needs-fact:fluid_under_car_location
+    provenance: forum-paraphrase
+
+  # ---- Water pump (leak side + bearing/noise side) ----
+  - phrase: "water pump pulley was wobbling"
+    normalized: water-pump bearing play, wobbling pulley
+    routes_to: [high_pitched_whining_under_the_hood]   # NVH subcat; NOT reachable from a cooling service (coolant_leak_testing excludes 'noise') — see proposals concern_categories.amend
+    ambiguity: cross-system:humming_or_whirring_at_speed
+    provenance: tekmetric
+  - phrase: "whining noise when shutting off, sounds like metal on metal, friend says water pump"
+    normalized: water-pump bearing whine/growl
+    routes_to: [high_pitched_whining_under_the_hood]
+    ambiguity: cross-system:green_orange_yellow_or_pink_puddle_coolant
+    provenance: tekmetric
+
+  # ---- Overheating / temp light / gauge ----
+  - phrase: "HIGH TEMPERATURE, UNSAFE TO DRIVE message, had it towed here"
+    normalized: overheating warning message, not drivable
+    routes_to: [engine_temperature_light]
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "COOLANT MESSAGE ON DASH CEL ON"
+    normalized: coolant/temp dash message with check-engine light
+    routes_to: [engine_temperature_light]
+    ambiguity: cross-system:check_engine_light
+    provenance: tekmetric
+  - phrase: "temp gauge goes all the way up, steam coming from behind the fan"
+    normalized: gauge in the red plus steam
+    routes_to: [engine_temperature_light, smoke_from_under_the_hood]
+    ambiguity: unambiguous   # gauge state AND steam are both literally stated; straddles two cooling subcats (see routes_to)
+    provenance: forum-paraphrase
+  - phrase: "CHECK FOR OVERHEATING. HAS NOT ADDED ANY COOLANT"
+    normalized: engine running hot, no coolant added (plain overheat)
+    routes_to: [engine_temperature_light]   # NO-FIT: belongs in proposed engine_overheating_running_hot
+    ambiguity: needs-fact:temperature_gauge_state
+    provenance: tekmetric
+  - phrase: "VEHICLE OVERHEATED AND LOST ALL COOLANT"
+    normalized: overheat with total coolant loss
+    routes_to: [engine_temperature_light]   # NO-FIT: proposed engine_overheating_running_hot
+    ambiguity: needs-fact:fluid_under_car_location   # level IS stated (empty); the MISSING discriminator is whether there is a ground puddle (external leak) vs internal/no-fit overheat
+    provenance: tekmetric
+  - phrase: "gauge fluctuate high and low as if the STAT is getting stuck"
+    normalized: temp gauge fluctuating, suspected thermostat
+    routes_to: [engine_temperature_light]   # NO-FIT: proposed engine_overheating_running_hot
+    ambiguity: unambiguous   # gauge state (fluctuating) is literally stated; the no-fit is a Stage-2 home gap, not a missing fact
+    provenance: tekmetric
+  - phrase: "coolant reservoir is bone dry, hot light came on"
+    normalized: empty coolant plus overheat light
+    routes_to: [engine_temperature_light]
+    ambiguity: unambiguous   # both level (bone dry) and the named hot light are literally stated
+    provenance: synthetic   # flagged synthetic
+
+  # ---- White smoke / head gasket ----
+  - phrase: "thick white smoke pouring out of my tailpipe even after driving 20 min, smells kinda sweet, been topping off coolant"
+    normalized: persistent white sweet exhaust smoke with coolant loss
+    routes_to: [white_smoke_from_tailpipe]
+    ambiguity: unambiguous
+    provenance: synthetic   # authored eval case — real-voice gap for white tailpipe smoke (dossier §11 backlog)
+  - phrase: "white cloud out the back and the temperature gauge is running high"
+    normalized: white exhaust smoke plus high temp
+    routes_to: [white_smoke_from_tailpipe]
+    ambiguity: unambiguous   # gauge state (running high) is literally stated
+    provenance: synthetic   # flagged synthetic
+  - phrase: "little white steam on cold mornings that goes away after a minute, no smell"
+    normalized: normal cold-start tailpipe condensation
+    routes_to: []   # reject: normal, NOT white_smoke_from_tailpipe
+    ambiguity: inference-trap
+    provenance: forum-paraphrase
+
+  # ---- Smoke / steam from under the hood ----
+  - phrase: "smoke coming out from underneath the hood, a message came up that the coolant was overheating"
+    normalized: steam/smoke from under hood with a coolant-overheat message
+    routes_to: [smoke_from_under_the_hood]
+    ambiguity: unambiguous   # under-hood smoke + overheat message both literally stated
+    provenance: nhtsa   # NHTSA ODI 2013 Chevrolet Cruze complaint narrative (public domain), accessed 2026-07-18
+  - phrase: "hissing sound and smoke/steam coming from under my hood, radiator full, not overheating"
+    normalized: coolant hiss/steam from a spray leak on hot parts
+    routes_to: [smoke_from_under_the_hood]
+    ambiguity: needs-fact:smell_descriptor
+    provenance: forum-paraphrase
+  - phrase: "Started driving 20 mins vehicle started smoking, was just at another shop for overheat"
+    normalized: smoke under hood after prior overheat repair
+    routes_to: [smoke_from_under_the_hood]
+    ambiguity: cross-system:after_recent_service_or_repair_work   # recent service IS stated; the Stage-1 priority-order rule may pull this to the situational bucket
+    provenance: tekmetric
+
+  # ---- Sweet smell (no puddle) ----
+  - phrase: "somethin smells like maple syrup around my car after i drive it, cant find any leak"
+    normalized: sweet coolant odor, no visible leak
+    routes_to: [sweet_smell_maple_syrup_antifreeze]
+    ambiguity: unambiguous
+    provenance: synthetic   # authored eval case — real-voice gap for maple-syrup coolant smell (dossier §11 backlog)
+  - phrase: "sweet pancake-syrup smell when I park, temp gauge been running a little hot too"
+    normalized: sweet smell with mildly high temp
+    routes_to: [sweet_smell_maple_syrup_antifreeze]
+    ambiguity: unambiguous   # gauge state (running a little hot) is literally stated; sweet smell is the lead symptom
+    provenance: synthetic   # flagged synthetic
+  - phrase: "sweet smell coming from my vents when I turn on the heat, gives me a headache"
+    normalized: sweet coolant smell through dash vents (heater core)
+    routes_to: [bad_smell_from_vents]
+    ambiguity: cross-system:sweet_smell_maple_syrup_antifreeze
+    provenance: forum-paraphrase
+
+  # ---- No heat from cooling cause ----
+  - phrase: "Heat only works when the vehicle is moving, as soon as it stops it goes cold"
+    normalized: heat fails at idle, works at speed (low coolant/airflow)
+    routes_to: [heat_doesnt_work]
+    ambiguity: needs-fact:temperature_gauge_state
+    provenance: tekmetric
+  - phrase: "NO HEAT. GAUGE SOMETIMES GOES UP"
+    normalized: no cabin heat with intermittently high temp gauge
+    routes_to: [heat_doesnt_work, engine_temperature_light]
+    ambiguity: cross-system:engine_temperature_light
+    provenance: tekmetric
+  - phrase: "heater just blows cold no matter how long I drive, had to top off the coolant tank twice"
+    normalized: no heat plus repeated coolant top-offs
+    routes_to: [heat_doesnt_work]
+    ambiguity: needs-fact:temperature_gauge_state   # level IS stated (topped off twice); the MISSING discriminator is whether the gauge stays low (stuck-open thermostat) vs reaches normal (heater core)
+    provenance: tekmetric
+
+  # ---- Confusable: blue/gray oil smoke (must NOT route to coolant) ----
+  - phrase: "blue-gray smoke when I first start it in the morning, smells like burning oil"
+    normalized: oil-burn startup smoke
+    routes_to: [blue_or_gray_smoke_from_tailpipe]
+    ambiguity: cross-system:white_smoke_from_tailpipe
+    provenance: tekmetric
+
+  # ---- Null-route: maintenance / work-order, not a diagnostic concern ----
+  - phrase: "just need a coolant flush, car runs fine, no problems"
+    normalized: routine coolant-flush maintenance request, no symptom
+    routes_to: []   # advisor / routine_maintenance, empty stage1
+    ambiguity: cross-system:general_check_up_or_pre_trip_inspection
+    provenance: synthetic   # flagged synthetic

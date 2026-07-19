@@ -1,0 +1,449 @@
+system: body-electrical-accessories
+# Typed change-ops binding to the 2026-07-18 taxonomy snapshot. window_inop_testing and
+# windshield_inop_testing are DIRECT-TO-SERVICE (no Stage-2 subcat); their lift is L1 keywords + Stage-1
+# hedges only. electrical_testing_general owns the 3 bound subcategories.
+# question.required_facts.set ops carry RESOLVED live question_ids (Supabase execute_sql against the
+# 2026-07-18 snapshot) with the verbatim live question_text quoted for review.
+# provenance on example ops: tekmetric = real customer RO; forum-paraphrase / synthetic as usual;
+# eval-authored = a fixture written for eval-cases.json (part of the eval corpus but NOT a real customer
+# utterance). source-policy bundles eval-cases under "the Tekmetric corpus", but to avoid overstating
+# real-voice share these are tagged eval-authored, and they count toward the non-real/synthetic share.
+
+ops:
+  # ============================ L1 — Stage-1 keywords ============================
+  - op: stage1.keyword.add
+    category_key: window_inop_testing
+    phrase: "power window"
+    rationale: "Anchor the dedicated window service; 'power window' is the domain term across the corpus."
+    evidence: "tekmetric tkc-067/tka-194; eval window_inop_testing-001..004"
+  - op: stage1.keyword.add
+    category_key: window_inop_testing
+    phrase: "window wont go up"
+    rationale: "Most common no-motion phrasing; disambiguates glass motion from other accessories."
+    evidence: "eval window_inop_testing-004 'rear window wont go up all the way'"
+  - op: stage1.keyword.add
+    category_key: window_inop_testing
+    phrase: "window stuck"
+    rationale: "Covers stalled-partway / seized-regulator phrasing."
+    evidence: "eval window_inop_testing-001; tekmetric tkc-151 'window motor stuck'"
+  - op: stage1.keyword.add
+    category_key: window_inop_testing
+    phrase: "window motor"
+    rationale: "Domain token customers use for the whole regulator/motor assembly."
+    evidence: "tekmetric tkc-151"
+
+  - op: stage1.keyword.add
+    category_key: windshield_inop_testing
+    phrase: "wipers not working"
+    rationale: "Primary wiper no-op phrasing."
+    evidence: "tekmetric tkc-107 'Wipers stopped working'"
+  - op: stage1.keyword.add
+    category_key: windshield_inop_testing
+    phrase: "wiper motor"
+    rationale: "Domain token; customers name the motor even when it's linkage/park-switch."
+    evidence: "tekmetric tkc-281 rear-wiper motor replaced, issue persisted"
+  - op: stage1.keyword.add
+    category_key: windshield_inop_testing
+    phrase: "washer not spraying"
+    rationale: "Captures the washer sub-circuit that shares the wiper service (FM-4)."
+    evidence: "tekmetric tka-111 'WIPERS NOT SPRAYING'"
+  - op: stage1.keyword.add
+    category_key: windshield_inop_testing
+    phrase: "wipers stall halfway"
+    rationale: "Park-switch signature phrasing."
+    evidence: "eval windshield_inop_testing-004; tekmetric tkc-281"
+
+  - op: stage1.keyword.add
+    category_key: electrical_testing_general
+    phrase: "horn not working"
+    rationale: "High-frequency single-accessory complaint."
+    evidence: "tekmetric tkc-153/tka-166 'HORN INOP'"
+  - op: stage1.keyword.add
+    category_key: electrical_testing_general
+    phrase: "power door locks"
+    rationale: "Non-window accessory; must land in general electrical, not window service."
+    evidence: "forum radio/clock/door-lock cascade"
+  - op: stage1.keyword.add
+    category_key: electrical_testing_general
+    phrase: "dome light"
+    rationale: "Courtesy-light load; keeps 'light' complaints that are accessories out of warning-light lanes."
+    evidence: "tekmetric tka-018 'DOME LIGHT STAYS ON'"
+  - op: stage1.keyword.add
+    category_key: electrical_testing_general
+    phrase: "cigarette lighter"
+    rationale: "12V outlet / fuse-blow cluster."
+    evidence: "forum lighter-fuse-keeps-blowing cluster"
+  - op: stage1.keyword.add
+    category_key: electrical_testing_general
+    phrase: "power outlet"
+    rationale: "Modern phrasing for the 12V/USB accessory socket."
+    evidence: "forum '15a PWR outlet fuse' cluster"
+  - op: stage1.keyword.add
+    category_key: electrical_testing_general
+    phrase: "key fob"
+    rationale: "Remote lock/unlock accessory complaints."
+    evidence: "forum 'power door locks quit with the key fob'"
+  - op: stage1.keyword.add
+    category_key: electrical_testing_general
+    phrase: "sunroof wont close"
+    rationale: "Common trap that must route to general electrical, NOT window_inop_testing."
+    evidence: "synthetic; §5 trap"
+  - op: stage1.keyword.add
+    category_key: electrical_testing_general
+    phrase: "turn signal not working"
+    rationale: "Signal-circuit function complaint (distinct from a 'replace bulb' work order)."
+    evidence: "tekmetric tka-035"
+  - op: stage1.keyword.add
+    category_key: electrical_testing_general
+    phrase: "electrical buzzing"
+    rationale: "Routes the buzz-noise complaint into the electrical service that reaches electrical_buzzing."
+    evidence: "eval electrical_testing_general-006"
+
+  # ============================ Stage-1 hedges (confusable pairs) ============================
+  - op: stage1.hedge.add
+    category_a: window_inop_testing
+    category_b: electrical_testing_general
+    rule: "If the customer names a GLASS side-window moving up/down (or its switch/motor/regulator), pick window_inop_testing. If they name ANY other body accessory — power locks, mirrors, seats, sunroof/moonroof, radio, horn, 12V outlet, dome light, defroster — pick electrical_testing_general. Sunroof/moonroof are NOT side windows."
+    discriminating_fact: accessory_affected
+  - op: stage1.hedge.add
+    category_a: windshield_inop_testing
+    category_b: electrical_testing_general
+    rule: "Wipers or washer spray → windshield_inop_testing. Any other accessory → electrical_testing_general."
+    discriminating_fact: accessory_affected
+  - op: stage1.hedge.add
+    category_a: electrical_testing_general
+    category_b: charging_starting_testing
+    rule: "Individual accessories glitch while the car still runs → electrical_testing_general. Battery keeps dying / had to jump it / slow crank / lights dim at idle and brighten on rev → charging_starting_testing."
+    discriminating_fact: lights_state
+
+  # ============================ L2 — subcategory description revisions ============================
+  - op: stage2.description.revise
+    subcat_slug: accessory_doesnt_work
+    text: "A specific electrical accessory does not work — one named load (or a small set on one shared circuit) that is dead or malfunctioning: horn, radio/infotainment, a power door lock/central locking/key fob, a power or heated seat, a power/heated mirror, a sunroof/moonroof or power liftgate, a 12V outlet/cigarette lighter, a dome/courtesy light, the rear defroster, or an exterior signal/marker function. Includes an accessory whose fuse keeps blowing. Use this when the customer points at a definite thing that stopped working. NOT power windows (window_inop_testing) and NOT wipers/washer (windshield_inop_testing) — those have dedicated services. NOT a named dashboard warning light."
+    why: "Original description under-specifies the non-window scope and the shared-circuit case; sharpening it against the two direct-service neighbors and the warning-light lane."
+  - op: stage2.description.revise
+    subcat_slug: multiple_random_electrical_glitches
+    text: "Several DIFFERENT electrical things act up at RANDOM, intermittently, over time — the radio resets one day, the locks click on their own another day, the gauges jump, lights or accessories drop out then come back — often worse in damp/rainy weather. The pattern (many unrelated systems, no fixed trigger) points at a shared ground/connector, water intrusion, or the body module rather than one dead part. NOT one specific accessory that is simply always dead (accessory_doesnt_work), NOT the whole car going dark and shutting off while driving (car_died_while_driving_electrical), and NOT lights that merely dim/flicker with engine RPM (charging system)."
+    why: "Add the intermittent + weather-linked + multi-system signature and the three exclusion boundaries the corpus repeatedly confuses."
+  - op: stage2.description.revise
+    subcat_slug: electrical_buzzing
+    text: "An audible electrical BUZZ or HUM — often described as a beehive, a buzzing relay, or a hum with the key on — typically from behind the dash or under the hood, not tied to engine RPM. NOT a whine that rises with RPM (high_pitched_whining_under_the_hood / power steering), and NOT a click/buzz that changes when you adjust the heat/AC/airflow (that is a blend-door actuator → strange_noise_from_vents)."
+    why: "Distinguish buzz from RPM-linked whine and from HVAC blend-door noise, the two nearest confusables."
+
+  # ============================ L3 — positive examples ============================
+  - op: stage2.example.positive.add
+    subcat_slug: accessory_doesnt_work
+    phrase: "HORN INOPERABLE"
+    provenance: tekmetric
+  - op: stage2.example.positive.add
+    subcat_slug: accessory_doesnt_work
+    phrase: "my radio is just dead, screen wont turn on and no sound at all, everything else in the car works fine"
+    provenance: eval-authored   # eval-cases.json electrical_testing_general-002
+  - op: stage2.example.positive.add
+    subcat_slug: accessory_doesnt_work
+    phrase: "right rear turn signal not working intermittently, i bumped it and it worked then went back out"
+    provenance: tekmetric
+  - op: stage2.example.positive.add
+    subcat_slug: accessory_doesnt_work
+    phrase: "dome light stays on even after closing the door"
+    provenance: tekmetric
+  - op: stage2.example.positive.add
+    subcat_slug: accessory_doesnt_work
+    phrase: "cigarette lighter fuse keeps blowing, replaced it and it blew again"
+    provenance: forum-paraphrase
+  - op: stage2.example.positive.add
+    subcat_slug: accessory_doesnt_work
+    phrase: "power door locks quit working with the key fob"
+    provenance: forum-paraphrase
+  - op: stage2.example.positive.add
+    subcat_slug: multiple_random_electrical_glitches
+    phrase: "one day the radio resets itself, next day the door locks click on their own, next day the gauges jump around, random stuff always worse after rain"
+    provenance: eval-authored   # eval-cases.json electrical_testing_general-004
+  - op: stage2.example.positive.add
+    subcat_slug: multiple_random_electrical_glitches
+    phrase: "the radio and clock quit, then the power door locks quit with the fob, then more little things started acting up"
+    provenance: forum-paraphrase
+  - op: stage2.example.positive.add
+    subcat_slug: multiple_random_electrical_glitches
+    phrase: "during damp conditions the windows, wipers, door chime and dome lights all quit, then i hear a click and they come back"
+    provenance: forum-paraphrase
+  - op: stage2.example.positive.add
+    subcat_slug: electrical_buzzing
+    phrase: "theres this weird electrical buzzing sound in my car, kinda sounds like a beehive"
+    provenance: eval-authored   # eval-cases.json electrical_testing_general-006
+  - op: stage2.example.positive.add
+    subcat_slug: electrical_buzzing
+    phrase: "with the key turned to on it makes a buzzing or humming noise"
+    provenance: forum-paraphrase
+
+  # ============================ L3 — negative examples (routes_to REQUIRED) ============================
+  - op: stage2.example.negative.add
+    subcat_slug: accessory_doesnt_work
+    phrase: "driver side window wont roll down"
+    routes_to: window_inop_testing        # DIRECT-SERVICE target (no subcat slug exists)
+  - op: stage2.example.negative.add
+    subcat_slug: accessory_doesnt_work
+    phrase: "the wipers stopped working"
+    routes_to: windshield_inop_testing     # DIRECT-SERVICE target
+  - op: stage2.example.negative.add
+    subcat_slug: accessory_doesnt_work
+    phrase: "the airbag light is on"
+    routes_to: airbag_srs_light
+  - op: stage2.example.negative.add
+    subcat_slug: accessory_doesnt_work
+    phrase: "interior and dash lights flicker and dim at idle, brighten when i rev it"
+    routes_to: dim_or_flickering_lights
+  - op: stage2.example.negative.add
+    subcat_slug: multiple_random_electrical_glitches
+    phrase: "only my radio is dead, everything else in the car works fine"
+    routes_to: accessory_doesnt_work
+  - op: stage2.example.negative.add
+    subcat_slug: multiple_random_electrical_glitches
+    phrase: "the whole car went dark and shut off while i was driving"
+    routes_to: car_died_while_driving_electrical
+  - op: stage2.example.negative.add
+    subcat_slug: multiple_random_electrical_glitches
+    phrase: "my battery keeps dying overnight and i have to jump it every morning"
+    routes_to: battery_drains_overnight
+  - op: stage2.example.negative.add
+    subcat_slug: electrical_buzzing
+    phrase: "theres a whining noise under the hood that gets louder as the engine revs"
+    routes_to: high_pitched_whining_under_the_hood
+  - op: stage2.example.negative.add
+    subcat_slug: electrical_buzzing
+    phrase: "a clicking buzz behind the dash that starts when i switch from heat to ac"
+    routes_to: strange_noise_from_vents
+
+  # ============================ L4 — synonyms (>=2 tokens or domain token) ============================
+  - op: stage2.synonym.add
+    subcat_slug: accessory_doesnt_work
+    term: "power door locks"
+  - op: stage2.synonym.add
+    subcat_slug: accessory_doesnt_work
+    term: "key fob"
+  - op: stage2.synonym.add
+    subcat_slug: accessory_doesnt_work
+    term: "dome light"
+  - op: stage2.synonym.add
+    subcat_slug: accessory_doesnt_work
+    term: "cigarette lighter"
+  - op: stage2.synonym.add
+    subcat_slug: accessory_doesnt_work
+    term: "power outlet"
+  - op: stage2.synonym.add
+    subcat_slug: accessory_doesnt_work
+    term: "heated seat"
+  - op: stage2.synonym.add
+    subcat_slug: accessory_doesnt_work
+    term: "horn inoperable"
+  - op: stage2.synonym.add
+    subcat_slug: multiple_random_electrical_glitches
+    term: "electrical gremlins"
+  - op: stage2.synonym.add
+    subcat_slug: multiple_random_electrical_glitches
+    term: "random electrical issues"
+  - op: stage2.synonym.add
+    subcat_slug: multiple_random_electrical_glitches
+    term: "electrical acts up when it rains"   # narrowed from "acts up when it rains": bare form is also classic wet-misfire / wet-brake / wet-belt phrasing and would collide on the Stage-1 keyword rollup, pulling driveability complaints toward electrical_testing_general
+  - op: stage2.synonym.add
+    subcat_slug: electrical_buzzing
+    term: "buzzing noise"
+  - op: stage2.synonym.add
+    subcat_slug: electrical_buzzing
+    term: "relay buzzing"
+  - op: stage2.synonym.add
+    subcat_slug: electrical_buzzing
+    term: "buzzing behind the dash"
+
+  # ============================ L5 — Stage-3 slot proposal (deferred, Chris/Wave-C gated) ============================
+  - op: stage3.slot.propose
+    name: accessory_failure_scope
+    type: enum
+    values: [single_accessory, multiple_accessories_at_once, random_intermittent_glitches, whole_zone_dead]
+    literal_cues:
+      - "just the radio"                                  # single_accessory
+      - "only my driver window"                           # single_accessory
+      - "the windows and radio both quit at the same time" # multiple_accessories_at_once
+      - "random different stuff every day"                # random_intermittent_glitches
+      - "worse after rain then it comes back"             # random_intermittent_glitches
+      - "the whole dash went dead"                        # whole_zone_dead
+    questions_unlocked:
+      # These two already EXIST live with required_facts=[] (2026-07-18 DB snapshot) — the natural binding home once the slot is approved.
+      - "q1632 (accessory_doesnt_work): 'If it's a window or lock, does only one of them not work, or do several of them on the same side or all over the car not work?' → single_accessory vs multiple_accessories_at_once"
+      - "q554 (multiple_random_electrical_glitches): 'Do the glitches happen at the same time as each other, or do different things act up at different times?' → multiple_accessories_at_once vs random_intermittent_glitches"
+      - "(exclusion) multiple_random_electrical_glitches: 'Did the whole car go dark, or just individual accessories?' → whole_zone_dead, separates from car_died_while_driving_electrical"
+    note: "Meets the >=3-question rule; two of the three questions already exist live (q1632, q554) carrying required_facts=[] — this slot would give them a fact to populate. Today the FM-5/FM-7/FM-8 split is inferred by counting accessory_affected entries + onset_timing=intermittent, which is fragile. DEFERRED — do not auto-add; Chris + Wave-C decide."
+
+  # ============================ question.required_facts.set (question_id RESOLVED against the live 2026-07-18 DB snapshot via Supabase execute_sql) ============================
+  # question_ids below are the real concern_questions.id values. Verbatim live question_text quoted so a
+  # reviewer can confirm the binding without re-querying. "already-bound" ops are idempotent confirmations.
+  - op: question.required_facts.set
+    question_id: 1631
+    subcat: accessory_doesnt_work
+    question_text: "Which specific thing isn't working — for example one window, all the windows, the radio, the dome light, the wipers, or the power locks?"
+    facts: [accessory_affected]
+    skip_class: SAFE
+    derivation_note: "Already bound to [accessory_affected] in the snapshot — confirm. If accessory_affected is populated the customer already named the load; do not re-ask."
+  - op: question.required_facts.set
+    question_id: 1633
+    subcat: accessory_doesnt_work
+    question_text: "Did it stop working all at once, or did it act up for a while — working sometimes, not other times — before completely quitting?"
+    facts: [started_when, onset_timing]
+    skip_class: PARTIAL
+    derivation_note: "Snapshot has [started_when]; ADD onset_timing — the question literally elicits intermittency ('working sometimes, not other times'). onset_timing=intermittent or started_when set → skip; otherwise ask."
+  - op: question.required_facts.set
+    question_id: 1634
+    subcat: accessory_doesnt_work
+    question_text: "Did anything happen right before it stopped — like a fender bender, a sound system install, a car wash, or spilling a drink inside?"
+    facts: [recent_action]
+    skip_class: SAFE
+    derivation_note: "NEW binding — snapshot required_facts=[]. The question literally names car wash / sound-system install / fender bender / spill → recent_action (car_wash_or_driven_through_water, after_recent_service_or_repair_work). Literal, not inferred."
+  - op: question.required_facts.set
+    question_id: 1635
+    subcat: accessory_doesnt_work
+    question_text: "When you try to use it, do you hear any sound at all — a click, a hum, a buzz — or is it completely silent and dead?"
+    facts: [noise_descriptor]
+    skip_class: SAFE
+    derivation_note: "NEW binding — snapshot required_facts=[]. The question literally offers 'click, hum, buzz, or silent' → noise_descriptor. Literal, not inferred."
+  - op: question.required_facts.set
+    question_id: 556
+    subcat: multiple_random_electrical_glitches
+    question_text: "Does it get worse in rainy weather, after a car wash, or after a hot/humid day?"
+    facts: [weather_condition]
+    skip_class: SAFE
+    derivation_note: "Already bound to [weather_condition] in the snapshot — confirm. The water-intrusion tell; weather_condition set (rainy_or_wet/humid) → skip."
+  - op: question.required_facts.set
+    question_id: 135
+    subcat: electrical_buzzing
+    question_text: "Does the sound seem to come from the dashboard, behind the dash, or from under the hood?"
+    facts: [sound_or_smoke_location_zone]
+    skip_class: SAFE
+    derivation_note: "Already bound to [sound_or_smoke_location_zone] in the snapshot — confirm. Set (behind_dashboard/under_hood) → skip."
+
+# ================================ GOLDEN CASES ================================
+golden_cases:
+  - text: "drivers side window is stuck halfway down and wont go back up, makes a horrible grinding noise when i hold the switch, started a couple days ago"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: window_inop_testing
+      stage1_acceptable: [window_inop_testing]
+      stage2_subcategory_slug: null
+      stage3_facts: { accessory_affected: "driver window", location_side: left, noise_descriptor: grinding_metallic, started_when: days_ago }
+      route: testing_service
+
+  - text: "both back windows stopped rolling down, the switches in the back dont do anything anymore, front ones still work"
+    tags: [needs_fact]
+    expected:
+      stage1_category_key: window_inop_testing
+      stage1_acceptable: [window_inop_testing]
+      stage2_subcategory_slug: null
+      stage3_facts: { accessory_affected: "rear windows", location_axle: rear, location_side: both }
+      route: testing_service
+
+  - text: "my windshield wipers totally quit working right after i went thru the car wash, they dont move at all now"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: windshield_inop_testing
+      stage1_acceptable: [windshield_inop_testing]
+      stage2_subcategory_slug: null
+      stage3_facts: { accessory_affected: "wipers", recent_action: car_wash_or_driven_through_water }
+      route: testing_service
+
+  - text: "HORN INOPERABLE"
+    tags: [terse, all_caps]
+    expected:
+      stage1_category_key: electrical_testing_general
+      stage1_acceptable: [electrical_testing_general]
+      stage2_subcategory_slug: accessory_doesnt_work
+      stage3_facts: { accessory_affected: "horn" }
+      route: testing_service
+
+  - text: "my radio is just dead, screen wont turn on and no sound at all, everything else in the car works fine"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: electrical_testing_general
+      stage1_acceptable: [electrical_testing_general]
+      stage2_subcategory_slug: accessory_doesnt_work
+      stage3_facts: { accessory_affected: "radio" }
+      route: testing_service
+
+  - text: "right rear turn signal not working intermittently, i bumped it and it worked then went back out"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: electrical_testing_general
+      stage1_acceptable: [electrical_testing_general]
+      stage2_subcategory_slug: accessory_doesnt_work
+      stage3_facts: { accessory_affected: "turn signal", location_side: right, location_axle: rear, onset_timing: intermittent }
+      route: testing_service
+
+  - text: "somethings up with my cars electrical, one day the radio resets itself, next day the door locks click on their own, next day the gauges jump around, random stuff always worse after rain"
+    tags: [fact_rich]
+    expected:
+      stage1_category_key: electrical_testing_general
+      stage1_acceptable: [electrical_testing_general]
+      stage2_subcategory_slug: multiple_random_electrical_glitches
+      stage3_facts: { onset_timing: intermittent, weather_condition: rainy_or_wet }
+      route: testing_service
+
+  - text: "theres this weird electrical buzzing sound in my car, kinda sounds like a beehive"
+    tags: [single_symptom]
+    expected:
+      stage1_category_key: electrical_testing_general
+      stage1_acceptable: [electrical_testing_general]
+      stage2_subcategory_slug: electrical_buzzing
+      stage3_facts: { noise_descriptor: buzzing }
+      route: testing_service
+
+  # ---- INFERENCE TRAP: 'light' that is a courtesy load, NOT a dashboard warning light ----
+  - text: "the dome light stays on even after i close the door"
+    tags: [inference_trap]
+    expected:
+      stage1_category_key: electrical_testing_general
+      stage1_acceptable: [electrical_testing_general]
+      stage2_subcategory_slug: accessory_doesnt_work
+      stage3_facts: { accessory_affected: "dome light" }   # warning_light_named MUST stay null — it is a courtesy light
+      route: testing_service
+    trap_note: "Tempts warning_light_named='dome'/routing to a warning-light service. Dome light is an accessory LOAD, not a dash indicator; warning_light_named stays null and it routes to accessory_doesnt_work."
+
+  # ---- CONFUSABLE TRAP: sunroof is NOT a side glass window ----
+  - text: "my sunroof wont slide closed anymore"
+    tags: [confusable_trap]
+    expected:
+      stage1_category_key: electrical_testing_general
+      stage1_acceptable: [electrical_testing_general]
+      stage2_subcategory_slug: accessory_doesnt_work
+      stage3_facts: { accessory_affected: "sunroof" }
+      route: testing_service
+    trap_note: "window_inop_testing is power SIDE-GLASS only; sunroof/moonroof panels route to general electrical."
+
+  # ---- AMBIGUOUS shared-circuit (hedge across two subcats) ----
+  - text: "the power window controls and the radio both stopped working at the same time, i checked the fuses"
+    tags: [ambiguous]
+    expected:
+      stage1_category_key: electrical_testing_general
+      stage1_acceptable: [electrical_testing_general]
+      stage2_subcategory_slug: accessory_doesnt_work
+      stage3_facts: { accessory_affected: "power windows, radio" }
+      route: testing_service
+    trap_note: "FM-8 shared-circuit hedge. The eval harness has NO `stage2_acceptable` field (schema keys: stage1_category_key, stage1_acceptable, stage2_subcategory_slug, stage3_facts, route) — an earlier draft used one, which Wave C would silently drop. The hedge is recorded here in prose instead: `multiple_random_electrical_glitches` is an equally defensible Stage-2 for 'both quit at the same time' until the deferred `accessory_failure_scope` slot (L5) can separate simultaneous-persistent from random-over-time. Primary label stays accessory_doesnt_work (one shared circuit)."
+
+  # ---- CROSS-SYSTEM: RPM-linked flicker belongs to charging, not body electrical ----
+  - text: "the interior and dash lights flicker and dim when its idling and get brighter when i rev the engine"
+    tags: [cross_system]
+    expected:
+      stage1_category_key: charging_starting_testing
+      stage1_acceptable: [charging_starting_testing]
+      stage2_subcategory_slug: dim_or_flickering_lights
+      stage3_facts: { lights_state: dim_at_idle_brighten_when_revving }
+      route: testing_service
+
+  # ---- NULL ROUTE: work-order task line, not a customer concern ----
+  - text: "REPLACE THE RIGHT FRONT TURN SIGNAL. CHECK LIGHTS"
+    tags: [null_route, work_order]
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      stage3_facts: {}
+      route: advisor
+    trap_note: "Imperative shop task with no symptom described (customer_request_type=replace_specific_part-shaped); non-concern, empty Stage-1, hand to advisor."

@@ -1,0 +1,434 @@
+system: router-nvh
+# Cross-system NVH router. New typed ops = Stage-1 hedges between confusable testing services +
+# Stage-2 routing negatives (routes_to REQUIRED). Slot proposals are OWNED by the Wave A dossiers and
+# only REFERENCED here (see slot_dependencies). Bind to 00-current-scheduler-taxonomy.md.
+
+ops:
+  # ---------- Stage-1 hedges (confusable testing-service pairs) ----------
+  - op: stage1.hedge.add
+    category_a: suspension_steering_check
+    category_b: brake_inspection
+    rule: >
+      A shake/vibration is BRAKES only when it happens while pressing the brake pedal. A steering-wheel
+      shimmy at a steady highway speed (foot off the brake) or a shake/bounce over bumps is SUSPENSION /
+      wheel-balance. Real corpus mislabels the highway shimmy as "CHECK BRAKES" — hedge, don't trust the
+      customer's guess.
+    discriminating_fact: onset_timing=when_braking (brakes) vs speed_band=highway+no-brake / over_bumps (suspension)
+
+  - op: stage1.hedge.add
+    category_a: exhaust_system_testing
+    category_b: check_engine_light_testing
+    rule: >
+      A tick/tap that is loudest at cold start and FADES or disappears once the engine is fully warm is an
+      exhaust-manifold leak (exhaust eval). A tick that is still there warm, tracks RPM, "sewing machine"
+      from the top of the engine is valvetrain/timing-chain (engine_ticking_or_tapping, reached via CEL /
+      oil-pressure testing). Warm-up behavior is the split, not the cold-start onset alone.
+    discriminating_fact: warm_up_behavior=quiets_when_warm (manifold) vs persists_warm (valvetrain)
+
+  - op: stage1.hedge.add
+    category_a: suspension_steering_check
+    category_b: awd_4x4_testing
+    rule: >
+      A rhythmic CLICK only when turning (moving, low speed) is a CV joint → suspension_steering_check. A
+      whole-car BIND/HOP/shudder in tight turns "like it's stuck in 4x4", or a 4WD/AWD warning message, is
+      AWD/4WD → awd_4x4_testing. A hum that changes on-gas-vs-coast is a differential (route
+      awd_4x4_testing on AWD vehicles, else suspension_steering_check).
+    discriminating_fact: noise_descriptor=popping_or_clicking (CV) vs binds_or_hops_in_turns / warning_light_named=4wd|awd (AWD)
+
+  - op: stage1.hedge.add
+    category_a: suspension_steering_check
+    category_b: transmission_testing
+    rule: >
+      A hum/whine that tracks ROAD speed (same at a given mph in every gear) is driveline (wheel bearing /
+      differential) → suspension_steering_check. One that tracks ENGINE RPM and changes when the
+      transmission shifts is transmission → transmission_testing. Customers file both under "transmission".
+    discriminating_fact: road-speed-tracking (driveline) vs rpm/gear-linked (transmission)
+
+  - op: stage1.hedge.add
+    category_a: exhaust_system_testing
+    category_b: suspension_steering_check
+    rule: >
+      A roar/rumble that rises with ENGINE RPM (rev it in park) is exhaust → exhaust_louder_or_rumbling. A
+      roar/hum that rises only with ROAD speed and is steering-load sensitive is a wheel bearing/tire →
+      humming_or_whirring_at_speed. Also: a can-of-rocks rattle underneath at idle/throttle-blip is an
+      exhaust cat/heat-shield (rattling_underneath_the_car); a bump-triggered thump is a suspension clunk.
+    discriminating_fact: rises-with-RPM-in-park (exhaust) vs rises-with-road-speed (bearing/tire)
+
+  - op: stage1.hedge.add
+    category_a: check_engine_light_testing
+    category_b: suspension_steering_check
+    rule: >
+      A deep, heavy knock from the lower engine that worsens under load (accelerating / uphill) is
+      engine-mechanical → deep_knocking_from_the_engine. A hard single clunk triggered by bumps with no
+      engine-load link is suspension → clunking_over_bumps. Load-triggered vs bump-triggered is the split.
+    discriminating_fact: onset_timing=when_accelerating+noise_descriptor=knocking_deep (engine) vs over_bumps+clunking (suspension)
+
+  - op: stage1.hedge.add
+    category_a: suspension_steering_check
+    category_b: power_steering_eps_testing
+    rule: >
+      A whine/groan only when TURNING the wheel (and heavier steering effort) is power steering →
+      power_steering_eps_testing. A rhythmic CLICK while rolling through a turn is a CV joint, and a
+      creak/clunk over bumps is suspension — both → suspension_steering_check. Turn-noise ≠ PS by default.
+    discriminating_fact: noise_descriptor=whining+steering_feel=heavy (PS) vs popping_or_clicking/creaking (suspension/CV)
+
+  # ---------- Stage-2 routing negatives (routes_to REQUIRED) ----------
+  # Wheel-bearing hum subcategory — push the confusable neighbors OUT.
+  - op: stage2.example.negative.add
+    subcat_slug: humming_or_whirring_at_speed
+    phrase: "grinding noise only when I press the brake, quiet otherwise"
+    routes_to: metallic_grinding
+  - op: stage2.example.negative.add
+    subcat_slug: humming_or_whirring_at_speed
+    phrase: "clicking sound only when I turn in parking lots, tick-tick-tick"
+    routes_to: popping_or_clicking_when_turning
+  - op: stage2.example.negative.add
+    subcat_slug: humming_or_whirring_at_speed
+    phrase: "deep rumble that gets louder when I rev it in park, sounds like a Harley"
+    routes_to: exhaust_louder_or_rumbling
+
+  # CV-click subcategory — separate from steering-column noise and bearing hum.
+  - op: stage2.example.negative.add
+    subcat_slug: popping_or_clicking_when_turning
+    phrase: "noise when I turn the wheel while parked, not while driving"
+    routes_to: noise_when_turning_the_steering_wheel
+  - op: stage2.example.negative.add
+    subcat_slug: popping_or_clicking_when_turning
+    phrase: "steady hum that rises with speed, louder curving one way"
+    routes_to: humming_or_whirring_at_speed
+
+  # Steering-column noise-on-turn — the reverse of the CV pair.
+  - op: stage2.example.negative.add
+    subcat_slug: noise_when_turning_the_steering_wheel
+    phrase: "clicking only when I'm moving through a turn in a parking lot"
+    routes_to: popping_or_clicking_when_turning
+
+  # Highway-shimmy subcategory — reject the brake-pulsation confusion (corpus "CHECK BRAKES" case).
+  - op: stage2.example.negative.add
+    subcat_slug: steering_wheel_shake_at_highway_speed
+    phrase: "shakes only when I press the brake pedal"
+    routes_to: vibration_or_pulsing_when_braking
+  - op: stage2.example.negative.add
+    subcat_slug: steering_wheel_shake_at_highway_speed
+    phrase: "shakes and bounces going over bumps and rough roads"
+    routes_to: shaking_or_bouncing_over_bumps_and_rough_roads
+  - op: stage2.example.negative.add
+    subcat_slug: steering_wheel_shake_at_highway_speed
+    phrase: "shakes at every speed, never eases off, even on smooth road"
+    routes_to: constant_vibration_that_doesnt_change_with_speed
+
+  # Brake-pulsation subcategory — reject the balance-shimmy confusion (reverse of above).
+  - op: stage2.example.negative.add
+    subcat_slug: vibration_or_pulsing_when_braking
+    phrase: "steering wheel shakes at highway speed with my foot off the brake"
+    routes_to: steering_wheel_shake_at_highway_speed
+
+  # Tick pair — manifold vs valvetrain, both directions.
+  - op: stage2.example.negative.add
+    subcat_slug: engine_ticking_or_tapping
+    phrase: "ticks at cold start then goes away once it warms up"
+    routes_to: exhaust_manifold_tick_or_puff
+  - op: stage2.example.negative.add
+    subcat_slug: exhaust_manifold_tick_or_puff
+    phrase: "ticks like a sewing machine and it's still there when fully warm"
+    routes_to: engine_ticking_or_tapping
+
+  # Rod-knock vs suspension clunk, both directions.
+  - op: stage2.example.negative.add
+    subcat_slug: clunking_over_bumps
+    phrase: "deep knock from inside the engine when I accelerate or go uphill"
+    routes_to: deep_knocking_from_the_engine
+  - op: stage2.example.negative.add
+    subcat_slug: deep_knocking_from_the_engine
+    phrase: "hard thump only when I go over bumps, engine sounds fine"
+    routes_to: clunking_over_bumps
+
+  # Cat rattle vs suspension clunk.
+  - op: stage2.example.negative.add
+    subcat_slug: rattling_underneath_the_car
+    phrase: "single clunk over bumps, nothing at idle or when I rev it"
+    routes_to: clunking_over_bumps
+
+  # Under-hood whine vs PS whine-on-turn.
+  - op: stage2.example.negative.add
+    subcat_slug: high_pitched_whining_under_the_hood
+    phrase: "whine only when I turn the steering wheel, quiet going straight"
+    routes_to: noise_when_turning_the_steering_wheel
+
+  # Idle shake vs highway shimmy.
+  - op: stage2.example.negative.add
+    subcat_slug: shaking_at_idle_while_stopped
+    phrase: "shake I feel in the steering wheel at highway speed, smooth at idle"
+    routes_to: steering_wheel_shake_at_highway_speed
+
+  # Constant tremor vs narrow-band balance shimmy.
+  - op: stage2.example.negative.add
+    subcat_slug: constant_vibration_that_doesnt_change_with_speed
+    phrase: "shimmy that comes in around 60 and eases off above and below it"
+    routes_to: steering_wheel_shake_at_highway_speed
+
+  # Suspension creak vs brake squeal.
+  - op: stage2.example.negative.add
+    subcat_slug: squeaking_or_creaking_over_bumps
+    phrase: "high squeal only when I press the brake, goes quiet off the pedal"
+    routes_to: high_pitched_squealing
+
+  # Driveline take-off clunk — forward-refs the driveline dossier's proposed subcategory
+  # (driveline_engagement_clunk_or_bind). Flagged for Wave C reconciliation.
+  - op: stage2.example.negative.add
+    subcat_slug: clunking_over_bumps
+    phrase: "clunk when I shift into drive from park or take off from a stop"
+    routes_to: driveline_engagement_clunk_or_bind   # NOTE: proposed subcat (driveline-cv-diff-awd §5) — reconcile in Phase C
+
+# ---------- Routing signal owned by this router (NOT a skip key) ----------
+routing_signals:
+  - name: vibration_felt_location
+    origin: binding/required-facts-map.q3.md §1 (handed to router-nvh)
+    type: enum-multi
+    values: [steering_wheel, seat, brake_pedal, floor, whole_car]
+    literal_cues:
+      - "steering wheel shakes / vibrates"          # -> steering_wheel
+      - "feel it in the seat / seat vibrates"         # -> seat
+      - "brake pedal pulses / shudders"               # -> brake_pedal (also pedal_feel=pulsating)
+      - "feel it through the floor"                    # -> floor
+      - "whole car shakes"                             # -> whole_car
+    use: routing_and_ranking_only
+    skip_key: false
+    reason_not_skip: >
+      All 7 witness questions (144,151,167,1478,734,755,691) are MULTI-LOCATION; a customer naming ONE
+      location has not denied the others, so skipping on a single stated location is a wrongful skip
+      (methodology §5). Feeds Stage-1/Stage-2 ranking (router-nvh §6), never the question-fact mapper.
+    routing_map:
+      steering_wheel: steering_wheel_shake_at_highway_speed
+      seat: constant_vibration_that_doesnt_change_with_speed
+      brake_pedal: vibration_or_pulsing_when_braking
+      whole_car: shaking_at_idle_while_stopped
+      floor: shaking_when_speeding_up_or_going_uphill
+      multi_stated: advisor_or_broaden
+
+# ---------- Slots referenced, NOT re-proposed (owner dossiers keep authorship) ----------
+slot_dependencies:
+  - slot: steering_load_effect
+    owner: wheels-tires-tpms-bearings
+    status: proposed (clears >=3 questions)
+    used_by: [N6, P3]
+  - slot: warm_up_behavior            # engine-mechanical names it symptom_warmup_trend
+    owner: engine-mechanical
+    status: proposed (4 warm-up questions)
+    used_by: [N13, N14, P4]
+  - slot_value: onset_timing += on_gear_engagement_or_take_off
+    owner: driveline-cv-diff-awd
+    status: value.add proposed
+    used_by: [N10, P6]
+  - slot_value: noise_descriptor += rumbling_or_droning
+    owner: exhaust-emissions
+    status: value.add proposed
+    used_by: [N16, P8]
+  - slot: driveline_behavior          # value binds_or_hops_in_turns
+    owner: driveline-cv-diff-awd
+    status: proposed
+    used_by: [AWD-bind vs CV]
+
+# ---------- Confusable matrix rows (owned pairs) ----------
+confusable_matrix_rows:
+  - pair: [brake_vibration, suspension_wheel_balance_vibration]
+    discriminating_fact: onset_timing
+    discriminating_question: "Does it shake only when you press the brake, or at a steady highway speed / over bumps with your foot off the brake?"
+    hedge_rule: "onset_timing=when_braking -> brakes (vibration_or_pulsing_when_braking); speed_band=highway+no-brake -> steering_wheel_shake_at_highway_speed; over_bumps -> shaking_or_bouncing_over_bumps_and_rough_roads."
+    examples_a:   # brakes
+      - "shakes only when I press the brake pedal"
+      - "BRAKE PEDAL ALSO VIBRATES AT HIGHWAY SPEEDS WHEN BRAKING"
+      - "pedal pulses and shudders every time I slow down"
+    examples_b:   # suspension / balance
+      - "SHIMMY AT HIGHWAY SPEEDS"
+      - "steering wheel shakes at highway speeds"        # corpus mislabeled 'CHECK BRAKES'
+      - "shake and bounce going over bumps and rough roads"
+
+  - pair: [cv_click_on_turn, steering_column_noise_on_turn]
+    discriminating_fact: speed_band   # moving vs parked, under onset_timing=when_turning
+    discriminating_question: "Does the click happen while the car is moving through a turn, or also when you turn the wheel while parked/stopped?"
+    hedge_rule: "when_turning + speed_band=low_speed (moving) -> popping_or_clicking_when_turning (CV); when_turning + speed_band=stopped -> noise_when_turning_the_steering_wheel (steering)."
+    examples_a:   # CV joint (moving)
+      - "clicking noise from the front only when I turn in parking lots"
+      - "tick-tick-tick when I make a sharp turn, faster the tighter I go"
+    examples_b:   # steering column (parked/at a stop)
+      - "steering column making a grinding noise when turning, mostly backing out of parking spaces"
+      - "creak when I crank the wheel while stopped at a light"
+
+  - pair: [cv_click_on_turn, wheel_bearing_hum]
+    discriminating_fact: noise_descriptor
+    discriminating_question: "Is it a repeating click only when turning, or a steady hum that rises with speed?"
+    hedge_rule: "noise_descriptor=popping_or_clicking -> CV (popping_or_clicking_when_turning); humming_or_whirring -> bearing (humming_or_whirring_at_speed)."
+    examples_a:
+      - "clicking only when I turn, not otherwise"
+    examples_b:
+      - "steady hum that just rises with how fast I'm going"
+
+  - pair: [wheel_bearing_hum, tire_hum_roar]
+    discriminating_fact: steering_load_effect   # slot proposed by wheels-tires; PROBE until then
+    discriminating_question: "Does the hum get louder turning one way and quieter the other, or stay the same no matter how you steer?"
+    hedge_rule: "steering-load-sensitive -> wheel bearing; constant + tire_state=uneven_wear -> tire road-roar. Both route to humming_or_whirring_at_speed (same subcat) — this is a within-subcategory diagnostic split, not a routing fork; the router surfaces it so the wizard PROBES steering-load until steering_load_effect exists."
+    examples_a:   # bearing
+      - "humming that gets louder curving left, quieter curving right"
+      - "sounds like a wheel bearing, worse turning one direction"
+    examples_b:   # tire
+      - "Very noticeable humming from rear end at 30 to 40 mph, sounds like snow tires"
+      - "constant roar that doesn't change no matter how I steer, tires are worn on the edges"
+
+  - pair: [valvetrain_tick, exhaust_manifold_tick]
+    discriminating_fact: warm_up_behavior   # slot proposed by engine-mechanical; PROBE until then
+    discriminating_question: "Does the ticking go away once the engine is fully warmed up, or is it still there warm?"
+    hedge_rule: "fades/gone-when-warm -> exhaust_manifold_tick_or_puff (exhaust_system_testing); still-there-warm / tracks RPM / 'sewing machine' -> engine_ticking_or_tapping. onset_timing=cold_start only says WHEN it starts, not that it clears warm — PROBE the warm-up trend."
+    examples_a:   # valvetrain
+      - "engine sounds like a sewing machine when I first start it, still ticks when warm"
+      - "fast tapping from the top of the engine that never fully goes away"
+    examples_b:   # manifold
+      - "fast ticking when I first start it cold, goes away after it warms up"
+      - "exhaust manifold leak, it ticks at startup then quiets down"
+
+  - pair: [differential_whine, wheel_bearing_hum]
+    discriminating_fact: onset_timing   # on-gas vs coast; PARTIAL (no coast value) -> PROBE
+    discriminating_question: "Does the sound change when you get on the gas vs coast, or does it just track how fast you're going?"
+    hedge_rule: "throttle-phase change (louder on accel or on coast) -> differential; pure speed-tracking regardless of throttle -> wheel bearing. Both -> humming_or_whirring_at_speed today; PROBE the on-gas/coast change."
+    examples_a:   # diff
+      - "whine when accelerating that stops when I let off the gas, they said maybe the differential"
+      - "hum from the rear that changes when I get on and off the throttle"
+    examples_b:   # bearing
+      - "hum that just gets louder the faster I go, doesn't care if I'm on the gas or coasting"
+
+  - pair: [driveline_takeoff_clunk, suspension_bump_clunk]
+    discriminating_fact: onset_timing   # on_gear_engagement_or_take_off (proposed) vs over_bumps
+    discriminating_question: "Does the clunk happen when you shift into gear / take off / lift off the gas, over bumps, or the instant you touch the brake?"
+    hedge_rule: "shift/torque-reversal/take-off -> driveline (driveline_engagement_clunk_or_bind, proposed); over_bumps -> clunking_over_bumps; the instant you press/release the brake -> brake_inspection (loose caliper)."
+    examples_a:   # driveline
+      - "clunk when I put it in drive from park or take off from a stop"
+      - "single clunk when I snap on and off the gas"
+    examples_b:   # suspension
+      - "clunking in the front end over every bump and pothole"
+      - "loud clunk over bumps, tie rod ends maybe"
+
+  - pair: [engine_rod_knock, suspension_clunk]
+    discriminating_fact: onset_timing
+    discriminating_question: "Does the deep knock happen with engine load (accelerating/uphill), or with road bumps?"
+    hedge_rule: "when_accelerating + noise_descriptor=knocking_deep -> deep_knocking_from_the_engine; over_bumps + clunking -> clunking_over_bumps."
+    examples_a:   # engine
+      - "deep heavy knock from the motor that gets louder going uphill"
+      - "sounds like a hammer inside the engine when I accelerate"
+    examples_b:   # suspension
+      - "hard thump over bumps, engine runs fine"
+
+  - pair: [exhaust_rumble_roar, tire_bearing_roar]
+    discriminating_fact: rpm_vs_road_speed   # PROBE (no slot for rises-with-RPM-in-park)
+    discriminating_question: "Does the sound rise with engine RPM when you rev it in park, or only with road speed?"
+    hedge_rule: "rises-with-RPM-in-park -> exhaust (exhaust_louder_or_rumbling); rises-with-road-speed / steering-load-sensitive -> bearing/tire (humming_or_whirring_at_speed)."
+    examples_a:   # exhaust
+      - "deep rumble that gets louder when I rev it in park, sounds like a motorcycle"
+      - "muffler rusted out, way louder now even sitting still"
+    examples_b:   # bearing/tire
+      - "roar that only rises with how fast I'm driving, gone when I stop"
+
+# ---------- Golden cases (>=8; mirrors eval-cases.json; includes inference-trap + null-route) ----------
+golden_cases:
+  - text: "steering wheel shakes real bad at highway speeds, foot nowhere near the brake"
+    tags: [fact_rich, nvh, confusable]
+    expected:
+      stage1_category_key: suspension_steering_check
+      stage1_acceptable: [suspension_steering_check, brake_inspection]
+      stage2_subcategory_slug: steering_wheel_shake_at_highway_speed
+      stage3_facts: { speed_band: highway, onset_timing: during_driving }
+      route: testing_service
+
+  - text: "CHECK BRAKES (Steering wheel shakes at highway speeds)"
+    tags: [nvh, confusable, corpus_mislabel]
+    expected:
+      stage1_category_key: suspension_steering_check
+      stage1_acceptable: [suspension_steering_check, brake_inspection]
+      stage2_subcategory_slug: steering_wheel_shake_at_highway_speed
+      stage3_facts: { speed_band: highway }
+      route: testing_service
+
+  - text: "brake pedal shudders and the wheel shakes every time I slow down from the highway"
+    tags: [nvh, confusable]
+    expected:
+      stage1_category_key: brake_inspection
+      stage1_acceptable: [brake_inspection, suspension_steering_check]
+      stage2_subcategory_slug: vibration_or_pulsing_when_braking
+      stage3_facts: { onset_timing: when_braking, pedal_feel: pulsating }
+      route: testing_service
+
+  - text: "clicking noise from the front only when I turn in parking lots, tick tick tick"
+    tags: [nvh, confusable]
+    expected:
+      stage1_category_key: suspension_steering_check
+      stage1_acceptable: [suspension_steering_check]
+      stage2_subcategory_slug: popping_or_clicking_when_turning
+      stage3_facts: { noise_descriptor: popping_or_clicking, onset_timing: when_turning, speed_band: low_speed, location_axle: front }
+      route: testing_service
+
+  - text: "Very noticeable humming from the rear end, most noticeable 30 to 40 mph, sounds like snow tires"
+    tags: [nvh, confusable, needs_fact]
+    expected:
+      stage1_category_key: suspension_steering_check
+      stage1_acceptable: [suspension_steering_check]
+      stage2_subcategory_slug: humming_or_whirring_at_speed
+      stage3_facts: { noise_descriptor: humming_or_whirring, speed_band: specific_mph, speed_specific_mph: 30, location_axle: rear }
+      route: testing_service
+
+  - text: "fast ticking when I first start it cold, goes away after it warms up"
+    tags: [nvh, confusable, tick_pair]
+    expected:
+      stage1_category_key: exhaust_system_testing
+      stage1_acceptable: [exhaust_system_testing, check_engine_light_testing]
+      stage2_subcategory_slug: exhaust_manifold_tick_or_puff
+      stage3_facts: { noise_descriptor: ticking_or_tapping, onset_timing: cold_start }
+      route: testing_service
+
+  - text: "engine sounds like a sewing machine when I first start it and it still ticks once it's warm"
+    tags: [nvh, tick_pair, inference_trap]
+    # INFERENCE TRAP: 'cold start' is present, but the customer ALSO says it persists warm ->
+    # must NOT collapse to onset_timing=cold_start alone; the persists-warm cue points valvetrain, not manifold.
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing, oil_pressure_light_testing, exhaust_system_testing]
+      stage2_subcategory_slug: engine_ticking_or_tapping
+      stage3_facts: { noise_descriptor: ticking_or_tapping }
+      route: testing_service
+
+  - text: "deep heavy knock from the motor that gets louder going uphill"
+    tags: [nvh, confusable]
+    expected:
+      stage1_category_key: check_engine_light_testing
+      stage1_acceptable: [check_engine_light_testing]
+      stage2_subcategory_slug: deep_knocking_from_the_engine
+      stage3_facts: { noise_descriptor: knocking_deep, onset_timing: when_accelerating }
+      route: testing_service
+
+  - text: "VEHICLE SHAKING AT ALL SPEEDS ( like a 2000lbs vibrator )"
+    tags: [nvh, constant]
+    expected:
+      stage1_category_key: suspension_steering_check
+      stage1_acceptable: [suspension_steering_check]
+      stage2_subcategory_slug: constant_vibration_that_doesnt_change_with_speed
+      stage3_facts: { speed_band: all_speeds }
+      route: testing_service
+
+  - text: "makes a weird noise up front"
+    tags: [nvh, vague, needs_fact]
+    # Bare location + no descriptor + no condition -> hedge set, NOT a confident pick. Wizard must ask
+    # noise_descriptor + onset_timing.
+    expected:
+      stage1_category_key: suspension_steering_check
+      stage1_acceptable: [suspension_steering_check, brake_inspection, exhaust_system_testing]
+      stage2_subcategory_slug: null
+      stage3_facts: { location_axle: front }
+      route: testing_service
+
+  - text: "Tire Rotation & Balance"
+    tags: [nvh, null_route, work_order]
+    # Non-concern work-order line (a service request, not a symptom) -> advisor, empty stage1.
+    expected:
+      stage1_category_key: null
+      stage1_acceptable: []
+      stage2_subcategory_slug: null
+      stage3_facts: {}
+      route: advisor

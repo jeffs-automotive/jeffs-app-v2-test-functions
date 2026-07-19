@@ -1,0 +1,130 @@
+system: abs-traction-stability
+# phrase -> normalized -> routes_to[] -> ambiguity -> provenance
+# ambiguity: unambiguous | needs-fact:<slot> | cross-system:<slug>
+# provenance: tekmetric | nhtsa | forum-paraphrase | synthetic   (source-policy.md enum — NO 'authored'/'null-route')
+# Voice preserved as customers write it (caps/fragments/misspellings intact).
+#
+# Provenance discipline (verifier fix): eval-cases.json phrasings are AUTHORED, and catalog-snapshot.json
+# positive_examples are pre-existing DB enrichment (retraining them here would be circular) — NEITHER is real
+# Tekmetric customer text, so neither is labeled `tekmetric`. Real Tekmetric strings are quoted verbatim from
+# real-concerns-tekmetric-labeled-v2.json; forum PATTERNS are paraphrased from real-concerns-forums.json.
+# Synthetic share is held <=~30% per routed subcategory.
+entries:
+  # ---- ABS (yellow) ----  [real tekmetric x1 + dual x1 + 1 synthetic self-test = 33% synth]
+  - phrase: "ABS LIGHT ON TESTING. STEERING FEELS MORE DIFFICULT AUTH 179"
+    normalized: ABS telltale on plus heavy steering
+    routes_to: [abs_anti_lock_brake_light]
+    ambiguity: needs-fact:warning_light_named   # EPS light may also be the named one -> power_steering_eps_light
+    provenance: tekmetric
+
+  - phrase: "abs / trac / no AWD message"
+    normalized: ABS + traction telltales with an AWD-disabled message
+    routes_to: [abs_anti_lock_brake_light, traction_control_stability_light]
+    ambiguity: needs-fact:warning_light_named   # shared WSS; ABS letters -> abs, skid-car/TCS -> traction
+    provenance: tekmetric
+
+  - phrase: "my abs light comes on for a second when i start the car then goes right back off, is that bad?"
+    normalized: ABS telltale key-on self-test (lamp check), extinguishes after start
+    routes_to: [abs_anti_lock_brake_light]
+    ambiguity: needs-fact:warning_light_behavior   # came_on_then_off = NORMAL bulb-check self-test, not a fault
+    provenance: synthetic
+
+  # ---- Traction / stability (yellow) ----  [real x5 (3 tek + 2 forum) + 2 synthetic = 29% synth]
+  - phrase: "SERVICE STABILTRAC LIGHT ON. No other warning lights are present"
+    normalized: stability (StabiliTrak) telltale steady on, isolated
+    routes_to: [traction_control_stability_light]
+    ambiguity: unambiguous
+    provenance: tekmetric
+
+  - phrase: "TRACTION CONTROL LIGHT STAYING ON"
+    normalized: traction telltale steady on
+    routes_to: [traction_control_stability_light]
+    ambiguity: unambiguous
+    provenance: tekmetric
+
+  - phrase: "transmission light and esc off"
+    normalized: ESC-off indicator plus another telltale
+    routes_to: [traction_control_stability_light]
+    ambiguity: needs-fact:warning_light_named
+    provenance: tekmetric
+
+  - phrase: "when I turn left the ABS and traction control light stays on for 20 seconds then goes away, started after I got my truck leveled"
+    normalized: ABS+traction intermittent after suspension leveling
+    routes_to: [traction_control_stability_light]
+    ambiguity: needs-fact:warning_light_named
+    provenance: forum-paraphrase   # real-concerns-forums.json (2carpros abs-light-and-traction-control-light)
+
+  - phrase: "sometimes while driving the traction control, ABS, and hill assist lights all light up, car still drives fine"
+    normalized: traction + ABS + hill-assist co-illumination (shared WSS)
+    routes_to: [traction_control_stability_light]
+    ambiguity: needs-fact:warning_light_named
+    provenance: forum-paraphrase
+
+  - phrase: "theres a little yellow car with squiggly wavy lines under it on my dash, no clue what it means"
+    normalized: stability skid-car icon, customer cannot name it
+    routes_to: [traction_control_stability_light]
+    ambiguity: unambiguous
+    provenance: synthetic   # icon-only pattern (cf. eval abs_traction_stability_testing-004)
+
+  - phrase: "anti-skid light keeps flashing when it rains"
+    normalized: stability telltale flashing during wet driving (normal intervention)
+    routes_to: [traction_control_stability_light]
+    ambiguity: needs-fact:warning_light_behavior   # flashing = normal; steady = fault
+    provenance: synthetic
+
+  # ---- Red BRAKE (base hydraulic / mechanical) ----  [real x5 (2 tek + 3 forum) + 1 synthetic = 17% synth]
+  - phrase: "RED BRAKE LIGHT WAS COMING ON AND OFF FOR A FEW DAYS, CLIENT FOUND FLUID WAS LOW AND TOPPED OFF, WAS GOOD FOR A FEW DAYS LIGHT BACK ON NOW"
+    normalized: red base-brake telltale, low fluid recurring (leak/pad-wear cue)
+    routes_to: [brake_system_red_light]
+    ambiguity: unambiguous
+    provenance: tekmetric
+
+  - phrase: "the traction control light, the ABS light, and the brake light for the parking brake was blinking, right rear wheel started wobbling"
+    normalized: red brake + ABS + traction all lit with a wobbling wheel (red present -> route red)
+    routes_to: [brake_system_red_light]
+    ambiguity: cross-system:abs_anti_lock_brake_light   # multi-light but red present -> safety-first red
+    provenance: tekmetric
+
+  - phrase: "cruising on the interstate between 65 and 75 the ABS and brake light both come on, never in local traffic"
+    normalized: intermittent ABS + red brake at highway speed
+    routes_to: [brake_system_red_light]
+    ambiguity: cross-system:abs_anti_lock_brake_light
+    provenance: forum-paraphrase   # real-concerns-forums.json (cartalk abs-brake-light-on-dash)
+
+  - phrase: "changed my master cylinder and the brake light stays on, fluid was a little low so i filled it but i keep having to top it off"
+    normalized: red brake light with recurring low fluid after master-cylinder work (leak)
+    routes_to: [brake_system_red_light]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+
+  - phrase: "brake lamp light on my dash lit up today, but the brake lights out back are working fine"
+    normalized: dashboard BRAKE telltale (NOT an exterior tail-lamp outage)
+    routes_to: [brake_system_red_light]
+    ambiguity: needs-fact:warning_light_named   # TRAP: 'brake lights working' = tail lamps, not the dash telltale
+    provenance: forum-paraphrase   # real-concerns-forums.json (dash brake-lamp trap)
+
+  - phrase: "red exclamation point in a circle came on my dashboard and the brake pedal feels mushy"
+    normalized: red (!) base-brake telltale with spongy pedal
+    routes_to: [brake_system_red_light]
+    ambiguity: unambiguous
+    provenance: synthetic
+
+  # ---- Exterior brake-LAMP bulb (cross-system boundary, NOT this system) ----
+  - phrase: "one of my brake lights is out back there, need a new bulb, nothing on the dash"
+    normalized: exterior brake LAMP bulb outage, no dash warning system involved
+    routes_to: [accessory_doesnt_work]   # electrical_testing_general -- single dead electrical item
+    ambiguity: cross-system:accessory_doesnt_work
+    provenance: synthetic   # no bulb-out REQUEST exists in the corpus; the real forum post is the dash-lamp trap above
+
+  # ---- Multi-light cluster (route away to multiple_warning_lights_at_once) ----  [real x2, 0 synthetic]
+  - phrase: "ABS & TRAC LIGHTS COMING ON, client also reported TPMS and airbag"
+    normalized: many different chassis telltales together
+    routes_to: [multiple_warning_lights_at_once]
+    ambiguity: cross-system:multiple_warning_lights_at_once
+    provenance: tekmetric
+
+  - phrase: "intermittent dash lights, ABS, traction control, airbag and security also, no power locks or windows"
+    normalized: ABS+traction+airbag+security cluster with electrical dropout (bus/low-voltage event)
+    routes_to: [multiple_warning_lights_at_once]
+    ambiguity: cross-system:multiple_warning_lights_at_once
+    provenance: forum-paraphrase   # real-concerns-forums.json (U0109/U0102 cluster, no-power event)

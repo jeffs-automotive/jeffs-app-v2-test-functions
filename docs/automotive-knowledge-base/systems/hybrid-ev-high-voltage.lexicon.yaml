@@ -1,0 +1,145 @@
+system: hybrid-ev-high-voltage
+# phrase -> normalized -> routes_to[] (subcategory slug(s); "propose:" = not-yet-existing subcat)
+# -> ambiguity (unambiguous | needs-fact:<slot> | cross-system:<slug>) -> provenance.
+#
+# ROUTING POLICY (one policy wins across all three artifacts, see dossier §3.1/§9.2):
+#   * Customer STATES "hybrid"/"electric"/"EV"/"plug-in hybrid"  -> propose: hybrid/EV slug; set vehicle_powertrain.
+#   * Powertrain NOT stated (model-name-only like "prius"/"leaf", or a generic push-button car)
+#     -> interim EXISTING ICE slug (e.g. wont_crank_just_clicks / low_power_or_wont_accelerate_normally);
+#        vehicle_powertrain stays NULL; ambiguity=needs-fact:vehicle_powertrain. Model name NEVER sets powertrain.
+# ambiguity uses SUBCATEGORY slugs for cross-system (per template schema), never service_keys or "advisor".
+#
+# Corpus caveat: the Tekmetric corpus has exactly TWO hybrid/EV lines (the §3.3 CEL "service high voltage
+# charging system" concern + the Tesla brake-caliper work-order); everything else is nhtsa /
+# forum-paraphrase / synthetic (flagged) — a known data gap logged for Chris. No line is labeled
+# `tekmetric` unless it is verbatim/near-verbatim present in the corpus.
+entries:
+
+  # ---- 12 V-aux no-power / won't-go-to-READY (§3.1) ----
+  - phrase: "my hybrid wont start, all the dash lights come on but it wont go to ready and it wont move"
+    normalized: STATED hybrid will not enter READY, electronics alive, no motion
+    routes_to: ["propose:hybrid_or_ev_wont_power_on"]   # interim: charging_starting_testing / battery_test (12V)
+    ambiguity: unambiguous
+    provenance: synthetic
+  - phrase: "pushed the power button and nothing happens, everything lights up inside but the car is dead"
+    normalized: press start, no power-on, dash lit, powertrain NOT stated
+    routes_to: [wont_crank_just_clicks]   # powertrain unstated -> interim ICE slug (NOT the stated-hybrid-only propose slug)
+    ambiguity: needs-fact:vehicle_powertrain
+    provenance: forum-paraphrase
+  - phrase: "prius wont start this morning, jumped the little 12 volt battery in the back and it fired up"
+    normalized: model-name-only no-power fixed by 12V jump (aux battery); powertrain NOT stated
+    routes_to: [wont_crank_just_clicks]   # "prius" is a MODEL -> does NOT set powertrain (§9.2); interim ICE slug
+    ambiguity: needs-fact:vehicle_powertrain
+    provenance: forum-paraphrase
+  - phrase: "my leaf wouldnt power on, had to jump the 12v and then it was fine"
+    normalized: model-name-only EV no-power fixed by 12V jump; powertrain NOT stated
+    routes_to: [wont_crank_just_clicks]   # "leaf" is a MODEL -> treated IDENTICALLY to the prius line (§9.2)
+    ambiguity: needs-fact:vehicle_powertrain
+    provenance: forum-paraphrase
+
+  # ---- Reduced power / turtle / limp (§3.2) ----
+  - phrase: "driving my electric car and it suddenly lost power, a turtle light came on and it wont go over like 40"
+    normalized: STATED EV reduced-power / turtle derate
+    routes_to: ["propose:hybrid_or_ev_reduced_power_or_limp_mode"]
+    ambiguity: unambiguous
+    provenance: nhtsa
+  - phrase: "car went into reduced power mode on the highway, could barely keep going, had to pull over"
+    normalized: reduced-power event while driving, powertrain NOT stated (ICE cars also have limp/reduced-power)
+    routes_to: [low_power_or_wont_accelerate_normally]   # unstated powertrain -> interim ICE performance slug
+    ambiguity: needs-fact:vehicle_powertrain
+    provenance: nhtsa
+  - phrase: "my ev is crawling, dashboard shows a turtle icon, feels like theres no power at all"
+    normalized: STATED EV turtle, severe power limit
+    routes_to: ["propose:hybrid_or_ev_reduced_power_or_limp_mode"]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  - phrase: "hybrid has no power going up hills all of a sudden and theres a warning light"
+    normalized: STATED hybrid low-power + warning
+    routes_to: ["propose:hybrid_or_ev_reduced_power_or_limp_mode"]
+    ambiguity: unambiguous
+    provenance: synthetic
+  - phrase: "no power going uphill, feels gutless and bogs down"
+    normalized: low power under load, powertrain unstated
+    routes_to: [low_power_or_wont_accelerate_normally]   # ICE default when powertrain not stated
+    ambiguity: needs-fact:vehicle_powertrain
+    provenance: forum-paraphrase
+
+  # ---- Hybrid master warning (§3.3) ----
+  - phrase: "CHECK ENGINE LIGHT ON, message service high voltage charging system"
+    normalized: HV/charging message alongside CEL (real corpus line, near-verbatim)
+    routes_to: ["propose:hybrid_system_warning_light"]
+    ambiguity: cross-system:check_engine_light   # confusable with the generic CEL subcategory
+    provenance: tekmetric
+  - phrase: "red triangle light came on and it says check hybrid system, is it safe to drive?"
+    normalized: hybrid master warning; "check hybrid system" literally states the HV system
+    routes_to: ["propose:hybrid_system_warning_light"]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  - phrase: "big red triangle with an exclamation point lit up on my prius dash"
+    normalized: bare red-triangle master warning + MODEL name only (no "hybrid"/HV words)
+    routes_to: [check_engine_light]   # model-name-only + generic triangle -> interim generic warning slug
+    ambiguity: needs-fact:vehicle_powertrain   # if hybrid stated OR "check hybrid system" said -> hybrid_system_warning_light
+    provenance: forum-paraphrase
+
+  # ---- Regen brake feel (§3.4) ----
+  - phrase: "my hybrid brakes feel weird and grabby especially first thing on a cold morning"
+    normalized: STATED hybrid regen/blending feel change, cold
+    routes_to: [pulsating_or_vibrating_pedal]   # keep in brakes; regen-feel note (§8 / positive example)
+    ambiguity: unambiguous
+    provenance: synthetic
+  - phrase: "the brakes on my ev feel different, like they let go for a second then grab, more when its cold out"
+    normalized: STATED EV regen handoff to friction, cold battery
+    routes_to: [pulsating_or_vibrating_pedal]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+
+  # ---- Repeated 12V drain on a hybrid/EV (§7) -> EXISTING battery_drains_overnight ----
+  - phrase: "my hybrid battery keeps dying every few days, i keep having to jump the little 12 volt to get it going"
+    normalized: STATED hybrid, REPEATED 12V aux drain (parasitic / weak aux) -> not a one-off no-start
+    routes_to: [battery_drains_overnight]   # existing electrical slug; the REPEAT pattern is the discriminator vs §3.1
+    ambiguity: unambiguous
+    provenance: synthetic
+
+  # ---- Engine runs constantly / revs high on a hybrid (OUT OF SCOPE — usually normal; else ICE) ----
+  - phrase: "my hybrid engine runs all the time now and revs up loud, it used to shut off at lights and be quiet"
+    normalized: hybrid engine-on-constantly / high-rev — OFTEN NORMAL hybrid behavior; if abnormal it is an
+                ICE driveability/exhaust-noise concern, NOT an HV-routing win (§7)
+    routes_to: []   # advisor: human judgment normal-vs-abnormal; if abnormal -> ICE performance/noise dossiers, not here
+    ambiguity: needs-fact:vehicle_powertrain
+    provenance: synthetic
+
+  # ---- EVSE / won't charge (§3.5) — NO catalog fit today -> advisor (thin subcat proposed) ----
+  - phrase: "my ev wont charge at home anymore, the charger clicks but nothing happens and the port light is red"
+    normalized: EVSE / on-board-charge fault
+    routes_to: []   # NO FIT today -> advisor; proposed landing spot: hybrid_or_ev_wont_charge (if HV service ships)
+    ambiguity: unambiguous
+    provenance: nhtsa
+  - phrase: "plug in my plug-in hybrid overnight and it didnt charge, wont lock onto the charger"
+    normalized: PHEV charge-port handshake fault
+    routes_to: []
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+
+  # ---- Range / degradation (§3.6) — NO fit today -> advisor/quote (thin subcat proposed) ----
+  - phrase: "my hybrid battery isnt holding a charge, gas mileage tanked over the last few months"
+    normalized: HV pack capacity fade (hybrid)
+    routes_to: []   # NO FIT today -> advisor; proposed landing spot: hybrid_or_ev_battery_degradation_range_loss
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  - phrase: "electric range dropped from 200 to like 130, is the battery going bad?"
+    normalized: BEV range loss / degradation
+    routes_to: []
+    ambiguity: unambiguous
+    provenance: nhtsa
+
+  # ---- Work-order / null-route (§8) ----
+  - phrase: "Previously declined>LUBRICATE AND SERVICE BRAKE CALIPERS REAR AXLE [TESLA]"
+    normalized: declined EV maintenance work-order line (real corpus), NOT a customer concern
+    routes_to: []   # null-route -> advisor
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "hybrid system testing auth 179"
+    normalized: staff testing-authorization illustration, NOT a customer concern
+    routes_to: []   # null-route -> advisor
+    ambiguity: unambiguous
+    provenance: synthetic   # NOT a real corpus line — flagged synthetic (see dossier §4 correction note)

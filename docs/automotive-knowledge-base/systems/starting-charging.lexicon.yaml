@@ -1,0 +1,222 @@
+system: starting-charging
+# phrase -> normalized -> routes_to[] (subcategory slug) -> ambiguity -> provenance
+# ambiguity: unambiguous | needs-fact:<slot> | cross-system:<service_key>
+#   cross-system referents are testing-service KEYS (one consistent referent type for Wave C
+#   aggregation) — e.g. no_start_testing, battery_test, check_engine_light_testing — NOT subcategory
+#   slugs. Entries with routes_to: [] rely on this field for their route.
+# provenance: tekmetric | nhtsa | forum-paraphrase | synthetic
+entries:
+  # ---- wont_crank_just_clicks -------------------------------------------------
+  - phrase: "turn the key and all i get is click click click, wont turn over"
+    normalized: rapid clicking, engine does not rotate
+    routes_to: [wont_crank_just_clicks]
+    ambiguity: unambiguous
+    provenance: synthetic
+  - phrase: "every time I turn the ignition I just hear one click nothing else"
+    normalized: single click, no crank (starter/severe-resistance cue)
+    routes_to: [wont_crank_just_clicks]
+    ambiguity: needs-fact:lights_state
+    provenance: forum-paraphrase
+  - phrase: "i got a bunch of click click clicks, got a jump and it started, drove around to charge it, shut it off and right away all i got were clicks again"
+    normalized: rapid clicking, dead-battery signature, jump recovers only briefly
+    routes_to: [wont_crank_just_clicks]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  - phrase: "Jeep does not start on initial push, only on secondary push"
+    normalized: intermittent no-crank on push-button start
+    routes_to: [wont_crank_just_clicks]
+    ambiguity: needs-fact:engine_running
+    provenance: tekmetric
+  - phrase: "when i turn the key nothing happens, no clicking no cranking, interior lights dim and go off but the battery light stays on"
+    normalized: silent no-crank, lights collapse (dead battery / open connection)
+    routes_to: [wont_crank_just_clicks]
+    ambiguity: needs-fact:engine_running   # this is no_sound_at_all, not clicking (§3.10)
+    provenance: forum-paraphrase
+  - phrase: "usually only in the morning i hear a single click after i turn the key then nothing, it starts after a few tries"
+    normalized: intermittent single-click no-crank, cold mornings
+    routes_to: [wont_crank_just_clicks]
+    ambiguity: needs-fact:lights_state
+    provenance: forum-paraphrase
+  - phrase: "one click from the starter and nothing else, i cleaned the grounds and terminals and the battery reads 12.6 volts"
+    normalized: single click, good battery → starter / high-resistance (§3.2)
+    routes_to: [wont_crank_just_clicks]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  - phrase: "grinding noise when i go to start it, like the gears wont catch"
+    normalized: starter pinion/flywheel grind on start (§3.12)
+    routes_to: [wont_crank_just_clicks]
+    ambiguity: unambiguous   # grind explicitly tied to the START attempt -> ours, not the noise router
+    provenance: synthetic
+  # ---- slow_crank_sluggish_start ---------------------------------------------
+  - phrase: "battery seems to give a slow crank, check and advise"
+    normalized: slow cranking speed
+    routes_to: [slow_crank_sluggish_start]
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "client has been noticing a weak/extended crank"
+    normalized: weak, extended cranking
+    routes_to: [slow_crank_sluggish_start]
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "cranks real slow in the mornings, rrr rrr rrr, then it catches"
+    normalized: slow crank, cold, eventually starts
+    routes_to: [slow_crank_sluggish_start]
+    ambiguity: unambiguous
+    provenance: synthetic
+  - phrase: "turns over slow like the battery is about to die, 3 mornings out of 5"
+    normalized: intermittent slow crank, cold
+    routes_to: [slow_crank_sluggish_start]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  # ---- battery_drains_overnight ----------------------------------------------
+  - phrase: "car was fine yesterday, dead this morning, keep having to jump it"
+    normalized: dies while parked, repeated jumps
+    routes_to: [battery_drains_overnight]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  - phrase: "if you leave it sit a couple days the battery is totally dead, replaced the battery and it didnt fix it"
+    normalized: parasitic draw, replace-once-no-fix
+    routes_to: [battery_drains_overnight]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  - phrase: "client had to jump start vehicle (sat for awhile)"
+    normalized: dead after sitting
+    routes_to: [battery_drains_overnight]
+    ambiguity: needs-fact:engine_running
+    provenance: tekmetric
+  - phrase: "something keeps draining my battery overnight, jump it in the morning and its dead again by next day"
+    normalized: overnight drain, daily jumps
+    routes_to: [battery_drains_overnight]
+    ambiguity: unambiguous
+    provenance: synthetic
+  # ---- battery_charging_light -------------------------------------------------
+  - phrase: "dash battery light came on"
+    normalized: battery/charge warning light on
+    routes_to: [battery_charging_light]
+    ambiguity: needs-fact:warning_light_behavior
+    provenance: tekmetric
+  - phrase: "battery light on, testing auth $89"
+    normalized: battery light (staff appended auth price)
+    routes_to: [battery_charging_light]
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "red battery light is on and i hear a squealing sound, ok to keep driving?"
+    normalized: charge light + belt squeal
+    routes_to: [battery_charging_light]
+    ambiguity: unambiguous
+    provenance: synthetic
+  - phrase: "over the last couple years a quick blink of the battery light, now its coming on a lot and staying on longer"
+    normalized: intermittent charge light progressing to steady
+    routes_to: [battery_charging_light]
+    ambiguity: needs-fact:warning_light_behavior
+    provenance: forum-paraphrase
+  - phrase: "check engine light on and a message says service high voltage charging system"
+    normalized: overcharge / regulator overvoltage message (§3.11)
+    routes_to: [battery_charging_light]
+    ambiguity: cross-system:check_engine_light_testing   # CEL also lit; overcharge still ours
+    provenance: tekmetric
+  # ---- dim_or_flickering_lights ----------------------------------------------
+  - phrase: "headlights and dash lights flicker almost all the time while driving"
+    normalized: flickering lights, charging instability
+    routes_to: [dim_or_flickering_lights]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  - phrase: "my headlights keep going dimmer and brighter on their own, brighter when i rev and dimmer at stoplights"
+    normalized: pulsing brightness tracking rpm (alternator cue)
+    routes_to: [dim_or_flickering_lights]
+    ambiguity: unambiguous
+    provenance: synthetic
+  - phrase: "i was driving one night and my headlights were flickering, i turned on the interior light and it was flickering too, after a while it stopped"
+    normalized: flickering headlights + interior lights, intermittent
+    routes_to: [dim_or_flickering_lights]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  - phrase: "my headlights keep flickering on and off, i changed the switch and it stopped for a while but now its doing it again"
+    normalized: recurring headlight flicker
+    routes_to: [dim_or_flickering_lights]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  # ---- car_died_while_driving_electrical -------------------------------------
+  - phrase: "died while driving, all warning lights came on and then the vehicle just shut off"
+    normalized: electrical shutdown with warning-light cascade
+    routes_to: [car_died_while_driving_electrical]
+    ambiguity: unambiguous
+    provenance: tekmetric
+  - phrase: "battery and brake light came on, then the car couldnt go over 5mph and finally died"
+    normalized: charging failure, progressive power loss, death
+    routes_to: [car_died_while_driving_electrical]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  - phrase: "everything went dark while i was driving, dash radio headlights, then the engine quit"
+    normalized: total electrical failure while driving
+    routes_to: [car_died_while_driving_electrical]
+    ambiguity: unambiguous
+    provenance: synthetic
+  - phrase: "keeps dying when im driving, battery is new and alternator tested good"
+    normalized: dies while driving, prior parts already tested
+    routes_to: [car_died_while_driving_electrical, battery_drains_overnight]
+    ambiguity: needs-fact:speed_band
+    provenance: forum-paraphrase
+  # ---- hard_to_start_when_cold (performance) ---------------------------------
+  - phrase: "when it gets cold the engine will crank but not start"
+    normalized: cold, cranks but wont fire
+    routes_to: [hard_to_start_when_cold]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  - phrase: "hard to start when cold"
+    normalized: cold hard-start, crank quality unstated
+    routes_to: [hard_to_start_when_cold, slow_crank_sluggish_start]
+    ambiguity: needs-fact:engine_running   # slow-crank vs cranks-but-wont-fire unknown
+    provenance: synthetic
+  - phrase: "when it gets pretty cold out i have to wait 30-60 seconds until i hear a rapid clicking, then it starts; if i dont wait it just cranks but wont start, my battery is good and the alternator is charging"
+    normalized: cold, cranks-but-wont-fire (customer already cleared battery + alternator)
+    routes_to: [hard_to_start_when_cold]
+    ambiguity: unambiguous
+    provenance: forum-paraphrase
+  - phrase: "after driving a short distance then leaving it a few hours it refuses to start, long crank then no start, or a weak sputtering start then it dies"
+    normalized: hard-start after a sit, crank-but-wont-fire; hot-soak vs cold unstated
+    routes_to: [hard_to_start_when_cold, hard_to_start_when_hot]
+    ambiguity: needs-fact:weather_condition
+    provenance: forum-paraphrase
+  # ---- hard_to_start_when_hot (performance) ----------------------------------
+  - phrase: "wont start back up when i stop for gas, cranks and cranks but wont fire"
+    normalized: hot restart failure at gas stop (vapor lock)
+    routes_to: [hard_to_start_when_hot]
+    ambiguity: unambiguous
+    provenance: synthetic
+  - phrase: "it hesitates to turn back on if i have turned it off while running short errands"
+    normalized: hot restart difficulty after short stops
+    routes_to: [hard_to_start_when_hot]
+    ambiguity: needs-fact:weather_condition
+    provenance: tekmetric
+  - phrase: "after getting gas has to crank vehicle multiple times to get started"
+    normalized: hot restart after refuel
+    routes_to: [hard_to_start_when_hot]
+    ambiguity: cross-system:check_engine_light_testing   # customer also reported CEL; may be EVAP/fuel
+    provenance: tekmetric
+  - phrase: "it wouldnt start after the final stop, about 20 minutes in the grocery store; it would turn over a couple times before finally dying, i got a jump and it fired right up"
+    normalized: hot restart failure after driving + short stop (jump muddies vs drain)
+    routes_to: [hard_to_start_when_hot]
+    ambiguity: needs-fact:weather_condition
+    provenance: forum-paraphrase
+  # ---- no_start (fuel/spark) boundary + battery_test request + null-route -----
+  - phrase: "cranks strong and turns over fine but it just wont fire up"
+    normalized: normal crank, no fire (fuel/spark no-start)
+    routes_to: []
+    ambiguity: cross-system:no_start_testing   # engine_running=wont_start -> no_start_testing
+    provenance: synthetic
+  - phrase: "test battery (just want to make sure it is ok)"
+    normalized: customer requests a battery test, no symptom
+    routes_to: []
+    ambiguity: cross-system:battery_test   # customer_request_type, service-direct
+    provenance: tekmetric
+  - phrase: "starting and charging system testing auth 89"
+    normalized: staff work-order line (service name + auth price), not a customer concern
+    routes_to: []
+    ambiguity: unambiguous   # null-route -> advisor, empty stage1
+    provenance: tekmetric
+  - phrase: "intermitent no start testing auth 179"
+    normalized: terse no-start line; crank detail absent -> no_start vs charging boundary
+    routes_to: []
+    ambiguity: cross-system:no_start_testing
+    provenance: tekmetric
