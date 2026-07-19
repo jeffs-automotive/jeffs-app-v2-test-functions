@@ -346,6 +346,7 @@ function makeServiceMatch(
     unanswered_question_ids: [],
     extracted_facts: null,
     stage1_candidates: ["brake_inspection"],
+    no_match_reason: null,
     requires_clarification: false,
     candidate_results: null,
     stage2_confidence: "high",
@@ -372,6 +373,7 @@ function makeOtherMatch(
     unanswered_question_ids: [],
     extracted_facts: null,
     stage1_candidates: ["noise_other"],
+    no_match_reason: null,
     requires_clarification: false,
     candidate_results: null,
     stage2_confidence: "medium",
@@ -398,6 +400,7 @@ function makeNullMatch(
     unanswered_question_ids: [],
     extracted_facts: null,
     stage1_candidates: [],
+    no_match_reason: null,
     requires_clarification: false,
     candidate_results: null,
     stage2_confidence: "low",
@@ -425,6 +428,7 @@ function makeClarifyMatch(
     unanswered_question_ids: [],
     extracted_facts: null,
     stage1_candidates: ["brake_inspection", "ac_diagnostic"],
+    no_match_reason: null,
     requires_clarification: true,
     candidate_results: [
       {

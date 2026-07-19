@@ -157,6 +157,7 @@ import {
   matchQuestionsToFacts,
   type QuestionForFactMatch,
 } from "./question-fact-mapper";
+import { type NoMatchReason } from "@/lib/scheduler/wizard/triage";
 
 // ─── Model + token budgets ──────────────────────────────────────────────────
 
@@ -271,6 +272,12 @@ export interface DiagnoseConcernResult {
    *  direct path; 2-3 entries on the clarify path. The STRUCTURAL signal
    *  that replaced stage1_confidence (act-or-ask, 2026-07-03). */
   stage1_candidates: string[];
+  /** WHY stage1_candidates is empty (LLM-reported): 'non_concern_request' |
+   *  'too_vague' | 'no_catalog_fit', else null. Drives the concern-triage T1
+   *  trigger — only too_vague / no_catalog_fit are triage-eligible. null on any
+   *  match, on the non-LLM null producers (desc<3, all-invalid-keys), and on
+   *  failure. Added 2026-07-19 (concern-triage). */
+  no_match_reason: NoMatchReason | null;
   /** True iff Stage 1 returned 2-3 valid candidates. matched_category_key
    *  is null in that case and candidate_results carries the per-candidate
    *  precomputed chains — the caller routes to the concern_clarify chip
@@ -341,8 +348,23 @@ export const STAGE1_JSON_SCHEMA = {
         "words that drove the candidate set (and why more than one, if " +
         "so). Audit-only.",
     },
+    no_match_reason: {
+      // Constraint-light NULLABLE STRING (not a strict schema enum) so it
+      // round-trips on BOTH transports (Anthropic native + gemini/gateway
+      // generateObject); Stage1ResponseSchema (Zod) enforces the value set +
+      // coerces anything out-of-set to null. INV-6.
+      type: ["string", "null"],
+      description:
+        "WHY the candidate list is empty — REQUIRED whenever candidates is " +
+        "[], otherwise null. Exactly one of: 'non_concern_request' (a " +
+        "service/work-order request with NO described symptom, e.g. 'oil " +
+        "change', 'rack replacement'), 'too_vague' (a real vehicle concern " +
+        "but no identifiable system or symptom, e.g. 'car feels weird', " +
+        "'something's off'), or 'no_catalog_fit' (a clear, specific concern " +
+        "that fits no category above). When candidates is NON-empty, null.",
+    },
   },
-  required: ["candidates", "reasoning"],
+  required: ["candidates", "reasoning", "no_match_reason"],
 } as const;
 
 export const STAGE2_JSON_SCHEMA = {
@@ -426,6 +448,12 @@ export const STAGE3_JSON_SCHEMA = {
 export const Stage1ResponseSchema = z.object({
   candidates: z.array(z.string()),
   reasoning: z.string(),
+  // Nullable; `.catch(null)` coerces an out-of-set / malformed value to null
+  // so a stray string never throws the whole parse (safe handoff — INV-6).
+  no_match_reason: z
+    .enum(["non_concern_request", "too_vague", "no_catalog_fit"])
+    .nullable()
+    .catch(null),
 });
 
 export const Stage2ResponseSchema = z.object({
@@ -678,10 +706,21 @@ again" — is a real concern; keep it.)
    transmission). The customer will be shown your candidates as one-tap
    options and asked which fits — rank them best first.
 
-3. **An EMPTY list when nothing fits.** When the text is not a vehicle
-   concern, is too vague to produce candidates ("car feels weird",
-   "something's off", < ~5 useful words), or fits no catalog entry, return
-   candidates: []. The system forwards the customer to a service advisor.
+3. **An EMPTY list when nothing fits — and SET \`no_match_reason\`.** Return
+   candidates: [] with no_match_reason set to EXACTLY one of:
+     - **'non_concern_request'** — a service / work-order / maintenance request
+       with NO described symptom ("oil change", "rack replacement", "CHECK
+       ALIGNMENT", "reset oil light"). The system forwards these straight to a
+       service advisor.
+     - **'too_vague'** — a real vehicle concern, but no identifiable system or
+       symptom to test ("car feels weird", "something's off", "it's acting up",
+       "not driving right"). Judge by CONTENT, not length: a terse but specific
+       "no heat" or "WIPERS NOT SPRAYING" is NOT too_vague — it names a symptom.
+     - **'no_catalog_fit'** — a clear, specific concern that matches none of the
+       categories above.
+   For too_vague / no_catalog_fit the system may first ask the customer a broad
+   "what kind of trouble is it?" follow-up before any advisor handoff. When
+   candidates is NON-empty, set no_match_reason to null.
 
 4. **Match candidates to the customer's actual symptoms.** Read the
    description carefully; a candidate qualifies when its name + "What we'd
@@ -1590,6 +1629,7 @@ export async function diagnoseConcern(
     unanswered_question_ids: [],
     extracted_facts: null,
     stage1_candidates: [],
+    no_match_reason: null,
     requires_clarification: false,
     candidate_results: null,
     stage2_confidence: "low",
@@ -1605,7 +1645,10 @@ export async function diagnoseConcern(
   /** Null-match shape — parsed_ok TRUE: the LLM ran and said "nothing
    *  fits" (empty candidate list), or every returned key was invalid.
    *  The advisor-handoff path. */
-  const nullMatch = (errorMessage: string): DiagnoseConcernResult => ({
+  const nullMatch = (
+    errorMessage: string,
+    reason: NoMatchReason | null = null,
+  ): DiagnoseConcernResult => ({
     matched_category_key: null,
     matched_kind: null,
     matched_subcategory_slug: null,
@@ -1613,6 +1656,7 @@ export async function diagnoseConcern(
     unanswered_question_ids: [],
     extracted_facts: null,
     stage1_candidates: [],
+    no_match_reason: reason,
     requires_clarification: false,
     candidate_results: null,
     stage2_confidence: "low",
@@ -1679,12 +1723,18 @@ export async function diagnoseConcern(
   }
   const candidates = validCandidates.slice(0, 3);
 
-  // ── 0 candidates → advisor handoff (today's null-match shape) ────────
+  // ── 0 candidates → advisor handoff OR concern-triage (per no_match_reason) ─
   if (candidates.length === 0) {
+    // Genuine empty (the LLM returned []) carries the LLM's no_match_reason so
+    // the caller's T1 predicate can route too_vague / no_catalog_fit to triage.
+    // All-invalid-keys (hallucinated keys) is NOT a "nothing fits" signal →
+    // null reason, never triage (INV-6).
+    const genuineEmpty = invalidKeys.length === 0;
     return nullMatch(
-      invalidKeys.length > 0
-        ? `invalid_category_key:${invalidKeys[0]!.slice(0, 50)}`
-        : "",
+      genuineEmpty
+        ? ""
+        : `invalid_category_key:${invalidKeys[0]!.slice(0, 50)}`,
+      genuineEmpty ? (stage1Result.data.no_match_reason ?? null) : null,
     );
   }
 
@@ -1723,6 +1773,7 @@ export async function diagnoseConcern(
       unanswered_question_ids: outcome.unanswered_question_ids,
       extracted_facts: outcome.extracted_facts,
       stage1_candidates: [key],
+      no_match_reason: null,
       requires_clarification: false,
       candidate_results: null,
       stage2_confidence: outcome.stage2_confidence,
@@ -1816,6 +1867,7 @@ export async function diagnoseConcern(
     unanswered_question_ids: [],
     extracted_facts: null,
     stage1_candidates: candidates.map((c) => c.key),
+    no_match_reason: null,
     requires_clarification: true,
     candidate_results: candidateResults,
     stage2_confidence: "low",

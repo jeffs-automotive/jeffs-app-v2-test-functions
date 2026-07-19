@@ -33,6 +33,7 @@ function makeResult(
     unanswered_question_ids: [3],
     extracted_facts: FACTS,
     stage1_candidates: ["brake_inspection"],
+    no_match_reason: null,
     requires_clarification: false,
     candidate_results: null,
     stage2_confidence: "high",
