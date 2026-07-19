@@ -157,7 +157,10 @@ import {
   matchQuestionsToFacts,
   type QuestionForFactMatch,
 } from "./question-fact-mapper";
-import { type NoMatchReason } from "@/lib/scheduler/wizard/triage";
+import {
+  type NoMatchReason,
+  type TriageConstraint,
+} from "@/lib/scheduler/wizard/triage";
 
 // ─── Model + token budgets ──────────────────────────────────────────────────
 
@@ -225,6 +228,12 @@ export interface DiagnoseConcernArgs {
   customer_description: string;
   customer_chip_hint?: DiagnoseConcernChipHint | null;
   vehicle_notes?: string | null;
+  /** concern-triage (2026-07-19, INV-14): when set, this is a CONSTRAINED
+   *  re-diagnosis driven by the customer's triage-chip tap. Stage 1 sees ONLY
+   *  the chip's server-resolved allowed_service_keys (+ the 6 'other' buckets);
+   *  the LLM can only return an in-scope key. Derived server-side from the
+   *  persisted triage entry — never a client payload. */
+  category_constraint?: TriageConstraint | null;
 }
 
 /**
@@ -1144,6 +1153,16 @@ export function buildUserPrompt(args: DiagnoseConcernArgs): string {
       `# Vehicle notes (from Step 6, may not be relevant)\n${args.vehicle_notes.trim()}`,
     );
   }
+  if (args.category_constraint) {
+    // concern-triage constrained re-diagnosis: the customer answered the broad
+    // "which of these is closest?" chip. Their answer is ground truth — only the
+    // (already-filtered) categories above are in scope.
+    parts.push(
+      `# Follow-up answer\nAsked "Which of these is closest to what's going on?" — ` +
+        `the customer chose: "${args.category_constraint.label}". Classify within ` +
+        `the categories shown above.`,
+    );
+  }
   return parts.join("\n\n");
 }
 
@@ -1610,6 +1629,25 @@ async function runStagesTwoAndThree(params: {
   };
 }
 
+/**
+ * concern-triage constrained catalog (INV-14): restrict Stage 1 to the chip's
+ * audited testing services + the 6 'other' situational buckets (so PRIORITY-ORDER
+ * cues keep working). Dropping out-of-set services IS the server-side allowlist —
+ * combined with the findMatchedCategory validation, the LLM can only return an
+ * in-scope key.
+ */
+function constrainCatalogToServices(
+  catalog: DiagnosticCatalog,
+  allowedServiceKeys: string[],
+): DiagnosticCatalog {
+  const allowed = new Set(allowedServiceKeys);
+  return {
+    categories: catalog.categories.filter(
+      (c) => !isTestingService(c) || allowed.has(c.service_key),
+    ),
+  };
+}
+
 export async function diagnoseConcern(
   args: DiagnoseConcernArgs,
 ): Promise<DiagnoseConcernResult> {
@@ -1677,6 +1715,19 @@ export async function diagnoseConcern(
     return failSafe("empty_catalog");
   }
 
+  // concern-triage: a chip tap constrains the catalog Stage 1 sees (INV-14).
+  // Everything downstream (prompt render, candidate validation, S2/S3) uses
+  // effectiveArgs so an out-of-scope key can never survive.
+  const effectiveArgs: DiagnoseConcernArgs = args.category_constraint
+    ? {
+        ...args,
+        catalog: constrainCatalogToServices(
+          args.catalog,
+          args.category_constraint.allowed_service_keys,
+        ),
+      }
+    : args;
+
   // ════════════════════════════════════════════════════════════════════
   // STAGE 1 — Rank candidate categories (act-or-ask)
   // ════════════════════════════════════════════════════════════════════
@@ -1691,8 +1742,8 @@ export async function diagnoseConcern(
 
   const stage1Result = await callModelStage<Stage1Response>({
     model: stage1Model,
-    systemPrompt: buildStage1SystemPrompt(args),
-    userPrompt: buildUserPrompt(args),
+    systemPrompt: buildStage1SystemPrompt(effectiveArgs),
+    userPrompt: buildUserPrompt(effectiveArgs),
     jsonSchema: STAGE1_JSON_SCHEMA as unknown as Record<string, unknown>,
     zodSchema: Stage1ResponseSchema,
     stage: 1,
@@ -1714,7 +1765,7 @@ export async function diagnoseConcern(
   for (const key of stage1Result.data.candidates) {
     if (seen.has(key)) continue;
     seen.add(key);
-    const cat = findMatchedCategory(args.catalog, key);
+    const cat = findMatchedCategory(effectiveArgs.catalog, key);
     if (cat) {
       validCandidates.push({ key, cat });
     } else {
@@ -1743,7 +1794,7 @@ export async function diagnoseConcern(
     const { key, cat } = candidates[0]!;
     const outcome = await runStagesTwoAndThree({
       matchedCat: cat,
-      args,
+      args: effectiveArgs,
       stage2Model,
       stage3Model,
     });
@@ -1815,7 +1866,7 @@ export async function diagnoseConcern(
       cat,
       outcome: await runStagesTwoAndThree({
         matchedCat: cat,
-        args,
+        args: effectiveArgs,
         stage2Model,
         stage3Model,
       }),
