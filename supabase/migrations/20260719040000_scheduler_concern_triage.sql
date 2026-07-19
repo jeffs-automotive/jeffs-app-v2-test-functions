@@ -23,10 +23,12 @@
 -- INV-1 (RPC allowlist): apply_wizard_transition is a column ALLOWLIST — a
 -- payload key with no CASE arm is SILENTLY IGNORED. Without the new arm, every
 -- triage write no-ops and the card never renders. The RPC is recreated FROM ITS
--- LATEST FULL DEFINITION (20260703080000_scheduler_concern_clarify_column.sql
--- lines 69-416 — the most-recent CREATE OR REPLACE; NOT the older 20260525000000)
--- adding ONE arm with the standard explicit-JSONB-null-clears pattern. Every
--- existing arm + the `current_step` handling is preserved verbatim. SECURITY
+-- LATEST FULL DEFINITION — the base body is 20260703080000 PLUS the
+-- edit_return_step arm added by 20260704001000_scheduler_edit_return_step.sql
+-- (the actual most-recent CREATE OR REPLACE). Verified the full arm set equals
+-- 20260704001000's arms + the new concern_triage_state arm; every existing arm
+-- (incl. concern_clarify_candidates, edit_return_step, pending_candidates,
+-- current_step) is preserved verbatim so no prior arm is reverted. SECURITY
 -- INVOKER + SET search_path='' are asserted explicitly (the 2026-05-25 hardening).
 -- The RPC reads NO other table — chip resolution happens in the
 -- submit-concern-triage server action via the service-role admin client, never
@@ -138,6 +140,16 @@ BEGIN
     current_step = CASE
       WHEN p_payload ? 'current_step' THEN p_payload->>'current_step'
       ELSE current_step
+    END,
+    -- ─── SUMMARY EDIT HUB (EH1, 2026-07-04) — PRESERVED from 20260704001000 ──
+    -- edit_return_step: plain-TEXT breadcrumb (same shape as current_step); an
+    -- explicit JSON null in the payload yields SQL NULL via ->> (the hub-exit /
+    -- start-over "clear the flag" behavior). MUST be preserved — 20260704001000
+    -- added this arm AFTER 20260703080000, so recreating from the older body
+    -- would silently drop it and break the summary-edit-hub return-to-hub.
+    edit_return_step = CASE
+      WHEN p_payload ? 'edit_return_step' THEN p_payload->>'edit_return_step'
+      ELSE edit_return_step
     END,
     identity_verification_level = CASE
       WHEN p_payload ? 'identity_verification_level' THEN p_payload->>'identity_verification_level'
