@@ -1,0 +1,5691 @@
+{
+  "cases": [
+    {
+      "id": "abs-traction-stability-001",
+      "text": "yellow abs light popped on right after i smacked a big pothole, brakes still feel normal when i press the pedal",
+      "tags": [
+        "fact_rich",
+        "abs_anti_lock_brake_light"
+      ],
+      "expected": {
+        "stage1_category_key": "abs_traction_stability_testing",
+        "stage1_acceptable": [
+          "abs_traction_stability_testing"
+        ],
+        "stage2_subcategory_slug": "abs_anti_lock_brake_light",
+        "stage3_facts": {
+          "warning_light_named": "*",
+          "recent_action": "hit_pothole_or_curb",
+          "pedal_feel": "normal"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:abs-traction-stability"
+    },
+    {
+      "id": "abs-traction-stability-002",
+      "text": "TCS light came on right after the tire shop put just one new tire on",
+      "tags": [
+        "moderate",
+        "traction_control_stability_light"
+      ],
+      "expected": {
+        "stage1_category_key": "abs_traction_stability_testing",
+        "stage1_acceptable": [
+          "abs_traction_stability_testing"
+        ],
+        "stage2_subcategory_slug": "traction_control_stability_light",
+        "stage3_facts": {
+          "warning_light_named": "*",
+          "recent_action": "tire_rotation_or_replacement"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:abs-traction-stability"
+    },
+    {
+      "id": "abs-traction-stability-003",
+      "text": "theres a yellow light like a little car with squiggly lines under it, no idea what it means",
+      "tags": [
+        "sparse",
+        "icon_description_only",
+        "traction_control_stability_light"
+      ],
+      "expected": {
+        "stage1_category_key": "abs_traction_stability_testing",
+        "stage1_acceptable": [
+          "abs_traction_stability_testing"
+        ],
+        "stage2_subcategory_slug": "traction_control_stability_light",
+        "stage3_facts": {},
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:abs-traction-stability"
+    },
+    {
+      "id": "abs-traction-stability-004",
+      "text": "red BRAKE light stays on, parking brake is all the way off and the pedal feels mushy",
+      "tags": [
+        "fact_rich",
+        "red_vs_abs_boundary"
+      ],
+      "expected": {
+        "stage1_category_key": "brake_inspection_warning_light",
+        "stage1_acceptable": [
+          "brake_inspection_warning_light"
+        ],
+        "stage2_subcategory_slug": "brake_system_red_light",
+        "stage3_facts": {
+          "warning_light_named": "*",
+          "warning_light_behavior": "steady_on",
+          "parking_brake_state": "released",
+          "pedal_feel": "soft_spongy"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:abs-traction-stability"
+    },
+    {
+      "id": "abs-traction-stability-005",
+      "text": "the red brake light and the yellow ABS light both came on at once, is it even safe to drive to work??",
+      "tags": [
+        "moderate",
+        "both_lights",
+        "boundary:red-vs-abs"
+      ],
+      "expected": {
+        "stage1_category_key": "brake_inspection_warning_light",
+        "stage1_acceptable": [
+          "brake_inspection_warning_light",
+          "abs_traction_stability_testing"
+        ],
+        "stage2_subcategory_slug": "brake_system_red_light",
+        "stage3_facts": {
+          "warning_light_named": "*",
+          "warning_light_behavior": "multiple_lights_at_once"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:abs-traction-stability"
+    },
+    {
+      "id": "abs-traction-stability-006",
+      "text": "red brake light keeps coming on and off, i topped off the fluid but its back on now",
+      "tags": [
+        "moderate",
+        "red_light_low_fluid"
+      ],
+      "expected": {
+        "stage1_category_key": "brake_inspection_warning_light",
+        "stage1_acceptable": [
+          "brake_inspection_warning_light"
+        ],
+        "stage2_subcategory_slug": "brake_system_red_light",
+        "stage3_facts": {
+          "warning_light_named": "*",
+          "warning_light_behavior": "comes_and_goes"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:abs-traction-stability"
+    },
+    {
+      "id": "abs-traction-stability-007",
+      "text": "abs light came on this morning after i drove through a big flooded puddle last night",
+      "tags": [
+        "moderate",
+        "abs_anti_lock_brake_light"
+      ],
+      "expected": {
+        "stage1_category_key": "abs_traction_stability_testing",
+        "stage1_acceptable": [
+          "abs_traction_stability_testing"
+        ],
+        "stage2_subcategory_slug": "abs_anti_lock_brake_light",
+        "stage3_facts": {
+          "warning_light_named": "*",
+          "recent_action": "car_wash_or_driven_through_water",
+          "started_when": "today"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:abs-traction-stability"
+    },
+    {
+      "id": "abs-traction-stability-008",
+      "text": "the traction light flashes for a second when its rainy then goes off, is something wrong with it?",
+      "tags": [
+        "moderate",
+        "normal_intervention",
+        "traction_control_stability_light"
+      ],
+      "expected": {
+        "stage1_category_key": "abs_traction_stability_testing",
+        "stage1_acceptable": [
+          "abs_traction_stability_testing"
+        ],
+        "stage2_subcategory_slug": "traction_control_stability_light",
+        "stage3_facts": {
+          "warning_light_named": "*",
+          "warning_light_behavior": "flashing_or_blinking",
+          "weather_condition": "rainy_or_wet"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:abs-traction-stability"
+    },
+    {
+      "id": "abs-traction-stability-009",
+      "text": "my brake light is on but the brake lights out back are working fine",
+      "tags": [
+        "inference_trap",
+        "dash-vs-tail-lamp"
+      ],
+      "expected": {
+        "stage1_category_key": "brake_inspection_warning_light",
+        "stage1_acceptable": [
+          "brake_inspection_warning_light"
+        ],
+        "stage2_subcategory_slug": "brake_system_red_light",
+        "stage3_facts": {
+          "warning_light_named": "*"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:abs-traction-stability"
+    },
+    {
+      "id": "abs-traction-stability-010",
+      "text": "when i creep up to a stop the brakes shudder and grind the last couple feet, but its dry and warm out and my abs light is on",
+      "tags": [
+        "inference_trap",
+        "fm3_low_speed_abs",
+        "boundary:abs-vs-brake_vibration"
+      ],
+      "expected": {
+        "stage1_category_key": "abs_traction_stability_testing",
+        "stage1_acceptable": [
+          "abs_traction_stability_testing",
+          "brake_inspection"
+        ],
+        "stage2_subcategory_slug": "abs_anti_lock_brake_light",
+        "stage3_facts": {
+          "warning_light_named": "*",
+          "onset_timing": "when_braking",
+          "speed_band": "low_speed",
+          "pedal_feel": "pulsating",
+          "noise_descriptor": "grinding_metallic"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:abs-traction-stability"
+    },
+    {
+      "id": "abs-traction-stability-011",
+      "text": "one of my rear brake lights is burned out, need a new bulb, customer says the dash isn't showing anything",
+      "tags": [
+        "inference_trap",
+        "dash-vs-tail-lamp",
+        "exterior_bulb",
+        "boundary:accessory-vs-red-light"
+      ],
+      "expected": {
+        "stage1_category_key": "electrical_testing_general",
+        "stage1_acceptable": [
+          "electrical_testing_general"
+        ],
+        "stage2_subcategory_slug": "accessory_doesnt_work",
+        "stage3_facts": {},
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:abs-traction-stability"
+    },
+    {
+      "id": "adas-driver-assist-001",
+      "text": "just got a new windshield put in and now my lane keep assist warning light is on steady",
+      "tags": [
+        "fact_rich",
+        "calibration",
+        "gated_fact:recent_action=windshield_or_glass_replacement",
+        "gated_subcat:adas_driver_assist_warning_or_malfunction"
+      ],
+      "expected": {
+        "stage1_category_key": "warning_light_general",
+        "stage1_acceptable": [
+          "warning_light_general"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "warning_light_named": "lane keep assist",
+          "warning_light_behavior": "steady_on"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:adas-driver-assist"
+    },
+    {
+      "id": "adas-driver-assist-002",
+      "text": "after the snowstorm a message popped up saying front radar obstruction, driving aids unavailable",
+      "tags": [
+        "fact_rich",
+        "obstruction",
+        "gated_subcat:adas_driver_assist_warning_or_malfunction"
+      ],
+      "expected": {
+        "stage1_category_key": "warning_light_general",
+        "stage1_acceptable": [
+          "warning_light_general"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "warning_light_named": "front radar obstruction",
+          "weather_condition": "after_snow_or_ice"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:adas-driver-assist"
+    },
+    {
+      "id": "adas-driver-assist-003",
+      "text": "pre-collision system problem message came on and the car slammed the brakes for no reason on the highway",
+      "tags": [
+        "fact_rich",
+        "phantom_activation",
+        "gated_subcat:adas_driver_assist_warning_or_malfunction"
+      ],
+      "expected": {
+        "stage1_category_key": "warning_light_general",
+        "stage1_acceptable": [
+          "warning_light_general"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "warning_light_named": "pre-collision",
+          "speed_band": "highway"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:adas-driver-assist"
+    },
+    {
+      "id": "adas-driver-assist-004",
+      "text": "my car brakes by itself sometimes, its kinda scary",
+      "tags": [
+        "inference_trap",
+        "gated_subcat:adas_driver_assist_warning_or_malfunction"
+      ],
+      "expected": {
+        "stage1_category_key": "warning_light_general",
+        "stage1_acceptable": [
+          "warning_light_general",
+          "safety_concern_dont_feel_safe_driving_it"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "drivable_state": "drivable_but_concerned"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:adas-driver-assist"
+    },
+    {
+      "id": "adas-driver-assist-005",
+      "text": "adaptive cruise problem and collision mitigation problem and lane departure problem all showed up at once, but the car runs and starts fine",
+      "tags": [
+        "fact_rich",
+        "confusable",
+        "gated_subcat:adas_driver_assist_warning_or_malfunction"
+      ],
+      "expected": {
+        "stage1_category_key": "warning_light_general",
+        "stage1_acceptable": [
+          "warning_light_general"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "warning_light_named": "adaptive cruise, collision mitigation, lane departure",
+          "warning_light_behavior": "multiple_lights_at_once"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:adas-driver-assist"
+    },
+    {
+      "id": "adas-driver-assist-006",
+      "text": "the blind spot light on my side mirror stays lit all the time now, never used to",
+      "tags": [
+        "fact_rich",
+        "gated_subcat:adas_driver_assist_warning_or_malfunction"
+      ],
+      "expected": {
+        "stage1_category_key": "warning_light_general",
+        "stage1_acceptable": [
+          "warning_light_general"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "warning_light_named": "blind spot",
+          "warning_light_behavior": "steady_on"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:adas-driver-assist"
+    },
+    {
+      "id": "adas-driver-assist-007",
+      "text": "my backup camera screen is just black now, no warning lights or messages",
+      "tags": [
+        "boundary",
+        "confusable"
+      ],
+      "expected": {
+        "stage1_category_key": "electrical_testing_general",
+        "stage1_acceptable": [
+          "electrical_testing_general"
+        ],
+        "stage2_subcategory_slug": "accessory_doesnt_work",
+        "stage3_facts": {
+          "accessory_affected": "backup camera"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:adas-driver-assist"
+    },
+    {
+      "id": "adas-driver-assist-008",
+      "text": "PERFORM FORWARD CAMERA CALIBRATION AFTER ALIGNMENT",
+      "tags": [
+        "null_route",
+        "work_order"
+      ],
+      "expected": {
+        "stage1_category_key": null,
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {},
+        "route": "null_match"
+      },
+      "source": "auto-kb-wave-a:adas-driver-assist"
+    },
+    {
+      "id": "adas-driver-assist-009",
+      "text": "i had my windshield replaced somewhere else, do i still need the camera calibrated?",
+      "tags": [
+        "request",
+        "calibration",
+        "gated_fact:recent_action=windshield_or_glass_replacement",
+        "gated_subcat:adas_driver_assist_warning_or_malfunction"
+      ],
+      "expected": {
+        "stage1_category_key": "warning_light_general",
+        "stage1_acceptable": [
+          "warning_light_general",
+          "after_recent_service_or_repair_work"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {},
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:adas-driver-assist"
+    },
+    {
+      "id": "adas-driver-assist-010",
+      "text": "the parking sensors beep like crazy even in an empty parking lot",
+      "tags": [
+        "fact_rich",
+        "gated_subcat:adas_driver_assist_warning_or_malfunction"
+      ],
+      "expected": {
+        "stage1_category_key": "warning_light_general",
+        "stage1_acceptable": [
+          "warning_light_general"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "speed_band": "low_speed"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:adas-driver-assist"
+    },
+    {
+      "id": "adas-driver-assist-011",
+      "text": "my cruise control quit working, no warning lights, it's an older car with regular cruise not the adaptive kind",
+      "tags": [
+        "boundary",
+        "confusable"
+      ],
+      "expected": {
+        "stage1_category_key": "electrical_testing_general",
+        "stage1_acceptable": [
+          "electrical_testing_general"
+        ],
+        "stage2_subcategory_slug": "accessory_doesnt_work",
+        "stage3_facts": {
+          "accessory_affected": "cruise control"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:adas-driver-assist"
+    },
+    {
+      "id": "adas-driver-assist-012",
+      "text": "the lane assist keeps tugging my steering wheel by itself on the highway with a lane departure message, im not the one pulling it",
+      "tags": [
+        "inference_trap",
+        "confusable",
+        "gated_subcat:adas_driver_assist_warning_or_malfunction"
+      ],
+      "expected": {
+        "stage1_category_key": "warning_light_general",
+        "stage1_acceptable": [
+          "warning_light_general"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "warning_light_named": "lane departure",
+          "speed_band": "highway"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:adas-driver-assist"
+    },
+    {
+      "id": "air-induction-forced-induction-001",
+      "text": "my turbo whistles loud when i get on the gas and the car feels way down on power lately",
+      "tags": [
+        "fact_rich",
+        "forced_induction",
+        "gated_fact:noise_descriptor=whistling"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [
+          "check_engine_light_testing"
+        ],
+        "stage2_subcategory_slug": "low_power_or_wont_accelerate_normally",
+        "stage3_facts": {
+          "onset_timing": "when_accelerating",
+          "vehicle_powertrain": "turbocharged"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:air-induction-forced-induction"
+    },
+    {
+      "id": "air-induction-forced-induction-002",
+      "text": "CUSTOMER STATES THE VEHICLE DOESNT GO OVER A CERTAIN SPEED / WENT INTO LIMP MODE. A LOT OF DASH BOARD LIGHTS CAME ON BUT ARE NOW OFF",
+      "tags": [
+        "fact_rich",
+        "corpus_verbatim"
+      ],
+      "expected": {
+        "stage1_category_key": "warning_light_general",
+        "stage1_acceptable": [
+          "warning_light_general",
+          "check_engine_light_testing"
+        ],
+        "stage2_subcategory_slug": "multiple_warning_lights_at_once",
+        "stage3_facts": {
+          "warning_light_behavior": "came_on_then_off"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:air-induction-forced-induction"
+    },
+    {
+      "id": "air-induction-forced-induction-003",
+      "text": "theres a whining noise under the hood when its running",
+      "tags": [
+        "vague",
+        "inference_trap",
+        "clarify_chip"
+      ],
+      "expected": {
+        "stage1_category_key": "charging_starting_testing",
+        "stage1_acceptable": [
+          "charging_starting_testing",
+          "check_engine_light_testing",
+          "power_steering_eps_testing"
+        ],
+        "stage2_subcategory_slug": "high_pitched_whining_under_the_hood",
+        "stage3_facts": {
+          "noise_descriptor": "whining",
+          "sound_or_smoke_location_zone": "under_hood"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:air-induction-forced-induction"
+    },
+    {
+      "id": "air-induction-forced-induction-004",
+      "text": "hear a hissing whoosh only when im accelerating hard and then it bogs down, check engine light came on",
+      "tags": [
+        "fact_rich",
+        "forced_induction"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [
+          "check_engine_light_testing"
+        ],
+        "stage2_subcategory_slug": "low_power_or_wont_accelerate_normally",
+        "stage3_facts": {
+          "noise_descriptor": "hissing",
+          "onset_timing": "when_accelerating",
+          "warning_light_named": "check engine"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:air-induction-forced-induction"
+    },
+    {
+      "id": "air-induction-forced-induction-005",
+      "text": "theres a whistle and it idles rough when im just sitting at a stop, fine once im moving",
+      "tags": [
+        "fact_rich",
+        "gated_fact:noise_descriptor=whistling"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [
+          "check_engine_light_testing"
+        ],
+        "stage2_subcategory_slug": "rough_idle_or_shaking_at_a_stop",
+        "stage3_facts": {
+          "onset_timing": "when_idling",
+          "engine_running": "rough_idle"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:air-induction-forced-induction"
+    },
+    {
+      "id": "air-induction-forced-induction-006",
+      "text": "car stumbles when i step on it, started right after they replaced my engine air filter",
+      "tags": [
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [
+          "check_engine_light_testing"
+        ],
+        "stage2_subcategory_slug": "hesitation_or_lag_when_accelerating",
+        "stage3_facts": {
+          "onset_timing": "when_accelerating",
+          "recent_action": "general_service"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:air-induction-forced-induction"
+    },
+    {
+      "id": "air-induction-forced-induction-007",
+      "text": "blue smoke out the tailpipe and a burnt oil smell, its a turbo car",
+      "tags": [
+        "cross_system"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [
+          "check_engine_light_testing"
+        ],
+        "stage2_subcategory_slug": "blue_or_gray_smoke_from_tailpipe",
+        "stage3_facts": {
+          "smoke_color": "blue_or_gray",
+          "smell_descriptor": "burnt_oil",
+          "vehicle_powertrain": "turbocharged"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:air-induction-forced-induction"
+    },
+    {
+      "id": "air-induction-forced-induction-008",
+      "text": "Previously declined>REPLACE ENGINE AIR FILTER",
+      "tags": [
+        "null_route",
+        "work_order",
+        "corpus_verbatim"
+      ],
+      "expected": {
+        "stage1_category_key": null,
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {},
+        "route": "null_match"
+      },
+      "source": "auto-kb-wave-a:air-induction-forced-induction"
+    },
+    {
+      "id": "air-induction-forced-induction-009",
+      "text": "hi i just want to get a new engine air filter put in, nothing wrong just due for it",
+      "tags": [
+        "null_route",
+        "request"
+      ],
+      "expected": {
+        "stage1_category_key": null,
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "customer_request_type": "replace_specific_part"
+        },
+        "route": "null_match"
+      },
+      "source": "auto-kb-wave-a:air-induction-forced-induction"
+    },
+    {
+      "id": "air-induction-forced-induction-010",
+      "text": "CHECK ENGINE LIGHT ON. WAS TOLD NEEDED A BOOSTER BY DEALER",
+      "tags": [
+        "inference_trap",
+        "cross_system",
+        "corpus_verbatim"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [
+          "check_engine_light_testing"
+        ],
+        "stage2_subcategory_slug": "check_engine_light",
+        "stage3_facts": {
+          "warning_light_named": "check engine"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:air-induction-forced-induction"
+    },
+    {
+      "id": "airbag-srs-restraints-001",
+      "text": "Airbag light popped on a few days ago right after a lil fender bender, no airbags went off. It just stays on steady the whole time I drive.",
+      "tags": [
+        "fact_rich",
+        "confusable_accident_bucket"
+      ],
+      "expected": {
+        "stage1_category_key": "airbag_srs_testing",
+        "stage1_acceptable": [
+          "airbag_srs_testing",
+          "after_a_recent_accident_or_impact"
+        ],
+        "stage2_subcategory_slug": "airbag_srs_light",
+        "stage3_facts": {
+          "warning_light_named": "airbag",
+          "warning_light_behavior": "steady_on",
+          "recent_action": "accident_or_impact",
+          "started_when": "days_ago"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:airbag-srs-restraints"
+    },
+    {
+      "id": "airbag-srs-restraints-002",
+      "text": "my SRS light is flashing some weird pattern of blinks ever since the battery died and i had to jump start the car. is that serious??",
+      "tags": [
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "airbag_srs_testing",
+        "stage1_acceptable": [
+          "airbag_srs_testing"
+        ],
+        "stage2_subcategory_slug": "airbag_srs_light",
+        "stage3_facts": {
+          "warning_light_named": "srs",
+          "warning_light_behavior": "flashing_or_blinking",
+          "recent_action": "jump_started"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:airbag-srs-restraints"
+    },
+    {
+      "id": "airbag-srs-restraints-003",
+      "text": "hey, the little airbag person light on my dash has been glowing for a couple weeks now, started after i pulled the seats out to shampoo the carpets",
+      "tags": [
+        "moderate"
+      ],
+      "expected": {
+        "stage1_category_key": "airbag_srs_testing",
+        "stage1_acceptable": [
+          "airbag_srs_testing"
+        ],
+        "stage2_subcategory_slug": "airbag_srs_light",
+        "stage3_facts": {
+          "warning_light_named": "airbag",
+          "started_when": "weeks_ago"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:airbag-srs-restraints"
+    },
+    {
+      "id": "airbag-srs-restraints-004",
+      "text": "theres a yellow SRS triangle showing on my dash, no clue what that even means",
+      "tags": [
+        "sparse"
+      ],
+      "expected": {
+        "stage1_category_key": "airbag_srs_testing",
+        "stage1_acceptable": [
+          "airbag_srs_testing"
+        ],
+        "stage2_subcategory_slug": "airbag_srs_light",
+        "stage3_facts": {
+          "warning_light_named": "srs"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:airbag-srs-restraints"
+    },
+    {
+      "id": "airbag-srs-restraints-005",
+      "text": "airbag light came on and my horn stopped working at the same time, sometimes the cruise buttons on the wheel dont respond either",
+      "tags": [
+        "fact_rich",
+        "clockspring"
+      ],
+      "expected": {
+        "stage1_category_key": "airbag_srs_testing",
+        "stage1_acceptable": [
+          "airbag_srs_testing"
+        ],
+        "stage2_subcategory_slug": "airbag_srs_light",
+        "stage3_facts": {
+          "warning_light_named": "airbag",
+          "accessory_affected": "horn, cruise buttons"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:airbag-srs-restraints"
+    },
+    {
+      "id": "airbag-srs-restraints-006",
+      "text": "SRS light came on steady right after i drove through a flooded street and got water in the floor",
+      "tags": [
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "airbag_srs_testing",
+        "stage1_acceptable": [
+          "airbag_srs_testing"
+        ],
+        "stage2_subcategory_slug": "airbag_srs_light",
+        "stage3_facts": {
+          "warning_light_named": "srs",
+          "warning_light_behavior": "steady_on",
+          "recent_action": "car_wash_or_driven_through_water"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:airbag-srs-restraints"
+    },
+    {
+      "id": "airbag-srs-restraints-007",
+      "text": "the battery light, ABS, traction control, airbag and security lights all came on together after my battery died, and it barely runs",
+      "tags": [
+        "confusable_cascade",
+        "near_miss"
+      ],
+      "expected": {
+        "stage1_category_key": "warning_light_general",
+        "stage1_acceptable": [
+          "warning_light_general",
+          "charging_starting_testing"
+        ],
+        "stage2_subcategory_slug": "multiple_warning_lights_at_once",
+        "stage3_facts": {
+          "warning_light_named": "battery, abs, traction control, airbag, security",
+          "warning_light_behavior": "multiple_lights_at_once",
+          "recent_action": "battery_or_alternator_work"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:airbag-srs-restraints"
+    },
+    {
+      "id": "airbag-srs-restraints-008",
+      "text": "got rear-ended hard on the highway, the airbags went off and theres real damage, insurance is sending me in to get the whole car inspected",
+      "tags": [
+        "confusable_accident_bucket",
+        "near_miss"
+      ],
+      "expected": {
+        "stage1_category_key": "after_a_recent_accident_or_impact",
+        "stage1_acceptable": [
+          "after_a_recent_accident_or_impact"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "recent_action": "accident_or_impact"
+        },
+        "route": "advisor_handoff"
+      },
+      "source": "auto-kb-wave-a:airbag-srs-restraints"
+    },
+    {
+      "id": "airbag-srs-restraints-009",
+      "text": "took it to a shop yesterday for work under the seats and to swap the battery, and now the airbag light is on. pretty sure they knocked something loose and i want them to fix what they broke",
+      "tags": [
+        "confusable_service_bucket",
+        "near_miss"
+      ],
+      "expected": {
+        "stage1_category_key": "after_recent_service_or_repair_work",
+        "stage1_acceptable": [
+          "after_recent_service_or_repair_work",
+          "airbag_srs_testing"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "warning_light_named": "airbag",
+          "recent_action": "general_service"
+        },
+        "route": "advisor_handoff"
+      },
+      "source": "auto-kb-wave-a:airbag-srs-restraints"
+    },
+    {
+      "id": "airbag-srs-restraints-010",
+      "text": "just tapped a curb pulling into my driveway, no airbags went off, car drives totally fine, i only want the airbag light checked out",
+      "tags": [
+        "confusable_accident_bucket",
+        "near_miss"
+      ],
+      "expected": {
+        "stage1_category_key": "airbag_srs_testing",
+        "stage1_acceptable": [
+          "airbag_srs_testing"
+        ],
+        "stage2_subcategory_slug": "airbag_srs_light",
+        "stage3_facts": {
+          "warning_light_named": "airbag",
+          "recent_action": "hit_pothole_or_curb",
+          "customer_request_type": "diagnose_problem"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:airbag-srs-restraints"
+    },
+    {
+      "id": "airbag-srs-restraints-011",
+      "text": "the passenger airbag off light comes on when my little kid sits up front",
+      "tags": [
+        "inference_trap",
+        "ocs_normal"
+      ],
+      "expected": {
+        "stage1_category_key": null,
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "warning_light_named": "passenger airbag off"
+        },
+        "route": "null_match"
+      },
+      "source": "auto-kb-wave-a:airbag-srs-restraints"
+    },
+    {
+      "id": "airbag-srs-restraints-012",
+      "text": "my seat belt wont pull out anymore, its stuck and wont come across me, theres no light on the dash",
+      "tags": [
+        "null_route",
+        "no_fit_restraint_hardware"
+      ],
+      "expected": {
+        "stage1_category_key": null,
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {},
+        "route": "null_match"
+      },
+      "source": "auto-kb-wave-a:airbag-srs-restraints"
+    },
+    {
+      "id": "airbag-srs-restraints-013",
+      "text": "i got a recall notice in the mail about my airbag, want to find out if my car is actually one of the affected ones",
+      "tags": [
+        "null_route",
+        "recall_inquiry"
+      ],
+      "expected": {
+        "stage1_category_key": null,
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {},
+        "route": "null_match"
+      },
+      "source": "auto-kb-wave-a:airbag-srs-restraints"
+    },
+    {
+      "id": "airbag-srs-restraints-014",
+      "text": "Previously declined>SRS AIRBAG MODULE - CLEAR CRASH DATA / RESET (per body shop)",
+      "tags": [
+        "null_route",
+        "work_order_noise"
+      ],
+      "expected": {
+        "stage1_category_key": null,
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {},
+        "route": "null_match"
+      },
+      "source": "auto-kb-wave-a:airbag-srs-restraints"
+    },
+    {
+      "id": "automatic-transmission-001",
+      "text": "when driving up a hill trans slips, the rpms climb but it barely speeds up",
+      "tags": [
+        "fact_rich",
+        "confusable_trans_vs_lowpower",
+        "gated_slot:transmission_behavior"
+      ],
+      "expected": {
+        "stage1_category_key": "transmission_testing",
+        "stage1_acceptable": [
+          "transmission_testing",
+          "check_engine_light_testing"
+        ],
+        "stage2_subcategory_slug": "low_power_or_wont_accelerate_normally",
+        "stage3_facts": {
+          "onset_timing": "when_accelerating"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:automatic-transmission"
+    },
+    {
+      "id": "automatic-transmission-002",
+      "text": "VEHICLE STARTS BUT DOES NOT SHIFT INTO GEAR. A LOT OF DASHBOARD LIGHTS ON",
+      "tags": [
+        "all_caps",
+        "no_engagement",
+        "gated_slot:transmission_behavior"
+      ],
+      "expected": {
+        "stage1_category_key": "transmission_testing",
+        "stage1_acceptable": [
+          "transmission_testing"
+        ],
+        "stage2_subcategory_slug": "low_power_or_wont_accelerate_normally",
+        "stage3_facts": {
+          "warning_light_behavior": "multiple_lights_at_once"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:automatic-transmission"
+    },
+    {
+      "id": "automatic-transmission-003",
+      "text": "gets stuck in park, have to go back and forth with the shifter to get it into gear",
+      "tags": [
+        "no_engagement",
+        "gated_slot:transmission_behavior"
+      ],
+      "expected": {
+        "stage1_category_key": "transmission_testing",
+        "stage1_acceptable": [
+          "transmission_testing"
+        ],
+        "stage2_subcategory_slug": "low_power_or_wont_accelerate_normally",
+        "stage3_facts": {},
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:automatic-transmission"
+    },
+    {
+      "id": "automatic-transmission-004",
+      "text": "car shudders pretty bad whenever i give it gas going uphill, smooths right out as soon as i let off. started a couple weeks ago",
+      "tags": [
+        "fact_rich",
+        "confusable_shudder_vs_misfire",
+        "gated_slot:transmission_behavior"
+      ],
+      "expected": {
+        "stage1_category_key": "transmission_testing",
+        "stage1_acceptable": [
+          "transmission_testing",
+          "suspension_steering_check",
+          "check_engine_light_testing"
+        ],
+        "stage2_subcategory_slug": "shaking_when_speeding_up_or_going_uphill",
+        "stage3_facts": {
+          "onset_timing": "when_accelerating",
+          "started_when": "weeks_ago"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:automatic-transmission"
+    },
+    {
+      "id": "automatic-transmission-005",
+      "text": "takes a few seconds to catch when i put it in drive or reverse, then it drives fine",
+      "tags": [
+        "delayed_engagement",
+        "confusable_vs_hesitation",
+        "gated_slot:transmission_behavior"
+      ],
+      "expected": {
+        "stage1_category_key": "transmission_testing",
+        "stage1_acceptable": [
+          "transmission_testing"
+        ],
+        "stage2_subcategory_slug": "hesitation_or_lag_when_accelerating",
+        "stage3_facts": {},
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:automatic-transmission"
+    },
+    {
+      "id": "automatic-transmission-006",
+      "text": "bright red oily puddle under the middle of my car, about the size of a plate",
+      "tags": [
+        "leak",
+        "confusable_atf_vs_ps"
+      ],
+      "expected": {
+        "stage1_category_key": "transmission_testing",
+        "stage1_acceptable": [
+          "transmission_testing",
+          "power_steering_eps_testing",
+          "oil_leak_testing"
+        ],
+        "stage2_subcategory_slug": "red_or_pink_puddle_transmission_or_power_steering",
+        "stage3_facts": {
+          "fluid_color": "red_or_pink",
+          "fluid_under_car_location": "under_middle"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:automatic-transmission"
+    },
+    {
+      "id": "automatic-transmission-007",
+      "text": "went into limp mode, wont go over 40 mph, bunch of dash lights came on but theyre off now",
+      "tags": [
+        "limp_mode",
+        "stuck_in_gear",
+        "gated_slot:transmission_behavior"
+      ],
+      "expected": {
+        "stage1_category_key": "transmission_testing",
+        "stage1_acceptable": [
+          "transmission_testing",
+          "check_engine_light_testing"
+        ],
+        "stage2_subcategory_slug": "low_power_or_wont_accelerate_normally",
+        "stage3_facts": {
+          "speed_band": "specific_mph",
+          "speed_specific_mph": 40,
+          "warning_light_behavior": "came_on_then_off"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:automatic-transmission"
+    },
+    {
+      "id": "automatic-transmission-008",
+      "text": "car shudders when i step on the gas going uphill, smooths out when i coast",
+      "tags": [
+        "inference_trap",
+        "confusable_shudder_vs_misfire",
+        "gated_slot:transmission_behavior"
+      ],
+      "expected": {
+        "stage1_category_key": "transmission_testing",
+        "stage1_acceptable": [
+          "transmission_testing",
+          "suspension_steering_check"
+        ],
+        "stage2_subcategory_slug": "shaking_when_speeding_up_or_going_uphill",
+        "stage3_facts": {
+          "onset_timing": "when_accelerating"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:automatic-transmission"
+    },
+    {
+      "id": "automatic-transmission-009",
+      "text": "car has no power, feels like the emergency brake is on, foot to the floor and it wont pick up",
+      "tags": [
+        "inference_trap",
+        "confusable_trans_vs_lowpower"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [
+          "check_engine_light_testing",
+          "transmission_testing"
+        ],
+        "stage2_subcategory_slug": "low_power_or_wont_accelerate_normally",
+        "stage3_facts": {},
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:automatic-transmission"
+    },
+    {
+      "id": "automatic-transmission-010",
+      "text": "recs from dealer: transmission flush, brake fluid, front brake pads and rotors",
+      "tags": [
+        "null_route",
+        "work_order"
+      ],
+      "expected": {
+        "stage1_category_key": null,
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "customer_request_type": "routine_maintenance"
+        },
+        "route": "null_match"
+      },
+      "source": "auto-kb-wave-a:automatic-transmission"
+    },
+    {
+      "id": "body-electrical-accessories-001",
+      "text": "drivers side window is stuck halfway down and wont go back up, makes a horrible grinding noise when i hold the switch, started a couple days ago",
+      "tags": [
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "window_inop_testing",
+        "stage1_acceptable": [
+          "window_inop_testing"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "accessory_affected": "driver window",
+          "location_side": "left",
+          "noise_descriptor": "grinding_metallic",
+          "started_when": "days_ago"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:body-electrical-accessories"
+    },
+    {
+      "id": "body-electrical-accessories-002",
+      "text": "both back windows stopped rolling down, the switches in the back dont do anything anymore, front ones still work",
+      "tags": [
+        "needs_fact"
+      ],
+      "expected": {
+        "stage1_category_key": "window_inop_testing",
+        "stage1_acceptable": [
+          "window_inop_testing"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "accessory_affected": "rear windows",
+          "location_axle": "rear",
+          "location_side": "both"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:body-electrical-accessories"
+    },
+    {
+      "id": "body-electrical-accessories-003",
+      "text": "my windshield wipers totally quit working right after i went thru the car wash, they dont move at all now",
+      "tags": [
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "windshield_inop_testing",
+        "stage1_acceptable": [
+          "windshield_inop_testing"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "accessory_affected": "wipers",
+          "recent_action": "car_wash_or_driven_through_water"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:body-electrical-accessories"
+    },
+    {
+      "id": "body-electrical-accessories-004",
+      "text": "HORN INOPERABLE",
+      "tags": [
+        "terse",
+        "all_caps"
+      ],
+      "expected": {
+        "stage1_category_key": "electrical_testing_general",
+        "stage1_acceptable": [
+          "electrical_testing_general"
+        ],
+        "stage2_subcategory_slug": "accessory_doesnt_work",
+        "stage3_facts": {
+          "accessory_affected": "horn"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:body-electrical-accessories"
+    },
+    {
+      "id": "body-electrical-accessories-005",
+      "text": "my radio is just dead, screen wont turn on and no sound at all, everything else in the car works fine",
+      "tags": [
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "electrical_testing_general",
+        "stage1_acceptable": [
+          "electrical_testing_general"
+        ],
+        "stage2_subcategory_slug": "accessory_doesnt_work",
+        "stage3_facts": {
+          "accessory_affected": "radio"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:body-electrical-accessories"
+    },
+    {
+      "id": "body-electrical-accessories-006",
+      "text": "right rear turn signal not working intermittently, i bumped it and it worked then went back out",
+      "tags": [
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "electrical_testing_general",
+        "stage1_acceptable": [
+          "electrical_testing_general"
+        ],
+        "stage2_subcategory_slug": "accessory_doesnt_work",
+        "stage3_facts": {
+          "accessory_affected": "turn signal",
+          "location_side": "right",
+          "location_axle": "rear",
+          "onset_timing": "intermittent"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:body-electrical-accessories"
+    },
+    {
+      "id": "body-electrical-accessories-007",
+      "text": "somethings up with my cars electrical, one day the radio resets itself, next day the door locks click on their own, next day the gauges jump around, random stuff always worse after rain",
+      "tags": [
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "electrical_testing_general",
+        "stage1_acceptable": [
+          "electrical_testing_general"
+        ],
+        "stage2_subcategory_slug": "multiple_random_electrical_glitches",
+        "stage3_facts": {
+          "onset_timing": "intermittent",
+          "weather_condition": "rainy_or_wet"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:body-electrical-accessories"
+    },
+    {
+      "id": "body-electrical-accessories-008",
+      "text": "theres this weird electrical buzzing sound in my car, kinda sounds like a beehive",
+      "tags": [
+        "single_symptom"
+      ],
+      "expected": {
+        "stage1_category_key": "electrical_testing_general",
+        "stage1_acceptable": [
+          "electrical_testing_general"
+        ],
+        "stage2_subcategory_slug": "electrical_buzzing",
+        "stage3_facts": {
+          "noise_descriptor": "buzzing"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:body-electrical-accessories"
+    },
+    {
+      "id": "body-electrical-accessories-009",
+      "text": "the dome light stays on even after i close the door",
+      "tags": [
+        "inference_trap"
+      ],
+      "expected": {
+        "stage1_category_key": "electrical_testing_general",
+        "stage1_acceptable": [
+          "electrical_testing_general"
+        ],
+        "stage2_subcategory_slug": "accessory_doesnt_work",
+        "stage3_facts": {
+          "accessory_affected": "dome light"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:body-electrical-accessories"
+    },
+    {
+      "id": "body-electrical-accessories-010",
+      "text": "my sunroof wont slide closed anymore",
+      "tags": [
+        "confusable_trap"
+      ],
+      "expected": {
+        "stage1_category_key": "electrical_testing_general",
+        "stage1_acceptable": [
+          "electrical_testing_general"
+        ],
+        "stage2_subcategory_slug": "accessory_doesnt_work",
+        "stage3_facts": {
+          "accessory_affected": "sunroof"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:body-electrical-accessories"
+    },
+    {
+      "id": "body-electrical-accessories-011",
+      "text": "the power window controls and the radio both stopped working at the same time, i checked the fuses",
+      "tags": [
+        "ambiguous"
+      ],
+      "expected": {
+        "stage1_category_key": "electrical_testing_general",
+        "stage1_acceptable": [
+          "electrical_testing_general"
+        ],
+        "stage2_subcategory_slug": "accessory_doesnt_work",
+        "stage3_facts": {
+          "accessory_affected": "power windows, radio"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:body-electrical-accessories"
+    },
+    {
+      "id": "body-electrical-accessories-012",
+      "text": "the interior and dash lights flicker and dim when its idling and get brighter when i rev the engine",
+      "tags": [
+        "cross_system"
+      ],
+      "expected": {
+        "stage1_category_key": "charging_starting_testing",
+        "stage1_acceptable": [
+          "charging_starting_testing"
+        ],
+        "stage2_subcategory_slug": "dim_or_flickering_lights",
+        "stage3_facts": {
+          "lights_state": "dim_at_idle_brighten_when_revving"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:body-electrical-accessories"
+    },
+    {
+      "id": "body-electrical-accessories-013",
+      "text": "REPLACE THE RIGHT FRONT TURN SIGNAL. CHECK LIGHTS",
+      "tags": [
+        "null_route",
+        "work_order"
+      ],
+      "expected": {
+        "stage1_category_key": null,
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {},
+        "route": "null_match"
+      },
+      "source": "auto-kb-wave-a:body-electrical-accessories"
+    },
+    {
+      "id": "body-glass-water-leaks-keys-001",
+      "text": "the carpet on my passenger side is soaked and it smells kinda musty, happens every time it rains",
+      "tags": [
+        "fact_rich",
+        "no_catalog_fit",
+        "body_water_leak",
+        "inference_trap"
+      ],
+      "expected": {
+        "stage1_category_key": null,
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "smell_descriptor": "musty_or_mildew",
+          "sound_or_smoke_location_zone": "passenger_footwell",
+          "weather_condition": "rainy_or_wet"
+        },
+        "route": "null_match"
+      },
+      "source": "auto-kb-wave-a:body-glass-water-leaks-keys"
+    },
+    {
+      "id": "body-glass-water-leaks-keys-002",
+      "text": "found a small puddle under the passenger side of my car, completely clear no smell, dries up quick",
+      "tags": [
+        "moderate",
+        "under_car_water"
+      ],
+      "expected": {
+        "stage1_category_key": "ac_leak_testing",
+        "stage1_acceptable": [
+          "ac_leak_testing",
+          "coolant_leak_testing"
+        ],
+        "stage2_subcategory_slug": "clear_odorless_puddle_water_or_ac_condensation",
+        "stage3_facts": {
+          "fluid_color": "clear_no_color",
+          "fluid_under_car_location": "under_passenger_side"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:body-glass-water-leaks-keys"
+    },
+    {
+      "id": "body-glass-water-leaks-keys-003",
+      "text": "my car cranks over fine but wont actually start, and theres a little security light flashing on the dash. battery seems fine, lights are bright",
+      "tags": [
+        "fact_rich",
+        "inference_trap",
+        "immobilizer_no_start"
+      ],
+      "expected": {
+        "stage1_category_key": "no_start_testing",
+        "stage1_acceptable": [
+          "no_start_testing",
+          "electrical_testing_general"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "engine_running": "wont_start",
+          "warning_light_named": "security",
+          "warning_light_behavior": "flashing_or_blinking",
+          "lights_state": "normal"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:body-glass-water-leaks-keys"
+    },
+    {
+      "id": "body-glass-water-leaks-keys-004",
+      "text": "turn the key and it just clicks, dash lights go dim, had to get a jump this morning",
+      "tags": [
+        "fact_rich",
+        "battery_no_start",
+        "confusable"
+      ],
+      "expected": {
+        "stage1_category_key": "no_start_testing",
+        "stage1_acceptable": [
+          "no_start_testing",
+          "charging_starting_testing"
+        ],
+        "stage2_subcategory_slug": "wont_crank_just_clicks",
+        "stage3_facts": {
+          "engine_running": "wont_crank_just_clicks",
+          "lights_state": "dim_or_flickering",
+          "recent_action": "jump_started"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:body-glass-water-leaks-keys"
+    },
+    {
+      "id": "body-glass-water-leaks-keys-005",
+      "text": "my key fob wont lock or unlock the doors anymore, car still starts and drives fine though",
+      "tags": [
+        "moderate",
+        "fob_electronics"
+      ],
+      "expected": {
+        "stage1_category_key": "electrical_testing_general",
+        "stage1_acceptable": [
+          "electrical_testing_general"
+        ],
+        "stage2_subcategory_slug": "accessory_doesnt_work",
+        "stage3_facts": {
+          "accessory_affected": "key fob"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:body-glass-water-leaks-keys"
+    },
+    {
+      "id": "body-glass-water-leaks-keys-006",
+      "text": "somethings up with my electrical, radio resets itself, the door locks click on their own, gauges jump around, always worse after it rains",
+      "tags": [
+        "moderate",
+        "water_gremlin"
+      ],
+      "expected": {
+        "stage1_category_key": "electrical_testing_general",
+        "stage1_acceptable": [
+          "electrical_testing_general"
+        ],
+        "stage2_subcategory_slug": "multiple_random_electrical_glitches",
+        "stage3_facts": {
+          "onset_timing": "intermittent",
+          "weather_condition": "rainy_or_wet"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:body-glass-water-leaks-keys"
+    },
+    {
+      "id": "body-glass-water-leaks-keys-007",
+      "text": "trunk wont open when i hit the button, doesnt click or anything",
+      "tags": [
+        "sparse",
+        "trunk_release"
+      ],
+      "expected": {
+        "stage1_category_key": "electrical_testing_general",
+        "stage1_acceptable": [
+          "electrical_testing_general"
+        ],
+        "stage2_subcategory_slug": "accessory_doesnt_work",
+        "stage3_facts": {
+          "accessory_affected": "trunk release"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:body-glass-water-leaks-keys"
+    },
+    {
+      "id": "body-glass-water-leaks-keys-008",
+      "text": "theres a loud whistling wind noise coming from the driver door when im on the highway",
+      "tags": [
+        "moderate",
+        "wind_noise",
+        "no_catalog_fit"
+      ],
+      "expected": {
+        "stage1_category_key": null,
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "speed_band": "highway",
+          "onset_timing": "during_driving",
+          "location_side": "left"
+        },
+        "route": "null_match"
+      },
+      "source": "auto-kb-wave-a:body-glass-water-leaks-keys"
+    },
+    {
+      "id": "body-glass-water-leaks-keys-009",
+      "text": "got a big crack across my windshield from a rock on the freeway, its starting to spread",
+      "tags": [
+        "moderate",
+        "inference_trap",
+        "glass_damage",
+        "no_catalog_fit"
+      ],
+      "expected": {
+        "stage1_category_key": null,
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {},
+        "route": "null_match"
+      },
+      "source": "auto-kb-wave-a:body-glass-water-leaks-keys"
+    },
+    {
+      "id": "body-glass-water-leaks-keys-010",
+      "text": "check body control module per tech, testing auth 179",
+      "tags": [
+        "null_route",
+        "work_order"
+      ],
+      "expected": {
+        "stage1_category_key": null,
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {},
+        "route": "null_match"
+      },
+      "source": "auto-kb-wave-a:body-glass-water-leaks-keys"
+    },
+    {
+      "id": "body-glass-water-leaks-keys-011",
+      "text": "my car alarm keeps going off randomly at night for no reason and the horn honks, i had to pull the fuse to stop it. car runs fine otherwise",
+      "tags": [
+        "moderate",
+        "inference_trap",
+        "anti_theft_alarm"
+      ],
+      "expected": {
+        "stage1_category_key": "electrical_testing_general",
+        "stage1_acceptable": [
+          "electrical_testing_general"
+        ],
+        "stage2_subcategory_slug": "accessory_doesnt_work",
+        "stage3_facts": {
+          "accessory_affected": "alarm, horn",
+          "onset_timing": "intermittent"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:body-glass-water-leaks-keys"
+    },
+    {
+      "id": "brakes-friction-hydraulic-001",
+      "text": "loud grinding from the front right when i brake, feels like metal on metal",
+      "tags": [
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "brake_inspection",
+        "stage1_acceptable": [
+          "brake_inspection",
+          "brake_inspection_warning_light"
+        ],
+        "stage2_subcategory_slug": "metallic_grinding",
+        "stage3_facts": {
+          "noise_descriptor": "grinding_metallic",
+          "location_side": "right",
+          "location_axle": "front",
+          "onset_timing": "when_braking"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:brakes-friction-hydraulic"
+    },
+    {
+      "id": "brakes-friction-hydraulic-002",
+      "text": "my brakes squeel every time i come to a stop, worse the first couple stops in the morning when its damp out",
+      "tags": [
+        "fact_rich",
+        "misspelling"
+      ],
+      "expected": {
+        "stage1_category_key": "brake_inspection",
+        "stage1_acceptable": [
+          "brake_inspection"
+        ],
+        "stage2_subcategory_slug": "high_pitched_squealing",
+        "stage3_facts": {
+          "noise_descriptor": "squealing_high_pitched",
+          "onset_timing": "when_braking",
+          "weather_condition": "humid"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:brakes-friction-hydraulic"
+    },
+    {
+      "id": "brakes-friction-hydraulic-003",
+      "text": "brake pedal feels soft and mushy, i have to pump it a couple times before the car really slows down. started a few days ago",
+      "tags": [
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "brake_inspection",
+        "stage1_acceptable": [
+          "brake_inspection"
+        ],
+        "stage2_subcategory_slug": "spongy_or_soft_pedal",
+        "stage3_facts": {
+          "pedal_feel": "soft_spongy",
+          "started_when": "days_ago"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:brakes-friction-hydraulic"
+    },
+    {
+      "id": "brakes-friction-hydraulic-004",
+      "text": "when im stopped at a light the brake pedal slowly sinks toward the floor even though im not pressing any harder",
+      "tags": [
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "brake_inspection",
+        "stage1_acceptable": [
+          "brake_inspection"
+        ],
+        "stage2_subcategory_slug": "pedal_sinks_to_floor",
+        "stage3_facts": {
+          "pedal_feel": "sinks_to_floor",
+          "onset_timing": "at_stop"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:brakes-friction-hydraulic"
+    },
+    {
+      "id": "brakes-friction-hydraulic-005",
+      "text": "the brake pedal is rock hard, i have to stand on it to stop, and theres a hiss when i push it",
+      "tags": [
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "brake_inspection",
+        "stage1_acceptable": [
+          "brake_inspection"
+        ],
+        "stage2_subcategory_slug": "hard_or_unresponsive_pedal",
+        "stage3_facts": {
+          "pedal_feel": "hard_unresponsive",
+          "noise_descriptor": "hissing"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:brakes-friction-hydraulic"
+    },
+    {
+      "id": "brakes-friction-hydraulic-006",
+      "text": "car pulls hard to the left every time i hit the brakes but drives perfectly straight otherwise",
+      "tags": [
+        "fact_rich",
+        "confusable_alignment"
+      ],
+      "expected": {
+        "stage1_category_key": "brake_inspection",
+        "stage1_acceptable": [
+          "brake_inspection"
+        ],
+        "stage2_subcategory_slug": "pulling_only_when_braking",
+        "stage3_facts": {
+          "pull_direction": "left",
+          "onset_timing": "when_braking"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:brakes-friction-hydraulic"
+    },
+    {
+      "id": "brakes-friction-hydraulic-007",
+      "text": "clear yellowish oily puddle right next to my front tire and the brake pedal feels soft now",
+      "tags": [
+        "fact_rich",
+        "safety",
+        "cross_category_unverified"
+      ],
+      "expected": {
+        "stage1_category_key": "brake_inspection",
+        "stage1_acceptable": [
+          "brake_inspection",
+          "brake_inspection_warning_light"
+        ],
+        "stage2_subcategory_slug": "clear_yellow_or_light_brown_puddle_brake_fluid",
+        "stage3_facts": {
+          "fluid_color": "clear_yellow_or_light_brown",
+          "fluid_under_car_location": "under_a_wheel",
+          "pedal_feel": "soft_spongy"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:brakes-friction-hydraulic"
+    },
+    {
+      "id": "brakes-friction-hydraulic-008",
+      "text": "brakes have been squeaking for a couple weeks and now the red BRAKE light just came on, my e-brake is all the way off",
+      "tags": [
+        "confusable_warning_light",
+        "near_miss"
+      ],
+      "expected": {
+        "stage1_category_key": "brake_inspection_warning_light",
+        "stage1_acceptable": [
+          "brake_inspection_warning_light",
+          "brake_inspection"
+        ],
+        "stage2_subcategory_slug": "brake_system_red_light",
+        "stage3_facts": {
+          "noise_descriptor": "squealing_high_pitched",
+          "started_when": "weeks_ago",
+          "warning_light_named": "brake",
+          "parking_brake_state": "released"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:brakes-friction-hydraulic"
+    },
+    {
+      "id": "brakes-friction-hydraulic-009",
+      "text": "theres smoke coming off my rear right wheel and it smells hot, i think i left the parking brake on when i drove home",
+      "tags": [
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "brake_inspection",
+        "stage1_acceptable": [
+          "brake_inspection"
+        ],
+        "stage2_subcategory_slug": "smoke_or_burning_smell_from_a_wheel",
+        "stage3_facts": {
+          "sound_or_smoke_location_zone": "from_a_wheel",
+          "location_axle": "rear",
+          "location_side": "right",
+          "smell_descriptor": "burning_rubber_or_hot_brakes",
+          "parking_brake_state": "engaged_or_partially_engaged"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:brakes-friction-hydraulic"
+    },
+    {
+      "id": "brakes-friction-hydraulic-010",
+      "text": "my brakes grab really hard and jerk the car even when i barely touch the pedal",
+      "tags": [
+        "fact_rich",
+        "no_subcat_fit"
+      ],
+      "expected": {
+        "stage1_category_key": "brake_inspection",
+        "stage1_acceptable": [
+          "brake_inspection"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage2_acceptable": [
+          "hard_or_unresponsive_pedal",
+          "pulsating_or_vibrating_pedal"
+        ],
+        "stage3_facts": {
+          "pedal_feel": "grabby"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:brakes-friction-hydraulic"
+    },
+    {
+      "id": "brakes-friction-hydraulic-011",
+      "text": "my car shakes when i brake",
+      "tags": [
+        "inference_trap",
+        "sparse",
+        "cross_category_unverified"
+      ],
+      "expected": {
+        "stage1_category_key": "brake_inspection",
+        "stage1_acceptable": [
+          "brake_inspection"
+        ],
+        "stage2_subcategory_slug": "vibration_or_pulsing_when_braking",
+        "stage2_acceptable": [
+          "vibration_or_pulsing_when_braking",
+          "pulsating_or_vibrating_pedal"
+        ],
+        "stage3_facts": {
+          "onset_timing": "when_braking"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:brakes-friction-hydraulic"
+    },
+    {
+      "id": "brakes-friction-hydraulic-012",
+      "text": "steering wheel shakes really bad at 65 on the highway, calms down when i slow, but its fine when i brake",
+      "tags": [
+        "confusable_suspension",
+        "near_miss"
+      ],
+      "expected": {
+        "stage1_category_key": "suspension_steering_check",
+        "stage1_acceptable": [
+          "suspension_steering_check"
+        ],
+        "stage2_subcategory_slug": "steering_wheel_shake_at_highway_speed",
+        "stage3_facts": {
+          "speed_band": "specific_mph",
+          "speed_specific_mph": 65
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:brakes-friction-hydraulic"
+    },
+    {
+      "id": "brakes-friction-hydraulic-013",
+      "text": "the yellow ABS light popped on right after i smacked a big pothole, brakes still stop the car totally fine",
+      "tags": [
+        "confusable_abs",
+        "near_miss"
+      ],
+      "expected": {
+        "stage1_category_key": "abs_traction_stability_testing",
+        "stage1_acceptable": [
+          "abs_traction_stability_testing"
+        ],
+        "stage2_subcategory_slug": "abs_anti_lock_brake_light",
+        "stage3_facts": {
+          "warning_light_named": "ABS",
+          "recent_action": "hit_pothole_or_curb"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:brakes-friction-hydraulic"
+    },
+    {
+      "id": "brakes-friction-hydraulic-014",
+      "text": "Previously declined>BRAKE SYSTEM FLUSH (Service recommended every 3 years / 30k miles)",
+      "tags": [
+        "null_route",
+        "work_order_noise"
+      ],
+      "expected": {
+        "stage1_category_key": null,
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {},
+        "route": "null_match"
+      },
+      "source": "auto-kb-wave-a:brakes-friction-hydraulic"
+    },
+    {
+      "id": "cooling-system-001",
+      "text": "Thick white smoke pouring out of my tailpipe even after driving 20 min, smells kinda sweet like syrup, and Ive been topping off the coolant. Started a few days ago.",
+      "tags": [
+        "fact_rich",
+        "gated_slot:coolant_level_state"
+      ],
+      "expected": {
+        "stage1_category_key": "coolant_leak_testing",
+        "stage1_acceptable": [
+          "coolant_leak_testing",
+          "coolant_leak_testing_euro"
+        ],
+        "stage2_subcategory_slug": "white_smoke_from_tailpipe",
+        "stage3_facts": {
+          "smoke_color": "white",
+          "smell_descriptor": "sweet_or_maple_syrup",
+          "sound_or_smoke_location_zone": "from_tailpipe",
+          "started_when": "days_ago"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:cooling-system"
+    },
+    {
+      "id": "cooling-system-002",
+      "text": "Theres a bright green puddle under the front of my car right by the radiator, and it smells sweet like pancake syrup. Just noticed it today.",
+      "tags": [
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "coolant_leak_testing",
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": "green_orange_yellow_or_pink_puddle_coolant",
+        "stage3_facts": {
+          "fluid_color": "green_or_orange_or_yellow_or_pink",
+          "fluid_under_car_location": "under_engine_front",
+          "smell_descriptor": "sweet_or_maple_syrup",
+          "started_when": "today"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:cooling-system"
+    },
+    {
+      "id": "cooling-system-003",
+      "text": "That red thermometer light with the waves is showing on my dash and the car feels like its running hotter than usual.",
+      "tags": [
+        "sparse",
+        "inference_trap"
+      ],
+      "expected": {
+        "stage1_category_key": "coolant_leak_testing",
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": "engine_temperature_light",
+        "stage3_facts": {
+          "warning_light_named": "temp"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:cooling-system"
+    },
+    {
+      "id": "cooling-system-004",
+      "text": "somethin smells like maple syrup around my car after i drive it, cant find any leak tho",
+      "tags": [
+        "sparse"
+      ],
+      "expected": {
+        "stage1_category_key": "coolant_leak_testing",
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": "sweet_smell_maple_syrup_antifreeze",
+        "stage3_facts": {
+          "smell_descriptor": "sweet_or_maple_syrup"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:cooling-system"
+    },
+    {
+      "id": "cooling-system-005",
+      "text": "Smoke coming out from under the hood and the temp gauge went all the way into the red, pulled over right away.",
+      "tags": [
+        "moderate",
+        "gated_slot:temperature_gauge_state"
+      ],
+      "expected": {
+        "stage1_category_key": "coolant_leak_testing",
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": "smoke_from_under_the_hood",
+        "stage3_facts": {
+          "sound_or_smoke_location_zone": "under_hood"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:cooling-system"
+    },
+    {
+      "id": "cooling-system-006",
+      "text": "My heater just blows cold air no matter how long I drive, started a couple weeks ago. Also had to top off the coolant tank twice.",
+      "tags": [
+        "moderate",
+        "confusable_hvac_vs_coolant",
+        "gated_slot:coolant_level_state"
+      ],
+      "expected": {
+        "stage1_category_key": "coolant_leak_testing",
+        "stage1_acceptable": [
+          "coolant_leak_testing",
+          "ac_performance_check"
+        ],
+        "stage2_subcategory_slug": "heat_doesnt_work",
+        "stage3_facts": {
+          "hvac_mode": "heat",
+          "started_when": "weeks_ago"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:cooling-system"
+    },
+    {
+      "id": "cooling-system-007",
+      "text": "my temp gauge sometimes reads a little high sitting in traffic but goes back to normal once I get moving. no smoke, no leaks that I can see.",
+      "tags": [
+        "inference_trap",
+        "gated_slot:temperature_gauge_state"
+      ],
+      "expected": {
+        "stage1_category_key": "coolant_leak_testing",
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": "engine_temperature_light",
+        "stage3_facts": {
+          "speed_band": "idle"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:cooling-system"
+    },
+    {
+      "id": "cooling-system-008",
+      "text": "little bit of white steam comes out my tailpipe on cold mornings but it goes away after a minute, no weird smell",
+      "tags": [
+        "inference_trap",
+        "null_route"
+      ],
+      "expected": {
+        "stage1_category_key": null,
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "smoke_color": "steam_thin_wispy",
+          "onset_timing": "cold_start",
+          "weather_condition": "cold_weather"
+        },
+        "route": "null_match"
+      },
+      "source": "auto-kb-wave-a:cooling-system"
+    },
+    {
+      "id": "cooling-system-009",
+      "text": "just need a coolant flush, car runs fine, no problems",
+      "tags": [
+        "null_route",
+        "work_order"
+      ],
+      "expected": {
+        "stage1_category_key": null,
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "customer_request_type": "routine_maintenance"
+        },
+        "route": "null_match"
+      },
+      "source": "auto-kb-wave-a:cooling-system"
+    },
+    {
+      "id": "cooling-system-010",
+      "text": "cloud of blue-gray smoke every time I floor it onto the highway, kinda smells oily, and I keep adding a quart of oil",
+      "tags": [
+        "confusable_smoke_color",
+        "cross_attach_nulled"
+      ],
+      "expected": {
+        "stage1_category_key": "oil_leak_testing",
+        "stage1_acceptable": [
+          "oil_leak_testing",
+          "check_engine_light_testing"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "smoke_color": "blue_or_gray",
+          "smell_descriptor": "burnt_oil",
+          "onset_timing": "when_accelerating",
+          "sound_or_smoke_location_zone": "from_tailpipe"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:cooling-system"
+    },
+    {
+      "id": "driveline-cv-diff-awd-001",
+      "text": "clicking noise from the front only when I turn in parking lots, faster the tighter I go",
+      "tags": [
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "suspension_steering_check",
+        "stage1_acceptable": [
+          "suspension_steering_check"
+        ],
+        "stage2_subcategory_slug": "popping_or_clicking_when_turning",
+        "stage3_facts": {
+          "noise_descriptor": "popping_or_clicking",
+          "location_axle": "front",
+          "onset_timing": "when_turning",
+          "speed_band": "low_speed"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:driveline-cv-diff-awd"
+    },
+    {
+      "id": "driveline-cv-diff-awd-002",
+      "text": "very noticeable humming from the rear end, most noticeable 30 to 40 mph, sounds like snow tires",
+      "tags": [
+        "moderate",
+        "corpus_tkc-113"
+      ],
+      "expected": {
+        "stage1_category_key": "suspension_steering_check",
+        "stage1_acceptable": [
+          "suspension_steering_check"
+        ],
+        "stage2_subcategory_slug": "humming_or_whirring_at_speed",
+        "stage3_facts": {
+          "noise_descriptor": "humming_or_whirring",
+          "location_axle": "rear",
+          "speed_band": "specific_mph",
+          "speed_specific_mph": 30
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:driveline-cv-diff-awd"
+    },
+    {
+      "id": "driveline-cv-diff-awd-003",
+      "text": "humming that gets louder curving left and quieter curving right, feel it in the floor on the highway",
+      "tags": [
+        "fact_rich",
+        "bearing_load_test"
+      ],
+      "expected": {
+        "stage1_category_key": "suspension_steering_check",
+        "stage1_acceptable": [
+          "suspension_steering_check"
+        ],
+        "stage2_subcategory_slug": "humming_or_whirring_at_speed",
+        "stage3_facts": {
+          "noise_descriptor": "humming_or_whirring",
+          "speed_band": "highway"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:driveline-cv-diff-awd"
+    },
+    {
+      "id": "driveline-cv-diff-awd-004",
+      "text": "whine when accelerating that stops when I let off the gas, another shop said maybe the differential",
+      "tags": [
+        "fact_rich",
+        "cross_system_trap",
+        "literalness_trap"
+      ],
+      "expected": {
+        "stage1_category_key": "suspension_steering_check",
+        "stage1_acceptable": [
+          "suspension_steering_check",
+          "transmission_testing",
+          "awd_4x4_testing"
+        ],
+        "stage2_subcategory_slug": "humming_or_whirring_at_speed",
+        "stage3_facts": {
+          "noise_descriptor": "whining",
+          "onset_timing": "when_accelerating"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:driveline-cv-diff-awd"
+    },
+    {
+      "id": "driveline-cv-diff-awd-005",
+      "text": "skipping feeling when turning and driving, feels like a truck stuck in 4x4",
+      "tags": [
+        "fact_rich",
+        "no_subcategories_in_category",
+        "corpus_tkc-086"
+      ],
+      "expected": {
+        "stage1_category_key": "awd_4x4_testing",
+        "stage1_acceptable": [
+          "awd_4x4_testing"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "onset_timing": "when_turning"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:driveline-cv-diff-awd"
+    },
+    {
+      "id": "driveline-cv-diff-awd-006",
+      "text": "my 4 wheel drive won't engage, the 4WD light just flashes and I hear a grinding noise",
+      "tags": [
+        "fact_rich",
+        "no_subcategories_in_category"
+      ],
+      "expected": {
+        "stage1_category_key": "awd_4x4_testing",
+        "stage1_acceptable": [
+          "awd_4x4_testing"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "warning_light_named": "4wd",
+          "warning_light_behavior": "flashing_or_blinking",
+          "noise_descriptor": "grinding_metallic"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:driveline-cv-diff-awd"
+    },
+    {
+      "id": "driveline-cv-diff-awd-007",
+      "text": "thick dark fluid under the rear axle and it smells like rotten eggs",
+      "tags": [
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "oil_leak_testing",
+        "stage1_acceptable": [
+          "oil_leak_testing",
+          "coolant_leak_testing"
+        ],
+        "stage2_subcategory_slug": "thick_dark_brown_puddle_gear_or_differential_oil",
+        "stage3_facts": {
+          "fluid_color": "thick_dark_brown",
+          "fluid_under_car_location": "under_rear",
+          "smell_descriptor": "rotten_egg_or_sulfur"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:driveline-cv-diff-awd"
+    },
+    {
+      "id": "driveline-cv-diff-awd-008",
+      "text": "loud clunk from the driveline every time I shift into reverse and when I take off from a stop",
+      "tags": [
+        "moderate",
+        "proposed_subcategory",
+        "gated",
+        "gated_subcat:driveline_engagement_clunk_or_bind"
+      ],
+      "expected": {
+        "stage1_category_key": "suspension_steering_check",
+        "stage1_acceptable": [
+          "suspension_steering_check",
+          "awd_4x4_testing",
+          "transmission_testing"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "noise_descriptor": "clunking"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:driveline-cv-diff-awd"
+    },
+    {
+      "id": "driveline-cv-diff-awd-009",
+      "text": "theres a clicking sound when I turn",
+      "tags": [
+        "sparse",
+        "inference_trap"
+      ],
+      "expected": {
+        "stage1_category_key": "suspension_steering_check",
+        "stage1_acceptable": [
+          "suspension_steering_check",
+          "power_steering_eps_testing"
+        ],
+        "stage2_subcategory_slug": "popping_or_clicking_when_turning",
+        "stage3_facts": {
+          "noise_descriptor": "popping_or_clicking",
+          "onset_timing": "when_turning"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:driveline-cv-diff-awd"
+    },
+    {
+      "id": "driveline-cv-diff-awd-010",
+      "text": "client just had the rear differential serviced somewhere else and now it's leaking everywhere",
+      "tags": [
+        "situational_override",
+        "corpus_tka-034"
+      ],
+      "expected": {
+        "stage1_category_key": "after_recent_service_or_repair_work",
+        "stage1_acceptable": [
+          "after_recent_service_or_repair_work"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "recent_action": "general_service",
+          "fluid_color": "thick_dark_brown"
+        },
+        "route": "advisor_handoff"
+      },
+      "source": "auto-kb-wave-a:driveline-cv-diff-awd"
+    },
+    {
+      "id": "driveline-cv-diff-awd-011",
+      "text": "abs and traction light on, no awd message",
+      "tags": [
+        "moderate",
+        "corpus_tkc-120",
+        "cross_system_bearing_abs"
+      ],
+      "expected": {
+        "stage1_category_key": "abs_traction_stability_testing",
+        "stage1_acceptable": [
+          "abs_traction_stability_testing",
+          "suspension_steering_check"
+        ],
+        "stage2_subcategory_slug": "abs_anti_lock_brake_light",
+        "stage3_facts": {
+          "warning_light_named": "abs"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:driveline-cv-diff-awd"
+    },
+    {
+      "id": "driveline-cv-diff-awd-012",
+      "text": "REAR DIFF SERVICE",
+      "tags": [
+        "null_route",
+        "work_order_voice",
+        "corpus"
+      ],
+      "expected": {
+        "stage1_category_key": null,
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {},
+        "route": "null_match"
+      },
+      "source": "auto-kb-wave-a:driveline-cv-diff-awd"
+    },
+    {
+      "id": "engine-controls-driveability-001",
+      "text": "Was driving on the highway and the engine just shut off — had to coast to the shoulder. It sputtered for a second first. Started back up after it sat a bit.",
+      "tags": [
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [
+          "check_engine_light_testing",
+          "no_start_testing"
+        ],
+        "stage2_subcategory_slug": "stalling_while_driving_under_load",
+        "stage3_facts": {
+          "engine_running": "died_while_driving",
+          "speed_band": "highway",
+          "onset_timing": "during_driving"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:engine-controls-driveability"
+    },
+    {
+      "id": "engine-controls-driveability-002",
+      "text": "Every time I stop at a red light the engine dies, but it fires right back up. It's worse when the AC is on and when it's hot out.",
+      "tags": [
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [
+          "check_engine_light_testing",
+          "no_start_testing"
+        ],
+        "stage2_subcategory_slug": "stalling_at_idle_or_when_stopping",
+        "stage3_facts": {
+          "engine_running": "stalls",
+          "onset_timing": "at_stop",
+          "hvac_mode": "ac",
+          "weather_condition": "hot_weather"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:engine-controls-driveability"
+    },
+    {
+      "id": "engine-controls-driveability-003",
+      "text": "The RPMs go up and down on their own when I'm sitting at a light — the needle bounces between like 800 and 1500 and I'm not even touching the gas.",
+      "tags": [
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [
+          "check_engine_light_testing"
+        ],
+        "stage2_subcategory_slug": "surging_or_rpms_going_up_and_down",
+        "stage3_facts": {
+          "engine_running": "surging",
+          "speed_band": "idle",
+          "onset_timing": "when_idling"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:engine-controls-driveability"
+    },
+    {
+      "id": "engine-controls-driveability-004",
+      "text": "Car has no power at all — feels like the emergency brake is stuck on. It won't go over about 40 anymore and my gas mileage tanked.",
+      "tags": [
+        "fact_rich",
+        "inference_trap",
+        "depends_slot_engine_running_low_power_or_limp",
+        "gated_fact:engine_running=low_power_or_limp"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [
+          "check_engine_light_testing",
+          "transmission_testing"
+        ],
+        "stage2_subcategory_slug": "low_power_or_wont_accelerate_normally",
+        "stage3_facts": {
+          "speed_band": "specific_mph",
+          "speed_specific_mph": 40
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:engine-controls-driveability"
+    },
+    {
+      "id": "engine-controls-driveability-005",
+      "text": "Engine bucks and jerks when I press the gas, and the check engine light is flashing. Feels like it's skipping a beat.",
+      "tags": [
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [
+          "check_engine_light_testing"
+        ],
+        "stage2_subcategory_slug": "engine_misfire_or_bucking_feeling",
+        "stage3_facts": {
+          "engine_running": "misfiring",
+          "warning_light_named": "check engine",
+          "warning_light_behavior": "flashing_or_blinking",
+          "onset_timing": "when_accelerating"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:engine-controls-driveability"
+    },
+    {
+      "id": "engine-controls-driveability-006",
+      "text": "Right after driving a while I stop for gas and it won't start back up — it cranks and cranks but won't fire. Fine the next morning though.",
+      "tags": [
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "no_start_testing",
+        "stage1_acceptable": [
+          "no_start_testing",
+          "check_engine_light_testing"
+        ],
+        "stage2_subcategory_slug": "hard_to_start_when_hot",
+        "stage3_facts": {
+          "engine_running": "wont_start",
+          "recent_action": "fuel_fill_up",
+          "onset_timing": "after_warming_up"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:engine-controls-driveability"
+    },
+    {
+      "id": "engine-controls-driveability-007",
+      "text": "Cranks forever in the morning before it finally starts, then runs rough for the first minute. It's worse when it's cold out.",
+      "tags": [
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "no_start_testing",
+        "stage1_acceptable": [
+          "no_start_testing",
+          "check_engine_light_testing",
+          "charging_starting_testing"
+        ],
+        "stage2_subcategory_slug": "hard_to_start_when_cold",
+        "stage3_facts": {
+          "engine_running": "wont_start",
+          "onset_timing": "cold_start",
+          "weather_condition": "cold_weather"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:engine-controls-driveability"
+    },
+    {
+      "id": "engine-controls-driveability-008",
+      "text": "My check engine light came on but the car drives totally fine — no weird sounds or shaking or anything.",
+      "tags": [
+        "sparse",
+        "inference_trap"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [
+          "check_engine_light_testing",
+          "warning_light_general"
+        ],
+        "stage2_subcategory_slug": "check_engine_light",
+        "stage3_facts": {
+          "warning_light_named": "check engine",
+          "drivable_state": "drivable_normally"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:engine-controls-driveability"
+    },
+    {
+      "id": "engine-controls-driveability-009",
+      "text": "Dash says SERVICE ENGINE SOON, I just hit 75,000 miles and the car runs perfect.",
+      "tags": [
+        "fact_rich",
+        "inference_trap",
+        "confusable_ses_vs_cel"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [
+          "check_engine_light_testing",
+          "warning_light_general"
+        ],
+        "stage2_subcategory_slug": "check_engine_light",
+        "stage3_facts": {
+          "warning_light_named": "service engine soon",
+          "drivable_state": "drivable_normally"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:engine-controls-driveability"
+    },
+    {
+      "id": "engine-controls-driveability-010",
+      "text": "The little wrench light came on and it says MAINT REQD — I'm right at 5,000 miles since my last oil change. Car drives perfectly, no other lights.",
+      "tags": [
+        "fact_rich",
+        "confusable_ses_vs_cel",
+        "cross_attach_nulled"
+      ],
+      "expected": {
+        "stage1_category_key": "warning_light_general",
+        "stage1_acceptable": [
+          "warning_light_general",
+          "check_engine_light_testing"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "warning_light_named": "maintenance required",
+          "drivable_state": "drivable_normally"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:engine-controls-driveability"
+    },
+    {
+      "id": "engine-controls-driveability-011",
+      "text": "Car dies while I'm driving — the battery light and oil light come on right before it quits, then it restarts and they go off.",
+      "tags": [
+        "fact_rich",
+        "confusable_cross_system"
+      ],
+      "expected": {
+        "stage1_category_key": "charging_starting_testing",
+        "stage1_acceptable": [
+          "charging_starting_testing"
+        ],
+        "stage2_subcategory_slug": "car_died_while_driving_electrical",
+        "stage3_facts": {
+          "engine_running": "died_while_driving",
+          "warning_light_named": "battery, oil pressure"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:engine-controls-driveability"
+    },
+    {
+      "id": "engine-controls-driveability-012",
+      "text": "I just want to get my spark plugs replaced — they're probably due by now.",
+      "tags": [
+        "null_route",
+        "non_concern"
+      ],
+      "expected": {
+        "stage1_category_key": null,
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "customer_request_type": "replace_specific_part"
+        },
+        "route": "null_match"
+      },
+      "source": "auto-kb-wave-a:engine-controls-driveability"
+    },
+    {
+      "id": "engine-lubrication-oil-001",
+      "text": "dark brown puddle under the front of my car when i park and the little red oil can light came on",
+      "tags": [
+        "fact_rich",
+        "exact_required_facts"
+      ],
+      "expected": {
+        "stage1_category_key": "oil_leak_testing",
+        "stage1_acceptable": [
+          "oil_leak_testing",
+          "oil_pressure_light_testing"
+        ],
+        "stage2_subcategory_slug": "brown_or_black_puddle_engine_oil",
+        "stage3_facts": {
+          "fluid_color": "brown_or_black",
+          "fluid_under_car_location": "under_engine_front",
+          "warning_light_named": "oil pressure"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:engine-lubrication-oil"
+    },
+    {
+      "id": "engine-lubrication-oil-002",
+      "text": "was on my way to work and the oil light popped on, so i got off at the next exit and killed the engine",
+      "tags": [
+        "safety",
+        "inference_trap"
+      ],
+      "expected": {
+        "stage1_category_key": "oil_pressure_light_testing",
+        "stage1_acceptable": [
+          "oil_pressure_light_testing"
+        ],
+        "stage2_subcategory_slug": "oil_pressure_light",
+        "stage3_facts": {
+          "warning_light_named": "oil pressure"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:engine-lubrication-oil"
+    },
+    {
+      "id": "engine-lubrication-oil-003",
+      "text": "once the engine's been running a while my oil light blinks on when im just sitting in traffic, then quits as soon as i give it gas",
+      "tags": [
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "oil_pressure_light_testing",
+        "stage1_acceptable": [
+          "oil_pressure_light_testing"
+        ],
+        "stage2_subcategory_slug": "oil_pressure_light",
+        "stage3_facts": {
+          "warning_light_named": "oil pressure",
+          "warning_light_behavior": "comes_and_goes",
+          "onset_timing": "after_warming_up"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:engine-lubrication-oil"
+    },
+    {
+      "id": "engine-lubrication-oil-004",
+      "text": "smells like hot burning oil under the hood after a highway run, strongest when i park, no puddle i can find",
+      "tags": [
+        "moderate"
+      ],
+      "expected": {
+        "stage1_category_key": "oil_leak_testing",
+        "stage1_acceptable": [
+          "oil_leak_testing"
+        ],
+        "stage2_subcategory_slug": "burnt_oil_smell",
+        "stage3_facts": {
+          "smell_descriptor": "burnt_oil",
+          "sound_or_smoke_location_zone": "under_hood",
+          "onset_timing": "after_warming_up"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:engine-lubrication-oil"
+    },
+    {
+      "id": "engine-lubrication-oil-005",
+      "text": "first thing in the morning theres a puff of blueish smoke out the back when i start it, been having to top off oil like every couple weeks and it smells oily",
+      "tags": [
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [
+          "check_engine_light_testing"
+        ],
+        "stage2_subcategory_slug": "blue_or_gray_smoke_from_tailpipe",
+        "stage3_facts": {
+          "smoke_color": "blue_or_gray",
+          "onset_timing": "cold_start",
+          "smell_descriptor": "burnt_oil",
+          "sound_or_smoke_location_zone": "from_tailpipe"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:engine-lubrication-oil"
+    },
+    {
+      "id": "engine-lubrication-oil-006",
+      "text": "ticking noise from the engine bay that quiets down once it warms up and the exhaust sounds louder than normal",
+      "tags": [
+        "cross_system"
+      ],
+      "expected": {
+        "stage1_category_key": "exhaust_system_testing",
+        "stage1_acceptable": [
+          "exhaust_system_testing"
+        ],
+        "stage2_subcategory_slug": "exhaust_manifold_tick_or_puff",
+        "stage3_facts": {
+          "noise_descriptor": "ticking_or_tapping",
+          "sound_or_smoke_location_zone": "under_hood"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:engine-lubrication-oil"
+    },
+    {
+      "id": "engine-lubrication-oil-007",
+      "text": "bright green puddle under the front by the radiator and it smells sweet like syrup",
+      "tags": [
+        "cross_system"
+      ],
+      "expected": {
+        "stage1_category_key": "coolant_leak_testing",
+        "stage1_acceptable": [
+          "coolant_leak_testing"
+        ],
+        "stage2_subcategory_slug": "green_orange_yellow_or_pink_puddle_coolant",
+        "stage3_facts": {
+          "fluid_color": "green_or_orange_or_yellow_or_pink",
+          "fluid_under_car_location": "under_engine_front",
+          "smell_descriptor": "sweet_or_maple_syrup"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:engine-lubrication-oil"
+    },
+    {
+      "id": "engine-lubrication-oil-008",
+      "text": "i think oil is dripping onto my exhaust because it smells burnt when i stop, under the hood",
+      "tags": [
+        "inference_trap"
+      ],
+      "expected": {
+        "stage1_category_key": "oil_leak_testing",
+        "stage1_acceptable": [
+          "oil_leak_testing"
+        ],
+        "stage2_subcategory_slug": "burnt_oil_smell",
+        "stage3_facts": {
+          "smell_descriptor": "burnt_oil",
+          "sound_or_smoke_location_zone": "under_hood"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:engine-lubrication-oil"
+    },
+    {
+      "id": "engine-lubrication-oil-009",
+      "text": "leaks a little fluid that looks like oil and feels like oil, but it smells like nothing and my oil level never drops",
+      "tags": [
+        "inference_trap",
+        "sparse"
+      ],
+      "expected": {
+        "stage1_category_key": "oil_leak_testing",
+        "stage1_acceptable": [
+          "oil_leak_testing",
+          "ac_leak_testing"
+        ],
+        "stage2_subcategory_slug": "brown_or_black_puddle_engine_oil",
+        "stage3_facts": {},
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:engine-lubrication-oil"
+    },
+    {
+      "id": "engine-lubrication-oil-010",
+      "text": "Oil Change, Inspection",
+      "tags": [
+        "null_route",
+        "work_order"
+      ],
+      "expected": {
+        "stage1_category_key": null,
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "customer_request_type": "routine_maintenance"
+        },
+        "route": "null_match"
+      },
+      "source": "auto-kb-wave-a:engine-lubrication-oil"
+    },
+    {
+      "id": "engine-mechanical-001",
+      "text": "engine sounds like a sewing machine at idle, quiets a little as it warms up but never fully goes away, oil light flickered once",
+      "tags": [
+        "fact_rich",
+        "confusable_pair",
+        "cross_category_unverified"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [
+          "check_engine_light_testing",
+          "oil_pressure_light_testing"
+        ],
+        "stage2_subcategory_slug": "engine_ticking_or_tapping",
+        "stage3_facts": {
+          "noise_descriptor": "ticking_or_tapping",
+          "onset_timing": "when_idling",
+          "warning_light_named": "oil pressure",
+          "warning_light_behavior": "came_on_then_off"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:engine-mechanical"
+    },
+    {
+      "id": "engine-mechanical-002",
+      "text": "ticking from the engine bay only on cold mornings, goes away completely after about five minutes",
+      "tags": [
+        "confusable_pair"
+      ],
+      "expected": {
+        "stage1_category_key": "exhaust_system_testing",
+        "stage1_acceptable": [
+          "exhaust_system_testing"
+        ],
+        "stage2_subcategory_slug": "exhaust_manifold_tick_or_puff",
+        "stage3_facts": {
+          "noise_descriptor": "ticking_or_tapping",
+          "onset_timing": "cold_start"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:engine-mechanical"
+    },
+    {
+      "id": "engine-mechanical-003",
+      "text": "deep heavy knocking from down low, gets louder every time i accelerate or go up a hill, oil pressure light is on and i dont think i should keep driving it",
+      "tags": [
+        "fact_rich",
+        "safety",
+        "cross_category_unverified"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [
+          "check_engine_light_testing",
+          "oil_pressure_light_testing"
+        ],
+        "stage2_subcategory_slug": "deep_knocking_from_the_engine",
+        "stage3_facts": {
+          "noise_descriptor": "knocking_deep",
+          "onset_timing": "when_accelerating",
+          "warning_light_named": "oil pressure",
+          "warning_light_behavior": "steady_on",
+          "drivable_state": "drivable_but_concerned"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:engine-mechanical"
+    },
+    {
+      "id": "engine-mechanical-004",
+      "text": "puff of blue smoke out the tailpipe when i first start it in the morning, smells like burning oil, been adding a quart every few weeks too",
+      "tags": [
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [
+          "check_engine_light_testing"
+        ],
+        "stage2_subcategory_slug": "blue_or_gray_smoke_from_tailpipe",
+        "stage3_facts": {
+          "smoke_color": "blue_or_gray",
+          "onset_timing": "cold_start",
+          "smell_descriptor": "burnt_oil",
+          "sound_or_smoke_location_zone": "from_tailpipe"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:engine-mechanical"
+    },
+    {
+      "id": "engine-mechanical-005",
+      "text": "cloud of blue gray smoke every time i floor it onto the highway, the car is turbocharged",
+      "tags": [
+        "moderate"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [
+          "check_engine_light_testing"
+        ],
+        "stage2_subcategory_slug": "blue_or_gray_smoke_from_tailpipe",
+        "stage3_facts": {
+          "smoke_color": "blue_or_gray",
+          "onset_timing": "when_accelerating",
+          "vehicle_powertrain": "turbocharged"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:engine-mechanical"
+    },
+    {
+      "id": "engine-mechanical-006",
+      "text": "thick white smoke from the exhaust even after driving twenty minutes, smells sweet, ive had to add coolant twice this week and the temp gauge is creeping up",
+      "tags": [
+        "fact_rich",
+        "safety"
+      ],
+      "expected": {
+        "stage1_category_key": "coolant_leak_testing",
+        "stage1_acceptable": [
+          "coolant_leak_testing",
+          "check_engine_light_testing"
+        ],
+        "stage2_subcategory_slug": "white_smoke_from_tailpipe",
+        "stage3_facts": {
+          "smoke_color": "white",
+          "smell_descriptor": "sweet_or_maple_syrup"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:engine-mechanical"
+    },
+    {
+      "id": "engine-mechanical-007",
+      "text": "greasy burning oil smell from under the hood after long drives, no drips on the ground that ive seen",
+      "tags": [
+        "moderate"
+      ],
+      "expected": {
+        "stage1_category_key": "oil_leak_testing",
+        "stage1_acceptable": [
+          "oil_leak_testing"
+        ],
+        "stage2_subcategory_slug": "burnt_oil_smell",
+        "stage3_facts": {
+          "smell_descriptor": "burnt_oil",
+          "sound_or_smoke_location_zone": "under_hood"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:engine-mechanical"
+    },
+    {
+      "id": "engine-mechanical-008",
+      "text": "check engine light is flashing and the car is bucking and jerking when i step on the gas",
+      "tags": [
+        "fact_rich",
+        "safety"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [
+          "check_engine_light_testing"
+        ],
+        "stage2_subcategory_slug": "engine_misfire_or_bucking_feeling",
+        "stage3_facts": {
+          "warning_light_named": "check engine",
+          "warning_light_behavior": "flashing_or_blinking",
+          "engine_running": "misfiring",
+          "onset_timing": "when_accelerating"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:engine-mechanical"
+    },
+    {
+      "id": "engine-mechanical-009",
+      "text": "my engine is ticking, its probably the lifters or its low on oil",
+      "tags": [
+        "inference_trap",
+        "cross_category_unverified"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [
+          "check_engine_light_testing",
+          "oil_pressure_light_testing"
+        ],
+        "stage2_subcategory_slug": "engine_ticking_or_tapping",
+        "stage3_facts": {
+          "noise_descriptor": "ticking_or_tapping"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:engine-mechanical"
+    },
+    {
+      "id": "engine-mechanical-010",
+      "text": "valve cover removal inspect for engine damage",
+      "tags": [
+        "null_route",
+        "non_concern"
+      ],
+      "expected": {
+        "stage1_category_key": null,
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "customer_request_type": "diagnose_problem"
+        },
+        "route": "null_match"
+      },
+      "source": "auto-kb-wave-a:engine-mechanical"
+    },
+    {
+      "id": "exhaust-emissions-001",
+      "text": "the car got crazy loud all of a sudden, sounds like a motorcycle now. pretty sure the muffler rusted out",
+      "tags": [
+        "noise",
+        "fact_rich",
+        "gated_fact:noise_descriptor=rumbling_or_droning"
+      ],
+      "expected": {
+        "stage1_category_key": "exhaust_system_testing",
+        "stage1_acceptable": [
+          "exhaust_system_testing"
+        ],
+        "stage2_subcategory_slug": "exhaust_louder_or_rumbling",
+        "stage3_facts": {
+          "started_when": "sudden_onset"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:exhaust-emissions"
+    },
+    {
+      "id": "exhaust-emissions-002",
+      "text": "my engine makes a fast ticking noise when i first start it cold in the morning, goes away after it warms up a few minutes",
+      "tags": [
+        "noise",
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "exhaust_system_testing",
+        "stage1_acceptable": [
+          "exhaust_system_testing"
+        ],
+        "stage2_subcategory_slug": "exhaust_manifold_tick_or_puff",
+        "stage3_facts": {
+          "noise_descriptor": "ticking_or_tapping",
+          "onset_timing": "cold_start"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:exhaust-emissions"
+    },
+    {
+      "id": "exhaust-emissions-003",
+      "text": "my car smells like rotten eggs from the exhaust, worse when i get on it",
+      "tags": [
+        "smell",
+        "cross_attach_nulled"
+      ],
+      "expected": {
+        "stage1_category_key": "exhaust_system_testing",
+        "stage1_acceptable": [
+          "exhaust_system_testing"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "smell_descriptor": "rotten_egg_or_sulfur",
+          "sound_or_smoke_location_zone": "from_tailpipe"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:exhaust-emissions"
+    },
+    {
+      "id": "exhaust-emissions-004",
+      "text": "exhaust smell coming through the heater after it warms up and at idle, heat needs to be on, getting headaches",
+      "tags": [
+        "smell",
+        "safety",
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "exhaust_system_testing",
+        "stage1_acceptable": [
+          "exhaust_system_testing"
+        ],
+        "stage2_subcategory_slug": "exhaust_fumes_inside_the_cabin",
+        "stage3_facts": {
+          "smell_descriptor": "exhaust_inside_cabin",
+          "hvac_mode": "heat",
+          "speed_band": "idle",
+          "onset_timing": "after_warming_up"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:exhaust-emissions"
+    },
+    {
+      "id": "exhaust-emissions-005",
+      "text": "check engine light on for a couple days, no unusual sounds, smells, or performance issues, steady light",
+      "tags": [
+        "warning_light"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [
+          "check_engine_light_testing",
+          "warning_light_general"
+        ],
+        "stage2_subcategory_slug": "check_engine_light",
+        "stage3_facts": {
+          "warning_light_named": "check engine",
+          "warning_light_behavior": "steady_on"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:exhaust-emissions"
+    },
+    {
+      "id": "exhaust-emissions-006",
+      "text": "auto parts store pulled a P0420 and said catalytic converter, want a second opinion before i buy a cat",
+      "tags": [
+        "warning_light"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [
+          "check_engine_light_testing"
+        ],
+        "stage2_subcategory_slug": "check_engine_light",
+        "stage3_facts": {
+          "warning_light_named": "check engine",
+          "customer_request_type": "second_opinion"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:exhaust-emissions"
+    },
+    {
+      "id": "exhaust-emissions-007",
+      "text": "making a ticking noise when driving",
+      "tags": [
+        "noise",
+        "inference_trap"
+      ],
+      "expected": {
+        "stage1_category_key": "exhaust_system_testing",
+        "stage1_acceptable": [
+          "exhaust_system_testing"
+        ],
+        "stage2_subcategory_slug": "exhaust_manifold_tick_or_puff",
+        "stage3_facts": {
+          "noise_descriptor": "ticking_or_tapping"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:exhaust-emissions"
+    },
+    {
+      "id": "exhaust-emissions-008",
+      "text": "not sure but my car is rumbling. i think there's something wrong with the alignment",
+      "tags": [
+        "noise",
+        "inference_trap",
+        "gated_fact:noise_descriptor=rumbling_or_droning"
+      ],
+      "expected": {
+        "stage1_category_key": "exhaust_system_testing",
+        "stage1_acceptable": [
+          "exhaust_system_testing",
+          "suspension_steering_check"
+        ],
+        "stage2_subcategory_slug": "exhaust_louder_or_rumbling",
+        "stage3_facts": {},
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:exhaust-emissions"
+    },
+    {
+      "id": "exhaust-emissions-009",
+      "text": "greasy hot burning oil smell from under the hood after i drive for a while",
+      "tags": [
+        "smell",
+        "nearmiss"
+      ],
+      "expected": {
+        "stage1_category_key": "oil_leak_testing",
+        "stage1_acceptable": [
+          "oil_leak_testing"
+        ],
+        "stage2_subcategory_slug": "burnt_oil_smell",
+        "stage3_facts": {
+          "smell_descriptor": "burnt_oil",
+          "sound_or_smoke_location_zone": "under_hood"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:exhaust-emissions"
+    },
+    {
+      "id": "exhaust-emissions-010",
+      "text": "State Inspection and Emissions. Already have a current emissions sticker. Just need the inspection.",
+      "tags": [
+        "null_route",
+        "work_order"
+      ],
+      "expected": {
+        "stage1_category_key": null,
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {},
+        "route": "null_match"
+      },
+      "source": "auto-kb-wave-a:exhaust-emissions"
+    },
+    {
+      "id": "fuel-system-evap-001",
+      "text": "black smoke pours out the tailpipe when i stomp on the gas and it smells like raw gas, my mileage tanked too",
+      "tags": [
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [
+          "check_engine_light_testing"
+        ],
+        "stage2_subcategory_slug": "black_smoke_from_tailpipe",
+        "stage3_facts": {
+          "smoke_color": "black",
+          "onset_timing": "when_accelerating",
+          "smell_descriptor": "gasoline_or_fuel",
+          "sound_or_smoke_location_zone": "from_tailpipe"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:fuel-system-evap"
+    },
+    {
+      "id": "fuel-system-evap-002",
+      "text": "check engine light came on right after i filled up with gas like 2 weeks ago, tightened the cap but its still on solid, car drives totally fine",
+      "tags": [
+        "fact_rich",
+        "inference_trap"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": "check_engine_light",
+        "stage3_facts": {
+          "warning_light_named": "*",
+          "warning_light_behavior": "steady_on",
+          "recent_action": "fuel_fill_up",
+          "started_when": "weeks_ago",
+          "drivable_state": "drivable_normally"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:fuel-system-evap"
+    },
+    {
+      "id": "fuel-system-evap-003",
+      "text": "my truck started blowing black smoke, not sure whats going on with it",
+      "tags": [
+        "sparse",
+        "inference_trap"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": "black_smoke_from_tailpipe",
+        "stage3_facts": {
+          "smoke_color": "black"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:fuel-system-evap"
+    },
+    {
+      "id": "fuel-system-evap-004",
+      "text": "if i stop for gas after driving a while the car cranks and cranks but wont catch, i smell gas around the engine, then it starts fine after it sits for a bit",
+      "tags": [
+        "fact_rich",
+        "inference_trap"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [
+          "check_engine_light_testing",
+          "no_start_testing"
+        ],
+        "stage2_subcategory_slug": "hard_to_start_when_hot",
+        "stage3_facts": {
+          "onset_timing": "after_warming_up",
+          "engine_running": "wont_start",
+          "smell_descriptor": "gasoline_or_fuel"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:fuel-system-evap"
+    },
+    {
+      "id": "fuel-system-evap-005",
+      "text": "cranks forever first thing in the morning before it finally fires up, but once its warmed up it starts fine, been doing it a couple weeks",
+      "tags": [
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [
+          "check_engine_light_testing",
+          "no_start_testing"
+        ],
+        "stage2_subcategory_slug": "hard_to_start_when_cold",
+        "stage3_facts": {
+          "onset_timing": "cold_start",
+          "started_when": "weeks_ago"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:fuel-system-evap"
+    },
+    {
+      "id": "fuel-system-evap-006",
+      "text": "i smell raw gasoline inside the car when im driving, and the whole garage reeks of gas when i park it",
+      "tags": [
+        "fact_rich",
+        "cross_category_unverified"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": "gasoline_fuel_smell",
+        "stage3_facts": {
+          "smell_descriptor": "gasoline_or_fuel",
+          "sound_or_smoke_location_zone": "inside_cabin_general"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:fuel-system-evap"
+    },
+    {
+      "id": "fuel-system-evap-007",
+      "text": "was driving on the highway and the engine just shut off, had to coast to the shoulder, it cranks but wont start back up right away",
+      "tags": [
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "no_start_testing",
+        "stage1_acceptable": [
+          "no_start_testing",
+          "check_engine_light_testing"
+        ],
+        "stage2_subcategory_slug": "stalling_while_driving_under_load",
+        "stage3_facts": {
+          "engine_running": "died_while_driving",
+          "speed_band": "highway"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:fuel-system-evap"
+    },
+    {
+      "id": "fuel-system-evap-008",
+      "text": "engine sputters and runs rough when im stopped at red lights, rpm needle bounces all over, check engine light is on and sometimes i get a rotten egg smell",
+      "tags": [
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": "rough_idle_or_shaking_at_a_stop",
+        "stage3_facts": {
+          "engine_running": "rough_idle",
+          "speed_band": "stopped",
+          "warning_light_named": "*",
+          "smell_descriptor": "rotten_egg_or_sulfur"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:fuel-system-evap"
+    },
+    {
+      "id": "fuel-system-evap-009",
+      "text": "i cant fill up with gas anymore, the pump keeps clicking off after a couple seconds and gas spits back out at me",
+      "tags": [
+        "moderate",
+        "proposed_subcategory",
+        "gated_subcat:trouble_fueling_gas_wont_go_in"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {},
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:fuel-system-evap"
+    },
+    {
+      "id": "fuel-system-evap-010",
+      "text": "evap and cat monitors still not set, customer needs the vehicle back and will drive it a few days then bring it in for the retest",
+      "tags": [
+        "null_route",
+        "work_order"
+      ],
+      "expected": {
+        "stage1_category_key": null,
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {},
+        "route": "null_match"
+      },
+      "source": "auto-kb-wave-a:fuel-system-evap"
+    },
+    {
+      "id": "hvac-climate-001",
+      "text": "AC is blowing straight hot air, no cold at all, and I dont hear any click when I turn it on. Started all of a sudden yesterday.",
+      "tags": [
+        "fact_rich",
+        "hvac"
+      ],
+      "expected": {
+        "stage1_category_key": "ac_performance_check",
+        "stage1_acceptable": [
+          "ac_performance_check",
+          "ac_leak_testing"
+        ],
+        "stage2_subcategory_slug": "ac_blows_warm_or_hot_air",
+        "stage3_facts": {
+          "hvac_mode": "ac",
+          "started_when": "sudden_onset"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:hvac-climate"
+    },
+    {
+      "id": "hvac-climate-002",
+      "text": "My AC cools ok on the highway but barely at stoplights, and we already recharged it back in may and its warm again.",
+      "tags": [
+        "moderate",
+        "confusable_ac_weak_vs_leak"
+      ],
+      "expected": {
+        "stage1_category_key": "ac_leak_testing",
+        "stage1_acceptable": [
+          "ac_leak_testing",
+          "ac_performance_check"
+        ],
+        "stage2_subcategory_slug": "ac_is_weak_not_cold_enough",
+        "stage3_facts": {
+          "hvac_mode": "ac",
+          "speed_band": "stopped",
+          "recent_action": "ac_recharge_or_service"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:hvac-climate"
+    },
+    {
+      "id": "hvac-climate-003",
+      "text": "the fan only blows on the highest setting, speeds 1 2 and 3 do nothing at all. the AC air is cold when it does blow though",
+      "tags": [
+        "moderate",
+        "hvac"
+      ],
+      "expected": {
+        "stage1_category_key": "ac_performance_check",
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": "vents_dont_blow_strongly",
+        "stage3_facts": {
+          "airflow_state": "only_on_highest_setting"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:hvac-climate"
+    },
+    {
+      "id": "hvac-climate-004",
+      "text": "every time i first turn the AC on theres a nasty musty smell like dirty gym socks from the vents. fades after a few min. doesnt do it with heat, only AC",
+      "tags": [
+        "fact_rich",
+        "hvac"
+      ],
+      "expected": {
+        "stage1_category_key": "ac_performance_check",
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": "bad_smell_from_vents",
+        "stage3_facts": {
+          "smell_descriptor": "musty_or_mildew",
+          "onset_timing": "at_first_turn_on",
+          "hvac_mode": "ac"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:hvac-climate"
+    },
+    {
+      "id": "hvac-climate-005",
+      "text": "heater just blows cold no matter how long I drive, but the temp gauge stays down low the whole time",
+      "tags": [
+        "moderate",
+        "confusable_hvac_vs_coolant"
+      ],
+      "expected": {
+        "stage1_category_key": "ac_performance_check",
+        "stage1_acceptable": [
+          "ac_performance_check",
+          "coolant_leak_testing"
+        ],
+        "stage2_subcategory_slug": "heat_doesnt_work",
+        "stage3_facts": {
+          "hvac_mode": "heat"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:hvac-climate"
+    },
+    {
+      "id": "hvac-climate-006",
+      "text": "driver side blows ice cold but the passenger side stays warm, and turning the passenger dial doesnt change anything",
+      "tags": [
+        "moderate",
+        "hvac",
+        "confusable_blower_vs_blend"
+      ],
+      "expected": {
+        "stage1_category_key": "ac_performance_check",
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": "one_zone_works_but_another_doesnt",
+        "stage3_facts": {
+          "airflow_state": "uneven_temperature_between_zones"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:hvac-climate"
+    },
+    {
+      "id": "hvac-climate-007",
+      "text": "inside of my windshield keeps fogging up when it rains and the defroster barely clears it",
+      "tags": [
+        "sparse",
+        "hvac"
+      ],
+      "expected": {
+        "stage1_category_key": "ac_performance_check",
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": "foggy_or_hard_to_defog_windows",
+        "stage3_facts": {
+          "weather_condition": "rainy_or_wet"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:hvac-climate"
+    },
+    {
+      "id": "hvac-climate-008",
+      "text": "theres a tick tick tick clicking from behind the dash right after I start the car and when I move the temperature dial",
+      "tags": [
+        "inference_trap",
+        "hvac"
+      ],
+      "expected": {
+        "stage1_category_key": "ac_performance_check",
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": "strange_noise_from_vents",
+        "stage3_facts": {
+          "noise_descriptor": "popping_or_clicking",
+          "sound_or_smoke_location_zone": "behind_dashboard"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:hvac-climate"
+    },
+    {
+      "id": "hvac-climate-009",
+      "text": "every time I run the AC theres clear water dripping onto the passenger floor and the carpet is soaked, no smell at all",
+      "tags": [
+        "moderate",
+        "confusable_water_vs_coolant"
+      ],
+      "expected": {
+        "stage1_category_key": "ac_leak_testing",
+        "stage1_acceptable": [
+          "ac_leak_testing",
+          "ac_performance_check"
+        ],
+        "stage2_subcategory_slug": "clear_odorless_puddle_water_or_ac_condensation",
+        "stage3_facts": {
+          "hvac_mode": "ac",
+          "fluid_color": "clear_no_color"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:hvac-climate"
+    },
+    {
+      "id": "hvac-climate-010",
+      "text": "my ac blows hot air in the summer even when I turn it all the way to cold, feels like the heat is stuck on",
+      "tags": [
+        "inference_trap",
+        "hvac",
+        "confusable_blend_vs_refrigerant"
+      ],
+      "expected": {
+        "stage1_category_key": "ac_performance_check",
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": "ac_blows_warm_or_hot_air",
+        "stage3_facts": {
+          "hvac_mode": "ac",
+          "weather_condition": "hot_weather"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:hvac-climate"
+    },
+    {
+      "id": "hvac-climate-011",
+      "text": "no matter what setting I choose the air only comes out the defroster, it wont blow out the dash vents, but theres plenty of air",
+      "tags": [
+        "moderate",
+        "hvac"
+      ],
+      "expected": {
+        "stage1_category_key": "ac_performance_check",
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": "vents_dont_blow_strongly",
+        "stage3_facts": {
+          "airflow_state": "only_one_zone_blows"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:hvac-climate"
+    },
+    {
+      "id": "hvac-climate-012",
+      "text": "REPLACE CABIN AIR FILTER (due for service)",
+      "tags": [
+        "null_route",
+        "work_order"
+      ],
+      "expected": {
+        "stage1_category_key": null,
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "customer_request_type": "routine_maintenance"
+        },
+        "route": "null_match"
+      },
+      "source": "auto-kb-wave-a:hvac-climate"
+    },
+    {
+      "id": "hybrid-ev-high-voltage-001",
+      "text": "im driving my electric car and it suddenly lost power, a turtle light popped up on the dash and now it wont go over 40. had to pull over",
+      "tags": [
+        "fact_rich",
+        "gated_subcat:hybrid_or_ev_reduced_power_or_limp_mode"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [
+          "check_engine_light_testing"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "vehicle_powertrain": "electric",
+          "warning_light_named": "turtle",
+          "drivable_state": "drivable_but_concerned",
+          "onset_timing": "during_driving"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:hybrid-ev-high-voltage"
+    },
+    {
+      "id": "hybrid-ev-high-voltage-002",
+      "text": "my hybrid wont start this morning, all the dash lights come on inside but it wont go to ready and it wont move. no cranking sound at all",
+      "tags": [
+        "fact_rich",
+        "discriminator",
+        "gated_fact:engine_running=wont_power_on_no_crank",
+        "gated_subcat:hybrid_or_ev_wont_power_on"
+      ],
+      "expected": {
+        "stage1_category_key": "charging_starting_testing",
+        "stage1_acceptable": [
+          "charging_starting_testing",
+          "battery_test"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "vehicle_powertrain": "hybrid"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:hybrid-ev-high-voltage"
+    },
+    {
+      "id": "hybrid-ev-high-voltage-003",
+      "text": "my hybrid was dead, jumped the little 12 volt battery in the back and it started right up. want to make sure the 12v is ok",
+      "tags": [
+        "fact_rich",
+        "discriminator",
+        "gated_subcat:hybrid_or_ev_wont_power_on"
+      ],
+      "expected": {
+        "stage1_category_key": "charging_starting_testing",
+        "stage1_acceptable": [
+          "charging_starting_testing",
+          "battery_test"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "vehicle_powertrain": "hybrid",
+          "recent_action": "jump_started",
+          "customer_request_type": "diagnose_problem"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:hybrid-ev-high-voltage"
+    },
+    {
+      "id": "hybrid-ev-high-voltage-004",
+      "text": "a big red triangle with an exclamation point came on and the screen says check hybrid system. car still drives ok, is it safe?",
+      "tags": [
+        "fact_rich",
+        "gated_subcat:hybrid_system_warning_light"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [
+          "check_engine_light_testing"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "vehicle_powertrain": "hybrid",
+          "warning_light_named": "check hybrid system, red triangle",
+          "warning_light_behavior": "steady_on",
+          "drivable_state": "drivable_but_concerned"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:hybrid-ev-high-voltage"
+    },
+    {
+      "id": "hybrid-ev-high-voltage-005",
+      "text": "my ev in reduced power mode dropped to walking speed on the highway then wouldnt move at all, had to get it towed. turtle icon was flashing",
+      "tags": [
+        "fact_rich",
+        "gated_subcat:hybrid_or_ev_reduced_power_or_limp_mode"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [
+          "check_engine_light_testing"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "vehicle_powertrain": "electric",
+          "warning_light_named": "turtle",
+          "warning_light_behavior": "flashing_or_blinking",
+          "speed_band": "highway",
+          "drivable_state": "not_drivable_needs_tow"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:hybrid-ev-high-voltage"
+    },
+    {
+      "id": "hybrid-ev-high-voltage-006",
+      "text": "the brakes on my hybrid feel grabby and different, worse first thing on a cold morning. no grinding or squealing and no shaking at speed",
+      "tags": [
+        "moderate",
+        "discriminator"
+      ],
+      "expected": {
+        "stage1_category_key": "brake_inspection",
+        "stage1_acceptable": [
+          "brake_inspection"
+        ],
+        "stage2_subcategory_slug": "pulsating_or_vibrating_pedal",
+        "stage3_facts": {
+          "vehicle_powertrain": "hybrid",
+          "pedal_feel": "grabby",
+          "weather_condition": "cold_weather"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:hybrid-ev-high-voltage"
+    },
+    {
+      "id": "hybrid-ev-high-voltage-007",
+      "text": "my car has no power going up hills all of a sudden, feels gutless and bogs down when i press the gas",
+      "tags": [
+        "moderate",
+        "discriminator"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [
+          "check_engine_light_testing"
+        ],
+        "stage2_subcategory_slug": "low_power_or_wont_accelerate_normally",
+        "stage3_facts": {
+          "onset_timing": "when_accelerating"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:hybrid-ev-high-voltage"
+    },
+    {
+      "id": "hybrid-ev-high-voltage-008",
+      "text": "my prius wont start, lights come on inside but it just wont go. what could it be?",
+      "tags": [
+        "inference_trap"
+      ],
+      "expected": {
+        "stage1_category_key": "charging_starting_testing",
+        "stage1_acceptable": [
+          "charging_starting_testing",
+          "battery_test"
+        ],
+        "stage2_subcategory_slug": "wont_crank_just_clicks",
+        "stage3_facts": {
+          "customer_request_type": "diagnose_problem"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:hybrid-ev-high-voltage"
+    },
+    {
+      "id": "hybrid-ev-high-voltage-009",
+      "text": "my ev wont charge at home anymore. the charger clicks but nothing happens and the charge port light is red",
+      "tags": [
+        "catalog_gap"
+      ],
+      "expected": {
+        "stage1_category_key": null,
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "vehicle_powertrain": "electric"
+        },
+        "route": "null_match"
+      },
+      "source": "auto-kb-wave-a:hybrid-ev-high-voltage"
+    },
+    {
+      "id": "hybrid-ev-high-voltage-010",
+      "text": "Previously declined>LUBRICATE AND SERVICE BRAKE CALIPERS REAR AXLE [TESLA]",
+      "tags": [
+        "null_route",
+        "work_order"
+      ],
+      "expected": {
+        "stage1_category_key": null,
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {},
+        "route": "null_match"
+      },
+      "source": "auto-kb-wave-a:hybrid-ev-high-voltage"
+    },
+    {
+      "id": "ignition-misfire-001",
+      "text": "check engine light is flashing and the car is bucking and jerking really bad, feels like its gonna stall, scared to drive it",
+      "tags": [
+        "fact_rich",
+        "safety",
+        "flashing_mil"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [
+          "check_engine_light_testing",
+          "transmission_testing"
+        ],
+        "stage2_subcategory_slug": "engine_misfire_or_bucking_feeling",
+        "stage3_facts": {
+          "engine_running": "misfiring",
+          "warning_light_named": "check engine",
+          "warning_light_behavior": "flashing_or_blinking",
+          "drivable_state": "drivable_but_concerned"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:ignition-misfire"
+    },
+    {
+      "id": "ignition-misfire-002",
+      "text": "ran the codes and it gave back 3 codes, a misfire, misfire on cylinder 1, and misfire on cylinder 4",
+      "tags": [
+        "inference_trap",
+        "customer_relayed_codes"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [
+          "check_engine_light_testing"
+        ],
+        "stage2_subcategory_slug": "check_engine_light",
+        "stage3_facts": {
+          "customer_request_type": "fix_a_known_problem"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:ignition-misfire"
+    },
+    {
+      "id": "ignition-misfire-003",
+      "text": "engine sputters and runs rough when im stopped at red lights, rpm needle bounces all over, check engine light is on and sometimes i get a rotten egg smell",
+      "tags": [
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [
+          "check_engine_light_testing"
+        ],
+        "stage2_subcategory_slug": "rough_idle_or_shaking_at_a_stop",
+        "stage3_facts": {
+          "engine_running": "rough_idle",
+          "speed_band": "stopped",
+          "onset_timing": "when_idling",
+          "warning_light_named": "check engine",
+          "smell_descriptor": "rotten_egg_or_sulfur"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:ignition-misfire"
+    },
+    {
+      "id": "ignition-misfire-004",
+      "text": "when i step on the gas theres like a second delay before the car actually goes. started suddenly out of nowhere",
+      "tags": [
+        "moderate"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [
+          "check_engine_light_testing",
+          "transmission_testing"
+        ],
+        "stage2_subcategory_slug": "hesitation_or_lag_when_accelerating",
+        "stage3_facts": {
+          "onset_timing": "when_accelerating",
+          "started_when": "sudden_onset"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:ignition-misfire"
+    },
+    {
+      "id": "ignition-misfire-005",
+      "text": "going up any incline the car pulls back, does a type of buck and eventually picks up",
+      "tags": [
+        "moderate",
+        "load_dependent"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [
+          "check_engine_light_testing",
+          "transmission_testing"
+        ],
+        "stage2_subcategory_slug": "engine_misfire_or_bucking_feeling",
+        "stage3_facts": {
+          "engine_running": "misfiring",
+          "onset_timing": "when_accelerating"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:ignition-misfire"
+    },
+    {
+      "id": "ignition-misfire-006",
+      "text": "couple times the check engine light came on and it misfired bad, both times it was cold out and i was going downhill, i shut it off and restarted and it ran fine",
+      "tags": [
+        "fact_rich",
+        "cold_misfire",
+        "intermittent"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [
+          "check_engine_light_testing"
+        ],
+        "stage2_subcategory_slug": "engine_misfire_or_bucking_feeling",
+        "stage3_facts": {
+          "engine_running": "misfiring",
+          "warning_light_named": "check engine",
+          "warning_light_behavior": "comes_and_goes",
+          "weather_condition": "cold_weather",
+          "onset_timing": "intermittent"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:ignition-misfire"
+    },
+    {
+      "id": "ignition-misfire-007",
+      "text": "check engine light on, no driveability concerns, just the light being on, want to know what it is",
+      "tags": [
+        "light_only",
+        "no_symptom"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [
+          "check_engine_light_testing",
+          "warning_light_general"
+        ],
+        "stage2_subcategory_slug": "check_engine_light",
+        "stage3_facts": {
+          "warning_light_named": "check engine",
+          "engine_running": "normal",
+          "drivable_state": "drivable_normally",
+          "customer_request_type": "diagnose_problem"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:ignition-misfire"
+    },
+    {
+      "id": "ignition-misfire-008",
+      "text": "autozone told me it has a misfire but honestly the car drives totally fine to me, the engine light is on",
+      "tags": [
+        "inference_trap",
+        "second_opinion"
+      ],
+      "expected": {
+        "stage1_category_key": "check_engine_light_testing",
+        "stage1_acceptable": [
+          "check_engine_light_testing"
+        ],
+        "stage2_subcategory_slug": "check_engine_light",
+        "stage3_facts": {
+          "warning_light_named": "check engine",
+          "customer_request_type": "second_opinion"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:ignition-misfire"
+    },
+    {
+      "id": "ignition-misfire-009",
+      "text": "whole car shakes at a stop light but the engine sounds smooth to me, i think its a motor mount",
+      "tags": [
+        "boundary",
+        "misfire_vs_mount",
+        "cross_attach_nulled"
+      ],
+      "expected": {
+        "stage1_category_key": "suspension_steering_check",
+        "stage1_acceptable": [
+          "suspension_steering_check",
+          "check_engine_light_testing"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "engine_running": "normal",
+          "onset_timing": "when_idling"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:ignition-misfire"
+    },
+    {
+      "id": "ignition-misfire-010",
+      "text": "Previously declined>Remove & Replace Spark Plugs (Replacement due every 40k miles. No history at 40k or 80k.)",
+      "tags": [
+        "null_route",
+        "non_concern",
+        "work_order"
+      ],
+      "expected": {
+        "stage1_category_key": null,
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {},
+        "route": "null_match"
+      },
+      "source": "auto-kb-wave-a:ignition-misfire"
+    },
+    {
+      "id": "lighting-visibility-001",
+      "text": "my headlights pulse brighter and dimmer, they get bright when i rev at a stoplight and dim at idle",
+      "tags": [
+        "fact_rich",
+        "alternator_cue",
+        "confusable_charging"
+      ],
+      "expected": {
+        "stage1_category_key": "charging_starting_testing",
+        "stage1_acceptable": [
+          "charging_starting_testing",
+          "electrical_testing_general"
+        ],
+        "stage2_subcategory_slug": "dim_or_flickering_lights",
+        "stage3_facts": {
+          "lights_state": "dim_at_idle_brighten_when_revving"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:lighting-visibility"
+    },
+    {
+      "id": "lighting-visibility-002",
+      "text": "dash lights and headlights flicker on and off while im driving, all of them together",
+      "tags": [
+        "moderate"
+      ],
+      "expected": {
+        "stage1_category_key": "charging_starting_testing",
+        "stage1_acceptable": [
+          "charging_starting_testing",
+          "electrical_testing_general"
+        ],
+        "stage2_subcategory_slug": "dim_or_flickering_lights",
+        "stage3_facts": {
+          "lights_state": "dim_or_flickering"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:lighting-visibility"
+    },
+    {
+      "id": "lighting-visibility-003",
+      "text": "driver headlight is out, i replaced the bulb and its still dark, the other one works fine",
+      "tags": [
+        "fact_rich",
+        "single_bulb"
+      ],
+      "expected": {
+        "stage1_category_key": "electrical_testing_general",
+        "stage1_acceptable": [
+          "electrical_testing_general"
+        ],
+        "stage2_subcategory_slug": "accessory_doesnt_work",
+        "stage3_facts": {
+          "accessory_affected": "driver headlight",
+          "location_side": "left"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:lighting-visibility"
+    },
+    {
+      "id": "lighting-visibility-004",
+      "text": "right rear turn signal not working, sometimes it works if i tap it then goes back out",
+      "tags": [
+        "moderate",
+        "intermittent"
+      ],
+      "expected": {
+        "stage1_category_key": "electrical_testing_general",
+        "stage1_acceptable": [
+          "electrical_testing_general"
+        ],
+        "stage2_subcategory_slug": "accessory_doesnt_work",
+        "stage3_facts": {
+          "accessory_affected": "turn signal",
+          "location_side": "right",
+          "onset_timing": "intermittent"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:lighting-visibility"
+    },
+    {
+      "id": "lighting-visibility-005",
+      "text": "my headlights got real dim and then the car just shut off on the highway, it wont start back up and im stuck on the shoulder",
+      "tags": [
+        "inference_trap",
+        "safety"
+      ],
+      "expected": {
+        "stage1_category_key": "charging_starting_testing",
+        "stage1_acceptable": [
+          "charging_starting_testing"
+        ],
+        "stage2_subcategory_slug": "car_died_while_driving_electrical",
+        "stage3_facts": {
+          "lights_state": "dim_or_flickering",
+          "engine_running": "died_while_driving",
+          "drivable_state": "stranded_now"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:lighting-visibility"
+    },
+    {
+      "id": "lighting-visibility-006",
+      "text": "wipers stopped working, they dont move at all now, quit right after i went through the car wash",
+      "tags": [
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "windshield_inop_testing",
+        "stage1_acceptable": [
+          "windshield_inop_testing"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "accessory_affected": "wipers",
+          "recent_action": "car_wash_or_driven_through_water"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:lighting-visibility"
+    },
+    {
+      "id": "lighting-visibility-007",
+      "text": "washers wont spray any fluid on the windshield, the wipers themselves work fine",
+      "tags": [
+        "moderate",
+        "spray_not_leak"
+      ],
+      "expected": {
+        "stage1_category_key": "windshield_inop_testing",
+        "stage1_acceptable": [
+          "windshield_inop_testing"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "accessory_affected": "washers"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:lighting-visibility"
+    },
+    {
+      "id": "lighting-visibility-008",
+      "text": "light blue watery puddle near my front tire, kind of soapy smell, and my washer fluid keeps running out",
+      "tags": [
+        "fact_rich",
+        "leak"
+      ],
+      "expected": {
+        "stage1_category_key": "coolant_leak_testing",
+        "stage1_acceptable": [
+          "coolant_leak_testing",
+          "windshield_inop_testing"
+        ],
+        "stage2_subcategory_slug": "blue_or_light_blue_puddle_washer_fluid",
+        "stage3_facts": {
+          "fluid_color": "blue_or_light_blue",
+          "fluid_under_car_location": "under_engine_front"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:lighting-visibility"
+    },
+    {
+      "id": "lighting-visibility-009",
+      "text": "theres a bright blue slimy puddle right under the radiator and it smells kind of sweet",
+      "tags": [
+        "inference_trap",
+        "confusable_coolant"
+      ],
+      "expected": {
+        "stage1_category_key": "coolant_leak_testing",
+        "stage1_acceptable": [
+          "coolant_leak_testing"
+        ],
+        "stage2_subcategory_slug": "green_orange_yellow_or_pink_puddle_coolant",
+        "stage3_facts": {
+          "fluid_color": "blue_or_light_blue",
+          "smell_descriptor": "sweet_or_maple_syrup",
+          "fluid_under_car_location": "under_engine_front"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:lighting-visibility"
+    },
+    {
+      "id": "lighting-visibility-010",
+      "text": "inside of my windshield keeps fogging up when it rains and the defroster barely clears it",
+      "tags": [
+        "sparse",
+        "hvac"
+      ],
+      "expected": {
+        "stage1_category_key": "ac_performance_check",
+        "stage1_acceptable": [
+          "ac_performance_check"
+        ],
+        "stage2_subcategory_slug": "foggy_or_hard_to_defog_windows",
+        "stage3_facts": {
+          "weather_condition": "rainy_or_wet"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:lighting-visibility"
+    },
+    {
+      "id": "lighting-visibility-011",
+      "text": "the rear window defroster doesnt work, the lines on the back glass never heat up and it stays fogged",
+      "tags": [
+        "moderate",
+        "rear_defogger"
+      ],
+      "expected": {
+        "stage1_category_key": "ac_performance_check",
+        "stage1_acceptable": [
+          "ac_performance_check"
+        ],
+        "stage2_subcategory_slug": "foggy_or_hard_to_defog_windows",
+        "stage3_facts": {
+          "accessory_affected": "rear defroster"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:lighting-visibility"
+    },
+    {
+      "id": "lighting-visibility-012",
+      "text": "REPLACE DRIVERS SIDE LOW BEAM",
+      "tags": [
+        "null_route",
+        "work_order"
+      ],
+      "expected": {
+        "stage1_category_key": null,
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {},
+        "route": "null_match"
+      },
+      "source": "auto-kb-wave-a:lighting-visibility"
+    },
+    {
+      "id": "lighting-visibility-013",
+      "text": "REPLACE WIPERS IF NEEDED.",
+      "tags": [
+        "null_route",
+        "work_order"
+      ],
+      "expected": {
+        "stage1_category_key": null,
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "customer_request_type": "replace_specific_part"
+        },
+        "route": "null_match"
+      },
+      "source": "auto-kb-wave-a:lighting-visibility"
+    },
+    {
+      "id": "manual-trans-clutch-001",
+      "text": "CLIENT STATES CLUTCH IS SLIPPING",
+      "tags": [
+        "fact_poor",
+        "real_tekmetric"
+      ],
+      "expected": {
+        "stage1_category_key": "transmission_testing",
+        "stage1_acceptable": [
+          "transmission_testing"
+        ],
+        "stage2_subcategory_slug": "low_power_or_wont_accelerate_normally",
+        "stage3_facts": {},
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:manual-trans-clutch"
+    },
+    {
+      "id": "manual-trans-clutch-002",
+      "text": "customer states the clutch has failed. it revs up and doesnt have power when accelerating",
+      "tags": [
+        "fact_rich",
+        "real_tekmetric",
+        "proposed_fact_value",
+        "gated_slot:clutch_or_gear_engagement"
+      ],
+      "expected": {
+        "stage1_category_key": "transmission_testing",
+        "stage1_acceptable": [
+          "transmission_testing"
+        ],
+        "stage2_subcategory_slug": "low_power_or_wont_accelerate_normally",
+        "stage3_facts": {
+          "onset_timing": "when_accelerating"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:manual-trans-clutch"
+    },
+    {
+      "id": "manual-trans-clutch-003",
+      "text": "manual car, clutch slips going up hills and i smell somthing burning",
+      "tags": [
+        "fact_medium",
+        "cross_system_smell",
+        "synthetic",
+        "literalness"
+      ],
+      "expected": {
+        "stage1_category_key": "transmission_testing",
+        "stage1_acceptable": [
+          "transmission_testing"
+        ],
+        "stage2_subcategory_slug": "low_power_or_wont_accelerate_normally",
+        "stage3_facts": {
+          "smell_descriptor": "other_burning"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:manual-trans-clutch"
+    },
+    {
+      "id": "manual-trans-clutch-004",
+      "text": "manual transmission slips only in 4-high and first gear, fine in 4-low and 2-high",
+      "tags": [
+        "inference_trap",
+        "cross_system",
+        "forum_grounded"
+      ],
+      "expected": {
+        "stage1_category_key": "awd_4x4_testing",
+        "stage1_acceptable": [
+          "awd_4x4_testing",
+          "transmission_testing"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {},
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:manual-trans-clutch"
+    },
+    {
+      "id": "manual-trans-clutch-005",
+      "text": "grinds every time i put it in first and its hard to get into reverse",
+      "tags": [
+        "proposed_subcat",
+        "forum_grounded",
+        "proposed_fact_value",
+        "gated_slot:clutch_or_gear_engagement",
+        "gated_subcat:grinding_or_hard_shift_gears"
+      ],
+      "expected": {
+        "stage1_category_key": "transmission_testing",
+        "stage1_acceptable": [
+          "transmission_testing"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "noise_descriptor": "grinding_metallic"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:manual-trans-clutch"
+    },
+    {
+      "id": "manual-trans-clutch-006",
+      "text": "hard to get it into gear especially when its cold in the morning, have to force it",
+      "tags": [
+        "proposed_subcat",
+        "forum_grounded",
+        "proposed_fact_value",
+        "gated_slot:clutch_or_gear_engagement",
+        "gated_subcat:grinding_or_hard_shift_gears"
+      ],
+      "expected": {
+        "stage1_category_key": "transmission_testing",
+        "stage1_acceptable": [
+          "transmission_testing"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "onset_timing": "cold_start",
+          "weather_condition": "cold_weather"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:manual-trans-clutch"
+    },
+    {
+      "id": "manual-trans-clutch-007",
+      "text": "loud squealing sound that goes away as soon as i push the clutch pedal in",
+      "tags": [
+        "proposed_subcat",
+        "confusable_bearing",
+        "synthetic",
+        "literalness",
+        "gated_subcat:clutch_pedal_or_engagement_feel"
+      ],
+      "expected": {
+        "stage1_category_key": "transmission_testing",
+        "stage1_acceptable": [
+          "transmission_testing"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "noise_descriptor": "squealing_high_pitched"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:manual-trans-clutch"
+    },
+    {
+      "id": "manual-trans-clutch-008",
+      "text": "chirping sound that starts when i press the clutch pedal down toward where it grabs",
+      "tags": [
+        "proposed_subcat",
+        "confusable_bearing",
+        "synthetic",
+        "proposed_fact_value",
+        "gated_subcat:clutch_pedal_or_engagement_feel"
+      ],
+      "expected": {
+        "stage1_category_key": "transmission_testing",
+        "stage1_acceptable": [
+          "transmission_testing"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "noise_descriptor": "squealing_high_pitched"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:manual-trans-clutch"
+    },
+    {
+      "id": "manual-trans-clutch-009",
+      "text": "whirring noise only when i hold the clutch all the way down while in gear",
+      "tags": [
+        "proposed_subcat",
+        "confusable_bearing",
+        "synthetic",
+        "gated_subcat:clutch_pedal_or_engagement_feel"
+      ],
+      "expected": {
+        "stage1_category_key": "transmission_testing",
+        "stage1_acceptable": [
+          "transmission_testing"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "noise_descriptor": "humming_or_whirring"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:manual-trans-clutch"
+    },
+    {
+      "id": "manual-trans-clutch-010",
+      "text": "rattles and raps at idle like a diesel but quiets down when i push the clutch pedal in",
+      "tags": [
+        "proposed_subcat",
+        "confusable_engine_noise",
+        "synthetic",
+        "gated_subcat:clutch_pedal_or_engagement_feel"
+      ],
+      "expected": {
+        "stage1_category_key": "transmission_testing",
+        "stage1_acceptable": [
+          "transmission_testing"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "noise_descriptor": "rattling",
+          "speed_band": "idle"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:manual-trans-clutch"
+    },
+    {
+      "id": "manual-trans-clutch-011",
+      "text": "my car shakes when i take off from a stop",
+      "tags": [
+        "inference_trap",
+        "proposed_fact_value",
+        "gated_fact:onset_timing=from_a_stop_pulling_away"
+      ],
+      "expected": {
+        "stage1_category_key": null,
+        "stage1_acceptable": [
+          "transmission_testing",
+          "suspension_steering_check"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {},
+        "route": "null_match"
+      },
+      "source": "auto-kb-wave-a:manual-trans-clutch"
+    },
+    {
+      "id": "manual-trans-clutch-012",
+      "text": "install customer supplied clutch kit, flywheel resurface",
+      "tags": [
+        "null_route",
+        "work_order"
+      ],
+      "expected": {
+        "stage1_category_key": null,
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {},
+        "route": "null_match"
+      },
+      "source": "auto-kb-wave-a:manual-trans-clutch"
+    },
+    {
+      "id": "starting-charging-001",
+      "text": "turn the key and all i get is fast clicking, click-click-click, wont turn over at all. dash lights come on but go real dim when i try it. jumped it and it started right up.",
+      "tags": [
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "charging_starting_testing",
+        "stage1_acceptable": [
+          "charging_starting_testing",
+          "no_start_testing"
+        ],
+        "stage2_subcategory_slug": "wont_crank_just_clicks",
+        "stage3_facts": {
+          "engine_running": "wont_crank_just_clicks",
+          "lights_state": "dim_or_flickering",
+          "recent_action": "jump_started"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:starting-charging"
+    },
+    {
+      "id": "starting-charging-002",
+      "text": "one loud click and then nothing, engine wont crank, but the headlights and dash stay nice and bright",
+      "tags": [
+        "fact_rich",
+        "discriminator"
+      ],
+      "expected": {
+        "stage1_category_key": "charging_starting_testing",
+        "stage1_acceptable": [
+          "charging_starting_testing"
+        ],
+        "stage2_subcategory_slug": "wont_crank_just_clicks",
+        "stage3_facts": {
+          "engine_running": "wont_crank_just_clicks",
+          "lights_state": "normal"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:starting-charging"
+    },
+    {
+      "id": "starting-charging-003",
+      "text": "engine cranks super slow, rrr rrr rrr, before it finally catches. way worse when its cold out and the headlights look dim while its cranking",
+      "tags": [
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "charging_starting_testing",
+        "stage1_acceptable": [
+          "charging_starting_testing"
+        ],
+        "stage2_subcategory_slug": "slow_crank_sluggish_start",
+        "stage3_facts": {
+          "engine_running": "slow_crank",
+          "weather_condition": "cold_weather",
+          "lights_state": "dim_or_flickering"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:starting-charging"
+    },
+    {
+      "id": "starting-charging-004",
+      "text": "something keeps draining my battery overnight. i jump it in the morning, drive all day fine, come back next day and its dead again. already put a new battery in and it didnt help",
+      "tags": [
+        "fact_rich",
+        "gated_slot:battery_age"
+      ],
+      "expected": {
+        "stage1_category_key": "charging_starting_testing",
+        "stage1_acceptable": [
+          "charging_starting_testing"
+        ],
+        "stage2_subcategory_slug": "battery_drains_overnight",
+        "stage3_facts": {
+          "recent_action": "jump_started"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:starting-charging"
+    },
+    {
+      "id": "starting-charging-005",
+      "text": "red battery light is on in my dash and i can hear a squealing sound under the hood, headlights getting dim. is it ok to keep driving?",
+      "tags": [
+        "moderate"
+      ],
+      "expected": {
+        "stage1_category_key": "charging_starting_testing",
+        "stage1_acceptable": [
+          "charging_starting_testing"
+        ],
+        "stage2_subcategory_slug": "battery_charging_light",
+        "stage3_facts": {
+          "warning_light_named": "battery",
+          "warning_light_behavior": "steady_on",
+          "noise_descriptor": "squealing_high_pitched",
+          "lights_state": "dim_or_flickering",
+          "drivable_state": "drivable_but_concerned"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:starting-charging"
+    },
+    {
+      "id": "starting-charging-006",
+      "text": "my headlights keep going dimmer and brighter on their own, brighter when i rev the engine and dimmer at stoplights. i dont see any warning light though",
+      "tags": [
+        "moderate",
+        "discriminator"
+      ],
+      "expected": {
+        "stage1_category_key": "charging_starting_testing",
+        "stage1_acceptable": [
+          "charging_starting_testing"
+        ],
+        "stage2_subcategory_slug": "dim_or_flickering_lights",
+        "stage3_facts": {
+          "lights_state": "dim_at_idle_brighten_when_revving"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:starting-charging"
+    },
+    {
+      "id": "starting-charging-007",
+      "text": "everything went dark while i was driving, dash and radio and headlights all went dim then the engine just quit on the highway. wont crank now, only clicks",
+      "tags": [
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "charging_starting_testing",
+        "stage1_acceptable": [
+          "charging_starting_testing"
+        ],
+        "stage2_subcategory_slug": "car_died_while_driving_electrical",
+        "stage3_facts": {
+          "engine_running": "died_while_driving",
+          "lights_state": "dim_or_flickering",
+          "speed_band": "highway"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:starting-charging"
+    },
+    {
+      "id": "starting-charging-008",
+      "text": "hard to start when its cold in the mornings, i gotta crank it a few times before it catches. once its warmed up its totally fine",
+      "tags": [
+        "inference_trap"
+      ],
+      "expected": {
+        "stage1_category_key": "no_start_testing",
+        "stage1_acceptable": [
+          "no_start_testing",
+          "charging_starting_testing"
+        ],
+        "stage2_subcategory_slug": "hard_to_start_when_cold",
+        "stage3_facts": {
+          "engine_running": "wont_start",
+          "weather_condition": "cold_weather",
+          "onset_timing": "cold_start"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:starting-charging"
+    },
+    {
+      "id": "starting-charging-009",
+      "text": "wont start back up when i stop for gas after driving a while, it cranks and cranks but wont fire. if i let it cool 20 minutes it starts fine",
+      "tags": [
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "no_start_testing",
+        "stage1_acceptable": [
+          "no_start_testing"
+        ],
+        "stage2_subcategory_slug": "hard_to_start_when_hot",
+        "stage3_facts": {
+          "engine_running": "wont_start",
+          "weather_condition": "hot_weather"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:starting-charging"
+    },
+    {
+      "id": "starting-charging-010",
+      "text": "i just want to get my battery tested, want to make sure its good before a road trip",
+      "tags": [
+        "request_type"
+      ],
+      "expected": {
+        "stage1_category_key": "battery_test",
+        "stage1_acceptable": [
+          "battery_test",
+          "charging_starting_testing"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "customer_request_type": "pre_trip_inspection"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:starting-charging"
+    },
+    {
+      "id": "starting-charging-011",
+      "text": "check engine light is on and theres a message on my dash that says service high voltage charging system",
+      "tags": [
+        "moderate",
+        "corpus_attested"
+      ],
+      "expected": {
+        "stage1_category_key": "charging_starting_testing",
+        "stage1_acceptable": [
+          "charging_starting_testing",
+          "check_engine_light_testing"
+        ],
+        "stage2_subcategory_slug": "battery_charging_light",
+        "stage3_facts": {
+          "warning_light_named": "check engine",
+          "warning_light_behavior": "steady_on"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:starting-charging"
+    },
+    {
+      "id": "starting-charging-012",
+      "text": "when i go to start my car theres a loud grinding noise like the gears arent catching, takes a couple tries before it turns over",
+      "tags": [
+        "discriminator"
+      ],
+      "expected": {
+        "stage1_category_key": "charging_starting_testing",
+        "stage1_acceptable": [
+          "charging_starting_testing"
+        ],
+        "stage2_subcategory_slug": "wont_crank_just_clicks",
+        "stage3_facts": {
+          "noise_descriptor": "grinding_metallic",
+          "engine_running": "wont_crank_just_clicks"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:starting-charging"
+    },
+    {
+      "id": "starting-charging-013",
+      "text": "STARTING AND CHARGING SYSTEM TESTING AUTH 89",
+      "tags": [
+        "null_route",
+        "work_order"
+      ],
+      "expected": {
+        "stage1_category_key": null,
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {},
+        "route": "null_match"
+      },
+      "source": "auto-kb-wave-a:starting-charging"
+    },
+    {
+      "id": "steering-power-steering-001",
+      "text": "HEARS A LOUD SQUEAL WHEN TURNING",
+      "tags": [
+        "real_tekmetric",
+        "noise_when_turning_the_steering_wheel",
+        "fragment_allcaps"
+      ],
+      "expected": {
+        "stage1_category_key": "power_steering_eps_testing",
+        "stage1_acceptable": [
+          "power_steering_eps_testing",
+          "suspension_steering_check"
+        ],
+        "stage2_subcategory_slug": "noise_when_turning_the_steering_wheel",
+        "stage3_facts": {
+          "noise_descriptor": "squealing_high_pitched",
+          "onset_timing": "when_turning"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:steering-power-steering"
+    },
+    {
+      "id": "steering-power-steering-002",
+      "text": "just had an alignment and now the steering wheel sits crooked when im driving straight, but the car doesnt pull",
+      "tags": [
+        "fact_rich",
+        "steering_wheel_off_center_when_driving_straight"
+      ],
+      "expected": {
+        "stage1_category_key": "suspension_steering_check",
+        "stage1_acceptable": [
+          "suspension_steering_check"
+        ],
+        "stage2_subcategory_slug": "steering_wheel_off_center_when_driving_straight",
+        "stage3_facts": {
+          "steering_feel": "wheel_off_center_while_straight",
+          "recent_action": "alignment",
+          "pull_direction": "no_pull"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:steering-power-steering"
+    },
+    {
+      "id": "steering-power-steering-003",
+      "text": "WHINE NOISE WHEN RUNNING",
+      "tags": [
+        "real_tekmetric",
+        "confusable",
+        "fragment_allcaps"
+      ],
+      "expected": {
+        "stage1_category_key": "charging_starting_testing",
+        "stage1_acceptable": [
+          "charging_starting_testing",
+          "exhaust_system_testing",
+          "power_steering_eps_testing"
+        ],
+        "stage2_subcategory_slug": "high_pitched_whining_under_the_hood",
+        "stage3_facts": {
+          "noise_descriptor": "whining"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:steering-power-steering"
+    },
+    {
+      "id": "steering-power-steering-004",
+      "text": "found a bright red puddle under the front of my car this morning. steering feels totally normal, not hard to turn at all. can you figure out whats leaking?",
+      "tags": [
+        "inference_trap",
+        "red_or_pink_puddle_transmission_or_power_steering",
+        "cross_category_unverified"
+      ],
+      "expected": {
+        "stage1_category_key": "power_steering_eps_testing",
+        "stage1_acceptable": [
+          "power_steering_eps_testing",
+          "transmission_testing"
+        ],
+        "stage2_subcategory_slug": "red_or_pink_puddle_transmission_or_power_steering",
+        "stage3_facts": {
+          "fluid_color": "red_or_pink",
+          "fluid_under_car_location": "under_engine_front",
+          "steering_feel": "normal"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:steering-power-steering"
+    },
+    {
+      "id": "steering-power-steering-005",
+      "text": "my steering is really hard to turn lately",
+      "tags": [
+        "inference_trap",
+        "sparse",
+        "hard_to_turn_heavy_steering"
+      ],
+      "expected": {
+        "stage1_category_key": "power_steering_eps_testing",
+        "stage1_acceptable": [
+          "power_steering_eps_testing"
+        ],
+        "stage2_subcategory_slug": "hard_to_turn_heavy_steering",
+        "stage3_facts": {
+          "steering_feel": "heavy_or_hard_to_turn"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:steering-power-steering"
+    },
+    {
+      "id": "steering-power-steering-006",
+      "text": "got new tires put on last week and its been pulling hard to the right ever since",
+      "tags": [
+        "boundary",
+        "pull_that_started_after_recent_tire_or_service_work"
+      ],
+      "expected": {
+        "stage1_category_key": "suspension_steering_check",
+        "stage1_acceptable": [
+          "suspension_steering_check"
+        ],
+        "stage2_subcategory_slug": "pull_that_started_after_recent_tire_or_service_work",
+        "stage3_facts": {
+          "pull_direction": "right",
+          "recent_action": "tire_rotation_or_replacement"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:steering-power-steering"
+    },
+    {
+      "id": "steering-power-steering-007",
+      "text": "the wheel is way harder to turn to the left than it is to the right, feels normal turning right",
+      "tags": [
+        "moderate",
+        "hard_to_turn_heavy_steering",
+        "one_direction"
+      ],
+      "expected": {
+        "stage1_category_key": "power_steering_eps_testing",
+        "stage1_acceptable": [
+          "power_steering_eps_testing"
+        ],
+        "stage2_subcategory_slug": "hard_to_turn_heavy_steering",
+        "stage3_facts": {
+          "steering_feel": "stiff_one_direction_only"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:steering-power-steering"
+    },
+    {
+      "id": "steering-power-steering-008",
+      "text": "theres a pink puddle under the front of my car and my temperature gauge has been running hot lately",
+      "tags": [
+        "inference_trap",
+        "cross_system",
+        "green_orange_yellow_or_pink_puddle_coolant"
+      ],
+      "expected": {
+        "stage1_category_key": "coolant_leak_testing",
+        "stage1_acceptable": [
+          "coolant_leak_testing",
+          "power_steering_eps_testing"
+        ],
+        "stage2_subcategory_slug": "green_orange_yellow_or_pink_puddle_coolant",
+        "stage3_facts": {
+          "fluid_color": "red_or_pink",
+          "fluid_under_car_location": "under_engine_front"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:steering-power-steering"
+    },
+    {
+      "id": "steering-power-steering-009",
+      "text": "rack replacement",
+      "tags": [
+        "null_route",
+        "work_order",
+        "real_tekmetric"
+      ],
+      "expected": {
+        "stage1_category_key": null,
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "customer_request_type": "replace_specific_part"
+        },
+        "route": "null_match"
+      },
+      "source": "auto-kb-wave-a:steering-power-steering"
+    },
+    {
+      "id": "suspension-ride-alignment-001",
+      "text": "theres a loud clunk from the front driver side every time i go over a bump or a pothole, been doing it for a couple weeks",
+      "tags": [
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "suspension_steering_check",
+        "stage1_acceptable": [
+          "suspension_steering_check"
+        ],
+        "stage2_subcategory_slug": "clunking_over_bumps",
+        "stage3_facts": {
+          "noise_descriptor": "clunking",
+          "location_axle": "front",
+          "location_side": "left",
+          "onset_timing": "over_bumps",
+          "started_when": "weeks_ago"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:suspension-ride-alignment"
+    },
+    {
+      "id": "suspension-ride-alignment-002",
+      "text": "check squeaking in the rear over bumps, you can hear it if you push down on the bumper",
+      "tags": [
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "suspension_steering_check",
+        "stage1_acceptable": [
+          "suspension_steering_check"
+        ],
+        "stage2_subcategory_slug": "squeaking_or_creaking_over_bumps",
+        "stage3_facts": {
+          "noise_descriptor": "creaking_or_squeaking",
+          "location_axle": "rear",
+          "onset_timing": "over_bumps"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:suspension-ride-alignment"
+    },
+    {
+      "id": "suspension-ride-alignment-003",
+      "text": "the car bounces like three or four times after every bump and the ride is way rougher than it used to be",
+      "tags": [
+        "fact_rich",
+        "needs_new_slot",
+        "gated_slot:ride_damping_symptom"
+      ],
+      "expected": {
+        "stage1_category_key": "suspension_steering_check",
+        "stage1_acceptable": [
+          "suspension_steering_check"
+        ],
+        "stage2_subcategory_slug": "shaking_or_bouncing_over_bumps_and_rough_roads",
+        "stage3_facts": {
+          "onset_timing": "over_bumps"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:suspension-ride-alignment"
+    },
+    {
+      "id": "suspension-ride-alignment-004",
+      "text": "every bump comes right up through the steering wheel and the wheel kicks back when i hit a pothole",
+      "tags": [
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "suspension_steering_check",
+        "stage1_acceptable": [
+          "suspension_steering_check"
+        ],
+        "stage2_subcategory_slug": "clunking_knocking_or_rough_ride_over_bumps",
+        "stage3_facts": {
+          "onset_timing": "over_bumps"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:suspension-ride-alignment"
+    },
+    {
+      "id": "suspension-ride-alignment-005",
+      "text": "if i hold the steering wheel straight the car pulls to the right, and it still does it on a flat empty parking lot",
+      "tags": [
+        "fact_rich",
+        "needs_new_slot",
+        "inference_trap",
+        "gated_slot:pull_road_dependence"
+      ],
+      "expected": {
+        "stage1_category_key": "suspension_steering_check",
+        "stage1_acceptable": [
+          "suspension_steering_check"
+        ],
+        "stage2_subcategory_slug": "steady_drift_while_cruising",
+        "stage3_facts": {
+          "pull_direction": "right"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:suspension-ride-alignment"
+    },
+    {
+      "id": "suspension-ride-alignment-006",
+      "text": "it drifts right on the highway but goes perfectly straight in an empty flat parking lot, and it pulls the other way in the other lane",
+      "tags": [
+        "confusable_pair",
+        "needs_new_slot",
+        "gated_slot:pull_road_dependence"
+      ],
+      "expected": {
+        "stage1_category_key": "suspension_steering_check",
+        "stage1_acceptable": [
+          "suspension_steering_check"
+        ],
+        "stage2_subcategory_slug": "drift_that_follows_the_roads_slope",
+        "stage3_facts": {
+          "pull_direction": "right"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:suspension-ride-alignment"
+    },
+    {
+      "id": "suspension-ride-alignment-007",
+      "text": "the car wanders all over the lane, the steering feels loose and im constantly correcting, worse at highway speed",
+      "tags": [
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "suspension_steering_check",
+        "stage1_acceptable": [
+          "suspension_steering_check"
+        ],
+        "stage2_subcategory_slug": "wandering_or_drifting_in_both_directions",
+        "stage3_facts": {
+          "pull_direction": "varies_or_wanders",
+          "steering_feel": "loose_or_sloppy",
+          "speed_band": "highway"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:suspension-ride-alignment"
+    },
+    {
+      "id": "suspension-ride-alignment-008",
+      "text": "my tires are wearing on the inside edge of the front, want the alignment checked",
+      "tags": [
+        "request_plus_symptom",
+        "taxonomy_gap",
+        "cross_attach_nulled"
+      ],
+      "expected": {
+        "stage1_category_key": "tire_repair",
+        "stage1_acceptable": [
+          "tire_repair",
+          "suspension_steering_check"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "tire_state": "uneven_wear",
+          "location_axle": "front"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:suspension-ride-alignment"
+    },
+    {
+      "id": "suspension-ride-alignment-009",
+      "text": "hit a really bad pothole yesterday and now the front end feels off, no noises or warning lights, just want someone to make sure nothing got bent",
+      "tags": [
+        "inference_trap",
+        "situational_override"
+      ],
+      "expected": {
+        "stage1_category_key": "after_a_recent_accident_or_impact",
+        "stage1_acceptable": [
+          "after_a_recent_accident_or_impact",
+          "suspension_steering_check"
+        ],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "recent_action": "hit_pothole_or_curb",
+          "started_when": "days_ago"
+        },
+        "route": "advisor_handoff"
+      },
+      "source": "auto-kb-wave-a:suspension-ride-alignment"
+    },
+    {
+      "id": "suspension-ride-alignment-010",
+      "text": "pretty sure my struts are shot, the ride is rough",
+      "tags": [
+        "inference_trap"
+      ],
+      "expected": {
+        "stage1_category_key": "suspension_steering_check",
+        "stage1_acceptable": [
+          "suspension_steering_check"
+        ],
+        "stage2_subcategory_slug": "shaking_or_bouncing_over_bumps_and_rough_roads",
+        "stage3_facts": {},
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:suspension-ride-alignment"
+    },
+    {
+      "id": "suspension-ride-alignment-011",
+      "text": "check tire wear for alignment, tire wear looks good, no camber or toe wear",
+      "tags": [
+        "null_route",
+        "work_order"
+      ],
+      "expected": {
+        "stage1_category_key": null,
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {},
+        "route": "null_match"
+      },
+      "source": "auto-kb-wave-a:suspension-ride-alignment"
+    },
+    {
+      "id": "wheels-tires-tpms-bearings-001",
+      "text": "found a screw sticking out of my rear left tire this morning. its still holding air and drives fine but want it checked",
+      "tags": [
+        "fact_rich",
+        "confusable_tpms"
+      ],
+      "expected": {
+        "stage1_category_key": "tire_repair",
+        "stage1_acceptable": [
+          "tire_repair",
+          "tpms_testing"
+        ],
+        "stage2_subcategory_slug": "visible_damage_nail_screw_bulge_cut",
+        "stage3_facts": {
+          "tire_state": "visible_damage",
+          "location_axle": "rear",
+          "location_side": "left",
+          "started_when": "today",
+          "drivable_state": "drivable_normally"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:wheels-tires-tpms-bearings"
+    },
+    {
+      "id": "wheels-tires-tpms-bearings-002",
+      "text": "my front tire keeps going low, i have to put air in it like every week. cant see anything stuck in it",
+      "tags": [
+        "fact_rich"
+      ],
+      "expected": {
+        "stage1_category_key": "tire_repair",
+        "stage1_acceptable": [
+          "tire_repair",
+          "tpms_testing"
+        ],
+        "stage2_subcategory_slug": "tire_going_flat_losing_air",
+        "stage3_facts": {
+          "location_axle": "front",
+          "tire_state": "low_pressure"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:wheels-tires-tpms-bearings"
+    },
+    {
+      "id": "wheels-tires-tpms-bearings-003",
+      "text": "the TPMS light is on in my car. been really cold here this week so maybe thats why? tires look fine",
+      "tags": [
+        "fact_rich",
+        "confusable_low_pressure"
+      ],
+      "expected": {
+        "stage1_category_key": "tpms_testing",
+        "stage1_acceptable": [
+          "tpms_testing"
+        ],
+        "stage2_subcategory_slug": "tpms_tire_pressure_light",
+        "stage2_acceptable": [
+          "tpms_tire_pressure_light",
+          "low_pressure_warning_light_only"
+        ],
+        "stage3_facts": {
+          "warning_light_named": "TPMS",
+          "weather_condition": "cold_weather",
+          "tire_state": "normal_or_unknown"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:wheels-tires-tpms-bearings"
+    },
+    {
+      "id": "wheels-tires-tpms-bearings-004",
+      "text": "put air in all 4 tires yesterday but the low tire pressure light still wont go off. tires look fine to me",
+      "tags": [
+        "fact_rich",
+        "system_fault"
+      ],
+      "expected": {
+        "stage1_category_key": "tpms_testing",
+        "stage1_acceptable": [
+          "tpms_testing"
+        ],
+        "stage2_subcategory_slug": "low_pressure_warning_light_only",
+        "stage2_acceptable": [
+          "low_pressure_warning_light_only",
+          "tpms_tire_pressure_light"
+        ],
+        "stage3_facts": {
+          "recent_action": "tire_air_added",
+          "tire_state": "normal_or_unknown"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:wheels-tires-tpms-bearings"
+    },
+    {
+      "id": "wheels-tires-tpms-bearings-005",
+      "text": "steering wheel shakes really bad at 65 on the highway, calms right down when i slow down. started after i hit a big pothole",
+      "tags": [
+        "fact_rich",
+        "balance"
+      ],
+      "expected": {
+        "stage1_category_key": "suspension_steering_check",
+        "stage1_acceptable": [
+          "suspension_steering_check"
+        ],
+        "stage2_subcategory_slug": "steering_wheel_shake_at_highway_speed",
+        "stage3_facts": {
+          "speed_band": "specific_mph",
+          "speed_specific_mph": 65,
+          "recent_action": "hit_pothole_or_curb"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:wheels-tires-tpms-bearings"
+    },
+    {
+      "id": "wheels-tires-tpms-bearings-006",
+      "text": "very noticeable humming from the rear, most noticeable around 30 to 40 mph, sounds like snow tires on the back",
+      "tags": [
+        "fact_rich",
+        "bearing",
+        "needs_fact"
+      ],
+      "expected": {
+        "stage1_category_key": "suspension_steering_check",
+        "stage1_acceptable": [
+          "suspension_steering_check"
+        ],
+        "stage2_subcategory_slug": "humming_or_whirring_at_speed",
+        "stage3_facts": {
+          "noise_descriptor": "humming_or_whirring",
+          "location_axle": "rear",
+          "speed_band": "mid_speed"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:wheels-tires-tpms-bearings"
+    },
+    {
+      "id": "wheels-tires-tpms-bearings-007",
+      "text": "vehicle is shaking at all speeds, doesnt matter if im going 25 or 65, its just always there through the floor",
+      "tags": [
+        "fact_rich",
+        "constant_tremor"
+      ],
+      "expected": {
+        "stage1_category_key": "suspension_steering_check",
+        "stage1_acceptable": [
+          "suspension_steering_check"
+        ],
+        "stage2_subcategory_slug": "constant_vibration_that_doesnt_change_with_speed",
+        "stage3_facts": {
+          "speed_band": "all_speeds"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:wheels-tires-tpms-bearings"
+    },
+    {
+      "id": "wheels-tires-tpms-bearings-008",
+      "text": "the sidewalls on my tires are all cracked, theyre pretty old and dry rotted. car sat in the driveway for a couple years",
+      "tags": [
+        "fact_rich",
+        "tire_buying_gap"
+      ],
+      "expected": {
+        "stage1_category_key": null,
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "tire_state": "sidewall_cracking",
+          "recent_action": "car_sat_unused"
+        },
+        "route": "null_match"
+      },
+      "source": "auto-kb-wave-a:wheels-tires-tpms-bearings"
+    },
+    {
+      "id": "wheels-tires-tpms-bearings-009",
+      "text": "hey can i get a quote for 4 new tires, want to put a set on before winter. entry level is fine",
+      "tags": [
+        "tire_buying_gap",
+        "sales_request"
+      ],
+      "expected": {
+        "stage1_category_key": null,
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "customer_request_type": "just_get_new_tires"
+        },
+        "route": "null_match"
+      },
+      "source": "auto-kb-wave-a:wheels-tires-tpms-bearings"
+    },
+    {
+      "id": "wheels-tires-tpms-bearings-010",
+      "text": "my tires are wearing funny on the inside edge of both fronts, is that an alignment thing?",
+      "tags": [
+        "fact_rich",
+        "cross_category_unverified"
+      ],
+      "expected": {
+        "stage1_category_key": "suspension_steering_check",
+        "stage1_acceptable": [
+          "suspension_steering_check",
+          "tire_repair"
+        ],
+        "stage2_subcategory_slug": "uneven_tire_wear_bald_spots",
+        "stage3_facts": {
+          "tire_state": "uneven_wear",
+          "location_axle": "front"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:wheels-tires-tpms-bearings"
+    },
+    {
+      "id": "wheels-tires-tpms-bearings-011",
+      "text": "my tires are shot, gotta get new rubber on it before winter",
+      "tags": [
+        "inference_trap",
+        "tire_buying_gap"
+      ],
+      "expected": {
+        "stage1_category_key": null,
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {
+          "customer_request_type": "just_get_new_tires"
+        },
+        "route": "null_match"
+      },
+      "source": "auto-kb-wave-a:wheels-tires-tpms-bearings"
+    },
+    {
+      "id": "wheels-tires-tpms-bearings-012",
+      "text": "the steering wheel only shakes when i press the brakes coming down from highway speed, smooth otherwise",
+      "tags": [
+        "confusable_brakes",
+        "near_miss",
+        "cross_category_unverified"
+      ],
+      "expected": {
+        "stage1_category_key": "brake_inspection",
+        "stage1_acceptable": [
+          "brake_inspection"
+        ],
+        "stage2_subcategory_slug": "vibration_or_pulsing_when_braking",
+        "stage3_facts": {
+          "onset_timing": "when_braking"
+        },
+        "route": "testing_service"
+      },
+      "source": "auto-kb-wave-a:wheels-tires-tpms-bearings"
+    },
+    {
+      "id": "wheels-tires-tpms-bearings-013",
+      "text": "Tire Rotation & Balance",
+      "tags": [
+        "null_route",
+        "work_order_noise"
+      ],
+      "expected": {
+        "stage1_category_key": null,
+        "stage1_acceptable": [],
+        "stage2_subcategory_slug": null,
+        "stage3_facts": {},
+        "route": "null_match"
+      },
+      "source": "auto-kb-wave-a:wheels-tires-tpms-bearings"
+    }
+  ]
+}

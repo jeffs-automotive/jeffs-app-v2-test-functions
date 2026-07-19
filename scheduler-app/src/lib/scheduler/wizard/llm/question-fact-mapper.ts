@@ -70,6 +70,7 @@
  */
 import {
   EXTRACTED_FACTS_ALL_KEYS,
+  EXTRACTED_FACTS_JSON_SCHEMA,
   type ExtractedFacts,
 } from "./extracted-facts";
 
@@ -114,6 +115,120 @@ function warnUnknownSlotOnce(slot: string): void {
  */
 export function __resetUnknownSlotWarningsForTests(): void {
   warnedUnknownSlots.clear();
+}
+
+// ---------------------------------------------------------------------------
+// Value-aware required_facts (KB retraining, 2026-07-19)
+// ---------------------------------------------------------------------------
+//
+// A required_facts entry is now a compact DSL string, NOT just a slot name:
+//
+//   "onset_timing"                        → presence-based (LEGACY — unchanged)
+//   "onset_timing=when_turning"           → value-aware: satisfied iff onset_timing ∈ {when_turning}
+//   "onset_timing=when_turning|when_braking"  → value-aware, 2 allowed values
+//
+// Grammar: element := slot [ "=" value ( "|" value )* ]. Slot names + enum
+// values are both [a-z0-9_]+, so "=" and "|" are unambiguous, non-colliding
+// delimiters — no commas, so no Postgres text[] array-literal quoting hazard,
+// and each requirement stays ONE text[] element (the DB column, the RPC
+// signature, and the ordered-array revert handler are all untouched — no
+// migration). A bare "slot" parses to any_of:null → the exact legacy
+// isFactPresent path → byte-identical behavior to before this change.
+//
+// The identical parser is mirrored in the (stale, unused-by-prod/eval) Deno
+// `supabase/functions/llm-testing/` mapper only if that batch harness is
+// revived — see the file header note there.
+
+/** A parsed required_facts requirement. `any_of === null` ≡ legacy
+ *  presence-based (satisfied when the slot is present, any value). A non-null
+ *  `any_of` ≡ value-gated (satisfied only when the slot's value is in the set). */
+export interface FactRequirement {
+  slot: string;
+  any_of: string[] | null;
+}
+
+/** Parse one `required_facts` element into a {slot, any_of}. Pure. A malformed
+ *  "slot=" (no values) degrades safely to presence-based (any_of:null). */
+export function parseRequiredFact(raw: string): FactRequirement {
+  const i = raw.indexOf("=");
+  if (i === -1) return { slot: raw, any_of: null };
+  const slot = raw.slice(0, i);
+  const values = raw
+    .slice(i + 1)
+    .split("|")
+    .map((v) => v.trim())
+    .filter((v) => v.length > 0);
+  return { slot, any_of: values.length > 0 ? values : null };
+}
+
+// Per-slot allowed enum value set, derived from the on-wire JSON schema, for
+// the defensive authoring-bug warning below. Free-text/integer slots (no
+// `enum` in the schema) are simply absent from this map → no value validation
+// (any string is accepted, e.g. a value-aware tag on warning_light_named).
+const SLOT_ALLOWED_VALUES: ReadonlyMap<string, ReadonlySet<string>> = (() => {
+  const m = new Map<string, ReadonlySet<string>>();
+  const props =
+    (
+      EXTRACTED_FACTS_JSON_SCHEMA as unknown as {
+        properties?: Record<string, { enum?: readonly unknown[] }>;
+      }
+    ).properties ?? {};
+  for (const [slot, def] of Object.entries(props)) {
+    if (Array.isArray(def.enum)) {
+      m.set(
+        slot,
+        new Set(def.enum.filter((v): v is string => typeof v === "string")),
+      );
+    }
+  }
+  return m;
+})();
+
+const warnedUnknownValues = new Set<string>();
+
+function warnUnknownEnumValueOnce(slot: string, value: string): void {
+  const key = `${slot}=${value}`;
+  if (warnedUnknownValues.has(key)) return;
+  warnedUnknownValues.add(key);
+  console.warn(
+    `[question-fact-mapper] required_facts value-aware tag "${key}" references a value not in slot "${slot}"'s enum — this requirement can never be satisfied. Fix the question's required_facts authoring.`,
+  );
+}
+
+/**
+ * Reset the unknown-enum-value warning dedupe set. Test-only — mirror of
+ * __resetUnknownSlotWarningsForTests for the value-aware path.
+ */
+export function __resetUnknownValueWarningsForTests(): void {
+  warnedUnknownValues.clear();
+}
+
+/**
+ * True iff a single parsed requirement is satisfied by the extracted facts.
+ *   - Legacy (any_of === null): the slot is merely PRESENT (isFactPresent).
+ *   - Value-aware: the slot is present AND its value is in `any_of`.
+ * Preserves the unknown-slot warning (routes through isFactPresent) and adds a
+ * deduped unknown-enum-value warning for authoring bugs. Pure + deterministic.
+ */
+export function isRequirementSatisfied(
+  extracted_facts: ExtractedFacts,
+  req: FactRequirement,
+): boolean {
+  // Legacy presence-based — unchanged (still warns on unknown slot).
+  if (req.any_of === null) return isFactPresent(extracted_facts, req.slot);
+
+  // Value-aware: defensive authoring-bug warning (does not affect the result).
+  const allowed = SLOT_ALLOWED_VALUES.get(req.slot);
+  if (allowed) {
+    for (const v of req.any_of) {
+      if (!allowed.has(v)) warnUnknownEnumValueOnce(req.slot, v);
+    }
+  }
+
+  // The slot must be present AND its stated value must be in the any_of set.
+  if (!isFactPresent(extracted_facts, req.slot)) return false;
+  const value = (extracted_facts as Record<string, unknown>)[req.slot];
+  return req.any_of.includes(String(value));
 }
 
 // ---------------------------------------------------------------------------
@@ -166,14 +281,22 @@ export function matchQuestionsToFacts(
       continue;
     }
 
-    let present = 0;
-    for (const slot of q.required_facts) {
-      if (isFactPresent(input.extracted_facts, slot)) present += 1;
+    // Each entry is a value-aware DSL requirement ("slot" or "slot=v1|v2").
+    // A bare slot parses to presence-based (identical to the pre-2026-07-19
+    // behavior); a value-aware entry is satisfied only when the slot's value
+    // is in its any_of set.
+    let satisfied = 0;
+    for (const raw of q.required_facts) {
+      if (
+        isRequirementSatisfied(input.extracted_facts, parseRequiredFact(raw))
+      ) {
+        satisfied += 1;
+      }
     }
 
-    if (present === 0) {
+    if (satisfied === 0) {
       unanswered_ids.push(q.id);
-    } else if (present === q.required_facts.length) {
+    } else if (satisfied === q.required_facts.length) {
       answered_ids.push(q.id);
     } else {
       ambiguous_ids.push(q.id);

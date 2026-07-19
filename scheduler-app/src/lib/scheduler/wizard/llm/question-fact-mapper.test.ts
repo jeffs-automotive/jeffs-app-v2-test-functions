@@ -15,8 +15,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { type ExtractedFacts } from "./extracted-facts";
 import {
   isFactPresent,
+  isRequirementSatisfied,
   matchQuestionsToFacts,
+  parseRequiredFact,
   __resetUnknownSlotWarningsForTests,
+  __resetUnknownValueWarningsForTests,
   type QuestionForFactMatch,
 } from "./question-fact-mapper";
 
@@ -437,5 +440,171 @@ describe("isFactPresent — single-slot presence rule", () => {
     } finally {
       warnSpy.mockRestore();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Value-aware required_facts (KB retraining, 2026-07-19)
+// ---------------------------------------------------------------------------
+
+describe("parseRequiredFact — DSL parsing", () => {
+  it("bare slot → presence-based (any_of null)", () => {
+    expect(parseRequiredFact("onset_timing")).toEqual({
+      slot: "onset_timing",
+      any_of: null,
+    });
+  });
+
+  it("single value → value-aware", () => {
+    expect(parseRequiredFact("onset_timing=when_turning")).toEqual({
+      slot: "onset_timing",
+      any_of: ["when_turning"],
+    });
+  });
+
+  it("multiple pipe-separated values → value-aware", () => {
+    expect(parseRequiredFact("onset_timing=when_turning|when_braking")).toEqual(
+      { slot: "onset_timing", any_of: ["when_turning", "when_braking"] },
+    );
+  });
+
+  it("trailing '=' with no values → degrades safely to presence-based", () => {
+    expect(parseRequiredFact("onset_timing=")).toEqual({
+      slot: "onset_timing",
+      any_of: null,
+    });
+  });
+
+  it("whitespace around values is trimmed", () => {
+    expect(parseRequiredFact("pull_direction= left | right ")).toEqual({
+      slot: "pull_direction",
+      any_of: ["left", "right"],
+    });
+  });
+});
+
+describe("isRequirementSatisfied — value gating", () => {
+  beforeEach(() => {
+    __resetUnknownSlotWarningsForTests();
+    __resetUnknownValueWarningsForTests();
+  });
+
+  it("value ∈ any_of → satisfied", () => {
+    expect(
+      isRequirementSatisfied(makeFacts({ onset_timing: "when_turning" }), {
+        slot: "onset_timing",
+        any_of: ["when_turning"],
+      }),
+    ).toBe(true);
+  });
+
+  it("value ∉ any_of (slot present, different value) → NOT satisfied (anti-wrong-skip)", () => {
+    // The core lever: presence-based would wrong-skip; value-aware correctly
+    // does not, because over_bumps is not the value the question needs.
+    expect(
+      isRequirementSatisfied(makeFacts({ onset_timing: "over_bumps" }), {
+        slot: "onset_timing",
+        any_of: ["when_turning"],
+      }),
+    ).toBe(false);
+  });
+
+  it("slot absent → NOT satisfied", () => {
+    expect(
+      isRequirementSatisfied(makeFacts(), {
+        slot: "onset_timing",
+        any_of: ["when_turning"],
+      }),
+    ).toBe(false);
+  });
+
+  it("integer slot value-aware match (String coercion)", () => {
+    expect(
+      isRequirementSatisfied(makeFacts({ speed_specific_mph: 65 }), {
+        slot: "speed_specific_mph",
+        any_of: ["65"],
+      }),
+    ).toBe(true);
+  });
+
+  it("legacy presence-based (any_of null) is unchanged", () => {
+    expect(
+      isRequirementSatisfied(makeFacts({ onset_timing: "over_bumps" }), {
+        slot: "onset_timing",
+        any_of: null,
+      }),
+    ).toBe(true);
+  });
+
+  it("value-aware tag with a non-enum value warns once, and can never be satisfied", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const req = { slot: "onset_timing", any_of: ["not_a_real_value"] };
+      // Even with the slot present at a real value, a bogus any_of never matches.
+      expect(
+        isRequirementSatisfied(makeFacts({ onset_timing: "always" }), req),
+      ).toBe(false);
+      // Warn fires (deduped) — authoring-bug signal.
+      isRequirementSatisfied(makeFacts({ onset_timing: "always" }), req);
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(String(warnSpy.mock.calls[0]?.[0])).toContain(
+        "onset_timing=not_a_real_value",
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+});
+
+describe("matchQuestionsToFacts — value-aware buckets", () => {
+  beforeEach(() => {
+    __resetUnknownSlotWarningsForTests();
+    __resetUnknownValueWarningsForTests();
+  });
+
+  it("value-aware tag: covering value → ANSWERED (skippable); non-covering value → UNANSWERED (still ask)", () => {
+    const questions = [q(1, ["onset_timing=when_turning"])];
+    // Covering value → answered.
+    expect(
+      matchQuestionsToFacts({
+        extracted_facts: makeFacts({ onset_timing: "when_turning" }),
+        questions,
+      }).answered_ids,
+    ).toEqual([1]);
+    // Non-covering value → unanswered (no wrong-skip).
+    expect(
+      matchQuestionsToFacts({
+        extracted_facts: makeFacts({ onset_timing: "over_bumps" }),
+        questions,
+      }).unanswered_ids,
+    ).toEqual([1]);
+  });
+
+  it("mixed presence + value-aware requirements on one question → AMBIGUOUS boundary", () => {
+    // pedal_feel present (legacy, satisfied) + onset_timing value-aware not
+    // covered → 1 of 2 satisfied → ambiguous.
+    const result = matchQuestionsToFacts({
+      extracted_facts: makeFacts({
+        pedal_feel: "pulsating",
+        onset_timing: "over_bumps",
+      }),
+      questions: [q(10, ["pedal_feel", "onset_timing=when_braking"])],
+    });
+    expect(result.ambiguous_ids).toEqual([10]);
+    expect(result.answered_ids).toEqual([]);
+    expect(result.unanswered_ids).toEqual([]);
+  });
+
+  it("BACKWARD COMPAT: a bare-slot question behaves identically to pre-value-aware", () => {
+    const facts = makeFacts({ speed_band: "highway", onset_timing: "always" });
+    const questions = [
+      q(688, ["speed_band"]),
+      q(692, ["onset_timing"]),
+      q(700, ["smell_descriptor"]),
+    ];
+    const result = matchQuestionsToFacts({ extracted_facts: facts, questions });
+    expect(result.answered_ids).toEqual([688, 692]);
+    expect(result.unanswered_ids).toEqual([700]);
+    expect(result.ambiguous_ids).toEqual([]);
   });
 });

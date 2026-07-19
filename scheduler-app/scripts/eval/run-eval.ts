@@ -143,11 +143,17 @@ async function main(): Promise<void> {
   const catalog = await loadDiagnosticCatalog(supabase);
 
   // ── Fixture load + label validation ──────────────────────────────────
-  const fixturePath = resolve(__dirname, "eval-cases.json");
-  const fixture = JSON.parse(readFileSync(fixturePath, "utf8")) as {
-    cases: EvalCase[];
-  };
-  let cases = fixture.cases;
+  // --fixture <path> overrides the default 145-case eval-cases.json (e.g. to
+  // baseline the 272-case KB golden set). Accepts either the wrapped
+  // {cases:[...]} shape or a bare JSON array (the golden set ships bare).
+  const fixtureArg = arg("fixture");
+  const fixturePath = fixtureArg
+    ? resolve(process.cwd(), fixtureArg)
+    : resolve(__dirname, "eval-cases.json");
+  const fixtureRaw = JSON.parse(readFileSync(fixturePath, "utf8")) as
+    | { cases: EvalCase[] }
+    | EvalCase[];
+  let cases = Array.isArray(fixtureRaw) ? fixtureRaw : fixtureRaw.cases;
 
   const filter = arg("filter");
   if (filter) {
