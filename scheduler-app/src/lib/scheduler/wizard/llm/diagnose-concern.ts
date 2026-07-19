@@ -347,8 +347,12 @@ export const STAGE1_JSON_SCHEMA = {
         "a testing_services.service_key OR an 'other' subcategory slug " +
         "from the catalog above, VERBATIM. Exactly ONE entry when the " +
         "description clearly points to a single category; TWO or THREE " +
-        "when it is genuinely consistent with more than one; EMPTY when " +
-        "the text is not a vehicle concern, too vague, or fits nothing.",
+        "when it is genuinely consistent with more than one. PREFER " +
+        "returning your best 1-3 candidates whenever ANY system, symptom, " +
+        "or offered service is named (a request for a service we offer, " +
+        "e.g. 'test battery' or 'brake inspection', returns that service). " +
+        "EMPTY is the last resort — only when the text names no vehicle " +
+        "concern or service, is genuinely too vague, or maps to nothing above.",
     },
     reasoning: {
       type: "string",
@@ -364,13 +368,15 @@ export const STAGE1_JSON_SCHEMA = {
       // coerces anything out-of-set to null. INV-6.
       type: ["string", "null"],
       description:
-        "WHY the candidate list is empty — REQUIRED whenever candidates is " +
-        "[], otherwise null. Exactly one of: 'non_concern_request' (a " +
-        "service/work-order request with NO described symptom, e.g. 'oil " +
-        "change', 'rack replacement'), 'too_vague' (a real vehicle concern " +
-        "but no identifiable system or symptom, e.g. 'car feels weird', " +
-        "'something's off'), or 'no_catalog_fit' (a clear, specific concern " +
-        "that fits no category above). When candidates is NON-empty, null.",
+        "WHY the candidate list is empty — set whenever candidates is [], " +
+        "otherwise null. Exactly one of: 'non_concern_request' (a pure " +
+        "repair / part-replacement with no matching diagnostic, or an " +
+        "administrative / declined / non-vehicle line, e.g. 'rack " +
+        "replacement' — NOT a service request that maps to a service above, " +
+        "which should be routed), 'too_vague' (a real vehicle concern but no " +
+        "identifiable system or symptom, e.g. 'car feels weird'), or " +
+        "'no_catalog_fit' (a clear, specific concern that fits no category " +
+        "above). When candidates is NON-empty, null.",
     },
   },
   required: ["candidates", "reasoning", "no_match_reason"],
@@ -684,18 +690,21 @@ If a cue genuinely applies AND a specific symptom is ALSO clearly described,
 return the situation key first and the testing service second (a 2-candidate
 clarify) rather than silently dropping either.
 
-# NON-CONCERN rejection rule
+# Service / work-order requests — ROUTE them when they map to a service we offer
 
-If the text is a SERVICE / REPAIR / MAINTENANCE REQUEST or a work-order line
-— it names an action to perform with NO described symptom — return
-candidates: [] (advisor handoff). Examples: "rack replacement", "replace
-front wheel hub", "CHECK ALIGNMENT", "recharge a/c system", "oil change",
-"REPLACE DRIVERS SIDE LOW BEAM", "reset oil maintenance light",
-"Previously declined> …", "23-point inspection + tire rotation". These are
-things a shop DOES, not problems a customer is DESCRIBING; there is no
-symptom to test for, so do NOT guess a testing service. (A request that ALSO
-describes a symptom — "AC recharged a couple months ago, now blowing hot
-again" — is a real concern; keep it.)
+Customers often type a SERVICE or WORK-ORDER line instead of a symptom ("test
+battery", "brake inspection", "CHECK ALIGNMENT", "recharge a/c system", "oil
+change", "23-point inspection"). If the line maps to one of the testing /
+diagnostic services or 'other' subcategories listed above, RETURN that as your
+candidate — this is a request to perform that service, and booking it is the
+right outcome. Do NOT reject a routable service request.
+
+Return candidates: [] with no_match_reason='non_concern_request' ONLY when the
+line is a pure REPAIR / PART-REPLACEMENT with no matching diagnostic ("rack
+replacement", "replace front wheel hub", "REPLACE DRIVERS SIDE LOW BEAM"), an
+administrative or already-declined line ("reset oil maintenance light",
+"Previously declined> …"), or is not about the vehicle at all. When a line BOTH
+names a service and describes a symptom, keep the symptom-based candidate.
 
 # Decision rules (act-or-ask)
 
@@ -715,12 +724,18 @@ again" — is a real concern; keep it.)
    transmission). The customer will be shown your candidates as one-tap
    options and asked which fits — rank them best first.
 
-3. **An EMPTY list when nothing fits — and SET \`no_match_reason\`.** Return
-   candidates: [] with no_match_reason set to EXACTLY one of:
-     - **'non_concern_request'** — a service / work-order / maintenance request
-       with NO described symptom ("oil change", "rack replacement", "CHECK
-       ALIGNMENT", "reset oil light"). The system forwards these straight to a
-       service advisor.
+3. **An EMPTY list ONLY when nothing above fits.** PREFER returning your best
+   1-3 candidates whenever ANY system, symptom, or offered service is named —
+   when in doubt, return your best candidate and let the downstream clarify
+   step resolve it (an empty list is the LAST resort, not a safe default).
+   Reserve the empty list for these cases, and SET \`no_match_reason\` to
+   EXACTLY one of:
+     - **'non_concern_request'** — a pure repair / part-replacement with no
+       matching diagnostic ("rack replacement", "replace front wheel hub"), an
+       administrative / already-declined line ("reset oil light", "Previously
+       declined>"), or non-vehicle text. A service request that maps to a
+       service above is NOT this — route it.  The system forwards these straight
+       to a service advisor.
      - **'too_vague'** — a real vehicle concern, but no identifiable system or
        symptom to test ("car feels weird", "something's off", "it's acting up",
        "not driving right"). Judge by CONTENT, not length: a terse but specific
