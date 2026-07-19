@@ -75,9 +75,11 @@ interface Item {
 
 function main(): void {
   const reportPath = arg("report");
-  const labelsPath = arg("labels", "scripts/eval/real-concerns-tekmetric-labeled-v2.json")!;
+  // Default to the CUSTOMER-VOICE corpus (forum). Tekmetric ROs are advisor
+  // shorthand, dropped from the eval 2026-07-19 (see run-eval-final.ts).
+  const labelsPath = arg("labels", "scripts/eval/real-concerns-labeled-v2.json")!;
   if (!reportPath) throw new Error("--report <final-x.json> required");
-  const corpus = arg("corpus", "tekmetric")!;
+  const corpus = arg("corpus", "forum")!;
   const nConfirmed = Number(arg("confirmed", "40"));
   const nMajority = Number(arg("majority", "40"));
   const nAmbiguous = Number(arg("ambiguous", "25"));

@@ -321,12 +321,21 @@ async function main(): Promise<void> {
   const underLabels = loadAdjudicationUnderLabels();
 
   // ── corpus selection ──────────────────────────────────────────────────
-  const corporaArg = (arg("corpora") ?? "forum,tekmetric,synthetic").split(",");
+  // DEFAULT DROPS tekmetric (Chris 2026-07-19): Tekmetric RO "concern" text is
+  // written by a SERVICE ADVISOR — summarized shorthand ("TEST BATTERY",
+  // "CHECK ALIGNMENT", "testing auth $189"), often missing the very details the
+  // wizard exists to extract. It is NOT the customer-voice distribution the
+  // classifier serves, so judging/training against it measures the wrong thing.
+  // `forum` (real customers describing problems in their own words) is the
+  // customer-voice proxy; the real target is production wizard input (flywheel).
+  // tekmetric stays available via `--corpora …,tekmetric` for reference only.
+  const corporaArg = (arg("corpora") ?? "forum,synthetic").split(",");
   const limit = arg("limit") ? Number(arg("limit")) : null;
   const concurrency = Number(arg("concurrency") ?? "6");
 
   const corpusFiles: Record<string, () => GradingCase[]> = {
     forum: () => loadRealCorpus("scripts/eval/real-concerns-labeled-v2.json"),
+    // DEPRECATED — advisor shorthand, not customer voice. Not in the default set.
     tekmetric: () =>
       loadRealCorpus("scripts/eval/real-concerns-tekmetric-labeled-v2.json"),
     synthetic: () => loadSyntheticCorpus(),
