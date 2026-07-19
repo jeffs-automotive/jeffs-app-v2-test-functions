@@ -257,6 +257,19 @@ export const CARD_TEXT_DEFAULTS = {
       allowed: [],
     },
   },
+  concern_triage: {
+    // BYTE-IDENTICAL to the scheduler_card_text seed in
+    // supabase/migrations/20260719040000_scheduler_concern_triage.sql (§5/5).
+    // The concern-triage-seed drift-guard Vitest asserts this pairing.
+    eyebrow: { default: "One more thing", allowed: [] },
+    title: { default: "What kind of trouble is it?", allowed: [] },
+    description: {
+      default:
+        "I couldn't quite match that to one of our tests — pick the closest and I'll narrow it down.",
+      allowed: [],
+    },
+    footnote: { default: "", allowed: [] },
+  },
   testing_service_approval: {
     eyebrow_base: { default: "Testing we'd recommend", allowed: [] },
     title: {

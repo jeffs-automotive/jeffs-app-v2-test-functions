@@ -54,8 +54,10 @@ import {
 } from "@/lib/scheduler/wizard/llm/load-diagnostic-catalog";
 import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 import { logError } from "@/lib/scheduler/wizard/log-error";
+import { overAskQuestionIds } from "@/lib/scheduler/wizard/confidence-gate";
 import { routeAfterDiagnostics } from "@/lib/scheduler/wizard/route-after-diagnostics";
 import { ensureConcernSummaries } from "@/lib/scheduler/wizard/ensure-concern-summaries";
+import type { TriageConstraint } from "@/lib/scheduler/wizard/triage";
 
 const inputSchema = z.object({
   chatId: z.string().min(1),
@@ -78,6 +80,12 @@ interface ClarifyCandidateOption {
   precomputed: {
     matched_subcategory_slug: string | null;
     unanswered_question_ids: number[];
+    /** Per-candidate Stage-2/Stage-3 self-reported confidence (persisted by
+     *  run-diagnostics — CORE). OPTIONAL: legacy in-flight rows written
+     *  before concern-triage lack them → treated as PASS (never gate) at tap
+     *  time for INV-8 back-compat. */
+    stage2_confidence?: "high" | "medium" | "low";
+    stage3_confidence?: "high" | "medium" | "low";
   };
 }
 
@@ -114,6 +122,14 @@ interface ExplanationItem {
   category: string | null;
   unanswered_question_ids?: number[];
   summary?: string;
+  // INV-3: the concern-triage identity + fields MUST survive this action's
+  // parse + write-back of explanation_required_items (otherwise the
+  // constrained re-diagnosis loses triage_answers / triage_round). This
+  // action never consumes them — it only preserves them verbatim.
+  concern_id?: string;
+  triage_round?: number;
+  triage_answers?: TriageConstraint | null;
+  handoff_reason?: string | null;
 }
 
 // ─── Row-column parsers (defensive coercion; mirror the sibling actions) ────
@@ -155,6 +171,18 @@ function parseClarifyEntries(raw: unknown): ConcernClarifyEntry[] {
             (x): x is number => typeof x === "number",
           )
         : [];
+      const s2c =
+        pre.stage2_confidence === "high" ||
+        pre.stage2_confidence === "medium" ||
+        pre.stage2_confidence === "low"
+          ? pre.stage2_confidence
+          : undefined;
+      const s3c =
+        pre.stage3_confidence === "high" ||
+        pre.stage3_confidence === "medium" ||
+        pre.stage3_confidence === "low"
+          ? pre.stage3_confidence
+          : undefined;
       candidates.push({
         key,
         kind,
@@ -171,6 +199,9 @@ function parseClarifyEntries(raw: unknown): ConcernClarifyEntry[] {
               ? pre.matched_subcategory_slug
               : null,
           unanswered_question_ids: unanswered,
+          // Missing → left undefined → treated as PASS at tap (INV-8).
+          ...(s2c ? { stage2_confidence: s2c } : {}),
+          ...(s3c ? { stage3_confidence: s3c } : {}),
         },
       });
     }
@@ -287,6 +318,43 @@ function parseExplanationItems(raw: unknown): ExplanationItem[] {
     if (typeof obj.summary === "string" && obj.summary.length > 0) {
       item.summary = obj.summary;
     }
+    // INV-3 — carry the triage identity/fields through untouched. This
+    // action doesn't consume them; dropping them here would silently
+    // degrade the constrained re-diagnosis (triage_answers lost → full
+    // unconstrained re-run) and reset the one-round cap (triage_round lost).
+    if (typeof obj.concern_id === "string" && obj.concern_id.length > 0) {
+      item.concern_id = obj.concern_id;
+    }
+    if (typeof obj.triage_round === "number") {
+      item.triage_round = obj.triage_round;
+    }
+    if (obj.triage_answers === null) {
+      item.triage_answers = null;
+    } else if (
+      obj.triage_answers &&
+      typeof obj.triage_answers === "object" &&
+      !Array.isArray(obj.triage_answers)
+    ) {
+      const ta = obj.triage_answers as Record<string, unknown>;
+      if (
+        Array.isArray(ta.allowed_service_keys) &&
+        typeof ta.chip_key === "string" &&
+        typeof ta.label === "string"
+      ) {
+        item.triage_answers = {
+          allowed_service_keys: ta.allowed_service_keys.filter(
+            (x): x is string => typeof x === "string",
+          ),
+          chip_key: ta.chip_key,
+          label: ta.label,
+        };
+      }
+    }
+    if (typeof obj.handoff_reason === "string") {
+      item.handoff_reason = obj.handoff_reason;
+    } else if (obj.handoff_reason === null) {
+      item.handoff_reason = null;
+    }
     out.push(item);
   }
   return out;
@@ -325,6 +393,79 @@ function findQuestionInCatalog(
   return sub.questions.find((q) => q.id === question_id) ?? null;
 }
 
+/** Question ids already answered on the row (B4 — never re-queue). Mirrors
+ *  run-diagnostics' answeredIds set. Keys are stringified question ids. */
+function parseAnsweredIds(raw: unknown): Set<number> {
+  const ids = new Set<number>();
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return ids;
+  for (const k of Object.keys(raw as Record<string, unknown>)) {
+    const n = Number(k);
+    if (Number.isFinite(n)) ids.add(n);
+  }
+  return ids;
+}
+
+/** Count the pending triage-queue entries on the row (INV-4). Object-shaped
+ *  entries only; a null / [] column → 0. The triage queue outranks the
+ *  clarify queue + the normal route. */
+function countTriageEntries(raw: unknown): number {
+  if (!Array.isArray(raw)) return 0;
+  return raw.filter((e) => e && typeof e === "object").length;
+}
+
+/**
+ * Hydrate a chosen candidate's follow-up questions into pending entries
+ * (B3: applies to BOTH a testing_service AND an other_subcategory candidate
+ * — the other_subcategory branch previously dropped its precomputed ids).
+ *
+ * B1 over-ask (INV-5): when the candidate's persisted Stage-3 confidence is
+ * "low", the precomputed unanswered set is distrusted and the FULL
+ * subcategory question list is queued instead (overAskQuestionIds resolves
+ * to null for a non-testing-service, leaving the precomputed set untouched —
+ * matching confidence-gate.ts, which gates testing services only).
+ *
+ * Returns the canonical per-concern question-id list for the item annotation
+ * (every catalog-resolved id, INCLUDING already-answered/queued ones —
+ * mirrors run-diagnostics: the annotation records the full diagnosed set,
+ * the pending queue records what still needs asking).
+ */
+function hydrateConcernQuestions(params: {
+  matchedCat: CatalogCategory;
+  subSlug: string;
+  precomputedIds: number[];
+  stage3Low: boolean;
+  serviceKey: string;
+  pushPending: (entry: PendingQuestionEntry) => void;
+}): number[] {
+  const { matchedCat, subSlug, precomputedIds, stage3Low, serviceKey, pushPending } =
+    params;
+  let idsToHydrate = precomputedIds;
+  if (stage3Low) {
+    const allIds = overAskQuestionIds(matchedCat, subSlug);
+    if (allIds) idsToHydrate = allIds;
+  }
+  const parentCategory = isTestingService(matchedCat)
+    ? matchedCat.subcategories.find((s) => s.slug === subSlug)?.concern_category ??
+      "other"
+    : "other";
+  const idsForConcern: number[] = [];
+  for (const qid of idsToHydrate) {
+    const q = findQuestionInCatalog(matchedCat, subSlug, qid);
+    if (!q) continue;
+    idsForConcern.push(q.id);
+    pushPending({
+      question_id: q.id,
+      question_text: q.question_text,
+      options: q.options,
+      service_key: serviceKey,
+      category: parentCategory,
+      subcategory_slug: subSlug,
+      multi_select: q.multi_select,
+    });
+  }
+  return idsForConcern;
+}
+
 async function submitConcernClarifyV2Impl(
   args: SubmitConcernClarifyV2Args,
 ): Promise<WizardTransitionResult> {
@@ -343,7 +484,10 @@ async function submitConcernClarifyV2Impl(
     const { data: row, error: rowErr } = await supabase
       .from("customer_chat_sessions")
       .select(
-        "id, current_step, concern_clarify_candidates, recommended_testing_services, clarification_questions_pending, explanation_required_items",
+        // clarification_questions_answered → B4 skip-answered guard;
+        // concern_triage_state → INV-4 triage-first routing (new column;
+        // typed once database.types.ts regenerates — WIRING owns that file).
+        "id, current_step, concern_clarify_candidates, recommended_testing_services, clarification_questions_pending, clarification_questions_answered, explanation_required_items, concern_triage_state",
       )
       .eq("id", chatId)
       .maybeSingle();
@@ -400,76 +544,121 @@ async function submitConcernClarifyV2Impl(
     const explanationItems = parseExplanationItems(
       row.explanation_required_items,
     );
+    // B4: never re-queue an already-answered question. Mirrors
+    // run-diagnostics' answeredIds set (built from the answered map keys).
+    const answeredIds = parseAnsweredIds(
+      (row as Record<string, unknown>).clarification_questions_answered,
+    );
 
     // ── Merge the chosen candidate into the pipeline outputs ──────────────
     //
-    // Only a testing_service candidate produces a recommendation + questions.
-    // An other_subcategory candidate OR none-of-these is the soft advisor
-    // path: no recommendation, no questions (the concern still reaches
-    // advisors via its summary — same as the confidence-gate handoff).
+    // A testing_service candidate produces a recommendation + questions; an
+    // other_subcategory candidate produces questions only (B3 — previously
+    // its precomputed ids were dropped); none-of-these is the soft advisor
+    // path (no rec, no questions — the concern reaches advisors via its
+    // summary). B1: a Stage-2-low testing_service pick is an advisor handoff
+    // (no rec, no questions) exactly like the direct-path confidence gate.
     const recsByKey = new Map<string, RecommendedService>();
     for (const r of existingRecs) recsByKey.set(r.service_key, r);
-    const nextPending: PendingQuestionEntry[] = [...existingPending];
+
+    // B4: dedupe + skip-answered guard around the pending queue (mirror
+    // run-diagnostics.pushPending). Seed queuedIds from the carried-forward
+    // entries so a question already pending isn't queued twice.
+    const nextPending: PendingQuestionEntry[] = [];
+    const queuedIds = new Set<number>();
+    const pushPending = (entry: PendingQuestionEntry): void => {
+      if (answeredIds.has(entry.question_id)) return; // already answered
+      if (queuedIds.has(entry.question_id)) return; // already queued
+      queuedIds.add(entry.question_id);
+      nextPending.push(entry);
+    };
+    for (const p of existingPending) pushPending(p);
+
     let queuedQuestionIds: number[] = [];
+    // B1 (INV-19): why THIS concern was handed to the advisor at tap time.
+    let handoffReason: string | null = null;
 
-    if (chosenCandidate && chosenCandidate.kind === "testing_service") {
-      // Load the catalog to hydrate question text/options + the parent
-      // concern_category (mirrors run-diagnostics' aggregation shapes).
-      const catalog = await loadDiagnosticCatalog(supabase);
-      const matchedCat = findCategoryByKey(catalog, chosenCandidate.key);
-      if (matchedCat && isTestingService(matchedCat)) {
-        // Recommendation dedupe by service_key, accumulate source_concerns.
-        const existing = recsByKey.get(matchedCat.service_key);
-        if (existing) {
-          if (!existing.source_concerns.includes(head.service_key)) {
-            existing.source_concerns.push(head.service_key);
-          }
-        } else {
-          recsByKey.set(matchedCat.service_key, {
-            service_key: matchedCat.service_key,
-            display_name: matchedCat.display_name,
-            description: matchedCat.description,
-            starting_price_cents: matchedCat.starting_price_cents,
-            source_concerns: [head.service_key],
-          });
-        }
+    if (chosenCandidate) {
+      const s2 = chosenCandidate.precomputed.stage2_confidence;
+      const s3 = chosenCandidate.precomputed.stage3_confidence;
+      const subSlug = chosenCandidate.precomputed.matched_subcategory_slug;
 
-        // Hydrate the precomputed unanswered question ids into pending
-        // entries (same shape run-diagnostics builds).
-        const subSlug = chosenCandidate.precomputed.matched_subcategory_slug;
-        if (subSlug) {
-          const parentCategory =
-            matchedCat.subcategories.find((s) => s.slug === subSlug)
-              ?.concern_category ?? "other";
-          const idsForConcern: number[] = [];
-          for (const qid of chosenCandidate.precomputed
-            .unanswered_question_ids) {
-            const q = findQuestionInCatalog(matchedCat, subSlug, qid);
-            if (!q) continue;
-            nextPending.push({
-              question_id: q.id,
-              question_text: q.question_text,
-              options: q.options,
-              service_key: head.service_key,
-              category: parentCategory,
-              subcategory_slug: subSlug,
-              multi_select: q.multi_select,
-            });
-            idsForConcern.push(q.id);
-          }
-          queuedQuestionIds = idsForConcern;
-        }
+      // B1 (INV-5) — the confidence gate applied at TAP. Mirrors
+      // confidence-gate.ts stage2Low: a testing_service pick whose Stage-2
+      // confidence is "low" (with a real subcategory slug) is stripped to
+      // the advisor path — no rec, no questions. MISSING confidence (legacy
+      // rows) → undefined !== "low" → PASS, never gate (INV-8 back-compat).
+      const stage2Low =
+        chosenCandidate.kind === "testing_service" &&
+        s2 === "low" &&
+        subSlug !== null;
+
+      if (stage2Low) {
+        handoffReason = "stage2_low";
       } else {
-        // Catalog drift — the candidate key no longer resolves to a
-        // testing service. Degrade to the soft advisor path (no rec, no
-        // questions) rather than crash; surface for observability.
-        Sentry.captureMessage(
-          "submit_concern_clarify_v2 candidate key unresolved in catalog",
-          {
-            level: "warning",
-            extra: { chatId, chosen_key: chosenCandidate.key },
-          },
-        );
+        // Load the catalog to hydrate question text/options + resolve the
+        // matched category (mirrors run-diagnostics' aggregation shapes).
+        const catalog = await loadDiagnosticCatalog(supabase);
+        const matchedCat = findCategoryByKey(catalog, chosenCandidate.key);
+
+        if (matchedCat && isTestingService(matchedCat)) {
+          // Recommendation dedupe by service_key, accumulate source_concerns.
+          // A testing_service candidate always yields a rec, even when it
+          // queued no questions (subSlug null).
+          const existing = recsByKey.get(matchedCat.service_key);
+          if (existing) {
+            if (!existing.source_concerns.includes(head.service_key)) {
+              existing.source_concerns.push(head.service_key);
+            }
+          } else {
+            recsByKey.set(matchedCat.service_key, {
+              service_key: matchedCat.service_key,
+              display_name: matchedCat.display_name,
+              description: matchedCat.description,
+              starting_price_cents: matchedCat.starting_price_cents,
+              source_concerns: [head.service_key],
+            });
+          }
+          if (subSlug) {
+            // B1 over-ask: distrust the precomputed set when Stage-3 was low.
+            queuedQuestionIds = hydrateConcernQuestions({
+              matchedCat,
+              subSlug,
+              precomputedIds: chosenCandidate.precomputed.unanswered_question_ids,
+              stage3Low: s3 === "low",
+              serviceKey: head.service_key,
+              pushPending,
+            });
+          }
+        } else if (
+          matchedCat &&
+          chosenCandidate.kind === "other_subcategory" &&
+          subSlug
+        ) {
+          // B3 — an other_subcategory candidate: hydrate its precomputed
+          // questions (no fee-bearing recommendation). overAskQuestionIds is
+          // a no-op for a non-testing-service, so Stage-3-low leaves the
+          // precomputed set intact here.
+          queuedQuestionIds = hydrateConcernQuestions({
+            matchedCat,
+            subSlug,
+            precomputedIds: chosenCandidate.precomputed.unanswered_question_ids,
+            stage3Low: s3 === "low",
+            serviceKey: head.service_key,
+            pushPending,
+          });
+        } else {
+          // Catalog drift — the candidate key no longer resolves to a
+          // matching category. Degrade to the soft advisor path (no rec, no
+          // questions) rather than crash; surface for observability.
+          Sentry.captureMessage(
+            "submit_concern_clarify_v2 candidate key unresolved in catalog",
+            {
+              level: "warning",
+              extra: { chatId, chosen_key: chosenCandidate.key },
+            },
+          );
+        }
       }
     }
 
@@ -489,18 +678,39 @@ async function submitConcernClarifyV2Impl(
       const isTarget = indexInRange
         ? idx === head.concern_index
         : item.service_key === head.service_key;
-      if (!isTarget || queuedQuestionIds.length === 0) return item;
-      const prior = item.unanswered_question_ids ?? [];
-      const merged = Array.from(new Set([...prior, ...queuedQuestionIds]));
-      return { ...item, unanswered_question_ids: merged };
+      if (!isTarget) return item;
+      // INV-3: `...item` preserves concern_id / triage_round / triage_answers
+      // (parseExplanationItems now carries them). Only the target concern's
+      // annotation + handoff_reason change here.
+      let next = item;
+      if (queuedQuestionIds.length > 0) {
+        const prior = item.unanswered_question_ids ?? [];
+        const merged = Array.from(new Set([...prior, ...queuedQuestionIds]));
+        next = { ...next, unanswered_question_ids: merged };
+      }
+      // B1 — record the Stage-2-low advisor handoff on the concern
+      // (observability; the concern still reaches advisors via its summary).
+      if (handoffReason !== null) {
+        next = { ...next, handoff_reason: handoffReason };
+      }
+      return next;
     });
 
     // ── Pop the head; decide next step ────────────────────────────────────
     const remainingClarify = clarifyQueue.slice(1);
+    // INV-4 routing priority: triage-queue > clarify-queue > routeAfterDiagnostics.
+    const triageCount = countTriageEntries(
+      (row as Record<string, unknown>).concern_triage_state,
+    );
 
     let nextStep: WizardStep;
     let jeffBubble: string | undefined;
-    if (remainingClarify.length > 0) {
+    if (triageCount > 0) {
+      // A pending triage concern outranks this clarify queue AND the normal
+      // route — hand to the broad-category card; its submit re-diagnoses.
+      nextStep = "concern_triage";
+      jeffBubble = undefined;
+    } else if (remainingClarify.length > 0) {
       // More concerns still owe a tap — stay on the chip card.
       nextStep = "concern_clarify";
       jeffBubble = undefined;
@@ -539,9 +749,14 @@ async function submitConcernClarifyV2Impl(
     // testing-service-approval / second-routine-pass card, so summaries must
     // be ready for the Tekmetric description builder. When questions ARE
     // pending, summaries are deferred to submit-clarification-answer's
-    // queue-drain branch (same as run-diagnostics). Best-effort — a
-    // summarization failure must not block the wizard advance.
-    if (remainingClarify.length === 0 && nextPending.length === 0) {
+    // queue-drain branch (same as run-diagnostics). A pending triage concern
+    // also defers them — the pipeline isn't done until its re-diagnosis runs.
+    // Best-effort — a summarization failure must not block the wizard advance.
+    if (
+      remainingClarify.length === 0 &&
+      nextPending.length === 0 &&
+      triageCount === 0
+    ) {
       try {
         await ensureConcernSummaries({ chatId });
       } catch (e) {

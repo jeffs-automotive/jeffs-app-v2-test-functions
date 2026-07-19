@@ -220,6 +220,43 @@ export interface ConcernClarifyPayload {
   copy: CardCopy<"concern_clarify">;
 }
 
+/**
+ * Step 7.4c — Concern triage chip card (feature concern-triage, 2026-07-19).
+ *
+ * Shown when a concern's Stage-1 diagnostic returned ZERO candidates for a
+ * triage-eligible reason (`too_vague` / `no_catalog_fit`) on its first pass.
+ * Instead of dead-ending to an advisor, the customer picks the closest broad
+ * category ("What kind of trouble is it?") and a CONSTRAINED re-diagnosis
+ * runs. The shape mirrors the HEAD entry of the persisted
+ * `concern_triage_state` JSONB array (get-current-card reads the head
+ * defensively — same queue-head idiom as concern_clarify).
+ *
+ * `chips` are ALREADY SORTED by the caller (seed `sort` column snapshot on the
+ * triage entry); the card renders them in array order and never re-sorts. The
+ * fixed "Something else / not sure" escape is an in-card affordance (chip_key
+ * TRIAGE_ESCAPE_CHIP_KEY), NOT a `chips` element — it always routes to the
+ * advisor.
+ *
+ * `concern_id` (INV-13 stable identity) + `concern_index` (display order) are
+ * carried so the submit action targets the exact queue entry (INV-14/INV-15)
+ * and WizardSurface can key the card on the concern.
+ */
+export interface ConcernTriagePayload {
+  /** INV-13 stable identity of the concern being triaged — passed verbatim to
+   *  submit-concern-triage so the tap targets the right queue head (INV-14). */
+  concern_id: string;
+  /** Display order / queue position of the concern. The card keys on this. */
+  concern_index: number;
+  /** The customer's own typed concern text, echoed back verbatim (may be ""). */
+  concern_text: string;
+  /** The broad-category chips, ALREADY SORTED (rendered snapshot from the
+   *  triage entry). `chip_key` is echoed back on tap; `display_label` is the
+   *  customer-voice label. Empty ([]) renders the escape-only card. */
+  chips: Array<{ chip_key: string; display_label: string }>;
+  /** Editable card copy (card-text-editor). */
+  copy: CardCopy<"concern_triage">;
+}
+
 /** Step 7.5 — Testing service approval. */
 export interface TestingServiceApprovalPayload {
   services: Array<{
@@ -428,6 +465,7 @@ export type WizardCard =
   | { step: "diagnostic_loading"; payload: DiagnosticLoadingPayload }
   | { step: "clarification_question"; payload: ClarificationQuestionPayload }
   | { step: "concern_clarify"; payload: ConcernClarifyPayload }
+  | { step: "concern_triage"; payload: ConcernTriagePayload }
   | { step: "testing_service_approval"; payload: TestingServiceApprovalPayload }
   | { step: "second_routine_pass"; payload: SecondRoutinePassPayload }
   | { step: "appointment_type"; payload: AppointmentTypePayload }

@@ -60,6 +60,7 @@ const STEP_PHASE: Partial<Record<WizardStep, PhaseIndex>> = {
   diagnostic_loading: 2,
   clarification_question: 2,
   concern_clarify: 2,
+  concern_triage: 2,
   testing_service_approval: 2,
   second_routine_pass: 2,
   // Phase 4 — When: appointment type, date, waiter time, notes, question,

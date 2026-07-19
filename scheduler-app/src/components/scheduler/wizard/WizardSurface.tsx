@@ -31,6 +31,7 @@ import { ClarificationQuestionCard } from "@/components/scheduler/heritage/Clari
 import { CompletedCard } from "@/components/scheduler/heritage/CompletedCard";
 import { ConcernClarifyCard } from "@/components/scheduler/heritage/ConcernClarifyCard";
 import { ConcernExplanationCard } from "@/components/scheduler/heritage/ConcernExplanationCard";
+import { ConcernTriageCard } from "@/components/scheduler/heritage/ConcernTriageCard";
 import { CustomerInfoEditCard } from "@/components/scheduler/heritage/CustomerInfoEditCard";
 import { CustomerNotesCard } from "@/components/scheduler/heritage/CustomerNotesCard";
 import { CustomerQuestionCard } from "@/components/scheduler/heritage/CustomerQuestionCard";
@@ -59,6 +60,7 @@ import { submitAppointmentTypeV2 } from "@/lib/scheduler/wizard/actions/submit-a
 import { submitClarificationAnswerV2 } from "@/lib/scheduler/wizard/actions/submit-clarification-answer";
 import { submitCustomerInfoEditV2 } from "@/lib/scheduler/wizard/actions/submit-customer-info-edit";
 import { submitConcernClarifyV2 } from "@/lib/scheduler/wizard/actions/submit-concern-clarify";
+import { submitConcernTriageV2 } from "@/lib/scheduler/wizard/actions/submit-concern-triage";
 import { submitCustomerNotesV2 } from "@/lib/scheduler/wizard/actions/submit-customer-notes";
 import { submitCustomerQuestionV2 } from "@/lib/scheduler/wizard/actions/submit-customer-question";
 import { submitDateV2 } from "@/lib/scheduler/wizard/actions/submit-date";
@@ -80,7 +82,10 @@ import { submitSummaryV2 } from "@/lib/scheduler/wizard/actions/submit-summary";
 import { submitTestingServiceApprovalV2 } from "@/lib/scheduler/wizard/actions/submit-testing-service-approval";
 import { submitVehiclePickV2 } from "@/lib/scheduler/wizard/actions/submit-vehicle-pick";
 import { submitWaiterTimeV2 } from "@/lib/scheduler/wizard/actions/submit-waiter-time";
-import type { WizardCard } from "@/lib/scheduler/wizard/card-payloads";
+import type {
+  WizardCard,
+  ConcernTriagePayload,
+} from "@/lib/scheduler/wizard/card-payloads";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
 
 export interface WizardSurfaceProps {
@@ -477,6 +482,21 @@ function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
         />
       );
 
+    case "concern_triage":
+      return (
+        // key on concern_index forces React to unmount + remount the wrapper
+        // (and its parent-owned pending state) between queued triaged concerns
+        // — each triage entry is a distinct concern. Same rationale as
+        // concern_clarify's key above: the pending state must not persist
+        // across queue items.
+        <ConcernTriageStep
+          key={card.payload.concern_index}
+          chatId={chatId}
+          payload={card.payload}
+          onResult={handleResult}
+        />
+      );
+
     case "testing_service_approval":
       return (
         <TestingServiceApprovalCard
@@ -708,6 +728,58 @@ function WizardCardSwitcher({ chatId, card }: WizardSurfaceProps) {
         return <UnhandledStepFallback />;
     }
   }
+}
+
+/**
+ * ConcernTriageStep — thin stateful bridge for the concern_triage card.
+ *
+ * Unlike the other wizard cards (which own their in-flight `pending` state
+ * internally), ConcernTriageCard is a controlled presentational leaf: the
+ * PARENT owns `pending` and passes it down, and `onSubmit` hands back the
+ * chosen `chip_key` string (the escape submits the reserved key "not_sure").
+ * This wrapper owns that pending state and calls submitConcernTriageV2 with
+ * the concern_id from the payload so the tap targets the right triage-queue
+ * head server-side (INV-14). Keyed on concern_index by the caller so it
+ * remounts (resetting pending) between queued concerns.
+ */
+function ConcernTriageStep({
+  chatId,
+  payload,
+  onResult,
+}: {
+  chatId: string;
+  payload: ConcernTriagePayload;
+  onResult: (
+    actionName: string,
+    chatId: string,
+    result: WizardTransitionResult,
+  ) => void;
+}) {
+  const [pending, setPending] = useState(false);
+  return (
+    <ConcernTriageCard
+      copy={payload.copy}
+      concernText={payload.concern_text}
+      chips={payload.chips}
+      pending={pending}
+      onSubmit={async (chip_key) => {
+        if (pending) return;
+        setPending(true);
+        try {
+          const result = await submitConcernTriageV2({
+            chatId,
+            chip_key,
+            concern_id: payload.concern_id,
+          });
+          onResult("submitConcernTriageV2", chatId, result);
+        } finally {
+          // The card unmounts on step advance; if it sticks (e.g. an error),
+          // re-enable so the customer can retry or take the escape.
+          setPending(false);
+        }
+      }}
+    />
+  );
 }
 
 /**

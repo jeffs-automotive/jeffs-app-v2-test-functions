@@ -39,6 +39,7 @@ const STEPS_WITH_BACK = new Set<string>([
   "concern_explanation",
   "clarification_question",
   "concern_clarify",
+  "concern_triage",
   "testing_service_approval",
   "second_routine_pass",
   "appointment_type",

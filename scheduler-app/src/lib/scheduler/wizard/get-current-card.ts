@@ -481,9 +481,30 @@ export async function getCurrentCard(
       // service_key + display_name + description + starting_price_cents
       // + source_concerns. We strip source_concerns from the customer-
       // facing payload — that's audit-only context.
-      const services = parseRecommendedTestingServices(
+      //
+      // D1 / INV-8 (2026-07-19): render ONLY the UNDECIDED recs
+      // (recommended − approved − declined) so a service the customer already
+      // declined (or approved) can't reappear as re-approvable when the card
+      // re-renders (e.g. a Back into it). The approve/decline actions
+      // (submit-testing-service-approval, DFIX-owned) now also pass the
+      // undecided count to routeAfterDiagnostics so the row never lands here
+      // with 0 undecided in the normal flow — but if it somehow does (stale
+      // state / back-nav), route AWAY to the second-routine pass rather than
+      // show an empty approval card (never a dead-end).
+      const recommended = parseRecommendedTestingServices(
         (row as Record<string, unknown>).recommended_testing_services,
       );
+      const decided = new Set<string>([
+        ...(((row.approved_testing_services as string[] | null) ?? [])),
+        ...(((row.declined_testing_services as string[] | null) ?? [])),
+      ]);
+      const services = recommended.filter((s) => !decided.has(s.service_key));
+      if (services.length === 0) {
+        // 0 undecided → skip the approval card (INV-8). pending is drained by
+        // the time we reach approval, so routeAfterDiagnostics(pending=0,
+        // rec=0) is second_routine_pass — render that card defensively.
+        return buildSecondRoutinePassCard(row, supabase);
+      }
       return {
         step: "testing_service_approval",
         payload: {
@@ -494,62 +515,43 @@ export async function getCurrentCard(
       };
     }
 
-    case "second_routine_pass": {
-      // Phase 10 (2026-05-15): load the full routine_services list as
-      // chips. Already-picked items (from Step 7.1 selected_simple_services
-      // OR Step 7.2 explanation_required_items) render disabled with an
-      // "✓ added" badge — the card hides them from the pickable set so the
-      // customer can't double-book a service.
-      // Bug audit 2026-05-16: previously this rendered ALL routine_services
-      // as add-on chips, including requires_explanation=true rows (Brake
-      // Inspection, Check Battery, Warning Lights, Check Suspension, Check
-      // A/C). Picking one silently skipped the concern_explanation +
-      // diagnostic gap-detection flow that the spec mandates for those
-      // services. The technician would receive a service request with no
-      // symptoms description. Now we filter requires_explanation rows out
-      // of the second-pass add-on grid — those services must be picked at
-      // Step 7.1 where the diagnostic flow attaches.
-      let commonServices: Array<{ service_key: string; display_name: string }> =
-        [];
-      try {
-        const allRoutine = await getRoutineServicesForChips();
-        const { data: explanationFlags, error: flagsErr } = await supabase
-          .from("routine_services")
-          .select("service_key, requires_explanation")
-          .eq("shop_id", SHOP_ID)
-          .eq("active", true);
-        if (flagsErr) {
-          throw new Error(
-            `routine_services requires_explanation lookup failed: ${flagsErr.message}`,
-          );
-        }
-        const requiresExplanationByKey = new Map<string, boolean>();
-        for (const r of (explanationFlags ?? []) as Array<{
-          service_key: string;
-          requires_explanation: boolean;
-        }>) {
-          requiresExplanationByKey.set(r.service_key, r.requires_explanation);
-        }
-        commonServices = allRoutine
-          .filter((r) => !requiresExplanationByKey.get(r.service_key))
-          .map((r) => ({
-            service_key: r.service_key,
-            display_name: r.display_name,
-          }));
-      } catch (e) {
-        Sentry.captureException(e, {
-          tags: { surface: "get_current_card_second_routine_pass" },
-          level: "warning",
-        });
-      }
+    case "second_routine_pass":
+      return buildSecondRoutinePassCard(row, supabase);
 
-      const alreadyPicked = collectPickedServiceKeys(row);
+    case "concern_triage": {
+      // concern-triage (2026-07-19): pop the HEAD entry of
+      // concern_triage_state (run-diagnostics writes one entry per concern
+      // whose Stage-1 returned 0 candidates for a triage-eligible reason;
+      // submit-concern-triage consumes the head as each tap resolves). Same
+      // queue-head idiom as concern_clarify above. When the column is
+      // empty/malformed, fall through to a defensive escape-only stub
+      // (chips=[] → the card renders just the "Something else / not sure"
+      // advisor path so the customer is never dead-ended).
+      const triageCopy = await getCardText("concern_triage");
+      const triageQueue = parseConcernTriageState(
+        (row as Record<string, unknown>).concern_triage_state,
+      );
+      const triageHead = triageQueue[0];
+      if (!triageHead) {
+        return {
+          step: "concern_triage",
+          payload: {
+            concern_id: "",
+            concern_index: 0,
+            concern_text: "",
+            chips: [],
+            copy: triageCopy,
+          },
+        };
+      }
       return {
-        step: "second_routine_pass",
+        step: "concern_triage",
         payload: {
-          common_services: commonServices,
-          already_picked: alreadyPicked,
-          copy: await getCardText("second_routine_pass"),
+          concern_id: triageHead.concern_id,
+          concern_index: triageHead.concern_index,
+          concern_text: triageHead.concern_text,
+          chips: triageHead.chips,
+          copy: triageCopy,
         },
       };
     }
@@ -940,6 +942,77 @@ export async function getCurrentCard(
   }
 }
 
+// ─── Shared card builders ───────────────────────────────────────────────────
+
+type CachedSessionRow = NonNullable<
+  Awaited<ReturnType<typeof getCachedSessionRow>>
+>;
+
+/**
+ * Build the second_routine_pass card. Extracted from the switch so the D1 /
+ * INV-8 route-away (testing_service_approval with 0 undecided recs) can render
+ * it without duplicating the routine-services aggregation.
+ *
+ * Phase 10 (2026-05-15): load the full routine_services list as chips.
+ * Already-picked items (from Step 7.1 selected_simple_services OR Step 7.2
+ * explanation_required_items) render disabled with an "✓ added" badge — the
+ * card hides them from the pickable set so the customer can't double-book a
+ * service.
+ *
+ * Bug audit 2026-05-16: requires_explanation=true rows (Brake Inspection, Check
+ * Battery, Warning Lights, Check Suspension, Check A/C) are filtered OUT of the
+ * second-pass add-on grid — picking one there would silently skip the
+ * concern_explanation + diagnostic gap-detection flow the spec mandates; those
+ * services must be picked at Step 7.1 where the diagnostic flow attaches.
+ */
+async function buildSecondRoutinePassCard(
+  row: CachedSessionRow,
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+): Promise<WizardCard> {
+  let commonServices: Array<{ service_key: string; display_name: string }> = [];
+  try {
+    const allRoutine = await getRoutineServicesForChips();
+    const { data: explanationFlags, error: flagsErr } = await supabase
+      .from("routine_services")
+      .select("service_key, requires_explanation")
+      .eq("shop_id", SHOP_ID)
+      .eq("active", true);
+    if (flagsErr) {
+      throw new Error(
+        `routine_services requires_explanation lookup failed: ${flagsErr.message}`,
+      );
+    }
+    const requiresExplanationByKey = new Map<string, boolean>();
+    for (const r of (explanationFlags ?? []) as Array<{
+      service_key: string;
+      requires_explanation: boolean;
+    }>) {
+      requiresExplanationByKey.set(r.service_key, r.requires_explanation);
+    }
+    commonServices = allRoutine
+      .filter((r) => !requiresExplanationByKey.get(r.service_key))
+      .map((r) => ({
+        service_key: r.service_key,
+        display_name: r.display_name,
+      }));
+  } catch (e) {
+    Sentry.captureException(e, {
+      tags: { surface: "get_current_card_second_routine_pass" },
+      level: "warning",
+    });
+  }
+
+  const alreadyPicked = collectPickedServiceKeys(row);
+  return {
+    step: "second_routine_pass",
+    payload: {
+      common_services: commonServices,
+      already_picked: alreadyPicked,
+      copy: await getCardText("second_routine_pass"),
+    },
+  };
+}
+
 // ─── Row-column parsers ─────────────────────────────────────────────────────
 // edited_phones / edited_emails / edited_address are JSONB on the row. The
 // submit-* actions write the shapes documented in chat-design.md §5 + §11 +
@@ -1272,6 +1345,55 @@ function parseConcernClarifyCandidates(
       });
     }
     out.push({ concern_text, service_display_name, candidates });
+  }
+  return out;
+}
+
+// ─── concern-triage — concern_triage_state queue parser ────────────────────
+
+interface ConcernTriageQueueEntry {
+  concern_id: string;
+  concern_index: number;
+  concern_text: string;
+  chips: Array<{ chip_key: string; display_label: string }>;
+}
+
+/**
+ * Parse the concern_triage_state JSONB array into typed queue entries for the
+ * concern_triage card (feature concern-triage, 2026-07-19). Defensive per
+ * jsonb-defensive-parse (mirrors parseConcernClarifyCandidates): non-array
+ * input, null/non-object entries, and malformed chips are DROPPED rather than
+ * dereferenced. Only the fields the CARD needs are surfaced here — the
+ * server-only snapshot (allowed_by_chip, triage_round, created_version) stays
+ * on the persisted entry and is read by submit-concern-triage, never sent to
+ * the client. An entry that survives with an empty chips list falls back to
+ * the escape-only card (the customer still reaches an advisor).
+ */
+function parseConcernTriageState(raw: unknown): ConcernTriageQueueEntry[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ConcernTriageQueueEntry[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") continue;
+    const e = entry as Record<string, unknown>;
+    const concern_id = typeof e.concern_id === "string" ? e.concern_id : null;
+    if (!concern_id) continue;
+    const concern_index =
+      typeof e.concern_index === "number" ? e.concern_index : 0;
+    const concern_text =
+      typeof e.concern_text === "string" ? e.concern_text : "";
+    const chips: Array<{ chip_key: string; display_label: string }> = [];
+    if (Array.isArray(e.chips)) {
+      for (const chip of e.chips) {
+        if (!chip || typeof chip !== "object") continue;
+        const c = chip as Record<string, unknown>;
+        const chip_key = typeof c.chip_key === "string" ? c.chip_key : null;
+        const display_label =
+          typeof c.display_label === "string" ? c.display_label : null;
+        if (!chip_key || !display_label) continue;
+        chips.push({ chip_key, display_label });
+      }
+    }
+    out.push({ concern_id, concern_index, concern_text, chips });
   }
   return out;
 }

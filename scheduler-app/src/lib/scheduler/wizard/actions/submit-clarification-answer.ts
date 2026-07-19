@@ -25,6 +25,7 @@ import * as Sentry from "@sentry/nextjs";
 import { z } from "zod";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import type { WizardStep } from "@/lib/scheduler/session-state";
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
 import { logError } from "@/lib/scheduler/wizard/log-error";
@@ -123,21 +124,84 @@ function parseAnswered(
 }
 
 /**
- * Count the recommended_testing_services entries on the row without
- * fully reshaping the payload — just need a non-zero check for routing.
+ * Extract service_key strings from either a recommended_testing_services
+ * array (objects with a `service_key`) OR an approved/declined array (bare
+ * strings). Used to compute the INV-8 UNDECIDED recommendation count.
  */
-function countRecommendedServices(raw: unknown): number {
-  if (!Array.isArray(raw)) return 0;
-  let n = 0;
+function parseServiceKeyList(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
   for (const entry of raw) {
+    if (typeof entry === "string") {
+      if (entry.length > 0) out.push(entry);
+      continue;
+    }
     if (entry && typeof entry === "object") {
       const e = entry as Record<string, unknown>;
       if (typeof e.service_key === "string" && e.service_key.length > 0) {
-        n += 1;
+        out.push(e.service_key);
       }
     }
   }
-  return n;
+  return out;
+}
+
+/**
+ * INV-8: routeAfterDiagnostics is passed the UNDECIDED recommendation count
+ * = recommended − approved − declined. The approval card renders only the
+ * undecided recs; routing on the raw recommended count would strand the
+ * customer on an empty approval card when every rec is already decided.
+ */
+function countUndecidedRecommendations(
+  recommendedRaw: unknown,
+  approvedRaw: unknown,
+  declinedRaw: unknown,
+): number {
+  const approved = new Set(parseServiceKeyList(approvedRaw));
+  const declined = new Set(parseServiceKeyList(declinedRaw));
+  return parseServiceKeyList(recommendedRaw).filter(
+    (k) => !approved.has(k) && !declined.has(k),
+  ).length;
+}
+
+/** Count object-shaped queue entries (concern_triage_state /
+ *  concern_clarify_candidates) for the INV-4 drained-branch routing. */
+function countQueueEntries(raw: unknown): number {
+  if (!Array.isArray(raw)) return 0;
+  return raw.filter((e) => e && typeof e === "object").length;
+}
+
+/**
+ * B5/INV-4 — route once the clarification queue drains. Priority:
+ *   pending non-empty        → clarification_question (ask the next one)
+ *   triage-queue non-empty   → concern_triage    (a vague concern still owed)
+ *   clarify-queue non-empty  → concern_clarify   (a 2-3-candidate tap still owed)
+ *   else                     → routeAfterDiagnostics(undecided recs)
+ * Without the triage/clarify checks a stale/drained submit would route
+ * straight past a pending queue and orphan it.
+ */
+function routeDrained(args: {
+  pending_count: number;
+  triage_count: number;
+  clarify_count: number;
+  undecided_count: number;
+}): { nextStep: WizardStep; jeffBubble: string | undefined } {
+  if (args.pending_count > 0) {
+    return routeAfterDiagnostics({
+      pending_count: args.pending_count,
+      recommendation_count: args.undecided_count,
+    });
+  }
+  if (args.triage_count > 0) {
+    return { nextStep: "concern_triage", jeffBubble: undefined };
+  }
+  if (args.clarify_count > 0) {
+    return { nextStep: "concern_clarify", jeffBubble: undefined };
+  }
+  return routeAfterDiagnostics({
+    pending_count: 0,
+    recommendation_count: args.undecided_count,
+  });
 }
 
 async function submitClarificationAnswerV2Impl(
@@ -162,7 +226,10 @@ async function submitClarificationAnswerV2Impl(
     const { data: row, error: rowErr } = await supabase
       .from("customer_chat_sessions")
       .select(
-        "id, clarification_questions_pending, clarification_questions_answered, recommended_testing_services",
+        // current_step → B5 step guard; approved/declined → INV-8 undecided
+        // count; concern_triage_state (new column) + concern_clarify_candidates
+        // → INV-4 triage-and-clarify-aware drained routing.
+        "id, current_step, clarification_questions_pending, clarification_questions_answered, recommended_testing_services, approved_testing_services, declined_testing_services, concern_triage_state, concern_clarify_candidates",
       )
       .eq("id", chatId)
       .maybeSingle();
@@ -171,20 +238,46 @@ async function submitClarificationAnswerV2Impl(
       return { ok: false, error: rowErr?.message ?? "session_not_found" };
     }
 
+    // B5 step guard: the wizard must actually be on the clarification card.
+    // A stale submit (back-button then submit after the wizard already moved
+    // on) must NOT drain/route — it would orphan a pending triage/clarify
+    // queue. Mirrors submit-concern-clarify's stale-current_step guard.
+    if ((row.current_step as string | null) !== "clarification_question") {
+      Sentry.captureMessage(
+        "submit_clarification_answer_v2 stale current_step",
+        {
+          level: "warning",
+          extra: { chatId, current_step: row.current_step },
+        },
+      );
+      return { ok: false, error: "stale_current_step" };
+    }
+
     const pending = parsePending(row.clarification_questions_pending);
     const answered = parseAnswered(row.clarification_questions_answered);
-    const recsCount = countRecommendedServices(
+    const undecidedCount = countUndecidedRecommendations(
       (row as Record<string, unknown>).recommended_testing_services,
+      (row as Record<string, unknown>).approved_testing_services,
+      (row as Record<string, unknown>).declined_testing_services,
+    );
+    // INV-4 drained-branch queues (concern_triage_state is a new column —
+    // typed once database.types.ts regenerates; WIRING owns that file).
+    const triageCount = countQueueEntries(
+      (row as Record<string, unknown>).concern_triage_state,
+    );
+    const clarifyCount = countQueueEntries(
+      (row as Record<string, unknown>).concern_clarify_candidates,
     );
 
     const head = pending[0];
     if (!head) {
-      // Queue already drained (likely a stale submit after a refresh).
-      // Re-route based on whether the diagnostic LLM left any
-      // recommendations on the row.
-      const { nextStep, jeffBubble } = routeAfterDiagnostics({
+      // Queue already drained (a stale submit after a refresh). Re-route
+      // triage-and-clarify-aware (B5) so a pending queue is never orphaned.
+      const { nextStep, jeffBubble } = routeDrained({
         pending_count: 0,
-        recommendation_count: recsCount,
+        triage_count: triageCount,
+        clarify_count: clarifyCount,
+        undecided_count: undecidedCount,
       });
       return applyWizardTransition({ chatId, nextStep, jeffBubble });
     }
@@ -275,14 +368,17 @@ async function submitClarificationAnswerV2Impl(
           ? writeValue.map(lookupLabel).join(" · ")
           : lookupLabel(writeValue);
 
-    // Route at queue-drain time the same way run-diagnostics does:
+    // Route at queue-drain time (B5/INV-4 triage-and-clarify-aware):
     //   - more questions → clarification_question (next one)
-    //   - drained + recommendations exist → testing_service_approval
-    //   - drained + no recommendations → second_routine_pass + forward-
-    //     to-advisor bubble
-    const { nextStep, jeffBubble } = routeAfterDiagnostics({
+    //   - drained + triage queue → concern_triage
+    //   - drained + clarify queue → concern_clarify
+    //   - drained + undecided recs → testing_service_approval
+    //   - drained + none → second_routine_pass + forward-to-advisor bubble
+    const { nextStep, jeffBubble } = routeDrained({
       pending_count: nextPending.length,
-      recommendation_count: recsCount,
+      triage_count: triageCount,
+      clarify_count: clarifyCount,
+      undecided_count: undecidedCount,
     });
 
     const transitionResult = await applyWizardTransition({
@@ -299,10 +395,12 @@ async function submitClarificationAnswerV2Impl(
     // Queue just drained → synthesize the per-concern "Customer states ..."
     // summaries before the customer reaches the Tekmetric description
     // builder. Run AFTER the transition so the freshly-answered row is
-    // visible to ensureConcernSummaries. Best-effort: a summarization
-    // failure must not block the wizard advance — fall back to the
-    // raw explanation_text downstream.
-    if (nextPending.length === 0) {
+    // visible to ensureConcernSummaries. Deferred while a triage/clarify
+    // concern is still owed (routed to concern_triage / concern_clarify) —
+    // the pipeline isn't done, mirroring run-diagnostics' clarify gate.
+    // Best-effort: a summarization failure must not block the wizard advance
+    // — fall back to the raw explanation_text downstream.
+    if (nextPending.length === 0 && triageCount === 0 && clarifyCount === 0) {
       try {
         await ensureConcernSummaries({ chatId });
       } catch (e) {
@@ -314,7 +412,7 @@ async function submitClarificationAnswerV2Impl(
           },
           level: "warning",
         });
-        // eslint-disable-next-line no-console
+         
         console.warn(
           JSON.stringify({
             level: "warn",

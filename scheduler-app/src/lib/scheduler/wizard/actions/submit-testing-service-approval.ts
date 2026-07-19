@@ -32,6 +32,21 @@ const inputSchema = z.object({
 
 export type SubmitTestingServiceApprovalV2Args = z.infer<typeof inputSchema>;
 
+/** Parse a TEXT[] column into a de-duplicated ordered string list, dropping
+ *  non-string entries. Order is preserved for stable persisted output. */
+function parseKeySet(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const k of raw) {
+    if (typeof k === "string" && !seen.has(k)) {
+      seen.add(k);
+      out.push(k);
+    }
+  }
+  return out;
+}
+
 async function submitTestingServiceApprovalV2Impl(
   args: SubmitTestingServiceApprovalV2Args,
 ): Promise<WizardTransitionResult> {
@@ -48,7 +63,9 @@ async function submitTestingServiceApprovalV2Impl(
     const supabase = createSupabaseAdminClient();
     const { data: row, error: rowErr } = await supabase
       .from("customer_chat_sessions")
-      .select("recommended_testing_services, approved_testing_services")
+      .select(
+        "recommended_testing_services, approved_testing_services, declined_testing_services",
+      )
       .eq("id", chatId)
       .maybeSingle();
     if (rowErr || !row) {
@@ -91,26 +108,45 @@ async function submitTestingServiceApprovalV2Impl(
       return { ok: false, error: "approved_declined_overlap" };
     }
 
-    const declinedDedup = Array.from(declinedSet);
-
-    // Merge — do NOT overwrite. The customer may have explicitly picked
+    // ── Symmetric approve/decline merge (D1 / INV-8) ────────────────────────
+    // Do NOT overwrite either set. The customer may have explicitly picked
     // testing services back at Step 7.1 (submit-service-and-concern-picker
     // writes them to approved_testing_services); those picks are independent
-    // of the diagnostic LLM's recommendations surfaced at this step. Union
-    // the existing picks with the newly-approved recommendations, then drop
-    // anything the customer declined here (most-recent action wins). Writing
-    // only the 7.5 approvals would silently lose the 7.1 picks.
-    const existingApproved = new Set<string>();
-    const existingRaw = (row as Record<string, unknown>)
-      .approved_testing_services;
-    if (Array.isArray(existingRaw)) {
-      for (const k of existingRaw) {
-        if (typeof k === "string") existingApproved.add(k);
-      }
-    }
+    // of the diagnostic LLM's recommendations surfaced at this step. Prior
+    // declines (from an earlier pass, or recs no longer surfaced this submit)
+    // must ALSO survive — writing only this submit's declines silently loses
+    // them.
+    //
+    // The write is symmetric: finalDeclined = (existingDeclined ∪ newDeclined)
+    // − finalApproved. Crucially, every key the customer acted on in THIS
+    // submit is cleared from BOTH prior sets FIRST (re-decline safety): a
+    // re-decline of a previously-approved service must not be silently
+    // stripped by the "− finalApproved" step, and a re-approval of a
+    // previously-declined one likewise flips cleanly.
+    const existingApproved = parseKeySet(
+      (row as Record<string, unknown>).approved_testing_services,
+    );
+    const existingDeclined = parseKeySet(
+      (row as Record<string, unknown>).declined_testing_services,
+    );
+
+    // Keys the customer explicitly acted on this submit — cleared from both
+    // prior sets so the unions below are authoritative.
+    const actedThisSubmit = new Set<string>([...approvedSet, ...declinedSet]);
+    const baseApproved = existingApproved.filter(
+      (k) => !actedThisSubmit.has(k),
+    );
+    const baseDeclined = existingDeclined.filter(
+      (k) => !actedThisSubmit.has(k),
+    );
+
     const finalApproved = Array.from(
-      new Set([...existingApproved, ...approvedSet]),
-    ).filter((k) => !declinedSet.has(k));
+      new Set([...baseApproved, ...approvedSet]),
+    );
+    const finalApprovedSet = new Set(finalApproved);
+    const finalDeclined = Array.from(
+      new Set([...baseDeclined, ...declinedSet]),
+    ).filter((k) => !finalApprovedSet.has(k));
 
     const jeffBubble =
       finalApproved.length > 0
@@ -121,7 +157,7 @@ async function submitTestingServiceApprovalV2Impl(
       chatId,
       updates: {
         approved_testing_services: finalApproved,
-        declined_testing_services: declinedDedup,
+        declined_testing_services: finalDeclined,
       },
       nextStep: "second_routine_pass",
       jeffBubble,

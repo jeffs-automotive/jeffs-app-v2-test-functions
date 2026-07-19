@@ -33,6 +33,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { sessionTag } from "@/lib/scheduler/cache";
 import { buildConcernSummary } from "@/lib/scheduler/wizard/concern-summary";
+import type { TriageConstraint } from "@/lib/scheduler/wizard/triage";
 // P2.8 (2026-05-25): single source of truth for SHOP_ID.
 import { SHOP_ID } from "@/lib/scheduler/shop-config";
 
@@ -49,6 +50,17 @@ interface ExplanationItem {
    *  Filled by `ensureConcernSummaries`. Once present, re-runs short-
    *  circuit unless `force=true`. */
   summary?: string;
+  /** INV-13 stable identity — the join key for matching a generated summary
+   *  back to its item (NOT service_key, which is non-unique across duplicate
+   *  other_issue concerns and clobbers them — D2). */
+  concern_id?: string;
+  /** INV-3 triage fields — preserved through this parser + write-back. The
+   *  customer's triage CATEGORY ANSWER (triage_answers.label) is threaded into
+   *  this concern's advisor summary so a post-triage dead-end handoff shows
+   *  the advisor which broad category the customer picked. */
+  triage_round?: number;
+  triage_answers?: TriageConstraint | null;
+  handoff_reason?: string | null;
 }
 
 function parseExplanationItems(raw: unknown): ExplanationItem[] {
@@ -81,6 +93,26 @@ function parseExplanationItems(raw: unknown): ExplanationItem[] {
     }
     if (typeof obj.summary === "string" && obj.summary.length > 0) {
       item.summary = obj.summary;
+    }
+    // INV-3: preserve the identity + triage fields verbatim through this
+    // parser so the write-back below doesn't strip them (dropping
+    // triage_answers would break the constrained-re-diagnosis constraint;
+    // dropping triage_round would reset the one-round cap).
+    if (typeof obj.concern_id === "string" && obj.concern_id.length > 0) {
+      item.concern_id = obj.concern_id;
+    }
+    if (typeof obj.triage_round === "number") {
+      item.triage_round = obj.triage_round;
+    }
+    if (obj.triage_answers && typeof obj.triage_answers === "object") {
+      item.triage_answers = obj.triage_answers as TriageConstraint;
+    } else if (obj.triage_answers === null) {
+      item.triage_answers = null;
+    }
+    if (typeof obj.handoff_reason === "string") {
+      item.handoff_reason = obj.handoff_reason;
+    } else if (obj.handoff_reason === null) {
+      item.handoff_reason = null;
     }
     out.push(item);
   }
@@ -267,20 +299,44 @@ export async function ensureConcernSummaries(
       // replaced the summarize-concern LLM (REVAMP-PLAN §2b). Q&A pairs
       // are preserved as follow-up clauses — no information loss in the
       // Tekmetric description.
-      const summary = buildConcernSummary({
+      let summary = buildConcernSummary({
         explanation_text: it.explanation_text,
         qa_pairs: qaPairs,
         chip_display_name: it.display_name,
       });
+      // D2 threading: a concern that went through triage carries the
+      // customer's chosen broad CATEGORY (triage_answers.label). Surface it in
+      // the advisor-facing summary so a post-triage dead-end handoff shows
+      // "customer said it's the {label}", not just the raw vague text.
+      const triageLabel = it.triage_answers?.label;
+      if (typeof triageLabel === "string" && triageLabel.trim().length > 0) {
+        summary = `${summary} Customer indicated this is related to: ${triageLabel.trim()}.`;
+      }
       return { item: it, summary };
     }),
   );
 
   // Build the updated items array (preserve order; in-place .summary).
+  //
+  // D2 (INV-13): match the generated summary back to its item by the stable
+  // concern_id — NOT service_key. Two "other_issue" concerns share one
+  // service_key, so a service_key match would assign the first summary to BOTH
+  // and clobber the second concern's distinct summary. `itemsToProcess` holds
+  // the SAME object references as `items`, so object identity is the exact
+  // fallback for legacy items that predate concern_id. Any legacy item still
+  // lacking a concern_id gets one minted on THIS write-back (INV-13).
   const updatedItems = items.map((it) => {
-    const match = summaries.find((s) => s.item.service_key === it.service_key);
-    if (!match) return it;
-    return { ...it, summary: match.summary };
+    const match =
+      (it.concern_id
+        ? summaries.find(
+            (s) => s.item.concern_id && s.item.concern_id === it.concern_id,
+          )
+        : undefined) ?? summaries.find((s) => s.item === it);
+    const withId = it.concern_id
+      ? it
+      : { ...it, concern_id: crypto.randomUUID() };
+    if (!match) return withId;
+    return { ...withId, summary: match.summary };
   });
 
   const { error: writeErr } = await supabase

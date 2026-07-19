@@ -60,6 +60,14 @@ import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
 import { logError } from "@/lib/scheduler/wizard/log-error";
 import { routeAfterDiagnostics } from "@/lib/scheduler/wizard/route-after-diagnostics";
 import { ensureConcernSummaries } from "@/lib/scheduler/wizard/ensure-concern-summaries";
+import {
+  shouldTriage,
+  buildChipSnapshot,
+  buildTriageEntry,
+  type TriageChipRow,
+  type TriageEntry,
+  type TriageConstraint,
+} from "@/lib/scheduler/wizard/triage";
 // P2.8 (2026-05-25): single source of truth for SHOP_ID.
 import { SHOP_ID } from "@/lib/scheduler/shop-config";
 
@@ -79,11 +87,34 @@ const OTHER_ISSUE_SERVICE_KEY = "other_issue";
  */
 const CONCERN_CLARIFY_STEP: WizardStep = "concern_clarify";
 
+/**
+ * concern-triage (2026-07-19): the broad-category chip card shown when a
+ * concern's Stage 1 returned 0 candidates with a triage-eligible
+ * no_match_reason on triage_round 0. Sibling of concern_clarify. Now a
+ * first-class WizardStep member (WIRING wired the card arms), so no cast.
+ */
+const CONCERN_TRIAGE_STEP: WizardStep = "concern_triage";
+
 interface ExplanationItem {
   service_key: string;
   display_name: string;
   explanation_text: string;
   category: string | null;
+  /** INV-13 stable identity — minted at picker creation, preserved through
+   *  every parser/write-back, used as the triage/summary/decline join key
+   *  (never array index / the non-unique other_issue service_key). Legacy
+   *  items lacking it get one minted on the next WRITE-back (not on read). */
+  concern_id?: string;
+  /** concern-triage (INV-3): 0 = never triaged; 1 = one triage round used.
+   *  The one-round cap — preserved verbatim through every round-trip. */
+  triage_round?: number;
+  /** concern-triage (INV-3/INV-14): the customer's triage-chip answer holding
+   *  the SERVER-resolved category constraint. Set by submit-concern-triage;
+   *  read here to drive the constrained re-diagnosis; preserved verbatim. */
+  triage_answers?: TriageConstraint | null;
+  /** Why this concern went to the advisor (observability, INV-19). Preserved
+   *  verbatim through every round-trip. */
+  handoff_reason?: string | null;
   /** Present as an array once run-diagnostics has diagnosed this entry
    *  (the per-entry write-back below). Its PRESENCE — not its length — is
    *  the "already diagnosed" discriminator for selective re-diagnosis: a
@@ -141,6 +172,13 @@ interface ClarifyCandidateOption {
   precomputed: {
     matched_subcategory_slug: string | null;
     unanswered_question_ids: number[];
+    /** concern-triage B1 (INV-8): the per-candidate Stage-2/Stage-3 self-
+     *  reported confidence, persisted here so submit-concern-clarify can gate
+     *  at tap time (S2-low → advisor, S3-low → over-ask) exactly like the
+     *  direct path. null on legacy rows written before this field existed —
+     *  the clarify gate treats missing as PASS (back-compat, never gate). */
+    stage2_confidence?: "high" | "medium" | "low" | null;
+    stage3_confidence?: "high" | "medium" | "low" | null;
   };
 }
 
@@ -175,6 +213,35 @@ function parseClarifyEntries(raw: unknown): ConcernClarifyEntry[] {
   );
 }
 
+/**
+ * concern-triage (INV-12): parse the persisted concern_triage_state column
+ * into TriageEntry[]. Mirrors parseClarifyEntries — a shallow structural
+ * filter that returns the original entry objects verbatim (so the rendered
+ * chip snapshot + server-resolved allowed_by_chip carry through a re-run's
+ * carry-forward unchanged). Accepts null AND [].
+ */
+function parseTriageEntries(raw: unknown): TriageEntry[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (entry): entry is TriageEntry =>
+      !!entry &&
+      typeof entry === "object" &&
+      typeof (entry as Record<string, unknown>).concern_id === "string" &&
+      typeof (entry as Record<string, unknown>).service_key === "string" &&
+      Array.isArray((entry as Record<string, unknown>).chips) &&
+      !!(entry as Record<string, unknown>).allowed_by_chip &&
+      typeof (entry as Record<string, unknown>).allowed_by_chip === "object",
+  );
+}
+
+/** Coerce a TEXT[] column (approved/declined_testing_services) into a
+ *  string[] of service keys. Accepts the PostgREST array form (a JS array)
+ *  and defensively tolerates null. Used for the INV-8 undecided-rec count. */
+function parseServiceKeyArray(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((x): x is string => typeof x === "string");
+}
+
 function parseExplanationItems(raw: unknown): ExplanationItem[] {
   if (!Array.isArray(raw)) return [];
   return raw
@@ -207,6 +274,38 @@ function parseExplanationItems(raw: unknown): ExplanationItem[] {
       }
       if (typeof obj.summary === "string" && obj.summary.length > 0) {
         item.summary = obj.summary;
+      }
+      // concern-triage (INV-3): preserve the stable identity + triage fields
+      // verbatim on READ. concern_id is NOT minted here — a legacy item
+      // without one gets its UUID on the next WRITE-back (INV-13 refinement:
+      // no read-path side effect, so concurrent reads can't diverge).
+      if (typeof obj.concern_id === "string" && obj.concern_id.length > 0) {
+        item.concern_id = obj.concern_id;
+      }
+      if (typeof obj.triage_round === "number") {
+        item.triage_round = obj.triage_round;
+      }
+      if (obj.triage_answers && typeof obj.triage_answers === "object") {
+        const ta = obj.triage_answers as Record<string, unknown>;
+        if (
+          Array.isArray(ta.allowed_service_keys) &&
+          typeof ta.chip_key === "string" &&
+          typeof ta.label === "string"
+        ) {
+          item.triage_answers = {
+            allowed_service_keys: ta.allowed_service_keys.filter(
+              (x): x is string => typeof x === "string",
+            ),
+            chip_key: ta.chip_key,
+            label: ta.label,
+          };
+        }
+      }
+      if (
+        typeof obj.handoff_reason === "string" &&
+        obj.handoff_reason.length > 0
+      ) {
+        item.handoff_reason = obj.handoff_reason;
       }
       return item;
     })
@@ -352,6 +451,55 @@ async function loadRoutineChipConcernCategories(
   return out;
 }
 
+/**
+ * concern-triage (INV-9/INV-18): load the shop's ACTIVE broad-category chips
+ * (service-role client — the chips table is deny-all RLS; reached only here).
+ * Returns [] on error or when the shop has no chips → the caller treats an
+ * empty snapshot as "no usable triage config" and never fires triage (advisor
+ * as today). Also returns the seed "version" (max updated_at, else 'v1') for
+ * observability + snapshot integrity (INV-12 created_version).
+ */
+async function loadConcernTriageChips(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+): Promise<{ chips: TriageChipRow[]; version: string }> {
+  const { data, error } = await supabase
+    .from("concern_triage_chips")
+    .select(
+      "chip_key, display_label, maps_to_categories, allowed_service_keys, sort, active, updated_at",
+    )
+    .eq("shop_id", SHOP_ID)
+    .eq("active", true);
+  if (error) {
+    Sentry.captureMessage("run_diagnostics_v2 concern_triage_chips load failed", {
+      level: "warning",
+      extra: { error: error.message },
+    });
+    return { chips: [], version: "v1" };
+  }
+  const rows = (data ?? []) as Array<{
+    chip_key: string;
+    display_label: string;
+    maps_to_categories: string[] | null;
+    allowed_service_keys: string[] | null;
+    sort: number | null;
+    active: boolean;
+    updated_at: string | null;
+  }>;
+  let maxUpdated = "";
+  const chips: TriageChipRow[] = rows.map((r) => {
+    if (r.updated_at && r.updated_at > maxUpdated) maxUpdated = r.updated_at;
+    return {
+      chip_key: r.chip_key,
+      display_label: r.display_label,
+      maps_to_categories: r.maps_to_categories ?? [],
+      allowed_service_keys: r.allowed_service_keys ?? [],
+      sort: r.sort ?? 0,
+      active: r.active,
+    };
+  });
+  return { chips, version: maxUpdated || "v1" };
+}
+
 function buildChipHint(
   item: ExplanationItem,
   routineChipCats: Map<string, string[]>,
@@ -446,7 +594,7 @@ async function runDiagnosticsBody(
   const { data: row, error: rowErr } = await supabase
     .from("customer_chat_sessions")
     .select(
-      "id, explanation_required_items, new_vehicle_info, diagnostic_processing_complete, clarification_questions_pending, clarification_questions_answered, recommended_testing_services, concern_clarify_candidates",
+      "id, explanation_required_items, new_vehicle_info, diagnostic_processing_complete, clarification_questions_pending, clarification_questions_answered, recommended_testing_services, concern_clarify_candidates, concern_triage_state, approved_testing_services, declined_testing_services",
     )
     .eq("id", chatId)
     .maybeSingle();
@@ -464,6 +612,17 @@ async function runDiagnosticsBody(
   // already ran for this session's current explanation queue. Just
   // re-route based on the persisted pending + recommendation state.
   if (row.diagnostic_processing_complete) {
+    // concern-triage INV-4 (site 2): the triage queue takes TOP routing
+    // priority — a still-pending triage entry means the customer owes us a
+    // broad-category chip tap. Checked FIRST so a loading-card re-mount (or a
+    // refresh) never orphans it. submit-concern-triage clears/pops the column
+    // on tap, so a non-empty array means "still pending".
+    const existingTriage = parseTriageEntries(
+      (row as Record<string, unknown>).concern_triage_state,
+    );
+    if (existingTriage.length > 0) {
+      return applyWizardTransition({ chatId, nextStep: CONCERN_TRIAGE_STEP });
+    }
     // Act-or-ask AO2c: unresolved clarify candidates take priority over
     // the standard routing — the customer still owes us a chip tap. The
     // clarify-resolution action clears the column when it merges the
@@ -480,9 +639,22 @@ async function runDiagnosticsBody(
     const existingRecs = parseRecommendedServices(
       (row as Record<string, unknown>).recommended_testing_services,
     );
+    // INV-8: routeAfterDiagnostics is passed the UNDECIDED rec count
+    // (recommended − approved − declined) so a session where every rec is
+    // already approved/declined skips the approval card, not re-shows it.
+    const approved = parseServiceKeyArray(
+      (row as Record<string, unknown>).approved_testing_services,
+    );
+    const declined = parseServiceKeyArray(
+      (row as Record<string, unknown>).declined_testing_services,
+    );
+    const undecidedCount = existingRecs.filter(
+      (r) =>
+        !approved.includes(r.service_key) && !declined.includes(r.service_key),
+    ).length;
     const { nextStep, jeffBubble } = routeAfterDiagnostics({
       pending_count: existingPending.length,
-      recommendation_count: existingRecs.length,
+      recommendation_count: undecidedCount,
     });
     return applyWizardTransition({ chatId, nextStep, jeffBubble });
   }
@@ -492,6 +664,8 @@ async function runDiagnosticsBody(
 
   if (items.length === 0) {
     // No concerns to process — skip directly to second_routine_pass.
+    // Clear BOTH chip queues (INV-2) so a stale triage/clarify entry can't
+    // orphan an empty session.
     return applyWizardTransition({
       chatId,
       updates: {
@@ -499,6 +673,7 @@ async function runDiagnosticsBody(
         clarification_questions_pending: [],
         recommended_testing_services: [],
         concern_clarify_candidates: [],
+        concern_triage_state: [],
       },
       nextStep: "second_routine_pass",
     });
@@ -549,10 +724,53 @@ async function runDiagnosticsBody(
     item.explanation_text.trim().length > 0;
 
   // ── Load supporting context in parallel ──────────────────────────────
-  const [catalog, routineChipCats] = await Promise.all([
+  const [catalog, routineChipCats, triageChipLoad] = await Promise.all([
     loadDiagnosticCatalog(supabase),
     loadRoutineChipConcernCategories(supabase),
+    loadConcernTriageChips(supabase),
   ]);
+
+  // concern-triage (INV-18): resolve the shop's active chips against the
+  // ACTIVE testing-service catalog (loadDiagnosticCatalog already filters to
+  // active=true), dropping unknown keys + hiding chips whose resolved subset
+  // is empty. An empty snapshot = "no usable triage config" → triage never
+  // fires (advisor as today, INV-18 fallback).
+  const activeServiceKeys = new Set<string>(
+    catalog.categories
+      .filter(isTestingService)
+      .map((c) => c.service_key),
+  );
+  const chipSnapshot = buildChipSnapshot(
+    triageChipLoad.chips,
+    activeServiceKeys,
+  );
+  const triageEnabled = chipSnapshot.options.length > 0;
+  const chipVersion = triageChipLoad.version;
+
+  // concern-triage (INV-13): resolve a STABLE concern_id per item ONCE, up
+  // front, so a freshly-minted id is identical in the triage entry (built in
+  // the loop) and the write-back (persisted below). Legacy items without one
+  // get their UUID here — a mint that IS persisted by this action's write-back
+  // (not a pure read; INV-13 refinement).
+  const itemConcernIds = items.map(
+    (it) => it.concern_id ?? crypto.randomUUID(),
+  );
+
+  // ── Existing chip queues (INV-2 carry-forward sources) ────────────────
+  const existingTriage = parseTriageEntries(
+    (row as Record<string, unknown>).concern_triage_state,
+  );
+  const existingClarify = parseClarifyEntries(
+    (row as Record<string, unknown>).concern_clarify_candidates,
+  );
+  // INV-8: prior approve/decline sets — the undecided-rec count (below) that
+  // routeAfterDiagnostics is passed subtracts these from the recommendations.
+  const existingApproved = parseServiceKeyArray(
+    (row as Record<string, unknown>).approved_testing_services,
+  );
+  const existingDeclined = parseServiceKeyArray(
+    (row as Record<string, unknown>).declined_testing_services,
+  );
 
   // ── Per-concern LLM call in parallel (skipping already-diagnosed) ────
   const perConcernResults = await Promise.all(
@@ -563,6 +781,10 @@ async function runDiagnosticsBody(
       matchedCat: CatalogCategory | null;
       gate: ConfidenceGateOutcome;
       clarify: ConcernClarifyEntry | null;
+      /** concern-triage (INV-5): a fresh round-0 triage entry when Stage 1
+       *  returned 0 candidates for a triage-eligible reason and chips exist.
+       *  Mutually exclusive with clarify + a recommendation. */
+      triage: TriageEntry | null;
       /** True when this entry reused its stored diagnostic state (no LLM). */
       skipped: boolean;
     }> => {
@@ -588,6 +810,7 @@ async function runDiagnosticsBody(
           matchedCat: null,
           gate: "pass",
           clarify: null,
+          triage: null,
           skipped: true,
         };
       }
@@ -597,6 +820,11 @@ async function runDiagnosticsBody(
         customer_description: item.explanation_text,
         customer_chip_hint: hint,
         vehicle_notes: vehicleNotes,
+        // concern-triage (INV-14): when this item carries a persisted triage
+        // answer (a chip tap re-run), pass its SERVER-resolved constraint so
+        // Stage 1 sees only the chip's allowed_service_keys subset. null on a
+        // normal (non-triage) concern → unconstrained diagnosis as today.
+        category_constraint: item.triage_answers ?? null,
       });
       // Act-or-ask AO2c (2026-07-03): a 2-3-candidate Stage-1 result is
       // NOT gated or aggregated into recommendations/questions. It
@@ -637,6 +865,11 @@ async function runDiagnosticsBody(
             precomputed: {
               matched_subcategory_slug: cr?.matched_subcategory_slug ?? null,
               unanswered_question_ids: cr?.unanswered_question_ids ?? [],
+              // B1 (INV-8): persist the per-candidate S2/S3 confidence so
+              // submit-concern-clarify can gate at tap time. Was DROPPED
+              // here pre-concern-triage.
+              stage2_confidence: cr?.stage2_confidence ?? null,
+              stage3_confidence: cr?.stage3_confidence ?? null,
             },
           });
         }
@@ -671,6 +904,61 @@ async function runDiagnosticsBody(
           matchedCat: null,
           gate: "pass",
           clarify,
+          triage: null,
+          skipped: false,
+        };
+      }
+      // concern-triage T1 (INV-5): Stage 1 returned ZERO candidates. When the
+      // reason is triage-eligible (too_vague / no_catalog_fit) AND this concern
+      // hasn't used its one triage round AND the shop has usable chips, offer
+      // the broad-category card instead of the silent advisor handoff. This
+      // concern is NOT gated/aggregated into recs/questions — it owes a chip
+      // tap. shouldTriage encodes the full predicate (parsed_ok + reason +
+      // round). Skipped when triage is disabled (empty snapshot) → falls
+      // through to the null-match advisor path exactly as today.
+      if (
+        triageEnabled &&
+        shouldTriage(
+          {
+            stage1_candidates: raw.stage1_candidates,
+            no_match_reason: raw.no_match_reason,
+            parsed_ok: raw.parsed_ok,
+          },
+          item,
+        )
+      ) {
+        const triage = buildTriageEntry({
+          concern_id: itemConcernIds[concernIndex]!,
+          concern_index: concernIndex,
+          service_key: item.service_key,
+          concern_text: item.explanation_text,
+          snapshot: chipSnapshot,
+          created_version: chipVersion,
+        });
+        Sentry.addBreadcrumb({
+          category: "scheduler.diagnose",
+          type: "info",
+          level: "info",
+          message: `diagnoseConcern: ${item.service_key} → triage (${raw.no_match_reason})`,
+          data: {
+            chip_service_key: item.service_key,
+            concern_index: concernIndex,
+            no_match_reason: raw.no_match_reason,
+            chip_count: chipSnapshot.options.length,
+            parsed_ok: raw.parsed_ok,
+            tokens_in: raw.tokens_in,
+            tokens_out: raw.tokens_out,
+            latency_ms: raw.latency_ms,
+            error_message: raw.error_message,
+          },
+        });
+        return {
+          item,
+          result: raw,
+          matchedCat: null,
+          gate: "pass",
+          clarify: null,
+          triage,
           skipped: false,
         };
       }
@@ -748,15 +1036,39 @@ async function runDiagnosticsBody(
         matchedCat,
         gate: gated.gate,
         clarify: null,
+        triage: null,
         skipped: false,
       };
     }),
   );
 
+  // concern-triage INV-2 carry-forward: the concern indices SKIPPED on this
+  // re-run (already-diagnosed entries that ran no LLM). A persisted triage/
+  // clarify entry belonging to a skipped concern must survive the write-back
+  // — the re-run only rebuilds entries for concerns it actually processed, so
+  // without this seeding a triage tap on concern A would wipe concern B's
+  // still-pending chip card. Mirrors the existingRecs/existingPending seeding.
+  const skippedIndices = new Set<number>();
+  perConcernResults.forEach((r, idx) => {
+    if (r.skipped) skippedIndices.add(idx);
+  });
+
   // ── Act-or-ask clarify entries (routed BEFORE routeAfterDiagnostics) ──
-  const clarifyEntries = perConcernResults
-    .map((r) => r.clarify)
-    .filter((c): c is ConcernClarifyEntry => c !== null);
+  // Carried entries (skipped concerns) first, then this run's fresh entries.
+  const clarifyEntries: ConcernClarifyEntry[] = [
+    ...existingClarify.filter((e) => skippedIndices.has(e.concern_index)),
+    ...perConcernResults
+      .map((r) => r.clarify)
+      .filter((c): c is ConcernClarifyEntry => c !== null),
+  ];
+
+  // ── concern-triage entries (top routing priority; INV-2 carry-forward) ──
+  const triageEntries: TriageEntry[] = [
+    ...existingTriage.filter((e) => skippedIndices.has(e.concern_index)),
+    ...perConcernResults
+      .map((r) => r.triage)
+      .filter((t): t is TriageEntry => t !== null),
+  ];
 
   // ── Aggregate recommendations ────────────────────────────────────────
   //
@@ -881,6 +1193,13 @@ async function runDiagnosticsBody(
       category: string | null;
       unanswered_question_ids: number[];
       summary?: string;
+      // concern-triage (INV-3): the stable identity + triage fields, carried
+      // through verbatim so the constrained re-diagnosis reads triage_answers
+      // and the one-round cap (triage_round) survives.
+      concern_id: string;
+      triage_round?: number;
+      triage_answers?: TriageConstraint | null;
+      handoff_reason?: string | null;
     } = {
       service_key: item.service_key,
       display_name: item.display_name,
@@ -891,27 +1210,49 @@ async function runDiagnosticsBody(
           item.unanswered_question_ids ?? []
         : // Freshly diagnosed — its new ids (or [] when it queued none).
           perIndexQuestionIds.get(idx) ?? [],
+      // INV-13: the id resolved up front — the item's existing one, or the
+      // UUID minted at itemConcernIds (a WRITE-side mint, persisted here).
+      concern_id: itemConcernIds[idx]!,
     };
     // Preserve a skipped entry's stored summary so ensureConcernSummaries
     // doesn't have to regenerate it.
     if (item.summary) base.summary = item.summary;
+    // INV-3: preserve the triage annotations verbatim (only set the keys that
+    // are present, so a normal concern's item stays clean).
+    if (item.triage_round !== undefined) base.triage_round = item.triage_round;
+    if (item.triage_answers !== undefined) {
+      base.triage_answers = item.triage_answers;
+    }
+    if (item.handoff_reason !== undefined) {
+      base.handoff_reason = item.handoff_reason;
+    }
     return base;
   });
 
   // ── Persist + advance ────────────────────────────────────────────────
   //
-  // Act-or-ask AO2c: pending clarify candidates take top routing priority
-  // — this branch sits BEFORE routeAfterDiagnostics (which is left
-  // untouched; the wizard task centralizes the routing later). No
-  // jeffBubble here: the concern_clarify transcript bubbles (chip-shown +
-  // tapped) are owned by the wizard task's card/submit surfaces (AO4).
+  // concern-triage INV-4 routing priority: triage-queue > clarify-queue >
+  // routeAfterDiagnostics. A pending triage entry (0-candidate, chip-eligible)
+  // outranks everything — the customer owes a broad-category tap before we can
+  // recommend or ask anything else. Then the clarify queue, then the normal
+  // rule. INV-8: routeAfterDiagnostics is passed the UNDECIDED rec count
+  // (recommended − prior approved − prior declined) so an all-decided re-run
+  // skips the approval card. No jeffBubble on the chip-card branches: those
+  // transcript bubbles are owned by the card/submit surfaces.
+  const undecidedRecCount = recommended_testing_services.filter(
+    (r) =>
+      !existingApproved.includes(r.service_key) &&
+      !existingDeclined.includes(r.service_key),
+  ).length;
   const { nextStep, jeffBubble } =
-    clarifyEntries.length > 0
-      ? { nextStep: CONCERN_CLARIFY_STEP, jeffBubble: undefined }
-      : routeAfterDiagnostics({
-          pending_count: pending.length,
-          recommendation_count: recommended_testing_services.length,
-        });
+    triageEntries.length > 0
+      ? { nextStep: CONCERN_TRIAGE_STEP, jeffBubble: undefined }
+      : clarifyEntries.length > 0
+        ? { nextStep: CONCERN_CLARIFY_STEP, jeffBubble: undefined }
+        : routeAfterDiagnostics({
+            pending_count: pending.length,
+            recommendation_count: undecidedRecCount,
+          });
 
   // Aggregate outcome telemetry — PLAN-02 Phase 2B (I-OBS-8): migrated FROM
   // Sentry.captureMessage('info') (creates a Sentry issue per call, which
@@ -930,6 +1271,10 @@ async function runDiagnosticsBody(
       recommendation_count: recommended_testing_services.length,
       pending_question_count: pending.length,
       clarify_concern_count: clarifyEntries.length,
+      // concern-triage INV-19: how many concerns are heading to the broad-
+      // category card this run (a spike in too_vague→triage after a prompt
+      // change is a regression signal).
+      triage_concern_count: triageEntries.length,
       per_concern: perConcernResults.map((r) => ({
         chip: r.item.service_key,
         skipped: r.skipped,
@@ -939,6 +1284,10 @@ async function runDiagnosticsBody(
         stage1_candidates: r.result?.stage1_candidates.join(",") ?? "",
         candidate_count: r.result?.stage1_candidates.length ?? 0,
         requires_clarification: r.result?.requires_clarification ?? false,
+        // concern-triage INV-19: the machine reason Stage 1 returned no
+        // candidate (drives the too_vague/no_catalog_fit distribution).
+        no_match_reason: r.result?.no_match_reason ?? null,
+        triaged: r.triage !== null,
         stage2_confidence: r.result?.stage2_confidence ?? null,
         stage3_confidence: r.result?.stage3_confidence ?? null,
         parsed_ok: r.result?.parsed_ok ?? null,
@@ -968,11 +1317,20 @@ async function runDiagnosticsBody(
       // precomputed per-candidate S2/S3 payloads). [] when every concern
       // resolved directly — also clears any stale prior value.
       concern_clarify_candidates: clarifyEntries,
+      // concern-triage INV-12: persisted per-concern triage entries (the
+      // rendered chip snapshot + server-resolved allowed_by_chip). [] when no
+      // concern needs the broad-category card — also clears any stale prior
+      // value so a resolved triage never re-shows.
+      concern_triage_state: triageEntries,
     },
     nextStep,
     jeffBubble,
   });
-  if (pending.length === 0 && clarifyEntries.length === 0) {
+  if (
+    pending.length === 0 &&
+    clarifyEntries.length === 0 &&
+    triageEntries.length === 0
+  ) {
     // Fire-and-forget? No — we want summaries persisted before the
     // customer reaches submit. Await it. Cost is one Haiku call per
     // concern (~500ms each, parallel) which is acceptable here since

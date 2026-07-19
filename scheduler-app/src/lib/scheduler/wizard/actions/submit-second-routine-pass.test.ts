@@ -125,6 +125,7 @@ interface ExplanationEntry {
   display_name: string;
   explanation_text: string;
   category: string | null;
+  concern_id?: string;
 }
 
 // ─── Suite ─────────────────────────────────────────────────────────────────
@@ -196,12 +197,19 @@ describe("submitSecondRoutinePassV2 — describe-another-issue branch (EH2)", ()
     expect(items).toHaveLength(2);
     expect(items[0]!.service_key).toBe("brake_inspection");
     expect(items[0]!.explanation_text).toBe("Squeaks");
-    expect(items[1]).toEqual({
+    // INV-13: the legacy survivor gets a concern_id minted on this write-back.
+    expect(typeof items[0]!.concern_id).toBe("string");
+    expect((items[0]!.concern_id as string).length).toBeGreaterThan(0);
+    // INV-13: the fresh other_issue concern is minted with its own stable id.
+    expect(items[1]).toMatchObject({
       service_key: "other_issue",
       display_name: "Other issue",
       explanation_text: "",
       category: null,
     });
+    expect(typeof items[1]!.concern_id).toBe("string");
+    // The two concerns have DISTINCT identities.
+    expect(items[0]!.concern_id).not.toBe(items[1]!.concern_id);
 
     // Diagnostic pass re-armed.
     expect(update?.diagnostic_processing_complete).toBe(false);
@@ -251,5 +259,51 @@ describe("submitSecondRoutinePassV2 — describe-another-issue branch (EH2)", ()
       describe_issue: true,
     });
     expect(result.ok).toBe(false);
+  });
+
+  it("preserves an existing concern's concern_id + triage fields on the append (INV-3/INV-13)", async () => {
+    sessionRow = {
+      selected_simple_services: [],
+      approved_testing_services: [],
+      explanation_required_items: [
+        {
+          concern_id: "keep-me-123",
+          service_key: "other_issue",
+          display_name: "Other issue",
+          explanation_text: "car feels weird",
+          category: null,
+          triage_round: 1,
+          triage_answers: {
+            allowed_service_keys: ["brake_inspection"],
+            chip_key: "brakes",
+            label: "The brakes",
+          },
+          handoff_reason: null,
+        },
+      ],
+    };
+
+    await submitSecondRoutinePassV2({
+      chatId: "sess-1",
+      added: [],
+      describe_issue: true,
+    });
+
+    const update = findSessionUpdate();
+    const items = update?.explanation_required_items as Array<
+      Record<string, unknown>
+    >;
+    expect(items).toHaveLength(2);
+    // The prior triaged concern keeps its identity + triage fields verbatim.
+    expect(items[0]!.concern_id).toBe("keep-me-123");
+    expect(items[0]!.triage_round).toBe(1);
+    expect(items[0]!.triage_answers).toEqual({
+      allowed_service_keys: ["brake_inspection"],
+      chip_key: "brakes",
+      label: "The brakes",
+    });
+    // The freshly-appended concern is distinct.
+    expect(items[1]!.service_key).toBe("other_issue");
+    expect(items[1]!.concern_id).not.toBe("keep-me-123");
   });
 });

@@ -110,6 +110,11 @@ const rpcCalls: RpcCall[] = [];
 // Per-test row snapshot returned by the FIRST select() on customer_chat_sessions.
 let storedRow: Record<string, unknown> | null = null;
 
+// concern-triage: rows returned by the concern_triage_chips select (the shop's
+// active chips). Default []: triage DISABLED (empty snapshot) so every existing
+// test's behavior is unchanged. The triage suite sets this per-test.
+let storedChips: unknown[] = [];
+
 function makeMockClient() {
   return {
     from(table: string) {
@@ -131,9 +136,14 @@ function makeMockClient() {
           chainCalls.push({ table, op: "select", match: [...eqs] });
           return { data: storedRow, error: null };
         },
-        // Bare thenable for awaited builder paths (routine_services).
+        // Bare thenable for awaited builder paths (routine_services +
+        // concern_triage_chips).
         async then(resolve: (v: { data: unknown; error: null }) => unknown) {
           chainCalls.push({ table, op: "select", match: [...eqs] });
+          // concern-triage: the chips lookup returns the per-test storedChips.
+          if (table === "concern_triage_chips") {
+            return resolve({ data: storedChips, error: null });
+          }
           // routine_services chip-hint lookup — return an empty array so
           // buildChipHint falls through to catalog lookup (still works
           // because catalog mock provides the testing-service category).
@@ -499,6 +509,7 @@ beforeEach(() => {
   chainCalls.length = 0;
   rpcCalls.length = 0;
   storedRow = null;
+  storedChips = [];
   createSupabaseAdminClientMock.mockClear();
   revalidatePathMock.mockClear();
   revalidateTagMock.mockClear();
@@ -817,6 +828,10 @@ describe("runDiagnosticsV2 — act-or-ask clarify path (AO2c)", () => {
       precomputed: {
         matched_subcategory_slug: "brake_squeal",
         unanswered_question_ids: [101],
+        // concern-triage B1 (INV-8): per-candidate S2/S3 confidence is now
+        // persisted into precomputed so submit-concern-clarify can gate at tap.
+        stage2_confidence: "high",
+        stage3_confidence: "high",
       },
     });
     expect(ac!.key).toBe("ac_diagnostic");
@@ -1427,5 +1442,288 @@ describe("runDiagnosticsV2 — selective re-diagnosis on describe-another-issue 
     expect(pending.map((p) => p.question_id)).toEqual([102, 201]);
     // Answered map still preserved.
     expect(update?.clarification_questions_answered).toEqual({ "101": "front" });
+  });
+});
+
+// ─── concern-triage (2026-07-19) ────────────────────────────────────────────
+//
+// When Stage 1 returns 0 candidates for a triage-eligible reason
+// (too_vague / no_catalog_fit) on a concern's first pass AND the shop has
+// usable chips, run-diagnostics builds a TriageEntry and routes to the
+// concern_triage broad-category card instead of the silent advisor handoff.
+// Uses the real (pure) wizard/triage.ts — only the DB + LLM are mocked.
+describe("runDiagnosticsV2 — concern-triage broad-category trigger", () => {
+  /** One active concern_triage_chips row. allowed_service_keys must resolve
+   *  to ACTIVE catalog testing services (makeCatalog has brake_inspection +
+   *  ac_diagnostic) or buildChipSnapshot hides the chip. */
+  function makeTriageChip(
+    overrides: Partial<{
+      chip_key: string;
+      display_label: string;
+      maps_to_categories: string[];
+      allowed_service_keys: string[];
+      sort: number;
+      active: boolean;
+      updated_at: string;
+    }> = {},
+  ) {
+    return {
+      chip_key: "brakes",
+      display_label: "The brakes",
+      maps_to_categories: ["brakes"],
+      allowed_service_keys: ["brake_inspection"],
+      sort: 1,
+      active: true,
+      updated_at: "2026-07-19T00:00:00Z",
+      ...overrides,
+    };
+  }
+
+  it("a 0-candidate too_vague concern routes to concern_triage and persists a TriageEntry", async () => {
+    storedChips = [makeTriageChip()];
+    storedRow = {
+      ...storedRow!,
+      explanation_required_items: [
+        {
+          service_key: "other_issue",
+          display_name: "Other Issue",
+          explanation_text: "The car feels weird.",
+          category: null,
+        },
+      ],
+    };
+    diagnoseConcernMock.mockResolvedValueOnce(
+      makeNullMatch({ no_match_reason: "too_vague" }),
+    );
+
+    const result = await runDiagnosticsV2({ chatId: "sess-1" });
+
+    expect(result).toEqual({ ok: true, next_step: "concern_triage" });
+
+    const update = findSessionUpdate();
+    expect(update?.current_step).toBe("concern_triage");
+    // NOT aggregated into recs / questions.
+    expect((update?.recommended_testing_services as unknown[]).length).toBe(0);
+    expect(
+      (update?.clarification_questions_pending as unknown[]).length,
+    ).toBe(0);
+
+    const triage = update?.concern_triage_state as Array<{
+      concern_id: string;
+      concern_index: number;
+      service_key: string;
+      concern_text: string;
+      chips: Array<{ chip_key: string; display_label: string }>;
+      allowed_by_chip: Record<string, string[]>;
+      triage_round: number;
+      created_version: string;
+    }>;
+    expect(triage).toHaveLength(1);
+    const entry = triage[0]!;
+    expect(entry.concern_index).toBe(0);
+    expect(entry.service_key).toBe("other_issue");
+    expect(entry.concern_text).toBe("The car feels weird.");
+    expect(entry.triage_round).toBe(0);
+    expect(entry.chips).toEqual([
+      { chip_key: "brakes", display_label: "The brakes" },
+    ]);
+    expect(entry.allowed_by_chip).toEqual({ brakes: ["brake_inspection"] });
+    expect(entry.created_version).toBe("2026-07-19T00:00:00Z");
+    expect(typeof entry.concern_id).toBe("string");
+    expect(entry.concern_id.length).toBeGreaterThan(0);
+
+    // INV-13: the explanation item gets the SAME minted concern_id as the
+    // triage entry (the join key the tap resolves against).
+    const items = update?.explanation_required_items as Array<{
+      concern_id: string;
+    }>;
+    expect(items[0]!.concern_id).toBe(entry.concern_id);
+
+    // Summaries deferred while a triage tap is owed.
+    expect(ensureConcernSummariesMock).not.toHaveBeenCalled();
+  });
+
+  it("empty chip snapshot → triage never fires (advisor handoff as today)", async () => {
+    // Default storedChips = [] → no usable triage config (INV-18 fallback).
+    storedRow = {
+      ...storedRow!,
+      explanation_required_items: [
+        {
+          service_key: "other_issue",
+          display_name: "Other Issue",
+          explanation_text: "The car feels weird.",
+          category: null,
+        },
+      ],
+    };
+    diagnoseConcernMock.mockResolvedValueOnce(
+      makeNullMatch({ no_match_reason: "too_vague" }),
+    );
+
+    const result = await runDiagnosticsV2({ chatId: "sess-1" });
+
+    // No triage → the null-match advisor path exactly as before.
+    expect(result).toEqual({ ok: true, next_step: "second_routine_pass" });
+    const update = findSessionUpdate();
+    expect((update?.concern_triage_state as unknown[]).length).toBe(0);
+    // Advisor path still fires summaries (pending empty, no triage/clarify).
+    expect(ensureConcernSummariesMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("a non-triage-eligible reason (non_concern_request) never triages even with chips present", async () => {
+    storedChips = [makeTriageChip()];
+    storedRow = {
+      ...storedRow!,
+      explanation_required_items: [
+        {
+          service_key: "other_issue",
+          display_name: "Other Issue",
+          explanation_text: "oil change",
+          category: null,
+        },
+      ],
+    };
+    diagnoseConcernMock.mockResolvedValueOnce(
+      makeNullMatch({ no_match_reason: "non_concern_request" }),
+    );
+
+    const result = await runDiagnosticsV2({ chatId: "sess-1" });
+
+    expect(result).toEqual({ ok: true, next_step: "second_routine_pass" });
+    const update = findSessionUpdate();
+    expect((update?.concern_triage_state as unknown[]).length).toBe(0);
+  });
+
+  it("a triage-answered item drives a CONSTRAINED re-diagnosis (category_constraint passed to diagnoseConcern)", async () => {
+    const constraint = {
+      allowed_service_keys: ["brake_inspection"],
+      chip_key: "brakes",
+      label: "The brakes",
+    };
+    storedRow = {
+      ...storedRow!,
+      explanation_required_items: [
+        {
+          service_key: "other_issue",
+          display_name: "Other Issue",
+          explanation_text: "The car feels weird.",
+          category: null,
+          concern_id: "c0",
+          triage_round: 1,
+          triage_answers: constraint,
+          // No unanswered_question_ids → NOT already-diagnosed → re-diagnosed.
+        },
+      ],
+    };
+    // The constrained re-run resolves to a concrete service (1 candidate) →
+    // NOT triaged again (round 1 caps it anyway).
+    diagnoseConcernMock.mockResolvedValueOnce(
+      makeServiceMatch({ unanswered_question_ids: [] }),
+    );
+
+    const result = await runDiagnosticsV2({ chatId: "sess-1" });
+
+    expect(diagnoseConcernMock).toHaveBeenCalledTimes(1);
+    const callArgs = diagnoseConcernMock.mock.calls[0]![0] as {
+      category_constraint: unknown;
+    };
+    expect(callArgs.category_constraint).toEqual(constraint);
+    // Resolved to a service → normal downstream routing, no re-triage.
+    expect(result).toEqual({
+      ok: true,
+      next_step: "testing_service_approval",
+    });
+    const update = findSessionUpdate();
+    expect((update?.concern_triage_state as unknown[]).length).toBe(0);
+    // The item's triage_round + triage_answers survive the write-back (INV-3).
+    const items = update?.explanation_required_items as Array<{
+      concern_id: string;
+      triage_round: number;
+      triage_answers: unknown;
+    }>;
+    expect(items[0]!.concern_id).toBe("c0");
+    expect(items[0]!.triage_round).toBe(1);
+    expect(items[0]!.triage_answers).toEqual(constraint);
+  });
+
+  it("INV-2 carry-forward: a skipped concern's pending clarify entry survives a triage re-run", async () => {
+    // concern0: triage-answered → re-diagnosed under the constraint (NOT
+    // skipped — no unanswered_question_ids). concern1: already-diagnosed
+    // (unanswered_question_ids=[] + text → SKIPPED) AND still carries a
+    // pending clarify entry. The re-run must NOT wipe concern1's clarify
+    // entry when it rebuilds the queues from concern0 alone.
+    storedRow = {
+      id: "sess-1",
+      explanation_required_items: [
+        {
+          service_key: "other_issue",
+          display_name: "Other Issue",
+          explanation_text: "The car feels weird.",
+          category: null,
+          concern_id: "c0",
+          triage_round: 1,
+          triage_answers: {
+            allowed_service_keys: ["brake_inspection"],
+            chip_key: "brakes",
+            label: "The brakes",
+          },
+        },
+        {
+          service_key: "ac_problem",
+          display_name: "AC issue",
+          explanation_text: "AC blows warm and squeals.",
+          category: "ac",
+          concern_id: "c1",
+          unanswered_question_ids: [],
+        },
+      ],
+      new_vehicle_info: null,
+      diagnostic_processing_complete: false,
+      clarification_questions_pending: [],
+      clarification_questions_answered: {},
+      recommended_testing_services: [],
+      concern_clarify_candidates: [
+        {
+          concern_index: 1,
+          service_key: "ac_problem",
+          display_name: "AC issue",
+          concern_text: "AC blows warm and squeals.",
+          candidates: [
+            {
+              key: "ac_diagnostic",
+              kind: "testing_service",
+              display_name: "AC Diagnostic",
+              starting_price_cents: 9900,
+              description: "We diagnose the A/C.",
+              precomputed: {
+                matched_subcategory_slug: "ac_no_cool",
+                unanswered_question_ids: [201],
+              },
+            },
+          ],
+        },
+      ],
+    };
+    // Only concern0 (non-skipped) hits the LLM; it resolves to a service.
+    diagnoseConcernMock.mockResolvedValueOnce(
+      makeServiceMatch({ unanswered_question_ids: [] }),
+    );
+
+    const result = await runDiagnosticsV2({ chatId: "sess-1" });
+
+    // Only ONE LLM call — concern1 was skipped.
+    expect(diagnoseConcernMock).toHaveBeenCalledTimes(1);
+    // Clarify queue non-empty → routes to the clarify card (INV-4).
+    expect(result).toEqual({ ok: true, next_step: "concern_clarify" });
+
+    const update = findSessionUpdate();
+    // concern1's pending clarify entry is PRESERVED (carried forward).
+    const clarify = update?.concern_clarify_candidates as Array<{
+      concern_index: number;
+      service_key: string;
+    }>;
+    expect(clarify).toHaveLength(1);
+    expect(clarify[0]!.concern_index).toBe(1);
+    expect(clarify[0]!.service_key).toBe("ac_problem");
   });
 });

@@ -383,10 +383,76 @@ describe("smart merge — recommendations + declined pruning", () => {
   });
 });
 
-describe("smart merge — off (normal forward flow)", () => {
-  it("edit_return_step null → wholesale reset (diagnostic_processing_complete=false)", async () => {
+describe("non-hub resubmit WITH prior work — forward-merge (D3/INV-7)", () => {
+  it("edit_return_step null + prior brake work → PRESERVES work, routes forward (NOT wholesale wipe, NOT hub)", async () => {
+    // The D3 live bug: a plain Back-to-picker re-submit used to wholesale-wipe
+    // the customer's explanations/summaries/recs. INV-7 splits DATA (always
+    // preserve) from ROUTING (forward, never the hub for a fresh customer).
     sessionRowResult = {
       data: baseHubRow({ edit_return_step: null }),
+      error: null,
+    };
+
+    await submitServiceAndConcernPickerV2({
+      chatId: CHAT_ID,
+      picks: ["oil_change", "brake_inspection"],
+    });
+
+    expect(awtCalls).toHaveLength(1);
+    const call = awtCalls[0]!;
+    // Data preserved — the survivor's answered map is NOT cleared.
+    expect(call.updates!.clarification_questions_answered).toEqual({
+      "11": "yes",
+      "12": "no",
+    });
+    const items = call.updates!
+      .explanation_required_items as Array<Record<string, unknown>>;
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      service_key: "brake_inspection",
+      explanation_text: "grinding when I stop",
+    });
+    // All concerns explained → idempotent diagnostics re-route (NOT the hub).
+    expect(call.nextStep).toBe("diagnostic_loading");
+    // Not re-armed — the preserved diagnostic state stays intact.
+    expect(call.updates).not.toHaveProperty("diagnostic_processing_complete");
+  });
+
+  it("non-hub resubmit that ADDS an unexplained concern → concern_explanation, work preserved", async () => {
+    sessionRowResult = {
+      data: baseHubRow({ edit_return_step: null }),
+      error: null,
+    };
+
+    await submitServiceAndConcernPickerV2({
+      chatId: CHAT_ID,
+      picks: ["oil_change", "brake_inspection", "check_battery"],
+    });
+
+    const call = awtCalls[0]!;
+    expect(call.nextStep).toBe("concern_explanation");
+    expect(call.updates!.diagnostic_processing_complete).toBe(false);
+    // The surviving brake concern keeps its work (no wholesale wipe).
+    const items = call.updates!
+      .explanation_required_items as Array<Record<string, unknown>>;
+    const brake = items.find((i) => i.service_key === "brake_inspection");
+    expect(brake).toMatchObject({ explanation_text: "grinding when I stop" });
+    // Non-hub resubmit does NOT stamp the hub "Update my services" user bubble.
+    expect(call.userBubble).toBeUndefined();
+  });
+});
+
+describe("genuinely-fresh pick (no prior work) — wholesale reset + INV-2", () => {
+  it("no prior explanation items/recs → wholesale reset, clears BOTH queues, mints concern_id", async () => {
+    // A fresh customer: edit_return_step null, no prior concerns, no recs.
+    sessionRowResult = {
+      data: baseHubRow({
+        edit_return_step: null,
+        explanation_required_items: [],
+        recommended_testing_services: [],
+        clarification_questions_answered: {},
+        diagnostic_processing_complete: false,
+      }),
       error: null,
     };
 
@@ -400,7 +466,37 @@ describe("smart merge — off (normal forward flow)", () => {
     expect(call.updates!.diagnostic_processing_complete).toBe(false);
     expect(call.updates!.clarification_questions_answered).toEqual({});
     expect(call.updates!.recommended_testing_services).toEqual([]);
+    // INV-2: a fresh pick clears BOTH diagnostic-loop queues.
+    expect(call.updates!.concern_clarify_candidates).toEqual([]);
+    expect(call.updates!.concern_triage_state).toEqual([]);
     // brake_inspection requires explanation → concern_explanation.
     expect(call.nextStep).toBe("concern_explanation");
+    // INV-13: the new concern is minted with a stable concern_id.
+    const items = call.updates!
+      .explanation_required_items as Array<Record<string, unknown>>;
+    expect(items).toHaveLength(1);
+    expect(typeof items[0]!.concern_id).toBe("string");
+    expect((items[0]!.concern_id as string).length).toBeGreaterThan(0);
+  });
+});
+
+describe("hub merge — legacy survivor gets a concern_id minted (INV-13)", () => {
+  it("BRAKE_ENTRY (no concern_id) is minted one on the hub write-back", async () => {
+    // baseHubRow's BRAKE_ENTRY predates concern_id.
+    await submitServiceAndConcernPickerV2({
+      chatId: CHAT_ID,
+      picks: ["oil_change", "brake_inspection"],
+    });
+
+    const call = awtCalls[0]!;
+    const items = call.updates!
+      .explanation_required_items as Array<Record<string, unknown>>;
+    expect(items).toHaveLength(1);
+    expect(typeof items[0]!.concern_id).toBe("string");
+    // Work is still preserved verbatim alongside the minted id.
+    expect(items[0]).toMatchObject({
+      service_key: "brake_inspection",
+      explanation_text: "grinding when I stop",
+    });
   });
 });

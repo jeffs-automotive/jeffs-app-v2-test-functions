@@ -536,6 +536,45 @@ export type Database = {
         }
         Relationships: []
       }
+      concern_triage_chips: {
+        Row: {
+          active: boolean
+          allowed_service_keys: string[]
+          chip_key: string
+          created_at: string
+          display_label: string
+          id: string
+          maps_to_categories: string[]
+          shop_id: number
+          sort: number
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          allowed_service_keys?: string[]
+          chip_key: string
+          created_at?: string
+          display_label: string
+          id?: string
+          maps_to_categories?: string[]
+          shop_id: number
+          sort?: number
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          allowed_service_keys?: string[]
+          chip_key?: string
+          created_at?: string
+          display_label?: string
+          id?: string
+          maps_to_categories?: string[]
+          shop_id?: number
+          sort?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       customer_chat_messages: {
         Row: {
           created_at: string
@@ -588,6 +627,7 @@ export type Database = {
           clarification_questions_pending: Json | null
           completed_at: string | null
           concern_clarify_candidates: Json | null
+          concern_triage_state: Json | null
           cookie_session: string | null
           current_step: string | null
           customer_id: number | null
@@ -651,6 +691,7 @@ export type Database = {
           clarification_questions_pending?: Json | null
           completed_at?: string | null
           concern_clarify_candidates?: Json | null
+          concern_triage_state?: Json | null
           cookie_session?: string | null
           current_step?: string | null
           customer_id?: number | null
@@ -714,6 +755,7 @@ export type Database = {
           clarification_questions_pending?: Json | null
           completed_at?: string | null
           concern_clarify_candidates?: Json | null
+          concern_triage_state?: Json | null
           cookie_session?: string | null
           current_step?: string | null
           customer_id?: number | null

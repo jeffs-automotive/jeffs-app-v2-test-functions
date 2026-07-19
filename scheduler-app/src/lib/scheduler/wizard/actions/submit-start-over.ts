@@ -120,6 +120,13 @@ async function submitStartOverV2Impl(
         recommended_testing_services: null,
         approved_testing_services: null,
         declined_testing_services: null,
+        // concern-triage (INV-2 full reset): a Start Over is the hard reset —
+        // wipe BOTH diagnostic-loop queues so no vague-concern triage entry or
+        // pending clarify candidate bleeds into the fresh session. (The
+        // per-concern triage_round / triage_answers / handoff_reason metadata
+        // lives inside explanation_required_items, which is nulled above.)
+        concern_clarify_candidates: null,
+        concern_triage_state: null,
         additional_routine_services_round2: null,
         appointment_type: null,
         appointment_date: null,

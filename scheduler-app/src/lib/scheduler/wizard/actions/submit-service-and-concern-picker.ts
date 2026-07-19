@@ -33,6 +33,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
 import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
+import type { TriageConstraint } from "@/lib/scheduler/wizard/triage";
 // P2.8 (2026-05-25): single source of truth for SHOP_ID.
 import { SHOP_ID } from "@/lib/scheduler/shop-config";
 
@@ -82,6 +83,17 @@ interface ExplanationEntry {
   category: string | null;
   unanswered_question_ids?: number[];
   summary?: string;
+  /** INV-13 stable identity — minted here at creation, threaded through every
+   *  parser/merge/write-back, and used (never array index / the non-unique
+   *  other_issue service_key) as the join key for D2 summaries, the INV-8
+   *  approve/decline sets, and INV-2 carry-forward. */
+  concern_id?: string;
+  /** INV-3 triage fields — must survive this parser + the smart merge so a
+   *  vague concern's constrained-re-diagnosis constraint (triage_answers) and
+   *  its one-round cap (triage_round) aren't dropped on a services edit. */
+  triage_round?: number;
+  triage_answers?: TriageConstraint | null;
+  handoff_reason?: string | null;
 }
 
 /** A recommended-testing-service entry as persisted by run-diagnostics. */
@@ -121,9 +133,36 @@ function parseExistingExplanationItems(raw: unknown): ExplanationEntry[] {
     if (typeof e.summary === "string" && e.summary.length > 0) {
       item.summary = e.summary;
     }
+    preserveTriageFields(e, item);
     out.push(item);
   }
   return out;
+}
+
+/** Preserve the INV-13/INV-3 identity + triage fields verbatim onto `item`.
+ *  Dropping any of these silently degrades the triage feature (constraint
+ *  lost → the constrained re-diagnosis becomes an unconstrained re-run;
+ *  triage_round lost → the one-round cap resets). */
+function preserveTriageFields(
+  e: Record<string, unknown>,
+  item: ExplanationEntry,
+): void {
+  if (typeof e.concern_id === "string" && e.concern_id.length > 0) {
+    item.concern_id = e.concern_id;
+  }
+  if (typeof e.triage_round === "number") {
+    item.triage_round = e.triage_round;
+  }
+  if (e.triage_answers && typeof e.triage_answers === "object") {
+    item.triage_answers = e.triage_answers as TriageConstraint;
+  } else if (e.triage_answers === null) {
+    item.triage_answers = null;
+  }
+  if (typeof e.handoff_reason === "string") {
+    item.handoff_reason = e.handoff_reason;
+  } else if (e.handoff_reason === null) {
+    item.handoff_reason = null;
+  }
 }
 
 function parseExistingRecommended(raw: unknown): RecommendedEntry[] {
@@ -245,12 +284,9 @@ async function submitServiceAndConcernPickerV2Impl(
 
     const simpleServices: string[] = [];
     const approvedTesting: string[] = [];
-    const explanationItems: Array<{
-      service_key: string;
-      display_name: string;
-      explanation_text: string;
-      category: string | null;
-    }> = [];
+    // Each entry is minted with a stable concern_id at creation (INV-13). The
+    // smart merge preserves survivors' ids; a brand-new pick keeps this one.
+    const explanationItems: ExplanationEntry[] = [];
 
     const unknownPicks: string[] = [];
 
@@ -261,6 +297,7 @@ async function submitServiceAndConcernPickerV2Impl(
       // free-text description in the next step.
       if (key === OTHER_ISSUE_SERVICE_KEY) {
         explanationItems.push({
+          concern_id: crypto.randomUUID(),
           service_key: OTHER_ISSUE_SERVICE_KEY,
           display_name: OTHER_ISSUE_DISPLAY_NAME,
           explanation_text: "",
@@ -272,6 +309,7 @@ async function submitServiceAndConcernPickerV2Impl(
       if (routine) {
         if (routine.requires_explanation) {
           explanationItems.push({
+            concern_id: crypto.randomUUID(),
             service_key: routine.service_key,
             display_name: routine.display_name,
             explanation_text: "",
@@ -289,6 +327,7 @@ async function submitServiceAndConcernPickerV2Impl(
       if (testing) {
         approvedTesting.push(testing.service_key);
         explanationItems.push({
+          concern_id: crypto.randomUUID(),
           service_key: testing.service_key,
           display_name: testing.display_name,
           explanation_text: "",
@@ -309,35 +348,54 @@ async function submitServiceAndConcernPickerV2Impl(
       });
     }
 
-    // ── SMART MERGE (summary edit hub, task EH1) ─────────────────────────
-    // When this submit is an EDIT reached from the hub, do NOT wipe the
-    // customer's diagnostic work. Concern entries whose service_key survives
-    // KEEP their explanation_text / unanswered_question_ids / summary; removed
-    // keys drop; brand-new picks get the normal empty-entry treatment. See
-    // docs/scheduler/summary-edit-hub-plan.md §C + the Decisions-during-
-    // implement note.
-    if (fromHub) {
+    // ── SMART MERGE — data preservation on EVERY resubmit (D3 / INV-7) ────
+    // Split the old behavior into DATA (always preserve) vs ROUTING (mode).
+    // A resubmit over prior diagnostic work must NEVER wholesale-wipe it — the
+    // old code only preserved on the hub edit path, so a plain Back-to-picker
+    // re-submit wiped the customer's explanations, summaries, and recs (the D3
+    // live bug). We now run the merge whenever there IS prior work, and only
+    // the ROUTING differs:
+    //   - fromHub   → summary_edit_hub (the existing edit-return bubbles)
+    //   - non-hub resubmit with prior work → route FORWARD (concern_explanation
+    //     if an unexplained item exists, else the idempotent diagnostics
+    //     re-route / appointment_type) — a fresh customer must NEVER land on
+    //     the summary_edit_hub.
+    // See docs/scheduler/concern-triage-and-unsure-path-plan.md INV-7 + the
+    // summary-edit-hub-plan.md §C note.
+    const existingExplanation = parseExistingExplanationItems(
+      sessionRow?.explanation_required_items,
+    );
+    const existingAnswered = parseExistingAnswered(
+      sessionRow?.clarification_questions_answered,
+    );
+    const existingRecommended = parseExistingRecommended(
+      sessionRow?.recommended_testing_services,
+    );
+    const existingDeclined = Array.isArray(sessionRow?.declined_testing_services)
+      ? (sessionRow?.declined_testing_services as string[])
+      : [];
+
+    // "Prior work" = the customer has already been through the diagnostic loop
+    // at least once (there are concern entries or recommendations to preserve).
+    // A genuinely-fresh simple-only pick has neither → today's wholesale path.
+    const hasPriorWork =
+      existingExplanation.length > 0 || existingRecommended.length > 0;
+
+    if (fromHub || hasPriorWork) {
       return await applyMerge({
         chatId,
-        supabase,
+        mode: fromHub ? "hub" : "forward",
         newSimpleServices: simpleServices,
         newApprovedTesting: approvedTesting,
         newExplanationItems: explanationItems,
-        existingExplanation: parseExistingExplanationItems(
-          sessionRow?.explanation_required_items,
-        ),
-        existingAnswered: parseExistingAnswered(
-          sessionRow?.clarification_questions_answered,
-        ),
-        existingRecommended: parseExistingRecommended(
-          sessionRow?.recommended_testing_services,
-        ),
-        existingDeclined: Array.isArray(sessionRow?.declined_testing_services)
-          ? (sessionRow?.declined_testing_services as string[])
-          : [],
+        existingExplanation,
+        existingAnswered,
+        existingRecommended,
+        existingDeclined,
       });
     }
 
+    // ── Genuinely-fresh pick (no prior diagnostic work) ──────────────────
     const nextStep = explanationItems.length > 0
       ? ("concern_explanation" as const)
       : ("appointment_type" as const);
@@ -364,6 +422,11 @@ async function submitServiceAndConcernPickerV2Impl(
         // next runDiagnostics will repopulate these atomically.
         recommended_testing_services: [],
         declined_testing_services: [],
+        // INV-2: a genuinely-fresh pick also clears BOTH diagnostic-loop
+        // queues so no stale clarify candidate or vague-concern triage entry
+        // (from a prior Start-Over-less re-entry) survives into the new run.
+        concern_clarify_candidates: [],
+        concern_triage_state: [],
       },
       nextStep,
       jeffBubble,
@@ -384,7 +447,11 @@ async function submitServiceAndConcernPickerV2Impl(
 
 interface ApplyMergeArgs {
   chatId: string;
-  supabase: ReturnType<typeof createSupabaseAdminClient>;
+  /** ROUTING mode (D3 / INV-7). "hub": the edit reached from summary_edit_hub
+   *  returns there (no new concerns) or forward (new concerns). "forward": a
+   *  non-hub resubmit over prior work always routes forward — a fresh customer
+   *  must never land on the hub. DATA preservation is identical either way. */
+  mode: "hub" | "forward";
   /** The freshly-split picks for this resubmit. */
   newSimpleServices: string[];
   newApprovedTesting: string[];
@@ -410,6 +477,7 @@ async function applyMerge(
 ): Promise<WizardTransitionResult> {
   const {
     chatId,
+    mode,
     newSimpleServices,
     newApprovedTesting,
     newExplanationItems,
@@ -434,16 +502,23 @@ async function applyMerge(
     const queue = existingByKey.get(pick.service_key);
     const survivor = queue && queue.length > 0 ? queue.shift() : undefined;
     if (survivor) {
-      // Surviving concern — keep its diagnostic work verbatim (the new
-      // pick's empty explanation_text/category are discarded in favor of
-      // the survivor's populated ones).
-      mergedExplanation.push(survivor);
+      // Surviving concern — keep its diagnostic work verbatim, INCLUDING its
+      // concern_id + triage fields (INV-13/INV-3). A legacy survivor with no
+      // concern_id gets one minted on this write-back (never on a pure read),
+      // so downstream identity joins are stable going forward. The new pick's
+      // empty explanation_text/category are discarded for the populated ones.
+      mergedExplanation.push(
+        survivor.concern_id
+          ? survivor
+          : { ...survivor, concern_id: crypto.randomUUID() },
+      );
       // A survivor still counts as "unexplained" (needs the explanation
       // step) if its explanation_text is empty — e.g. the customer added
       // it last time but bailed before typing anything.
       if (!survivor.explanation_text) hasNewOrUnexplained = true;
     } else {
-      // Brand-new concern — normal empty-entry treatment.
+      // Brand-new concern — normal empty-entry treatment (already minted a
+      // concern_id at split time).
       mergedExplanation.push(pick);
       hasNewOrUnexplained = true;
     }
@@ -490,55 +565,81 @@ async function applyMerge(
     survivingRecKeys.has(k),
   );
 
-  // Decision (#8 landing): only re-run diagnostics when new/unexplained
-  // concerns exist. Otherwise the diagnostic state is fully intact — go
-  // straight back to the hub, no re-diagnosis. When new concerns DO exist
-  // the customer walks the normal concern_explanation → diagnostics →
-  // approval flow forward; edit_return_step STAYS set (only the slot flow's
-  // landing on summary / hub "done" / start-over clears it), so the new
-  // concern legitimately continues forward to summary via the appointment
-  // steps. See the plan's Decisions-during-implement note.
+  // The preserved data payload is identical across routing modes (D3/INV-7:
+  // DATA preservation is decoupled from ROUTING).
+  const preservedData = {
+    selected_simple_services: newSimpleServices,
+    approved_testing_services: mergedApproved,
+    explanation_required_items: mergedExplanation,
+    clarification_questions_answered: mergedAnswered,
+    recommended_testing_services: mergedRecommended,
+    declined_testing_services: mergedDeclined,
+  };
+
+  // ── ROUTING: no new/unexplained concerns (diagnostic state fully intact) ──
   if (!hasNewOrUnexplained) {
+    if (mode === "hub") {
+      // Hub edit path: straight back to the hub, no re-diagnosis.
+      // diagnostic_processing_complete stays true;
+      // clarification_questions_pending is already drained. edit_return_step
+      // STAYS set (only the slot flow / hub "done" / start-over clears it).
+      return applyWizardTransition({
+        chatId,
+        updates: preservedData,
+        nextStep: "summary_edit_hub",
+        userBubble: "Update my services",
+        jeffBubble: "Updated your services. ✅",
+      });
+    }
+    // Forward (non-hub resubmit) with all concerns explained → re-enter the
+    // diagnostics loading step so run-diagnostics' idempotent early-exit
+    // re-routes to clarify/triage/approval from the PRESERVED state (INV-4
+    // site 2). diagnostic_processing_complete is left untouched (stays true).
+    if (mergedExplanation.length > 0) {
+      return applyWizardTransition({
+        chatId,
+        updates: preservedData,
+        nextStep: "diagnostic_loading",
+        jeffBubble: "Let me pull your details back up. 🔎",
+      });
+    }
+    // Forward with no concern entries at all (simple-only merged set) →
+    // straight to scheduling.
     return applyWizardTransition({
       chatId,
-      updates: {
-        selected_simple_services: newSimpleServices,
-        approved_testing_services: mergedApproved,
-        explanation_required_items: mergedExplanation,
-        clarification_questions_answered: mergedAnswered,
-        recommended_testing_services: mergedRecommended,
-        declined_testing_services: mergedDeclined,
-        // Untouched: diagnostic_processing_complete stays true (no
-        // re-diagnosis). clarification_questions_pending is already drained.
-      },
-      nextStep: "summary_edit_hub",
-      userBubble: "Update my services",
-      jeffBubble: "Updated your services. ✅",
+      updates: preservedData,
+      nextStep: "appointment_type",
+      jeffBubble: "Got it — let me check the schedule! 📅",
     });
   }
 
-  // New / unexplained concerns exist → re-run the explanation + diagnostic
-  // flow. Reset diagnostic_processing_complete so run-diagnostics does the
-  // work; keep the pruned answered map + surviving recs (run-diagnostics
-  // re-derives pending questions + recs, but preserving them avoids a
-  // flicker for the surviving concerns). clarification_questions_pending is
-  // cleared so the queue rebuilds cleanly.
+  // ── ROUTING: new / unexplained concerns exist → re-run the explanation +
+  // diagnostic flow (both modes). Reset diagnostic_processing_complete so
+  // run-diagnostics does the work; keep the pruned answered map + surviving
+  // recs (run-diagnostics re-derives pending + recs, but preserving them
+  // avoids a flicker for surviving concerns). clarification_questions_pending
+  // is cleared so the queue rebuilds cleanly.
+  const forwardUpdates = {
+    ...preservedData,
+    diagnostic_processing_complete: false,
+    clarification_questions_pending: [],
+  };
+  if (mode === "hub") {
+    return applyWizardTransition({
+      chatId,
+      updates: forwardUpdates,
+      nextStep: "concern_explanation",
+      userBubble: "Update my services",
+      jeffBubble:
+        "Got it — tell me a little about the new one and I'll match up what we should test. 🤔",
+    });
+  }
   return applyWizardTransition({
     chatId,
-    updates: {
-      selected_simple_services: newSimpleServices,
-      approved_testing_services: mergedApproved,
-      explanation_required_items: mergedExplanation,
-      diagnostic_processing_complete: false,
-      clarification_questions_pending: [],
-      clarification_questions_answered: mergedAnswered,
-      recommended_testing_services: mergedRecommended,
-      declined_testing_services: mergedDeclined,
-    },
+    updates: forwardUpdates,
     nextStep: "concern_explanation",
-    userBubble: "Update my services",
     jeffBubble:
-      "Got it — tell me a little about the new one and I'll match up what we should test. 🤔",
+      "Tell me a little about each one and I'll match up what we should test. 🤔",
   });
 }
 

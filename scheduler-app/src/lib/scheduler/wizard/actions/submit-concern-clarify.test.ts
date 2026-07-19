@@ -171,6 +171,17 @@ function makeCatalog(): DiagnosticCatalog {
         multi_select: false,
         required_facts: ["location_axle"],
       },
+      {
+        id: 102,
+        question_text: "How long has it squealed?",
+        options: [
+          { label: "Days", value: "days" },
+          { label: "Weeks", value: "weeks" },
+        ],
+        display_order: 2,
+        multi_select: false,
+        required_facts: ["duration"],
+      },
     ],
   };
   const acSub = {
@@ -220,7 +231,19 @@ function makeCatalog(): DiagnosticCatalog {
         kind: "other_subcategory",
         subcategory_slug: "noise_other",
         display_label: "Other noise",
-        questions: [],
+        questions: [
+          {
+            id: 301,
+            question_text: "When does the noise happen?",
+            options: [
+              { label: "At idle", value: "idle" },
+              { label: "While driving", value: "driving" },
+            ],
+            display_order: 1,
+            multi_select: false,
+            required_facts: [],
+          },
+        ],
       },
     ],
   };
@@ -492,7 +515,7 @@ describe("submitConcernClarifyV2 — chosen testing_service candidate", () => {
 });
 
 describe("submitConcernClarifyV2 — soft advisor branches", () => {
-  it("chosen other_subcategory candidate → no rec, no questions, second_routine_pass", async () => {
+  it("chosen other_subcategory candidate with NO precomputed questions → no rec, no questions, second_routine_pass", async () => {
     storedRow = baseRow({
       concern_clarify_candidates: [
         makeClarifyEntry({
@@ -531,17 +554,82 @@ describe("submitConcernClarifyV2 — soft advisor branches", () => {
 
     expect(result).toEqual({ ok: true, next_step: "second_routine_pass" });
     const update = findSessionUpdate();
+    // No fee-bearing recommendation for an other_subcategory pick.
     expect((update?.recommended_testing_services as unknown[]).length).toBe(0);
+    // Empty precomputed set → nothing hydrated.
     expect((update?.clarification_questions_pending as unknown[]).length).toBe(
       0,
     );
-    // No catalog load needed for the other_subcategory branch.
-    expect(loadDiagnosticCatalogMock).not.toHaveBeenCalled();
     // Drained + no questions → summaries fire.
     expect(ensureConcernSummariesMock).toHaveBeenCalledTimes(1);
     // User bubble is the tapped candidate name.
     const rpc = rpcCalls.find((c) => c.fn === "apply_wizard_transition")!;
     expect(rpc.args.p_user_bubble_text).toBe("Other noise");
+  });
+
+  it("B3: chosen other_subcategory candidate WITH precomputed questions → hydrates them (no rec), routes clarification_question", async () => {
+    storedRow = baseRow({
+      concern_clarify_candidates: [
+        makeClarifyEntry({
+          candidates: [
+            {
+              key: "noise_other",
+              kind: "other_subcategory",
+              display_name: "Other noise",
+              starting_price_cents: null,
+              description: null,
+              precomputed: {
+                // The ids were ALREADY persisted; the pre-B3 code dropped them.
+                matched_subcategory_slug: "noise_other",
+                unanswered_question_ids: [301],
+              },
+            },
+            {
+              key: "brake_inspection",
+              kind: "testing_service",
+              display_name: "Brake Inspection",
+              starting_price_cents: 4900,
+              description: "We inspect your brakes.",
+              precomputed: {
+                matched_subcategory_slug: "brake_squeal",
+                unanswered_question_ids: [101],
+              },
+            },
+          ],
+        }),
+      ],
+    });
+
+    const result = await submitConcernClarifyV2({
+      chatId: "sess-1",
+      chosen_key: "noise_other",
+    });
+
+    expect(result).toEqual({ ok: true, next_step: "clarification_question" });
+    const update = findSessionUpdate();
+    // No recommendation (other_subcategory carries no testing service).
+    expect((update?.recommended_testing_services as unknown[]).length).toBe(0);
+    // B3: the precomputed question 301 is hydrated from the catalog.
+    const pending = update?.clarification_questions_pending as Array<{
+      question_id: number;
+      question_text: string;
+      service_key: string;
+      subcategory_slug: string;
+      category: string;
+    }>;
+    expect(pending).toHaveLength(1);
+    expect(pending[0]!.question_id).toBe(301);
+    expect(pending[0]!.question_text).toBe("When does the noise happen?");
+    expect(pending[0]!.subcategory_slug).toBe("noise_other");
+    // 'other' subcategories carry the 'other' parent category.
+    expect(pending[0]!.category).toBe("other");
+    // The concern item is annotated with the queued id.
+    const items = update?.explanation_required_items as Array<{
+      unanswered_question_ids?: number[];
+    }>;
+    expect(items[0]!.unanswered_question_ids).toEqual([301]);
+    // Questions pending → summaries deferred.
+    expect(ensureConcernSummariesMock).not.toHaveBeenCalled();
   });
 
   it("none-of-these (chosen_key null) → no rec, no questions, second_routine_pass, 'None of these' bubble", async () => {
@@ -666,5 +754,259 @@ describe("submitConcernClarifyV2 — audit", () => {
     expect(detail.chosen_key).toBe("brake_inspection");
     expect(detail.candidate_keys).toEqual(["brake_inspection", "ac_diagnostic"]);
     expect(detail.concern_index).toBe(0);
+  });
+});
+
+// ─── B1 — confidence gate at tap ─────────────────────────────────────────────
+
+/** A single-testing-service clarify entry whose brake candidate carries the
+ *  given per-candidate confidence values. */
+function brakeEntryWithConfidence(
+  s2: "high" | "medium" | "low" | undefined,
+  s3: "high" | "medium" | "low" | undefined,
+): Record<string, unknown> {
+  return makeClarifyEntry({
+    candidates: [
+      {
+        key: "brake_inspection",
+        kind: "testing_service",
+        display_name: "Brake Inspection",
+        starting_price_cents: 4900,
+        description: "We inspect your brakes.",
+        precomputed: {
+          matched_subcategory_slug: "brake_squeal",
+          unanswered_question_ids: [101],
+          ...(s2 ? { stage2_confidence: s2 } : {}),
+          ...(s3 ? { stage3_confidence: s3 } : {}),
+        },
+      },
+    ],
+  });
+}
+
+describe("submitConcernClarifyV2 — B1 confidence gate at tap", () => {
+  it("stage2 'low' → advisor handoff (no rec, no questions, handoff_reason, second_routine_pass)", async () => {
+    storedRow = baseRow({
+      concern_clarify_candidates: [brakeEntryWithConfidence("low", "high")],
+    });
+
+    const result = await submitConcernClarifyV2({
+      chatId: "sess-1",
+      chosen_key: "brake_inspection",
+    });
+
+    expect(result).toEqual({ ok: true, next_step: "second_routine_pass" });
+    const update = findSessionUpdate();
+    // Stripped to the advisor path — no rec, no questions.
+    expect((update?.recommended_testing_services as unknown[]).length).toBe(0);
+    expect((update?.clarification_questions_pending as unknown[]).length).toBe(
+      0,
+    );
+    // The concern is annotated with the handoff reason (observability).
+    const items = update?.explanation_required_items as Array<{
+      handoff_reason?: string | null;
+    }>;
+    expect(items[0]!.handoff_reason).toBe("stage2_low");
+    // Stage-2-low strips BEFORE any catalog load.
+    expect(loadDiagnosticCatalogMock).not.toHaveBeenCalled();
+    // Drained + no questions → summaries fire.
+    expect(ensureConcernSummariesMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("stage3 'low' → over-ask: the FULL subcategory question list is queued (not just the precomputed set)", async () => {
+    storedRow = baseRow({
+      concern_clarify_candidates: [brakeEntryWithConfidence("high", "low")],
+    });
+
+    const result = await submitConcernClarifyV2({
+      chatId: "sess-1",
+      chosen_key: "brake_inspection",
+    });
+
+    expect(result).toEqual({ ok: true, next_step: "clarification_question" });
+    const update = findSessionUpdate();
+    // Rec still recommended (Stage-2 was fine).
+    expect((update?.recommended_testing_services as unknown[]).length).toBe(1);
+    // Over-ask: brake_squeal has questions [101, 102]; precomputed only had
+    // [101]. The Stage-3-low gate re-queues the WHOLE subcategory.
+    const pending = update?.clarification_questions_pending as Array<{
+      question_id: number;
+    }>;
+    expect(pending.map((p) => p.question_id).sort()).toEqual([101, 102]);
+    // The annotation reflects the full over-ask set.
+    const items = update?.explanation_required_items as Array<{
+      unanswered_question_ids?: number[];
+    }>;
+    expect(items[0]!.unanswered_question_ids!.sort()).toEqual([101, 102]);
+  });
+
+  it("MISSING confidence (legacy rows) → PASS, never gate (INV-8 back-compat)", async () => {
+    // No stage2/stage3 confidence on the candidate at all.
+    storedRow = baseRow({
+      concern_clarify_candidates: [
+        brakeEntryWithConfidence(undefined, undefined),
+      ],
+    });
+
+    const result = await submitConcernClarifyV2({
+      chatId: "sess-1",
+      chosen_key: "brake_inspection",
+    });
+
+    expect(result).toEqual({ ok: true, next_step: "clarification_question" });
+    const update = findSessionUpdate();
+    // Normal resolution: rec kept + only the precomputed question (no gate).
+    expect((update?.recommended_testing_services as unknown[]).length).toBe(1);
+    const pending = update?.clarification_questions_pending as Array<{
+      question_id: number;
+    }>;
+    expect(pending.map((p) => p.question_id)).toEqual([101]);
+    const items = update?.explanation_required_items as Array<{
+      handoff_reason?: string | null;
+    }>;
+    // No handoff — the concern was resolved, not stripped.
+    expect(items[0]!.handoff_reason ?? null).toBeNull();
+  });
+});
+
+// ─── B4 — answered / queued guards ──────────────────────────────────────────
+
+describe("submitConcernClarifyV2 — B4 answered/queued guards", () => {
+  it("skips a precomputed question that was already answered", async () => {
+    // Question 101 was already answered on a prior pass — the tap must NOT
+    // re-queue it. Over-ask is off, so only 101 would have been hydrated →
+    // pending stays empty and the wizard routes on recs.
+    storedRow = baseRow({
+      clarification_questions_answered: { "101": "front" },
+    });
+
+    const result = await submitConcernClarifyV2({
+      chatId: "sess-1",
+      chosen_key: "brake_inspection",
+    });
+
+    const update = findSessionUpdate();
+    const pending = update?.clarification_questions_pending as unknown[];
+    // 101 already answered → not re-queued.
+    expect(pending.length).toBe(0);
+    // Rec still present → testing_service_approval, summaries fire.
+    expect(result).toEqual({ ok: true, next_step: "testing_service_approval" });
+    // The annotation still records 101 as belonging to the concern (canonical).
+    const items = update?.explanation_required_items as Array<{
+      unanswered_question_ids?: number[];
+    }>;
+    expect(items[0]!.unanswered_question_ids).toEqual([101]);
+  });
+
+  it("does not double-queue a question already carried forward in pending", async () => {
+    // The existing pending queue already holds 101 (a carried-forward entry).
+    // The tap's precomputed 101 must not be pushed a second time.
+    storedRow = baseRow({
+      clarification_questions_pending: [
+        {
+          question_id: 101,
+          question_text: "Where does it squeal?",
+          options: [
+            { label: "Front", value: "front" },
+            { label: "Rear", value: "rear" },
+          ],
+          service_key: "noise_brakes",
+          category: "brakes",
+          subcategory_slug: "brake_squeal",
+          multi_select: false,
+        },
+      ],
+    });
+
+    await submitConcernClarifyV2({
+      chatId: "sess-1",
+      chosen_key: "brake_inspection",
+    });
+
+    const update = findSessionUpdate();
+    const pending = update?.clarification_questions_pending as Array<{
+      question_id: number;
+    }>;
+    // Exactly one 101 — carried forward once, not re-queued by the tap.
+    expect(pending.filter((p) => p.question_id === 101)).toHaveLength(1);
+  });
+});
+
+// ─── INV-3 — triage field preservation on round-trip ────────────────────────
+
+describe("submitConcernClarifyV2 — INV-3 field preservation", () => {
+  it("preserves concern_id / triage_round / triage_answers through the write-back", async () => {
+    const triageAnswers = {
+      allowed_service_keys: ["brake_inspection"],
+      chip_key: "brakes",
+      label: "The brakes",
+    };
+    storedRow = baseRow({
+      explanation_required_items: [
+        {
+          service_key: "noise_brakes",
+          display_name: "Brake noise",
+          explanation_text: "Squeaking when I brake at low speed.",
+          category: "brakes",
+          concern_id: "11111111-1111-1111-1111-111111111111",
+          triage_round: 1,
+          triage_answers: triageAnswers,
+        },
+      ],
+    });
+
+    await submitConcernClarifyV2({
+      chatId: "sess-1",
+      chosen_key: "brake_inspection",
+    });
+
+    const update = findSessionUpdate();
+    const items = update?.explanation_required_items as Array<
+      Record<string, unknown>
+    >;
+    expect(items[0]!.concern_id).toBe(
+      "11111111-1111-1111-1111-111111111111",
+    );
+    expect(items[0]!.triage_round).toBe(1);
+    expect(items[0]!.triage_answers).toEqual(triageAnswers);
+    // The annotation still landed on top of the preserved fields.
+    expect(items[0]!.unanswered_question_ids).toEqual([101]);
+  });
+});
+
+// ─── INV-4 — triage-first routing ───────────────────────────────────────────
+
+describe("submitConcernClarifyV2 — INV-4 triage-first routing", () => {
+  it("a pending triage queue outranks the clarify queue AND the normal route", async () => {
+    // Two clarify entries remain AND a triage entry is pending. After the tap
+    // resolves the head, triage wins → concern_triage (not concern_clarify).
+    storedRow = baseRow({
+      concern_clarify_candidates: [
+        makeClarifyEntry(),
+        makeClarifyEntry({ concern_index: 1, service_key: "ac_problem" }),
+      ],
+      concern_triage_state: [
+        {
+          concern_id: "22222222-2222-2222-2222-222222222222",
+          concern_index: 2,
+          service_key: "other_issue",
+          concern_text: "It feels weird.",
+          chips: [{ chip_key: "brakes", display_label: "The brakes" }],
+          allowed_by_chip: { brakes: ["brake_inspection"] },
+          triage_round: 0,
+          created_version: "v1",
+        },
+      ],
+    });
+
+    const result = await submitConcernClarifyV2({
+      chatId: "sess-1",
+      chosen_key: "brake_inspection",
+    });
+
+    expect(result).toEqual({ ok: true, next_step: "concern_triage" });
+    // A triage concern is still owed → summaries deferred even though this
+    // concern produced a rec + question.
+    expect(ensureConcernSummariesMock).not.toHaveBeenCalled();
   });
 });

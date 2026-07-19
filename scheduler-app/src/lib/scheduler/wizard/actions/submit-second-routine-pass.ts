@@ -41,6 +41,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { applyWizardTransition } from "@/lib/scheduler/wizard/transition";
 import type { WizardTransitionResult } from "@/lib/scheduler/wizard/transition-types";
 import { wrapAction } from "@/lib/scheduler/wizard/instrument-action";
+import type { TriageConstraint } from "@/lib/scheduler/wizard/triage";
 // P2.8 (2026-05-25): single source of truth for SHOP_ID.
 import { SHOP_ID } from "@/lib/scheduler/shop-config";
 
@@ -72,6 +73,37 @@ interface ExplanationEntry {
   category: string | null;
   unanswered_question_ids?: number[];
   summary?: string;
+  /** INV-13 stable identity — minted at creation, preserved everywhere. */
+  concern_id?: string;
+  /** INV-3 triage fields — must survive this parser + write-back. */
+  triage_round?: number;
+  triage_answers?: TriageConstraint | null;
+  handoff_reason?: string | null;
+}
+
+/** Preserve the INV-13/INV-3 identity + triage fields verbatim onto `item`
+ *  (round-trip preservation — dropping any of these silently degrades the
+ *  triage feature: constraint lost, one-round cap resettable). */
+function preserveTriageFields(
+  e: Record<string, unknown>,
+  item: ExplanationEntry,
+): void {
+  if (typeof e.concern_id === "string" && e.concern_id.length > 0) {
+    item.concern_id = e.concern_id;
+  }
+  if (typeof e.triage_round === "number") {
+    item.triage_round = e.triage_round;
+  }
+  if (e.triage_answers && typeof e.triage_answers === "object") {
+    item.triage_answers = e.triage_answers as TriageConstraint;
+  } else if (e.triage_answers === null) {
+    item.triage_answers = null;
+  }
+  if (typeof e.handoff_reason === "string") {
+    item.handoff_reason = e.handoff_reason;
+  } else if (e.handoff_reason === null) {
+    item.handoff_reason = null;
+  }
 }
 
 /** Parse the row's existing explanation_required_items defensively. */
@@ -103,6 +135,7 @@ function parseExistingExplanationItems(raw: unknown): ExplanationEntry[] {
     if (typeof e.summary === "string" && e.summary.length > 0) {
       item.summary = e.summary;
     }
+    preserveTriageFields(e, item);
     out.push(item);
   }
   return out;
@@ -205,13 +238,22 @@ async function submitSecondRoutinePassV2Impl(
       const existing = parseExistingExplanationItems(
         row.explanation_required_items,
       );
+      // INV-13: mint a concern_id on any legacy item lacking one during this
+      // write-back (never on a pure read), so downstream identity joins (D2
+      // summaries, INV-8 approve/decline, INV-2 carry-forward) are stable.
+      const preservedExisting = existing.map((it) =>
+        it.concern_id ? it : { ...it, concern_id: crypto.randomUUID() },
+      );
       const newConcern: ExplanationEntry = {
+        // INV-13: a fresh other_issue concern gets its own stable identity at
+        // creation (not derived from the non-unique other_issue service_key).
+        concern_id: crypto.randomUUID(),
         service_key: OTHER_ISSUE_SERVICE_KEY,
         display_name: OTHER_ISSUE_DISPLAY_NAME,
         explanation_text: "",
         category: null,
       };
-      const mergedExplanation = [...existing, newConcern];
+      const mergedExplanation = [...preservedExisting, newConcern];
 
       return applyWizardTransition({
         chatId,

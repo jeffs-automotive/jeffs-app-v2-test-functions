@@ -85,10 +85,42 @@ export interface TriageEntry {
 /** The triage-relevant fields carried on an `explanation_required_items` entry.
  *  Preserved through every parser/write-back (INV-3). */
 export interface TriageItemFields {
+  /** INV-13 stable identity — minted at picker creation, preserved everywhere,
+   *  used as the join key (never array index / the non-unique service_key). */
   concern_id?: string;
   triage_round?: number;
-  triage_answers?: { chip_key: string; label: string } | null;
+  /** The customer's tap answer, holding the SERVER-resolved constraint
+   *  (allowed_service_keys derived from the persisted entry at tap time —
+   *  INV-14) so the constrained re-diagnosis reads it directly rather than
+   *  re-resolving from a (now-consumed) live entry. */
+  triage_answers?: TriageConstraint | null;
+  /** Why this concern went to the advisor (observability): 'triage_not_sure' |
+   *  'post_triage_no_match' | 'stage2_low' | … (INV-19). */
   handoff_reason?: string | null;
+}
+
+/** Build a fresh (round-0) triage entry for a vague concern (INV-12). Pure. */
+export function buildTriageEntry(params: {
+  concern_id: string;
+  concern_index: number;
+  service_key: string;
+  concern_text: string;
+  snapshot: {
+    options: TriageChipOption[];
+    allowed_by_chip: Record<string, string[]>;
+  };
+  created_version: string;
+}): TriageEntry {
+  return {
+    concern_id: params.concern_id,
+    concern_index: params.concern_index,
+    service_key: params.service_key,
+    concern_text: params.concern_text,
+    chips: params.snapshot.options,
+    allowed_by_chip: params.snapshot.allowed_by_chip,
+    triage_round: 0,
+    created_version: params.created_version,
+  };
 }
 
 /** The minimal diagnosis-outcome shape the T1 predicate needs — a subset of

@@ -99,3 +99,24 @@ describe("submitStartOverV2 — task EH1", () => {
     expect(awtCalls[0]!.updates).toMatchObject({ edit_return_step: null });
   });
 });
+
+describe("submitStartOverV2 — concern-triage full reset (INV-2)", () => {
+  it("clears BOTH diagnostic-loop queues + all diagnostic state", async () => {
+    await submitStartOverV2({ chatId: CHAT_ID });
+
+    expect(awtCalls).toHaveLength(1);
+    const updates = awtCalls[0]!.updates!;
+    // INV-2: the hard reset wipes both queues...
+    expect(updates.concern_clarify_candidates).toBeNull();
+    expect(updates.concern_triage_state).toBeNull();
+    // ...and the surrounding diagnostic state (triage/handoff metadata lives
+    // inside explanation_required_items, which is nulled here).
+    expect(updates.explanation_required_items).toBeNull();
+    expect(updates.recommended_testing_services).toBeNull();
+    expect(updates.approved_testing_services).toBeNull();
+    expect(updates.declined_testing_services).toBeNull();
+    expect(updates.clarification_questions_pending).toBeNull();
+    expect(updates.clarification_questions_answered).toBeNull();
+    expect(updates.diagnostic_processing_complete).toBe(false);
+  });
+});
