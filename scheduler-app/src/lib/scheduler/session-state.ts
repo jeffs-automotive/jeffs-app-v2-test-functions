@@ -38,6 +38,12 @@ export const WIZARD_STEPS = [
   // Stage-1 returned 2-3 ranked candidates. Sits in the step-7 cluster
   // next to clarification_question (both are diagnostic-loop cards).
   "concern_clarify",
+  // concern-triage (2026-07-19): the broad-category chip card shown when a
+  // concern is too vague to classify (Stage-1 returned 0 candidates for a
+  // genuine concern). One tap → constrained re-diagnosis. Sibling of
+  // concern_clarify in the step-7 diagnostic-loop cluster. Feature:
+  // docs/scheduler/concern-triage-and-unsure-path-plan.md.
+  "concern_triage",
   "testing_service_approval",
   "second_routine_pass",
   // Step 8
