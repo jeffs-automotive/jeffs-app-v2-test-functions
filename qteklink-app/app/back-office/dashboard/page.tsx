@@ -73,7 +73,7 @@ export default async function BackOfficeDashboardPage() {
     .sort((a, b) => daysSince(b.createdAt) - daysSince(a.createdAt));
 
   return (
-    <main className="mx-auto max-w-5xl space-y-6 px-6 py-12">
+    <main className="w-full space-y-6 px-6 py-12">
       <AutoRefresh />
       <PageHeader title="Back office" description="Open issues, what's closed this month, and anything gone stale." />
 

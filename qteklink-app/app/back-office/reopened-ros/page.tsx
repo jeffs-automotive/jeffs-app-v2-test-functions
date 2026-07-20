@@ -14,7 +14,7 @@ export default async function ReopenedRosPage() {
   ]);
 
   return (
-    <main className="mx-auto max-w-6xl space-y-4 px-6 py-12">
+    <main className="w-full space-y-4 px-6 py-12">
       <AutoRefresh />
       <PageHeader
         title="Reopened repair orders"

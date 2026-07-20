@@ -15,7 +15,7 @@ export default async function InvoiceIssuesPage() {
   ]);
 
   return (
-    <main className="mx-auto max-w-6xl space-y-4 px-6 py-12">
+    <main className="w-full space-y-4 px-6 py-12">
       <AutoRefresh />
       <PageHeader title="Invoice issues" description="Vendor invoices with a problem to fix.">
         <AddInvoiceDialog kind="invoice_issue" fallbackAdminEmail={settings.fallbackAdminEmail} />

@@ -10,9 +10,12 @@ export default async function BackOfficeSettingsPage() {
   const { settings } = await getBackOfficeSettings(shopId);
 
   return (
-    <main className="mx-auto max-w-3xl space-y-4 px-6 py-12">
+    <main className="w-full space-y-4 px-6 py-12">
       <PageHeader title="Back office settings" description="Who gets which alert, and when an issue counts as stale." />
-      <SettingsForm settings={settings} canEdit={role === "admin"} />
+      {/* Page chrome is full-width like the rest of the module; the form itself stays capped so inputs remain readable. */}
+      <div className="max-w-3xl space-y-4">
+        <SettingsForm settings={settings} canEdit={role === "admin"} />
+      </div>
     </main>
   );
 }

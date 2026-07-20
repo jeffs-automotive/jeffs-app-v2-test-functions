@@ -4,7 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 /** Loading skeleton mirroring the dashboard shape (header + metric row + stale table). */
 export default function Loading() {
   return (
-    <main className="mx-auto max-w-5xl space-y-6 px-6 py-12">
+    <main className="w-full space-y-6 px-6 py-12">
       <div className="space-y-2 border-b border-border pb-4">
         <Skeleton className="h-7 w-40" />
         <Skeleton className="h-4 w-96" />
