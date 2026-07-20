@@ -1,0 +1,611 @@
+# =====================================================================================
+# Customer-voice anchor bank — GAP FILL (cross-domain concerns no single domain anchored)
+#
+# Purpose: closes the coverage gaps in docs/scheduler/rebuild/01-taxonomy.md ("Coverage
+# GAPS" section) — real customer concerns that were referenced as confusable targets by
+# other domains (19 matrix pairs point at them) but had no anchor entry of their own.
+# Same schema and conventions as the seven domain files (see
+# brakes-steering-suspension-tires.anchors.yaml header + 00-ARCHITECTURE.md).
+#
+# Conventions
+# - Anchors are CUSTOMER language (vague/terse/misspelled/ALL-CAPS included). No
+#   technician jargon.
+# - Subcategory slugs use the CANONICAL gap names from 01-taxonomy.md. Alias slugs that
+#   other files/matrix used for the same concern are listed in each entry's notes so
+#   synthesis can reconcile the `vs:` references:
+#     belt_squeal_underhood_whine  <- belt_squeal_under_hood (PWT), squealing_belt_noise,
+#                                     belt_squeal_or_whine (FLU), belt_or_underhood_squeal,
+#                                     high_pitched_whining_under_the_hood (BST)
+#     shaking_at_idle_while_stopped <- shaking_at_idle_motor_mounts (confusable-matrix)
+#     burning_electrical_plastic_smell <- burning_electrical_smell (ELE)
+#     rattling_underneath_the_car  <- rattle_underneath_heat_shield (confusable-matrix)
+#     pulling_only_during_acceleration <- torque_steer_pull_on_acceleration (taxonomy §GAPS)
+#     cloudy_headlight_lenses      <- headlights_cloudy_or_always_dim (ELE)
+# - Slot names reuse the live Stage-3 ontology where possible; two slots are
+#   PROPOSED-NEW (gear_position_effect, brake_lights_working) and are marked where used.
+#
+# Web sources for the diagnostic claims in notes/confusables (fetched 2026-07-19):
+#   [G1]  Belt chirp vs squeal (chirp = misalignment / failing idler-tensioner pulley;
+#         squeal = slipping/tension, lasts seconds): dayco.com/na-en/techhub/how-to-fix-serpentine-belt-noise/
+#         + autonationmobileservice.com/i/blog/serpentine-belt-noise/
+#   [G2]  Cold-start belt squeal (cold stiff rubber grips poorly until warm; tension is the top cause):
+#         autonationmobileservice.com/i/blog/serpentine-belt-noise/ + oards.com/serpentine-belt-squeal/
+#   [G3]  PS-pump whine is loudest while TURNING (aerated/low fluid); alternator/idler bearing whine
+#         tracks engine RPM regardless of steering: autoroundparts.com/blogs/news/why-is-my-power-steering-pump-whining-top-4-causes
+#         + roadresolve.com/blog/car-whining-noise-causes
+#   [G4]  Worn motor mounts: shake at idle IN GEAR that lessens in Neutral/Park; thump/clunk on
+#         acceleration or shifting into gear; engine itself runs normally:
+#         firestonecompleteautocare.com/blog/maintenance/bad-motor-mounts/
+#         + precisionimportrepair.net/blogs/how-diagnosing-bad-motor-mounts-can-stop-the-shake-and-rattle-of-your-car
+#   [G5]  Electrical burning / melting-plastic / "fishy" smell = overheating insulation or shorting
+#         wiring — genuine fire risk, stop driving and inspect immediately:
+#         toolesgarage.com/blog/what-s-that-weird-electrical-smell-inside-my-car/
+#         + chimneyrockcarcare.com/what-if-car-smells-like-burning-plastic/
+#   [G6]  Heat-shield rattle: corroded/loose fasteners; thin metallic buzz that resonates at idle or a
+#         specific RPM band and comes/goes with revs: autozone.com/diy/exhaust/why-is-my-heat-shield-rattling
+#         + edhansonsmuffler.com/blog/can-a-loose-heat-shield-cause-that-rattling-noise-from-the-exhaust
+#   [G7]  Torque steer: FWD pull during HARD acceleration only (unequal-length half shafts; worn
+#         control-arm bushings / engine mounts / CV joints make it worse):
+#         aa1car.com/library/torque_steer.htm + agcoauto.com/content/news/p2_articleid/249
+#   [G8]  Gear hunting at cruise: torque-converter-clutch lock/unlock cycling, shift solenoids, fluid
+#         condition; classically on grades or towing at highway speed:
+#         rohnertparktransmission.com/blog/torque-converter-lockup-solenoid-guide
+#         + streetsmarttransmission.com/transmission-torque-converter-clutch-solenoid/
+#   [G9]  Stuck in Park: brake-shift interlock; the brake-light SWITCH is the most common cause (dead
+#         brake lights with it is the classic tell); shift-lock override slot frees it:
+#         streetsmarttransmission.com/shifter-stuck-in-park/ + rustyautos.com/stuck-in-park-no-brake-lights-secret-fix/
+#   [G10] Battery rotten-egg smell = hydrogen sulfide from boiling/venting electrolyte — overcharging
+#         (failed voltage regulator, >14.8V) or a failing battery; gas is toxic + flammable, hot/swollen
+#         case; shut off and tow: kbtireandautorepair.com/car-smells-like-rotten-eggs-battery/
+#         + carcaretotal.com/car-smells-like-rotten-eggs/
+#   [G11] Cloudy headlights: UV oxidation of the polycarbonate lens; severe oxidation can cut light
+#         output up to ~80% (night-visibility hazard); fix is lens restoration + UV sealant, not bulbs:
+#         carvira.com/how-to-restore-cloudy-or-scratched-headlights-a-complete-guide-for-u-s-drivers/
+#         + empireabrasives.com/blog/how-to-restore-headlights-permanently-the-right-way/
+#   [G12] Cruise control dead: blown fuse + brake-light switch are the top causes; older systems also
+#         vacuum leaks; speed-sensor faults: mechanicbase.com/troubleshooting/cruise-control-is-not-working/
+#         + liveabout.com/cruise-control-not-working-causes-4173905
+#   [G13] Aftermarket remote start: valet mode (lock/unlock works, start doesn't) and a broken/corroded
+#         hood-pin switch are the classic causes; battery change can drop programming:
+#         mobileedgeonline.com/my-remote-car-starter-stopped-working-dont-panic/
+#         + westminsterspeed.com/remote-starter-stopped-working/
+#   [G14] Instrument cluster: ALL gauges dead at once = fuse/ground/connector; erratic or jumping
+#         needles = instrument voltage regulator or failing stepper motors / cold solder joints:
+#         becksautocenter.com/the-5-most-common-reasons-your-instrument-cluster-may-not-be-working/
+#         + issautomotive.com/blogs/news/why-did-my-gauge-cluster-stop-working-what-causes-gauge-problems
+#   [G15] Milky "chocolate milk" oil = coolant in oil (head gasket / oil cooler / cracked block) —
+#         lubrication is compromised, do-not-drive advice; a milky film under the OIL CAP ONLY on a
+#         short-trip winter car can be benign condensation: erautocare.com/engine-oil-looks-like-chocolate-milk/
+#         + engineerfix.com/why-is-my-oil-cap-milky-but-not-the-dipstick/ + blog.amsoil.com/seven-signs-of-a-blown-head-gasket-and-what-you-can-do-about-it/
+# =====================================================================================
+
+# ---------------------------------------------------------------------------
+# NOISE — under-hood belt/accessory squeal & whine (GAP #1, 7 matrix pairs)
+# ---------------------------------------------------------------------------
+
+- category: noise
+  subcategory: belt_squeal_underhood_whine
+  display: "Squeal / chirp / whine from under the hood (belt or accessory)"
+  customer_voice_anchors:
+    - "loud squealing noise when i start the car in the morning, goes away after a minute"
+    - "high pitched squeal from under the hood when i accelerate"
+    - "car screeches when i first start it up, especially when its cold out"
+    - "squealing noise that gets louder when i turn the steering wheel"
+    - "SQUEALING NOISE UNDER HOOD ON STARTUP"
+    - "chirping sound from the engine that speeds up when i rev it"
+    - "belt squeeling really bad when the AC kicks on"
+    - "whining noise from the engine that gets higher when i give it gas"
+    - "sounds like a bird chirping under the hood, been going on for weeks"
+    - "serpentine belt screaming on cold mornings till the car warms up"
+    - "loud squeal when i rev the engine even sitting in park"
+    - "engine makes a whine that follows the rpms not the speed"
+  required_slots:
+    - noise_descriptor: "squeal/screech vs rhythmic chirp vs steady whine — squeal = belt slipping (tension/glazing), chirp = misalignment or a failing idler/tensioner pulley, whine = a bearing (idler, tensioner, alternator, PS pump) [G1]"
+    - onset_timing: "cold start / accelerating / A/C on / turning the wheel — each loads the belt differently and localizes the accessory (A/C-engage squeal = compressor load; turning = PS pump load) [G1][G2]"
+    - engine_running: "does it follow engine REVS even parked in Park/Neutral — engine-tied noise is the belt/accessory signature; road-speed-tied noise is wheels/tires/driveline"
+    - warning_light_named: "battery light or temperature climbing with it — a slipping/shredded belt can stop the alternator or water pump; escalate"
+    - started_when: "days vs months, and whether it's getting longer/louder — a brief cold-morning squeal that's now constant is a belt near the end"
+  confusables:
+    - vs: high_pitched_squealing
+      discriminator_question: "Does it only happen when you're braking, or is the noise there any time the engine is running?"
+    - vs: noise_when_turning_the_steering_wheel
+      discriminator_question: "Does the noise only happen while turning the wheel, or is it there any time the engine is running?"
+    - vs: humming_or_whirring_at_speed
+      discriminator_question: "Does the sound follow your road speed even coasting in neutral, or does it follow the engine revs?"
+    - vs: clutch_or_trans_noise_pedal_linked
+      discriminator_question: "Does the noise change when you press or release the CLUTCH pedal, or does it stay the same and just follow engine revs?"
+    - vs: whistle_or_hiss_under_hood
+      discriminator_question: "Is it an airy whistle/hiss, or more of a squeal/chirp like a belt (especially on cold start or when turning)?"
+    - vs: strange_noise_from_vents
+      discriminator_question: "Does the noise change with the FAN speed and vent buttons, or is it a squeal from under the hood when the A/C kicks on?"
+    - vs: battery_charging_light
+      discriminator_question: "Is a warning light on with the squeal, like the battery light? (A slipping or broken belt can be the cause.)"
+  safety_flag: none
+  notes: >
+    CANONICAL entry for the biggest coverage gap — five domains referenced this concern under five
+    different names (belt_squeal_under_hood, squealing_belt_noise, belt_squeal_or_whine,
+    belt_or_underhood_squeal, high_pitched_whining_under_the_hood); synthesis should rewrite all of
+    those `vs:` aliases to this slug. RPM-linked and engine-tied, NOT brake-linked (brakes domain) and
+    NOT road-speed-tied (bearing/tire/driveline). Squeal-on-turning overlaps the PS system: if the whine
+    is loudest ONLY while turning and the reservoir is low, that is the hydraulic-PS starving picture —
+    route the steering/leak entries instead [G3]; if it's there at idle and rises with revs regardless
+    of steering, it stays here. Escalation: squeal + battery light or temp rising = belt failing in
+    real time (charging/water pump at risk) — advise promptly. safety_flag stays none for the plain
+    squeal; the escalation rides on the co-reported light.
+
+# ---------------------------------------------------------------------------
+# VIBRATION — shake at idle in gear (motor/trans mounts) (GAP #2)
+# ---------------------------------------------------------------------------
+
+- category: vibration
+  subcategory: shaking_at_idle_while_stopped
+  display: "Shakes at idle in gear (smooths in Neutral/Park)"
+  customer_voice_anchors:
+    - "car shakes when im stopped at a red light in drive but stops if i put it in neutral"
+    - "vibrates really bad at stop lights, smooths out in park"
+    - "whole car trembles sitting in drive with my foot on the brake"
+    - "shaking at idle but the engine sounds fine"
+    - "CAR SHAKES WHEN STOPPED IN DRIVE"
+    - "feel a thud when i shift into drive and then it shakes at every light"
+    - "shakes worse at idle when the ac is on"
+    - "car shudders sitting still but my mechanic says the engine runs smooth"
+    - "vibration through the seat and steering wheel when stopped in gear"
+    - "clunk under the hood when i take off and it vibrates at stoplights"
+    - "idles rough in gear, fine in park, no check engine light"
+  required_slots:
+    - gear_position_effect: "PROPOSED-NEW slot — shakes in Drive/Reverse at a stop but smooths in Neutral/Park; the load-on-the-mounts signature and the single most separating fact [G4]"
+    - noise_descriptor: "any thump/clunk when shifting into gear or accelerating — the engine moving on a broken mount [G4]"
+    - onset_timing: "only stopped in gear vs also while driving — mount shake concentrates at idle-in-gear; if it bucks while accelerating it's misfire territory"
+    - started_when: "gradual (rubber ages) vs after an impact or recent engine/trans work"
+  confusables:
+    - vs: rough_idle_or_shaking_at_a_stop
+      discriminator_question: "Does the engine itself sound like it's struggling or sputtering, or does the engine sound normal and the car just vibrates (worn engine mount)?"
+    - vs: constant_vibration_that_doesnt_change_with_speed
+      discriminator_question: "Does it also shake while sitting still in Park or at a light, or only when moving?"
+    - vs: transmission_shudder
+      discriminator_question: "Does it shake while sitting STILL at a light, or mainly while accelerating / around 40-50 mph?"
+  safety_flag: none
+  notes: >
+    The vibration-domain twin of performance/rough_idle_or_shaking_at_a_stop — ENG's rough-idle entry
+    and BST's constant-vibration entry both point here (confusable-matrix alias:
+    shaking_at_idle_motor_mounts). Engine SOUNDS normal, body shakes; putting it in Neutral lessening
+    the shake is the classic worn-mount self-test, and A/C-on making it worse fits (extra idle load)
+    [G4]. Includes the shift-into-gear thud/clunk sibling. Does NOT include a sputtering/stumbling
+    engine (rough idle — performance), shake that dies with the engine warming (cold-start enrichment),
+    or shudder while accelerating (transmission_shudder / cv_axle_accel_shudder). Worn mounts also
+    aggravate belt misalignment and torque steer — advisor note, not a routing exit.
+
+# ---------------------------------------------------------------------------
+# SMELL/SMOKE — electrical fire lane (GAP #3) + battery sulfur (GAP #8)
+# ---------------------------------------------------------------------------
+
+- category: smell_smoke
+  subcategory: burning_electrical_plastic_smell
+  display: "Burning electrical / plastic / wiring smell"
+  customer_voice_anchors:
+    - "burning plastic smell coming from my dash"
+    - "smells like melting wires under the hood"
+    - "electrical burning smell when i turn the headlights on"
+    - "BURNING SMELL FROM THE VENTS, SMELLS LIKE PLASTIC"
+    - "weird fishy burning smell in the car, cant find where its coming from"
+    - "smelled something electrical burning and then my radio died"
+    - "sharp chemical plastic smell when i run the heater"
+    - "burning smell near the fuse box and a fuse keeps blowing"
+    - "burnt plastic smell after the car sat running in the driveway"
+    - "acrid burning smell inside the car, made my eyes sting"
+    - "melted plastic smell from the dashboard and now the power windows dont work"
+  required_slots:
+    - smell_descriptor: "sharp plastic/electrical/fishy vs oily vs sweet vs rubber — the smell family is the router; hot electrical insulation reads as acrid plastic or fishy [G5]"
+    - sound_or_smoke_location_zone: "dash/vents/fuse box vs under hood vs a wheel — inside-the-cabin electrical smell points at wiring/blower circuits; one hot wheel is a dragging brake"
+    - onset_timing: "tied to using one accessory (headlights, heater, seat warmer) vs any time running — accessory-tied smell localizes the circuit"
+    - drivable_state: "smelled once vs active/strengthening now, any visible smoke — active electrical smell is a stop-driving conversation"
+    - warning_light_behavior: "anything else electrical acting up with it (dead accessory, blowing fuses, flickering) — smell + a dead circuit is the confirmed-overheat picture"
+  confusables:
+    - vs: burning_oil_smell
+      discriminator_question: "Is it a greasy/oily burnt smell, or a sharp plastic/electrical burning smell?"
+    - vs: smoke_or_steam_under_hood
+      discriminator_question: "Does it smell sweet or oily, or like sharp burning plastic/wiring?"
+    - vs: single_accessory_not_working
+      discriminator_question: "Was there any burning/melting-plastic smell when it quit?"
+    - vs: smoke_or_burning_smell_from_a_wheel
+      discriminator_question: "Is it a burning-rubber smell coming from one of the wheels, or a sharp plastic/electrical smell strongest under the hood or inside the car?"
+  safety_flag: advise_immediately
+  notes: >
+    The electrical-fire escalation lane — FLU and ELE both referenced it (ELE alias:
+    burning_electrical_smell) with no anchor home. Overheating insulation and shorting wiring produce
+    the acrid melting-plastic (sometimes fishy) smell and can escalate to an actual fire; the advice is
+    stop, switch off, don't keep driving it to the appointment [G5]. Smell + a simultaneously-dead
+    accessory or repeat-blowing fuse strengthens the picture (keep the symptom pair in ONE booking).
+    Does NOT include burning OIL (greasy, oil-leak entry), sweet coolant steam, burning RUBBER — a
+    rubber smell at a wheel is a hot/dragging brake (smoke_or_burning_smell_from_a_wheel, into which the
+    matrix folded burning_rubber_hot_brake_smell), and a rubber smell from under the hood is a
+    slipping/shredding belt (belt_squeal_underhood_whine) — or the first-heat-of-the-season dusty smell
+    from the heater (benign, advisor conversation if mentioned alone).
+
+- category: smell_smoke
+  subcategory: battery_overcharging_smell
+  display: "Rotten-egg / sulfur smell at the battery (overcharging)"
+  customer_voice_anchors:
+    - "rotten egg smell under the hood"
+    - "battery smells like sulfur and the case looks swollen"
+    - "eggy smell coming from the engine bay, not the exhaust"
+    - "smells like rotten eggs near the battery and i could hear it hissing"
+    - "battery is boiling and stinks like sulfur"
+    - "ROTTEN EGG SMELL UNDER HOOD, battery covered in white crust"
+    - "sulfur smell after driving and the battery is hot to the touch"
+    - "new battery keeps dying and now theres a rotten egg smell up front"
+    - "acid smell around the battery, the top of it looks wet"
+    - "sulphur smell under the hood right after i shut the car off"
+  required_slots:
+    - sound_or_smoke_location_zone: "under the hood AT the battery vs at the tailpipe — the battery-vs-catalytic-converter split; wet/crusty/swollen/hot battery case confirms the battery side [G10]"
+    - smell_descriptor: "rotten egg/sulfur — shared with the converter; acid smell + hissing points battery"
+    - warning_light_named: "battery/charging light with it — overcharging is a charging-system fault (voltage regulator), not just a bad battery [G10]"
+    - recent_action: "recent battery replacement or jump start — a fresh battery boiling points harder at overcharging"
+    - drivable_state: "actively hissing/hot/swollen now vs a whiff after driving — active venting = stop, ventilate, don't lean over the battery"
+  confusables:
+    - vs: rotten_egg_sulfur_smell
+      discriminator_question: "Is the smell strongest at the tailpipe while driving, or under the hood near the battery?"
+    - vs: battery_charging_light
+      discriminator_question: "Is the main concern the warning light, or an actual rotten-egg smell / hot swollen battery under the hood?"
+    - vs: smoke_or_steam_under_hood
+      discriminator_question: "Do you see smoke or steam, or is it mainly the rotten-egg smell around the battery?"
+  safety_flag: advise_immediately
+  notes: >
+    Distinct from the catalytic-converter rotten-egg entry (exhaust side, smell while driving, ENG
+    domain): this is hydrogen sulfide venting from boiling battery electrolyte — overcharging from a
+    failed voltage regulator (or a battery at end of life). The vented gas is toxic AND flammable and a
+    hot/swollen case can rupture; advise shutting the car off and not driving it in [G10]. Overcharging
+    is a charging-system diagnosis (regulator/alternator), so the battery-light co-report matters — the
+    fix is rarely just a battery. Does NOT include plain white terminal corrosion with no smell
+    (maintenance/battery-test request) or sulfur smell only at the exhaust (rotten_egg_sulfur_smell).
+
+# ---------------------------------------------------------------------------
+# NOISE — rattle underneath (heat shield / loose exhaust hardware) (GAP #4)
+# ---------------------------------------------------------------------------
+
+- category: noise
+  subcategory: rattling_underneath_the_car
+  display: "Rattle / metallic buzz underneath the car"
+  customer_voice_anchors:
+    - "rattling noise under the car when its idling"
+    - "metal rattle underneath at stop lights, goes away when i rev it"
+    - "sounds like a loose piece of metal buzzing under the car"
+    - "rattle under the car right around 2000 rpm"
+    - "something rattling under my car, sounds like a can full of marbles"
+    - "RATTLING UNDERNEATH WHEN IDLING"
+    - "buzzing vibration under the floor at certain engine speeds"
+    - "i think my heat shield is rattling, tinny rattle under the car"
+    - "rattles under the car when its cold, quiets down once it warms up"
+    - "loose rattle down by the exhaust when the car is just sitting there running"
+    - "rattle underneath when i let off the gas coasting"
+  required_slots:
+    - noise_descriptor: "thin/tinny metallic rattle or buzz — vs a deep one-corner clunk (suspension) or an overall louder exhaust note (leak)"
+    - onset_timing: "at idle / a specific RPM band / on rev-and-release — a loose shield resonates at particular engine speeds and comes and goes with revs [G6]"
+    - sound_or_smoke_location_zone: "under the middle/rear (exhaust line) vs one corner vs under the hood — underneath-along-the-exhaust is the shield/hanger zone"
+    - started_when: "after an exhaust repair, bottoming out, or gradual (rusted fasteners) [G6]"
+  confusables:
+    - vs: clunking_over_bumps
+      discriminator_question: "Is it a solid clunk from one corner over bumps, or a lighter metallic rattle from underneath (like a loose heat shield)?"
+    - vs: exhaust_louder_or_rumbling
+      discriminator_question: "Is the exhaust sound itself louder, or is it more of a metal rattle or buzz underneath at certain engine speeds?"
+    - vs: engine_ticking_or_tapping
+      discriminator_question: "Is it a rhythmic tick from up in the engine, or a looser metallic rattle from underneath the car?"
+  safety_flag: none
+  notes: >
+    Canonical slug per 01-taxonomy.md (confusable-matrix alias: rattle_underneath_heat_shield). The
+    classic presentation is a corroded/loose exhaust heat shield chattering at idle or one RPM band —
+    annoying, cheap to fix, and NOT urgent by itself [G6]; loose exhaust hangers and clamps present the
+    same way. Bump-triggered corner clunks are suspension (BST); a raspier overall exhaust note is a
+    leak (ENG); a rattle INSIDE the cabin (dash/door panel) is a trim/advisor conversation, not this.
+    A catalytic-converter internal rattle (marbles at rev-and-release) also lands here — the booking is
+    the same look-underneath inspection; advisor sorts shield vs converter on the lift.
+
+# ---------------------------------------------------------------------------
+# PERFORMANCE — torque steer / pull only under acceleration (GAP #5)
+# ---------------------------------------------------------------------------
+
+- category: performance
+  subcategory: pulling_only_during_acceleration
+  display: "Pulls to one side only when accelerating (torque steer)"
+  customer_voice_anchors:
+    - "steering wheel pulls to the right when i floor it"
+    - "car yanks to one side when i accelerate hard"
+    - "pulls left only when im getting on the highway on-ramp hard"
+    - "when i step on the gas the wheel jerks to one side, drives straight otherwise"
+    - "car darts right under hard acceleration"
+    - "PULLS TO THE SIDE WHEN ACCELERATING"
+    - "wheel tugs in my hands when i punch the gas, fine when cruising"
+    - "veers right when taking off from a light, doesnt do it braking or cruising"
+    - "feels like the car steers itself when i accelerate hard, ok at steady speed"
+    - "torque steer got way worse lately, pulls hard when i give it gas"
+  required_slots:
+    - onset_timing: "ONLY under hard throttle — the defining fact; releases/straightens when you lift. Cruise pulls and brake pulls are different entries"
+    - pull_direction: "left or right — consistent direction under power"
+    - started_when: "always did it a little vs recently got worse — some torque steer is normal in powerful FWD cars; a CHANGE points at worn parts [G7]"
+    - tire_state: "uneven pressure or mismatched/worn front tires amplify it — cheapest thing to rule out [G7]"
+    - noise_descriptor: "any clunk or clicking with it — clunk-on-throttle suggests a mount; clicking on turns is a CV joint"
+  confusables:
+    - vs: steady_drift_while_cruising
+      discriminator_question: "Does it pull only while you're accelerating hard, or does it drift to one side even cruising at steady speed?"
+    - vs: pulling_only_when_braking
+      discriminator_question: "Does it pull when you're on the gas, or when you're pressing the brakes?"
+    - vs: cv_axle_accel_shudder
+      discriminator_question: "Does the car PULL to one side under acceleration, or mainly shudder/vibrate when accelerating?"
+  safety_flag: none
+  notes: >
+    Taxonomy alias: torque_steer_pull_on_acceleration. BST's pull entries explicitly exclude this to
+    the performance/driveline side; this is the entry they hand to. Mild pull under hard throttle is
+    inherent to unequal-length-half-shaft FWD layouts; a pull that's NEW or worsening implicates worn
+    control-arm bushings, engine/trans mounts, CV joints, or a tire/pressure split — bookable as a
+    front-end inspection [G7]. Throttle-on vs throttle-off is the routing hinge: cruise pull =
+    steady_drift_while_cruising (alignment/tire), brake pull = pulling_only_when_braking (caliper).
+    Cross-link: worn mounts also show up as shaking_at_idle_while_stopped — same underlying part, keep
+    both symptoms in one booking if co-reported.
+
+# ---------------------------------------------------------------------------
+# TRANSMISSION — gear hunting at steady cruise (GAP #6)
+# ---------------------------------------------------------------------------
+
+- category: transmission_driveline
+  subcategory: transmission_gear_hunting_at_cruise
+  display: "Transmission hunts / keeps shifting at steady speed"
+  customer_voice_anchors:
+    - "transmission keeps shifting up and down on the highway"
+    - "cant decide what gear it wants on the interstate"
+    - "rpms keep jumping up and down at 65 like it keeps changing gears"
+    - "shifts in and out of overdrive constantly on hills"
+    - "transmision hunting between gears when i tow my camper"
+    - "keeps downshifting and upshifting at a steady speed, drives me crazy"
+    - "TRANSMISSION SHIFTING CONSTANTLY ON HIGHWAY"
+    - "feels like it shifts every few seconds going up the grade with cruise on"
+    - "gear hunting between 60 and 70, back and forth nonstop"
+    - "rpm bounces between 2000 and 2500 just cruising, like its stuck between gears"
+  required_slots:
+    - speed_band: "steady highway cruise (and whether cruise control is on) — the defining context; the RPM swing at CONSTANT road speed is what makes it hunting, not surging"
+    - onset_timing: "only on grades/towing vs on flat ground too — some up/downshifting on a grade or towing is normal strategy; constant flat-ground hunting is the fault picture [G8]"
+    - recent_action: "recent transmission fluid service / how old the fluid is — degraded or low fluid and sticky solenoids are common culprits [G8]"
+    - warning_light_named: "check engine light with it — TCC and shift-solenoid faults commonly set codes"
+    - started_when: "gradual vs sudden; any shudder or slip with it"
+  confusables:
+    - vs: surging_or_rpms_going_up_and_down
+      discriminator_question: "Do the RPMs swing while you're cruising at a steady speed on the highway (like it can't pick a gear), or while you're stopped / at idle?"
+    - vs: auto_trans_slipping
+      discriminator_question: "Does it feel like actual gear changes back and forth, or do the revs flare up without the car pulling any harder (slipping)?"
+    - vs: harsh_or_jerky_shifting
+      discriminator_question: "Is the problem that it shifts too OFTEN at steady speed, or that each shift bangs/jerks hard?"
+  safety_flag: none
+  notes: >
+    ENG's surging entry hands the at-cruise version here ("can't pick a gear on the highway"). Busy
+    shifting climbing a grade or towing is often normal shift strategy (tow/haul mode exists for it);
+    persistent hunting on flat ground points at the torque-converter-clutch applying/releasing
+    repeatedly, shift solenoids, degraded fluid, or a speed-sensor input [G8]. A light-throttle shudder
+    while it hunts strengthens the TCC read (see transmission_shudder). Distinct from engine surging at
+    idle (RPM swings while stopped — performance domain) and from slipping (revs rise, no shift
+    actually happens).
+
+# ---------------------------------------------------------------------------
+# ELECTRICAL — shifter stuck in Park (brake-shift interlock) (GAP #7)
+# ---------------------------------------------------------------------------
+
+- category: electrical
+  subcategory: shifter_interlock_stuck_in_park
+  display: "Shifter stuck in Park / won't shift out of Park"
+  customer_voice_anchors:
+    - "cant get my car out of park"
+    - "shifter is stuck in park even with my foot on the brake"
+    - "gear shift wont move out of park this morning"
+    - "stuck in park and my brake lights arent working either"
+    - "have to use the little override slot by the shifter to get it out of park"
+    - "STUCK IN PARK WONT SHIFT"
+    - "car starts fine but the shifter wont budge out of P"
+    - "shift lever locks up in park randomly, some days its fine"
+    - "press the brake and the shifter still wont release"
+    - "wife is stranded at the store, car will not come out of park"
+  required_slots:
+    - brake_lights_working: "PROPOSED-NEW slot — do the brake lights come on when the pedal is pressed? Dead brake lights + stuck in Park = the brake-light switch, the most common cause [G9]"
+    - onset_timing: "every time vs intermittent vs only parked nose-up on a hill — parked-on-an-incline strain on the park pawl is the mechanical (non-electrical) look-alike"
+    - drivable_state: "are they stranded right now — the shift-lock override slot can free it to drive in; otherwise this books as a come-to-you/tow conversation [G9]"
+    - started_when: "sudden this morning vs building for weeks; anything else electrical with it"
+  confusables:
+    - vs: wont_move_or_no_gear
+      discriminator_question: "Will the shift lever physically not come OUT of Park, or does it move to Drive and the car still doesn't go?"
+    - vs: parking_brake_stuck_or_wont_release
+      discriminator_question: "Is the shifter itself locked in Park, or does it shift fine and the car won't roll (parking brake stuck)?"
+    - vs: exterior_light_out
+      discriminator_question: "Are the brake lights out AND the shifter stuck in Park, or just a bulb out? (Both together are usually one switch.)"
+  safety_flag: none
+  notes: >
+    Brake-shift interlock: ignition on + brake pressed releases the shifter via the interlock solenoid,
+    and the brake-light SWITCH feeds that signal — so a failed switch presents as "stuck in Park," very
+    often WITH dead brake lights (one fault, two symptoms — keep them in one booking; dead brake lights
+    alone are also a rear-end-collision risk worth prompt advice) [G9]. Other causes: the interlock
+    solenoid itself, an open ignition-switch input. Categorized electrical (body-electrical) per the
+    taxonomy; PWT's wont_move_or_no_gear hands the lever-won't-leave-Park case here. Does NOT include a
+    manual car that won't go into gear (wont_go_into_gear_manual) or a lever that moves but the trans
+    doesn't engage (delayed_engagement / wont_move_or_no_gear). Mention the shift-lock override slot
+    exists so a stranded customer can get it in.
+
+# ---------------------------------------------------------------------------
+# REQUEST — cloudy / yellowed headlight lenses (restoration) (GAP #9)
+# ---------------------------------------------------------------------------
+
+- category: request
+  subcategory: cloudy_headlight_lenses
+  display: "Cloudy / yellowed headlight lenses (restoration)"
+  customer_voice_anchors:
+    - "headlights are all foggy and yellow, want them cleaned up"
+    - "cant see at night, my headlight lenses are cloudy"
+    - "headlights look hazy and dull but the bulbs are fine"
+    - "want my headlights restored, theyre all yellowed"
+    - "headlight covers are oxidized and foggy"
+    - "HEADLIGHTS CLOUDY CANT SEE AT NIGHT"
+    - "the lenses on my headlights are so hazy the light barely comes through"
+    - "headlights yellowing bad, got flagged at inspection for it"
+    - "do you guys do headlight restoration? mine are fogged over"
+    - "plastic over my headlights looks frosted and my night vision is terrible"
+  required_slots:
+    - started_when: "gradual haze over years (UV oxidation — restoration) vs sudden fogging INSIDE the lens (moisture intrusion — seal/housing, different job)"
+    - warning_light_behavior: "confirm the bulbs actually light and don't flicker — dull-but-steady through a hazy lens is optical; changing brightness is electrical"
+    - drivable_state: "how bad is night driving for them — severe haze is a real visibility hazard and bumps urgency [G11]"
+  confusables:
+    - vs: dim_or_flickering_lights
+      discriminator_question: "Do the lights actually change brightness, or are they just always dull/yellowed looking (hazy lenses)?"
+    - vs: exterior_light_out
+      discriminator_question: "Is the bulb out, or do the lights work but look dull/yellowed through hazy lenses?"
+  safety_flag: none
+  notes: >
+    Restoration/appearance REQUEST, not an electrical fault — ELE referenced it twice as the optical
+    look-alike (ELE alias: headlights_cloudy_or_always_dim). UV oxidation of the polycarbonate lens is
+    the cause; severe oxidation can cut usable light output dramatically (up to ~80%), so "can't see at
+    night" complaints with working bulbs are legitimately safety-adjacent even though the fix is a
+    lens restoration + UV sealant rather than parts [G11]. Moisture/condensation INSIDE the housing is
+    a different repair (seal or housing replacement) — the inside-vs-outside question is worth the
+    advisor's time. New-bulbs-didn't-help is a classic tell for this entry.
+
+# ---------------------------------------------------------------------------
+# ELECTRICAL — minor gap fills (one entry each): cruise control, remote start,
+# gauge cluster
+# ---------------------------------------------------------------------------
+
+- category: electrical
+  subcategory: cruise_control_not_working
+  display: "Cruise control not working (non-ADAS)"
+  customer_voice_anchors:
+    - "cruise control stopped working"
+    - "cruise wont set when i press the button"
+    - "cruise control light comes on but it wont hold my speed"
+    - "cruise quit working, the buttons do nothing"
+    - "CRUISE CONTROL NOT WORKING"
+    - "set the cruise and it kicks right back off"
+    - "cruise control hasnt worked since my brake lights were fixed"
+    - "cruise wont engage at all, no light nothing"
+    - "cruse control dead on my truck, use it every day for work"
+  required_slots:
+    - onset_timing: "won't engage at all vs sets-then-drops immediately — drop-on-set points at the brake-light-switch input; fully dead points at fuse/switch [G12]"
+    - brake_lights_working: "PROPOSED-NEW slot — brake lights stuck ON or misadjusted after brake work will keep cruise from engaging; the classic after-brake-service story [G12]"
+    - recent_action: "recent brake work, battery change, or switch replacement — the top onset stories"
+    - warning_light_named: "CEL or other lights with it — many systems disable cruise while a fault code is active"
+  confusables:
+    - vs: single_accessory_not_working
+      discriminator_question: "Is it specifically the cruise control that quit, or a different accessory?"
+    - vs: driver_assist_warning_or_malfunction
+      discriminator_question: "Is it the basic set-a-speed cruise, or the adaptive kind that keeps distance from the car ahead (camera/radar system)?"
+  safety_flag: none
+  notes: >
+    The dedicated home for plain (non-adaptive) cruise complaints — ELE's notes said "ask" but had no
+    anchor. Top causes: blown fuse and the brake-light switch (cruise reads that input to disengage; a
+    stuck-on or misadjusted switch blocks engagement — hence the after-brake-work story); older
+    vacuum-actuated systems add vacuum leaks; speed-sensor faults also disable it [G12]. ADAPTIVE
+    cruise / radar-camera complaints route to the ADAS domain (driver_assist_warning_or_malfunction)
+    — the adaptive-or-basic question is the fork. Many cars also suspend cruise while ANY powertrain
+    code is active, so cruise-dead + CEL books as the CEL diagnostic first.
+
+- category: electrical
+  subcategory: remote_start_not_working
+  display: "Remote start not working"
+  customer_voice_anchors:
+    - "my remote start stopped working"
+    - "remote starter wont start the car anymore, lock and unlock still work"
+    - "aftermarket remote start quit after i got a new battery put in"
+    - "press start on the fob twice and nothing happens, the lights just flash"
+    - "remote start worked all winter and now nothing"
+    - "REMOTE START NOT WORKING"
+    - "the remote starter thing wont start my car, think it got put in valet mode?"
+    - "remote start hasnt worked since the shop had the hood open"
+    - "remote car starter clicks the locks but wont turn the engine over"
+  required_slots:
+    - recent_action: "recent battery change, service visit (hood open), or fob battery — battery disconnects drop programming and hood-open service trips the hood pin [G13]"
+    - onset_timing: "lock/unlock still work but start doesn't = the valet-mode / hood-pin signature; everything dead = fob battery or antenna [G13]"
+    - started_when: "factory system vs aftermarket install (and roughly when it was installed) — aftermarket routes to the installer conversation if we didn't install it"
+  confusables:
+    - vs: key_fob_remote_not_working
+      discriminator_question: "Do lock and unlock still work from the fob (just remote START doesn't), or is the whole fob dead?"
+    - vs: wont_crank_just_clicks
+      discriminator_question: "Does the car start normally with the key/button from inside, and only the REMOTE start fails?"
+  safety_flag: none
+  notes: >
+    Aftermarket-dominant complaint. If the car starts fine from the driver's seat and only remote start
+    fails, the big three are: valet mode accidentally enabled (lock/unlock work, start doesn't — often
+    exits via a lock+trunk button combo), a broken/corroded hood-pin switch (safety input that reports
+    the hood open; parking lights flash but no crank), and lost programming after a battery disconnect
+    [G13]. Booking is a diagnostic; if it's a third-party install we didn't do, set the expectation
+    that the original installer may be the right stop. If the car ALSO won't start with the key, route
+    the no_start entries instead — that's a car problem, not a remote-start problem.
+
+- category: electrical
+  subcategory: gauge_cluster_dead_or_erratic
+  display: "Gauges / instrument cluster dead or erratic"
+  customer_voice_anchors:
+    - "none of my gauges work"
+    - "dashboard gauges all went dead"
+    - "speedometer and gas gauge stopped working at the same time"
+    - "gauges go crazy sometimes, the needles jump all over the place"
+    - "instrument cluster went completely blank while i was driving"
+    - "GAUGES NOT WORKING"
+    - "speedometer needle bounces around and the fuel gauge reads empty on a full tank"
+    - "dash cluster flickers on and off, some days everything is just dead"
+    - "tach and speedo quit working but the car drives fine"
+    - "whole dash display died, no speed no fuel no temp"
+  required_slots:
+    - onset_timing: "ALL gauges at once vs one gauge vs intermittent flicker — all-at-once points at a fuse/ground/connector; one needle points at that sender or stepper motor [G14]"
+    - warning_light_behavior: "dead/blank vs erratic jumping needles — erratic readings point at the instrument voltage regulator or failing stepper motors [G14]"
+    - started_when: "after a battery change/jump/stereo install vs out of nowhere — disturbed grounds and connectors are common after electrical work"
+    - drivable_state: "driving without a speedometer/fuel gauge — worth prompt scheduling, and note if the cluster died WHILE driving"
+  confusables:
+    - vs: multiple_random_electrical_glitches
+      discriminator_question: "Is it just the gauge cluster acting up, or are other things (radio, locks, windows) also glitching randomly?"
+    - vs: dim_or_flickering_lights
+      discriminator_question: "Are the gauges themselves dead or jumping, or is it the dash LIGHTING getting dim/flickering?"
+    - vs: multiple_warning_lights_at_once
+      discriminator_question: "Did the gauges stop working, or did a bunch of warning lights come ON with the gauges still reading?"
+  safety_flag: none
+  notes: >
+    All-gauges-dead simultaneously is usually upstream of the cluster: a blown instrument-panel fuse, a
+    bad ground, or a loose harness connector; erratic/jumping needles point at the instrument voltage
+    regulator, worn stepper motors, or cracked solder joints inside the cluster [G14]. Partially covered
+    before by multiple_random_electrical_glitches — this is the dedicated entry when the CLUSTER is the
+    complaint. If the whole car dies with it (engine stumbles, lights out), that's the charging-system
+    lane (died_while_driving / battery_charging_light), not the cluster. No speedometer is a real
+    usability/safety annoyance — schedule promptly, no safety override.
+
+# ---------------------------------------------------------------------------
+# FLUIDS — milky oil / coolant-oil mix (head-gasket presentation) (GAP #10)
+# ---------------------------------------------------------------------------
+
+- category: fluids
+  subcategory: milky_oil_coolant_mix
+  display: "Milky oil / coolant mixing with oil"
+  customer_voice_anchors:
+    - "oil on my dipstick looks like chocolate milk"
+    - "milky white gunk under my oil cap"
+    - "oil looks creamy and my coolant keeps disappearing"
+    - "checked the oil and its a milky tan color, is that coolant in it?"
+    - "oil looks like a milkshake, my neighbor said dont drive it"
+    - "OIL MILKY ON DIPSTICK, think the head gasket is blown"
+    - "coolant level keeps dropping and the oil looks light brown and frothy"
+    - "creamy sludge under the oil filler cap, i mostly drive short trips in winter"
+    - "oil level is going UP on the dipstick and it looks milky"
+    - "antifreeze getting into my oil i think, both look wrong"
+  required_slots:
+    - fluid_color: "milky/tan/frothy ON THE DIPSTICK vs a light film only under the oil CAP — dipstick-deep milkiness = coolant in the oil; cap-only film on a short-trip winter car is often benign condensation [G15]"
+    - onset_timing: "coolant level dropping and/or oil level RISING with it — the fluid-exchange pair that confirms mixing [G15]"
+    - drivable_state: "how far away they are / still driving daily — milky oil can't lubricate properly; the advice is stop driving it and tow or drive-in immediately-and-short [G15]"
+    - started_when: "after overheating episode / recent head or cooling work vs out of nowhere — an overheat right before is the classic head-gasket story"
+    - smell_descriptor: "any white sweet-smelling exhaust smoke with it — the exhaust side of the same failure"
+  confusables:
+    - vs: white_smoke_from_tailpipe
+      discriminator_question: "Is the main thing milky oil on the dipstick, or white smoke from the exhaust? (Both together point at the same head-gasket problem — mention both.)"
+    - vs: coolant_loss_low_coolant
+      discriminator_question: "Is the coolant just getting low, or does the OIL also look milky like chocolate milk?"
+    - vs: engine_overheating_running_hot
+      discriminator_question: "Is it currently overheating, or is the concern what the oil looks like on the dipstick?"
+  safety_flag: advise_immediately
+  notes: >
+    The under-the-hood presentation of a head-gasket / oil-cooler / cracked-block failure — the FLU
+    white-smoke entry covers the exhaust side only; this covers the dipstick side. Coolant emulsified
+    in oil ("chocolate milk") destroys the oil's ability to protect bearings — continuing to drive
+    multiplies the damage, hence the flag and the tow-first advice [G15]. Benign look-alike to keep out:
+    a thin milky film under the oil CAP only, on a car doing short cold-weather trips, is usually
+    condensation — the dipstick-vs-cap-only question separates them [G15]. Rising oil level + falling
+    coolant is strong confirmation. Customers frequently self-diagnose "blown head gasket" — keep the
+    observations (milky dipstick, coolant loss, white smoke, overheat history), book the diagnostic.
