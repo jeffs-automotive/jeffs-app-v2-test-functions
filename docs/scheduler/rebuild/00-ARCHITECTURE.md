@@ -59,7 +59,13 @@ customer text
 [3] DECISION LAYER — deterministic code, NOT the model
   │   confident single category + required slots filled + no safety flag        → BOOK (echo a confirm line)
   │   two-three plausible categories, or a required slot missing                → ASK (chips, ≤3 turns)
-  │   low confidence / out-of-scope / safety flag / question budget spent       → FORWARD TO ADVISOR + "please call the shop"
+  │   REAL car concern but can't pin a category (low conf / weak retrieval /     → GENERAL TESTING — bookable,
+  │       question budget spent)                                                    starts $89.95, no canned job;
+  │                                                                                  advisors refine it from the emailed
+  │                                                                                  concern ("we'll let you know if more
+  │                                                                                  testing is needed"). See 02-SYSTEM-DESIGN §4.
+  │   NOT a car-repair request (out_of_scope)                                    → advise to call the shop (not bookable)
+  │   safety_flag = advise_immediately (any point)                              → short-circuit safety branch
   │   (LLMs detect ambiguity but won't reliably ASK on their own — the ask/defer decision must live here.)
   ▼
 [4] QUESTION TURN (only if needed) — chip-first, slot-driven, budgeted
