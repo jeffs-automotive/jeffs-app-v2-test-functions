@@ -1,0 +1,1485 @@
+# =====================================================================================
+# Customer-voice anchor bank — DOMAIN: brakes / steering / suspension & ride / wheels-
+# tires-TPMS / alignment
+#
+# Purpose: day-one seed anchors for the rebuilt concern classifier. An embedding model
+# matches raw customer text against `customer_voice_anchors` to shortlist candidates;
+# a small LLM then extracts `required_slots` and picks among the shortlist using the
+# `confusables` discriminator questions.
+#
+# Conventions
+# - Anchors are CUSTOMER language (vague/terse/misspelled/ALL-CAPS included), per
+#   docs/automotive-knowledge-base/customer-voice-style-guide.md. No technician jargon.
+# - `subcategory` slugs bind to the LIVE scheduler taxonomy
+#   (docs/automotive-knowledge-base/00-current-scheduler-taxonomy.md) wherever a live
+#   slug exists. Slugs marked "NEW" in notes have no live equivalent (coverage gaps the
+#   KB already flagged, e.g. grabby brakes, collapsed spring, parking brake stuck).
+# - Slot names reuse the live 29-slot Stage-3 ontology where possible; three slots are
+#   PROPOSED-NEW (steering_load_effect, ride_damping_symptom, pull_road_dependence) and
+#   are marked as such where used.
+# - Phrasing style is calibrated against this repo's fact-checked lexicons
+#   (systems/{brakes-friction-hydraulic,steering-power-steering,suspension-ride-alignment,
+#   wheels-tires-tpms-bearings,abs-traction-stability}.lexicon.yaml), which encode real
+#   Tekmetric / NHTSA / forum customer voice.
+#
+# Web sources for the diagnostic claims in notes/confusables (fetched 2026-07-19):
+#   [S1]  Brake wear indicators (squeal = pads near limit): firestonecompleteautocare.com/blog/brakes/brake-wear-indicators/
+#   [S2]  Grinding = friction material gone, backing plate on rotor: knowhow.napaonline.com/noisy-brakes-telltale-signs-of-trouble-you-shouldnt-ignore/
+#   [S3]  Pedal pulsation / steering shake when braking = disc thickness variation ("warped rotors"):
+#         nrsbrakes.com/blogs/supporting-articles/why-does-my-steering-wheel-shake-diagnosing-a-pulsating-brake-pedal
+#         + ricksfreeautorepairadvice.com/brake-rotor-warp-myth-what-causes-brake-pedal-pulsation/
+#   [S4]  Front vs rear: wheel shake = front rotors, seat pulsation = rear: tiresplus.com/blog/brakes/car-shakes-when-i-brake/
+#   [S5]  Spongy pedal = air/fluid; pedal sinks under steady pressure = master cylinder seals:
+#         wagnerbrake.com/technical/technical-tips/why-are-my-brakes-spongy.html + directbrakes.com/blog/soft-brake-pedal-danger
+#   [S6]  Hard pedal = booster vacuum loss (hose, diaphragm, check valve): firestonecompleteautocare.com/blog/brakes/why-is-my-brake-pedal-hard/
+#         + mpbrakes.com/brake-troubleshooting-troubleshooting-a-hard-brake-pedal-in-a-power-booster-equipped-vehicle/
+#   [S7]  ABS (amber) = ABS fault, base brakes still work; red BRAKE = core hydraulic/fluid/parking-brake, urgent;
+#         both together = do not drive: westsideautopros.com/abs-warning-light-vs-brake-warning-light-whats-the-difference/
+#         + skanyx.com/blog/abs-warning-light-meaning
+#   [S8]  EPS light = assist disabled/reduced; weak 12V battery + steering-angle/torque sensor are top causes:
+#         kwikkarspringvalley.com/automotive-insights/power-steering-assist-fault/ + autotechiq.com/symptom/power-steering-warning-light
+#   [S9]  Bearing hum loads with steering sweep (louder turning one way); tire roar stays constant:
+#         gmb.net/blog/wheel-bearing-noise-vs-tire-noise/ + carparts.com/blog/wheel-bearing-noise-vs-tire-noise-how-to-know-whats-the-issue/
+#   [S10] TPMS solid = real low pressure (>=25% low); flash 60-90s then solid = sensor/system fault:
+#         redi-sensor.com/faqs/solid-vs-flashing-tpms-warning-light/ + prioritytire.com/blog/tire-pressure-sensor-fault
+#   [S11] Sidewall bulge = broken cords from impact, NOT repairable, replace (blowout risk):
+#         lesschwab.com/article/tires/what-do-tire-sidewall-bubbles-mean.html + bigotires.com/resources/bubble-in-sidewall-of-tire-what-it-means-and-safety-concerns
+#   [S12] Pull causes: alignment, tire pressure L/R delta, tire conicity (pull flips with a side-swap), sticking caliper (pull under braking only):
+#         firestonecompleteautocare.com/blog/alignment/what-to-do-when-car-pulls-to-one-side/ + atlanticmotorcar.com/casestudies/radial-tire-pull-or-is-my-tire-really-cone-shaped/
+#   [S13] Worn shocks/struts: continued bouncing, nose dive, body roll, bottoming out, cupped/scalloped tire wear:
+#         monroe.com/technical-resources/shocks-101/symptoms-worn-shock-struts.html + lesschwab.com/article/shocks-struts/how-to-tell-if-your-shocks-or-struts-are-bad.html
+#   [S14] Clunk over bumps: sway-bar end links first, then strut mounts / control-arm bushings / ball joints (ball joint = safety):
+#         carcaretotal.com/clunking-noise-over-bumps/ + vehicleruns.com/maintenance-repair/sway-bar-link/bad-sway-bar-link-noises-diagnosis/
+#   [S15] Death wobble: violent steering shimmy >=40 mph triggered by a bump; worn track bar / tie rods / damper; loss-of-control risk:
+#         autozone.com/diy/truck-and-towing/what-causes-death-wobble + knowhow.napaonline.com/what-causes-death-wobble/
+#   [S16] Dry rot: age/UV sidewall cracking, unsafe (highway blowout risk), replace-only, ~6-year age guidance:
+#         lesschwab.com/article/tires/tire-dry-rot-causes-signs-prevention.html + tireagent.com/blog/what-causes-dry-rotting-tires-are-tires-with-dry-rot-safe
+#   [S17] Parking brake stuck: rusted/corroded cables, frozen moisture after washes/cold, seized hardware; do not drive against it:
+#         autozone.com/diy/brakes/my-parking-brake-is-stuck + firestonecompleteautocare.com/blog/brakes/parking-brakes-stuck/
+# =====================================================================================
+
+# ---------------------------------------------------------------------------
+# BRAKES — pedal feel, brake noise, brake-triggered pull/shake, failures
+# ---------------------------------------------------------------------------
+
+- category: brakes
+  subcategory: high_pitched_squealing
+  display: "Brakes squealing / squeaking"
+  customer_voice_anchors:
+    - "my brakes squeal every time I come to a stop"
+    - "high pitched squeak when i slow down, goes away if i press harder"
+    - "breaks squeeking real bad, especially in the morning"
+    - "loud screeching sound from the front when I hit the brakes"
+    - "brakes started chirping last week, worse the first few stops of the day"
+    - "BRAKES SQUEALING WHEN STOPPING"
+    - "hear a squeaky noise whenever i step on the brake pedal"
+    - "brakes make a whistling squeal, do i need new pads?"
+    - "car screeches when stopping, so embarrassing at stop lights"
+    - "squeeling noise when braking, been going on a couple weeks"
+    - "brakes squeak when its damp out but its getting more constant"
+  required_slots:
+    - noise_descriptor: "squeal/squeak/chirp vs grind — separates near-worn pads (inspection soon) from metal-on-metal (urgent, rotors at risk)"
+    - onset_timing: "only while braking vs constant even off the brake — a constant squeal that stops WHEN braking points at the wear indicator dragging; noise unrelated to braking may be a belt"
+    - location_axle: "front or rear if the customer can tell — preps the advisor and the estimate"
+    - started_when: "how long / getting worse — urgency and whether rotors are likely involved yet"
+  confusables:
+    - vs: metallic_grinding
+      discriminator_question: "Is it a high-pitched squeak or squeal, or more of a rough metal-on-metal grinding?"
+    - vs: noise_when_turning_the_steering_wheel
+      discriminator_question: "Does the noise happen when you press the brakes, or when you turn the steering wheel?"
+    - vs: squeaking_or_creaking_over_bumps
+      discriminator_question: "Do you hear it when braking, or when going over bumps and dips?"
+    - vs: high_pitched_whining_under_the_hood
+      discriminator_question: "Does it only happen when you're braking, or is the noise there any time the engine is running?"
+  safety_flag: none
+  notes: >
+    Squeal is usually the pad wear indicator contacting the rotor — pads near end of life, service soon [S1].
+    Includes chirp/screech/whistle framed around braking. Does NOT include grinding (own entry, urgent),
+    squeal on turning (steering/belt), or bump-triggered squeaks (suspension). Customers often write
+    "breaks"/"squeeking" — keep misspelled variants. If squeal has already progressed to a red BRAKE light,
+    route brake_system_red_light instead.
+
+- category: brakes
+  subcategory: metallic_grinding
+  display: "Grinding when braking (metal-on-metal)"
+  customer_voice_anchors:
+    - "grinding noise when I brake, sounds like metal on metal"
+    - "GRINDING WHEN STOPPING"
+    - "when i press the brakes theres a horrible grinding sound"
+    - "brakes are grinding really bad, i think im down to the metal"
+    - "hear a scraping crunching noise from the wheel when i stop"
+    - "left rear brake grinding"
+    - "grinding noise when backing up and hitting the brake"
+    - "brakes went from squeaking to grinding this week"
+    - "sounds like rocks crunching when i slow down"
+    - "car makes a growling grind every time i come to a stop"
+    - "breaks grinding metal to metal, need them looked at asap"
+  required_slots:
+    - noise_descriptor: "grind/scrape/crunch confirms metal-on-metal vs squeal — changes urgency and scope (pads + rotors)"
+    - onset_timing: "every stop vs only reversing vs only hard stops — reverse-only grinding is often rear shoes/backing plate"
+    - location_axle: "front vs rear / which corner — advisor prep"
+    - started_when: "how long it's been grinding — longer = more rotor damage likely"
+  confusables:
+    - vs: high_pitched_squealing
+      discriminator_question: "Is it a rough grinding like metal rubbing metal, or a high-pitched squeal?"
+    - vs: clunking_over_bumps
+      discriminator_question: "Does the noise happen when you press the brakes, or when you drive over bumps?"
+    - vs: humming_or_whirring_at_speed
+      discriminator_question: "Do you hear it only when braking, or does it hum/grind constantly as you drive and change with speed?"
+  safety_flag: advise_immediately
+  notes: >
+    Grinding = friction material worn away, backing plate contacting the rotor — rotor damage accrues with
+    every stop [S2]. Treat as urgent. Includes scraping/crunching/growling tied to brake application
+    (including in reverse). Does NOT include speed-dependent hum (bearing) or dragging noises not tied to
+    the pedal. Customers frequently self-diagnose ("I think I need brakes") — keep the symptom, ignore the
+    self-diagnosis for routing.
+
+- category: brakes
+  subcategory: pulsating_or_vibrating_pedal
+  display: "Brake pedal pulses / vibrates underfoot"
+  customer_voice_anchors:
+    - "brake pedal pulses under my foot when I stop"
+    - "pedal vibrates when braking at highway speeds"
+    - "i can feel the brake pedal throbbing when i slow down from 70"
+    - "pedal pushes back at my foot in waves when i brake"
+    - "brake pedal shudders when im stopping"
+    - "feels like the pedal is bouncing under my foot during braking"
+    - "BRAKE PEDAL VIBRATES AT HIGHWAY SPEEDS WHEN BRAKING"
+    - "pedal feels lumpy when i brake going down hills"
+    - "when i brake down a long hill the pedal starts pulsing"
+  required_slots:
+    - pedal_feel: "pulsing/throbbing in the PEDAL itself — separates this from shake felt in the wheel/whole car"
+    - speed_band: "highway-speed braking vs all speeds — classic rotor thickness-variation pattern is worst from speed"
+    - onset_timing: "only when braking (must be brake-triggered to stay in brakes)"
+    - started_when: "gradual vs after recent brake work — recent-service pulsation routes the advisor differently"
+  confusables:
+    - vs: vibration_or_pulsing_when_braking
+      discriminator_question: "Do you feel it mostly in the brake pedal under your foot, or in the steering wheel / whole car?"
+    - vs: steering_wheel_shake_at_highway_speed
+      discriminator_question: "Does the shaking only happen while you're pressing the brakes, or does it happen just cruising at speed?"
+  safety_flag: none
+  notes: >
+    Pedal pulsation is almost always disc thickness variation ("warped rotors" colloquially) — thick/thin
+    spots push the caliper pistons in and out and the pedal telegraphs it [S3]. Keep both this pedal-feel
+    entry and the whole-car sibling; the discriminator is WHERE the customer feels it [S4]. Does NOT
+    include ABS pedal buzz during a hard emergency stop on gravel/ice (normal ABS engagement — note in
+    conversation, not a fault).
+
+- category: brakes
+  subcategory: vibration_or_pulsing_when_braking
+  display: "Car / steering wheel shakes when braking"
+  customer_voice_anchors:
+    - "steering wheel shakes when I hit the brakes at 65"
+    - "whole car shudders when braking from highway speed"
+    - "front end vibrates whenever i brake coming off the freeway"
+    - "car shakes really bad when applying the brakes"
+    - "when i brake at high speed the steering wheel wobbles back and forth"
+    - "violently shakes and shudders when I apply the brakes no matter the speed"
+    - "shaking when applying brakes"
+    - "car judders to a stop, feel it through the seat when braking"
+    - "steering wheel vibrates braking downhill with the family in the car"
+    - "brakes make the whole front end tremble when stopping from 60"
+  required_slots:
+    - pedal_feel: "whether the pedal also pulses — pedal + wheel together strengthens the rotor-DTV picture"
+    - speed_band: "what speed braking triggers it — highway-only vs every stop"
+    - onset_timing: "MUST be brake-triggered; if it shakes while cruising without braking it's the balance/shimmy entry"
+    - location_axle: "wheel shake = front rotors, seat/floor pulsing = rear — where the customer feels it localizes the axle"
+  confusables:
+    - vs: steering_wheel_shake_at_highway_speed
+      discriminator_question: "Does it shake only when you're braking, or also when just driving at highway speed without touching the brakes?"
+    - vs: pulsating_or_vibrating_pedal
+      discriminator_question: "Is the shake mostly in the steering wheel or whole car, or mostly a pulsing you feel in the brake pedal itself?"
+    - vs: shaking_or_bouncing_over_bumps_and_rough_roads
+      discriminator_question: "Does it happen when braking on smooth roads too, or only over bumps and rough pavement?"
+  safety_flag: none
+  notes: >
+    Brake-triggered shake felt in the wheel points at FRONT rotor thickness variation; felt in the seat,
+    rear [S3][S4]. The #1 trap: customers say "car shakes at 65" and it's actually wheel balance —
+    brake-triggered vs cruise-triggered is the load-bearing fact. Brake-only vibration stays in brakes
+    (live rule: NOT suspension). Severe shake + pull together can be a sticking caliper — advisor note.
+
+- category: brakes
+  subcategory: spongy_or_soft_pedal
+  display: "Soft / spongy brake pedal"
+  customer_voice_anchors:
+    - "brake pedal feels soft and mushy"
+    - "have to pump the brakes a couple times to get them to grab"
+    - "pedal goes way farther down than it used to before the car slows"
+    - "brakes feel squishy, like stepping on a sponge"
+    - "pedal feels weak and the car takes longer to stop"
+    - "breaks feel spongy ever since i had the pads done"
+    - "brake pedal is soft, firms up if i pump it"
+    - "not much pressure in the brake pedal anymore"
+    - "pedal almost hits the floor before the brakes really bite"
+    - "brakes feel low, like theres air in the lines"
+  required_slots:
+    - pedal_feel: "soft/spongy/low vs sinking vs hard — the pedal-feel triage separates air/fluid vs master cylinder vs booster"
+    - drivable_state: "can they still stop confidently — decides drive-in vs tow advice"
+    - recent_action: "recent brake work or fluid top-offs — air introduced during service is a top cause"
+    - started_when: "sudden vs gradual — sudden soft pedal is more alarming (leak) than slow fade"
+  confusables:
+    - vs: pedal_sinks_to_floor
+      discriminator_question: "If you press and HOLD the pedal at a stop, does it slowly keep sinking toward the floor, or does it stay where it is (just feels soft)?"
+    - vs: hard_or_unresponsive_pedal
+      discriminator_question: "Does the pedal feel soft and squishy, or stiff and hard to push down?"
+    - vs: clear_yellow_or_light_brown_puddle_brake_fluid
+      discriminator_question: "Have you noticed any fluid on the ground or had to add brake fluid?"
+  safety_flag: advise_immediately
+  notes: >
+    Spongy pedal = air in the hydraulics or fluid loss; firming up when pumped is the classic air signature
+    [S5]. Ask about fluid/leaks — a soft pedal plus a puddle escalates to the brake-fluid-leak entry.
+    Does NOT include a pedal that sinks under steady hold (master cylinder — own entry) or normal
+    slightly-longer travel after new pads bed in.
+
+- category: brakes
+  subcategory: pedal_sinks_to_floor
+  display: "Brake pedal sinks to the floor"
+  customer_voice_anchors:
+    - "brake pedal slowly sinks to the floor when im holding it at a light"
+    - "pedal goes all the way to the floor"
+    - "if i hold the brake the pedal creeps down and the car starts rolling"
+    - "brake pedal not holding, it sinks while im stopped"
+    - "at red lights i have to keep pumping because the pedal keeps dropping"
+    - "pedal went to the floor this morning, barely stopped"
+    - "hold the brake for ten seconds and it just keeps going down"
+    - "brake pedal drops to the floorboard when pressed steady"
+  required_slots:
+    - pedal_feel: "sinking under steady pressure is the master-cylinder signature — distinct from spongy"
+    - drivable_state: "does the car still stop / has it failed to stop — tow vs careful drive-in"
+    - onset_timing: "sinks at stops under hold vs dropped suddenly while driving — sudden drop is an emergency"
+    - recent_action: "recent brake work / fluid added — helps separate internal bypass from a fresh leak"
+  confusables:
+    - vs: spongy_or_soft_pedal
+      discriminator_question: "Does the pedal keep sinking while you hold steady pressure, or does it stop and hold once pressed (just feels soft)?"
+    - vs: clear_yellow_or_light_brown_puddle_brake_fluid
+      discriminator_question: "Is the brake fluid level dropping or is there any wet spot under the car or inside a wheel?"
+  safety_flag: advise_immediately
+  notes: >
+    A pedal that sinks under sustained pressure with no external leak is the classic worn master-cylinder
+    seal pattern (fluid bypassing internally) [S5]. Treat as urgent; a pedal that suddenly went to the
+    floor mid-drive is an emergency — if the customer says the brakes failed outright, route
+    brakes_failed_or_gave_out.
+
+- category: brakes
+  subcategory: hard_or_unresponsive_pedal
+  display: "Brake pedal stiff / hard to press"
+  customer_voice_anchors:
+    - "brake pedal is rock hard and the car barely stops"
+    - "pedal feels stiff, like pushing against a wall"
+    - "have to stand on the brake pedal to get it to stop"
+    - "brake pedal got really hard all of a sudden"
+    - "pedal feels like stepping on a brick, no give at all"
+    - "brakes are super stiff first thing in the morning"
+    - "pedal barely moves when i push it and stopping takes forever"
+    - "brake pedal hard as a rock after the car sat for a month"
+  required_slots:
+    - pedal_feel: "hard/high-effort — the booster-side signature vs soft/sinking hydraulic signatures"
+    - onset_timing: "always vs first stops only vs after repeated quick stops — a check-valve leak gets stiffer with rapid repeats"
+    - drivable_state: "can they still stop the car with heavy effort — drive-in vs tow"
+    - engine_running: "hard only before starting the engine is normal (no vacuum yet); hard while running is the fault"
+  confusables:
+    - vs: spongy_or_soft_pedal
+      discriminator_question: "Is the pedal hard and difficult to push down, or soft and squishy?"
+    - vs: brakes_failed_or_gave_out
+      discriminator_question: "Can you still stop the car if you push very hard, or did the brakes stop working entirely?"
+  safety_flag: advise_immediately
+  notes: >
+    High-effort pedal is most often booster vacuum loss — cracked vacuum hose, torn diaphragm, or failed
+    check valve [S6]. Stopping distance increases substantially, hence the flag. Does NOT include the
+    normal firm pedal with the engine OFF, or hybrid/EV regen feel complaints (advisor conversation).
+
+- category: brakes
+  subcategory: grabby_or_jumpy_brakes
+  display: "Brakes grab / too touchy"
+  customer_voice_anchors:
+    - "brakes grab really hard even when i barely touch the pedal"
+    - "brakes are super touchy, the car jerks to a stop"
+    - "slightest tap on the brake and everyone gets thrown forward"
+    - "brakes bite way too hard at low speed"
+    - "brakes feel jumpy, hard to stop smoothly"
+    - "car lurches when I brake gently, cant make a smooth stop"
+    - "new pads and now the brakes slam on with the lightest touch"
+    - "brakes grab and release, kind of jerky coming to a stop"
+  required_slots:
+    - pedal_feel: "grabby/over-sensitive bite — the defining feel"
+    - recent_action: "after recent pad/rotor work vs out of nowhere — contamination or wrong-pad issues follow service"
+    - weather_condition: "worse when cold/damp first thing — morning-grab from surface rust is common and often benign"
+    - onset_timing: "every stop vs first stops of the day"
+  confusables:
+    - vs: pulling_only_when_braking
+      discriminator_question: "When the brakes grab, does the car stay straight (just stops too hard), or does it pull to one side?"
+    - vs: pulsating_or_vibrating_pedal
+      discriminator_question: "Do the brakes bite too hard, or do you feel a pulsing/vibration through the pedal?"
+  safety_flag: none
+  notes: >
+    NEW slug — no live subcategory covers grab (the KB brakes dossier flagged this gap; Stage-3
+    pedal_feel=grabby exists but had nowhere to route). Includes over-sensitive bite and jerky engagement.
+    Does NOT include one-wheel lockup with smoke/smell (dragging brake — route the wheel-smoke entry) or
+    pull during braking (own entry).
+
+- category: brakes
+  subcategory: pulling_only_when_braking
+  display: "Pulls to one side when braking"
+  customer_voice_anchors:
+    - "car pulls hard to the left every time I hit the brakes"
+    - "veers to the right when braking, drives straight otherwise"
+    - "swerves to one side whenever i brake hard"
+    - "pulls left when stopping, scared it'll put me in the other lane"
+    - "when i slam the brakes the car jerks to the right"
+    - "brakes pull the car toward the shoulder every time i slow down"
+    - "steering yanks to one side under braking only"
+    - "car darts left when braking downhill"
+  required_slots:
+    - pull_direction: "left or right — needed for booking notes and to confirm it's one-directional"
+    - onset_timing: "ONLY when braking — the fact that separates it from an alignment/tire pull"
+    - started_when: "sudden vs gradual — a sudden brake pull suggests a stuck caliper or hose"
+    - drivable_state: "how severe / do they feel safe — a hard swerve under braking may warrant tow advice"
+  confusables:
+    - vs: steady_drift_while_cruising
+      discriminator_question: "Does it pull only while you're pressing the brakes, or does it drift to one side even when just cruising?"
+    - vs: pull_that_started_after_recent_tire_or_service_work
+      discriminator_question: "Did the pulling start right after tire, alignment, or brake work was done?"
+  safety_flag: none
+  notes: >
+    Pull under braking only = brake-side problem (sticking/seized caliper, collapsed hose, uneven pads) —
+    not alignment [S12]. If the customer describes losing their lane or says they don't feel safe, escalate
+    to the safety path. Does NOT include cruise pulls (steering_handling entries) or torque steer on
+    acceleration (pulling_only_during_acceleration, performance/driveline domain).
+
+- category: brakes
+  subcategory: brakes_failed_or_gave_out
+  display: "Brakes failed / no brakes"
+  customer_voice_anchors:
+    - "my brakes went out"
+    - "NO BRAKE PRESSURE. DO NOT DRIVE."
+    - "pedal went straight to the floor and the car barely stopped"
+    - "lost my brakes coming down a hill, terrifying"
+    - "the brakes gave out"
+    - "no brakes!! car is parked, need it towed"
+    - "brakes stopped working out of nowhere, im not driving it"
+    - "pressed the brake and nothing happened"
+    - "brakes completely gone, had to use the emergency brake to stop"
+  required_slots:
+    - drivable_state: "is the car parked/towed vs still being driven — the FIRST question; this concern should never be driven in"
+    - pedal_feel: "floor / no pressure / hard — what the pedal did during the failure"
+    - onset_timing: "sudden total loss vs progressive fade — fade after long downhill may recover but still urgent"
+    - started_when: "when it happened and whether anything preceded it (leak, light, noise)"
+  confusables:
+    - vs: pedal_sinks_to_floor
+      discriminator_question: "Did the brakes completely stop working, or do they still stop the car but the pedal sinks while you hold it?"
+    - vs: brake_system_red_light
+      discriminator_question: "Are the brakes actually failing to stop the car, or is it a red BRAKE warning light with the brakes still working?"
+  safety_flag: advise_immediately
+  notes: >
+    Total or near-total brake loss is a do-not-drive safety override — recommend tow, never a drive-in
+    appointment. Live taxonomy routes this to the safety_concern situational bucket; the anchor entry
+    exists so the embedding shortlist catches "brakes went out" phrasing and hands it to the safety path
+    rather than a $39.99 inspection.
+
+- category: brakes
+  subcategory: parking_brake_stuck_or_wont_release
+  display: "Parking brake stuck / won't release"
+  customer_voice_anchors:
+    - "parking brake is stuck and wont release"
+    - "e-brake wont come off"
+    - "emergency brake is jammed and the car wont move"
+    - "left the parking brake on all winter and now its frozen"
+    - "parking brake light stays on and it feels like somethings dragging"
+    - "ebrake handle comes up but the back wheels are still locked"
+    - "electronic parking brake says release fault and wont let go"
+    - "parking break froze overnight after the car wash"
+    - "rear brakes seem stuck on after i parked with the handbrake for a week"
+  required_slots:
+    - parking_brake_state: "applied/stuck vs released-but-dragging — defines the complaint"
+    - drivable_state: "is the car immobile — likely needs on-site help or tow rather than a drive-in"
+    - weather_condition: "freezing overnight / after a car wash — frozen-cable pattern"
+    - started_when: "after sitting a long time vs after normal use — rusted cable vs hardware failure"
+  confusables:
+    - vs: smoke_or_burning_smell_from_a_wheel
+      discriminator_question: "Is the car stuck in place, or did you drive it and now a wheel smells hot or is smoking?"
+    - vs: brake_system_red_light
+      discriminator_question: "Is the parking brake physically stuck, or is it just the red brake light staying on with the parking brake released?"
+  safety_flag: none
+  notes: >
+    NEW slug — common real-world concern with no live subcategory. Rusted/corroded cables and frozen
+    moisture (cold snaps, post-car-wash) are the classic causes; driving against a stuck parking brake
+    overheats the rear brakes [S17]. If they already drove it and a wheel is hot/smoking, escalate to the
+    wheel-smoke entry (advise_immediately). Covers manual levers, foot pedals, and electronic parking
+    brake fault messages.
+
+# ---------------------------------------------------------------------------
+# WARNING LIGHTS — chassis telltales (ABS, red BRAKE, TPMS, EPS, traction)
+# ---------------------------------------------------------------------------
+
+- category: warning_light
+  subcategory: abs_anti_lock_brake_light
+  display: "ABS light on"
+  customer_voice_anchors:
+    - "ABS light came on"
+    - "abs light is on but the brakes feel fine"
+    - "yellow ABS light came on after I hit a pothole"
+    - "abs light on, brakes still stop fine"
+    - "ABS LIGHT ON AND OFF"
+    - "anti lock light stays on all the time now"
+    - "abs light plus the traction light came on together"
+    - "abs light came on and the brakes feel like they vibrate on gravel"
+    - "the letters ABS lit up yellow on my dash"
+  required_slots:
+    - warning_light_named: "ABS specifically vs red BRAKE vs traction icon — the routing hinge for the whole light family"
+    - warning_light_behavior: "steady vs intermittent vs on-at-startup-then-off (normal bulb check)"
+    - pedal_feel: "any brake symptom with it — mechanical symptom + light routes to the brake-inspection-with-light service"
+    - started_when: "after a pothole / recent service / out of nowhere"
+  confusables:
+    - vs: brake_system_red_light
+      discriminator_question: "Is it the yellow ABS light, or a red light that says BRAKE (or a red exclamation point in a circle)?"
+    - vs: traction_control_stability_light
+      discriminator_question: "Does the light say ABS, or is it the little car with squiggly lines (traction/stability)?"
+    - vs: multiple_warning_lights_at_once
+      discriminator_question: "Is it just the ABS light, or did several different warning lights come on at the same time?"
+  safety_flag: none
+  notes: >
+    Amber ABS = anti-lock fault; the base brakes still work normally, but anti-lock protection is offline
+    [S7]. A momentary ABS light at key-on that goes out is the normal self-test. ABS + red BRAKE together
+    = treat as the red-light entry (do-not-drive advice) [S7]. Wheel-speed sensors are shared with
+    traction/stability — co-illumination is common and routes on which light the customer NAMES.
+
+- category: warning_light
+  subcategory: brake_system_red_light
+  display: "Red BRAKE warning light"
+  customer_voice_anchors:
+    - "red BRAKE light came on on my dash"
+    - "brake warning light on and the fluid was low"
+    - "red exclamation point in a circle lit up"
+    - "brake light on the dash stays on even with the parking brake off"
+    - "RED BRAKE LIGHT COMING ON AND OFF, topped off the fluid and its back"
+    - "red brake light comes on when I go around corners"
+    - "brake light on dash lit up today, the brake lights out back work fine"
+    - "brakes squeaking for weeks and now the red brake light is on too"
+    - "red parking brake light wont turn off while driving"
+  required_slots:
+    - warning_light_named: "red BRAKE / (!) symbol vs amber ABS — red is the urgent one"
+    - warning_light_behavior: "steady vs flickers on corners (classic low-fluid slosh) vs recurring after top-off"
+    - parking_brake_state: "confirmed fully released — the first thing to rule out"
+    - pedal_feel: "any soft/sinking pedal with it — light + pedal symptom together is a leak picture"
+    - drivable_state: "still stopping normally? red light + any pedal change = advise no driving"
+  confusables:
+    - vs: abs_anti_lock_brake_light
+      discriminator_question: "Is the light red and labeled BRAKE (or a red ! in a circle), or the yellow ABS light?"
+    - vs: parking_brake_stuck_or_wont_release
+      discriminator_question: "Is the parking brake itself stuck, or is it released and the red light stays on anyway?"
+    - vs: accessory_doesnt_work
+      discriminator_question: "Is this a warning light on your dashboard, or a brake light bulb out on the back of the car?"
+  safety_flag: advise_immediately
+  notes: >
+    Red BRAKE = core hydraulic system: low fluid, pressure loss, or parking-brake circuit — the urgent
+    brake light [S7]. Flickering on corners with low fluid = fluid sloshing below the sensor (leak or very
+    worn pads). TRAP: "my brake lights work fine" — customers conflate the dash telltale with the exterior
+    bulbs; the exterior-bulb complaint is electrical, not this. Red + ABS together: advise not to drive [S7].
+
+- category: warning_light
+  subcategory: tpms_tire_pressure_light
+  display: "Tire pressure (TPMS) light"
+  customer_voice_anchors:
+    - "tire pressure light is on"
+    - "tpms light wont go off even after i put air in all four"
+    - "low tire light keeps coming back every few days"
+    - "orange horseshoe with an exclamation point on my dash"
+    - "TPMS LIGHT COMES ON & OFF"
+    - "tire light flashes for a minute when i start the car then stays on"
+    - "tire pressure sensor fault message on the screen"
+    - "tire light came on this morning when it got cold"
+    - "pressure light on but all my tires look fine"
+    - "tpms sensor not reading on one wheel since i got new tires"
+  required_slots:
+    - warning_light_behavior: "solid vs flashes-then-solid — solid = real low pressure; flashing 60-90s then solid = sensor/system fault"
+    - tire_state: "has the customer checked/added air, and did the light clear — separates a leak from a TPMS fault"
+    - recent_action: "new tires / rotation / seasonal swap — sensors commonly need relearn or get damaged during tire work"
+    - weather_condition: "first cold snap — pressure drop with temperature is the benign seasonal pattern"
+  confusables:
+    - vs: tire_going_flat_losing_air
+      discriminator_question: "Is one tire actually going low or flat when you check it, or is it just the light with the tires holding normal pressure?"
+    - vs: visible_damage_nail_screw_bulge_cut
+      discriminator_question: "Have you seen anything in the tire, like a nail or screw, or is it only the light?"
+  safety_flag: none
+  notes: >
+    Solid TPMS light = one or more tires ~25%+ below spec; a light that FLASHES 60-90 seconds at startup
+    then stays solid = sensor/system malfunction, not pressure [S10]. If air was added and the light
+    returns, either a real slow leak (route tire_going_flat_losing_air) or a sensor fault. Covers the
+    live low_pressure_warning_light_only sibling: the checked-and-inflated-but-light-persists phrasing
+    belongs here too.
+
+- category: warning_light
+  subcategory: power_steering_eps_light
+  display: "Power steering / EPS light"
+  customer_voice_anchors:
+    - "power steering light came on"
+    - "EPS light is on and the wheel feels heavy"
+    - "steering wheel icon with an exclamation point lit up on my dash"
+    - "power steering assist fault message on the screen"
+    - "eps light came on right after they replaced my battery"
+    - "yellow steering wheel light on and its harder to park than usual"
+    - "power steering warning comes on and off, steering gets stiff when it does"
+    - "steering light on the dash, drives normal though"
+  required_slots:
+    - warning_light_named: "the steering-wheel icon / EPS / PS message — anchors the light family"
+    - steering_feel: "heavy/normal/intermittent assist — light + heavy steering is urgent; light alone is diagnostic"
+    - recent_action: "battery service, alignment, or jump start — steering-angle/low-voltage triggers are the top pattern"
+    - warning_light_behavior: "steady vs comes-and-goes with the stiffness"
+  confusables:
+    - vs: hard_to_turn_heavy_steering
+      discriminator_question: "Is there a warning light on the dash, or is the steering just hard to turn with no light?"
+    - vs: battery_charging_light
+      discriminator_question: "Is it the steering wheel icon, or the battery light — or did several lights come on together?"
+    - vs: multiple_warning_lights_at_once
+      discriminator_question: "Is the steering light the only one on, or did a bunch of warning lights appear at once?"
+  safety_flag: none
+  notes: >
+    EPS light = the module detected a fault and may reduce or disable assist [S8]. A weak 12V battery and
+    a steering-angle sensor knocked out of calibration after battery/alignment/tire work are the most
+    common triggers [S8] — hence the recent_action slot. If assist actually cut out and the wheel is heavy,
+    escalate to hard_to_turn_heavy_steering (advise_immediately). Cross-domain: low-voltage cascades light
+    EPS alongside battery/electrical telltales — that's the electrical domain's multiple-lights entry.
+
+- category: warning_light
+  subcategory: traction_control_stability_light
+  display: "Traction control / stability light"
+  customer_voice_anchors:
+    - "traction control light stays on"
+    - "stabilitrak light came on"
+    - "little yellow car with squiggly lines under it on my dash"
+    - "skid light keeps flashing when it rains"
+    - "esc off light came on by itself"
+    - "TRACTION CONTROL LIGHT STAYING ON, car drives fine"
+    - "traction and abs lights came on together after a bump"
+    - "service traction control message on startup"
+  required_slots:
+    - warning_light_named: "skid-car icon / TC / StabiliTrak vs ABS letters — same sensor family, different telltale"
+    - warning_light_behavior: "flashing during slippery driving = NORMAL intervention; steady = fault"
+    - weather_condition: "rain/snow when it flashes — supports the normal-intervention read"
+    - started_when: "after a pothole/suspension work vs random onset"
+  confusables:
+    - vs: abs_anti_lock_brake_light
+      discriminator_question: "Does the light say ABS, or is it the car-with-squiggly-lines (traction/stability) icon?"
+    - vs: multiple_warning_lights_at_once
+      discriminator_question: "Is it just the traction light, or did several warning lights come on at the same time?"
+  safety_flag: none
+  notes: >
+    Flashing while accelerating on wet/loose surfaces = the system WORKING (normal); steady-on = fault or
+    manually switched off. Shares wheel-speed sensors with ABS, so co-illumination is routine — route on
+    the light the customer names. Cross-domain edge: "ESC off" after pressing the button is user-resolvable;
+    mention before booking.
+
+# ---------------------------------------------------------------------------
+# STEERING — effort, play, centering, noise on turn
+# ---------------------------------------------------------------------------
+
+- category: steering_handling
+  subcategory: hard_to_turn_heavy_steering
+  display: "Steering hard to turn / heavy"
+  customer_voice_anchors:
+    - "steering wheel is really hard to turn all of a sudden"
+    - "power steering went out"
+    - "takes both hands and all my strength to turn into a parking spot"
+    - "steering got super stiff overnight"
+    - "wheel feels heavy at low speed but okay on the highway"
+    - "power stearing stopped working, can barely turn the wheel"
+    - "steering is tight, like the assist quit"
+    - "hard to turn the wheel when the car is cold, loosens up after driving"
+    - "STEERING WHEEL FEELS TIGHT"
+    - "lost the power steering while driving, had to muscle it home"
+  required_slots:
+    - steering_feel: "heavy/stiff effort — the defining symptom"
+    - warning_light_named: "any PS/EPS light with it — light + heavy routes to the EPS diagnostic"
+    - onset_timing: "constant vs low-speed-only vs cold-first-start — hydraulic low fluid vs EPS cutout patterns differ"
+    - started_when: "sudden vs gradual — sudden loss mid-drive is the urgent version"
+    - recent_action: "battery/alignment/tire work just before — common EPS triggers"
+  confusables:
+    - vs: power_steering_eps_light
+      discriminator_question: "Is a steering warning light on the dash along with the heavy feel?"
+    - vs: loose_or_sloppy_steering
+      discriminator_question: "Is the wheel hard to physically turn, or easy to turn but loose and sloppy feeling?"
+    - vs: red_or_pink_puddle_transmission_or_power_steering
+      discriminator_question: "Have you seen any red or pink fluid under the front of the car, or had to top off power steering fluid?"
+  safety_flag: advise_immediately
+  notes: >
+    Loss of assist = full manual steering effort — controllable but dangerous in parking maneuvers and
+    emergencies, so advise promptly [S8]. Hydraulic cars: check for whine + low fluid (leak entry).
+    EPS cars: it's electrical [S8]. Does NOT include an ignition/wheel LOCK that won't turn with the key
+    (starting/keys domain) — if the engine isn't running, that's not this.
+
+- category: steering_handling
+  subcategory: loose_or_sloppy_steering
+  display: "Steering loose / sloppy / too much play"
+  customer_voice_anchors:
+    - "steering feels really loose and sloppy"
+    - "theres a lot of play in the steering wheel"
+    - "i can wiggle the wheel back and forth before the car actually turns"
+    - "steering feels disconnected from the road"
+    - "dead spot in the middle of the steering"
+    - "wheel feels loose, especially on the highway"
+    - "car lags behind the steering, i turn and it reacts a second later"
+    - "too much slop in the wheel, have to saw at it to stay straight"
+    - "PLAY IN STEERING WHEEL AND CLUNKING IN SUSPENSION"
+  required_slots:
+    - steering_feel: "play/deadband/vague — the defining symptom"
+    - noise_descriptor: "any clunk with the play — play + clunk points at worn linkage/joints"
+    - speed_band: "worse at highway speed — wander at speed raises urgency"
+    - started_when: "gradual wear vs sudden after impact — sudden play after a pothole is more alarming"
+  confusables:
+    - vs: wandering_or_drifting_in_both_directions
+      discriminator_question: "Is it the wheel itself that feels loose with a dead spot, or does the car drift side to side even though the wheel feels normal?"
+    - vs: hard_to_turn_heavy_steering
+      discriminator_question: "Is the steering loose and easy to move, or stiff and hard to turn?"
+    - vs: clunking_over_bumps
+      discriminator_question: "Do you mainly feel looseness in the wheel, or mainly hear clunking over bumps?"
+  safety_flag: none
+  notes: >
+    Worn tie rods, ball joints, or rack bushings create free play; play + clunk together is the classic
+    worn-linkage pair [S14]. If the customer describes fighting the wheel to stay in a lane or feeling
+    unsafe, escalate to the safety path. Does NOT include pull to one side (pull entries) or a loose/tilted
+    steering COLUMN (mounting — advisor note).
+
+- category: steering_handling
+  subcategory: steering_wheel_off_center_when_driving_straight
+  display: "Steering wheel off-center / crooked"
+  customer_voice_anchors:
+    - "steering wheel is crooked when im driving straight"
+    - "wheel sits at an angle even though the car goes straight"
+    - "after new tires my steering wheel isnt centered anymore"
+    - "steering wheel off center since the alignment"
+    - "have to hold the wheel at 10 and 2 slightly turned to go straight"
+    - "wheel points a little left when driving down a straight road"
+    - "car drives fine but the steering wheel is cocked sideways"
+    - "steering wheel not straight after i hit a curb"
+  required_slots:
+    - steering_feel: "off-center while tracking straight — distinct from pull (car itself drifts)"
+    - recent_action: "after alignment/tire/suspension work or a curb hit — the dominant onset stories"
+    - pull_direction: "confirm the CAR tracks straight — if it also drifts, it's a pull entry instead"
+  confusables:
+    - vs: steady_drift_while_cruising
+      discriminator_question: "Does the car itself drift to one side, or does it drive straight while the wheel just sits crooked?"
+    - vs: pull_that_started_after_recent_tire_or_service_work
+      discriminator_question: "Since the recent work, is the problem a crooked wheel while driving straight, or the car actually pulling to a side?"
+  safety_flag: none
+  notes: >
+    Off-center wheel with straight tracking = toe split / alignment centering issue — an alignment
+    correction, not a safety event [S12]. Frequently reported right after an alignment or curb strike.
+    Does NOT include a wheel that is off-center AND the car pulls — the pull dominates for routing.
+
+- category: steering_handling
+  subcategory: noise_when_turning_the_steering_wheel
+  display: "Noise when turning the steering wheel"
+  customer_voice_anchors:
+    - "whining noise when i turn the steering wheel"
+    - "groaning sound when turning into parking spots"
+    - "HEARS A LOUD SQUEAL WHEN TURNING"
+    - "creaking from the steering when i turn at low speed"
+    - "moaning noise when i crank the wheel all the way to the side"
+    - "steering makes a rubbing squeak turning out of my driveway"
+    - "wheel groans when parking, quiet going straight"
+    - "hear a whine that only happens while the wheel is turned"
+    - "creak from the steering column every time i turn while parked"
+  required_slots:
+    - noise_descriptor: "whine/groan/creak/squeal vs CLICK-CLICK — clicking on turns is the CV-axle pattern, a different system"
+    - onset_timing: "only while the wheel is turning vs whenever the engine runs — engine-tied whine is a belt/pump, not steering geometry"
+    - steering_feel: "any heaviness with the noise — noise + heavy = low PS fluid picture"
+    - speed_band: "parking-lot speed vs driving speed — low-speed full-lock groan vs at-speed hum differ"
+  confusables:
+    - vs: popping_or_clicking_when_turning
+      discriminator_question: "Is it a whine/groan/creak, or a rhythmic clicking-popping sound when turning (like tick-tick-tick)?"
+    - vs: high_pitched_whining_under_the_hood
+      discriminator_question: "Does the noise only happen while turning the wheel, or is it there any time the engine is running?"
+    - vs: high_pitched_squealing
+      discriminator_question: "Does the noise happen when turning the steering wheel, or when pressing the brakes?"
+    - vs: squeaking_or_creaking_over_bumps
+      discriminator_question: "Do you hear it when turning the wheel, or when going over bumps?"
+  safety_flag: none
+  notes: >
+    Whine/groan on turns with low fluid = hydraulic PS starving; creak at standstill turns = dry strut
+    bearing or column joint. CROSS-DOMAIN: rhythmic clicking on turns is the CV-joint signature
+    (driveline domain — popping_or_clicking_when_turning); engine-speed whine regardless of steering is
+    belt/pump/alternator (engine-accessory domain). Those two confusables must survive synthesis.
+
+- category: steering_handling
+  subcategory: steady_drift_while_cruising
+  display: "Pulls / drifts to one side while driving"
+  customer_voice_anchors:
+    - "car pulls to the right when driving"
+    - "have to hold the wheel to one side to keep it straight"
+    - "drifts left on the highway if i loosen my grip"
+    - "car veers right ever since i hit a curb"
+    - "pulls to one side even though the tires are pretty new"
+    - "always drifting toward the shoulder, have to keep correcting"
+    - "car wont track straight, leans right constantly"
+    - "pulls left a little at any speed"
+  required_slots:
+    - pull_direction: "left vs right vs varies — a consistent single direction defines this entry"
+    - onset_timing: "cruising, not braking — brake-triggered pull is a brakes concern"
+    - pull_road_dependence: "PROPOSED-NEW slot — every road vs only crowned/sloped roads; separates a true pull from road-crown drift"
+    - recent_action: "recent tire/alignment work or curb/pothole strike — onset story changes the route"
+    - tire_state: "any visibly low tire — a low tire alone can cause the drift"
+  confusables:
+    - vs: pulling_only_when_braking
+      discriminator_question: "Does it pull all the time while cruising, or only when you press the brakes?"
+    - vs: drift_that_follows_the_roads_slope
+      discriminator_question: "Does it pull on every road, or only on certain roads (fine on flat side streets)?"
+    - vs: pull_that_started_after_recent_tire_or_service_work
+      discriminator_question: "Did the pulling start right after tire, alignment, or other service work?"
+    - vs: wandering_or_drifting_in_both_directions
+      discriminator_question: "Does it always pull toward the same side, or wander back and forth in both directions?"
+  safety_flag: none
+  notes: >
+    Steady one-direction pull: alignment, left/right tire-pressure split (2-3 psi is enough), tire
+    conicity, or a dragging brake [S12]. Ask pressure first — cheapest fix. Conicity clue: the pull flips
+    sides when front tires are swapped side-to-side [S12]. Does NOT include torque steer during hard
+    acceleration (driveline/performance domain).
+
+- category: steering_handling
+  subcategory: wandering_or_drifting_in_both_directions
+  display: "Wanders / floats both directions"
+  customer_voice_anchors:
+    - "car wanders all over the road"
+    - "constantly correcting the steering on the highway"
+    - "floats side to side at 70, cant relax"
+    - "feels like the car has a mind of its own on the freeway"
+    - "it began to wander badly at highway speeds and now im uncomfortable driving it"
+    - "car drifts whichever way it wants, left then right"
+    - "have to saw the wheel back and forth to stay in my lane"
+    - "no center feel, wanders between the lines"
+  required_slots:
+    - pull_direction: "varies/both — confirms wander vs a one-direction pull"
+    - speed_band: "highway-dominant wander is typical and raises urgency"
+    - steering_feel: "any looseness/play with it — wander + play = worn linkage picture"
+    - drivable_state: "does the customer feel unsafe — severe wander warrants the safety path"
+  confusables:
+    - vs: steady_drift_while_cruising
+      discriminator_question: "Does it drift back and forth in both directions, or always toward the same side?"
+    - vs: loose_or_sloppy_steering
+      discriminator_question: "Is it mainly the car wandering on the road, or mainly the steering wheel itself feeling loose with a dead spot?"
+  safety_flag: none
+  notes: >
+    Bi-directional wander = worn steering linkage/bushings, bad alignment (toe), or badly worn/underinflated
+    tires — not the same fault family as a one-way pull [S12][S14]. If described as scary/unsafe at speed,
+    escalate to the safety concern path. Distinct live slug; do not collapse into the generic pull.
+
+- category: steering_handling
+  subcategory: drift_that_follows_the_roads_slope
+  display: "Drifts with the slope of the road"
+  customer_voice_anchors:
+    - "pulls on some roads but drives fine on others"
+    - "drifts toward the shoulder on the highway but its fine on side streets"
+    - "car leans with the slope of the road"
+    - "only pulls on the interstate, straight as an arrow in my neighborhood"
+    - "drifts right on most highways but not on flat roads"
+    - "follows the tilt of the road, always toward the ditch"
+    - "on a flat calm road it tracks fine hands off, but it drifts on the interstate"
+    - "it only seems to pull on certain roads and drives fine on others"
+  required_slots:
+    - pull_road_dependence: "PROPOSED-NEW slot — the defining fact: certain roads only vs every road"
+    - pull_direction: "usually toward the road edge/shoulder — consistent-with-crown supports this read"
+    - tire_state: "pressure split can masquerade as crown drift — cheap to rule out"
+  confusables:
+    - vs: steady_drift_while_cruising
+      discriminator_question: "Does it drift on every road, or only on certain roads like the highway?"
+  safety_flag: none
+  notes: >
+    US roads are crowned for drainage; a mild rightward lean on crowned highways that disappears on flat
+    roads is largely normal geometry — worth an alignment check but often expectation-setting [S12].
+    Anchors here keep the classifier from over-booking normal crown drift as a fault; the advisor sets
+    expectations.
+
+- category: steering_handling
+  subcategory: pull_that_started_after_recent_tire_or_service_work
+  display: "Pull that started after recent tire / service work"
+  customer_voice_anchors:
+    - "just got new tires and now it pulls to the left"
+    - "had an alignment last week and it still pulls"
+    - "pulls to the right ever since the tire rotation"
+    - "RE CHECK ALIGNMENT, car goes right when holding the wheel straight, alignment was just done"
+    - "new tires and an alignment and it STILL drifts, third time back"
+    - "started pulling right after the shop rotated my tires"
+    - "put winter tires on and now the car pulls"
+    - "two new front tires on monday, pulling left by wednesday"
+    - "alignment done a month ago but it drifts worse than before"
+  required_slots:
+    - recent_action: "which work and how recently — the defining fact for this route"
+    - pull_direction: "left/right — swap tests depend on it"
+    - started_when: "immediately after the work vs weeks later — immediate onset ties it to the work"
+  confusables:
+    - vs: steady_drift_while_cruising
+      discriminator_question: "Did the pull start right after tire or alignment work, or has it developed on its own over time?"
+    - vs: recent_tire_work_then_new_symptom
+      discriminator_question: "Is the new problem a pull to one side, or something else like a vibration or noise since the work?"
+  safety_flag: none
+  notes: >
+    Pull appearing right after tire work is classically tire conicity or a mounting/rotation artifact —
+    a front side-to-side swap flips the pull if a tire is the cause [S12]. Onset-after-service is its own
+    live slug; keep it separate from the generic pull so the advisor knows to re-check the recent work
+    first. Overlaps the situational after_recent_service_or_repair_work bucket — causal tie to the recent
+    work wins.
+
+# ---------------------------------------------------------------------------
+# LEAKS — brake fluid + power-steering fluid (cross into the leaks domain)
+# ---------------------------------------------------------------------------
+
+- category: leak
+  subcategory: clear_yellow_or_light_brown_puddle_brake_fluid
+  display: "Brake fluid leak"
+  customer_voice_anchors:
+    - "brake fluid leaking, spot on the garage floor by the wheel"
+    - "keep having to top off the brake fluid every week"
+    - "added brake fluid and it leaked right back out"
+    - "clear oily fluid on the floor and my pedal feels softer"
+    - "wet streak on the inside of my rear tire, smells weird"
+    - "brake fluid reservoir keeps going down but i dont see a puddle"
+    - "light brown slick fluid under the car near the front wheel"
+    - "leak near the brake lines under the driver side"
+  required_slots:
+    - fluid_color: "clear/yellow/light-brown slick fluid — separates brake fluid from oil (dark), coolant (green/orange), PS/trans (red)"
+    - fluid_under_car_location: "at a wheel or along the body lines — brake fluid shows at wheels/lines, not under the engine"
+    - pedal_feel: "any softness/sinking — leak + pedal change is the urgent combination"
+    - warning_light_named: "red BRAKE light with it — low fluid trips the level sensor"
+  confusables:
+    - vs: spongy_or_soft_pedal
+      discriminator_question: "Have you actually seen fluid on the ground or dropping in the reservoir, or does the pedal just feel soft?"
+    - vs: brown_or_black_puddle_engine_oil
+      discriminator_question: "Is the fluid thin and clear-to-light-brown near a wheel, or dark engine-oil brown/black under the middle of the engine?"
+    - vs: red_or_pink_puddle_transmission_or_power_steering
+      discriminator_question: "Is the fluid clear/yellowish, or distinctly red or pink?"
+  safety_flag: advise_immediately
+  notes: >
+    Any confirmed brake-fluid loss is urgent — hydraulic pressure is what stops the car; leaks at wheels
+    (wheel cylinder/caliper) or lines are the classic presentations [S5]. Fresh brake fluid is nearly
+    clear and darkens with age; customers often call it "oil". CROSS-DOMAIN: this entry lives in the leaks
+    domain's color table — synthesis should keep exactly one canonical brake-fluid-leak entry.
+
+- category: leak
+  subcategory: red_or_pink_puddle_transmission_or_power_steering
+  display: "Power steering fluid leak (red/pink)"
+  customer_voice_anchors:
+    - "power steering fluid leaking under the front of the car"
+    - "red fluid on my driveway near the front wheel"
+    - "keep topping off the power steering and now it whines when i turn"
+    - "pinkish puddle under the engine bay"
+    - "POWER STEERING PUMP BADLY LEAKING FLUID"
+    - "reddish oil spots where i park, steering feels fine though"
+    - "power steering reservoir empty again after two weeks"
+    - "drips of pink fluid under the front driver side"
+    - "power steering fluid low again and i can hear it groan when i turn"
+  required_slots:
+    - fluid_color: "red/pink — shared color family with transmission fluid; the location and steering feel break the tie"
+    - fluid_under_car_location: "front near the steering gear vs mid-vehicle — PS leaks sit forward"
+    - steering_feel: "heavy or whining steering with it implicates the PS side; normal steering keeps trans in play"
+    - noise_descriptor: "whine on turns = pump running low"
+  confusables:
+    - vs: hard_to_turn_heavy_steering
+      discriminator_question: "Is the main issue the fluid you're seeing, or has the steering itself gotten hard to turn?"
+    - vs: clear_yellow_or_light_brown_puddle_brake_fluid
+      discriminator_question: "Is the fluid red or pink, or more clear to light brown?"
+  safety_flag: none
+  notes: >
+    Red/pink fluid = power steering OR automatic transmission (many share the same fluid family) — the
+    discriminators are puddle location and whether steering feel/noise changed. INFERENCE TRAP from the KB:
+    a red puddle with explicitly normal steering must NOT be forced into the steering route. CROSS-DOMAIN:
+    shared with the leaks + transmission domains; synthesis should reconcile to one entry with both exits.
+    Run-dry pumps whine then lose assist — escalate if heaviness is reported.
+
+# ---------------------------------------------------------------------------
+# SMELL / SMOKE — hot brake / dragging wheel
+# ---------------------------------------------------------------------------
+
+- category: smell_smoke
+  subcategory: smoke_or_burning_smell_from_a_wheel
+  display: "Smoke or burning smell from a wheel"
+  customer_voice_anchors:
+    - "smoke coming from my front wheel"
+    - "burning smell from one of the wheels after driving"
+    - "rear wheel smells like burning rubber and the rim is hot"
+    - "smelled something burning and one wheel was too hot to touch"
+    - "smoke coming off the rear right wheel, think i left the parking brake on"
+    - "acrid burning smell from the driver side wheel after the highway"
+    - "one wheel smoking in the parking lot, other three are cool"
+    - "burning smell from a wheel after coming down the mountain"
+  required_slots:
+    - sound_or_smoke_location_zone: "which wheel / one wheel vs all — one hot wheel = dragging brake at that corner"
+    - parking_brake_state: "was the parking brake left on — the most common self-inflicted cause"
+    - smell_descriptor: "burning/acrid vs sweet vs rubber — separates hot brake from coolant or a shredding belt"
+    - drivable_state: "actively smoking now vs smelled it once — active smoke = stop driving"
+  confusables:
+    - vs: burning_rubber_hot_brake_smell
+      discriminator_question: "Do you see actual smoke coming from the wheel, or is it just the burning smell?"
+    - vs: smoke_from_under_the_hood
+      discriminator_question: "Is the smoke coming from a wheel, or from under the hood?"
+    - vs: parking_brake_stuck_or_wont_release
+      discriminator_question: "Is the parking brake stuck on right now, or did the wheel just get hot and smoky after driving?"
+  safety_flag: advise_immediately
+  notes: >
+    One smoking/hot wheel = a dragging brake (seized caliper, stuck parking brake) — heat that can boil
+    fluid and cause brake loss or fire; advise stopping and cooling immediately [S17]. Includes the
+    smell-only sibling (burning_rubber_hot_brake_smell) when localized to a wheel. CROSS-DOMAIN: burning
+    RUBBER smell from under the HOOD is a belt (engine-accessory domain); sweet smell is coolant.
+
+# ---------------------------------------------------------------------------
+# SUSPENSION & RIDE — bump noises, ride quality, stance, death wobble
+# ---------------------------------------------------------------------------
+
+- category: suspension_ride
+  subcategory: clunking_over_bumps
+  display: "Clunking / knocking over bumps"
+  customer_voice_anchors:
+    - "clunking noise in the front end when i go over bumps"
+    - "knocking sound from the front when i hit potholes"
+    - "loud clunk from the front driver side on every bump"
+    - "rattly clunk over speed bumps"
+    - "front end bangs when the road is rough"
+    - "clunk when i pull into my driveway at an angle"
+    - "hear a pop/clunk from the passenger side front wheel over bumps"
+    - "suspension noise mainly over bumps"
+    - "sounds like something is loose under the front, thunks on rough roads"
+    - "knocking under the car over railroad tracks"
+  required_slots:
+    - noise_descriptor: "clunk/knock/pop vs squeak/creak vs rattle — each routes differently"
+    - onset_timing: "over bumps specifically — bump-triggered is the suspension signature"
+    - location_side: "which corner if known — the advisor road-test starts there"
+    - steering_feel: "any looseness/wander with the clunk — clunk + play raises ball-joint concern (safety-relevant)"
+  confusables:
+    - vs: squeaking_or_creaking_over_bumps
+      discriminator_question: "Is it a deep clunk or knock, or more of a squeak/creak?"
+    - vs: rattling_underneath_the_car
+      discriminator_question: "Is it a solid clunk from one corner over bumps, or a lighter metallic rattle from underneath (like a loose heat shield)?"
+    - vs: clunking_knocking_or_rough_ride_over_bumps
+      discriminator_question: "Do you mostly HEAR the clunk, or do you also FEEL it through the steering wheel when hitting bumps mid-turn?"
+    - vs: metallic_grinding
+      discriminator_question: "Does the noise happen over bumps, or when you press the brakes?"
+  safety_flag: none
+  notes: >
+    Sway-bar end links are the most common clunk source, then strut mounts, control-arm bushings, and ball
+    joints — a separated ball joint is an immediate loss of control, so clunk + steering looseness deserves
+    prompt advice [S14]. CROSS-DOMAIN: a clunk when shifting into Drive/Reverse (not over bumps) is
+    driveline; a light rattle underneath is exhaust/heat shield.
+
+- category: suspension_ride
+  subcategory: squeaking_or_creaking_over_bumps
+  display: "Squeaking / creaking over bumps"
+  customer_voice_anchors:
+    - "squeaks over every bump like an old mattress"
+    - "creaking noise from the front suspension"
+    - "front end squeaks when i push down on the hood"
+    - "creaks over speed bumps and driveway ramps"
+    - "SQUEAKING NOISE GOING OVER BUMPS, hear it on uneven roads"
+    - "car creaks like an old door over dips"
+    - "squeaky suspension, worse in cold weather"
+    - "chassis squeaking, does it need lube?"
+  required_slots:
+    - noise_descriptor: "squeak/creak vs clunk — rubbery squeaks are bushings/joints, clunks are loose parts"
+    - onset_timing: "over bumps / when the body bounces — reproducible by pushing on the bumper is a great clue"
+    - weather_condition: "worse cold or dry — dry bushings are weather-sensitive"
+    - location_axle: "front vs rear corner"
+  confusables:
+    - vs: clunking_over_bumps
+      discriminator_question: "Is it a squeak/creak, or a deeper clunk or knock?"
+    - vs: high_pitched_squealing
+      discriminator_question: "Does it squeak over bumps, or when you press the brakes?"
+    - vs: noise_when_turning_the_steering_wheel
+      discriminator_question: "Does it squeak over bumps, or when turning the steering wheel?"
+  safety_flag: none
+  notes: >
+    Dry/worn bushings, ball joints, and spring insulators squeak with suspension travel — annoying more
+    than dangerous, but persistent creaks deserve inspection since the same joints wear into clunks and
+    play [S14]. Customers often ask for "lube" — the booking is an inspection.
+
+- category: suspension_ride
+  subcategory: shaking_or_bouncing_over_bumps_and_rough_roads
+  display: "Bouncy / harsh ride over bumps"
+  customer_voice_anchors:
+    - "car keeps bouncing after i go over a bump"
+    - "ride got really rough, i feel every crack in the road"
+    - "rear end bounces like a boat after dips"
+    - "car slams hard over speed bumps like the suspension is gone"
+    - "feels like im riding on pogo sticks"
+    - "the ride got bouncy and floaty, every little bump feels huge"
+    - "back of the car keeps rocking after bumps with the kids in it"
+    - "front end dives hard when i brake and wallows over bumps"
+    - "bottoms out over dips it used to handle fine"
+  required_slots:
+    - ride_damping_symptom: "PROPOSED-NEW slot — keeps-bouncing / bottoms-out / nose-dives / floaty — the shock-vs-spring triage"
+    - location_axle: "front vs rear dominant"
+    - started_when: "gradual wear vs suddenly after a pothole or with a load"
+    - recent_action: "recent suspension/tire work — post-service ride complaints route with the recent-work story"
+  confusables:
+    - vs: clunking_over_bumps
+      discriminator_question: "Is the problem mainly how it RIDES (bouncy, harsh, keeps rocking), or a noise it makes over bumps?"
+    - vs: steering_wheel_shake_at_highway_speed
+      discriminator_question: "Does it happen going over bumps and rough roads, or does the steering wheel shake on smooth highway at speed?"
+    - vs: constant_vibration_that_doesnt_change_with_speed
+      discriminator_question: "Is it triggered by bumps, or is it a constant vibration on smooth roads too?"
+  safety_flag: none
+  notes: >
+    Continued bouncing after a bump, nose dive under braking, body roll, bottoming out, and cupped tire
+    wear are the worn shock/strut cluster — worn dampers also lengthen stopping distance [S13]. Cupped
+    tires from bad shocks cross-link to the uneven-wear entry. Does NOT include harshness from low-profile
+    tires or an overloaded vehicle (advisor conversation).
+
+- category: suspension_ride
+  subcategory: vehicle_sitting_low_or_leaning_one_corner
+  display: "Sitting low / sagging on one corner"
+  customer_voice_anchors:
+    - "one corner of my car is sitting lower than the rest"
+    - "back end is sagging"
+    - "front left is lower than the right, the car looks tilted"
+    - "car leans to one side when its parked"
+    - "heard a loud pop and now that corner sits low"
+    - "LEFT FRONT WHEEL SITTING LOWER THAN REST, want suspension looked at"
+    - "rear end drops overnight, air suspension i think"
+    - "car looks like its squatting in the back with nothing in the trunk"
+  required_slots:
+    - location_side: "which corner/end is low — where to inspect"
+    - started_when: "suddenly (with a pop/clunk = broken spring) vs gradually (air-suspension leak-down)"
+    - noise_descriptor: "any new clunk/rattle at that corner — broken coil pieces make noise over bumps"
+    - drivable_state: "severe lean or tire rubbing = advise limited driving"
+  confusables:
+    - vs: clunking_over_bumps
+      discriminator_question: "Is the main issue the car visibly sitting low or leaning, or a clunking noise over bumps?"
+    - vs: tire_going_flat_losing_air
+      discriminator_question: "Is the TIRE on that corner low or flat, or is the tire fine and the body itself sitting lower?"
+  safety_flag: none
+  notes: >
+    NEW slug — the KB suspension dossier flagged the collapsed/broken-spring presentation as a live routing
+    gap (Stage-1 reaches the suspension check but no Stage-2 fits). Covers broken coil springs, sagged/leaking
+    air suspension, and worn leafs. First discriminator in the wild is tire vs body — many "sitting low"
+    reports are just a flat tire.
+
+- category: suspension_ride
+  subcategory: violent_shake_after_bump_death_wobble
+  display: "Violent front-end shake after hitting a bump (death wobble)"
+  customer_voice_anchors:
+    - "front end shakes violently when i hit a bump at highway speed"
+    - "steering wheel whips back and forth after a pothole, have to slow way down to make it stop"
+    - "jeep death wobble"
+    - "truck starts shaking uncontrollably around 45 after hitting a bump"
+    - "hit a seam on the interstate and the whole front end went into a violent wobble"
+    - "steering shakes so bad i can barely hold it, only stops when i almost stop"
+    - "death wobble when i hit bumps towing the camper"
+    - "WHEN HITTING A BUMP AT HIGHWAY SPEEDS I GET A VIOLENT SHAKE"
+    - "ever since the lift kit it wobbles scary bad over expansion joints"
+  required_slots:
+    - onset_timing: "triggered by a bump/expansion joint at speed — the defining trigger"
+    - speed_band: "typically 40+ mph — and whether slowing is the only thing that stops it"
+    - drivable_state: "this is a do-not-highway-drive conversation; capture how they're using the vehicle"
+    - started_when: "after a lift/tires/suspension change — common on modified trucks/Jeeps"
+  confusables:
+    - vs: steering_wheel_shake_at_highway_speed
+      discriminator_question: "Is it a steady buzz/shimmy at certain speeds, or a violent shake that starts when you hit a bump and only stops when you slow way down?"
+    - vs: shaking_or_bouncing_over_bumps_and_rough_roads
+      discriminator_question: "Does the steering wheel itself whip violently side to side, or is it more the whole car riding rough over bumps?"
+  safety_flag: advise_immediately
+  notes: >
+    NEW slug for the distinct "death wobble" presentation: violent self-sustaining steering oscillation
+    at ~40+ mph triggered by a bump, mostly solid-front-axle trucks/Jeeps; worn track bar, tie rods, ball
+    joints, or steering damper — genuine loss-of-control risk [S15]. Keep separate from the ordinary
+    balance shimmy so it inherits the safety advice, not a routine balance booking.
+
+# ---------------------------------------------------------------------------
+# TIRES / WHEELS / TPMS
+# ---------------------------------------------------------------------------
+
+- category: tires
+  subcategory: tire_going_flat_losing_air
+  display: "Tire losing air / going flat"
+  customer_voice_anchors:
+    - "my tire keeps losing air"
+    - "have to put air in the same tire every week"
+    - "tire was flat this morning, fine yesterday"
+    - "slow leak in the front left tire"
+    - "LF tire slow leak"
+    - "tire light comes on and the same tire always looks low"
+    - "heard a hissing sound coming from my tire after i parked"
+    - "tire went flat overnight, can it be patched?"
+    - "left rear keeps loosing air psi"
+    - "one tire drops to 20 psi every few days"
+  required_slots:
+    - tire_state: "flat now vs slowly losing — flat-now may need roadside/tow, slow leak books normally"
+    - location_side: "which tire — repair prep and pattern (same tire every time = leak, all four = temperature)"
+    - started_when: "sudden overnight vs weeks of topping up"
+    - recent_action: "recent puncture/curb/pothole event they know about"
+  confusables:
+    - vs: visible_damage_nail_screw_bulge_cut
+      discriminator_question: "Have you spotted anything in the tire like a nail or screw, or is it losing air with no visible cause?"
+    - vs: tpms_tire_pressure_light
+      discriminator_question: "Is one tire actually measuring low or flat, or is it just the pressure light with the tires holding air?"
+    - vs: vehicle_sitting_low_or_leaning_one_corner
+      discriminator_question: "Is the tire itself low or flat, or is the tire fine and the car body sitting lower on that corner?"
+  safety_flag: none
+  notes: >
+    The bookable tire-repair concern: recurring air loss in one tire (puncture, valve stem, bead/rim leak).
+    All four dropping together in the first cold week is seasonal, not a leak. If the tire is flat NOW,
+    confirm they won't drive on it (driving flat destroys the sidewall and can total the tire [S11]).
+    Does NOT include TPMS-light-only (warning_light) or worn-out tread (uneven wear / new tires).
+
+- category: tires
+  subcategory: visible_damage_nail_screw_bulge_cut
+  display: "Nail / screw / bulge / cut in tire"
+  customer_voice_anchors:
+    - "theres a nail in my tire"
+    - "found a screw in the tread, still holding air"
+    - "bubble on the sidewall of my tire"
+    - "bulge in the tire after i hit a pothole"
+    - "gash in the side of the tire, cords showing"
+    - "ran over something and now theres a chunk missing from the tire"
+    - "curbed the wheel and the tire has a knot sticking out"
+    - "picked up a screw, tire is down to 25 and dropping slow"
+    - "big bubble on the inside sidewall, saw it changing the oil"
+  required_slots:
+    - tire_state: "holding air vs losing vs flat — urgency triage"
+    - location_side: "which tire — booking note"
+    - started_when: "just noticed vs after a known impact (pothole/curb)"
+    - recent_action: "the impact event if known — impact + bulge = structural, replace not repair"
+  confusables:
+    - vs: tire_going_flat_losing_air
+      discriminator_question: "Can you see the object or damage, or is the tire just losing air with nothing visible?"
+    - vs: dry_rot_sidewall_cracking
+      discriminator_question: "Is it one bulge, cut, or object in the tire, or lots of small cracks all over the rubber?"
+  safety_flag: none
+  notes: >
+    Tread punctures from nails/screws are usually repairable; a SIDEWALL BULGE means broken internal cords
+    from impact and is NOT repairable — replacement only, and driving on it risks a blowout [S11] — when a
+    bulge is described, advise minimizing driving (treat that variant as urgent even though the entry-level
+    flag is none). Cuts with cord visible = replace. Live routing: physical damage books tire repair, never
+    TPMS testing.
+
+- category: tires
+  subcategory: uneven_tire_wear_bald_spots
+  display: "Uneven tire wear / bald spots"
+  customer_voice_anchors:
+    - "tires are wearing on the inside edge"
+    - "front tires are bald on one side but fine on the other"
+    - "tires wore out in 20k miles and the wear looks uneven"
+    - "shop told me my tires are cupping"
+    - "back tires have weird bald patches"
+    - "inside of the tire is completely worn but the outside looks new"
+    - "tread is scalloped and the car got loud"
+    - "rear tires worn on the edges, probably need an alignment"
+    - "one tire is way more worn than the other three"
+  required_slots:
+    - tire_state: "the wear pattern in their words — inner/outer edge (alignment), cupping/scallops (shocks/balance), center or both edges (pressure)"
+    - location_axle: "front vs rear tires affected"
+    - customer_request_type: "often arrives as an alignment request — capture the ask plus the evidence"
+    - noise_descriptor: "cupped tires HUM — wear + hum overlaps the bearing-noise entry"
+  confusables:
+    - vs: humming_or_whirring_at_speed
+      discriminator_question: "Is the concern the visible wear on the tread, or a humming noise while driving (cupped tires can cause both)?"
+    - vs: dry_rot_sidewall_cracking
+      discriminator_question: "Is the tread wearing unevenly, or is the rubber cracking from age?"
+    - vs: just_want_new_tires
+      discriminator_question: "Do you want the cause of the wear diagnosed (alignment/suspension), or do you just need replacement tires?"
+  safety_flag: none
+  notes: >
+    Wear pattern is diagnostic: edge wear = alignment (toe/camber), cupping/scalloping = worn shocks or
+    balance, center/both-edges = inflation [S12][S13]. Uneven wear is the evidence trail for an alignment
+    + suspension check AND usually a tire-replacement conversation — book the diagnostic, note the sales
+    lead. Cupped tires also masquerade as wheel-bearing hum [S9].
+
+- category: tires
+  subcategory: dry_rot_sidewall_cracking
+  display: "Dry rot / cracked sidewalls"
+  customer_voice_anchors:
+    - "tires are dry rotted"
+    - "little cracks all over the sidewalls"
+    - "tires are old and cracking, car sat for two years"
+    - "rubber looks all crackly, are these still safe?"
+    - "sidewalls have spiderweb cracks, tread is still good though"
+    - "tires from 2018, cracking between the treads"
+    - "dry rot on the camper tires, barely used"
+    - "cracks in my tires, only drive it on weekends"
+  required_slots:
+    - tire_state: "cracking severity and where — hairline surface vs deep cracks"
+    - started_when: "tire age / how long the vehicle sat — age is the driver, not mileage"
+    - customer_request_type: "safety-check question vs replacement request — many just want a verdict"
+  confusables:
+    - vs: visible_damage_nail_screw_bulge_cut
+      discriminator_question: "Is it lots of small age cracks in the rubber, or one specific bulge, cut, or puncture?"
+    - vs: just_want_new_tires
+      discriminator_question: "Do you want the tires checked to see if they're safe, or are you ready to price replacements?"
+  safety_flag: none
+  notes: >
+    Dry rot = age/UV breakdown; cracked rubber can blow out at highway speed and cannot be repaired —
+    replacement is the only fix; ~6 years is the common age guidance regardless of tread [S16]. Frequent
+    on low-mileage/stored vehicles (overlaps the car-sat-a-long-time situational bucket — if the whole car
+    just came out of storage, the situational route wins). No diagnostic fee story — this is an inspect +
+    quote conversation.
+
+- category: tires
+  subcategory: recent_tire_work_then_new_symptom
+  display: "New problem right after tire work"
+  customer_voice_anchors:
+    - "got new tires last week and now it vibrates at highway speed"
+    - "after the rotation the car shakes"
+    - "since the tire shop touched it theres a wobble in the wheel"
+    - "new tires and now i hear a hum"
+    - "rear end feels like its swaying since the tire replacement"
+    - "they rotated my tires and now the steering feels off"
+    - "put new tires on friday, saturday the tire light came on"
+    - "car never shook before the new tires went on"
+  required_slots:
+    - recent_action: "what tire work and when — the causal tie is the route"
+    - noise_descriptor: "what the NEW symptom is (shake/hum/pull/light) — inherits that symptom's facts"
+    - speed_band: "highway-speed onset for the classic missed-balance pattern"
+  confusables:
+    - vs: steering_wheel_shake_at_highway_speed
+      discriminator_question: "Did the shaking start right after tire work, or on its own with no recent service?"
+    - vs: pull_that_started_after_recent_tire_or_service_work
+      discriminator_question: "Is the new symptom a shake, noise, or light — or is it the car pulling to one side?"
+  safety_flag: none
+  notes: >
+    Post-tire-work symptoms are usually balance, mounting, relearn, or torque issues — the shop should
+    re-check its own work first; loose lug nuts after service are the dangerous edge case (clunk + wobble
+    that worsens = stop driving). Onset-after-service overlaps the situational after-recent-service bucket;
+    the causal tie wins over the raw symptom route.
+
+- category: tires
+  subcategory: wheel_or_lug_concern_loose_wheel
+  display: "Wheel feels loose / lug nut worry"
+  customer_voice_anchors:
+    - "feels like a wheel is going to fall off"
+    - "wobble from the front wheel thats getting worse fast"
+    - "found a lug nut missing on my wheel"
+    - "wheel is making a clunk-clunk and wiggling, just had the tires rotated"
+    - "lug nuts feel loose, can hear them rattling"
+    - "wheel looks crooked when i look at it head on"
+    - "hubcap area is clicking and the steering started shimmying bad"
+    - "front wheel wobbles side to side, im scared its coming loose"
+    - "heard a clanking from the wheel and two lug nuts were finger loose"
+  required_slots:
+    - recent_action: "recent tire/wheel service — loose lugs after service is the classic story"
+    - started_when: "how fast it's worsening — a wobble that grows over miles is the emergency signature"
+    - location_side: "which wheel"
+    - drivable_state: "advise stopping if it's actively worsening — wheel-off events are catastrophic"
+  confusables:
+    - vs: steering_wheel_shake_at_highway_speed
+      discriminator_question: "Is it a steady vibration at certain speeds, or a wobble/clunk that keeps getting worse as you drive?"
+    - vs: recent_tire_work_then_new_symptom
+      discriminator_question: "Do you specifically suspect the wheel or lug nuts are loose, or is it a general new symptom since the tire work?"
+  safety_flag: advise_immediately
+  notes: >
+    NEW slug — a suspected loose wheel (missing/loose lugs, rapidly worsening wobble, especially right
+    after tire service) is a stop-driving conversation, not a booking; wheel separation causes crashes.
+    Distinct from balance shimmy by trajectory: balance shake is steady and speed-banded; a loosening
+    wheel gets worse by the mile [S15-adjacent pattern, service-industry standard practice].
+
+# ---------------------------------------------------------------------------
+# VIBRATION & WHEEL-AREA NOISE (tire/wheel/bearing causes)
+# ---------------------------------------------------------------------------
+
+- category: vibration
+  subcategory: steering_wheel_shake_at_highway_speed
+  display: "Steering wheel shakes at highway speed"
+  customer_voice_anchors:
+    - "steering wheel shakes at 65-70"
+    - "vibration at highway speed that smooths out when i slow down"
+    - "wheel shimmies between 60 and 70 then calms down at 75"
+    - "shakes on the freeway ever since i hit a pothole"
+    - "SHIMMY AT HIGHWAY SPEEDS"
+    - "steering wheel vibrates at speed but not when braking"
+    - "car shakes at 60, fine around town"
+    - "wheel buzzes in my hands on the interstate"
+    - "steering wheel shakes really bad at 65, started after new tires"
+  required_slots:
+    - speed_band: "the shake's speed window — classic balance shimmy is band-limited (peaks then fades)"
+    - onset_timing: "NOT brake-triggered — the single most important routing fact vs brake shudder"
+    - started_when: "after a pothole/curb (bent wheel, lost weight) vs gradual"
+    - recent_action: "recent tire/wheel work — routes to the after-service entry if causally tied"
+  confusables:
+    - vs: vibration_or_pulsing_when_braking
+      discriminator_question: "Does it shake while just cruising at speed, or only when you press the brakes?"
+    - vs: violent_shake_after_bump_death_wobble
+      discriminator_question: "Is it a steady shimmy at certain speeds, or a violent shake triggered by hitting a bump that only stops when you slow way down?"
+    - vs: constant_vibration_that_doesnt_change_with_speed
+      discriminator_question: "Does it come and go with speed (worst around 60-70), or is it constant at every speed?"
+    - vs: engine_misfire_or_bucking_feeling
+      discriminator_question: "Is the shake tied to road speed no matter the gear, or does it change with engine RPM / feel like the engine stumbling?"
+  safety_flag: none
+  notes: >
+    Band-limited steering shimmy at 55-75 mph = wheel balance, a bent wheel, or lost wheel weight; pothole
+    onset is the classic story [S12]. Brake-triggered = rotors (brakes domain); bump-triggered violent
+    oscillation = death wobble. CROSS-DOMAIN: RPM-tied shake is engine misfire (performance domain) —
+    "does it shake in Park when revved?" separates them.
+
+- category: vibration
+  subcategory: constant_vibration_that_doesnt_change_with_speed
+  display: "Constant vibration at all speeds"
+  customer_voice_anchors:
+    - "car vibrates at every speed"
+    - "buzzing through the seat no matter how fast im going"
+    - "constant shake even crawling through a parking lot"
+    - "vibration never goes away, speed doesnt matter"
+    - "VEHICLE SHAKING AT ALL SPEEDS"
+    - "steady tremor in the whole car since yesterday"
+    - "shakes from the minute i pull out of the driveway to the highway"
+    - "whole car buzzes even at 10 mph in the neighborhood"
+    - "vibration is there at 20, 40, and 70, doesnt get better or worse"
+  required_slots:
+    - speed_band: "confirmed at ALL speeds — the defining fact"
+    - onset_timing: "moving-only vs also at idle in Park — idle shake is an engine concern"
+    - started_when: "sudden onset (tire belt breaking) vs gradual"
+    - tire_state: "any visible tire deformity/flat spot"
+  confusables:
+    - vs: steering_wheel_shake_at_highway_speed
+      discriminator_question: "Is it constant at every speed, or does it come and go with speed, worst around 60-70?"
+    - vs: shaking_at_idle_while_stopped
+      discriminator_question: "Does it also shake while sitting still in Park or at a light, or only when moving?"
+  safety_flag: none
+  notes: >
+    Speed-independent (moving) vibration points at an out-of-round tire, broken belt, or a driveline issue
+    rather than balance [S9]. A tire coming apart internally can fail suddenly — sudden-onset constant
+    shake is worth prompt advice. CROSS-DOMAIN: at-idle shake is engine (performance); driveline/driveshaft
+    vibration belongs to the driveline domain — synthesis should keep the moving-vs-idle discriminator.
+
+- category: noise
+  subcategory: humming_or_whirring_at_speed
+  display: "Hum / drone / roar at speed (wheel bearing or tires)"
+  customer_voice_anchors:
+    - "humming noise that gets louder the faster i go"
+    - "sounds like an airplane taking off on the highway"
+    - "droning growl from the back around 40"
+    - "roaring noise from the front wheel, gets louder when i turn left"
+    - "hum from the rear end, most noticeable 30 to 40"
+    - "sounds like i have snow tires on but i dont"
+    - "loud whirring at 50 that follows the speed of the car"
+    - "growling from the front passenger side, louder on curves"
+    - "tires making a strange humming noise when driving"
+  required_slots:
+    - noise_descriptor: "hum/drone/growl/roar tied to road speed"
+    - steering_load_effect: "PROPOSED-NEW slot — louder sweeping one direction = loaded bearing; unchanged = tire noise (the bearing-vs-tire discriminator)"
+    - location_axle: "front vs rear where they hear it"
+    - speed_band: "when it appears and whether it tracks road speed (not RPM)"
+    - tire_state: "cupped/chopped tread makes the same drone — visible wear reroutes to uneven wear"
+  confusables:
+    - vs: uneven_tire_wear_bald_spots
+      discriminator_question: "Are the tires visibly worn unevenly or cupped (that alone can cause the hum)?"
+    - vs: steering_wheel_shake_at_highway_speed
+      discriminator_question: "Is the concern mainly a humming NOISE, or a shake you feel in the steering wheel?"
+    - vs: high_pitched_whining_under_the_hood
+      discriminator_question: "Does the sound follow your road speed even coasting in neutral, or does it follow the engine revs?"
+    - vs: exhaust_louder_or_rumbling
+      discriminator_question: "Is it a wheel-area hum that changes with speed and turning, or a deeper exhaust rumble that got louder overall?"
+  safety_flag: none
+  notes: >
+    Bearing hum loads and unloads with steering sweeps — louder turning one way implicates the opposite
+    (loaded) side's bearing; tire roar stays constant through sweeps [S9]. Cupped tires (worn shocks) make
+    an identical drone [S13]. CROSS-DOMAIN: rear differential whine (driveline domain) also hums at speed —
+    the accel/coast/load change separates it; keep that boundary at synthesis.
+
+# ---------------------------------------------------------------------------
+# REQUESTS — direct bookable asks in this domain
+# ---------------------------------------------------------------------------
+
+- category: request
+  subcategory: wheel_alignment_request
+  display: "Alignment request"
+  customer_voice_anchors:
+    - "need an alignment"
+    - "alignment check please"
+    - "4 wheel alignment"
+    - "hit a curb pretty hard, want the alignment checked"
+    - "car needs aligned after the new tires"
+    - "how much is an alignment"
+    - "wheel alignment check, rear tires were wearing on the edges"
+    - "just want an alignment, no other issues"
+  required_slots:
+    - customer_request_type: "direct service request vs symptom-driven — a bare request books straight in"
+    - recent_action: "new tires / curb hit / suspension work — the usual reason behind the ask"
+    - tire_state: "any uneven wear mentioned — evidence worth capturing for the alignment tech"
+    - pull_direction: "if they mention a pull, capture it — symptom + request routes as the symptom with the request noted"
+  confusables:
+    - vs: steady_drift_while_cruising
+      discriminator_question: "Is the car actually pulling or drifting (worth diagnosing), or do you just want an alignment done?"
+    - vs: uneven_tire_wear_bald_spots
+      discriminator_question: "Is the alignment request driven by visible uneven tire wear we should document?"
+  safety_flag: none
+  notes: >
+    NEW slug for the direct ask (live flow reaches alignment via suspension_steering_check or uneven-wear).
+    Pure requests skip the diagnostic interview — over-asking direct requests is the #1 measured UX
+    failure in the current wizard. If a symptom rides along ("alignment, it pulls left"), classify the
+    symptom and keep the request as context.
+
+- category: request
+  subcategory: tire_rotation_or_balance_request
+  display: "Tire rotation / balance request"
+  customer_voice_anchors:
+    - "need a tire rotation"
+    - "rotate and balance please"
+    - "havent rotated my tires in forever, probably overdue"
+    - "can you balance my tires, slight shake on the highway"
+    - "tire rotation with my oil change"
+    - "how much to rotate tires"
+    - "balance check, feels a tiny bit shaky at 70"
+    - "Tire Rotation & Balance"
+    - "tires rotated before my trip next week please"
+  required_slots:
+    - customer_request_type: "maintenance request — books without an interview"
+    - speed_band: "if a shake is mentioned, capture the speed — a real shimmy upgrades to the vibration entry"
+  confusables:
+    - vs: steering_wheel_shake_at_highway_speed
+      discriminator_question: "Is there a noticeable shake at highway speed (worth diagnosing), or is this just routine rotation/balance?"
+  safety_flag: none
+  notes: >
+    NEW slug — routine maintenance ask. The judgment call is when "balance my tires" is actually a
+    vibration complaint in disguise; a specific speed-banded shake should route to the vibration entry so
+    a bent wheel or worse isn't hidden behind a $30 balance ticket.
+
+- category: request
+  subcategory: brake_check_or_service_request
+  display: "Brake check / brake job request"
+  customer_voice_anchors:
+    - "need my brakes checked"
+    - "brake inspection please"
+    - "how much for front brakes"
+    - "want the brakes looked at before a road trip"
+    - "think i need new brake pads"
+    - "brake job quote"
+    - "BRAKE INSPECTION, wants to make sure brakes are ok"
+    - "due for brakes, its been a while"
+    - "check my brakes, making some noise"
+  required_slots:
+    - customer_request_type: "request vs symptom — a bare 'check my brakes' books the inspection directly"
+    - noise_descriptor: "if a noise is mentioned ('making some noise'), one clarifier (squeal vs grind) sets urgency"
+    - pedal_feel: "any pedal change mentioned upgrades this to the matching symptom entry"
+  confusables:
+    - vs: high_pitched_squealing
+      discriminator_question: "Are the brakes making any noise or feeling different, or is this just a checkup?"
+    - vs: metallic_grinding
+      discriminator_question: "If there's a noise — is it a squeak, or a rough grinding?"
+  safety_flag: none
+  notes: >
+    Direct brake-inspection ask; the mixed form ('brakes grinding, need them looked at asap') is a SYMPTOM
+    with a request attached — the symptom wins routing, per the style guide's mixed symptom+request rule.
+    One noise clarifier is worth asking on vague versions because it separates a routine inspection from
+    an urgent grind [S1][S2].
+
+- category: request
+  subcategory: just_want_new_tires
+  display: "Wants new tires (replacement/quote)"
+  customer_voice_anchors:
+    - "need 4 new tires"
+    - "how much for a set of tires"
+    - "tires are worn out, time for new ones"
+    - "need new tires before winter"
+    - "price on 2 front tires"
+    - "my tires are shot, need new rubber"
+    - "4 NEW TIRES AND ALIGNMENT, entry level is fine"
+    - "shopping for tires, do you price match"
+    - "tread is down to the wear bars, ready to replace"
+  required_slots:
+    - customer_request_type: "purchase/quote intent — this is a sales conversation, not a diagnostic"
+    - tire_state: "worn / dry-rotted / damaged — why they want them, affects urgency"
+    - location_axle: "2 vs 4 tires"
+  confusables:
+    - vs: uneven_tire_wear_bald_spots
+      discriminator_question: "Do you want us to diagnose why they wore out (alignment/suspension), or just replace them?"
+    - vs: dry_rot_sidewall_cracking
+      discriminator_question: "Are the tires worn down, or cracking from age — or both?"
+  safety_flag: none
+  notes: >
+    Live slug with a known catalog gap: no bookable tire-SALES service exists, so this routes to an advisor
+    quote. Keep it as a first-class anchor entry anyway — tire shopping is high-volume customer intent and
+    misrouting it into a $47.68 tire-repair booking is a real, observed failure mode.

@@ -1,0 +1,1037 @@
+# ============================================================================
+# Customer-concern anchor knowledge — DOMAIN: electrical / charging / lights
+# ----------------------------------------------------------------------------
+# Purpose: day-one seed anchors for the embedding shortlist + LLM extraction in
+#   the rebuilt booking-assistant classifier. Anchors are CUSTOMER LANGUAGE
+#   (real-corpus-informed, misspellings and fragments included), never shop or
+#   technician jargon.
+# Curated: 2026-07-19. Customer phrasing is informed by the shop's labeled
+#   Tekmetric concern corpus and forum-paraphrase patterns collected in
+#   docs/automotive-knowledge-base/ (starting-charging, body-electrical-
+#   accessories, lighting-visibility lexicons + the no-start-power and
+#   warning-lights routers). Diagnostic facts below are cited to:
+#   - Fluke, "How to Check Starter Circuit Voltage Drop with a Multimeter"
+#     https://www.fluke.com/en-us/learn/blog/digital-multimeters/how-to-check-starter-circuit-voltage-drop-with-a-multimeter
+#     (excess starter-circuit voltage drop from corroded/loose cables -> slow or no crank)
+#   - Fluke, "How to Test Alternator Ripple Voltage with a Multimeter"
+#     https://www.fluke.com/en-us/learn/blog/digital-multimeters/how-to-test-alternator-ripple-voltage-with-a-multimeter
+#     (~14 V charging; failed diode/stator ripple -> flickering lights, battery drain)
+#   - NAPA Know How, "What Are Cold Cranking Amps?"
+#     https://knowhow.napaonline.com/what-are-cold-cranking-amps/
+#     (cold raises battery internal resistance and thickens oil -> hard cold cranking)
+#   - NAPA Know How, "5 Alternator Issues and Warning Signs"
+#     https://knowhow.napaonline.com/5-alternator-issues-warning-signs-stay-ahead-potential-problem/
+#     (dead alternator leaves the car running off the battery until it dies while driving)
+#   - NAPA Know How, "Why Do Good Starters Go Bad?"
+#     https://knowhow.napaonline.com/why-do-good-starters-go-bad/
+#     (grind/whir on start attempt = starter pinion / flywheel ring-gear mesh damage)
+#   - NHTSA FMVSS No. 126 (49 CFR 571.126) — ESC required on MY2012+ light vehicles
+#     (traction/stability telltale semantics: flashing = active intervention, steady = fault/off)
+#   - NHTSA FMVSS No. 138 — TPMS telltale triggers at >=25% under-inflation;
+#     flash-then-steady = system/sensor malfunction indication
+#   - SAE J2012 / OBD-II misfire framework — flashing MIL = active catalyst-damaging
+#     misfire, reduce load immediately (steady MIL = stored fault, service soon)
+#   - US DOE Alternative Fuels Data Center (afdc.energy.gov) — hybrid/EV 12 V
+#     auxiliary battery powers control systems; a flat 12 V aux prevents READY-on
+#     even when the high-voltage pack is fine
+# ----------------------------------------------------------------------------
+# Schema per entry:
+#   category / subcategory / display / customer_voice_anchors[] /
+#   required_slots[] / confusables[] / safety_flag / notes
+# Slot names reuse the live extraction ontology where one fits
+#   (engine_running, lights_state, warning_light_named, warning_light_behavior,
+#    accessory_affected, recent_action, onset_timing, weather_condition,
+#    location_side, parking_brake_state, drivable_state, vehicle_powertrain,
+#    customer_request_type, noise_descriptor, steering_feel, pedal_feel).
+# ============================================================================
+
+# ============================================================
+# FAMILY 1 — NO-START (what happens when you turn the key?)
+# ============================================================
+
+- category: no_start
+  subcategory: wont_crank_just_clicks
+  display: "Won't start — just clicks"
+  customer_voice_anchors:
+    - "turn the key and all i get is click click click, it wont turn over"
+    - "just clicks real fast like a machine gun when i try to start it"
+    - "one loud click and then nothing, but the headlights stay bright"
+    - "wont start, just makes a clicking noise"
+    - "got a jump this morning and it started right up, shut it off at work and its back to clicking again"
+    - "car wont crank, single click every time i turn the key"
+    - "clik clik clik and it wont start"
+    - "NO CRANK NO START JUST CLICKS"
+    - "push button start does nothing on the first press, starts on the second push"
+    - "grinding noise when i try to start it, like the gears arent catching"
+    - "it goes tick tick tick real fast and the dash lights go dim"
+    - "turn the key, hear one click under the hood, engine never spins"
+    - "battery clicking wont turn over, lights still work tho"
+  required_slots:
+    - engine_running: "what literally happens at the key/button (clicks vs slow spin vs total silence vs cranks-fine) — this one fact picks the whole no-start branch"
+    - lights_state: "dash/headlight brightness during the attempt — rapid clicking with lights dimming points at a dead/weak battery; ONE click with lights staying bright points at the starter or a bad connection (splits the booking urgency and the diagnosis)"
+    - recent_action: "jump started / new battery installed / sat unused for weeks — separates one-off dead battery, repeat drain, and starter failure"
+    - onset_timing: "only the first start of the day vs any time — cold-morning single-click is a classic pattern"
+    - warning_light_named: "a flashing security / anti-theft / key light with a healthy battery flips this away from battery/starter entirely (immobilizer)"
+  confusables:
+    - vs: slow_crank_sluggish_start
+      discriminator_question: "Does the engine actually spin over (just slowly), or does it ONLY click without ever turning?"
+    - vs: no_sound_at_all_when_starting
+      discriminator_question: "When you turn the key do you hear at least a click, or absolutely nothing at all?"
+    - vs: cranks_but_wont_fire
+      discriminator_question: "Does the engine turn over at normal speed and just never fire up, or does it not turn over at all?"
+    - vs: battery_drains_overnight
+      discriminator_question: "Is it only dead after sitting overnight or a few days (fine once jumped), or did it fail out of nowhere and stay failed?"
+    - vs: key_or_immobilizer_wont_start   # cross-domain: keys/security
+      discriminator_question: "Is a security / anti-theft / key-shaped light flashing on the dash while the battery otherwise seems fine (bright lights, no jump needed)?"
+  safety_flag: none
+  notes: >
+    Includes rapid-click (battery-side), single-click (starter / high-resistance connection —
+    Fluke starter voltage-drop), and the grind-on-start-attempt variant (starter pinion /
+    ring-gear mesh, NAPA). Does NOT include cranks-normally-but-won't-fire (fuel/spark — own
+    entry) or dead silence (own entry). Customers say "won't turn over" for EVERY kind of
+    no-start — never infer click vs silent vs slow from that phrase; ask.
+
+- category: no_start
+  subcategory: no_sound_at_all_when_starting
+  display: "Won't start — no sound at all"
+  customer_voice_anchors:
+    - "turn the key and absolutely nothing happens, no click no noise nothing"
+    - "completely dead, no lights on the dash, no nothing"
+    - "everything lights up on the dash but it does nothing when i turn the key"
+    - "push the start button and it literally does nothing"
+    - "no crank no click, just silent"
+    - "key turns but the car acts like its not even there"
+    - "went out to leave for work and its stone dead, wont even try to start"
+    - "radio and lights work fine but the engine doesnt even attempt to turn over"
+    - "totaly dead this morning, wont do anything"
+    - "my car wont do anything when i turn the key, put the battery on a charger and still nothing"
+    - "no sound when i try to start it, had to leave it in the parking lot"
+  required_slots:
+    - lights_state: "completely dead everything vs lights/radio normal — dead-everything points at a flat battery or a disconnected/corroded main cable; bright-lights-but-silent points at the ignition switch, a safety interlock (park/neutral or clutch switch), or the immobilizer"
+    - engine_running: "confirms no_sound_at_all rather than a click the customer didn't mention"
+    - warning_light_named: "security / anti-theft / key light showing = immobilizer starter-cut, not an energy problem"
+    - vehicle_powertrain: "ONLY if the customer literally says hybrid/electric — 'dash lights up but won't go to READY' is the hybrid 12 V-aux-first path (US DOE AFDC)"
+    - recent_action: "jump attempted, battery charged, left lights on, interior light stayed on — narrows flat-battery vs wiring"
+  confusables:
+    - vs: wont_crank_just_clicks
+      discriminator_question: "Is there even ONE click when you turn the key, or truly zero sound?"
+    - vs: key_or_immobilizer_wont_start   # cross-domain: keys/security
+      discriminator_question: "Is a security or key-shaped light on/flashing while the battery seems fine?"
+    - vs: hybrid_ev_wont_power_on   # cross-domain: hybrid/EV
+      discriminator_question: "Is the car a hybrid or electric — does the dash light up but it never goes to READY / ready-to-drive?"
+    - vs: battery_drains_overnight
+      discriminator_question: "Was it fine yesterday and dead only after sitting, or did it die and stay dead regardless of jumps?"
+  safety_flag: none
+  notes: >
+    "Dash lights come on" is NOT the same fact as "lights are bright/normal" — a lit-up dash
+    can still hide a weak battery. A model name alone (e.g. "my Prius") must NOT set the
+    hybrid path; the customer has to say hybrid/electric or report jumping the small 12 V
+    battery. Foot-off-brake / not-in-park user error is a real advisor-level cause — capture
+    what they tried.
+
+- category: no_start
+  subcategory: slow_crank_sluggish_start
+  display: "Starts hard — cranks slowly"
+  customer_voice_anchors:
+    - "cranks real slow in the morning, rrr rrr rrr, then it finally catches"
+    - "turns over super slow like the battery is about to die"
+    - "battery seems weak, slow crank when i start it, check and advise"
+    - "takes forever to turn over when its cold out"
+    - "sluggish start, sounds like its struggling to spin the engine"
+    - "engine cranks slower and slower every morning, scared one day it just wont"
+    - "slow crank then it starts, and the lights dim while its cranking"
+    - "cranks weak after sitting all weekend"
+    - "when i start it it goes ruh...ruh...ruh real lazy and then fires up"
+    - "been noticing a weak extended crank lately"
+    - "slow to turn over 3 mornings out of 5"
+  required_slots:
+    - engine_running: "slow_crank — the engine DOES spin, just slowly (vs clicks / silence / normal-speed crank)"
+    - weather_condition: "worse in cold weather is the classic weak-battery signature (cold raises battery internal resistance and thickens oil — NAPA CCA)"
+    - onset_timing: "first start of the day / after sitting overnight vs every start"
+    - lights_state: "lights dimming hard during cranking reinforces a weak battery or bad connection"
+    - recent_action: "battery age / recently jumped / recent charging-system work"
+  confusables:
+    - vs: wont_crank_just_clicks
+      discriminator_question: "Does it still spin over slowly, or has it gotten to where it ONLY clicks?"
+    - vs: cranks_but_wont_fire
+      discriminator_question: "Does it spin at normal speed but take a long time to fire, or does it physically spin SLOWER than normal?"
+    - vs: hard_to_start_when_cold   # cross-domain: performance/fuel
+      discriminator_question: "On cold mornings does the engine turn over at normal speed and just not catch, or does it audibly drag/spin slowly?"
+  safety_flag: none
+  notes: >
+    "Hard to start when cold" does NOT establish slow cranking — unless the customer literally
+    describes the engine dragging/spinning slowly, crank speed is unknown and must be asked
+    (the cranks-fine-won't-fire cold case is a fuel/spark problem, a different booking).
+    Mechanism: weak battery, corroded cables, or failing starter (Fluke voltage-drop).
+
+- category: no_start
+  subcategory: cranks_but_wont_fire
+  display: "Cranks fine but won't start"
+  customer_voice_anchors:
+    - "cranks strong but it just wont fire up"
+    - "turns over fine, sounds normal, but never actually starts"
+    - "engine spins and spins but wont catch"
+    - "cranks but no start, battery is good"
+    - "it will crank all day long but never turns on"
+    - "wont start but its not the battery, it turns over fine"
+    - "cranks but wont start, had to get it towed in"
+    - "keeps cranking but not catching, and it smells like gas after i try for a while"
+    - "turns over but wont kick on, the AAA guy said the battery is fine"
+    - "TOW IN, CRANKS BUT WILL NOT START"
+    - "cranks and cranks, sometimes catches for a second then dies right away"
+  required_slots:
+    - engine_running: "wont_start — spins at NORMAL speed but never fires; this is what routes it away from the battery/starter family"
+    - warning_light_named: "a flashing security/anti-theft light with a healthy battery = immobilizer fuel/starter cut, not fuel/spark"
+    - recent_action: "just got gas / ran out of gas / recent repair work — a fill-up right before the no-start is its own fuel-contamination lead"
+    - onset_timing: "cold-morning-only vs after-driving-hot-restart-only — those are different bookable patterns (hard-start-cold vs hard-start-hot)"
+    - weather_condition: "hot-day restart failure after short stops is the vapor-lock/heat-soak signature"
+  confusables:
+    - vs: wont_crank_just_clicks
+      discriminator_question: "Does the engine turn over at its normal speed, or does it only click / barely turn?"
+    - vs: slow_crank_sluggish_start
+      discriminator_question: "Is the cranking speed normal, just no fire — or is the cranking itself slow and labored?"
+    - vs: key_or_immobilizer_wont_start   # cross-domain: keys/security
+      discriminator_question: "Is the security/anti-theft light flashing while it cranks?"
+    - vs: hard_to_start_when_hot   # cross-domain: performance/fuel
+      discriminator_question: "Does this only happen restarting right after driving (like at a gas stop), and start fine after it cools 20-30 minutes?"
+  safety_flag: none
+  notes: >
+    CROSS-DOMAIN: this is the fuel/spark no-start — the anchor lives in this family because
+    customers phrase every no-start identically, but it books to no-start (fuel/ignition)
+    diagnostics, not battery/charging. The battery and starter are working by definition
+    (the engine is spinning normally). Do not let "wont start" language pull this into the
+    battery lane when crank quality is stated as normal.
+
+- category: no_start
+  subcategory: died_while_driving_wont_restart
+  display: "Died while driving"
+  customer_voice_anchors:
+    - "car just shut off while i was driving, all the warning lights came on first"
+    - "everything went dark on the dash and then the engine quit on the highway"
+    - "battery light came on, then the radio died, then the whole car died"
+    - "it died at a stop light and now it wont start at all"
+    - "lost all power while driving, steering got heavy and i coasted to the shoulder"
+    - "dash lights started flickering then the car shut down in traffic"
+    - "alternator died on me going down the road, had it towed in"
+    - "car keeps shutting off while im driving, battery is brand new"
+    - "whole dashboard lit up like a christmas tree then it stalled and died"
+    - "died while driving, jumped it, drove 10 minutes and it died again"
+    - "battery and brake light came on, car wouldnt go over 5 mph, then it quit"
+  required_slots:
+    - engine_running: "died_while_driving — and whether it restarts at all now"
+    - lights_state: "dimming/flickering lights BEFORE it died = charging-system cascade (alternator quit, car ran the battery flat — NAPA)"
+    - warning_light_named: "battery/charge light coming on first is the electrical tell; no lights + engine sputter first points engine-side instead"
+    - noise_descriptor: "sputter/stumble/backfire before dying = engine-side stall, a different booking than an electrical shutdown"
+    - drivable_state: "still on the road side vs towed home vs restarts-but-scared — sets urgency and tow advice"
+  confusables:
+    - vs: stalling_while_driving_under_load   # cross-domain: performance/engine
+      discriminator_question: "Right before it died, did the lights/dash dim or a battery light come on — or did the engine sputter and stumble first with no electrical warning?"
+    - vs: battery_drains_overnight
+      discriminator_question: "Does it die while actually driving, or only refuse to start after it's been parked a while?"
+    - vs: battery_charging_light
+      discriminator_question: "Did the car actually shut off, or is the battery light on but it's still running?"
+  safety_flag: advise_immediately
+  notes: >
+    A car that dies in traffic is a hazard regardless of cause. The lights-dimmed-first /
+    battery-light-first variant is a charging failure (alternator) — the jump-starts-then-
+    dies-again-in-minutes pattern is the confirming story. Engine-sputter-first with no
+    electrical precursor belongs to the engine/performance domain — capture which happened
+    first, never assume.
+
+# ============================================================
+# FAMILY 2 — BATTERY / CHARGING (car starts or ran recently)
+# ============================================================
+
+- category: electrical
+  subcategory: battery_drains_overnight
+  display: "Battery keeps dying / needs jumps"
+  customer_voice_anchors:
+    - "battery dies overnight, i jump it in the morning and its dead again the next day"
+    - "if the car sits 2 or 3 days the battery is completely dead"
+    - "something is draining my battery, already replaced the battery and it still dies"
+    - "keep having to jump start it every morning"
+    - "was fine yesterday, stone dead this morning"
+    - "had to get a jump twice this week, i think something is killing the battery"
+    - "batery keeps going dead when it sits"
+    - "dead after every weekend, every single monday its dead"
+    - "i think a light is staying on somewhere because the battery keeps draining"
+    - "new battery 2 months ago and its already dying again"
+    - "had to jump start the car, its been sitting a while"
+    - "sometimes it starts fine and sometimes i need a jump, no rhyme or reason"
+  required_slots:
+    - recent_action: "jump_started / battery replaced already / car sat unused — 'replaced the battery and it still dies' is the parasitic-draw tell"
+    - onset_timing: "how long it has to sit before it's dead (overnight vs days) — sizes the drain"
+    - accessory_affected: "anything staying on (dome light, trunk light, aftermarket stereo/dash cam) the customer noticed"
+    - engine_running: "starts and runs normally once jumped? (yes = drain/weak battery; dies again while driving = charging failure — different entry)"
+    - warning_light_named: "battery light while driving points at the alternator, not an overnight drain"
+  confusables:
+    - vs: wont_crank_just_clicks
+      discriminator_question: "Is this a repeating pattern every time it sits, or a one-time no-start right now?"
+    - vs: battery_charging_light
+      discriminator_question: "Does a battery/charging light come on while you're DRIVING, or is the problem only after it sits?"
+    - vs: died_while_driving_wont_restart
+      discriminator_question: "Does it ever shut off while actually driving, or only fail to start after parking?"
+    - vs: single_accessory_not_working
+      discriminator_question: "Is something like the dome light visibly staying on after you lock it?"
+  safety_flag: none
+  notes: >
+    Includes "needs a jump" language. Three mechanisms hide under one complaint: an old/weak
+    battery, a parasitic draw (something staying awake), and an alternator that never
+    recharged it (Fluke ripple / NAPA). Booking is the same charging-system + parasitic-draw
+    test, but capture the replaced-it-already fact — it changes advisor expectations. A dome
+    light that visibly stays on is ALSO a bookable accessory fault (see
+    single_accessory_not_working).
+
+- category: electrical
+  subcategory: dim_or_flickering_lights
+  display: "Lights dim or flicker"
+  customer_voice_anchors:
+    - "headlights get dimmer and brighter on their own at night"
+    - "dash lights flicker while im driving"
+    - "lights dim at stop lights and brighten when i rev the engine"
+    - "headlights and interior lights flicker and the radio cuts out sometimes"
+    - "everything dims when i turn on the AC or the defroster"
+    - "my lights pulse brighter and dimmer, its kinda freaky at night"
+    - "interior lights flickering, i changed the headlight switch and it still does it"
+    - "gauges and dash lights go dim then bright then dim again"
+    - "headlites flicker when its idling"
+    - "lights are noticeably dimmer at idle than when im moving"
+  required_slots:
+    - lights_state: "dim_or_flickering vs dim-at-idle-brighten-when-revving — RPM-tracking brightness is the alternator/regulator cue (Fluke ripple)"
+    - accessory_affected: "ALL lights together vs one lamp — one dim/dead lamp is a bulb/socket, not a charging problem"
+    - warning_light_named: "battery light joining the flicker escalates this to an active charging failure"
+    - engine_running: "any stumble/rough running alongside = voltage sag affecting the whole car"
+    - onset_timing: "constant vs only with big electrical loads on (AC, defroster, heated seats)"
+  confusables:
+    - vs: exterior_light_out
+      discriminator_question: "Is it the brightness changing on lights that work, or is one light just dead/out?"
+    - vs: battery_charging_light
+      discriminator_question: "Has the battery/charging warning light come on along with the flickering?"
+    - vs: headlights_cloudy_or_always_dim   # advisor / lens restoration, not electrical
+      discriminator_question: "Do the lights actually change brightness, or are they just always dull/yellowed looking (hazy lenses)?"
+    - vs: multiple_random_electrical_glitches
+      discriminator_question: "Is it just lights dimming/flickering, or are other things (radio, locks, gauges) also acting up randomly?"
+  safety_flag: none
+  notes: >
+    Whole-system dimming/flicker = unstable charging output (bad alternator diode/regulator or
+    a loose ground — Fluke alternator-ripple). If a battery light is also on or the engine
+    stumbles, treat it as an in-progress charging failure (could die while driving —
+    escalate). Oxidized/cloudy headlight LENSES ("always dim at night, yellowed") are an
+    optical problem — lens restoration / advisor, not electrical diagnosis.
+
+# ============================================================
+# FAMILY 3 — BODY ELECTRICAL & ACCESSORIES (car starts fine)
+# ============================================================
+
+- category: electrical
+  subcategory: power_window_not_working
+  display: "Power window won't work"
+  customer_voice_anchors:
+    - "drivers window wont go down"
+    - "passenger window is stuck halfway and wont go back up"
+    - "both back windows stopped working, the switches dont do anything"
+    - "my window fell down inside the door"
+    - "window makes a horrible grinding noise and barely moves"
+    - "window motor sounds like its running but the glass doesnt move"
+    - "DRIVER REAR WINDOW INOP"
+    - "window wont roll up and its supposed to rain this week"
+    - "window works from the master switch but not the passenger door switch"
+    - "windw stuck down, need it fixed asap"
+    - "rear window goes down but i have to help pull it up"
+  required_slots:
+    - accessory_affected: "which window(s) — one door vs all; all-windows-dead points at the master switch/fuse, one window at that door's motor/regulator/switch"
+    - noise_descriptor: "motor runs / grinding / clunk vs dead silence at the switch — motor-runs-glass-doesn't = broken regulator; silent = electrical"
+    - location_side: "which door (books the part)"
+    - drivable_state: "stuck OPEN is a weather/security urgency worth flagging to the advisor"
+    - onset_timing: "gradual (slower and slower) vs sudden dead"
+  confusables:
+    - vs: single_accessory_not_working
+      discriminator_question: "Is it the roll-up-down door GLASS, or something else like the sunroof, mirrors, or door locks?"
+    - vs: multiple_random_electrical_glitches
+      discriminator_question: "Is it just the window(s), or are other electrical things (radio, locks, lights) also cutting in and out?"
+  safety_flag: none
+  notes: >
+    Power-window GLASS motion only. Sunroof, mirrors, and locks are general accessories (own
+    entry). "Window fell into the door" and grinding-while-moving are regulator/cable failures
+    but book to the same window diagnosis. A window stuck DOWN deserves priority handling —
+    capture it.
+
+- category: electrical
+  subcategory: wipers_or_washers_not_working
+  display: "Wipers or washer not working"
+  customer_voice_anchors:
+    - "wipers stopped working"
+    - "my wipers wont turn off, they keep going after i turn the switch off"
+    - "washer fluid wont spray"
+    - "wipers move super slow and stall halfway up the glass"
+    - "rear wiper quit working"
+    - "wipers totally quit right after i went thru the car wash"
+    - "wipers only work on high speed now"
+    - "wiper just flops around, looks like it came loose"
+    - "WIPERS NOT SPRAYING"
+    - "wipers stuck straight up in the middle of my windshield"
+    - "intermittent setting doesnt work anymore, only off and full blast"
+  required_slots:
+    - accessory_affected: "front wipers vs rear wiper vs washer spray — different parts, same booking family"
+    - noise_descriptor: "dead silent vs motor humming vs grinding — silent = electrical; hums-but-no-move = linkage"
+    - weather_condition: "is rain expected / are they driving in rain — visibility urgency for the advisor"
+    - recent_action: "car wash / new blades installed / wiper hit by snow-ice load — common triggers"
+    - onset_timing: "sudden dead vs got slower over time vs one speed missing"
+  confusables:
+    - vs: washer_fluid_leak   # cross-domain: leak
+      discriminator_question: "Is the washer not SPRAYING, or is washer fluid leaking/puddling under the car?"
+    - vs: foggy_or_hard_to_defog_windows   # cross-domain: hvac
+      discriminator_question: "Is this about the wipers/washers, or the defroster not clearing fog on the INSIDE of the glass?"
+    - vs: wiper_blades_streaking   # maintenance request, not a fault
+      discriminator_question: "Do the wipers move fine but smear/streak (worn rubber blades), or do they not move/spray correctly?"
+  safety_flag: none
+  notes: >
+    Covers wiper motion (dead, slow, stalls, won't park, stuck on, one speed missing), loose
+    arms, and washer spray. Blades that move fine but streak are a blade replacement, not a
+    diagnosis. Wipers-dead-in-the-rain is a genuine visibility safety concern — flag urgency
+    in the notes to the advisor even though it books as a normal diagnosis.
+
+- category: electrical
+  subcategory: exterior_light_out
+  display: "Headlight / taillight / blinker out"
+  customer_voice_anchors:
+    - "headlight is out on the drivers side"
+    - "one of my brake lights is out, got pulled over for it"
+    - "blinker isnt working on the right side"
+    - "turn signal is blinking really fast, i think a bulb is out"
+    - "taillight out"
+    - "i replaced the headlight bulb myself and its still not working"
+    - "high beams work but the regular headlights dont"
+    - "both headlights went out at the same time"
+    - "need a headlight bulb put in"
+    - "license plate light is out, cop gave me a warning"
+    - "brake lights not workin when i press the pedal"
+    - "fog light burned out"
+    - "reverse lights dont come on in reverse"
+  required_slots:
+    - accessory_affected: "which lamp — headlight low/high beam, brake light, turn signal, taillight, plate lamp, fog, reverse"
+    - location_side: "driver / passenger / both — BOTH at once points at a switch, relay, or wiring fault, not two coincidental bulbs"
+    - recent_action: "already replaced the bulb and it's still out = socket/wiring/ground, a diagnosis not a bulb swap"
+    - warning_light_named: "make sure this is a physical lamp at the corner of the CAR, not a warning light on the dash"
+    - customer_request_type: "symptom ('its out') vs plain request ('put a bulb in') — a bare bulb request can book as a quick service, not a diagnostic"
+  confusables:
+    - vs: brake_system_red_light
+      discriminator_question: "Is it a bulb at the back of the car that's out, or a red BRAKE warning light on your dash?"
+    - vs: dim_or_flickering_lights
+      discriminator_question: "Is one light completely dead, or are the lights changing brightness / flickering?"
+    - vs: headlights_cloudy_or_always_dim   # advisor / lens restoration
+      discriminator_question: "Is the bulb out, or do the lights work but look dull/yellowed through hazy lenses?"
+  safety_flag: none
+  notes: >
+    A turn signal flashing FAST (hyperflash) is the classic dead-turn-bulb clue — customers
+    often report the fast blinking, not the dead bulb. Both-headlights-out-at-once is almost
+    never two bulbs — think switch/relay/dimmer stalk/wiring. "Replaced the bulb, still out"
+    upgrades a bulb swap to an electrical diagnosis. Ticket risk (pulled over / warning) is a
+    common motivator — book promptly but not an emergency.
+
+- category: electrical
+  subcategory: single_accessory_not_working
+  display: "Radio / horn / locks / accessory dead"
+  customer_voice_anchors:
+    - "my radio is completely dead, the screen wont even come on"
+    - "horn doesnt work"
+    - "HORN INOPERABLE"
+    - "power locks stopped working with the remote"
+    - "key fob wont lock or unlock the doors anymore"
+    - "cigarette lighter quit working, my phone charger does nothing"
+    - "heated seat on the drivers side stopped heating"
+    - "dome light stays on even after i close the doors"
+    - "my dash gauges all went dead, speedometer shows nothing"
+    - "backup camera is just a black screen when i put it in reverse"
+    - "the clock and radio presets keep resetting themselves"
+    - "sunroof wont slide closed"
+    - "speedometer stopped working"
+    - "usb ports dead in the whole car"
+  required_slots:
+    - accessory_affected: "WHICH accessory — the single most bookable fact (radio, horn, locks/fob, outlets, heated seat, dome light, cluster/gauges, camera, sunroof)"
+    - onset_timing: "constant dead vs intermittent — intermittent points at connections and changes the diagnostic approach"
+    - started_when: "after a jump start / battery change / car wash / stereo install — a huge share of accessory deaths follow one of these"
+    - recent_action: "fuse checked or replaced already? repeatedly blowing fuse is its own finding (short circuit)"
+    - engine_running: "the car still starts and runs fine? (fob dead + car won't start = keys/immobilizer domain, a different lane)"
+  confusables:
+    - vs: power_window_not_working
+      discriminator_question: "Is it the roll-up-down window glass (dedicated service), or another accessory?"
+    - vs: multiple_random_electrical_glitches
+      discriminator_question: "Is exactly one thing dead, or do different things misbehave at different times?"
+    - vs: key_or_immobilizer_wont_start   # cross-domain: keys/security
+      discriminator_question: "Does the car still start fine — or is the dead fob paired with the car not starting / a flashing security light?"
+    - vs: blower_or_vents_not_blowing   # cross-domain: hvac
+      discriminator_question: "Is it the heater/AC FAN not blowing (climate system), or a different accessory?"
+    - vs: burning_electrical_smell   # cross-domain: smell_smoke
+      discriminator_question: "Was there any burning/melting-plastic smell when it quit?"
+  safety_flag: none
+  notes: >
+    The catch-all for one dead accessory when the car otherwise starts and runs. A fuse that
+    BLOWS REPEATEDLY means a short — say so, it changes the job. Dome light stuck ON is both an
+    annoyance and a battery-drain cause (links to battery_drains_overnight). A dead fob with a
+    car that still starts = fob battery/receiver (here); a dead fob with a no-start = the
+    keys/immobilizer domain. Any accessory failure WITH a burning smell escalates to the
+    electrical-fire lane (smell_smoke domain) — advise immediately there.
+
+- category: electrical
+  subcategory: multiple_random_electrical_glitches
+  display: "Random electrical gremlins"
+  customer_voice_anchors:
+    - "random electrical gremlins, one day the radio resets, next day the locks click on their own"
+    - "all kinds of weird electrical stuff happening, always worse when it rains"
+    - "gauges jump around, lights flicker, and sometimes the horn beeps by itself"
+    - "door locks keep locking and unlocking themselves while im driving"
+    - "everything electrical in this car acts possessed"
+    - "the windows, wipers and dome light all quit at once then come back with a click"
+    - "dash throws random warnings then they all clear"
+    - "radio cuts out, then the dash flickers, then its fine for a week"
+    - "ever since i drove through deep water the electrical system does whatever it wants"
+    - "the radio and clock quit, then the door locks quit with the fob, now more stuff is quitting"
+  required_slots:
+    - accessory_affected: "the LIST of what misbehaves — pattern across circuits is the diagnostic signal"
+    - weather_condition: "rain/damp/cold linkage — moisture-tracking faults are a distinct (and findable) class"
+    - onset_timing: "intermittent-random vs everything-at-once vs one-after-another cascade"
+    - recent_action: "jump start (hooked up backwards?), deep water, aftermarket install, rodent evidence — the classic origins"
+    - engine_running: "car starts and runs fine throughout? any stumble/dim pushes this toward charging"
+  confusables:
+    - vs: single_accessory_not_working
+      discriminator_question: "Is it one specific thing that's dead, or different things misbehaving at different times?"
+    - vs: dim_or_flickering_lights
+      discriminator_question: "Is it mainly the lights pulsing/dimming (charging clue), or a mix of accessories glitching?"
+    - vs: multiple_warning_lights_at_once
+      discriminator_question: "Are dashboard WARNING lights coming on, or are accessories (radio, locks, gauges) misbehaving?"
+    - vs: battery_drains_overnight
+      discriminator_question: "Is the battery also going dead between drives?"
+  safety_flag: none
+  notes: >
+    The bookable concern is the PATTERN (multiple unrelated accessories, intermittent,
+    often moisture-linked) — grounds, body control module, water intrusion, or rodent damage.
+    Don't split it into one entry per accessory. Weather correlation and the
+    after-what-event origin are the two facts techs want most.
+
+# ============================================================
+# FAMILY 4 — DASHBOARD WARNING LIGHTS (named lights)
+# ============================================================
+
+- category: warning_light
+  subcategory: check_engine_light_steady
+  display: "Check engine light (steady)"
+  customer_voice_anchors:
+    - "check engine light came on"
+    - "check engine light is on but the car runs fine"
+    - "the orange engine symbol lit up on my dash"
+    - "CEL on, autozone read it and said P0420"
+    - "check engine light has been on for a month"
+    - "check engin light on"
+    - "engine light came on right after i got gas"
+    - "light came on, went off for a few days, now its back"
+    - "check engine light on and it smells like rotten eggs"
+    - "failed inspection because the check engine light is on"
+    - "little engine outline light is on, steady not blinking"
+    - "service engine soon light on"
+  required_slots:
+    - warning_light_behavior: "steady vs FLASHING — the single severity split for this light; flashing is a different (urgent) entry"
+    - warning_light_named: "engine-outline light vs a wrench/'service due' message — customers mix these up constantly"
+    - engine_running: "running normally vs rough/down on power — a felt symptom changes the booking toward driveability"
+    - recent_action: "just got gas (loose cap / EVAP), recent repair work, code already read (relay the code verbatim)"
+    - onset_timing: "how long it's been on; comes-and-goes vs constant"
+  confusables:
+    - vs: check_engine_light_flashing
+      discriminator_question: "Is the light steady, or is it BLINKING/flashing?"
+    - vs: service_or_maintenance_reminder_light
+      discriminator_question: "Is it the engine-shaped outline, or a wrench / 'service due' / 'oil life' message?"
+    - vs: engine_misfire_or_bucking   # cross-domain: performance
+      discriminator_question: "Is the car actually running rough / shaking / losing power along with the light?"
+  safety_flag: none
+  notes: >
+    Steady MIL = a stored fault code; drive to the shop soon, not an emergency (SAE J2012 /
+    OBD-II). "Service engine soon" text on some makes IS the check-engine light — the
+    discriminator vs the maintenance reminder is engine-outline vs wrench/oil-life wording.
+    A relayed parts-store code with no felt symptom stays here. Rotten-egg smell riding along
+    is a catalyst clue and stays with this booking.
+
+- category: warning_light
+  subcategory: check_engine_light_flashing
+  display: "Check engine light FLASHING"
+  customer_voice_anchors:
+    - "check engine light is FLASHING and the car is shaking"
+    - "engine light blinking and it feels like its misfiring"
+    - "cel flashes when i go uphill and it loses power"
+    - "check engine light blinks then goes steady, runs rough the whole time"
+    - "flashing engine light, car is bucking, is it safe to drive?"
+    - "engine light started blinking and it sounds like its running on 3 cylinders"
+    - "light flashes when i step on it hard"
+    - "check engine light flashing on the highway so i pulled over"
+    - "blinking engine light and a real bad shudder at idle"
+  required_slots:
+    - warning_light_behavior: "flashing_or_blinking — the urgency signal itself; verify the customer means blinking, not 'came on suddenly'"
+    - engine_running: "shaking / bucking / power loss while it flashes — the felt misfire that goes with the flash"
+    - onset_timing: "flashes under load (accel/uphill) vs constant — classic active-misfire pattern"
+    - drivable_state: "still being driven vs parked — shapes the advise-and-tow conversation"
+  confusables:
+    - vs: check_engine_light_steady
+      discriminator_question: "Is it truly blinking on and off, or just steadily lit?"
+    - vs: engine_misfire_or_bucking   # cross-domain: performance
+      discriminator_question: "Is the shaking/bucking the main event with the flashing light confirming it? (Same urgent problem — book the misfire diagnosis.)"
+  safety_flag: advise_immediately
+  notes: >
+    A FLASHING check-engine light means an active misfire is dumping unburned fuel into the
+    catalytic converter — catalyst-damaging, reduce load / stop driving now (SAE J2012 OBD-II
+    misfire framework). This is the highest-priority CEL variant; never let it blend into the
+    steady-light entry. Usually pairs with a felt misfire — cross-domain with
+    performance/misfire diagnostics.
+
+- category: warning_light
+  subcategory: service_or_maintenance_reminder_light
+  display: "Service due / maintenance reminder"
+  customer_voice_anchors:
+    - "the wrench light came on"
+    - "dash says service engine soon, is that bad?"
+    - "maintenance required light is on"
+    - "it says oil life 5 percent, service due"
+    - "little wrench symbol on my dash, what does that mean"
+    - "car says schedule service now"
+    - "message says A1 service due"
+    - "oil change light came on"
+    - "maint reqd light been on a couple weeks"
+    - "service reminder popped up on the screen"
+  required_slots:
+    - warning_light_named: "wrench / 'maintenance required' / oil-life % message vs the engine-outline light — decides reminder vs diagnostic"
+    - customer_request_type: "usually books as the indicated SERVICE (oil change / scheduled maintenance), not a diagnosis"
+    - onset_timing: "mileage since last service — confirms it's the interval reminder"
+    - engine_running: "any actual symptom alongside? (none expected — if yes, route the symptom)"
+  confusables:
+    - vs: check_engine_light_steady
+      discriminator_question: "Is it a wrench or a text message about service — or the engine-shaped warning light?"
+    - vs: oil_pressure_light
+      discriminator_question: "Is it an 'oil life / oil change due' message, or a RED oil-can light?"
+  safety_flag: none
+  notes: >
+    A maintenance reminder is NOT a fault — it's the car's service-interval counter. Books as
+    an oil change / scheduled maintenance visit. The two dangerous mix-ups: (1) "service
+    engine soon" on some makes is actually the check-engine light — ask engine-outline vs
+    wrench; (2) the red oil-PRESSURE can is an emergency and must never be binned here.
+
+- category: warning_light
+  subcategory: battery_charging_light
+  display: "Battery / charging light"
+  customer_voice_anchors:
+    - "battery light came on while i was driving"
+    - "red battery light is on and i hear a squealing noise"
+    - "little battery symbol with the plus and minus is lit up"
+    - "alternator light keeps coming on and off"
+    - "battery light on, does that mean i need a new battery?"
+    - "check charging system message came up on the screen"
+    - "batery light on"
+    - "battery light flickers when i turn on the headlights and AC"
+    - "ALT light is on"
+    - "battery light came on and the dash started dimming"
+    - "message said service high voltage charging system"
+  required_slots:
+    - warning_light_named: "battery / charge / ALT — the light literally named or the plus-minus battery icon described"
+    - warning_light_behavior: "steady vs comes-and-goes vs came-on-then-off — intermittent often precedes full failure"
+    - lights_state: "dimming lights / dying accessories alongside = the failure is active right now"
+    - noise_descriptor: "squeal under the hood = belt slipping or seized pulley driving the alternator — same visit, different part"
+    - drivable_state: "how far away they are — a car with a dead alternator has limited minutes of battery left"
+  confusables:
+    - vs: battery_drains_overnight
+      discriminator_question: "Does the light come on while DRIVING, or is the problem the battery being dead after it sits?"
+    - vs: dim_or_flickering_lights
+      discriminator_question: "Is the warning light itself on, or just the lights flickering/dimming?"
+    - vs: multiple_warning_lights_at_once
+      discriminator_question: "Is it just the battery light, or did several lights come on together?"
+    - vs: squealing_belt_noise   # cross-domain: noise/engine
+      discriminator_question: "Is there a loud squeal with the light? (Mention it — a slipping or broken belt can be the cause.)"
+  safety_flag: advise_immediately
+  notes: >
+    The battery light means the CHARGING system stopped charging — the car is running on
+    battery reserve and will die while driving, often within a short drive (NAPA alternator
+    warning signs). It usually is NOT just "a bad battery." Belt squeal + battery light =
+    likely belt/pulley failure, which on many cars also kills power steering and the water
+    pump — reinforce the do-not-keep-driving advice. Red light → advise immediately.
+
+- category: warning_light
+  subcategory: oil_pressure_light
+  display: "Oil pressure light"
+  customer_voice_anchors:
+    - "red oil can light came on"
+    - "oil light came on while i was driving, i checked and the oil was low"
+    - "oil pressure light flickers at stop lights"
+    - "that genie lamp looking light is on"
+    - "oil light is on and now theres a ticking noise"
+    - "red oil light popped on on the highway so i pulled over"
+    - "low oil pressure warning came up on the screen"
+    - "oil light comes on when i turn or hit the brakes"
+    - "oil pressure light on and i JUST had an oil change last week"
+    - "the dripping oil can symbol lit up red"
+  required_slots:
+    - warning_light_named: "the red oil-can (pressure) vs an 'oil life %' maintenance message — completely different severities"
+    - warning_light_behavior: "steady vs flickers-at-idle vs on-during-turns — flicker-at-hot-idle is the classic low-level/worn-engine pattern"
+    - noise_descriptor: "ticking or knocking with the light = the engine is already running starved — maximum urgency"
+    - recent_action: "oil level checked? topped up? oil change just done (wrong filter / drain-plug leak)?"
+    - engine_running: "is the engine still being run — the advise is to shut it off"
+  confusables:
+    - vs: service_or_maintenance_reminder_light
+      discriminator_question: "Is it the red dripping-oil-can light, or an 'oil life / service due' message?"
+    - vs: oil_leak   # cross-domain: leak
+      discriminator_question: "Any puddle under the car or burning-oil smell along with the light?"
+    - vs: engine_knocking_noise   # cross-domain: noise/engine
+      discriminator_question: "Is there a knocking/ticking noise with the light on?"
+  safety_flag: advise_immediately
+  notes: >
+    Red oil-can = loss of oil PRESSURE — minutes of running can destroy an engine. Advise:
+    stop the engine, check the level, do not drive it in; tow if the light stays on.
+    Flicker-only-at-idle and just-had-an-oil-change are still urgent. The 'genie lamp /
+    gravy boat' nickname is this icon. Never bin under maintenance reminder.
+
+- category: warning_light
+  subcategory: engine_temperature_light
+  display: "Temperature / overheating light"
+  customer_voice_anchors:
+    - "red thermometer light came on"
+    - "temperature light is on and the gauge is buried in the red"
+    - "hot light came on and i saw steam coming from the hood"
+    - "coolant temp warning flashed up on the screen"
+    - "the little thermometer sitting in waves symbol is lit red"
+    - "temp light comes on in stop and go traffic then goes off on the highway"
+    - "blue thermometer light is on when i first start it in the morning"
+    - "overheating light on and i can smell something sweet"
+    - "engine hot AC turned off message came up"
+    - "temperature warning came on towing the trailer uphill"
+  required_slots:
+    - warning_light_named: "temp/thermometer named or described — and its COLOR: red = overheating, blue = engine still cold (normal, not a fault)"
+    - warning_light_behavior: "constant vs only-in-traffic vs under-load — the pattern narrows fan vs flow vs level"
+    - smell_descriptor: "sweet/maple smell or visible steam = coolant actively escaping (cooling-system domain co-booking)"
+    - drivable_state: "still driving it? pulled over? — overheating is stop-now advice"
+    - recent_action: "coolant topped up recently / known leak / recent cooling work"
+  confusables:
+    - vs: coolant_leak_or_overheating   # cross-domain: cooling/leak
+      discriminator_question: "Besides the light — any steam, sweet smell, or coolant puddle? (Those make it a coolant/overheating booking.)"
+    - vs: blue_cold_engine_light   # non-fault
+      discriminator_question: "Is the thermometer light RED, or BLUE when the engine is cold (blue just means not warmed up yet)?"
+    - vs: multiple_warning_lights_at_once
+      discriminator_question: "Is it only the temperature light, or part of a bunch of lights at once?"
+  safety_flag: advise_immediately
+  notes: >
+    Red temp light = actively overheating — continued driving risks head-gasket/engine
+    damage; advise stop and do not open a hot radiator cap. The BLUE thermometer on many
+    cars just means the engine is cold — reassure, no booking needed unless it stays on
+    fully warmed. On-in-traffic-off-at-speed points at the cooling fan. Cross-domain with
+    the cooling/leak family whenever a smell, steam, or puddle is mentioned.
+
+- category: warning_light
+  subcategory: tpms_tire_pressure_light
+  display: "Tire pressure (TPMS) light"
+  customer_voice_anchors:
+    - "tire pressure light came on"
+    - "TPMS light is on"
+    - "low tire light is on but all the tires look fine"
+    - "that horseshoe with the exclamation point light came on"
+    - "tire light blinks for a minute when i start it then stays on"
+    - "tire pressure light wont go off even after i aired up all the tires"
+    - "tpms light came on when the weather got cold"
+    - "the exclamation point tire thing lit up"
+    - "tire light came on right after i got new tires put on"
+    - "low tire warning on, i filled them and it came back two days later"
+  required_slots:
+    - warning_light_behavior: "steady = a tire is actually low; flashes ~a minute at startup then stays on = TPMS sensor/system fault (FMVSS 138 malfunction indication)"
+    - tire_state: "any tire visibly low / flat / known nail? (physical damage books to tire repair, not TPMS testing)"
+    - recent_action: "tires filled already and light returned (slow leak) / new tires or rotation just done (sensor relearn) / seasonal wheel swap"
+    - weather_condition: "first cold snap commonly drops pressures below threshold — legit low tires, simple fix"
+  confusables:
+    - vs: tire_losing_air_or_nail   # cross-domain: tires
+      discriminator_question: "Is the LIGHT the only thing, or does a tire look low, keep losing air, or have a nail/screw in it?"
+    - vs: tpms_sensor_fault
+      discriminator_question: "Does the light blink for about a minute after startup before staying on (sensor fault), or is it just steadily on (low pressure)?"
+    - vs: unknown_warning_light
+      discriminator_question: "Is it the horseshoe-with-exclamation tire symbol, or a different light you can't identify?"
+  safety_flag: none
+  notes: >
+    FMVSS 138: the TPMS telltale triggers at 25%+ under-inflation; the flash-then-steady
+    pattern is the built-in sensor/system malfunction signal. Light-only with no physical
+    tire complaint books to TPMS testing; refills-and-returns means a slow leak (tires
+    domain); light after tire work usually needs a sensor relearn. Advise checking pressures
+    promptly — a genuinely low tire is a blowout risk even though the light itself is routine.
+
+- category: warning_light
+  subcategory: abs_anti_lock_brake_light
+  display: "ABS light"
+  customer_voice_anchors:
+    - "ABS light is on"
+    - "abs light came on and stays on"
+    - "abs and traction control light are both on"
+    - "yellow ABS light on but the brakes feel normal"
+    - "abs light on and the brake pedal shudders sometimes when i stop"
+    - "abs light came on after i hit a big pothole"
+    - "anti lock brake light stays on all the time now"
+    - "abs light on, is it safe to drive?"
+    - "ABS LIGHT ON, STEERING FEELS MORE DIFFICULT TOO"
+    - "abs light popped on after the tire shop rotated my tires"
+  required_slots:
+    - warning_light_named: "the yellow letters ABS vs a RED brake light vs both — both-on escalates to the red-brake entry (safety-first)"
+    - pedal_feel: "any change in braking feel (shudder, grab, longer stops) — a felt brake symptom co-books a brake inspection"
+    - recent_action: "pothole hit, tire/brake work just done — wheel-speed-sensor damage is the common story"
+    - warning_light_behavior: "constant vs comes-and-goes (intermittent sensor/connector)"
+  confusables:
+    - vs: brake_system_red_light
+      discriminator_question: "Is it the yellow letters A-B-S, or a RED light that says BRAKE / a red exclamation circle — or are BOTH on?"
+    - vs: traction_control_stability_light
+      discriminator_question: "Is it the ABS letters, or the little skidding-car symbol? (They often come on together off the same wheel sensors — that's one problem, not two.)"
+    - vs: brake_grinding_or_squealing   # cross-domain: brakes
+      discriminator_question: "Any grinding/squealing or change in how the brakes feel, or is it just the light?"
+  safety_flag: none
+  notes: >
+    ABS light alone = the anti-lock function is disabled but NORMAL braking still works —
+    drive gently, book soon. ABS + traction lights together usually share one wheel-speed-
+    sensor fault (one booking). ABS + RED brake light together is a different animal — route
+    to the red-brake entry and advise immediately. Steering-feels-heavy alongside is a
+    co-symptom to record, not a reason to move the booking.
+
+- category: warning_light
+  subcategory: brake_system_red_light
+  display: "RED brake warning light"
+  customer_voice_anchors:
+    - "red BRAKE light on the dash came on"
+    - "the brake light on my dash is on but the brake lights on the back all work fine"
+    - "red exclamation point in a circle came on"
+    - "brake warning light comes on and off, i topped off the brake fluid and now its back"
+    - "red brake light is on and the pedal feels lower than normal"
+    - "brake light stays on even with the parking brake all the way off"
+    - "emergency brake light wont go off even tho its released"
+    - "red brake light AND the abs light are both on"
+    - "brake light came on going down a long hill"
+  required_slots:
+    - parking_brake_state: "is the parking brake fully released? — the number-one innocent explanation, ask it first"
+    - pedal_feel: "low / soft / sinking pedal with the light = active hydraulic problem, maximum urgency"
+    - warning_light_named: "confirm DASH red brake light vs a burned-out brake-light BULB at the rear (the classic conflation)"
+    - recent_action: "fluid topped off before and light returned = fluid is going somewhere (leak or worn pads dropping the level)"
+    - warning_light_behavior: "constant vs comes-on-in-corners (low fluid sloshing) vs on-and-off"
+  confusables:
+    - vs: exterior_light_out
+      discriminator_question: "Is it a warning light on your DASH, or a brake-light bulb out at the back of the car?"
+    - vs: abs_anti_lock_brake_light
+      discriminator_question: "Is the light RED with the word BRAKE / a red exclamation, or the yellow ABS letters?"
+    - vs: parking_brake_not_released   # non-fault
+      discriminator_question: "Is the parking brake fully released — does the light go off if you push the handle/pedal down harder?"
+    - vs: brake_fluid_leak   # cross-domain: leak
+      discriminator_question: "Have you had to add brake fluid, or seen a clear-to-brown puddle near a wheel or under the driver's side?"
+  safety_flag: advise_immediately
+  notes: >
+    The red brake light means low fluid, hydraulic pressure loss, or parking brake engaged.
+    Once the parking brake is ruled out, treat as a possible active brake failure — fluid
+    doesn't disappear innocently (leak, or pads worn far enough to drop the reservoir).
+    Topped-off-and-came-back is a progressing problem. With a low/sinking pedal, advise
+    do-not-drive/tow. Both red + ABS on → this entry wins (safety-first).
+
+- category: warning_light
+  subcategory: traction_control_stability_light
+  display: "Traction / stability control light"
+  customer_voice_anchors:
+    - "traction control light is on"
+    - "the squiggly car light came on"
+    - "little car with the wavy skid lines under it lit up"
+    - "SERVICE STABILTRAK message came up"
+    - "esc off light came on by itself and i never touched the button"
+    - "traction light flashes at me when it rains"
+    - "VSC light is on"
+    - "the skidding car symbol stays on all the time now"
+    - "traction control light and check engine light came on together"
+    - "anti skid light on"
+    - "car says traction control unavailable"
+  required_slots:
+    - warning_light_behavior: "FLASHES briefly on slick roads = the system actively working (normal, not a fault); STEADY on all the time = fault or switched off"
+    - warning_light_named: "capture the brand wording verbatim (StabiliTrak, VSC, ESC, AdvanceTrac, ESP) — they all mean traction/stability"
+    - recent_action: "did anyone press the traction-off button (often hit by accident)? battery disconnected recently?"
+    - engine_running: "check-engine on too? an engine fault commonly disables traction control — the CEL is then the primary concern"
+  confusables:
+    - vs: abs_anti_lock_brake_light
+      discriminator_question: "Is it the skidding-car symbol, or the letters ABS? (Together = usually one shared wheel-sensor problem.)"
+    - vs: normal_flash_on_slippery_road   # non-fault
+      discriminator_question: "Does it only flicker when the wheels slip in rain/snow (that's it working normally), or does it stay on steady?"
+    - vs: check_engine_light_steady
+      discriminator_question: "Is the check-engine light on at the same time? (Engine faults turn traction control off — the engine light is the root.)"
+    - vs: awd_4x4_system_light   # cross-domain: driveline
+      discriminator_question: "Is it the traction/skid light, or an AWD / 4x4 / four-wheel-drive system message?"
+  safety_flag: none
+  notes: >
+    ESC has been federally required on light vehicles since MY2012 (NHTSA FMVSS 126); its
+    telltale FLASHING during slips is normal operation, STEADY means disabled or faulted.
+    Brand names (StabiliTrak, VSC, ESC, ESP, AdvanceTrac, DSC) all land here — keep the
+    customer's wording. A traction light escorted by a check-engine light is usually the
+    engine fault talking; book the CEL as primary.
+
+- category: warning_light
+  subcategory: airbag_srs_light
+  display: "Airbag / SRS light"
+  customer_voice_anchors:
+    - "airbag light is on"
+    - "SRS light stays on"
+    - "the little person with the seatbelt and the ball in front of them is lit up"
+    - "airbag light came on after i took the seat out to clean under it"
+    - "air bag light on, i was in a fender bender a couple weeks ago"
+    - "srs light flashes a few times then stays on"
+    - "passenger airbag off light wont go away even with an adult sitting there"
+    - "airbag warning on the dash, is the airbag gonna randomly go off?"
+    - "AIR BAG LIGHT ON"
+    - "airbag light came on after i jumped the car"
+  required_slots:
+    - warning_light_named: "airbag / SRS / person-with-ball icon — vs the seatbelt-reminder chime light (different, usually just an unbuckled belt or something on the seat)"
+    - recent_action: "seat removed/moved, work under the seats, recent accident, jump start, spilled drink — the classic triggers"
+    - warning_light_behavior: "constant vs flash-pattern vs passenger-airbag-off specifically"
+    - started_when: "right after an accident routes the whole visit to the post-accident lane"
+  confusables:
+    - vs: seatbelt_reminder_light   # non-fault
+      discriminator_question: "Is it the airbag/SRS person-with-ball light, or the seatbelt reminder (person with a belt across their chest) that chimes?"
+    - vs: after_a_recent_accident   # cross-domain: situational bucket
+      discriminator_question: "Did this start after a crash or impact? (Then the whole visit is a post-accident check.)"
+    - vs: passenger_occupancy_sensor
+      discriminator_question: "Is it specifically the 'passenger airbag OFF' indicator misreading who's in the seat?"
+  safety_flag: none
+  notes: >
+    An SRS light means the airbag system has logged a fault and the airbags MAY NOT DEPLOY in
+    a crash (and won't deploy randomly — reassure on that fear). The car drives normally but
+    the restraint protection is compromised — book promptly. Common benign-ish causes:
+    connectors under the seats disturbed, low battery/jump events. After an actual impact,
+    route to the post-accident lane instead.
+
+- category: warning_light
+  subcategory: power_steering_eps_light
+  display: "Power steering / EPS light"
+  customer_voice_anchors:
+    - "steering wheel light with an exclamation point came on"
+    - "power steering warning light is on"
+    - "EPS light is on"
+    - "steering assist fault message came up on the screen"
+    - "power steering light came on and the wheel got really hard to turn"
+    - "steering light is on but it drives fine"
+    - "service power steering message, then the steering went heavy for a minute"
+    - "red steering wheel light on my dash"
+    - "steering wheel icon lit up yellow"
+  required_slots:
+    - warning_light_named: "steering-wheel icon / EPS / power steering named — vs the ABS letters (customers with heavy steering sometimes name the wrong light)"
+    - steering_feel: "did the steering actually get heavy/hard, constantly or in moments? — assist loss is the safety question"
+    - warning_light_behavior: "constant vs intermittent-with-heavy-moments (intermittent EPS cutout is very reportable)"
+    - recent_action: "battery/jump event, recent front-end work — common EPS fault triggers"
+  confusables:
+    - vs: hard_to_turn_heavy_steering   # cross-domain: steering
+      discriminator_question: "Is the wheel actually hard to turn right now (book the steering symptom), or is it just the light?"
+    - vs: abs_anti_lock_brake_light
+      discriminator_question: "Which light exactly — a steering wheel with an exclamation point, or the letters ABS?"
+    - vs: power_steering_fluid_leak   # cross-domain: leak (hydraulic systems)
+      discriminator_question: "Any whining noise when turning or a reddish fluid puddle (hydraulic system), or is it an electric-assist warning light?"
+  safety_flag: none
+  notes: >
+    EPS light = electric power-assist fault; the car remains steerable but effort can jump
+    dramatically, worst at parking speeds. If the customer says assist actually CUT OUT while
+    driving, treat with advise-immediately urgency (steering-effort loss) even though the
+    light-only case books routine. Hydraulic-steering complaints (whine, fluid) belong to the
+    steering/leak domains.
+
+- category: warning_light
+  subcategory: multiple_warning_lights_at_once
+  display: "Several warning lights at once"
+  customer_voice_anchors:
+    - "a whole bunch of warning lights came on at the same time"
+    - "the whole dashboard lit up like a christmas tree"
+    - "battery brake and abs lights all came on together"
+    - "every light on the dash is on and the car is running weird"
+    - "all the lights came on while i was driving and then it died"
+    - "3 or 4 different lights on and the radio keeps cutting out"
+    - "dash lights all flashing and the gauges are going crazy"
+    - "check engine traction and battery light all on at once"
+    - "ALL THE LIGHTS ON THE CLUSTER CAME ON WHILE DRIVING"
+    - "random lights keep popping on and off, different ones each drive"
+  required_slots:
+    - warning_light_named: "LIST every light/message the customer can name, verbatim — the combination is the diagnosis-shaping fact"
+    - lights_state: "dimming/flickering alongside = charging-voltage cascade (the most common cause of everything-at-once)"
+    - engine_running: "running rough / died / still fine — separates a voltage collapse from a sensor/cluster issue"
+    - started_when: "after an impact, after a jump start, after battery work — each is its own lane"
+    - drivable_state: "still driving it vs stranded — this pattern often precedes dying in traffic"
+  confusables:
+    - vs: abs_anti_lock_brake_light
+      discriminator_question: "Is it specifically ABS + traction together (that's ONE shared problem — book the named light), or a wider mix of lights?"
+    - vs: battery_charging_light
+      discriminator_question: "Is the battery light in the mix with things dimming? (Then it's a charging cascade — the battery/alternator is the root.)"
+    - vs: after_a_recent_accident   # cross-domain: situational bucket
+      discriminator_question: "Did all of this start right after a crash or hitting something?"
+    - vs: multiple_random_electrical_glitches
+      discriminator_question: "Is it dashboard WARNING lights, or accessories (radio, locks, windows) misbehaving?"
+  safety_flag: advise_immediately
+  notes: >
+    Sibling pairs (ABS + traction; red brake joining ABS) are ONE concern — don't count them
+    as "multiple." A true many-lights-at-once event with dimming, rough running, or cutting
+    out is usually system voltage collapsing (alternator/battery — Fluke/NAPA) and the car
+    may die in traffic — advise immediately. If any RED light (brake, oil, temp) is in the
+    set, its own advice applies on top.
+
+- category: warning_light
+  subcategory: unknown_warning_light
+  display: "A light I don't recognize"
+  customer_voice_anchors:
+    - "some light came on my dash and i dont know what it is"
+    - "theres a weird symbol lit up that ive never seen before"
+    - "a yellow light thats like a circle with dashes around the outside"
+    - "warning light on, no idea what its supposed to be"
+    - "a light came on, i took a picture of it if that helps"
+    - "orange light shaped like a horseshoe or a bell or something"
+    - "idk what this light means, it just popped on"
+    - "a red light flashed up for a second then went away"
+    - "light on the dash that looks like a genie lamp or a gravy boat"
+    - "dashboard light came on, the manual is no help"
+  required_slots:
+    - warning_light_named: "capture the customer's literal description — color + shape + any text; nicknames resolve to real lights (horseshoe = tire pressure, genie lamp = oil pressure, squiggly car = traction, person-with-ball = airbag)"
+    - warning_light_behavior: "steady vs flashing vs came-on-then-went-off-at-startup (the brief startup sweep is the normal self-test, not a fault)"
+    - engine_running: "is the car acting any different — a light plus a symptom routes on the symptom"
+    - drivable_state: "if the unknown light is RED, treat as urgent until identified"
+  confusables:
+    - vs: tpms_tire_pressure_light
+      discriminator_question: "Does it look like a flat tire / horseshoe with an exclamation point in it?"
+    - vs: oil_pressure_light
+      discriminator_question: "Does it look like a little oil can or genie lamp with a drip?"
+    - vs: traction_control_stability_light
+      discriminator_question: "Is it a little car with wavy squiggly lines under it?"
+    - vs: startup_self_test   # non-fault
+      discriminator_question: "Did it just light up briefly with all the others when you started the car, then go out?"
+  safety_flag: none
+  notes: >
+    The triage key is COLOR: red = stop/urgent, yellow/orange = service soon, blue/green =
+    status only. All lights sweep on for a few seconds at key-on as a bulb self-test —
+    lit-then-out at startup with the car driving normally is not a fault. Resolve nicknames
+    before booking; if the light stays unidentified and red, escalate to the advisor
+    immediately.
+
+# ============================================================
+# FAMILY 5 — REQUESTS (no symptom — service-direct)
+# ============================================================
+
+- category: request
+  subcategory: battery_test_or_replacement
+  display: "Battery test / replacement (no symptom)"
+  customer_voice_anchors:
+    - "just want my battery tested"
+    - "can you check if my battery is still good before winter"
+    - "battery is 5 years old, want to make sure its ok before a road trip"
+    - "need a new battery put in"
+    - "how much for a battery replacement"
+    - "test battery, just want to make sure it is ok"
+    - "autozone said my battery is weak, want a second opinion"
+    - "want the battery and alternator checked, no problems, just peace of mind"
+    - "does my battery need replacing? its the original one"
+    - "battery check before i drive cross country"
+  required_slots:
+    - customer_request_type: "test vs replace vs check-before-trip — request language, service-direct booking"
+    - engine_running: "confirm there is NO symptom — any 'and lately it cranks slow / needed a jump' converts this to the matching symptom entry"
+    - recent_action: "battery age / prior parts-store test result if offered"
+  confusables:
+    - vs: battery_drains_overnight
+      discriminator_question: "Has it actually died or needed a jump, or is this just a checkup?"
+    - vs: slow_crank_sluggish_start
+      discriminator_question: "Have you noticed it starting slower than normal?"
+    - vs: battery_charging_light
+      discriminator_question: "Is any warning light on, or purely peace of mind?"
+  safety_flag: none
+  notes: >
+    Pure request language, no symptom — books straight to a battery test (often free) or a
+    replacement quote. One follow-up symptom question is worth asking because customers
+    under-report ("just want it tested... well it did need a jump Tuesday" is really the
+    drain entry). Never up-route a bare request to diagnostics.

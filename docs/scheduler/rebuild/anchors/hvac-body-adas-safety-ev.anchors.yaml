@@ -1,0 +1,992 @@
+# ============================================================================
+# Anchor knowledge base — domain: hvac-body-adas-safety-ev
+# ============================================================================
+# Part of the scheduler rebuild anchor bank (see ../00-ARCHITECTURE.md).
+# One entry per distinct customer concern. Anchors are CUSTOMER LANGUAGE —
+# how a real non-expert describes the symptom (caps/misspellings/terseness
+# preserved as training signal), NOT technical jargon.
+#
+# Scope: HVAC/climate · body/glass/water-leaks/keys · ADAS · airbag/SRS ·
+#        hybrid/EV high-voltage.
+#
+# Domain-fact sources (diagnostic claims; also cross-checked against the
+# fact-checked KB at docs/automotive-knowledge-base/, built 2026-07-18):
+#   [DOE-AFDC]  afdc.energy.gov — "How All-Electric / Hybrid Electric Vehicles
+#               Work" (12V aux battery must wake the car before the traction
+#               battery engages; thermal derate; on-board charger).
+#   [NISSAN-LEAF] Nissan LEAF Owner's Manual — power-limitation ("turtle")
+#               indicator conditions (low charge / battery too cold / system hot).
+#   [AAA-ADAS]  aaa.com/autorepair/articles/adas-sensor-calibration-increases-repair-costs
+#               + AAA "Cost of ADAS Repairs" (Dec 2023) — calibration required
+#               after windshield R&R / alignment / suspension / bumper repair.
+#   [ICAR]      rts.i-car.com/crn-801.html — calibration after windshield
+#               replacement; static vs dynamic procedures.
+#   [SAFELITE]  safelite.com/windshield-camera-recalibration — consumer-facing
+#               post-glass recalibration requirement.
+#   [F150FORUM] f150forum.com/f118/issues-lane-assist-after-windshield-replacement-356510
+#               + subaruoutback.org threads — real customer voice: lane-assist
+#               faults/false pulls after windshield replacement.
+#   [NHTSA-ODI] NHTSA ODI investigations PE22-003 (Honda inadvertent AEB) and
+#               EA22-002 (Tesla phantom braking) — phantom-activation authority;
+#               ODI complaint narratives used for customer voice.
+#   [NISSAN-TSB] Nissan NTB23-011C via static.nhtsa.gov/odi/tsbs/2024/MC-11004973
+#               — "forward driving aids temporarily disabled" after winter
+#               sensor blockage.
+#   [YOURMECH]  yourmechanic.com/question/car-won-t-start-and-security-light-is-flashing
+#               + toyotanation.com / my.is forum threads — immobilizer no-start
+#               with flashing security light, real customer phrasing.
+#   [ENGFIX]    engineerfix.com/why-is-my-passenger-side-floor-wet-when-it-rains
+#               + motronix.net sunroof-drain guide + vwvortex.com "Is your floor
+#               wet after it rains" — clogged sunroof/cowl drains vs clogged AC
+#               evaporator drain as the two paths for water on the floor.
+#   [PHXHYB]    phoenixhybridbatteries.com/faq — "red triangle and my car won't
+#               start" (Prius red-triangle customer voice; 12V-vs-HV confusion).
+#   [MACS/ASE-A7] MACS technical training + ASE A7 task list (via KB dossier)
+#               — evaporator microbial odor, blend/mode-door failures, blower
+#               resistor only-on-high, AC-runs-in-defrost dehumidify.
+#   [HALDERMAN] Halderman, Automotive Electricity & Electronics (via KB dossier)
+#               — immobilizer operation, clockspring/SRS, BCM accessory circuits.
+#   [BOSCH]     Bosch Mobility, "Regenerative Braking Systems" — regen/friction
+#               blending and pedal-feel change when regen is limited.
+#   [FMVSS208]  49 CFR 571.208 — occupant classification: PASSENGER AIRBAG OFF
+#               for a light/empty seat is normal by design.
+# Customer-voice provenance: Jeff's production wizard/forum corpus patterns via
+# docs/automotive-knowledge-base/*.lexicon.yaml (tekmetric / nhtsa /
+# forum-paraphrase), plus the forum threads above. No verbatim copying from
+# copyrighted forum posts — phrasing patterns only.
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# HVAC / CLIMATE
+# ---------------------------------------------------------------------------
+
+- category: hvac
+  subcategory: ac_blows_warm_or_hot_air
+  display: "A/C blows warm or hot air (no cooling)"
+  customer_voice_anchors:
+    - "AC is blowing warm air"
+    - "a/c not blowing cold at all, just outside air"
+    - "AC quit all of a sudden, blows straight hot air like its not even on"
+    - "turned the air on max cold and nothing but hot air comes out"
+    - "my air conditioner stopped working yesterday"
+    - "AC BLOWING WARM AIR"
+    - "no cold air and you cant hear the compressor click on anymore"
+    - "ac blows hot in the summer even turned all the way cold, like the heat is stuck on"
+    - "the air conditioning doesnt work"
+    - "i think the freon is out, no cold air at all"
+    - "started blowing warm on my way to work and never came back"
+    - "vents blow fine but the air is just hot"
+  required_slots:
+    - total_vs_partial: "is the air fully warm/outside-temp or just not cold enough — total loss routes here, partial loss is ac_weak_not_cold_enough"
+    - onset: "sudden vs gradual — sudden points at clutch/electrical/blend door, gradual at slow refrigerant loss"
+    - recharge_history: "any prior AC recharge/service — a recharge that 'wore off' reroutes to the leak concern"
+    - airflow_ok: "is plenty of air coming out (temperature problem) or barely any air (airflow problem) — separates from weak_airflow_from_vents"
+  confusables:
+    - vs: ac_weak_not_cold_enough
+      discriminator_question: "Is the air totally warm like outside air, or still somewhat cool just not cold enough?"
+    - vs: ac_keeps_losing_refrigerant
+      discriminator_question: "Has it been recharged before and lost its cold again, or is this the first time it stopped cooling?"
+    - vs: weak_airflow_from_vents
+      discriminator_question: "Is plenty of air coming out but it's warm, or is the air cold but there's barely any of it?"
+    - vs: one_side_hot_one_side_cold
+      discriminator_question: "Is it warm on BOTH sides, or is one side cold and the other side warm?"
+  safety_flag: none
+  notes: "Total cooling loss: low/empty refrigerant, compressor clutch not engaging, electrical, OR a blend door stuck full-hot (air blows genuinely HOT with A/C selected — a common recharge-mis-spend; the charge is often fine) [MACS/ASE-A7]. Does NOT include: partial cooling (ac_weak), heat complaints (no_heat), one-sided cooling (blend-door actuator). A loud squeal/burning-rubber smell at the same moment the AC died suggests a seized compressor shredding the belt — cross-domain to the noise/belt concern and worth advisor attention."
+
+- category: hvac
+  subcategory: ac_weak_not_cold_enough
+  display: "A/C is weak / not cold enough"
+  customer_voice_anchors:
+    - "AC isnt as cold as it used to be"
+    - "air is kind of cool but not cold like before"
+    - "cools fine on the highway but barely cools sitting at a stoplight"
+    - "blows cold on cooler days but cant keep up when its 90 out"
+    - "AC works for like 20 minutes then starts blowing warm, then goes cold again"
+    - "a/c is weak, takes forever to cool the car down"
+    - "AC NOT COLD ENOUGH"
+    - "air conditioning barely keeps up in the afternoon heat"
+    - "its cooling a little but not like it should"
+    - "ac sort of works, coldish but never actually cold"
+    - "blows warm for about 20 mins then it will finally cool down"
+  required_slots:
+    - speed_dependence: "better moving vs at idle/stoplight — idle-only weakness points at condenser airflow/fan"
+    - weather_dependence: "fails only on hot days — classic low-charge signature"
+    - cycling_pattern: "cools then goes warm then cold again — evaporator freeze-up from low charge"
+    - recharge_history: "prior recharge that faded — reroutes to the leak concern"
+  confusables:
+    - vs: ac_blows_warm_or_hot_air
+      discriminator_question: "Is there still SOME cool air, or is it completely warm?"
+    - vs: ac_keeps_losing_refrigerant
+      discriminator_question: "Have you had it recharged before and it went weak again?"
+    - vs: weak_airflow_from_vents
+      discriminator_question: "Is the air cold but there's barely any of it coming out, or plenty of air that just isn't cold?"
+  safety_flag: none
+  notes: "Partial cooling: low charge, dirty condenser, weak cooling fan, clogged cabin filter [MACS/ASE-A7]. The 'cold on highway, warm at stoplights' and 'useless over 85 degrees' patterns are the two classic low-charge tells. Customers self-diagnose as 'needs a recharge' — accept the symptom, not the diagnosis."
+
+- category: hvac
+  subcategory: ac_keeps_losing_refrigerant
+  display: "A/C keeps losing refrigerant (recharge doesn't hold — leak check)"
+  customer_voice_anchors:
+    - "we recharged the AC last summer and its already blowing warm again"
+    - "put freon in it two months ago and it needs it again"
+    - "AC keeps losing its charge, im on my third can this year"
+    - "had it recharged with dye in it and it quit working again"
+    - "every spring i have to top off the freon"
+    - "the recharge only lasts a few weeks then its warm air again"
+    - "i think the ac has a leak somewhere, it wont hold freon"
+    - "AC BACK TO NOT WORKING. WE RECHARGED SYSTEM LAST JULY"
+    - "shop said if it stops blowing cold again theres a leak — well it stopped again"
+  required_slots:
+    - recharge_history: "when it was last recharged and how long the cold lasted — the recurrence interval is the whole story"
+    - current_state: "blowing warm now vs weak now — sets urgency and the test baseline"
+    - dye_or_service_history: "dye already in the system / prior leak repairs — changes the diagnostic starting point"
+  confusables:
+    - vs: ac_blows_warm_or_hot_air
+      discriminator_question: "Has the A/C been recharged before and lost its cold again, or is this the first failure?"
+    - vs: ac_weak_not_cold_enough
+      discriminator_question: "Did the cooling fade weeks/months after a recharge, or has it just always been weak?"
+  safety_flag: none
+  notes: "The SERVICE here is refrigerant leak detection (pressure/dye/electronic), not another recharge [ASE-A7]. Symptom presentation is identical to warm/weak AC — the recharge-recurrence history is what routes here. Customers phrase it as a request ('just needs freon again'); the booking should be a leak test."
+
+- category: hvac
+  subcategory: no_heat
+  display: "No heat / heater blows cold"
+  customer_voice_anchors:
+    - "heater is blowing cold air"
+    - "NO HEAT"
+    - "takes forever to warm up and never gets really hot"
+    - "heat only works when im driving, soon as i stop at a light it goes cold"
+    - "heater blows lukewarm at best, freezing in the mornings"
+    - "no hot air from the heater and the antifreeze is full"
+    - "heat quit working but the AC works fine"
+    - "the heat isnt working and its winter, im driving with gloves on"
+    - "HEAT BLOWING COLD AIR"
+    - "car doesnt blow warm until ive been driving 20 minutes"
+    - "temp gauge reads normal but no heat comes out of the vents"
+  required_slots:
+    - temp_gauge_state: "does the temperature gauge reach normal, stay low, or run high — stays-low points at thermostat (cooling system), normal points at heater core/blend door, high is an overheating concern"
+    - coolant_history: "recently low coolant / topping off — pulls the cause toward the cooling system"
+    - speed_dependence: "warm while moving but cold at idle — low coolant level/flow signature"
+    - both_sides: "cold on both sides vs one side only — one side only is the blend-door concern"
+  confusables:
+    - vs: one_side_hot_one_side_cold
+      discriminator_question: "Is there no heat on BOTH sides, or does one side blow warm while the other is cold?"
+    - vs: engine_overheating   # cross-domain: engine/cooling
+      discriminator_question: "Is the temperature gauge or a red temp light reading HIGH, or is it just no warm air with a normal gauge?"
+    - vs: coolant_leak   # cross-domain: leaks
+      discriminator_question: "Have you had to add coolant/antifreeze, or seen a bright green/orange puddle or a sweet smell?"
+  safety_flag: none
+  notes: "HVAC owns the no-heat complaint; the CAUSE may be cooling-side (stuck-open thermostat, low coolant) or HVAC-side (heater core clog, blend-door actuator) [MACS/ASE-A7]. The temp GAUGE is the discriminator. If the gauge runs HIGH or coolant is disappearing, this is an engine-cooling/overheating concern (cross-domain), not a comfort issue."
+
+- category: hvac
+  subcategory: weak_airflow_from_vents
+  display: "Weak or no airflow from vents (blower/fan)"
+  customer_voice_anchors:
+    - "fan only works on the highest setting, speeds 1 2 3 do nothing"
+    - "blower only works on high and its really noisy"
+    - "hardly any air comes out of the vents even on max"
+    - "air is cold but so weak you can barely feel it"
+    - "no air blowing at all from the vents on any speed"
+    - "blower motor quit i think, dead on every setting"
+    - "airflow gets real weak after about 20 minutes of driving"
+    - "AC FAN MOTOR NOT WORKING"
+    - "vents dont blow hard anymore, maybe the cabin filter?"
+    - "changing the fan speed doesnt change anything, weak on every setting"
+  required_slots:
+    - airflow_pattern: "only-on-high (classic blower resistor) vs weak-everywhere (filter/blower) vs completely dead — each is a different fix"
+    - temperature_ok: "is the air the right temperature, just not enough of it — confirms airflow vs cooling problem"
+    - onset: "sudden death vs gradual weakening vs fades-after-20-minutes (evaporator icing)"
+  confusables:
+    - vs: ac_weak_not_cold_enough
+      discriminator_question: "Is the air cold but there's barely any of it, or is plenty of air coming out that just isn't cold?"
+    - vs: air_from_wrong_vents
+      discriminator_question: "Is there barely any air anywhere, or is plenty of air coming out — just from the wrong vents?"
+    - vs: strange_noise_from_vents
+      discriminator_question: "Is the main problem the amount of air, or a noise the fan makes?"
+  safety_flag: none
+  notes: "Airflow VOLUME concern: blower motor, blower resistor ('only works on high' — high speed bypasses the resistor [MACS/ASE-A7]), clogged cabin filter, debris in the blower. Air temperature is typically fine. Air coming out the WRONG outlets at normal volume is a separate mode-door concern."
+
+- category: hvac
+  subcategory: air_from_wrong_vents
+  display: "Air comes out the wrong vents / won't switch"
+  customer_voice_anchors:
+    - "air only comes out the defrost vents no matter what i pick"
+    - "stuck blowing on my feet, wont switch to the dash vents"
+    - "the vents wont change, everything comes out at the windshield"
+    - "air wont come out of the front vents, only the floor"
+    - "when i accelerate hard the air jumps over to the defroster"
+    - "the selector knob does nothing, air stays on the floor setting"
+    - "plenty of air but its coming out the wrong vents"
+    - "AIR ONLY BLOWS OUT DEFROST"
+    - "turned it to the face vents and it still blows at the windshield"
+  required_slots:
+    - which_outlets: "where the air IS coming out (defrost/floor/dash) and where it won't go — identifies the stuck mode door"
+    - volume_normal: "airflow amount is normal — confirms distribution (mode door) not volume (blower)"
+    - accel_dependence: "jumps to defrost under hard acceleration — vacuum-actuator loss tell on older vehicles"
+  confusables:
+    - vs: weak_airflow_from_vents
+      discriminator_question: "Is plenty of air coming out but from the wrong vents, or is there barely any air at all?"
+    - vs: foggy_windows_wont_defog
+      discriminator_question: "Is the complaint where the air comes out, or that the windows won't clear?"
+  safety_flag: none
+  notes: "Mode-door / vacuum-actuator failure — distribution, not volume [MACS/ASE-A7]. Vacuum-operated systems fail-safe to DEFROST, so 'stuck on defrost' plus 'snaps to defrost when I floor it' is the vacuum-leak signature. Temperature and volume are usually fine; customers often misreport it as 'the AC is broken'."
+
+- category: hvac
+  subcategory: one_side_hot_one_side_cold
+  display: "One side blows hot, the other cold (dual-zone)"
+  customer_voice_anchors:
+    - "drivers side blows ice cold but the passenger side is warm"
+    - "passenger side vents blow warm, driver side is fine"
+    - "one side of the car gets heat and the other doesnt"
+    - "A/C WORKS ON PASSENGER SIDE BUT NOT DRIVERS SIDE"
+    - "moving the passenger temp dial doesnt change anything, still hot on that side"
+    - "dual climate acting up, my side is cold and my wifes side blows hot"
+    - "left side cold right side hot no matter what we set"
+    - "the back vents blow cold but the front is warm"
+    - "clicking behind the dash and now one side only blows hot"
+  required_slots:
+    - which_side: "which zone is wrong (driver/passenger/rear) — locates the failed blend-door actuator"
+    - dial_response: "does that side's temperature dial change anything — a dead dial confirms the actuator"
+    - clicking_noise: "tick/click behind the dash when the temp is changed — stripped actuator gears tell"
+  confusables:
+    - vs: ac_blows_warm_or_hot_air
+      discriminator_question: "Is it warm on one side only, or on both sides?"
+    - vs: no_heat
+      discriminator_question: "Is heat missing on one side only, or everywhere?"
+    - vs: strange_noise_from_vents
+      discriminator_question: "Is the main complaint the temperature difference, or the clicking noise itself?"
+  safety_flag: none
+  notes: "Only possible on dual/tri-zone systems — points squarely at a blend-door actuator on the affected side [MACS]. Applies to heat AND cooling asymmetry. Often accompanied by a clicking/ticking behind the dash (stripped actuator gears). Not a refrigerant problem — one side working proves the charge."
+
+- category: hvac
+  subcategory: bad_smell_from_vents
+  display: "Bad smell from the vents"
+  customer_voice_anchors:
+    - "musty smell like dirty gym socks when i first turn the AC on"
+    - "AC smells like mildew when it starts up"
+    - "the vents smell moldy, worse on humid days"
+    - "stinky feet smell coming out of the air conditioner"
+    - "BURNING SMELL WHEN TURNING ON THE A/C"
+    - "smells like something electrical burning when the fan is on high"
+    - "sweet maple syrup smell when the heater is on and the windows keep fogging"
+    - "vents smell musty for the first minute then it fades"
+    - "car smells like a wet towel when the air kicks on"
+    - "kind of a vinegar smell from the vents"
+    - "mold smell through the vents, my kids complain every morning"
+  required_slots:
+    - smell_type: "musty/mildew (evaporator growth) vs burning-electrical (blower/resistor) vs sweet-syrup (heater core coolant) — three different problems"
+    - vent_tied: "does it come through the dash vents with the fan on, or from the carpet/seats/trunk — carpet/trunk musty is a water-leak/interior concern, not HVAC"
+    - timing: "worst at first turn-on / on humid days (evaporator signature) vs constant"
+    - heat_or_ac: "with A/C (evaporator) vs with heat (heater core) — picks the failing side"
+  confusables:
+    - vs: water_leak_into_cabin_rain
+      discriminator_question: "Does the smell come through the dash VENTS with the fan on, or from wet carpet/seats/trunk?"
+    - vs: coolant_leak_or_sweet_smell   # cross-domain: leaks/cooling
+      discriminator_question: "Is the sweet smell blowing through the vents with the heat on, or strongest under the hood or outside the car?"
+    - vs: burning_smell_engine   # cross-domain: smell_smoke
+      discriminator_question: "Does the burning smell come through the vents when the fan runs, or from under the hood regardless of the fan?"
+  safety_flag: none
+  notes: "Musty/dirty-socks at first A/C start = microbial growth on the evaporator, worsened by an overdue cabin filter [MACS]. Sweet/maple-syrup with heat + fogging glass + damp passenger carpet = leaking heater core (coolant — escalate; fumes can cause headaches). Burning electrical through vents = failing blower motor/resistor. Vent-tied smells belong here; carpet/trunk mustiness routes to the water-leak concern."
+
+- category: hvac
+  subcategory: foggy_windows_wont_defog
+  display: "Windows fog up / defroster won't clear"
+  customer_voice_anchors:
+    - "inside of the windshield keeps fogging up and the defroster barely clears it"
+    - "windows fog up when it rains and wont clear"
+    - "defrost isnt working, i have to wipe the windshield with my hand to see"
+    - "greasy film on the inside of the windshield that i cant get off"
+    - "windshield fogs up as soon as everyone gets in the car"
+    - "rear defroster doesnt work, the lines on the back glass dont heat up"
+    - "cant see in the morning, the defogger takes forever"
+    - "windows steam up on the inside every time its cold out"
+    - "DEFROSTER NOT WORKING"
+  required_slots:
+    - which_glass: "front windshield (airflow/AC dehumidify) vs rear window (electrical grid) — completely different systems"
+    - film_or_residue: "greasy/oily film on the inside glass — heater-core leak tell, escalates to a coolant concern"
+    - carpet_wet: "damp carpet or sweet smell alongside — heater core or water leak, not just humidity"
+    - weather_pattern: "worse in rain/cold/with passengers — normal humidity load vs a failed dehumidify (AC compressor)"
+  confusables:
+    - vs: bad_smell_from_vents
+      discriminator_question: "Is there a sweet smell with the fog, or just fog?"
+    - vs: water_leak_into_cabin_rain
+      discriminator_question: "Is the carpet actually wet after rain, or are the windows just fogging?"
+    - vs: wipers_not_working   # cross-domain: visibility/wipers
+      discriminator_question: "Is the problem fog on the INSIDE of the glass, or the wipers not clearing the outside?"
+  safety_flag: none
+  notes: "Persistent inside fog = failed dehumidification (A/C compressor runs in defrost mode — a dead compressor shows up in WINTER as fog [MACS/ASE-A7]), a heater-core leak (greasy film + sweet smell), or trapped moisture from a water leak. Rear-glass grid not heating is electrical, folded here. Visibility-adjacent — treat as prompt, not emergency."
+
+- category: hvac
+  subcategory: strange_noise_from_vents
+  display: "Strange noise from the vents / behind the dash"
+  customer_voice_anchors:
+    - "tick tick tick behind the dash when i change the temperature"
+    - "clicking noise from the dash every time i start the car"
+    - "whistling sound out of the vents when the fan is on high"
+    - "rattle in the vents when the fan is on, stops when i turn it off"
+    - "sounds like water sloshing around behind the dash when i turn"
+    - "gurgling noise behind the glovebox when the AC is running"
+    - "the blower is making a grinding whirring noise"
+    - "flapping noise like a card in a fan when i turn the blower on"
+    - "high pitched squeak from the dash when the air is on"
+    - "LOUD NOISE FROM VENTS WHEN A/C ON"
+  required_slots:
+    - noise_type: "click/tick (actuator) vs rattle/flap (debris in blower) vs whistle (duct/filter) vs grind-whir (blower bearing) vs slosh-gurgle (clogged evaporator drain)"
+    - follows_controls: "does it change with fan speed / vent mode / the temp dial — confirms HVAC vs an under-hood noise"
+    - when: "at startup, on dial change, on turns (sloshing) — narrows the source"
+  confusables:
+    - vs: belt_or_underhood_squeal   # cross-domain: noise
+      discriminator_question: "Does the noise change with the FAN speed and vent buttons, or is it a squeal from under the hood when the A/C kicks on?"
+    - vs: water_inside_cabin_ac_on
+      discriminator_question: "Is it just the sloshing sound, or is water actually showing up on the floor?"
+    - vs: one_side_hot_one_side_cold
+      discriminator_question: "Is the clicking the whole complaint, or is one side also blowing the wrong temperature?"
+  safety_flag: none
+  notes: "Noise that follows the HVAC controls. Sloshing/gurgling behind the dash = condensate backed up in a clogged evaporator drain — the audible precursor to water dumping on the passenger floor [MACS]. A squeal under the hood on A/C engage is a belt/compressor concern (noise domain), NOT a vent noise."
+
+# ---------------------------------------------------------------------------
+# WATER LEAKS INTO / UNDER THE CAR (clear water half; colored fluids are the
+# leaks domain)
+# ---------------------------------------------------------------------------
+
+- category: leak
+  subcategory: water_inside_cabin_ac_on
+  display: "Water on the floor when the A/C runs"
+  customer_voice_anchors:
+    - "passenger floor gets soaked when i run the AC"
+    - "slow drip onto the passenger side carpet when the a/c is on"
+    - "water pooling on the front passenger floorboard, only when i use the air"
+    - "carpet under the glovebox is wet and it hasnt even rained"
+    - "floor is full of water, only happens when i drive with the air conditioning on"
+    - "the AC is leaking water inside my car"
+    - "wet carpet on the passenger side every hot day this summer"
+    - "water drips from under the dash onto my feet with the AC running"
+    - "WATER LEAKING ONTO PASSENGER FLOOR"
+  required_slots:
+    - ac_correlation: "does the water track A/C use (evaporator drain) vs rain/car wash (body seal/sunroof) — THE routing fact"
+    - water_character: "clear and odorless (condensation) vs sweet/greasy/colored (coolant — heater core, escalate)"
+    - location_in_cabin: "passenger front footwell (classic evaporator drain) vs driver side / rear / headliner (body leak more likely)"
+  confusables:
+    - vs: water_leak_into_cabin_rain
+      discriminator_question: "Does the floor get wet after running the A/C on dry days, or after rain or a car wash?"
+    - vs: coolant_leak_inside   # cross-domain: leaks/cooling (heater core)
+      discriminator_question: "Is the liquid clear and odorless like plain water, or does it feel greasy or smell sweet?"
+  safety_flag: none
+  notes: "Clogged/misrouted evaporator drain dumping condensation into the cabin instead of under the car — a real repair, distinct from the normal clear puddle UNDER the car [MACS; ENGFIX]. Often preceded by a sloshing sound behind the dash. Sweet-smelling or greasy liquid = heater core (coolant) — different problem, escalate."
+
+- category: leak
+  subcategory: clear_water_puddle_under_car
+  display: "Clear water puddle under the car (A/C condensation)"
+  customer_voice_anchors:
+    - "small puddle under the passenger side, completely clear, no smell, just like plain water"
+    - "water dripping under the car after i run the AC — is that normal?"
+    - "clear puddle under the middle of the car every time i park"
+    - "noticed water under the car on hot days"
+    - "somethings leaking under there but it looks like plain water, no color"
+    - "water drips under the front passenger area after driving"
+    - "puddle under the car but it doesnt smell like anything"
+    - "leak under the car that dries clear, only in the summer"
+  required_slots:
+    - fluid_character: "clear + odorless + watery (normal condensation) vs colored/sweet/slick (a real fluid leak — cross-domain)"
+    - ac_use: "appears after A/C or defrost use on warm/humid days — confirms condensation"
+    - location_under_car: "mid/passenger-front (evaporator drain area) vs front-center (radiator area — coolant suspicion) vs elsewhere"
+  confusables:
+    - vs: coolant_leak   # cross-domain: leaks
+      discriminator_question: "Is the puddle clear and odorless like plain water, or bright green/orange/pink or sweet-smelling?"
+    - vs: water_inside_cabin_ac_on
+      discriminator_question: "Is the water UNDER the car, or inside on the carpet?"
+  safety_flag: none
+  notes: "Clear odorless water under the mid/passenger side after A/C use is NORMAL evaporator drainage — a reassurance case, not a repair [ASE-A7]. Kept as an anchor so 'my car is leaking!' panic doesn't misroute to a coolant leak. Any color, sweetness, or slickness reroutes to the fluid-leak domain."
+
+- category: leak
+  subcategory: water_leak_into_cabin_rain
+  display: "Water leaks into the cabin when it rains"
+  customer_voice_anchors:
+    - "carpet is soaked on the driver side every time it rains"
+    - "water is leaking into my car when it rains"
+    - "floor board gets wet after a storm, you can see water standing under the mat"
+    - "headliner is damp and it drips by the sunroof after rain"
+    - "water pours in by my feet when it rains hard"
+    - "standing water in the spare tire well in the trunk"
+    - "smells musty inside and the carpet is wet after the car wash"
+    - "water runs down the inside of the a-pillar when it rains"
+    - "back floor behind the driver seat stays wet, worse after rain"
+    - "WATER LEAK INSIDE VEHICLE WHEN RAINING"
+  required_slots:
+    - rain_correlation: "wet after rain/car wash (body leak) vs after A/C use (evaporator drain) — the routing pivot"
+    - entry_location: "headliner/A-pillar (sunroof drains/windshield seal) vs footwell (cowl drain/door seal) vs trunk (tail-lamp/hatch seal) — locates the leak path"
+    - recent_glass_or_body_work: "windshield replacement or body repair just before it started — seal-set suspicion"
+    - electrical_weirdness: "any electrical gremlins alongside — water in a harness/module escalates it"
+  confusables:
+    - vs: water_inside_cabin_ac_on
+      discriminator_question: "Does it get wet after rain or a car wash, or after running the A/C on a dry day?"
+    - vs: bad_smell_from_vents
+      discriminator_question: "Is the carpet actually WET, or does it just smell musty when the fan runs?"
+    - vs: coolant_leak_inside   # cross-domain: leaks/cooling
+      discriminator_question: "Is it plain clear water, or greasy/sweet-smelling?"
+  safety_flag: none
+  notes: "Rain-correlated interior water: clogged sunroof drains (wet headliner/A-pillar), clogged cowl/plenum drains (passenger footwell), torn door vapor barrier, or a bad windshield/body-seam seal — often after a glass replacement [ENGFIX; motronix.net; vwvortex.com forum pattern]. Frequently arrives disguised as 'my AC is leaking' — the rain-vs-A/C question is the whole triage. Standing water breeds mold and corrodes under-carpet modules; worth prompt attention."
+
+# ---------------------------------------------------------------------------
+# BODY / GLASS / DOORS / SEAT BELTS
+# ---------------------------------------------------------------------------
+
+- category: body
+  subcategory: wind_noise_at_speed
+  display: "Wind noise / whistle at highway speed"
+  customer_voice_anchors:
+    - "loud wind noise from the drivers door on the highway"
+    - "whistling around the windshield at highway speed, started after the glass was replaced"
+    - "air noise like a window is cracked open but theyre all closed"
+    - "wind whooshing sound right by my ear at 65"
+    - "door seal makes a whistle over 50 mph"
+    - "sounds like wind leaking in around the sunroof"
+    - "hear air rushing at high speed by the passenger window"
+    - "WIND NOISE DRIVER DOOR"
+  required_slots:
+    - location: "which door/window/glass area the noise comes from — locates the failed seal or fitment"
+    - speed_threshold: "the speed it starts at — confirms aerodynamic (wind) vs mechanical noise"
+    - recent_glass_work: "after a windshield or window replacement — glass-set/molding suspicion"
+    - changes_with_window: "does cracking a window or pressing the door panel change it — confirms a seal path"
+  confusables:
+    - vs: tire_or_bearing_hum   # cross-domain: noise/tires
+      discriminator_question: "Does it whistle like air and change if you press on the door or crack a window, or is it a hum that just grows with speed?"
+    - vs: strange_noise_from_vents
+      discriminator_question: "Does the noise change with the FAN speed, or only with road speed?"
+  safety_flag: none
+  notes: "Door/window weatherstrip shrinkage, glass sitting proud after an R&R, or mirror/trim turbulence — a body-seal concern, typically an advisor/inspection item rather than a diagnostic test [Duffy, Auto Body Repair Technology via KB]. Wind noise changes with door/window state, not engine load. Cross-domain: speed-proportional HUM belongs to tires/bearings (noise domain)."
+
+- category: body
+  subcategory: door_trunk_hood_latch_problem
+  display: "Door / trunk / hood won't open, close, or latch"
+  customer_voice_anchors:
+    - "TRUNK WILL NOT OPEN"
+    - "trunk pops back open when i close it unless i shut it real gently"
+    - "drivers door wont latch, i have to slam it three times"
+    - "back hatch wont open, the button does nothing and neither does the key"
+    - "hood release doesnt work, cant get the hood open"
+    - "rear door wont open from the outside handle"
+    - "the sliding door on my van sticks halfway"
+    - "door handle broke off so i cant open it from outside"
+    - "liftgate wont stay up, comes right back down on my head"
+    - "trunk lock is stuck, the key just spins"
+  required_slots:
+    - which_opening: "which door/trunk/hood/hatch — identifies the latch or handle in question"
+    - electric_vs_mechanical: "does the release button click/hum when pressed (electrical solenoid) vs a purely mechanical handle/cable that does nothing — splits an electrical test from body work"
+    - stuck_open_or_closed: "won't OPEN vs won't stay CLOSED — a hood or trunk that won't latch shut is a driving hazard"
+  confusables:
+    - vs: power_locks_not_working
+      discriminator_question: "Is it the LOCK that won't lock/unlock, or the latch/handle that won't physically open or close?"
+    - vs: key_fob_remote_not_working
+      discriminator_question: "Does the trunk open fine from inside the car but not from the remote, or does nothing open it at all?"
+  safety_flag: none
+  notes: "Mechanical latch/cable/handle failures are body-shop work (advisor route at a general shop); an electric release solenoid that stopped responding is an electrical diagnostic. The 'does the button click or hum?' question makes the split [HALDERMAN]. A hood that won't fully latch deserves a don't-drive-far caution in notes to the customer."
+
+- category: electrical
+  subcategory: power_window_not_working
+  display: "Power window won't go up/down"
+  customer_voice_anchors:
+    - "drivers window wont go up"
+    - "window is stuck down and its supposed to rain tonight"
+    - "power window makes a grinding noise and moves real slow"
+    - "the window fell down inside the door"
+    - "passenger window goes down but wont come back up"
+    - "window is off track, goes up crooked then stops"
+    - "rear window switch does nothing"
+    - "WINDOW INOP DRIVER SIDE"
+    - "you can hear the motor running but the glass doesnt move"
+    - "window creeps up so slow you have to help it with your hands"
+  required_slots:
+    - which_window: "which door — locates the regulator/motor/switch"
+    - motor_sound: "motor hums but glass doesn't move (stripped regulator/off-track) vs total silence (motor/switch/wiring)"
+    - stuck_position: "stuck open vs closed — stuck-open is a security/weather urgency"
+    - all_or_one: "one window vs all windows dead — all-dead points at a fuse/master switch"
+  confusables:
+    - vs: power_locks_not_working
+      discriminator_question: "Is it the window glass that won't move, or the door LOCK?"
+    - vs: door_trunk_hood_latch_problem
+      discriminator_question: "Is the problem the glass going up and down, or the door itself opening/closing?"
+  safety_flag: none
+  notes: "Window regulator, motor, switch, or off-track glass. 'Motor runs, glass doesn't move' = stripped regulator; 'fell into the door' = broken regulator cable/clip. One window = that door's motor/regulator/switch; all windows = master switch/fuse. Stuck-DOWN gets scheduling priority (weather/security)."
+
+- category: electrical
+  subcategory: power_locks_not_working
+  display: "Power door locks not working"
+  customer_voice_anchors:
+    - "power door locks quit working with the fob and with the switch"
+    - "only the passenger door lock stopped working"
+    - "the door locks click on their own while im driving"
+    - "locks wont unlock with the button, i have to use the key"
+    - "drivers door doesnt lock with the rest of them"
+    - "the lock switch works one way but not the other"
+    - "all the locks stopped at the same time, i checked the fuse already"
+    - "back door keeps locking itself over and over"
+    - "POWER LOCKS NOT WORKING"
+  required_slots:
+    - one_vs_all: "a single door (that door's actuator/wiring) vs all doors (fuse/relay/BCM/master switch) — the first split"
+    - fob_vs_switch: "dead from the fob only (fob/receiver) vs dead from fob AND switch (circuit/actuator)"
+    - rain_correlation: "worse after rain or a car wash — water-intrusion corrosion in a door harness or module"
+    - self_operating: "locks cycling on their own — flaky switch/actuator or water gremlin, group with any other random electrical acts"
+  confusables:
+    - vs: key_fob_remote_not_working
+      discriminator_question: "Do the locks work from the switch inside the car but not the remote, or from neither?"
+    - vs: random_electrical_gremlins   # cross-domain: electrical
+      discriminator_question: "Is it just the locks, or are several random electrical things acting up (worse after rain)?"
+    - vs: door_trunk_hood_latch_problem
+      discriminator_question: "Is the lock the problem, or does the door physically not open/close?"
+  safety_flag: none
+  notes: "One dead lock = that door's actuator or its in-door harness (water/corrosion-prone) [HALDERMAN; Dorman actuator testing docs via KB]. All-locks-dead = shared fuse/relay/BCM. Locks clicking on their own or acting up after rain = water-intrusion gremlin — if multiple accessories misbehave, that's the broader electrical-gremlin concern."
+
+- category: electrical
+  subcategory: key_fob_remote_not_working
+  display: "Key fob / remote not working (car still starts)"
+  customer_voice_anchors:
+    - "key fob wont lock or unlock the doors anymore"
+    - "changed the battery in the remote and it still doesnt work"
+    - "have to be right next to the car for the fob to work now"
+    - "remote start quit working"
+    - "my key fob will not activate the remote start"
+    - "fob works sometimes, mostly doesnt"
+    - "keyless entry stopped working — the car starts fine though"
+    - "sometimes it says key not detected but it starts after a couple tries"
+    - "the trunk button on the remote doesnt do anything"
+    - "remote only works if i hold it right against the door handle"
+  required_slots:
+    - car_still_starts: "the car STARTS normally — the fact that keeps this out of the security no-start concern"
+    - which_functions: "lock/unlock vs remote start vs trunk vs proximity range — one function vs all functions splits fob vs receiver"
+    - battery_tried: "fob battery already replaced — rules out the cheapest cause"
+    - both_fobs: "does the spare fob behave the same — same on both fobs points at the car's receiver, not the fob"
+  confusables:
+    - vs: key_not_recognized_security_no_start
+      discriminator_question: "Does the car START fine and only the remote is acting up, or does the car NOT start?"
+    - vs: power_locks_not_working
+      discriminator_question: "Do the locks work from the switch inside the car, and it's only the remote that fails?"
+    - vs: key_replacement_or_programming
+      discriminator_question: "Is an existing fob misbehaving, or do you need a new/spare key made or programmed?"
+  safety_flag: none
+  notes: "Fob battery, keyless receiver/antenna, or lost pairing [HALDERMAN]. Aftermarket remote-start systems are a separate installed system — don't collapse 'remote start quit' into the OE fob without asking. Intermittent 'key not detected' that still starts = weak fob battery, still this concern. If the car won't start at all, that's the security/immobilizer no-start."
+
+# ---------------------------------------------------------------------------
+# KEYS / SECURITY / ANTI-THEFT
+# ---------------------------------------------------------------------------
+
+- category: no_start
+  subcategory: key_not_recognized_security_no_start
+  display: "Won't start — security / key not recognized"
+  customer_voice_anchors:
+    - "car cranks but wont start and the little security light is flashing"
+    - "wont start, the key light is blinking on the dash"
+    - "anti theft light flashing and it just cranks and cranks"
+    - "says key not detected and it wont start at all"
+    - "immobilizer wont recognize my key, tried the spare too"
+    - "theft light comes on and the engine wont even turn over"
+    - "the key wont turn in the ignition at all"
+    - "my key is stuck in the ignition and wont come out"
+    - "car with a lock symbol on the dash and it wont start"
+    - "wont start unless i lock and unlock the doors with the key first, some security thing"
+    - "battery is fine, lights are bright, but it wont fire and the security light keeps blinking"
+  required_slots:
+    - security_light_state: "a flashing security/theft/key light during the no-start — the immobilizer-actively-blocking tell [YOURMECH]"
+    - crank_behavior: "cranks-but-won't-fire (fuel/spark withheld) vs no crank at all (starter-cut design or a battery problem) — shapes the diagnosis"
+    - battery_health: "lights bright, no jump needed — a normal battery is what separates this from a dead-battery no-start"
+    - spare_key_tried: "does a spare key/fob start it — spare works = bad key/fob; both fail = antenna ring/module"
+    - key_mechanical: "key won't turn / key stuck in ignition — the mechanical cylinder/interlock cousins live here too"
+  confusables:
+    - vs: battery_dead_no_start   # cross-domain: no_start/electrical
+      discriminator_question: "Are the dash lights bright and the battery fine with a security/key light flashing, or are the lights dim/dead and it clicks or needed a jump?"
+    - vs: key_fob_remote_not_working
+      discriminator_question: "Does the car not START, or does it start fine and only the remote functions are broken?"
+    - vs: key_replacement_or_programming
+      discriminator_question: "Is the car refusing to start right now, or do you just need a key made or programmed?"
+  safety_flag: none
+  notes: "Immobilizer withholds fuel/spark (or cuts the starter) when the transponder isn't recognized — flashing security light with a NORMAL battery is the signature [HALDERMAN; YOURMECH; toyotanation.com forum pattern]. Common causes: dead fob battery on push-button cars, damaged transponder key, weak antenna ring, aftermarket alarm/remote-start wiring. Key-won't-turn and key-stuck-in-ignition are mechanical cylinder/shift-interlock cousins, same booking. Customer is usually stranded — offer the tow path. A blinking security light while PARKED is the normal armed indicator, not a fault."
+
+- category: warning_light
+  subcategory: security_anti_theft_light_on
+  display: "Security / anti-theft light on (car runs fine)"
+  customer_voice_anchors:
+    - "anti theft light stays on while im driving but the car runs fine"
+    - "security light came on and hasnt gone off"
+    - "little car with a key symbol lit up on the dash"
+    - "SECURITY LIGHT ON"
+    - "lock symbol stays lit after i start the car"
+    - "anti-theft light on, starts and drives normal though"
+    - "the immobilizer light wont go out"
+    - "security light blinks when the car is parked, is that normal?"
+  required_slots:
+    - starts_and_runs: "car starts/runs normally — separates this from the security no-start"
+    - light_behavior: "steady while driving (stored fault) vs blinking while parked (NORMAL armed indicator — reassurance, not a repair)"
+    - other_lights: "is it the only light on — several lights at once is a different (charging-cascade) concern"
+    - alarm_behavior: "any alarm/horn misbehavior alongside — pairs with the alarm concern"
+  confusables:
+    - vs: key_not_recognized_security_no_start
+      discriminator_question: "Does the car start and drive fine with the light on, or does it not start?"
+    - vs: multiple_warning_lights   # cross-domain: warning_light
+      discriminator_question: "Is the security light the only one on, or are several dash lights lit at once?"
+    - vs: alarm_going_off_on_its_own
+      discriminator_question: "Is it just the light, or is the alarm/horn actually sounding on its own?"
+  safety_flag: none
+  notes: "A steady security light while DRIVING = stored anti-theft fault (buckle in the chain: key reader, ajar switch, module). A blinking light while parked/off is the normal armed indicator — reassurance case [YOURMECH; HALDERMAN]. If it escalates to no-start events, route to the security no-start concern."
+
+- category: electrical
+  subcategory: alarm_going_off_on_its_own
+  display: "Alarm goes off by itself / won't disarm"
+  customer_voice_anchors:
+    - "the alarm goes off randomly in the middle of the night"
+    - "car alarm keeps going off for no reason"
+    - "horn keeps honking on its own, i had to pull the fuse to make it stop"
+    - "alarm wont shut off even with the fob"
+    - "the panic alarm sets itself off when it rains"
+    - "alarm goes off every time i unlock the door with the key instead of the remote"
+    - "horn honked by itself in the parking lot until the battery about died"
+    - "car alarm went off three times last night, my neighbors are furious"
+    - "ALARM SOUNDING RANDOMLY"
+  required_slots:
+    - trigger_pattern: "random/at night/in rain/when unlocking with the key — rain points at a wet ajar switch, key-unlock points at a disarm-input fault"
+    - car_starts_fine: "the car starts and drives — keeps this apart from the immobilizer no-start"
+    - aftermarket_alarm: "factory system vs an installed aftermarket alarm/remote start — aftermarket wiring is a top culprit"
+    - customer_disabled: "did they pull a fuse/disconnect the horn — a disabled safety device worth noting on the RO"
+  confusables:
+    - vs: key_not_recognized_security_no_start
+      discriminator_question: "Does the car start and run fine but the alarm/horn goes off on its own, or does the car NOT start?"
+    - vs: security_anti_theft_light_on
+      discriminator_question: "Is the alarm actually sounding, or is it just the security light staying on?"
+  safety_flag: none
+  notes: "The audible perimeter system, distinct from the silent immobilizer. Usual cause: a flaky normally-closed ajar switch (door/hood/trunk) or worn courtesy-light switch feeding a false 'opened' signal; aftermarket alarm wiring is the other frequent culprit [HALDERMAN; freeasestudyguides.com]. Rain-triggered alarms point at a water-soaked switch. Electrical diagnostic booking."
+
+- category: request
+  subcategory: key_replacement_or_programming
+  display: "Need a key / fob made or programmed"
+  customer_voice_anchors:
+    - "lost my only key, need a new one made"
+    - "need a spare key cut and programmed"
+    - "bought a fob on amazon, can you program it?"
+    - "key broke off in the door lock"
+    - "only have one key for the car and want a backup"
+    - "do you guys make car keys with the chip in them?"
+    - "need my remote reprogrammed after i changed its battery"
+    - "can you program a key fob for a 2018 civic"
+    - "my key is all chewed up and barely turns, want a new one cut"
+  required_slots:
+    - keys_remaining: "all keys lost vs wants a spare — all-keys-lost is a bigger (immobilizer-programming, possibly tow-in) job"
+    - key_type: "basic metal key vs transponder chip key vs smart/proximity fob — completely different cost and equipment"
+    - customer_supplied_part: "customer already bought a fob/blank — shop policy on programming customer parts applies"
+  confusables:
+    - vs: key_not_recognized_security_no_start
+      discriminator_question: "Is this a request for a new/spare key, or is the car refusing to start with the key you have?"
+    - vs: key_fob_remote_not_working
+      discriminator_question: "Do you need a NEW key/fob, or is your existing remote misbehaving?"
+  safety_flag: none
+  notes: "A service REQUEST, not a symptom — routes to advisor/quote (many general shops sublet all-keys-lost jobs to a locksmith or dealer). 'Key is worn and barely turns' sits on the boundary: still a request while it works, becomes the security no-start concern when it won't turn at all."
+
+# ---------------------------------------------------------------------------
+# ADAS / DRIVER ASSISTANCE
+# ---------------------------------------------------------------------------
+
+- category: adas
+  subcategory: driver_assist_warning_or_malfunction
+  display: "Driver-assist warning or feature not working (lane/collision/cruise/blind spot/parking)"
+  customer_voice_anchors:
+    - "lane departure warning light stays on"
+    - "message says front radar obstruction, driving aids unavailable"
+    - "pre collision system warning came on and wont go away"
+    - "adaptive cruise control stopped working and theres a warning about it"
+    - "blind spot light on the mirror stays lit all the time now"
+    - "collision mitigation problem and road departure problem both popped up at once"
+    - "after the snowstorm it said forward driving aids temporarily disabled"
+    - "little car with sensor waves light came on"
+    - "parking sensors beep nonstop even with nothing around"
+    - "lane keep assist unavailable message every morning"
+    - "cruise wont set and the dash shows some radar error"
+  required_slots:
+    - which_feature: "the assist feature named — lane keep, pre-collision/AEB, adaptive cruise, blind spot, parking sensors — the customer's words carry it"
+    - message_behavior: "comes-and-goes/self-clears (obstruction) vs steady (fault or calibration) vs several assist messages at once (shared camera/radar)"
+    - weather_trigger: "appeared after snow/ice/mud/heavy rain and clears when cleaned — benign sensor blockage [NISSAN-TSB]"
+    - recent_service: "windshield/alignment/bumper/battery work just before — reroutes to the calibration concern"
+  confusables:
+    - vs: adas_calibration_after_windshield_or_service
+      discriminator_question: "Did the warning start right after a windshield replacement, alignment, bumper repair, or battery change?"
+    - vs: check_engine_light   # cross-domain: warning_light
+      discriminator_question: "Does the message name a driver-assist feature (lane, collision, cruise, blind spot), or is it the check-engine light?"
+    - vs: multiple_warning_lights   # cross-domain: warning_light
+      discriminator_question: "Are the messages all about driving-assist features, or is the whole dash lit up (battery, ABS, airbag) with the car running rough?"
+    - vs: dead_accessory_screen   # cross-domain: electrical
+      discriminator_question: "Is a warning or assist feature involved, or is a screen/camera display simply dead with no message?"
+  safety_flag: none
+  notes: "Covers obstruction messages (snow/ice/mud on the radar/camera — often self-clearing [NISSAN-TSB]), real sensor/module faults, and several assist systems down together (one shared windshield camera feeds lane-keep, collision braking, and road-departure on many cars, so one fault throws multiple messages [Honda Sensing docs via KB]). Base brakes/steering are unaffected — only the assist is paused; reassure but book a scan. An all-ADAS message set is NOT the charging-cascade 'all my dash lights are on' concern. Plain set-speed cruise dying on an older car with no radar is an electrical accessory concern, not ADAS — ask before assuming."
+
+- category: adas
+  subcategory: phantom_braking_or_steering
+  display: "Car brakes or steers by itself (false activation)"
+  customer_voice_anchors:
+    - "car slammed on the brakes by itself, nothing was in front of me"
+    - "the emergency braking goes off for no reason"
+    - "collision warning beeps at me when nothings there"
+    - "lane assist keeps yanking the steering wheel on the highway"
+    - "car brakes by itself sometimes, kinda scary"
+    - "the self braking freaks out at overpasses and shadows"
+    - "auto brake grabbed hard at a plastic bag in the road, almost got rear ended"
+    - "cruise randomly slams the brakes when the car ahead is way far up"
+    - "the steering keeps tugging me toward the shoulder for no reason"
+  required_slots:
+    - intervention_type: "braking vs steering tug vs warning-only beeps — which system is false-firing"
+    - self_initiated: "the CAR did it with no pedal/wheel input — the fact that separates this from a brake or alignment problem"
+    - conditions: "highway/overpasses/shadows/rain — classic phantom-trigger contexts, useful for the diagnosis"
+    - any_message: "an assist warning/message alongside — links it to a specific feature"
+  confusables:
+    - vs: brake_problem   # cross-domain: brakes
+      discriminator_question: "Does the car brake ITSELF when nothing is in front, or does the pedal feel wrong when YOU press it?"
+    - vs: pulling_or_drifting   # cross-domain: steering_handling
+      discriminator_question: "Does a driving-assist system tug the wheel now and then (sometimes with a lane message), or does the car steadily pull to one side all the time?"
+    - vs: driver_assist_warning_or_malfunction
+      discriminator_question: "Is the system actually braking/steering on its own, or just showing a warning?"
+  safety_flag: advise_immediately
+  notes: "False AEB/lane-keep activation — the subject of formal NHTSA defect investigations (PE22-003 Honda inadvertent AEB; EA22-002 Tesla phantom braking) [NHTSA-ODI]. Unexpected self-braking at speed is a rear-end-collision hazard: advise promptly and offer to disable/limit use per the owner's manual until diagnosed. Do NOT misroute as a brake-feel or alignment concern — the intervention is self-initiated."
+
+- category: adas
+  subcategory: adas_calibration_after_windshield_or_service
+  display: "Camera/sensor calibration after windshield, alignment, or repair"
+  customer_voice_anchors:
+    - "just got a new windshield and now the lane assist light is on"
+    - "windshield was replaced and now the lane keeping pulls me to the left"
+    - "the glass shop said the camera needs to be calibrated, can you do that?"
+    - "got an alignment and the lane keep warning popped up right after"
+    - "do i need the camera recalibrated after a windshield replacement?"
+    - "cruise control and collision warning quit right after my windshield got replaced"
+    - "put in a new battery and now the lane keep assist light is on"
+    - "bumper got repaired and now the parking sensors act up"
+    - "dealer says i need an adas calibration, do you guys do that?"
+  required_slots:
+    - triggering_service: "windshield replacement, alignment, suspension work, bumper/sensor R&R, collision repair, or battery replacement — each is a known calibration/relearn trigger [AAA-ADAS; ICAR]"
+    - symptom_since: "warning light vs feature misbehaving (false pulls) vs pure inquiry ('do I need it?') — shapes booking vs quote"
+    - who_did_the_work: "this shop vs elsewhere — a warranty/comeback conversation if it was here"
+  confusables:
+    - vs: driver_assist_warning_or_malfunction
+      discriminator_question: "Did this start right after glass/alignment/body/battery work, or out of nowhere?"
+    - vs: pulling_or_drifting   # cross-domain: steering_handling
+      discriminator_question: "Is it the lane-assist system steering you (with an assist light/message, after the work), or does the car pull even with all the assists off?"
+  safety_flag: none
+  notes: "Forward cameras aim THROUGH the windshield and radars through the bumper — calibration is required whenever the glass, sensor, bracket, alignment, or ride height changes, and a battery disconnect can drop the steering-angle/camera relearn [AAA-ADAS; ICAR; SAFELITE]. Real-world forum pattern: glass shops skip or botch the calibration and lane-keep faults or false pulls follow [F150FORUM; subaruoutback.org]. Includes the pure inquiry ('do I need it?') — a quote/advisor conversation. Calibration itself may be sublet; the booking is verification + scan."
+
+# ---------------------------------------------------------------------------
+# AIRBAG / SRS
+# ---------------------------------------------------------------------------
+
+- category: warning_light
+  subcategory: airbag_srs_light
+  display: "Airbag / SRS light on"
+  customer_voice_anchors:
+    - "airbag light is on and stays on"
+    - "AIR BAG LIGHT ON"
+    - "srs light came on and never went off"
+    - "airbag light popped on after a little fender bender, no airbags went off"
+    - "airbag light started flashing a pattern after the battery died and i jump started it"
+    - "the little airbag guy light on my dash has been on for weeks"
+    - "airbag light came on after i had the seats out to shampoo the carpets"
+    - "PASSENGER AIRBAG OFF light stays on even when my husband is sitting there"
+    - "airbag light on and my horn quit working at the same time"
+    - "srs light plus the cruise and volume buttons on the wheel stopped working"
+    - "yellow airbag warning wont go away, is it even safe to drive?"
+    - "airbag light came on after i drove through a flooded street"
+  required_slots:
+    - light_behavior: "steady on vs flashing a repeating pattern (some makes blink a fault code) — brief flash at startup then off is the normal bulb check"
+    - recent_trigger: "minor impact / battery died-jumped-replaced / interior-seat work / flood water — the four classic latch events, each a different circuit"
+    - companion_failures: "horn dead or steering-wheel buttons dead at the same time — the clockspring signature"
+    - other_lights: "airbag light alone vs several lights at once — a cascade routes to the multi-light concern"
+    - passenger_off_context: "PASSENGER AIRBAG OFF with an adult seated (fault) vs with a child/empty seat (normal by design — reassurance)"
+  confusables:
+    - vs: multiple_warning_lights   # cross-domain: warning_light
+      discriminator_question: "Is the airbag light the only one on, or are several lights (battery, ABS, traction) on together?"
+    - vs: after_accident_checkover   # cross-domain: request/situational
+      discriminator_question: "Do you want the airbag LIGHT diagnosed, or a whole-car check after the accident (insurance/body shop involved)?"
+    - vs: key_not_recognized_security_no_start
+      discriminator_question: "Is it the airbag light with the car running fine, or a security light with the car not starting?"
+  safety_flag: none
+  notes: "A steady/flashing SRS light = a stored restraint fault — one or more airbags/pretensioners may not deploy [ASE-A6 via KB; NHTSA consumer guidance]. Leading causes: seat-belt buckle switch debris, passenger occupancy sensor, clockspring (pairs with a dead horn/wheel buttons [HALDERMAN]), disturbed yellow under-seat connectors after interior work, a low-voltage battery event latching a code, minor-impact crash codes, water intrusion. PASSENGER AIRBAG OFF with a child or empty seat is NORMAL by design [FMVSS208] — reassure, don't book. Airbag recall letters are an advisor/recall conversation, not a diagnostic. Car drives normally; the risk is in a crash — book promptly, no tow needed."
+
+- category: body
+  subcategory: seat_belt_wont_latch_or_retract
+  display: "Seat belt won't latch, retract, or release"
+  customer_voice_anchors:
+    - "seat belt wont pull out, its stuck"
+    - "the buckle wont click anymore"
+    - "seat belt wont retract, just hangs there all loose"
+    - "drivers seatbelt is stuck and wont come across me"
+    - "belt latches but then pops back open"
+    - "the seat belt in the back wont buckle for my kids car seat"
+    - "seat belt is frayed and keeps getting caught"
+    - "SEAT BELT STUCK"
+  required_slots:
+    - which_seat: "which position — driver/passenger/rear; a rear belt used for a car seat raises urgency"
+    - failure_type: "won't pull out (retractor lock) vs won't latch (buckle) vs won't retract (spring) vs frayed webbing — different hardware"
+    - dash_light: "no SRS light involved — a lit airbag light moves it to the airbag_srs_light concern"
+  confusables:
+    - vs: airbag_srs_light
+      discriminator_question: "Is a warning light on the dash involved, or is it purely the belt hardware sticking?"
+  safety_flag: none
+  notes: "Mechanical restraint hardware (retractor/buckle/webbing) with NO dash light — distinct from the SRS electrical system. A belt that locks when yanked fast is normal (inertia lock — pull slowly). A belt that won't latch means someone rides unprotected: schedule promptly, and note that pretensioner-equipped belts after a crash are a restraint-system repair, not a lube job [ASE-A6 via KB]."
+
+# ---------------------------------------------------------------------------
+# HYBRID / EV HIGH-VOLTAGE
+# ---------------------------------------------------------------------------
+
+- category: no_start
+  subcategory: hybrid_ev_wont_power_on
+  display: "Hybrid/EV won't power on / won't go to READY"
+  customer_voice_anchors:
+    - "my hybrid wont start, the dash lights up but it wont go to ready"
+    - "prius wont start this morning, jumped the little 12 volt battery and it fired right up"
+    - "pushed the power button and nothing happens, the screen comes on but the car is dead"
+    - "my leaf wouldnt power on, had to jump the 12v and then it was fine"
+    - "hybrid wont go into ready mode and theres warning lights everywhere"
+    - "the ev is completely dead in the garage, wont turn on at all"
+    - "no crank no nothing — its a hybrid so i guess theres no starter sound anyway"
+    - "power button does nothing unless i hold the key fob right against it"
+    - "my plug in hybrid wont turn on after sitting for two weeks"
+  required_slots:
+    - powertrain_stated: "customer says hybrid/EV/plug-in — a model name alone (prius, leaf) should be CONFIRMED, not assumed"
+    - ready_vs_crank: "won't reach READY / no crank sound (normal for EVs — there's no starter to hear) vs an engine physically cranking — separates this from an ICE no-start"
+    - jump_effect: "jumping the small 12V battery fixed it (even temporarily) — the strongest evidence it's the cheap 12V, not the traction pack"
+    - sat_how_long: "sat days/weeks (12V self-drain) vs died mid-day — onset context"
+    - hybrid_warning_present: "a turtle/red-triangle/check-hybrid message alongside — pulls it toward the HV-fault concerns"
+  confusables:
+    - vs: battery_dead_no_start   # cross-domain: no_start/electrical
+      discriminator_question: "Is it a hybrid or electric — does it fail to reach READY with no cranking, or is it a gas car that clicks or cranks slowly?"
+    - vs: hybrid_system_warning_red_triangle
+      discriminator_question: "Did jumping the small 12-volt battery bring it back, or is there a red triangle / check-hybrid-system warning that stays on?"
+    - vs: ev_wont_charge
+      discriminator_question: "Does the car not power ON, or does it power on fine but won't CHARGE when plugged in?"
+  safety_flag: none
+  notes: "The 12V auxiliary battery must wake the computers that close the high-voltage contactors — a flat 12V blocks READY even with a perfectly healthy traction pack [DOE-AFDC]. Rule the cheap 12V out FIRST; never tell a customer their 'hybrid battery' died from this symptom alone (a four-figure fear with a $200 usual answer) [PHXHYB]. There is no crank sound to report on an EV — absence of cranking is normal, not a clue. Stranded customers: offer the tow path; hybrids can often be 12V-jumped per the owner's manual."
+
+- category: performance
+  subcategory: hybrid_ev_reduced_power_turtle
+  display: "Hybrid/EV reduced power / turtle mode / limp"
+  customer_voice_anchors:
+    - "my electric car suddenly lost power and a turtle light came on"
+    - "the ev is in turtle mode, wont go over 40"
+    - "hybrid went into limp mode on the highway, could barely keep going"
+    - "reduced power warning and now it crawls up hills"
+    - "car cut its power way back and the hybrid warning came on"
+    - "leaf is showing a turtle and has zero acceleration"
+    - "power limited message on my ev and its just creeping"
+    - "hybrid has no power all of a sudden and theres a warning light on"
+    - "it maxes out at like 25 now, some kind of power limit thing"
+  required_slots:
+    - powertrain_stated: "hybrid/EV stated — the same words from a gas car are an ICE low-power concern (different domain)"
+    - warning_shown: "turtle icon / reduced-power message / hybrid warning — confirms a deliberate derate vs a mechanical problem"
+    - conditions: "very hot day, very cold pack, or battery nearly empty — the three documented derate triggers [NISSAN-LEAF]"
+    - still_moving: "crawling but moving vs stopped/stranded — sets tow vs drive-in"
+  confusables:
+    - vs: engine_low_power   # cross-domain: performance (ICE)
+      discriminator_question: "Is the vehicle a hybrid or fully electric, and is there a turtle / reduced-power / hybrid warning showing?"
+    - vs: hybrid_system_warning_red_triangle
+      discriminator_question: "Is the car actually slowed to a crawl, or is it mainly the warning message with normal driving?"
+    - vs: hybrid_ev_wont_power_on
+      discriminator_question: "Does it still drive (just weak), or won't it power on at all?"
+  safety_flag: advise_immediately
+  notes: "A deliberate protective derate: the car limits traction-motor power when the pack/inverter is too hot or cold, charge is extremely low, or a fault is detected [NISSAN-LEAF; DOE-AFDC]. Flagged advise_immediately because a car capped at crawl speed on a highway is a live hazard — advise pulling off and offer tow/priority booking. Needs HV-aware diagnosis, not a generic engine code scan."
+
+- category: warning_light
+  subcategory: hybrid_system_warning_red_triangle
+  display: "Check Hybrid System / red triangle warning"
+  customer_voice_anchors:
+    - "red triangle with an exclamation point came on in my prius"
+    - "check hybrid system message came up, is it safe to drive?"
+    - "hybrid system warning light came on out of nowhere"
+    - "CHECK ENGINE LIGHT ON, message service high voltage charging system"
+    - "dash says hybrid system malfunction, stop the vehicle"
+    - "the triangle of death popped up on my dash"
+    - "warning says check hybrid system and the car feels weaker"
+    - "hybrid warning light and the check engine light both on"
+    - "master warning light and a hybrid system message together"
+  required_slots:
+    - message_text: "the exact message ('check hybrid system', 'service high voltage charging system', red triangle) — the customer's words carry the routing"
+    - drive_impact: "driving normally vs weak vs won't move — normal-driving books urgent, crawl/no-move goes to the reduced-power/tow path"
+    - other_lights: "CEL or master warning alongside — common with HV faults, still routes here on a hybrid"
+    - powertrain_stated: "confirm hybrid/EV — a bare red triangle on a model-name-only report should be confirmed before routing HV"
+  confusables:
+    - vs: check_engine_light   # cross-domain: warning_light
+      discriminator_question: "Does the message mention the hybrid system or high voltage, or is it just the check-engine light?"
+    - vs: hybrid_ev_reduced_power_turtle
+      discriminator_question: "Is the car still driving normally with the warning, or has it lost power?"
+    - vs: hybrid_ev_wont_power_on
+      discriminator_question: "Is the warning on while the car runs, or will the car not power on at all?"
+  safety_flag: advise_immediately
+  notes: "The hybrid master warning (Toyota/Lexus 'red triangle of death', 'Check Hybrid System') signals a fault in an HV subsystem — traction battery, inverter, HV cooling, motor-generator, or DC/DC [DOE-AFDC; PHXHYB]. Red master warning = advise immediately per the red-light rule; some faults shut the car down shortly after. Customers file it as a check-engine light — it needs HV-capable diagnosis, and shops without an HV tech should say so up front (advisor conversation). Never suggest DIY around orange HV cabling."
+
+- category: ev_hybrid
+  subcategory: ev_wont_charge
+  display: "EV / plug-in won't charge"
+  customer_voice_anchors:
+    - "my ev wont charge at home anymore and the port light is red"
+    - "the charger clicks but nothing happens"
+    - "plugged in my plug-in hybrid overnight and it didnt charge at all"
+    - "car stops charging after a few minutes every time"
+    - "the charge port wont lock onto the plug"
+    - "it only charges to 80 percent then quits"
+    - "fast charging doesnt work but charging at home is fine"
+    - "getting a check charging system message when i plug it in"
+    - "the charge cable is stuck in the port and wont release"
+  required_slots:
+    - where_it_fails: "home charger vs public fast charger vs both — both-fail points at the car, one-fails points at that charger"
+    - failure_moment: "won't start charging (handshake/port lock) vs stops mid-charge vs stops at a set percent (often a user-set charge LIMIT — normal, reassure)"
+    - port_indicators: "port light color / error message — the car is usually telling you which side failed"
+    - cable_stuck: "cable locked in the port — a today-problem needing the manual-release walkthrough"
+  confusables:
+    - vs: hybrid_ev_wont_power_on
+      discriminator_question: "Does the car drive fine and just won't CHARGE, or won't it power on at all?"
+    - vs: battery_charging_light   # cross-domain: electrical (12V charging)
+      discriminator_question: "Is this about plugging the car in to charge, or a battery warning light while driving?"
+  safety_flag: none
+  notes: "On-board charger, charge-port/EVSE handshake, or BMS fault [DOE-AFDC]. 'Stops at 80%' is usually a user-set charge limit — reassurance, not repair. Many general shops decline EVSE/HV charging work: this concern should surface to an advisor (sublet/dealer referral) rather than force a generic diagnostic. Try-the-other-charger is the free first test to suggest."
+
+- category: ev_hybrid
+  subcategory: hybrid_ev_battery_degradation_range_loss
+  display: "Hybrid/EV battery losing range or capacity"
+  customer_voice_anchors:
+    - "my hybrid battery isnt holding a charge and the gas mileage tanked"
+    - "electric range dropped from 200 to like 130"
+    - "prius mpg went from 45 to 30, i think the battery is dying"
+    - "the battery bars dropped on my dash and im losing range"
+    - "hybrid battery dies fast and the engine runs constantly now"
+    - "how much to test a hybrid battery? mine seems weak"
+    - "range keeps getting worse every month"
+    - "the car barely goes into electric mode anymore"
+  required_slots:
+    - magnitude_and_timeline: "how much range/mpg lost over how long — gradual fade vs a sudden drop (sudden suggests a fault, not aging)"
+    - any_warning: "hybrid warning/CEL alongside — a lit warning moves it to the hybrid-warning concern"
+    - weather_context: "winter range loss is normal physics — a seasonal drop needs a season-over-season comparison, not a battery"
+    - vehicle_age_miles: "pack age/mileage — frames the aging-vs-defect and warranty conversation (many HV packs carry 8yr/100k+ warranties)"
+  confusables:
+    - vs: hybrid_system_warning_red_triangle
+      discriminator_question: "Is a hybrid warning light on, or is it just gradual range/mileage loss with no light?"
+    - vs: ev_wont_charge
+      discriminator_question: "Does it charge fine but not go as far, or is the problem charging itself?"
+  safety_flag: none
+  notes: "Gradual traction-pack capacity fade is a normal lithium-ion aging pattern [DOE-AFDC]; cold weather alone cuts EV range substantially (reassurance path in winter). A capacity test is an HV-shop job — advisor/quote conversation, and check the HV-battery warranty before quoting repairs. An engine that suddenly runs constantly on a hybrid pairs with pack weakness — same booking."
+
+- category: ev_hybrid
+  subcategory: regen_brake_feel_change
+  display: "Hybrid/EV brakes feel different (regen handoff)"
+  customer_voice_anchors:
+    - "my hybrid brakes feel weird and grabby first thing on cold mornings"
+    - "the brakes on my ev feel different, like they let go for a second then grab"
+    - "braking feels jerky when the battery is full"
+    - "the brake pedal on my prius feels notchy and inconsistent"
+    - "regen braking feels weaker in the winter"
+    - "one pedal driving isnt slowing the car down like it used to"
+    - "brakes grab hard going downhill right after a full charge"
+    - "pedal feels spongy sometimes then normal — its a hybrid if that matters"
+  required_slots:
+    - powertrain_stated: "hybrid/EV stated — the same words from a gas car are a straight brake concern (brakes domain)"
+    - condition_pattern: "cold mornings / full battery / downhill after charging — the regen-limited contexts where blending changes feel [BOSCH]"
+    - noise_present: "any grinding/squealing — noise means friction-brake wear, route to the brakes domain regardless of powertrain"
+    - constant_vs_conditional: "feel change only in those conditions (regen blending, often normal) vs all the time (book a brake inspection)"
+  confusables:
+    - vs: brake_pedal_feel_problem   # cross-domain: brakes
+      discriminator_question: "Does the odd feel only show up cold or with a full battery on your hybrid/EV, or is it there all the time / with grinding or squealing?"
+    - vs: hybrid_ev_reduced_power_turtle
+      discriminator_question: "Is it the braking feel, or the car's power/acceleration that changed?"
+  safety_flag: none
+  notes: "Regen/friction blending: when the pack is cold or full it can't accept charge, so the car hands braking to the friction brakes and the pedal feel/deceleration curve changes — frequently NORMAL [BOSCH; DOE-AFDC]. Book a brake inspection when it's constant, noisy, or the customer feels unsafe; otherwise this is largely an education/reassurance conversation. Any grinding/squeal/pulsation = ordinary friction-brake concern (brakes domain)."

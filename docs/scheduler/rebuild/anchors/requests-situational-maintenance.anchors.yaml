@@ -1,0 +1,945 @@
+# ============================================================================
+# Anchor knowledge — domain: requests-situational-maintenance
+# Generated: 2026-07-19 (day-one seed for the rebuilt concern classifier)
+#
+# SCOPE: direct service requests (oil change, brake job, tires, inspection,
+# AC recharge, tune-up, part replacement), situational intake (post-accident,
+# car sat unused, pre-trip, post-service comeback, multiple symptoms, second
+# opinion), general maintenance, the genuinely-vague triage cases, and
+# out-of-scope (not a car-repair request). This file DEFINES the reserved
+# `general_diagnostic` and `out_of_scope` categories for the whole classifier.
+#
+# RESERVED-CATEGORY SEMANTICS (defined here, honored classifier-wide):
+#   general_diagnostic — the broad-triage bucket. Used (a) when the customer's
+#     words are genuinely vague ("car feels off") and (b) as the classifier's
+#     FALLBACK when no domain category clears the embedding/LLM confidence
+#     gate. Never let a specific, testable symptom land here.
+#   out_of_scope — not a car-repair concern at all (logistics, business
+#     inquiries, services the shop doesn't offer, gibberish). Routes to a
+#     friendly re-prompt / front office, NEVER to a diagnostic category.
+#
+# ROUTING PRINCIPLES baked into these entries (from the shop's live-corpus
+# routing analysis, docs/automotive-knowledge-base/routers/router-requests-maintenance.md):
+#   1. A named diagnosable SYMPTOM beats request framing — "brakes grinding,
+#      need a brake job" belongs to the brakes symptom domain; the request is
+#      metadata. Anchors here are for utterances DOMINATED by the request /
+#      situation / maintenance line.
+#   2. A situational cue overrides a symptom keyword only when the customer
+#      states it as the CAUSE ("after X, now Y" / "since X, still Y"). A cue
+#      in passing (tow-in backstory, prior unrelated repair) does not.
+#   3. Safety fear with no nameable symptom, or total loss of a safety
+#      system, is its own advise-immediately situation.
+#
+# SOURCES (cited as [S#] in notes):
+#   S1  KBB — what a tune-up means today: https://www.kbb.com/car-advice/whats-involved-in-a-vehicle-car-tune-up/
+#   S2  Jalopnik — why modern cars don't need tune-ups: https://www.jalopnik.com/1962279/why-modern-cars-dont-need-tune-ups/
+#   S3  USTMA — tire repair basics (tread-area only, <=1/4 in; no sidewall repair): https://www.ustires.org/tire-care-safety/tire-repair-basics
+#   S4  Tire Industry Association — tire repair consumer guidance: https://www.tireindustry.org/resources/consumer-education/consumer-safety-overview/tire-repair/
+#   S5  Synchrony — what goes wrong when a car sits too long: https://www.synchrony.com/blog/automotive/what-happens-when-your-car-sits-for-too-long
+#   S6  Car-X — car sitting idle for weeks or months: https://www.carx.com/blog/car-sitting-idle-for-weeks-or-months-heres-what-you-need-to-know/
+#   S7  CARSTAR — checking for damage after hitting a curb: https://www.carstar.com/blog/how-to-check-for-car-damage-from-hitting-the-curb/
+#   S8  FCP Euro — suspension checks after a curb strike: https://www.fcpeuro.com/blog/what-to-look-for-on-your-suspension-after-hitting-a-curb
+#   S9  NerdWallet — pre-purchase inspections (~$100-300): https://www.nerdwallet.com/auto-loans/learn/pre-purchase-inspection-car
+#   S10 JD Power — how to get a pre-purchase inspection: https://www.jdpower.com/cars/shopping-guides/how-do-you-get-a-pre-purchase-inspection-when-buying-a-used-car
+#   S11 US EPA — MVAC recharge options (sealed system; low = leak): https://www.epa.gov/mvac/options-recharging-your-air-conditioner
+#   S12 MACS — regulating recharge (top-offs don't fix leaks): https://macsmobileairclimate.org/2016/06/23/regulating-recharge/
+#   S13 PA DMV — annual safety inspection + county emissions: https://www.pa.gov/agencies/dmv/vehicle-services/inspection-and-safety-requirements
+#   S14 AAA — modern oil-change intervals: https://www.aaa.com/autorepair/articles/how-often-should-you-change-your-oil
+#   S15 Capital One — oil intervals stretched 3,000 -> 10,000 mi: https://www.capitalone.com/cars/learn/finding-the-right-car/how-oilchange-intervals-stretched-from-3000-to-10000-miles/1761
+#   S16 NHTSA — recall remedies are free at the manufacturer's dealer: https://www.nhtsa.gov/recalls
+#   S17 FTC — federal warranty law (independent shops OK for warranty-era maintenance): https://www.ftc.gov/business-guidance/resources/businesspersons-guide-federal-warranty-law
+#
+# Customer-voice provenance: phrasing patterns are modeled on the shop's real
+# de-identified concern corpus + forum-style paraphrase (see the KB's
+# customer-voice-style-guide.md) — ALL-CAPS fragments, misspellings, and mixed
+# request+symptom lines are intentional training signal.
+# ============================================================================
+
+- category: request
+  subcategory: oil_change
+  display: "Oil change"
+  customer_voice_anchors:
+    - "need an oil change"
+    - "due for an oil change and tire rotation"
+    - "Oil Change full syn"
+    - "can i get an oil chnage this week"
+    - "oil life is at 5%"
+    - "the little wrench light came on, i think its just due for service"
+    - "need my 3000 mile oil change"
+    - "just need my oil changed nothing else"
+    - "overdue for an oil change by like 2000 miles"
+    - "oil change, and they said i needed a filter last time"
+    - "sticker on the windshield says i was due back in march"
+    - "how soon can you get me in for a synthetic oil change"
+  required_slots:
+    - service_scope: "oil-only vs bundled (rotation / inspection / filters) — sets booking length and price"
+    - due_status: "overdue / due now / maintenance-reminder light on — urgency and whether a reminder reset is needed"
+    - symptom_present: "any leak, burning smell, or RED oil-pressure light mentioned alongside — flips this to a diagnostic concern in the leak/warning_light domains"
+    - oil_type_preference: "conventional / blend / full synthetic if stated — pricing and correct spec"
+  confusables:
+    - vs: oil_pressure_light
+      discriminator_question: "Is a RED oil-can light coming on while you drive, or is it a maintenance/oil-life reminder saying you're due for service?"
+    - vs: oil_leak
+      discriminator_question: "Are you just due for an oil change, or are you seeing oil spots or drips under the car?"
+    - vs: scheduled_maintenance_service
+      discriminator_question: "Just the oil change, or the full mileage service your manual calls for?"
+  safety_flag: none
+  notes: "Bookable maintenance line — no diagnosis. Customers still say '3000 mile oil change'; modern intervals are 5,000-10,000 mi depending on oil spec [S14][S15] — accept the phrasing, don't correct it. A red oil-pressure light is NOT this entry (engine-damage risk, warning_light domain, advise immediately). 'Reset my oil light' with no service = a work-order line that also lands here."
+
+- category: request
+  subcategory: scheduled_maintenance_service
+  display: "Factory scheduled maintenance"
+  customer_voice_anchors:
+    - "due for my 30k service"
+    - "60,000 mile service"
+    - "maintenance required light came on"
+    - "the car says service due"
+    - "need the B1 service done"
+    - "manual says im due for the big service"
+    - "just regular maintenance, nothing wrong with it"
+    - "100k service, want everything thats due"
+    - "need 3000-mile service"
+    - "shes due for her checkup per the maintenance schedule"
+  required_slots:
+    - mileage_or_interval: "which service interval (30k/60k/90k, A/B code, or 'whatever's due') — defines the work list"
+    - maintenance_light_state: "maintenance-minder message/light on vs going by mileage — reset needed"
+    - symptom_present: "any symptom mentioned alongside — routes that symptom to its domain first"
+    - service_history_known: "new to the shop vs regular — whether records must be pulled or the customer brings them"
+  confusables:
+    - vs: oil_change
+      discriminator_question: "The full scheduled service from the manual, or just an oil change?"
+    - vs: tune_up_request
+      discriminator_question: "Following the factory schedule, or does the car feel like it's running poorly?"
+    - vs: general_checkup
+      discriminator_question: "The factory mileage service, or an open-ended once-over to see how the car is doing?"
+  safety_flag: none
+  notes: "Bookable maintenance — no diagnosis unless a symptom rides along. Includes manufacturer maintenance-minder codes (Honda A1/B1 style) and 'service due' dash messages. Does NOT include the red/amber diagnostic lights (warning_light domain) or 'check engine' — a maintenance reminder and a check-engine light are different systems, and customers regularly conflate them; ask which if unclear."
+
+- category: request
+  subcategory: tune_up_request
+  display: "Tune-up"
+  customer_voice_anchors:
+    - "car needs a tune up"
+    - "probably due for a tune up"
+    - "can you give it a tune up"
+    - "needs a tune up its running rough"
+    - "spark plugs and wires, the usual tune up stuff"
+    - "give it a good tune up before winter"
+    - "tune up and oil change"
+    - "how much is a tuneup"
+    - "old truck could use a tune up, plugs and all"
+    - "hasnt had a tune up in years"
+  required_slots:
+    - symptom_present: "CRITICAL — 'running rough / misfiring / stalling' flips this to the performance domain; a bare 'due for a tune up' stays a maintenance request"
+    - what_customer_means: "scheduled plugs/filters/fluids maintenance vs 'fix why it runs bad' — the word covers both in customer speech"
+    - vehicle_age: "older vehicles may genuinely need ignition service; newer ones map to scheduled maintenance"
+  confusables:
+    - vs: rough_idle_or_misfire
+      discriminator_question: "Is the car actually running rough, shaking, or losing power right now — or do you just want the scheduled plugs-and-filters maintenance?"
+    - vs: scheduled_maintenance_service
+      discriminator_question: "Do you want what the factory schedule calls for at your mileage, or specifically plugs/ignition parts?"
+  safety_flag: none
+  notes: "'Tune-up' is legacy vocabulary — modern engines have no traditional tune-up (electronic ignition, long-life plugs) and the word now means either scheduled maintenance or 'it runs badly, make it right' [S1][S2]. The discriminator question is essential: roughly half of tune-up asks are hidden driveability complaints (performance domain, cross-domain confusable)."
+
+- category: request
+  subcategory: brake_service_request
+  display: "Brake job / brake replacement"
+  customer_voice_anchors:
+    - "need new brakes"
+    - "i need a brake job"
+    - "brakes need replaced, pads and rotors"
+    - "dealer said i need rear brakes"
+    - "was told my breaks are getting low"
+    - "want my brakes checked, probably need pads"
+    - "front brakes done please"
+    - "how much for pads and rotors on a 2018 camry"
+    - "they said my brakes are at 3 millimeters"
+    - "need my brakes done asap before my inspection"
+    - "brake replacement, rear"
+  required_slots:
+    - axle_named: "front / rear / all four — scopes the job"
+    - prior_diagnosis_source: "dealer / another shop / inspection / self — 'told by X' colors it as fix-a-known-problem, still bookable as a brake check"
+    - symptom_present: "grinding, squealing, pedal feel, pulling — any of these puts the brakes SYMPTOM domain in control"
+    - urgency: "metal-on-metal or 'asap' language raises priority"
+  confusables:
+    - vs: grinding_when_braking
+      discriminator_question: "Are the brakes making a noise or feeling different when you stop, or is this replacement someone recommended without a symptom?"
+    - vs: second_opinion
+      discriminator_question: "Do you want us to do the brake job, or double-check whether you really need it?"
+    - vs: fluid_flush_service
+      discriminator_question: "Brake pads/rotors, or the brake-fluid flush service?"
+  safety_flag: none
+  notes: "Bare request ('need brakes', 'dealer said') books as a brake inspection/quote — the request type is metadata. ANY live symptom (grinding metal-on-metal, pedal sinking, pulling when braking) belongs to the brakes symptom domain and may escalate to advise_immediately there. Cross-domain confusable with the entire brakes domain."
+
+- category: request
+  subcategory: new_tires_request
+  display: "New tires / tire replacement"
+  customer_voice_anchors:
+    - "need 4 new tires"
+    - "quote for a set of tires"
+    - "want to put new tires on before winter"
+    - "tires are bald, time for new ones"
+    - "my tires are dry rotted, sidewalls all cracked"
+    - "TIRE REPLACEMENT"
+    - "need new rubber on it"
+    - "two new tires for the front"
+    - "do you sell tires? need a set for a 2015 rav4"
+    - "failed inspection on tread, need tires"
+    - "need my snow tires put on"
+    - "tires are like 8 years old, want them replaced"
+  required_slots:
+    - tire_count: "how many (1/2/4) — quoting"
+    - replacement_reason: "worn tread / dry rot-age / damaged beyond repair / seasonal swap / just want them — separates sales from repair"
+    - vehicle_or_size: "vehicle or tire size — required to quote"
+    - tires_supplied_by: "shop-sourced vs customer already bought tires (mount & balance only)"
+  confusables:
+    - vs: tire_puncture_repair
+      discriminator_question: "Do you want one tire fixed or patched (a nail, a screw, it's losing air), or new tires because they're worn out or old?"
+    - vs: tire_rotation_or_balance
+      discriminator_question: "New tires, or rotating/balancing the ones you have?"
+    - vs: alignment_request
+      discriminator_question: "Just the tires, or an alignment with them (recommended if they wore unevenly)?"
+  safety_flag: none
+  notes: "Pure sales/quote request — no diagnostic test. Industry rule: punctures are repairable only in the tread area and only up to 1/4 inch; sidewall damage and dry rot cannot be safely repaired — replacement is the correct answer, so do NOT route dry-rot language to tire repair [S3][S4]. Uneven-wear language ('wearing funny', 'bald on the inside') hints at an alignment/suspension cause — cross-domain confusable with the tires/steering_handling symptom domains."
+
+- category: request
+  subcategory: tire_rotation_or_balance
+  display: "Tire rotation / wheel balance"
+  customer_voice_anchors:
+    - "tire rotation please"
+    - "rotate and balance my tires"
+    - "Tire Rotation & Balance"
+    - "havent rotated my tires in forever"
+    - "need my wheels balanced"
+    - "rotation with my oil change"
+    - "tires wearing funny, figure they need rotated"
+    - "can you rotate the tires while its in there"
+    - "balance the fronts, i think one threw a weight"
+  required_slots:
+    - bundled_with: "standalone vs riding along with an oil change or other service"
+    - vibration_present: "steering-wheel shake at speed suggests balance as a FIX for a symptom — vibration domain leads"
+    - uneven_wear_noticed: "'wearing funny / bald on one edge' is an alignment/suspension symptom, not routine rotation"
+  confusables:
+    - vs: steering_wheel_shake_at_highway_speed
+      discriminator_question: "Routine rotation, or is there a shake or vibration you're trying to get rid of?"
+    - vs: uneven_tire_wear
+      discriminator_question: "Just keeping up on rotation, or have you noticed the tires wearing unevenly or on one edge?"
+  safety_flag: none
+  notes: "Routine maintenance line. 'Balance' asked FOR a vibration is symptom-driven — the vibration domain should own it so the real cause (balance vs bent wheel vs bearing vs alignment) gets diagnosed. Cross-domain confusables: vibration + tires domains."
+
+- category: request
+  subcategory: alignment_request
+  display: "Wheel alignment"
+  customer_voice_anchors:
+    - "need an alignment"
+    - "check alignment and re align if needed"
+    - "wheel alignment please"
+    - "steering wheel is crooked, want an alignment"
+    - "just got new tires somewhere else, need an alignment"
+    - "need an alinement"
+    - "4 wheel alignment"
+    - "car pulls a little, figure i need an alignment"
+    - "hit a curb, want the alignment checked"
+    - "tires wore out fast, shop said get an alignment next time"
+  required_slots:
+    - alignment_reason: "routine / after new tires / pulling or crooked wheel / after an impact — impact-as-cause moves it to the situational domain"
+    - impact_event: "pothole/curb/accident named as cause — situational after_accident_or_impact takes over"
+    - pull_symptom: "active pulling/drifting is a steering_handling-domain symptom; alignment is one possible fix, not the diagnosis"
+  confusables:
+    - vs: pulling_or_drifting
+      discriminator_question: "Is the car actively pulling or drifting on its own, or is this a preventive/after-new-tires alignment?"
+    - vs: after_accident_or_impact
+      discriminator_question: "Did this start after hitting a pothole, curb, or something else? If so we should check the whole front end, not just align it."
+    - vs: new_tires_request
+      discriminator_question: "Alignment only, or tires too?"
+  safety_flag: none
+  notes: "Bookable service. Curb and pothole strikes commonly bend tie rods and knock alignment out even when nothing looks damaged [S7][S8] — when the customer names an impact as the cause, the situational post-impact entry wins so the shop inspects before aligning. Active pull/drift language is a cross-domain confusable with steering_handling."
+
+- category: request
+  subcategory: state_inspection_emissions
+  display: "State inspection / emissions"
+  customer_voice_anchors:
+    - "state inspection"
+    - "need my inspection done, sticker expired"
+    - "inspection and emissions"
+    - "due for inspection this month"
+    - "safety and emissions inspection"
+    - "reinspection, already fixed what failed"
+    - "need a sticker"
+    - "car failed emissions, need it retested"
+    - "annual inspection"
+    - "just moved here, car needs its first inspection"
+    - "inspection due end of month, whats open"
+  required_slots:
+    - inspection_type: "safety / emissions / both / reinspection — what gets booked"
+    - due_or_expired: "sticker month, expired, or grace situation — urgency"
+    - failed_previously: "a prior FAIL (esp. emissions with a check-engine light) means diagnosis/repair first, then retest"
+    - registration_change: "new-to-state registrations often need an initial inspection"
+  confusables:
+    - vs: general_checkup
+      discriminator_question: "The official state inspection sticker, or an open-ended look-over to see what the car needs?"
+    - vs: check_engine_light
+      discriminator_question: "Is the check engine light on? It usually has to be fixed before the car can pass emissions."
+    - vs: pre_trip_inspection
+      discriminator_question: "The state-required inspection, or a check-up before a trip?"
+  safety_flag: none
+  notes: "Regulatory service line — the shop books it, no diagnosis (e.g., Pennsylvania requires an annual safety inspection plus county-based emissions testing [S13]; details vary by state — keep shop-agnostic). 'Annual inspection' is ambiguous: sticker/state/legal framing = this entry; wellness framing = general_checkup. A failed-emissions retest with a lit CEL is a cross-domain confusable with warning_light/check_engine_light."
+
+- category: request
+  subcategory: ac_recharge_request
+  display: "A/C recharge"
+  customer_voice_anchors:
+    - "need my ac recharged"
+    - "ac needs a recharge before summer"
+    - "freon top off"
+    - "recharge a/c"
+    - "can you put freon in it"
+    - "ac recharge, it does this every year"
+    - "just want a can of refrigerant put in"
+    - "AC RECHARGE AND CHECK"
+    - "a/c is low on juice i think"
+    - "wife says the air needs charged"
+  required_slots:
+    - cooling_symptom_present: "blowing warm/weak RIGHT NOW is an hvac-domain symptom; a preseason top-off ask stays here"
+    - recharge_history: "recharged before and lost cooling again — strong leak signal, route toward leak testing"
+    - timeframe: "how long since it last blew cold — fast loss = bigger leak"
+  confusables:
+    - vs: ac_blows_warm
+      discriminator_question: "Is the A/C actually blowing warm right now, or is this a just-in-case top-off before the season?"
+    - vs: ac_leak
+      discriminator_question: "Has it been recharged before and gone warm again? That points to a leak that needs finding, not another top-off."
+  safety_flag: none
+  notes: "Customers ask in these exact words, so the anchor exists — but the A/C is a sealed system: low refrigerant means it leaked out, and recharging is not scheduled maintenance [S11][S12]. The booking flow should surface the leak-vs-recharge discriminator instead of silently booking a top-off. Cross-domain confusable with the hvac domain (warm air symptom) and leak domain."
+
+- category: request
+  subcategory: battery_replacement_request
+  display: "Battery test / replacement"
+  customer_voice_anchors:
+    - "i need a new battery"
+    - "want my battery replaced"
+    - "battery is 6 years old, just replace it"
+    - "can you test my battery"
+    - "autozone said my battery is bad"
+    - "Replace battery"
+    - "need a battery for my f150"
+    - "battery keeps dying, i just want a new one"
+    - "check battery and replace if needed"
+    - "how much is a battery installed"
+  required_slots:
+    - symptom_present: "won't start / clicks / slow crank / died while driving — those own the routing (no_start or electrical domain)"
+    - battery_age_or_test: "age or a prior parts-store test result — supports a straight replacement"
+    - test_vs_replace: "wants a test first vs committed to replacement"
+    - repeat_failures: "'keeps dying' suggests charging-system or parasitic-draw diagnosis, not just a battery"
+  confusables:
+    - vs: wont_start_clicks
+      discriminator_question: "Is the car failing to start right now, or are you replacing the battery before it becomes a problem?"
+    - vs: battery_drains_overnight
+      discriminator_question: "Does the new-ish battery keep going dead? Then something is draining or not charging it — that needs testing, not just a battery."
+    - vs: battery_charging_light
+      discriminator_question: "Is the red battery light coming on while you drive?"
+  safety_flag: none
+  notes: "Bare replacement/test request. 'Keeps dying' language is the classic mis-description: the battery may be the victim of a bad alternator or a parasitic draw — cross-domain confusable with the electrical/no_start domains. A red charging-system light while driving belongs to warning_light."
+
+- category: request
+  subcategory: replace_specific_part
+  display: "Replace a specific part"
+  customer_voice_anchors:
+    - "replace front wheel hub drivers side"
+    - "need a starter put in"
+    - "rack replacement"
+    - "replace the serpentine belt"
+    - "need new wiper blades"
+    - "headlight bulb replacement"
+    - "REPLACE CABIN AIR FILTER"
+    - "i have the part already, just need it installed"
+    - "put a new thermostat in it"
+    - "spark plugs replaced"
+    - "need my water pump done, already know thats whats bad"
+    - "swap out the alternator for me"
+  required_slots:
+    - part_named: "which part — scopes labor and parts quoting"
+    - parts_source: "shop-supplied vs customer-supplied part — many shops restrict or won't warranty customer parts; advisor policy check"
+    - symptom_present: "if a symptom is driving the ask, the symptom domain leads and the named part becomes the customer's theory"
+    - diagnosis_confidence: "who decided this part is needed (self / another shop / prior visit) — second-opinion vs straight install"
+  confusables:
+    - vs: second_opinion
+      discriminator_question: "Do you want us to just install that part, or first confirm it's actually what the car needs?"
+    - vs: accessory_doesnt_work
+      discriminator_question: "Is something not working that you believe this part will fix — or is this a simple replace-it request (bulb, blade, filter)?"
+    - vs: approve_recommended_work
+      discriminator_question: "Is this work we already recommended to you, or something new?"
+  safety_flag: none
+  notes: "The generic named-action request — covers everything from wiper blades to a starter. Small commodity items (blades, bulbs, filters) book directly. Big-ticket parts named WITHOUT a shop diagnosis should surface a gentle confirm-the-diagnosis offer (customers often name the wrong part). Cross-domain confusable with electrical/accessory symptom entries ('headlight out' the SYMPTOM vs 'replace headlight bulb' the REQUEST)."
+
+- category: request
+  subcategory: fluid_flush_service
+  display: "Fluid flush / exchange"
+  customer_voice_anchors:
+    - "coolant flush"
+    - "brake fluid flush"
+    - "BRAKE SYSTEM FLUSH"
+    - "transmission fluid change"
+    - "trans flush, its at 90k"
+    - "power steering fluid exchange"
+    - "differential service"
+    - "radiator flush and fill"
+    - "want all my fluids checked and topped off"
+    - "coolant exchange, they said mine looked brown"
+  required_slots:
+    - fluid_named: "coolant / brake / transmission / power steering / diff / transfer case — which service"
+    - interval_vs_condition: "mileage-based upkeep vs 'fluid looked bad' (condition-driven, may warrant inspection)"
+    - symptom_present: "leaks, overheating, hard shifting — symptom domains lead if present"
+  confusables:
+    - vs: coolant_leak
+      discriminator_question: "Routine coolant service, or are you losing coolant / seeing puddles or an overheat?"
+    - vs: transmission_shifting_issue
+      discriminator_question: "Mileage-based fluid service, or is the transmission acting differently when it shifts?"
+    - vs: oil_change
+      discriminator_question: "Engine oil, or one of the other fluids (coolant, brake, transmission)?"
+  safety_flag: none
+  notes: "Maintenance line — bookable without diagnosis. Watch the classic hidden-symptom versions: 'trans flush because it's slipping' (performance domain leads) and 'coolant flush because it keeps running hot' (cooling/leak domain leads). Cross-domain confusables with leak + performance domains."
+
+- category: request
+  subcategory: diagnostic_scan_request
+  display: "Diagnostic scan / read codes"
+  customer_voice_anchors:
+    - "can you just scan it"
+    - "read the codes for me"
+    - "hook it up to the computer"
+    - "i want a full diagnostic run"
+    - "just want to know whats wrong, run the scanner"
+    - "my code reader said P0420, can you confirm"
+    - "full diagnostic please"
+    - "check what codes are stored"
+    - "scan it — the light was on last week but went off"
+    - "put it on the machine and tell me whats up"
+  required_slots:
+    - light_state: "check-engine light ON now / was on, went off / never on — a lit CEL belongs to the warning_light domain"
+    - codes_already_known: "customer-scanned codes in hand — capture them; they seed the diagnosis"
+    - goal: "diagnose-and-fix here vs information-only ('I'll fix it myself') — advisor policy on diag-fee application"
+  confusables:
+    - vs: check_engine_light
+      discriminator_question: "Is the check engine light on right now? Then let's book it as a check-engine diagnosis."
+    - vs: vague_concern_needs_triage
+      discriminator_question: "Is there a symptom you're chasing, or do you just want the computer checked?"
+  safety_flag: none
+  notes: "Customers use 'diagnostic' as a magic word — most scan requests are really a lit warning light (cross-domain: warning_light) or a symptom they hope the machine will name (route the symptom). The bare 'just scan it, no light, no symptom' request books as a general diagnostic appointment. A FLASHING check-engine light mentioned anywhere = advise_immediately in the warning_light domain."
+
+- category: request
+  subcategory: second_opinion
+  display: "Second opinion on another shop's diagnosis"
+  customer_voice_anchors:
+    - "another shop said i need a new transmission, want a second opinion"
+    - "dealer quoted me $2400 for brakes, is that legit"
+    - "was told wheel bearings were needed, wants second opinion"
+    - "got a huge estimate somewhere else, can you double check it"
+    - "shop said head gasket. i dont trust them"
+    - "want you to verify what the dealership found"
+    - "someone said my struts are shot but it feels fine to me"
+    - "can you look at this estimate and tell me whats actually needed"
+    - "getting quotes — they said i need a catalytic converter"
+  required_slots:
+    - prior_diagnosis: "the system/part the other shop named — the vehicle SYSTEM named takes routing control; second_opinion is metadata on it"
+    - prior_source: "dealer / chain / independent / friend — context for the advisor"
+    - estimate_amount: "if given — sizing the decision"
+    - symptom_present: "whether the customer themselves feels/hears anything — corroborating symptom routes its domain"
+  confusables:
+    - vs: replace_specific_part
+      discriminator_question: "Do you want us to verify the diagnosis first, or go ahead and do the repair they recommended?"
+    - vs: approve_recommended_work
+      discriminator_question: "Was it our recommendation you're acting on, or another shop's you want checked?"
+  safety_flag: none
+  notes: "Routing rule: the NAMED system keeps control — 'second opinion on wheel bearings' books the suspension/bearing check with second_opinion recorded as the request type. This entry anchors the FRAMING so the embedding can catch estimate-verification asks that name no system ('look at this quote'). Cross-domain by construction — it can point at any symptom domain."
+
+- category: request
+  subcategory: approve_recommended_work
+  display: "Approve previously recommended work"
+  customer_voice_anchors:
+    - "you recommended rear brakes last visit, ready to get that done"
+    - "want to do the work you quoted me"
+    - "go ahead with the stuff i declined last time"
+    - "ready to do the cabin filter and flush you suggested"
+    - "you guys found a leak last time, lets fix it now"
+    - "calling about the estimate you sent over, lets book it"
+    - "do the previously declined work"
+    - "that thing on my last invoice i said no to — i want it done now"
+    - "ok to proceed with the repairs from the inspection"
+  required_slots:
+    - work_reference: "which visit/estimate/invoice line — the advisor must pull the record"
+    - scope_confirmation: "all of it vs specific lines — avoid assuming the whole estimate"
+    - new_symptom_since: "anything changed since the recommendation — may need re-inspection"
+  confusables:
+    - vs: booking_logistics
+      discriminator_question: "Booking approved work we already quoted, or a question about an existing appointment?"
+    - vs: brake_service_request
+      discriminator_question: "Work we recommended, or a brake job you're asking about fresh?"
+  safety_flag: none
+  notes: "The customer-voice version of the shop's 'previously declined' work-order lines. No diagnosis — it's record lookup + booking. Keep distinct from second_opinion (their shop's rec vs another shop's) and from fresh requests."
+
+- category: request
+  subcategory: estimate_quote_request
+  display: "Price quote for a named job"
+  customer_voice_anchors:
+    - "how much for a brake job on a 2016 civic"
+    - "price for an alternator replacement"
+    - "can i get a quote for struts"
+    - "what do you charge for an oil change"
+    - "ballpark for a timing belt?"
+    - "how much would it cost to fix an ac leak"
+    - "quote to replace a catalytic converter"
+    - "whats a water pump run these days"
+    - "how much do u charge for an oil change and tire rotation?"
+  required_slots:
+    - job_named: "the specific job/part being priced — no job named means this is booking_logistics, not a quote"
+    - vehicle_info: "year/make/model — most quotes are vehicle-specific"
+    - diagnosis_known: "quoting a confirmed repair vs price-shopping a guess — guesses may need a diag first"
+  confusables:
+    - vs: booking_logistics
+      discriminator_question: "A price for a specific job on your car, or general questions about hours and how we work?"
+    - vs: second_opinion
+      discriminator_question: "Just the price, or do you also want us to confirm the repair is really needed?"
+  safety_flag: none
+  notes: "The legacy classifier null-routed price questions to an advisor; this seed keeps them classifiable so the assistant can hand off WITH the named job attached. Route the quote to the named job's request entry when one exists (tires -> new_tires_request, brakes -> brake_service_request). Price question naming NO job at all = out_of_scope/booking_logistics."
+
+- category: request
+  subcategory: recall_or_warranty_question
+  display: "Recall / warranty coverage question"
+  customer_voice_anchors:
+    - "is there a recall on my car for this"
+    - "i got a recall letter, can you do the recall work"
+    - "will my warranty cover this"
+    - "my extended warranty company needs a claim filed, do you work with them"
+    - "theres a TSB for this exact problem, i read about it online"
+    - "airbag recall — can you handle that or is it dealer only"
+    - "can you do warranty work"
+    - "the powertrain warranty is still active, does that change anything"
+    - "carshield is my warranty, do you take it"
+  required_slots:
+    - recall_vs_warranty: "manufacturer recall / factory warranty / extended-service contract — three different answers"
+    - symptom_present: "the underlying problem, if any — its domain still owns the diagnosis"
+    - warranty_provider: "factory vs third-party contract — determines whether the shop can bill it"
+  confusables:
+    - vs: services_not_offered
+      discriminator_question: "A safety recall (free at the manufacturer's dealer), or repair work you'd like us to handle here?"
+    - vs: diagnostic_scan_request
+      discriminator_question: "Do you want us to diagnose the problem itself, or mainly to sort out who pays for it?"
+  safety_flag: none
+  notes: "Safety-recall remedies are performed free of charge through the vehicle manufacturer's dealers [S16] — the advisor typically redirects recall-letter work to a dealer. Factory-warranty-era maintenance and third-party extended-service-contract repairs generally CAN be done at an independent shop (Magnuson-Moss; warranty can't be voided just for using one) [S17]. If a symptom is described, its domain leads and the coverage question is metadata."
+
+# ---------------------------------------------------------------------------
+# SITUATIONAL INTAKE — the situation dominates; a human advisor usually takes
+# these. The causal-tie rule applies: the situation must be the STATED CAUSE
+# to override a specific symptom the customer also describes.
+# ---------------------------------------------------------------------------
+
+- category: situational
+  subcategory: after_accident_or_impact
+  display: "After an accident / impact"
+  customer_voice_anchors:
+    - "got rear ended last weekend, bumper looks fine but it drives different now"
+    - "hit a huge pothole and now the front end feels off"
+    - "slid into a curb and now i hear a thumping"
+    - "was in a fender bender, want the car checked out"
+    - "hit a deer last night, seems ok but want it looked over"
+    - "curbed it hard parking and now the steering wheel sits crooked"
+    - "accident a few weeks back, body shop fixed the outside but somethings still not right"
+    - "ran over something on the highway, want the underneath looked at"
+    - "my wife hit a parking block, no lights on but its making a noise now"
+    - "SHE WAS IN ACCIDENT RECENTLY, CHECK VEHICLE OVER"
+    - "pothole season got me, need the front end checked"
+  required_slots:
+    - impact_type: "collision / pothole / curb / road debris / animal — different inspection focus"
+    - when_it_happened: "just now vs weeks ago — urgency and insurance timing"
+    - symptom_since: "what changed after (pull, noise, vibration, crooked wheel) — the evidence list for the inspection"
+    - airbags_deployed: "deployment = collision-level event; SRS work and insurance likely involved"
+    - insurance_involved: "claim open? affects who authorizes the work"
+    - drivable_state: "drivable / limping / needs tow"
+  confusables:
+    - vs: alignment_request
+      discriminator_question: "Did the crooked wheel or pull start after the impact? Then the whole front end should be inspected, not just aligned."
+    - vs: suspension_noise_or_clunk
+      discriminator_question: "Is the noise something that started with the impact, or an older problem you'd been hearing before?"
+    - vs: services_not_offered
+      discriminator_question: "Is the concern how it drives (our side), or the body/paint damage (a body shop's side)?"
+  safety_flag: none
+  notes: "Even low-speed curb/pothole hits commonly bend tie rods and control arms and knock alignment out with no visible damage [S7][S8] — the correct booking is an inspection, not a straight alignment. Cosmetic-only damage routes to a body shop (out_of_scope/services_not_offered). Cross-domain: overlaps steering_handling (pull, crooked wheel), noise, and warning_light (airbag light after impact — that domain owns a lit SRS light). Escalate in conversation if the customer describes steering or braking loss — that is safety_concern territory."
+
+- category: situational
+  subcategory: symptom_after_recent_service
+  display: "Problem right after recent service / repair"
+  customer_voice_anchors:
+    - "you replaced my brakes last month and theyre still squealing"
+    - "check engine light came back on right after the repairs"
+    - "just had the alternator done somewhere else and the battery light is on again"
+    - "ac was recharged two months ago, blowing hot again"
+    - "ever since the oil change theres a burning smell"
+    - "picked it up yesterday and now theres a noise it never made before"
+    - "still overheating after the water pump got replaced"
+    - "had tires put on last week and now the steering wheel shakes"
+    - "same problem as before, whatever you fixed didnt take"
+    - "multiple repairs completed still misfiring"
+    - "brakes done at another shop last week and now theres a grinding worse than before"
+  required_slots:
+    - work_done: "what was done, when, and WHERE (this shop vs another) — same-shop comebacks are a warranty/rework workflow"
+    - symptom_relation: "same problem persisting / came back / brand-new symptom since the work"
+    - causal_claim: "customer explicitly ties it to the work ('since', 'right after', 'still') — the trigger for this entry"
+  confusables:
+    - vs: approve_recommended_work
+      discriminator_question: "Is something wrong after the recent work, or are you booking work we recommended?"
+    - vs: the_underlying_symptom_domain
+      discriminator_question: "Do you think the recent work caused this, or is it a separate new problem you want diagnosed on its own?"
+  safety_flag: none
+  notes: "The causal tie is what fires this entry ('after X, now Y' / 'still Y after X'). Prior work mentioned only as backstory before a fresh symptom does NOT — route the symptom to its domain. Same-shop comebacks should be flagged to the advisor as potential warranty/rework (distinct workflow, often no charge). Cross-domain by construction: pairs with whichever symptom domain the complaint belongs to (offer both when genuinely mixed)."
+
+- category: situational
+  subcategory: car_sat_unused
+  display: "Car has been sitting unused"
+  customer_voice_anchors:
+    - "my dads truck sat in the garage for two years, want to get it road ready"
+    - "car has basically been parked since covid"
+    - "been sitting all winter, what does it need before i drive it"
+    - "inherited my moms car, its been sitting like 8 months"
+    - "just got back from deployment and the car hasnt moved in a year"
+    - "old project car, want it gone through before i put it on the road"
+    - "sat 6 months, battery was dead, jumped it but want the whole thing checked"
+    - "tires look low and it smells weird after sitting so long"
+    - "kid left the car here all semester, needs a once over before the drive back"
+    - "storage unit find, hasnt run since 2022"
+  required_slots:
+    - sit_duration: "weeks vs months vs years — scales the road-ready checklist"
+    - storage_conditions: "garage vs outside — weather/rodent exposure"
+    - runs_now: "started since sitting? a specific won't-crank/won't-start complaint routes the no_start domain first"
+    - goal: "make-it-road-ready look-over vs one specific fix"
+  confusables:
+    - vs: wont_start_after_sitting
+      discriminator_question: "Is the main problem that it won't start right now, or do you want the whole car gone through before using it again?"
+    - vs: new_tires_request
+      discriminator_question: "Are the tires cracked or dry-rotted from sitting? Those need replacement, which we can quote as part of the check."
+    - vs: general_checkup
+      discriminator_question: "Has it been parked a long time, or in regular use and just due for a look-over?"
+  safety_flag: none
+  notes: "Long-sitting cars cluster predictable problems: discharged battery, tire flat spots and dry rot, degraded fuel, rusted brake rotors, deteriorated fluids, and rodent damage to wiring [S5][S6]. The framing ('make it safe to drive again') books an advisor-scoped road-ready inspection. A single leading symptom (won't crank NOW) hands control to the no_start/electrical domain with the sit as context — cross-domain confusable there."
+
+- category: situational
+  subcategory: pre_trip_inspection
+  display: "Pre-trip check"
+  customer_voice_anchors:
+    - "driving to florida next month, want a once over first"
+    - "road trip check before we head out west"
+    - "wellness check as ill be driving to boston"
+    - "taking the car cross country, want to know its up for it"
+    - "long trip coming up — check the tires brakes and fluids"
+    - "vacation next week, make sure this thing wont leave us stranded"
+    - "towing a camper to the lake this summer, want it all checked"
+    - "GENERAL CHECK OVER TRIP"
+    - "pre trip inspection please"
+    - "kid is driving to school out of state, look it over for me"
+  required_slots:
+    - trip_timing: "when they leave — booking deadline"
+    - trip_profile: "distance / towing / mountain driving — shapes the checklist (towing adds cooling + brakes emphasis)"
+    - known_worries: "any symptom they already feel — that symptom's domain leads, trip becomes context"
+  confusables:
+    - vs: state_inspection_emissions
+      discriminator_question: "A trip check-up, or the official state inspection sticker?"
+    - vs: general_checkup
+      discriminator_question: "Is there a specific trip coming up, or just a general look-over?"
+    - vs: a_named_symptom_domain
+      discriminator_question: "Is something already acting up that worries you for the trip? Let's book that specifically — the trip makes it more worth fixing right."
+  safety_flag: none
+  notes: "Open-ended condition assessment — advisor books an inspection. A trip mentioned as CONTEXT for a real symptom ('brakes grinding and i have a road trip friday') does NOT land here — the symptom domain wins and the trip raises urgency. Trip dates are deadlines, not driving conditions — don't extract them as symptom facts."
+
+- category: situational
+  subcategory: pre_purchase_inspection
+  display: "Pre-purchase inspection (car I might buy)"
+  customer_voice_anchors:
+    - "thinking about buying a used car, can you inspect it before i commit"
+    - "pre purchase inspection on a truck im looking at"
+    - "can the seller drop a car off for you to check out for me"
+    - "buying from a private seller, want a mechanic to go over it first"
+    - "PPI on a 2019 tacoma"
+    - "found a car on marketplace — what would it cost for you to check it"
+    - "my daughter is buying her first car, can you look at it before she pays"
+    - "dealer says its certified but i want an independent set of eyes"
+    - "used car inspection before purchase, how does that work"
+  required_slots:
+    - vehicle_access: "who brings the car and when — seller cooperation is the usual bottleneck"
+    - purchase_timeline: "how soon they must decide — booking urgency"
+    - seller_type: "private / dealer / auction — shapes what records exist"
+  confusables:
+    - vs: general_checkup
+      discriminator_question: "A car you're thinking of buying, or one you already own?"
+    - vs: estimate_quote_request
+      discriminator_question: "An inspection of the whole car before you buy, or pricing for a specific repair?"
+  safety_flag: none
+  notes: "Standard shop offering: an independent mechanical assessment before purchase, typically ~$100-300, valued for surfacing hidden problems and negotiating leverage [S9][S10]. Distinct from just-bought check-ups (general_checkup) by timing — the customer doesn't own the car yet, so scheduling revolves around the seller."
+
+- category: situational
+  subcategory: general_checkup
+  display: "General check-up / once-over"
+  customer_voice_anchors:
+    - "just want a general check up, nothing specific"
+    - "just bought a used focus, want an overall check and an oil change"
+    - "havent had it looked at in years, give it a once over"
+    - "warranty is expiring, want to make sure everything is ok"
+    - "peace of mind check"
+    - "new to the area, want a baseline check with a shop i can trust"
+    - "make sure everythings good before winter"
+    - "full vehicle inspection, tell me what it needs"
+    - "my son is taking this car to college, check it over"
+    - "just hit 150k, what should i be doing to keep it going"
+    - "no problems, just want it looked at bumper to bumper"
+  required_slots:
+    - motivation: "just-bought / warranty expiring / seasonal / high mileage / new customer — helps the advisor scope"
+    - known_worries: "anything specific nagging them — a named worry routes its domain and the check-up rides along"
+    - records_available: "service history known or a blank slate"
+  confusables:
+    - vs: state_inspection_emissions
+      discriminator_question: "An open-ended look-over, or the official state inspection?"
+    - vs: scheduled_maintenance_service
+      discriminator_question: "Whatever the factory schedule says is due, or a condition assessment of the whole car?"
+    - vs: vague_concern_needs_triage
+      discriminator_question: "Is something actually acting up, or is nothing wrong and you just want it checked?"
+  safety_flag: none
+  notes: "The 'nothing is wrong, look it over' bucket — includes just-bought once-overs and warranty-expiring checks. The vague_concern boundary matters most: check-up = NO active worry; vague concern = something IS wrong but the customer can't name it. Those two must not collapse into each other — they book differently (inspection vs triage-then-diagnosis)."
+
+- category: situational
+  subcategory: multiple_symptoms
+  display: "Multiple problems / not sure where to start"
+  customer_voice_anchors:
+    - "honestly not sure whats wrong — it rattles, the heat smells weird, and the steering feels loose"
+    - "got like 3 different problems, where do i even start"
+    - "a/c not cooling, maybe a fuse. also oil change"
+    - "coolant leak, window motor stuck, oil change and many more"
+    - "theres a bunch of stuff going on with this car"
+    - "the whole dashboard lit up and its making noises too"
+    - "car is falling apart — brakes squeak, it pulls right, and it stalls sometimes"
+    - "i have a list of things, too many to type here"
+    - "several issues, some electrical some not"
+    - "old car, lots of little problems, need someone to sort out whats worth fixing"
+  required_slots:
+    - symptom_list: "capture every named problem verbatim — the advisor triages"
+    - primary_if_any: "ONE dominant symptom with minor asides routes the dominant one instead of landing here"
+    - lights_involved: "a many-lights-at-once dashboard is the warning_light domain's multi-light entry when lights are the whole story"
+    - budget_frame: "'whats worth fixing' asks for prioritization — advisor conversation"
+  confusables:
+    - vs: multiple_warning_lights
+      discriminator_question: "Is it mainly a bunch of dashboard lights at once, or several different problems you can feel and hear?"
+    - vs: a_single_dominant_symptom
+      discriminator_question: "Is there one main thing you'd want fixed first if you had to pick?"
+    - vs: vague_concern_needs_triage
+      discriminator_question: "Can you name the problems (even several), or is it more that something feels wrong and you can't pin it down?"
+  safety_flag: none
+  notes: "Co-equal problems with no single primary — advisor handoff, don't force one category. One dominant symptom + asides = route the dominant symptom. Lights-only Christmas-tree = warning_light domain (cross-domain confusable). Any single item in the list that is a safety-system loss escalates per that domain's rules."
+
+- category: situational
+  subcategory: safety_concern_not_safe_to_drive
+  display: "Doesn't feel safe to drive"
+  customer_voice_anchors:
+    - "i dont feel safe driving it anymore"
+    - "the brakes gave out, im scared to drive it"
+    - "steering feels like its about to let go, im not driving it"
+    - "started making an awful noise on the highway so i pulled over, too scared to keep going"
+    - "my mechanic said do not drive this car"
+    - "is this even safe to drive?? something is really wrong"
+    - "feels like the wheel is going to fall off"
+    - "smells like gas inside, not driving it until someone looks"
+    - "no brake pressure at all"
+    - "it did something terrifying on the freeway, im shook"
+  required_slots:
+    - what_failed: "if a system IS named (brakes/steering/wheel/fuel smell), that domain gets flagged alongside — total loss of a safety system is not a routine inspection"
+    - drivable_state: "still driving it scared / parked at home / stranded — determines tow advice"
+    - vehicle_location: "home / roadside / work — logistics for getting it in safely"
+  confusables:
+    - vs: a_named_symptom_plus_passing_safety_question
+      discriminator_question: "Is there one specific thing (a light, a noise, the brakes) you want checked and you're mostly asking if it's OK to drive — or do you genuinely not feel safe in this car?"
+    - vs: breakdown_tow_in
+      discriminator_question: "Is the car still drivable but scary, or has it already quit on you?"
+  safety_flag: advise_immediately
+  notes: "Fear dominating with no nameable symptom, or an outright safety-system failure ('brakes gave out', 'no brake pressure', 'told not to drive it'). Advise immediately: do not drive; arrange a tow. The mirror rule: a NAMED diagnosable symptom with a passing 'is it safe?' stays in that symptom's domain — the safety question alone doesn't override. Cross-domain escalation partner for brakes, steering, fuel-smell, and wheel domains."
+
+- category: situational
+  subcategory: breakdown_tow_in
+  display: "Broke down / being towed in"
+  customer_voice_anchors:
+    - "car broke down on 78, getting it towed to you"
+    - "died on the highway and wont start back up, can i have it towed there"
+    - "im stranded at work and the car wont do anything"
+    - "tow truck is bringing my car in, no idea whats wrong"
+    - "TOW IN"
+    - "broke down this morning, aaa is dropping it at your shop"
+    - "can i drop it after hours? it barely made it home"
+    - "car quit on me at a light, had to push it off the road"
+    - "its on the flatbed now, heads up its coming to you"
+  required_slots:
+    - stranded_now: "actively stranded vs car already home/at the shop — immediate advice vs intake"
+    - symptom_at_failure: "what it did when it quit (died, overheated, loud bang, lost power) — seeds the diagnostic domain candidates"
+    - tow_arranged: "AAA/roadside on the way vs needs the shop's tow referral"
+    - keys_dropoff: "after-hours drop logistics — advisor handles"
+  confusables:
+    - vs: wont_start_at_home
+      discriminator_question: "Did it quit while driving, or is it at home and just won't start?"
+    - vs: died_while_driving
+      discriminator_question: "Can you describe what happened when it quit (lights, noises, smoke)? If so we can book that specific diagnosis."
+    - vs: safety_concern_not_safe_to_drive
+      discriminator_question: "Has it already quit, or is it running but you're afraid to drive it?"
+  safety_flag: advise_immediately
+  notes: "Tow-in ALONE (no describable symptom) is an advisor intake — never guess a service. Tow-in PLUS a specific symptom routes the symptom ('towed in, doesn't shift' = transmission; the tow is how it arrived, not the concern). Advise immediately when the customer is stranded NOW — human contact beats a wizard flow. Cross-domain confusable with no_start and electrical died-while-driving entries."
+
+# ---------------------------------------------------------------------------
+# RESERVED CATEGORY: general_diagnostic — broad triage. Also the classifier's
+# fallback when no domain category clears the confidence gate.
+# ---------------------------------------------------------------------------
+
+- category: general_diagnostic
+  subcategory: vague_concern_needs_triage
+  display: "Something's wrong — needs triage"
+  customer_voice_anchors:
+    - "car feels weird"
+    - "somethings off with my car lately"
+    - "its just not driving right"
+    - "the car is acting up again"
+    - "doesnt feel like it used to"
+    - "runs funny"
+    - "something aint right but i cant explain it"
+    - "my car is doing a thing"
+    - "feels off at times, hard to describe"
+    - "not sure, it just seems wrong somehow"
+    - "been acting funny since last week"
+    - "somethings up with it, you guys will figure it out"
+  required_slots:
+    - sensory_channel: "the FIRST triage question: is it something you feel, hear, smell, see (light/leak), or how it drives?"
+    - when_noticed: "when it started / how often — narrows candidates"
+    - driving_conditions: "at speed / at idle / braking / turning / cold start — the second triage cut"
+    - drivable_state: "still comfortable driving it? escalates if not"
+  confusables:
+    - vs: general_checkup
+      discriminator_question: "Is something actually wrong (even if hard to describe), or is nothing wrong and you want it looked over?"
+    - vs: multiple_symptoms
+      discriminator_question: "Is it one hard-to-describe thing, or several problems you can name?"
+    - vs: every_symptom_domain
+      discriminator_question: "Would you say it's more a sound, a feeling, a smell, or something you see? (first chip of the triage flow)"
+  safety_flag: none
+  notes: "RESERVED-CATEGORY DEFINITION: general_diagnostic exists for (a) genuinely vague utterances like these and (b) the classifier FALLBACK — any input where no domain category clears the embedding/LLM confidence threshold must land here rather than a low-confidence guess. The booking flow should run broad triage chips (feel/noise/smell/light/when) instead of guessing. The moment a triage answer names a channel, the matching symptom domain takes over. 'Weird noise up front' is NOT this entry — a noise word routes to the noise domain's triage."
+
+- category: general_diagnostic
+  subcategory: intermittent_issue_cant_reproduce
+  display: "Intermittent problem — comes and goes"
+  customer_voice_anchors:
+    - "it only does it sometimes, of course it wont do it now"
+    - "makes the noise maybe once a week"
+    - "problem comes and goes, never when a mechanic is around"
+    - "acts up whenever it feels like it — couldnt make it happen at the dealership"
+    - "only does it first thing in the morning then its fine all day"
+    - "randomly it will just do it, no pattern i can find"
+    - "happened twice last month and its been fine since"
+    - "i took a video of it doing it because it never acts up at the shop"
+    - "every now and then it does this thing, cant predict it"
+  required_slots:
+    - symptom_when_present: "what actually happens when it acts up — if nameable, THAT domain owns routing and intermittency becomes a fact"
+    - frequency_pattern: "how often / any trigger (cold, rain, warm engine, rough road) — reproduction plan"
+    - evidence_available: "video/audio/witness — hugely valuable for intermittents, ask for it"
+  confusables:
+    - vs: the_underlying_symptom_domain
+      discriminator_question: "When it does act up, what exactly does it do? (the answer routes it — intermittency is a fact, not a category)"
+    - vs: vague_concern_needs_triage
+      discriminator_question: "When it happens, can you describe it — or is it vague even in the moment?"
+  safety_flag: none
+  notes: "Mostly a triage aid: a nameable intermittent symptom belongs to its symptom domain with frequency/conditions carried as facts. This entry catches the framing where the INTERMITTENCY dominates the utterance and no symptom is named. Encourage evidence capture (video of the noise/behavior) — standard advice for can't-reproduce complaints."
+
+# ---------------------------------------------------------------------------
+# RESERVED CATEGORY: out_of_scope — not a car-repair concern. Routes to a
+# friendly re-prompt / front office / referral, NEVER to a diagnostic category
+# and NEVER to a guessed service.
+# ---------------------------------------------------------------------------
+
+- category: out_of_scope
+  subcategory: booking_logistics
+  display: "Appointment / logistics question"
+  customer_voice_anchors:
+    - "need to reschedule my appointment from friday"
+    - "what time do you close today"
+    - "do you take walk ins"
+    - "is my car ready yet"
+    - "can i pay over the phone and pick up after hours"
+    - "do you have loaner cars"
+    - "how long will it take"
+    - "running late for my 10 oclock, sorry"
+    - "do i need an appointment or can i just come by"
+    - "wheres my invoice from last week"
+    - "can you email me the estimate"
+  required_slots:
+    - logistics_intent: "reschedule / cancel / status / hours / payment / dropoff — front-office routing"
+    - existing_appointment: "references a booked visit vs a general question"
+  confusables:
+    - vs: estimate_quote_request
+      discriminator_question: "A price for a specific job on your car, or a general question about the shop?"
+    - vs: approve_recommended_work
+      discriminator_question: "Booking work we already recommended, or managing an existing appointment?"
+  safety_flag: none
+  notes: "RESERVED out_of_scope member: not a vehicle concern. Hand to the booking/FAQ flow or front office. Never extract concern facts from booking language ('do we need an appointment', 'give me a call') — those are logistics, not symptoms or request types."
+
+- category: out_of_scope
+  subcategory: non_repair_business
+  display: "Business inquiry (not a repair)"
+  customer_voice_anchors:
+    - "are you hiring mechanics"
+    - "do you buy used cars"
+    - "im a parts vendor, who handles purchasing"
+    - "would you sponsor our little league team"
+    - "do you take used oil for recycling"
+    - "want to sell my car — know anyone looking?"
+    - "im an automotive student, do you take co-ops"
+    - "can i rent a bay to work on my own car"
+  required_slots:
+    - inquiry_type: "employment / vendor / sponsorship / buy-sell / community — front-office routing only"
+  confusables:
+    - vs: booking_logistics
+      discriminator_question: "A question about your car or an appointment, or about the business itself?"
+  safety_flag: none
+  notes: "RESERVED out_of_scope member: employment, vendor, sponsorship, and buy/sell-a-car inquiries. Route to the front office with a friendly note; never to a service category."
+
+- category: out_of_scope
+  subcategory: services_not_offered
+  display: "Service this shop doesn't offer (referral)"
+  customer_voice_anchors:
+    - "need my bumper repainted"
+    - "got a dent i want pulled out"
+    - "windshield is cracked, do you replace glass"
+    - "looking for an interior detail and shampoo"
+    - "can you wrap my car"
+    - "seat is ripped, need the upholstery fixed"
+    - "do you install lift kits"
+    - "need body work after my accident"
+    - "do you tint windows"
+    - "muffler shop stuff — want it to sound louder"
+  required_slots:
+    - service_requested: "body-paint / glass / detailing / upholstery / customization — which referral list"
+    - mechanical_component: "any mechanical symptom mixed in ('accident AND it pulls now') — that part IS in scope, split it out"
+  confusables:
+    - vs: after_accident_or_impact
+      discriminator_question: "Is it about how the car looks (body shop), or how it drives since the accident (that's us)?"
+    - vs: replace_specific_part
+      discriminator_question: "Cosmetic/appearance work, or a mechanical part you need replaced?"
+  safety_flag: none
+  notes: "RESERVED out_of_scope member. Default not-offered list for a general repair shop: collision/body/paint, glass replacement, detailing, upholstery, wraps/tint, and customization — SHOP-CONFIGURABLE (some general shops do exhaust or lift work; keep the list in config, not code). Always split mixed messages: refer the cosmetic half, book the mechanical half (usually via after_accident_or_impact)."
+
+- category: out_of_scope
+  subcategory: not_a_vehicle_issue
+  display: "Not about a vehicle"
+  customer_voice_anchors:
+    - "hi"
+    - "test"
+    - "asdfjkl"
+    - "whats the best pizza place near you guys"
+    - "sorry wrong number"
+    - "hello is this the right place to type"
+    - "just seeing if this thing works"
+    - "CONGRATULATIONS you have been selected for a free cruise"
+    - "??"
+  required_slots:
+    - reprompt_needed: "greeting/test -> friendly nudge to describe the car problem; spam/off-topic -> polite close"
+  confusables:
+    - vs: vague_concern_needs_triage
+      discriminator_question: "(none — a vague concern still references the car; this entry has no vehicle content at all)"
+  safety_flag: none
+  notes: "RESERVED out_of_scope member: greetings, tests, gibberish, spam, and genuinely off-topic messages. The correct behavior is a friendly re-prompt ('tell me what's going on with your car'), never a category guess. Under ~5 useful words with no vehicle content lands here by default."

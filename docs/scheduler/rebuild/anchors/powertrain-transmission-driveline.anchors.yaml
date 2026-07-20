@@ -1,0 +1,836 @@
+# =====================================================================================
+# Anchor knowledge — domain: powertrain-transmission-driveline
+# Scope: automatic transmission (slip, harsh/delayed shift, won't move, shudder),
+#        manual transmission & clutch (slip, grind, won't-go-into-gear, chatter, pedal),
+#        driveline (CV click, take-off clunk, AWD/4x4, speed-dependent vibration/hum,
+#        gear-oil & ATF leaks, service requests).
+# Voice: CUSTOMER language (per docs/automotive-knowledge-base/customer-voice-style-guide.md)
+#        — anchors deliberately include misspellings, slang, part-name misuse, all-caps
+#        fragments, and diagnosis-echo ("they said maybe the differential").
+# Provenance: anchors are drawn from the fact-checked KB lexicons
+#   (docs/automotive-knowledge-base/systems/{automatic-transmission,manual-trans-clutch,
+#   driveline-cv-diff-awd}.lexicon.yaml — tekmetric-corpus / forum-paraphrase / synthetic mix)
+#   plus fresh forum-phrasing research (2026-07-19).
+# sources:
+#   - "Halderman, Automatic Transmissions & Transaxles 6e (failure-mode fundamentals; via KB dossiers, accessed 2026-07-18)"
+#   - "Gears Magazine (ATRA), 'Shudder Diagnosis' — TCC shudder at light-throttle cruise ~35-45 mph vs misfire under load (via KB dossier)"
+#   - "West Coast Differentials, 'Diagnosing Differential Problems' — accel howl = ring & pinion, coast-only whirr = pinion bearings, corner-only chatter = posi clutches: https://differentials.com/diagnosing-differential-problems/"
+#   - "Tomorrow's Technician, 'ABS Light On? It Might Be a Wheel Bearing, Not the Sensor': https://www.tomorrowstechnician.com/abs-light-on-it-might-be-a-wheel-bearing-not-the-sensor/"
+#   - "freeasestudyguides.com — clutch noise pedal-phase discriminators (throwout vs pilot vs input-shaft bearing): https://www.freeasestudyguides.com/diagnose-clutch-noise.html"
+#   - "AA1Car, 'Manual Transmission Diagnosis': https://www.aa1car.com/library/2004/ic20428.htm"
+#   - "KnowYourParts, 'Clutch Failure' (slip causes, hydraulic actuation loss)"
+#   - "1A Auto, 'CV Joint Noise — clicking or popping when turning': https://blog.1aauto.com/cv-joint-noise-how-to-diagnose-a-cv-axle-clicking-or-popping/"
+#   - "CarTreatments, 'Bad U-Joint Symptoms' — clunk on park->drive / drive->reverse: https://cartreatments.com/bad-u-joint-symptoms/"
+#   - "Tom Wood's Custom Drive Shafts, 'Diagnosing Drive Shaft Vibrations' — speed-dependent, worse 50+ mph: https://4xshaft.com/blogs/general-tech-info-articles/diagnosing-drive-shaft-vibrations"
+#   - "Sun Devil Auto, 'What Causes Delayed Engagement in Transmission': https://www.sundevilauto.com/blog/what-causes-delayed-engagement-in-transmission"
+#   - "GearFixes, Honda CVT judder 'like driving over rumble strips' 20-40 mph light throttle: https://gearfixes.com/honda-cvt-transmission-problems/"
+#   - "Forum phrasing checks: fiestastforum.com (CV click on driveway turn), subaruforester.org, pathfindertalk.com + ascentforums.com (CVT judder feel), toyotanation.com + forum.ih8mud.com (cold delayed engagement), powerstrokenation.com ('feel it in the seat of my pants' 45-55 mph), duramaxforum.com + tacoma3g.com (4WD won't engage), justanswer.com ('starts up but just revs when I press the gas')"
+#   - "KingdomAutoCare, burnt-clutch smell in traffic / hills / teaching stick: https://kingdomautocare.com/smell-something-burning-it-could-be-your-clutch-heres-how-to-tell/"
+# =====================================================================================
+
+# ---------------------------------------------------------------------------
+# AUTOMATIC TRANSMISSION — behavior concerns
+# ---------------------------------------------------------------------------
+
+- category: transmission_driveline
+  subcategory: auto_trans_slipping
+  display: "Transmission slipping (revs but doesn't pull)"
+  customer_voice_anchors:
+    - "transmission is slipping"
+    - "when driving up a hill the trans slips"
+    - "engine revs high but the car barely picks up speed, especially on hills"
+    - "revs up but doesnt go"
+    - "rpms jump way up before it finally catches"
+    - "tranny slipping bad, revs but no power"
+    - "feels like its slipping when i accelerate"
+    - "gas pedal down, motor screams, car barely moves"
+    - "feels like the emergency brake is on when i give it gas"
+    - "revs up between gears then catches"
+    - "speedometer stays the same while the rpms shoot up"
+    - "transmision keeps sliping in and out of gear"
+    - "slips when its hot out or after driving a while"
+  required_slots:
+    - transmission_behavior: "what the trans is DOING (slipping = rpm outruns road speed) — the single fact that separates slip from engine low-power, limp mode, and no-engagement"
+    - onset_timing: "when it slips (accelerating, uphill, under load, when warm) — load/heat dependence points at fluid or clutch-pack wear"
+    - drivable_state: "still moves vs barely moves vs needs tow — severe slip becomes a tow, changes booking urgency"
+    - started_when: "sudden vs gradual — gradual worsening is classic wear; sudden points at fluid loss"
+    - fluid_leak_seen: "any red puddle noticed — low ATF is the #1 cheap cause worth capturing up front"
+  confusables:
+    - vs: engine_low_power
+      discriminator_question: "When it feels weak, does the engine rev up HIGHER than normal while the car doesn't speed up — or do the revs stay low and it just feels gutless?"
+    - vs: clutch_slipping
+      discriminator_question: "Is your car an automatic or a stick shift?"
+    - vs: axle_broke_wont_move
+      discriminator_question: "Does it still move (just weakly), or did it suddenly stop moving at all — maybe with a loud bang?"
+    - vs: stuck_in_gear_limp_mode
+      discriminator_question: "Does it move but rev high without pulling, or is it capped at a certain speed / stuck in one gear with warning lights on?"
+  safety_flag: none
+  notes: "Customers almost never say 'transmission' correctly — the #1 misattribution is 'the engine has no power' (dossier M1). Includes flare-between-shifts ('revs up between gears then catches'). Does NOT include: manual clutch slip (its own entry), rpm-capped limp mode (stuck_in_gear_limp_mode), snapped axle 'revs but goes nowhere' (axle_broke_wont_move). Fact check: revs-outrun-speed = slip [Halderman 6e via KB; justanswer.com 'starts up but just revs']."
+
+- category: transmission_driveline
+  subcategory: harsh_or_jerky_shifting
+  display: "Shifts hard / jerks between gears"
+  customer_voice_anchors:
+    - "shifts hard, slams into gear"
+    - "the car jerks while switching gears in the lower gears"
+    - "hard shift between second and third"
+    - "bangs into gear when i put it in drive"
+    - "jerks really hard when i put it in reverse"
+    - "clunks every time it changes gears"
+    - "transmission shifts late and then hits hard"
+    - "feels like somebody rear-ended me when it shifts"
+    - "shifting has been getting rougher and rougher"
+    - "jerky shifting when the car is cold"
+    - "slams from 1st to 2nd"
+  required_slots:
+    - transmission_behavior: "harsh/hard shift vs delayed vs slip — names the failure mode (valve body / solenoid pressure fault vs engagement problem)"
+    - onset_timing: "which shift or action triggers it (specific gear change, into D/R, cold only) — a single-gear hard shift points at one solenoid/circuit"
+    - warning_light_behavior: "check-engine or transmission light present — a stored code changes the diagnostic path"
+    - started_when: "sudden after a battery change / jump (lost shift adapts) vs gradual wear"
+    - recent_action: "recent service, battery disconnect, or fluid change right before it started — adaptive-learn resets and wrong fluid are common triggers"
+  confusables:
+    - vs: engine_misfire_or_bucking
+      discriminator_question: "Does the jerk happen exactly WHEN the transmission changes gears, or does it buck and stumble while you're cruising at a steady speed?"
+    - vs: driveline_clunk_on_takeoff
+      discriminator_question: "Is it a jolt with every gear change while driving, or a single clunk from under the car right when you first put it in Drive or Reverse?"
+    - vs: delayed_engagement
+      discriminator_question: "Does it shift too HARD, or does it pause a few seconds before it engages at all?"
+  safety_flag: none
+  notes: "Covers hard 1-2/2-3 shifts and bang into D/R. 'Jerks while switching gears' is a documented dual-read (harsh shift OR engine buck under load — KB auto-trans M5); the discriminator question resolves it. Does NOT include: single take-off clunk (driveline backlash), pops OUT of gear (own entry)."
+
+- category: transmission_driveline
+  subcategory: delayed_engagement
+  display: "Delay going into Drive or Reverse"
+  customer_voice_anchors:
+    - "takes a few seconds to move after i put it in drive"
+    - "car hesitates when putting in gear after sitting for awhile"
+    - "put it in drive and it just sits there, then finally grabs"
+    - "shift into reverse and nothing happens for a couple seconds then it clunks in"
+    - "in the morning its like its in neutral for a second before it goes"
+    - "slow to engage when cold, fine once its warmed up"
+    - "wont engage until i tap the gas, then it drives fine"
+    - "felt like it was in neutral"
+    - "long pause between park and drive"
+    - "takes forever to go into gear first thing in the morning"
+  required_slots:
+    - transmission_behavior: "delayed engagement (pause then normal drive) vs no engagement at all — severity fork"
+    - onset_timing: "on gear SELECTION from park vs while already moving — the fact that separates this from engine hesitation on acceleration"
+    - weather_or_temp_condition: "cold-start / after sitting vs all the time — cold-only delay is classic seal leak-down and less urgent [toyotanation.com, forum.ih8mud.com threads]"
+    - drivable_state: "still drives normally after it catches — confirms it's delay, not failure"
+    - started_when: "getting longer over time — trend indicates worsening internal leak-down"
+  confusables:
+    - vs: hesitation_when_accelerating
+      discriminator_question: "Is the delay when you FIRST put it in Drive or Reverse from Park, or while you're already moving and press the gas?"
+    - vs: wont_move_or_no_gear
+      discriminator_question: "Does it eventually catch and drive normally, or does it never move no matter how long you wait?"
+  safety_flag: none
+  notes: "Classic phrasing is time-of-day framed ('in the morning', 'after sitting'). Cause set: internal leak-down / worn seals / low fluid [Sun Devil Auto; Halderman via KB M4]. Does NOT include: hesitation/lag while moving (engine driveability domain), stuck shifter (interlock, wont_move entry notes)."
+
+- category: transmission_driveline
+  subcategory: wont_move_or_no_gear
+  display: "Starts but won't move / won't go into gear"
+  customer_voice_anchors:
+    - "car starts but wont move"
+    - "vehicle starts but does not shift into gear"
+    - "put it in drive and nothing happens"
+    - "wont go into gear, had to get it towed"
+    - "transmission went out, revs but wont move at all"
+    - "drives fine going forward but wont move in reverse"
+    - "no reverse all of a sudden"
+    - "gets stuck in park, have to go back and forth with the shifter to get into gear"
+    - "shifter moves but the car doesnt do anything"
+    - "wont come out of park"
+    - "tow in, does not shift, transmission failed"
+    - "felt like it dropped into neutral on the road and never came back"
+  required_slots:
+    - transmission_behavior: "no engagement vs one-direction-only (no reverse) vs shifter-stuck — three different repairs behind one customer phrase"
+    - drivable_state: "not drivable / needs tow vs limps — drives the tow-vs-appointment booking decision"
+    - engine_running: "engine starts and runs normally — separates this from a no-start"
+    - warning_light_behavior: "multiple dash lights / trans light — electronic failsafe vs mechanical failure"
+    - fluid_leak_seen: "big red puddle where it died — catastrophic ATF loss is a distinct, checkable cause"
+  confusables:
+    - vs: no_start
+      discriminator_question: "Does the engine start and run fine and the car just won't MOVE — or will the engine itself not start?"
+    - vs: axle_broke_wont_move
+      discriminator_question: "Did it stop moving suddenly with a loud bang or pop, or did it just quietly stop going into gear?"
+    - vs: shifter_interlock_stuck_in_park
+      discriminator_question: "Will the shift lever physically not come OUT of Park, or does it move to Drive and the car still doesn't go?"
+    - vs: delayed_engagement
+      discriminator_question: "Does it never move, or does it catch after a few seconds and then drive okay?"
+  safety_flag: advise_immediately
+  notes: "Not-drivable bucket — most of these arrive by tow; the booking flow should offer tow guidance instead of a drive-in slot. Includes reverse-only failure and stuck-in-park (mechanical). A shifter that won't leave Park with everything else fine may be the brake-shift interlock (body-electrical domain) — hence the interlock confusable. Fact check: no-engagement = severe internal failure / pump / catastrophic fluid loss [Halderman via KB M6]."
+
+- category: transmission_driveline
+  subcategory: stuck_in_gear_limp_mode
+  display: "Stuck in gear / limp mode / won't go past a speed"
+  customer_voice_anchors:
+    - "went into limp mode, a lot of dashboard lights came on"
+    - "vehicle doesnt go over a certain speed"
+    - "stuck in 3rd gear"
+    - "wont shift out of first, engine screaming"
+    - "the rpms only go to 3 and it wont accelerate"
+    - "transmission light came on and now it wont shift"
+    - "maxes out at 35 like its stuck in one gear"
+    - "D light is flashing and it drives funny"
+    - "car went into safe mode on the highway"
+    - "it wont upshift, just revs higher and higher"
+  required_slots:
+    - transmission_behavior: "stuck in gear / speed-capped (limp) — separates electronic failsafe from slip and no-engagement"
+    - warning_light_named: "which light or message (check engine, transmission, flashing D, 'a lot of lights') — limp mode almost always stores a code"
+    - warning_light_behavior: "solid vs flashing vs multiple at once — flashing gear indicator is a trans-fault telltale on several makes"
+    - drivable_state: "limps at reduced speed vs undrivable — highway-capable or not changes urgency and tow advice"
+    - onset_timing: "constant since it happened vs resets after restart — key restart-clears-it fact advisors always ask"
+  confusables:
+    - vs: check_engine_light_only
+      discriminator_question: "Is the main problem the warning light itself, or that the car physically won't shift / won't go past a certain speed?"
+    - vs: auto_trans_slipping
+      discriminator_question: "Does it rev high WITHOUT pulling (slipping), or is it held back / capped at a speed like it's locked in one gear?"
+    - vs: engine_low_power
+      discriminator_question: "Is it stuck at high revs in one gear with warning lights, or just generally weak everywhere with normal shifting?"
+  safety_flag: advise_immediately
+  notes: "Limp/failsafe = TCM strategy protecting the trans from a stored fault (P0700-range) [SAE J2012 via KB M7]. Customers describe it as 'safe mode', 'limp mode', or just 'a lot of lights and it won't go'. Pops-out-of-gear is its own entry. Restart-clears-it is worth capturing but does NOT make it a non-issue."
+
+- category: transmission_driveline
+  subcategory: pops_out_of_gear
+  display: "Pops / jumps out of gear on its own"
+  customer_voice_anchors:
+    - "car pops out of gear on its own while im driving"
+    - "pops out of 3rd gear on the highway"
+    - "jumps out of gear when i hit a bump"
+    - "shifter kicks back into neutral by itself"
+    - "slips out of 5th unless i hold the stick"
+    - "goes into neutral on its own and the engine revs"
+    - "have to keep my hand on the shifter to keep it in gear"
+    - "randomly drops out of gear, scared me on the freeway"
+  required_slots:
+    - vehicle_powertrain: "manual vs automatic — manual pop-out is worn synchro sleeve/detent/linkage, automatic pop-out is a different (rarer) failure"
+    - transmission_behavior: "pops out of gear — distinct value from stuck-in-gear and slip"
+    - onset_timing: "under power vs over bumps vs decel — load-dependent pop-out points at gear/synchro wear, bump-triggered at linkage/mounts"
+    - which_gear: "specific gear(s) affected — single-gear pop-out localizes the worn parts"
+    - started_when: "gradual vs sudden — sudden pop-out after work on the car suggests linkage adjustment"
+  confusables:
+    - vs: grinding_or_hard_shift_manual
+      discriminator_question: "Does it grind going INTO gear, or does it jump back OUT of gear on its own after it's in?"
+    - vs: auto_trans_slipping
+      discriminator_question: "Does the shifter physically move back to neutral, or does it stay in gear while the engine revs without pulling?"
+  safety_flag: advise_immediately
+  notes: "Flagged advise-immediately because an unexpected drop to neutral at highway speed is a loss-of-propulsion event. Causes: worn synchro sleeve splines / detent spring / shift fork / linkage, engine-trans misalignment [OnAllCylinders + AA1Car via KB FM-8]. Customers say 'slips out of gear' — do not let the word 'slips' pull this into auto_trans_slipping."
+
+- category: vibration
+  subcategory: transmission_shudder
+  display: "Shudder when accelerating or cruising (trans)"
+  customer_voice_anchors:
+    - "car shudders pretty bad whenever i give it gas going uphill, smooths right out as soon as i let off"
+    - "shudders around 40 like driving over rumble strips"
+    - "shuttering transmission issue"
+    - "whole car shudders when the transmission is working hard on hills"
+    - "judders when i take off from a stop"
+    - "vibrates at 35-45 cruising, stops if i tap the brake or give it more gas"
+    - "feels like im driving over the rumble strips on the shoulder but the road is smooth"
+    - "shakes when it goes into overdrive"
+    - "shudder when accelerating lightly, goes away when i floor it"
+    - "trans shudder at low speed, its a cvt"
+  required_slots:
+    - onset_timing: "steady light-throttle cruise vs hard load vs takeoff-only — the ATRA discriminator: TCC shudder lives at light-throttle cruise, misfire worsens under hard load"
+    - speed_band: "the mph window (~35-45 TCC lockup; takeoff/low-speed = CVT judder) — the speed band names the mechanism"
+    - throttle_response: "does it clear when you add/lift throttle or tap the brake — brake-tap unlocking the converter clutch is the tell"
+    - vehicle_powertrain: "CVT vs conventional automatic — CVT judder is a distinct fluid/belt failure with its own service bulletins"
+    - warning_light_behavior: "flashing check-engine during the shake = misfire severity cue, pulls it AWAY from trans"
+  confusables:
+    - vs: engine_misfire_or_bucking
+      discriminator_question: "Does the shudder show up at steady light-throttle cruise around 40 and clear when you change throttle or tap the brake — or does it get WORSE under hard load, maybe with a flashing check-engine light?"
+    - vs: driveline_vibration_at_speed
+      discriminator_question: "Does it only shake under gas at certain speeds and clear off-throttle, or is it there constantly once you're above a certain speed no matter what your foot does?"
+    - vs: cv_axle_accel_shudder
+      discriminator_question: "Any clicking when you turn tight, or grease slung on the inside of a front tire?"
+    - vs: clutch_chatter_on_takeoff
+      discriminator_question: "Automatic or stick shift — and does it only shake right as you let the clutch pedal out?"
+  safety_flag: none
+  notes: "Two mechanisms share this home: TCC lockup shudder (~35-45 mph light-throttle cruise, clears on throttle change / brake tap) and CVT belt/fluid judder (takeoff, 20-40 mph). 'Rumble strips' is THE customer idiom [Gears/ATRA via KB M2; gearfixes.com; pathfindertalk.com]. Inner-CV tripod shudder on hard launch is the cross-domain near-miss (driveline)."
+
+- category: noise
+  subcategory: transmission_whine_or_noise
+  display: "Whining / grinding noise from the transmission"
+  customer_voice_anchors:
+    - "whining noise that gets louder the faster i drive, in every gear"
+    - "cvt whines like a turbo when i speed up"
+    - "grinding sound when i put it in reverse"
+    - "humming noise i think from the transmission"
+    - "high pitched whine that changes when it shifts"
+    - "sounds like a jetski out of water when i give it gas"
+    - "whirring that follows my speed not the engine"
+    - "gear noise in first and second"
+  required_slots:
+    - noise_descriptor: "whine vs grind vs hum — grind-in-reverse is internal trans; whine points at pump/gears/CVT belt"
+    - speed_or_rpm_tracking: "noise follows ROAD SPEED (trans/driveline gears) vs ENGINE RPM (pump, belt, PS pump) — the core routing fact for every drivetrain whine"
+    - gear_dependence: "present in every gear / only reverse / only in neutral — localizes which shafts are loaded"
+    - onset_timing: "on throttle vs coasting — load-phase split also separates trans whine from diff whine"
+    - vehicle_powertrain: "CVT vs conventional vs manual — CVT whine is a known character; manual neutral noise is a different entry"
+  confusables:
+    - vs: power_steering_whine
+      discriminator_question: "Does the whine rise and fall with your ROAD speed and stay in gear, or does it track engine revs and get worst when you turn the steering wheel?"
+    - vs: humming_or_whining_at_speed_driveline
+      discriminator_question: "Does the pitch change when the transmission shifts gears, or does it only track how fast you're going regardless of gear?"
+    - vs: clutch_or_trans_noise_pedal_linked
+      discriminator_question: "Stick shift or automatic — and does the noise change when you press the clutch pedal?"
+  safety_flag: none
+  notes: "Trans whine tracks road speed and is present in gear; PS-pump whine tracks engine RPM and is worst on turns (KB D8). Reverse-grind on an automatic is internal (planetary/clutch) — do not route it to manual gear-grinding. Customers blame road-speed whines on 'the tires' or 'a wheel bearing' [Halderman via KB M11]."
+
+- category: leak
+  subcategory: transmission_fluid_leak
+  display: "Red transmission fluid leak"
+  customer_voice_anchors:
+    - "bright red puddle under the middle of my car"
+    - "red fluid leaking in my driveway"
+    - "pinkish oily spots where i park"
+    - "transmission fluid leaking"
+    - "trans fluid keeps getting low, im topping it off every week"
+    - "red oily drip toward the back under the transmission"
+    - "transmission cooler line leaking"
+    - "sweet burnt smelling red liquid under the car"
+    - "leaking tranny fluid after i hit a curb"
+  required_slots:
+    - fluid_color: "red/pink + oily-slick — separates ATF from neon watery coolant and from dark gear oil"
+    - fluid_under_car_location: "under middle/rear (trans pan, cooler lines) vs up front (power steering) — location is the ATF-vs-PS split since the dyes are identical"
+    - steering_feel: "steering heavy or whining? — if yes the red fluid is likely power steering, different system"
+    - leak_rate: "spots vs puddle vs pouring — a gushing ATF leak becomes a do-not-drive"
+    - transmission_symptoms_present: "any slip/delay yet — leak + slip together means it's already low enough to damage"
+  confusables:
+    - vs: power_steering_leak
+      discriminator_question: "Is the red puddle toward the middle or back of the car, or up FRONT by the engine — and has the steering gotten heavy or noisy?"
+    - vs: coolant_leak
+      discriminator_question: "Is the fluid slick and oily between your fingers, or watery and sweet-smelling like syrup?"
+    - vs: gear_oil_leak
+      discriminator_question: "Is it red and fairly thin, or dark brown almost black, thick, and rotten-egg smelling?"
+  safety_flag: none
+  notes: "ATF and power-steering fluid share the same red dye — location + steering symptoms are the only customer-observable split (KB D4). Neon-pink OAT coolant is the sneaky third read (KB D5). A leak plus ANY shifting symptom should book urgently; note in booking. Does NOT include red fluid up front with heavy steering (steering domain)."
+
+- category: warning_light
+  subcategory: transmission_overheat_warning
+  display: "Transmission hot / temp warning"
+  customer_voice_anchors:
+    - "transmission hot message came on"
+    - "trans temp light came on pulling my trailer"
+    - "AT oil temp light is on"
+    - "it said transmission overheating so i pulled over"
+    - "transmission hot idle engine light was coming on"
+    - "gear symbol with a thermometer lit up"
+    - "burning smell and a transmission temperature warning"
+    - "trans temp gauge pegged going over the mountain"
+  required_slots:
+    - warning_light_named: "which light/message exactly ('trans hot', 'AT oil temp', gear icon) — customers conflate engine and trans temp warnings"
+    - onset_timing: "towing / hills / stop-and-go heat vs normal driving — overload vs cooler restriction vs low fluid"
+    - smell_descriptor: "burnt smell present — burnt ATF confirms genuine overheat, not a sensor glitch"
+    - drivable_state: "did it cool down and clear or stay on — drives tow-vs-drive-in advice"
+    - recent_action: "towing something / recent fluid service — the two most common triggers"
+  confusables:
+    - vs: engine_overheating
+      discriminator_question: "Does the message or gauge say TRANSMISSION temp, or engine temperature / coolant?"
+    - vs: check_engine_light_only
+      discriminator_question: "Is it a specific transmission-temperature warning, or just the regular check-engine light?"
+  safety_flag: advise_immediately
+  notes: "Overheat = advise-immediately per the safety rule (continued driving cooks the fluid and the clutches). Common real-world context: towing/overload [Halderman via KB M10]. Customers routinely report it as 'the engine is overheating' — the discriminator question is essential."
+
+# ---------------------------------------------------------------------------
+# MANUAL TRANSMISSION & CLUTCH
+# ---------------------------------------------------------------------------
+
+- category: transmission_driveline
+  subcategory: clutch_slipping
+  display: "Clutch slipping"
+  customer_voice_anchors:
+    - "clutch is slipping"
+    - "clutch has failed, revs up and doesnt have power when accelerating"
+    - "revs but no go, feels like the clutch isnt grabbing"
+    - "clutch slips going up hills and i smell somthing burning"
+    - "rpms fly up when i step on it but the car barely speeds up, its a stick"
+    - "slips in 5th when i floor it on the highway"
+    - "burning smell when i was teaching my kid to drive stick"
+    - "clutch is about gone, chatters and slips"
+    - "smells hot after stop and go traffic, clutch doesnt bite like it used to"
+    - "engine races when i accelerate but the speed dont change"
+  required_slots:
+    - vehicle_powertrain: "manual transmission confirmed — 'clutch slipping' from an automatic owner means the auto entry instead"
+    - onset_timing: "under load / hills / higher gears / hard acceleration — load-dependence is the slip signature"
+    - smell_descriptor: "burning smell (acrid, like brake dust) — burnt friction material corroborates slip [kingdomautocare.com]"
+    - drivable_state: "still drives vs barely pulls — severe slip strands the car"
+    - started_when: "gradual (wear) vs sudden after a fluid/oil leak — oil-contaminated disc fails fast and needs the leak fixed too"
+  confusables:
+    - vs: auto_trans_slipping
+      discriminator_question: "Is your car a stick shift or an automatic?"
+    - vs: brakes_dragging_burning_smell
+      discriminator_question: "Does the burning smell show up when you're working the clutch hard (hills, takeoffs, traffic), or after braking — maybe from one wheel?"
+    - vs: engine_low_power
+      discriminator_question: "Do the revs shoot UP without the car speeding up, or do the revs stay low and it just feels weak?"
+  safety_flag: none
+  notes: "Highest-signal phrase in the real corpus is literally 'CLUTCH IS SLIPPING' (Tekmetric verbatim). Customers also say 'transmission slipping' about a manual — the powertrain slot rescues it. Oil contamination accelerates slip and the source leak must be fixed with the clutch [KnowYourParts via KB FM-1]. 4WD range-dependent 'slip' (fine in 4-low, slips in 4-high) is NOT a clutch — that's the transfer case (awd_4x4 entries)."
+
+- category: transmission_driveline
+  subcategory: grinding_or_hard_shift_manual
+  display: "Grinds / hard to shift gears (manual)"
+  customer_voice_anchors:
+    - "grinds every time i put it in first"
+    - "grinds going into 2nd on quick shifts"
+    - "hard to get it into gear when its cold, have to force it"
+    - "crunches going into third"
+    - "grinding gears when i shift"
+    - "notchy shifting, have to really work the stick"
+    - "shifter feels really sloppy and hard to find gears"
+    - "have to double clutch to get it into gear"
+    - "gears grind unless i shift real slow"
+    - "second gear crunches if i dont baby it"
+  required_slots:
+    - clutch_or_gear_engagement: "grinds-when-shifting vs hard/notchy vs won't-go-in — separates synchro wear from clutch drag from linkage slop"
+    - which_gear: "one specific gear (classic synchro) vs all gears (clutch not releasing) — the single most diagnostic fact"
+    - shift_speed_dependence: "only on fast shifts (synchro) vs always — quick-shift-only grind is blocker-ring wear"
+    - weather_or_temp_condition: "cold-only stiffness points at gear-oil viscosity / linkage, not synchros"
+    - clutch_pedal_feel: "pedal normal vs soft/low — a low pedal means the clutch isn't fully releasing and the 'grind' is actuation, not gearbox"
+  confusables:
+    - vs: wont_go_into_gear_manual
+      discriminator_question: "Does it grind but eventually go in, or will it NOT go into gear at all with the engine running?"
+    - vs: clutch_pedal_problem
+      discriminator_question: "Does the clutch pedal feel normal underfoot, or has it gone soft, low, or down to the floor?"
+    - vs: transmission_whine_or_noise
+      discriminator_question: "Stick shift or automatic — an automatic that grinds going into reverse is a different problem?"
+    - vs: pops_out_of_gear
+      discriminator_question: "Trouble getting INTO gear, or does it jump back OUT of gear on its own?"
+  safety_flag: none
+  notes: "One-gear grind on fast shifts = synchro; all-gear grind = clutch drag / lost free-play; sloppy-vague shifter = external linkage/bushings (cheaper fix) [freeasestudyguides.com hard-shifting; AA1Car; OnAllCylinders via KB FM-3/4/13]. Customers blame all of these on 'needing a clutch'."
+
+- category: transmission_driveline
+  subcategory: wont_go_into_gear_manual
+  display: "Won't go into gear (manual)"
+  customer_voice_anchors:
+    - "wont go into gear with the engine running but its fine when its off"
+    - "cant get it into gear at a stoplight, had to shut it off and restart in gear"
+    - "stick wont go into first or reverse"
+    - "have to slam it into gear"
+    - "clutch isnt disengaging, gears wont go in"
+    - "shifter just wont go into the hole while the motors running"
+    - "stuck, cant get any gear, clutch pedal feels normal"
+    - "grinds and pushes back when i try to put it in gear"
+  required_slots:
+    - engine_on_off_test: "shifts fine engine-OFF but not running = clutch not disengaging (drag); won't shift either way = gearbox/linkage — the classic one-question diagnostic"
+    - clutch_pedal_feel: "pedal normal vs soft/floor — soft pedal reroutes to the pedal/hydraulic entry"
+    - which_gear: "first/reverse from a stop (drag signature) vs all gears"
+    - drivable_state: "can they get it anywhere or is it stuck — stranded manuals usually need a tow"
+    - fluid_leak_seen: "clutch fluid reservoir low / clear fluid drips — hydraulic leak is the fast-moving cause"
+  confusables:
+    - vs: clutch_pedal_problem
+      discriminator_question: "Does the clutch pedal feel normal, or is it soft, dropping, or stuck on the floor?"
+    - vs: grinding_or_hard_shift_manual
+      discriminator_question: "Will it not go in at ALL, or does it grind/resist but eventually go in?"
+    - vs: wont_move_or_no_gear
+      discriminator_question: "Stick shift or automatic?"
+  safety_flag: advise_immediately
+  notes: "The engine-off test is the money question: shifts fine with the engine off = clutch drag (hydraulics, free-play, pilot bearing), not gearbox internals [freeasestudyguides.com; KnowYourParts via KB FM-3]. Often arrives as a stranded/tow situation — hence advise_immediately."
+
+- category: transmission_driveline
+  subcategory: clutch_chatter_on_takeoff
+  display: "Shudders when letting the clutch out"
+  customer_voice_anchors:
+    - "shudders when i let the clutch out pulling away from a stop"
+    - "car judders and shakes as the clutch catches when i take off"
+    - "bucks and stutters taking off in first"
+    - "clutch grabs and lets go, jerky takeoffs"
+    - "whole car shakes when i ease off the clutch, fine once im moving"
+    - "vibrates bad on takeoff, smooth after the clutch is all the way out"
+    - "clutch chatter when starting from a dead stop"
+    - "shakes leaving a light, worse on hills"
+  required_slots:
+    - onset_timing: "engagement-phase ONLY (as the pedal comes up from a stop) — the fact that separates chatter from misfire, mounts, and CV shudder"
+    - vehicle_powertrain: "manual confirmed — 'judder on takeoff' from a CVT owner routes to transmission_shudder instead"
+    - smoothness_after_engagement: "gone once fully engaged — chatter is engagement-phase; anything persisting at speed is a different entry"
+    - recent_action: "recent clutch job or oil leak — contaminated/glazed new disc and misaligned mounts are classic causes"
+    - smell_descriptor: "burning smell alongside — chatter + burn suggests contamination/slip combo"
+  confusables:
+    - vs: transmission_shudder
+      discriminator_question: "Stick shift or automatic — does it only shake right as you let the clutch pedal out from a stop?"
+    - vs: engine_misfire_or_bucking
+      discriminator_question: "Does it only shake during the moment the clutch is engaging from a stop, or does it also buck while driving at speed?"
+    - vs: cv_axle_accel_shudder
+      discriminator_question: "Does it shake ONLY as the clutch comes up, or any time you accelerate hard from a stop even with the clutch fully out?"
+  safety_flag: none
+  notes: "Chatter = rapid grab-release as the disc first engages; causes include glazed/oil-contaminated facings and engine/trans mount misalignment [freeasestudyguides.com via KB FM-2]. Customer idiom is 'shakes when I take off' — the engagement-phase-only qualifier is what makes it clutch."
+
+- category: transmission_driveline
+  subcategory: clutch_pedal_problem
+  display: "Clutch pedal soft / to the floor / stuck"
+  customer_voice_anchors:
+    - "clutch pedal went to the floor and stays there, cant get in gear"
+    - "clutch pedal has no pressure, feels soft and drops to the floor"
+    - "pedal sticks down sometimes and comes back slow"
+    - "clutch feels spongy and its getting harder to shift"
+    - "lost my clutch on the way home, pedal just flops"
+    - "clutch pedal really stiff all of a sudden"
+    - "pedal goes down but nothing happens"
+    - "clutch went out, pedal is dead"
+    - "no resistance in the clutch pedal this morning"
+  required_slots:
+    - clutch_pedal_feel: "soft / no pressure / stays on floor / stiff — each maps to a different actuation failure (hydraulic loss, cable, pressure plate)"
+    - fluid_leak_seen: "thin clear-to-light-brown fluid near the firewall or trans, or a dropping reservoir — hydraulic clutches run brake fluid; a leak explains the pedal"
+    - can_get_into_gear: "still drivable by force/rev-matching vs stuck — booking urgency and tow decision"
+    - started_when: "sudden (line/cylinder let go) vs gradually softer (seal wear) — trajectory matters for stranding risk"
+    - vehicle_powertrain: "manual confirmed, and hydraulic vs cable if known"
+  confusables:
+    - vs: brake_fluid_leak
+      discriminator_question: "Is it the CLUTCH pedal or the BRAKE pedal that's gone soft — and which reservoir is dropping?"
+    - vs: wont_go_into_gear_manual
+      discriminator_question: "Is the pedal itself misbehaving (soft/floor/stuck), or does the pedal feel normal and the shifter just won't go in?"
+  safety_flag: advise_immediately
+  notes: "Hydraulic clutch master/slave run DOT brake fluid, so the leak literally IS brake fluid chemically — leak-color evidence alone will read 'brake fluid leak'; the clutch-pedal symptom is what pulls it into this system (KB FM-9/FM-12). Pedal-to-floor typically strands the driver — advise immediately, likely tow."
+
+- category: noise
+  subcategory: clutch_or_trans_noise_pedal_linked
+  display: "Noise that changes with the clutch pedal"
+  customer_voice_anchors:
+    - "chirping when i push the clutch pedal down"
+    - "squealing that goes away when i push the clutch in"
+    - "whirring only when i hold the clutch down in gear"
+    - "rattles at idle like a diesel, quiets when i push the clutch in"
+    - "grinding noise in neutral that stops when i press the clutch"
+    - "they said the throwout bearing is chirping"
+    - "squeak every time i work the clutch pedal"
+    - "growling in neutral with my foot off the clutch"
+  required_slots:
+    - pedal_phase_of_noise: "appears when PRESSING (throwout bearing) vs present pedal-UP-in-neutral and STOPS on press (input-shaft bearing) vs only pedal-FULLY-down-in-gear (pilot bearing) — pedal phase alone names the bearing"
+    - noise_descriptor: "chirp/squeal vs whirr/growl vs rattle — rattle-at-idle that quiets on press is dual-mass flywheel"
+    - vehicle_running_state: "at idle standing still vs while driving — these are stationary-diagnosable noises, unlike road-speed hums"
+    - vehicle_powertrain: "manual confirmed"
+  confusables:
+    - vs: belt_squeal_under_hood
+      discriminator_question: "Does the noise change when you press or release the CLUTCH pedal, or does it stay the same and just follow engine revs?"
+    - vs: humming_or_whining_at_speed_driveline
+      discriminator_question: "Can you hear it sitting still in neutral, or only while rolling down the road?"
+    - vs: engine_ticking_or_knock
+      discriminator_question: "Does the rattle/knock change or quiet down when you push the clutch pedal in?"
+  safety_flag: none
+  notes: "The pedal-phase triple split is the whole diagnosis: noise ON depression = release/throwout bearing; noise pedal-up-in-neutral GONE on press = input-shaft bearing; noise only pedal-fully-down-in-gear = pilot bearing [freeasestudyguides.com diagnose-clutch-noise; AA1Car via KB FM-5/6/7]. Diesel-like idle rattle that quiets with the pedal = dual-mass flywheel (KB FM-10) — commonly mistaken for engine knock."
+
+# ---------------------------------------------------------------------------
+# DRIVELINE — CV, driveshaft, differential, AWD/4x4
+# ---------------------------------------------------------------------------
+
+- category: noise
+  subcategory: clicking_when_turning
+  display: "Clicking / popping when turning (CV joint)"
+  customer_voice_anchors:
+    - "clicking noise when i turn"
+    - "clicking noise from the front only when i turn in parking lots"
+    - "tick tick tick when i make a sharp turn, faster the tighter i go"
+    - "popping when i corner but nothing when the wheels are straight"
+    - "clacking from the driver side when im backing up and turning"
+    - "clicking axle, i see grease flung on the inside of the tire"
+    - "click click click doing a u-turn"
+    - "cv joint clicking i think"
+    - "clicking when i pull into my driveway turning right"
+    - "clikcing sound turning left, goes away straight"
+  required_slots:
+    - onset_timing: "while MOVING through a turn — the CV signature; wheel-turning noise while parked is steering instead"
+    - turn_direction: "clicks turning left vs right vs both — the loaded side usually names the bad axle"
+    - location_side: "which corner it comes from — front CV vs rear CV on AWD"
+    - speed_band: "low-speed tight turns (parking lots, U-turns) — classic outer-CV envelope"
+    - visible_grease: "grease slung on the inside of a tire/wheel = torn boot, corroborates CV"
+  confusables:
+    - vs: steering_noise_while_parked
+      discriminator_question: "Does it click while the car is MOVING through a turn, or also when you turn the steering wheel sitting still?"
+    - vs: humming_or_whining_at_speed_driveline
+      discriminator_question: "Is it a repeating CLICK only in turns, or a steady HUM that rises with your speed?"
+    - vs: suspension_clunk_over_bumps
+      discriminator_question: "Only when turning, or also going straight over bumps?"
+    - vs: awd_4x4_binding_in_turns
+      discriminator_question: "Is it a click-click-click sound, or does the whole vehicle BIND and hop like it's fighting itself in tight turns?"
+  safety_flag: none
+  notes: "The best-known driveline symptom — click that speeds up the tighter the turn, usually one-sided, low speed [1A Auto CV-joint guide; fiestastforum thread 'when I approach my driveway hump when turning right'; Halderman via KB 3.1]. A fully failed outer CV can separate — if the customer reports it worsening fast plus vibration, escalate. Does NOT include: straight-line acceleration shudder (inner CV, see cv_axle_accel_shudder), stationary steering-wheel clicks (steering domain)."
+
+- category: vibration
+  subcategory: cv_axle_accel_shudder
+  display: "Shudder on hard acceleration (CV axle)"
+  customer_voice_anchors:
+    - "whole car shudders when i punch it from a stop, smooths out once rolling"
+    - "shakes hard when i accelerate, fine when i coast"
+    - "shudder under acceleration, no clicking though"
+    - "vibrates when i get on the gas, stops when i let off"
+    - "shakes on takeoff like the tires are hopping"
+    - "front end shudders under load"
+    - "car shimmies bad merging onto the highway"
+    - "vibration only when accelerating hard"
+  required_slots:
+    - onset_timing: "on-throttle only, clears off-throttle — the load-dependence that separates axle/tripod shudder from balance vibration"
+    - speed_band: "takeoff/low-speed launch (inner CV) vs a fixed mph band (driveshaft/balance)"
+    - turn_dependence: "straight-line (inner CV does NOT need a turn) — distinguishes from the outer-CV click"
+    - location_feel: "felt in the floor/seat vs steering wheel — wheel-felt shake leans tires/balance"
+    - recent_action: "recent axle/clutch/engine-mount work — common after-repair presentation"
+  confusables:
+    - vs: transmission_shudder
+      discriminator_question: "Does it shake any time you accelerate hard from a stop, or only at light-throttle cruise around 35-45 that clears if you tap the brake?"
+    - vs: driveline_vibration_at_speed
+      discriminator_question: "Is it tied to how hard you're pressing the gas, or to how FAST you're going regardless of throttle?"
+    - vs: tire_balance_vibration
+      discriminator_question: "Does it happen mostly under hard acceleration and clear when you lift, or is it constant at highway speed and felt in the steering wheel?"
+  safety_flag: none
+  notes: "Inner CV / tripod (plunge) joint wear shudders on hard straight-line acceleration and does NOT click on turns — the inverse of the outer joint (KB 3.2). Also mimicked by broken engine/trans mounts. Customers phrase it as 'the trans shudders when I punch it' — throttle-load vs road-speed is the routing fact."
+
+- category: noise
+  subcategory: driveline_clunk_on_takeoff
+  display: "Clunk when shifting into gear or taking off"
+  customer_voice_anchors:
+    - "clunk when i put it in drive from park"
+    - "loud clunk from underneath every time i shift into reverse"
+    - "clunks when i take off from a stop"
+    - "clunk when i let off the gas and get back on it"
+    - "feels like something slams under the car when i put it in gear"
+    - "klunk in the rear end when i take off"
+    - "drivetrain has slack, bangs when i get on the gas"
+    - "clunking noise putting the car into drive or turning left"
+    - "single thunk from the back going from reverse to drive"
+  required_slots:
+    - onset_timing: "on gear engagement / take-off / on-off throttle (torque reversal) — NOT over bumps; this is the whole discriminator vs suspension"
+    - noise_descriptor: "single discrete clunk/thunk vs repeated clicking vs rattling"
+    - location_zone: "under the middle (driveshaft/u-joint) vs rear axle (diff backlash) — narrows the slack point"
+    - frequency: "every engagement vs occasional — every-time clunks are measurable backlash"
+    - vibration_at_speed_present: "companion speed-dependent vibration suggests the u-joint is also worn (same part, second symptom)"
+  confusables:
+    - vs: suspension_clunk_over_bumps
+      discriminator_question: "Does the clunk happen when you SHIFT into gear or take off / let off the gas, or when you go over BUMPS?"
+    - vs: harsh_or_jerky_shifting
+      discriminator_question: "Is it one clunk from UNDER the car right as torque hits, or a jolt with every gear change while driving?"
+    - vs: awd_4x4_binding_in_turns
+      discriminator_question: "A single clunk on take-off, or a bind/hop feeling through tight turns?"
+  safety_flag: none
+  notes: "Clunk on torque reversal (park->drive, drive->reverse, on/off throttle) = slack being taken up: worn u-joints, ring-and-pinion backlash, or slip-yoke wear [CarTreatments u-joint symptoms; West Coast Differentials 'clunking when getting on/off the gas'; KB 3.3/3.6]. A neglected u-joint can eventually drop the driveshaft. Suspension bump-clunks are the dominant misroute — the bumps-vs-gear-engagement question fixes it."
+
+- category: vibration
+  subcategory: driveline_vibration_at_speed
+  display: "Vibration that changes with road speed"
+  customer_voice_anchors:
+    - "vibration that gets worse the faster i go"
+    - "shakes between 45 and 55, feel it in the seat"
+    - "vibrates on the highway, not the tires, i just had them balanced"
+    - "buzzing in the floor at 60"
+    - "vibration follows my speed not the engine revs"
+    - "whole truck shakes above 50"
+    - "feel it in the seat of my pants going down the road"
+    - "humming vibration under my feet on the freeway"
+    - "shakes worse the faster i drive, smooth in a parking lot"
+  required_slots:
+    - speed_band: "the mph where it starts/peaks — driveshaft vibrations typically appear 50+ and worsen with speed"
+    - speed_or_rpm_tracking: "tracks ROAD speed (same at a given mph in any gear) vs engine RPM — road-speed = driveline/wheels, RPM = engine/trans"
+    - location_feel: "seat/floor (driveshaft, rear) vs steering wheel (front wheels/tires) — where they feel it localizes it"
+    - throttle_dependence: "constant at speed vs changes on/off throttle — throttle-sensitive vibration leans u-joint angle/wear"
+    - recent_action: "new tires, rotation, lift kit, recent driveline work — tire balance is the base rate; a lift changes driveline angles"
+  confusables:
+    - vs: tire_balance_vibration
+      discriminator_question: "Did it start after new tires or a rotation, and do you feel it mostly in the steering WHEEL — or in the seat and floor?"
+    - vs: transmission_shudder
+      discriminator_question: "Is it there steadily once you're above a certain speed no matter what, or only under light throttle where it clears if you tap the brake or change the gas?"
+    - vs: humming_or_whining_at_speed_driveline
+      discriminator_question: "Is it mainly something you FEEL (shaking), or a NOISE that rises with speed?"
+  safety_flag: none
+  notes: "Speed-dependent shake felt in the seat = driveshaft/u-joint/carrier-bearing territory; 'worse the faster you go, 50 mph and up' is the driveshaft signature [Tom Wood's 4xshaft.com; powerstrokenation forum 'feel it in the seat of my pants', 45-55 mph]. Customers usually try tire balancing first — 'just had them balanced' in the complaint is a strong driveline cue."
+
+- category: noise
+  subcategory: humming_or_whining_at_speed_driveline
+  display: "Hum / whine that rises with speed (bearing or diff)"
+  customer_voice_anchors:
+    - "very noticeable humming from the rear end, most noticeable 30 to 40 mph, sounds like snow tires"
+    - "humming that gets louder curving left and quieter curving right, feel it in the floor"
+    - "sounds like an airplane taking off at highway speed"
+    - "whine when accelerating that stops when i let off the gas, they said maybe the differential"
+    - "whirring noise only when i coast or let off the gas, quiet on the throttle"
+    - "roaring that gets louder the faster i go"
+    - "rear end is whining"
+    - "howling from the back going uphill"
+    - "growling from one of the front wheels and the abs light came on"
+    - "loud hum like mud tires but i have regular tires"
+  required_slots:
+    - noise_descriptor: "hum/roar (bearing) vs whine/howl (gear mesh) — coarse split between bearing and differential"
+    - steering_load_sensitivity: "louder swerving one way, quieter the other = wheel bearing (weight transfer); constant = tires/diff"
+    - throttle_phase: "on-throttle howl = ring & pinion mesh; coast-only whirr = pinion bearings; constant = wheel bearing/tires — the load-phase names the part"
+    - location_axle: "front vs rear, which side if nameable"
+    - warning_light_named: "ABS/traction light with a growling wheel — modern hub bearings carry the wheel-speed sensor; one fault, not two"
+  confusables:
+    - vs: tire_noise
+      discriminator_question: "Does the hum get louder when you gently swerve one way and quieter the other, or does it stay the same no matter how you steer?"
+    - vs: transmission_whine_or_noise
+      discriminator_question: "Does the whine track your ROAD speed (same at a given mph in every gear), or does it change when the transmission shifts?"
+    - vs: abs_or_traction_light
+      discriminator_question: "Is there a humming or growling wheel noise ALONG with the ABS/traction light, or just the light by itself?"
+    - vs: driveline_vibration_at_speed
+      discriminator_question: "Is it mainly a NOISE, or a shake you feel in the seat and floor?"
+  safety_flag: none
+  notes: "Three mechanisms share one customer sound: wheel/hub bearing (steering-load sensitive, 'snow tires'/'airplane'), diff gear mesh (accel howl), pinion bearings (coast-only whirr) [West Coast Differentials; Halderman via KB 3.5/3.8]. A failing hub bearing can set the ABS/traction light by itself — sensor is integral to the bearing [Tomorrow's Technician]. Cross-domain: wheel bearing itself is owned by the wheels/tires/bearings domain; diff whine is owned here — synthesis should keep both homes and share the discriminators."
+
+- category: transmission_driveline
+  subcategory: awd_4x4_not_engaging
+  display: "4WD / AWD won't engage or fault message"
+  customer_voice_anchors:
+    - "4 wheel drive wont engage"
+    - "my 4wd light just flashes and i hear grinding"
+    - "service 4wd message came on"
+    - "awd system malfunction message came up and it dropped into 2wd"
+    - "it doesnt kick in when i switch to 4hi"
+    - "somethings off with my four wheel drive"
+    - "stuck in 2wd, wont go into 4 low"
+    - "4x4 stopped working right before the snow storm"
+    - "grinds when i try to put it in 4 wheel drive"
+    - "the 4wd light blinks and never locks in"
+  required_slots:
+    - warning_light_named: "'service 4wd', 'awd malfunction', flashing 4WD icon — message text is the highest-value fact"
+    - engagement_behavior: "won't engage vs engages with grinding vs won't DISengage — three different failure points (actuator, synchronizer, linkage)"
+    - onset_timing: "first use in months vs progressive — transfer cases gum up when unused; seasonal first-use failures are common [duramaxforum, tacoma3g threads]"
+    - recent_action: "new tires (mismatched sizes strain AWD couplers), recent battery/electrical work, off-road impact"
+    - drivable_state: "drives fine in 2WD — usually yes, which makes this bookable rather than urgent"
+  confusables:
+    - vs: check_engine_light_only
+      discriminator_question: "Is the message specifically about 4WD or AWD, or just the regular check-engine light?"
+    - vs: awd_4x4_binding_in_turns
+      discriminator_question: "Is the problem that it WON'T go into 4WD, or that it acts like it's stuck IN 4WD and binds when you turn?"
+    - vs: transmission_whine_or_noise
+      discriminator_question: "Does the grinding only happen when you try to switch into 4WD, or during normal driving too?"
+  safety_flag: none
+  notes: "Route for electronic/actuator engagement faults and fault messages. AWD-fault messages often co-illuminate the traction/stability light (shared electronics) — that's the AWD path, distinct from the hub-bearing ABS-light path (KB §6: two co-illumination paths, don't collapse). Drives fine in 2WD normally; urgency is customer-context (snowstorm) not safety."
+
+- category: transmission_driveline
+  subcategory: awd_4x4_binding_in_turns
+  display: "Binds / hops in tight turns (stuck in 4WD)"
+  customer_voice_anchors:
+    - "skipping feeling when turning and driving, feels like a truck stuck in 4x4"
+    - "binds up when im turning in parking lots"
+    - "hops and shudders in tight turns"
+    - "wont come out of 4 wheel drive"
+    - "front end crow hops when i turn sharp"
+    - "feels like its fighting itself in turns"
+    - "steering gets tight and the whole truck bucks on sharp turns"
+    - "drives like the brakes grab when i turn hard"
+    - "shudders around corners, rear wheel drive with a posi rear end"
+  required_slots:
+    - onset_timing: "tight low-speed turns on dry pavement — the windup scenario; straight-line driving is fine"
+    - vehicle_powertrain: "part-time 4WD vs AWD vs RWD-with-limited-slip — a RWD posi that chatters on corners has NO 4WD hardware and is a gear-oil/clutch-pack service, not a transfer case"
+    - four_wd_mode_state: "currently in 4WD / won't come out vs happens in 2WD too — stuck-engaged is the classic windup cause"
+    - warning_light_named: "any 4WD/AWD message — presence points at the electronic coupler, absence on a RWD points at the posi"
+    - recent_action: "mismatched or new tires on one axle — tire-diameter mismatch strains AWD couplers into binding"
+  confusables:
+    - vs: clicking_when_turning
+      discriminator_question: "Is it a click-click-click SOUND, or the whole vehicle BINDING and hopping like it's fighting itself?"
+    - vs: limited_slip_posi_chatter
+      discriminator_question: "Does your vehicle have 4WD/AWD, or is it rear-wheel drive with a limited-slip (posi) rear end — and is there any 4WD/AWD warning message?"
+    - vs: brakes_grabbing
+      discriminator_question: "Does it only happen in tight turns (parking lots, U-turns), or also braking in a straight line?"
+  safety_flag: none
+  notes: "Driveline windup: part-time 4WD on dry pavement can't relieve front/rear speed difference in a turn — bind, hop, 'crow hop' [Halderman via KB 3.9]. The look-alike is limited-slip clutch chatter on a single-axle RWD ('banging, clunking or chattering only on corners' — worn posi clutches or wrong/depleted friction-modifier additive) [West Coast Differentials]. The posi variant is a much cheaper fluid-service fix — the powertrain question is worth real money."
+
+- category: transmission_driveline
+  subcategory: axle_broke_wont_move
+  display: "Loud bang, now it revs but won't move"
+  customer_voice_anchors:
+    - "heard a loud bang and now it wont move, engine revs but the car goes nowhere"
+    - "loud pop taking off and now it just revs"
+    - "front wheel just spins, no power to the other one"
+    - "axle snapped"
+    - "something broke under the car, revs fine but doesnt move"
+    - "cv axle came apart, car wont go"
+    - "big clunk then nothing, like its in neutral"
+    - "was pulling out and BANG, now the motor revs and nothing happens"
+  required_slots:
+    - onset_timing: "sudden, under load / taking off, with a bang or pop — the fracture moment separates this from gradual trans failure"
+    - drivable_state: "not drivable, needs tow — this entry should always route to tow guidance, not a drive-in slot"
+    - noise_at_failure: "bang/crack/pop at the moment it quit — the signature fact"
+    - prior_symptoms: "clicking on turns or vibration beforehand vs none — corrosion fractures give no warning; a clicking history says CV joint"
+    - which_wheel_spins: "one wheel free-spinning if they saw it — confirms a broken shaft rather than internal trans"
+  confusables:
+    - vs: wont_move_or_no_gear
+      discriminator_question: "Did it quit suddenly with a loud BANG or pop, or did it just gradually stop going into gear?"
+    - vs: no_start
+      discriminator_question: "Does the engine run fine and the car just won't move, or won't the engine start at all?"
+    - vs: auto_trans_slipping
+      discriminator_question: "Does it move at all (just weak), or does it rev freely and go absolutely nowhere?"
+  safety_flag: advise_immediately
+  notes: "Snapped axle/halfshaft: the shaft is the sole torque path to that wheel — a fracture means zero motion while the engine free-revs (KB 3.10). Reads as 'transmission went out' to a layperson. Do NOT drive: risks hub, ABS wiring, brake hose. Always tow. The dispatcher-level fact is bang+sudden vs gradual."
+
+# ---------------------------------------------------------------------------
+# LEAKS (driveline fluids)
+# ---------------------------------------------------------------------------
+
+- category: leak
+  subcategory: gear_oil_leak
+  display: "Thick dark gear-oil leak (diff / manual box)"
+  customer_voice_anchors:
+    - "thick dark fluid under the rear axle and it smells like rotten eggs"
+    - "sticky black greasy mess dripping from the pumpkin on the back axle"
+    - "rear differential leaking"
+    - "stinky oil spots under the back of my truck"
+    - "thick dark oil under the middle of my stick shift, smells like sulfur"
+    - "gear oil leaking, you can smell it"
+    - "axle seal is leaking"
+    - "nasty smelling oil on the inside of my back wheel"
+    - "rear end is whining and theres dark oil dripping back there"
+  required_slots:
+    - fluid_color: "thick, dark brown to near-black, sticky — vs thin red ATF and vs engine oil"
+    - smell_descriptor: "strong sulfur / rotten-egg — hypoid gear oil's giveaway that even non-car people report"
+    - fluid_under_car_location: "under the rear axle / pumpkin / inside of a rear wheel (axle seal) vs mid-car (manual box, transfer case)"
+    - companion_noise: "whine or howl from the same end — a diff run low is already wearing; noise+leak together escalates"
+    - recent_action: "recent diff service elsewhere — a leak right after service overrides to the after-recent-service path"
+  confusables:
+    - vs: engine_oil_leak
+      discriminator_question: "Is the puddle under the BACK of the car with a rotten-egg smell, or up front under the engine with a regular oil smell?"
+    - vs: transmission_fluid_leak
+      discriminator_question: "Is the fluid dark brown/black and thick, or red and thinner?"
+    - vs: brake_fluid_leak
+      discriminator_question: "Is it thick, dark and stinky, or thin, clear-to-light-brown and slippery near a wheel?"
+  safety_flag: none
+  notes: "Gear oil on the inside of a wheel can also be an axle seal contaminating the BRAKE shoes/pads — worth an advisor note when the location is 'inside of my back wheel'. Sulfur smell is the discriminator customers volunteer unprompted (KB 3.7/FM-11). A leak appearing right after a diff service routes to after-recent-service (situational override, KB taxonomy rule)."
+
+# ---------------------------------------------------------------------------
+# SERVICE REQUESTS (no symptom — maintenance voice)
+# ---------------------------------------------------------------------------
+
+- category: request
+  subcategory: transmission_fluid_service
+  display: "Transmission fluid service / flush"
+  customer_voice_anchors:
+    - "need a transmission fluid change"
+    - "due for a transmission flush"
+    - "dealer recommended a transmission service"
+    - "how much is a trans fluid and filter change"
+    - "cvt fluid change"
+    - "transmission service, no problems just maintenance"
+    - "was told my transmission fluid looks dark"
+    - "100k service, want the trans fluid done"
+  required_slots:
+    - symptom_present: "any current shifting symptom vs pure maintenance — a symptom converts this from a request to a diagnostic booking"
+    - vehicle_powertrain: "CVT vs conventional vs manual — different fluids and service procedures; CVTs are fluid-sensitive"
+    - service_history: "ever been done / mileage — very high-mileage never-serviced transmissions warrant an advisor conversation before a flush"
+    - who_recommended: "dealer/quick-lube recommendation vs owner initiative — recommendation lists often carry several items to quote together"
+  confusables:
+    - vs: auto_trans_slipping
+      discriminator_question: "Are you noticing any slipping, hard shifts, or hesitation right now, or is this just routine maintenance?"
+    - vs: transmission_fluid_leak
+      discriminator_question: "Have you seen any red fluid under the car, or is the fluid level fine and you just want it changed?"
+  safety_flag: none
+  notes: "Maintenance voice, not a concern — book as a service, skip symptom triage unless the answer to the symptom question is yes. Real-corpus forms include dealer-recommendation lists ('recs from dealer: transmission flush, brake fluid...') that carry multiple bookable items."
+
+- category: request
+  subcategory: differential_transfer_case_service
+  display: "Differential / transfer case fluid service"
+  customer_voice_anchors:
+    - "rear diff service"
+    - "need the differential fluid changed"
+    - "transfer case fluid change"
+    - "front and rear diff fluid for my 4x4, i tow a lot"
+    - "gear oil change before winter"
+    - "4 wheel drive service, rear differential fluid and transfer case fluid"
+    - "diff fluid was recommended at my last oil change"
+    - "how much to do the diffs and transfer case on my truck"
+    - "rear end fluid change, its got a posi so it needs the additive"
+  required_slots:
+    - symptom_present: "any whine/clunk/bind now vs pure maintenance — symptoms reroute to the matching diagnostic entry"
+    - vehicle_powertrain: "4WD/AWD (front diff + transfer case exist) vs RWD (rear only) vs limited-slip (needs friction-modifier additive) — determines what's actually serviceable"
+    - usage_context: "towing / off-road / snow plowing — severe-service intervals justify the work"
+  confusables:
+    - vs: gear_oil_leak
+      discriminator_question: "Any leak or noise from the axle right now, or just due for the fluid?"
+    - vs: awd_4x4_binding_in_turns
+      discriminator_question: "Is the vehicle doing anything odd in turns, or is this routine service?"
+  safety_flag: none
+  notes: "Limited-slip diffs need the friction-modifier additive at service — and a posi that chatters on corners is often CURED by this service [West Coast Differentials], which is why the binding entry cross-references here. Declined-service upsell lines from prior visits show up verbatim in this voice."

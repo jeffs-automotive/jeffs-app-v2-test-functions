@@ -1,0 +1,579 @@
+# =====================================================================================
+# Customer-concern anchor knowledge — domain: engine-running-performance
+# Scope: engine mechanical noises (knock/tick/tap), driveability (misfire/bucking,
+#        hesitation, stalling, rough idle, surging, low power/limp), hard starting
+#        (hot/cold), ignition, exhaust & emissions (loud exhaust, rotten-egg smell,
+#        failed smog/emissions).
+# Curated: 2026-07-19. Anchors are CUSTOMER-VOICE (misspellings, all-caps fragments,
+# part-name misuse are intentional — they mirror the real concern channel).
+# Slugs bind to the live scheduler taxonomy (docs/automotive-knowledge-base/
+# 00-current-scheduler-taxonomy.md) except the two flagged NEW `request` slugs.
+#
+# Factual sources (diagnostic claims):
+#   [S1] Rod knock vs lifter tick (depth, location, load/RPM behavior):
+#        https://www.speedwaymotors.com/the-toolbox/how-to-diagnose-lifter-tick-vs-rod-knock-troubleshooting-tips/145810
+#        https://bobistheoilguy.com/forums/threads/telling-the-difference-between-rod-knock-and-lifter-noise.50703/
+#   [S2] Exhaust manifold leak = cold-start tick that fades as metal expands when warm:
+#        https://www.carparts.com/blog/how-to-tell-if-your-exhaust-manifold-is-leaking/
+#        https://blog.1aauto.com/exhaust-manifold-leak/
+#   [S3] Rotten-egg smell = hydrogen sulfide a failing/overloaded catalytic converter
+#        isn't converting (rich-running overloads it); battery sulfuric acid is the
+#        under-hood look-alike:
+#        https://www.cars.com/articles/why-does-my-car-smell-like-rotten-eggs-464899/
+#        https://www.autozone.com/diy/symptoms/why-does-my-car-smell-like-rotten-eggs
+#   [S4] Flashing CEL = active misfire, raw fuel can overheat/destroy the catalytic
+#        converter within minutes — stop-driving advice:
+#        https://www.artsautomotiveinc.com/how-an-engine-misfire-can-destroy-your-catalytic-converter
+#        https://obdguides.com/symptoms/check-engine-light-flashing/
+#   [S5] Hot-start / heat-soak hard start (fuel pressure bleed-down, heat-soaked
+#        starter/coils/crank sensor):
+#        https://www.marblefallsautocenter.com/post/why-is-my-car-hard-to-start-when-hot
+#        https://www.camryforums.com/forum/diy-do-yourself-22/hard-start-hot-heat-soak-engine-44813/
+#   [S6] Limp mode / reduced engine power (speed + RPM caps, protective state):
+#        https://www.kbb.com/car-advice/limp-mode/
+#        https://mechanicbase.com/engine/limp-mode/
+#   [S7] Emissions/smog failure: CEL on = automatic fail; cleared codes / battery
+#        disconnect reset readiness monitors (need 50-100 mi of driving):
+#        https://ranchobernardoautocare.com/can-you-pass-smog-with-the-check-engine-light-on/
+#        https://justsmogs.com/2014/04/smog-check-obd-ii-obd-2-what-are-readiness-monitors/
+#   [S8] Exhaust fumes in cabin = carbon monoxide risk (headache/dizziness/nausea;
+#        can be fatal) — do not drive:
+#        https://www.cdc.gov/carbon-monoxide/about/index.html
+#        https://my.clevelandclinic.org/health/diseases/15663-carbon-monoxide-poisoning
+#        https://carxplorer.com/why-do-i-smell-exhaust-in-my-car/
+# Customer-phrasing evidence: Tekmetric concern corpus + forum paraphrases already
+# vetted in docs/automotive-knowledge-base/systems/*.lexicon.yaml and
+# datasets/customer-language-lexicon.md, plus forum threads in [S1]/[S5].
+# =====================================================================================
+
+anchors:
+
+  # ----------------------------------------------------------------- driveability ---
+
+  - category: performance
+    subcategory: engine_misfire_or_bucking_feeling
+    display: "Engine misfiring / bucking / jerking"
+    customer_voice_anchors:
+      - "check engine light is flashing and the car is bucking when i accelerate"
+      - "engine bucks and jerks when I press the gas like its skipping a beat"
+      - "feels like its running on 3 cylinders, keeps skipping at speed"
+      - "car is sputtering and shaking, feels like the spark plugs are bad"
+      - "blinking check engine light and the whole car is rumbling"
+      - "going up any incline it pulls back and does a kind of buck then picks up"
+      - "it jerks and studders when i give it gas"
+      - "runs rough and backfires when i step on it"
+      - "bucks and jerks way worse when its raining or the roads are wet"
+      - "autozone said misfire on cylinder 3 and i can feel it shaking when i drive"
+      - "CAR SHAKING AND JERKING WHEN ACCELERATING"
+      - "sputters like its choking on gas when i speed up"
+      - "hiccups at highway speed like it loses spark for a second"
+      - "misfiring real bad, shut it off and when i restarted it ran fine"
+    required_slots:
+      - warning_light_behavior: "CEL off / steady / FLASHING — flashing means active misfire dumping raw fuel into the cat; changes triage to stop-driving [S4]"
+      - onset_timing: "when it happens (accelerating, cruising, at idle, on startup, intermittent) — under-load misfire vs idle-only roughness pick different tests"
+      - speed_band: "idle-only vs low speed vs highway — separates this from rough_idle and locates the load condition"
+      - weather_condition: "wet/rainy-only bucking points at secondary ignition (plug wires/coils tracking)"
+      - recent_action: "recent fueling, plug/coil work, or other service — bad gas and disturbed ignition parts are common triggers"
+    confusables:
+      - vs: rough_idle_or_shaking_at_a_stop
+        discriminator_question: "Do you feel it jerking while you're driving and giving it gas, or is it only rough/shaky while stopped at idle?"
+      - vs: hesitation_or_lag_when_accelerating
+        discriminator_question: "Is it a repeated jerking/stumbling the whole time you accelerate, or one single pause before the car responds?"
+      - vs: check_engine_light
+        discriminator_question: "Can you actually feel it running badly, or is the light the only thing you've noticed?"
+      - vs: transmission_shifting_issue
+        discriminator_question: "Does the jerk happen exactly when it changes gears, or any time you press on the gas regardless of shifting?"
+    safety_flag: advise_immediately
+    notes: "Safety flag is driven by the flashing-CEL variant (raw fuel can destroy the catalytic converter within minutes [S4]); a mild intermittent stumble with no light is not an emergency but books the same diagnostic. Includes sputtering, skipping, bucking, jerking, backfiring under power. Does NOT include: a scan-reported misfire code with no felt symptom (reported != felt — that is check_engine_light), jerks tied to gear changes (transmission), or idle-only shake (rough_idle). Customers often self-diagnose as 'needs a tune up' — if a symptom is stated, route by the symptom, not the request."
+
+  - category: performance
+    subcategory: hesitation_or_lag_when_accelerating
+    display: "Hesitates or lags when accelerating"
+    customer_voice_anchors:
+      - "when i step on the gas theres like a second delay before the car actually goes"
+      - "little hiccup right when i take off from a stop sign, then it drives fine"
+      - "hesitates when accelerating especially uphill"
+      - "it stumbles for a second when i pull out into traffic, scary"
+      - "press the pedal and nothing happens for a second then it surges forward"
+      - "vehicle was hesitating at low speeds around 25 and the check engine light came on"
+      - "bogs down when i try to pass on the highway"
+      - "feels like it loses power for a split second when i give it gas"
+      - "the engine hesitates when i accelerate but not all the time"
+      - "lags off the line like its thinking about it before it goes"
+      - "started hesitating right after they changed my air filter"
+      - "HESITATION ON ACCELERATION"
+    required_slots:
+      - onset_timing: "from a stop (tip-in) vs at speed vs uphill vs intermittent — tip-in stumble vs under-load bog implicate different systems"
+      - speed_band: "what speed it happens at — low-speed vs passing-speed hesitation"
+      - warning_light_behavior: "CEL present or not — with a code the diagnostic starts from the scan"
+      - recent_action: "recent air-filter/intake/fueling/service — disturbed MAF or bad gas are classic sudden-onset causes"
+      - started_when: "sudden vs gradual onset — sudden points to a discrete failure, gradual to wear/fouling"
+    confusables:
+      - vs: engine_misfire_or_bucking_feeling
+        discriminator_question: "Is it one brief pause and then it pulls normally, or does it keep jerking/stumbling the whole time you accelerate?"
+      - vs: low_power_or_wont_accelerate_normally
+        discriminator_question: "Once it catches, does it accelerate normally, or is it weak the entire time you're on the gas?"
+      - vs: transmission_delayed_engagement
+        discriminator_question: "Does the delay happen when you first shift into Drive or Reverse, or while you're already moving and press the gas?"
+    safety_flag: none
+    notes: "A momentary stumble/delay that then recovers. Does NOT include sustained weakness (low_power), repeated jerking (misfire), or delayed engagement when selecting a gear (transmission — a very common customer conflation; 'hesitates when putting in gear' is transmission language). Customers describe it as hiccup, stumble, bog, lag, 'thinks about it'."
+
+  - category: performance
+    subcategory: rough_idle_or_shaking_at_a_stop
+    display: "Rough idle / shaking while stopped"
+    customer_voice_anchors:
+      - "car idles rough and shakes but runs down the road fine"
+      - "idles real choppy and the steering wheel trembles when im stopped"
+      - "engine sputters at red lights and the rpm needle bounces all over"
+      - "shakes when im stopped at a light, smooths out when i drive"
+      - "runs rough when its idling like its about to die"
+      - "vibrates real bad in drive with my foot on the brake"
+      - "IDLE IS DROPPING VERY LOW AND ALMOST STALLING"
+      - "idle gets all shaky when the ac is on"
+      - "feels like the engine is gonna shake itself out of the car at idle"
+      - "rough idol when its cold in the morning then it smooths out"
+      - "check engine light on, running rough at idle"
+      - "car shudders sitting in the drive thru"
+    required_slots:
+      - engine_running: "does it stay running or actually shut off — an actual stall routes to stalling_at_idle instead"
+      - speed_band: "idle-only vs also while driving — roughness that continues under way is misfire territory"
+      - onset_timing: "cold-start only, warmed up, only in gear, only with AC on — narrows cause (cold enrichment vs load)"
+      - warning_light_behavior: "CEL steady/flashing/off"
+      - symptom_warmup_trend: "smooths out when warm vs constant — cold-only roughness is a distinct diagnostic branch"
+    confusables:
+      - vs: stalling_at_idle_or_when_stopping
+        discriminator_question: "Does the engine actually shut off on you, or does it shake and run rough but keep running?"
+      - vs: engine_misfire_or_bucking_feeling
+        discriminator_question: "Is the roughness only while you're stopped, or do you also feel it jerking while accelerating?"
+      - vs: shaking_at_idle_while_stopped
+        discriminator_question: "Does the engine itself sound like it's struggling or sputtering, or does the engine sound normal and the car just vibrates (worn engine mount)?"
+    safety_flag: none
+    notes: "Engine-running roughness at idle. The vibration-domain twin (shaking_at_idle_while_stopped, motor mounts) is a smooth-sounding engine with body shake — engine sound is the discriminator. 'Idle dropping low and almost stalling' is legitimately ambiguous with stalling_at_idle; ask the does-it-die question. Rough idle + rotten-egg smell keeps the rough-idle lead (smell is secondary evidence of running rich [S3])."
+
+  - category: performance
+    subcategory: stalling_at_idle_or_when_stopping
+    display: "Stalls at idle or when coming to a stop"
+    customer_voice_anchors:
+      - "engine dies every time i come to a stop at a red light"
+      - "stalls out right as i pull up to a stop sign but starts right back up"
+      - "shuts off while idling unless i keep my foot on the gas"
+      - "car cut off in the drive thru twice this week"
+      - "keeps dying at stop lights, its embarrassing"
+      - "it will just turn itself off when im sitting in traffic"
+      - "stalls when i put it in reverse or drive"
+      - "dies at idle when the ac is running"
+      - "car konks out when i slow down for a turn"
+      - "engine cuts out when i come to a stop, no warning lights or anything"
+      - "stalled in the school pickup line, started right up again"
+    required_slots:
+      - engine_running: "restart behavior — restarts immediately vs won't restart (a no-restart stall escalates toward no-start testing)"
+      - speed_band: "only at/approaching a stop vs also while driving at speed — 'stalls driving AND at idle' needs this split"
+      - onset_timing: "when warm/cold, with AC on, when shifted into gear — each is a distinct idle-control branch"
+      - warning_light_behavior: "battery/oil lights flickering during the stall points to the charging system, not engine idle control"
+      - started_when: "how long it's been happening and whether it's getting more frequent"
+    confusables:
+      - vs: stalling_while_driving_under_load
+        discriminator_question: "Does it only die when you're stopped or slowing down, or has it shut off while you were actually driving at speed?"
+      - vs: rough_idle_or_shaking_at_a_stop
+        discriminator_question: "Does the engine fully shut off, or does it just idle rough without dying?"
+      - vs: car_died_while_driving_electrical
+        discriminator_question: "When it dies, do the battery or oil lights come on first, or do the dash lights flicker/go dark?"
+    safety_flag: none
+    notes: "Stall tied to idle/stopping, typically restarts immediately. Note in booking: a stall that strands the customer (won't restart) or happens in live traffic should be advised as urgent even though the flag is none. Does NOT include dying at speed (stalling_while_driving_under_load) or stalls with charging-light signature (electrical domain)."
+
+  - category: performance
+    subcategory: stalling_while_driving_under_load
+    display: "Engine shuts off while driving"
+    customer_voice_anchors:
+      - "was driving on the highway and the engine just shut off, had to coast to the shoulder"
+      - "car died while i was driving and the steering got real hard"
+      - "stalled out while turning into the parking lot and would not restart"
+      - "lost all power going down the road, everything shut off"
+      - "engine cuts out while driving then catches again"
+      - "it just dies randomly while im driving, no warning"
+      - "shut off on me doing 60 on the interstate, scared me to death"
+      - "car keeps stalling while driving and at idle"
+      - "died going up a hill and i had to pull over"
+      - "CAR SHUT OFF WHILE DRIVING"
+      - "cuts off when i hit the gas hard, comes right back"
+    required_slots:
+      - speed_band: "city speed vs highway — dying at speed is the highest-risk variant"
+      - drivable_state: "did it restart, is it currently driveable or stranded — gates tow-in vs drive-in booking"
+      - warning_light_behavior: "battery + oil lights at the moment of stall = charging-system signature, routes electrical"
+      - onset_timing: "under hard acceleration / uphill / random / when hot — load-dependence vs heat-dependence"
+      - started_when: "first occurrence vs repeated pattern"
+    confusables:
+      - vs: stalling_at_idle_or_when_stopping
+        discriminator_question: "Has it shut off while moving at speed, or only when you're stopped or slowing down?"
+      - vs: car_died_while_driving_electrical
+        discriminator_question: "Right before it died, did the battery light or all the dash lights come on or flicker?"
+      - vs: low_power_or_wont_accelerate_normally
+        discriminator_question: "Did the engine completely shut off, or did it stay running but with barely any power?"
+    safety_flag: advise_immediately
+    notes: "Engine shutoff at speed kills power-steering and brake assist — treat as a do-not-keep-driving concern. Customers say 'lost power' for BOTH a full stall and limp mode; the shut-off-vs-still-running question resolves it. Battery/oil-light signature routes to the electrical domain (charging failure), not engine driveability."
+
+  - category: performance
+    subcategory: surging_or_rpms_going_up_and_down
+    display: "Idle surging / RPMs hunting up and down"
+    customer_voice_anchors:
+      - "rpms go up and down on their own when im sitting at a red light"
+      - "idle keeps hunting up and down like someone is tapping the gas"
+      - "revs up by itself when its in park"
+      - "the needle bounces between 500 and 1500 at idle"
+      - "idle surges up and down when its cold then settles down"
+      - "car revs real high when i first start it and stays there"
+      - "feels like it speeds up on its own a little when im cruising"
+      - "engine revs up and down while the car is warming up"
+      - "idle wont settle, keeps going up and down up and down"
+      - "runs too high of an idle and keeps idle searching"
+      - "RPMS JUMPING AT IDLE"
+    required_slots:
+      - engine_running: "surging at idle in park/neutral vs while driving — driving surge at steady speed opens the transmission-hunting read"
+      - onset_timing: "cold-start only vs all the time — cold-only high/hunting idle is normal-enrichment adjacent, constant hunting is not"
+      - speed_band: "stopped vs cruising — locates the surge"
+      - warning_light_behavior: "CEL on changes the entry point to the scan"
+    confusables:
+      - vs: rough_idle_or_shaking_at_a_stop
+        discriminator_question: "Is the engine smoothly revving up and down on its own, or is it stumbling and sputtering rough?"
+      - vs: engine_misfire_or_bucking_feeling
+        discriminator_question: "Does the RPM needle swing smoothly, or does the whole car shake and jerk with it?"
+      - vs: transmission_hunting_gears
+        discriminator_question: "Do the RPMs swing while you're cruising at a steady speed on the highway (like it can't pick a gear), or while you're stopped?"
+    safety_flag: none
+    notes: "Also the nearest-fit home for a STEADY high idle with no hunting (no dedicated slug in the live catalog — same diagnostic service; documented coverage gap). Unintended-acceleration language ('takes off on its own', pedal sticking) is NOT this slug — that is a safety concern routed to the situational safety bucket."
+
+  - category: performance
+    subcategory: low_power_or_wont_accelerate_normally
+    display: "Low power / won't accelerate / limp mode"
+    customer_voice_anchors:
+      - "went into limp mode and wont go over 40"
+      - "reduced engine power light came on and it barely moves"
+      - "wont rev past 3000 and barely picks up speed"
+      - "i floor it and nothing happens, no power at all"
+      - "feels real sluggish like its dragging something behind it"
+      - "no power going uphill, semi trucks are passing me"
+      - "car is not accelerating, the rpms only go to 3"
+      - "lost power on the highway, could barely keep going, had to pull over"
+      - "gutless all of a sudden, it used to have plenty of pep"
+      - "revs up high but the car barely picks up speed"
+      - "wheezes up hills like its out of breath"
+      - "CAR HAS NO POWER WONT GO OVER 35"
+    required_slots:
+      - warning_light_behavior: "reduced-power message / wrench light / CEL — a displayed limp-mode message confirms the protective state [S6]"
+      - onset_timing: "sudden event vs gradual decline — limp mode is sudden; fouling/restriction is gradual"
+      - speed_band: "the speed or RPM it tops out at — limp caps are typically 35-55 mph / 2500-3500 rpm [S6]"
+      - drivable_state: "can it safely reach the shop or does it need a tow"
+      - recent_action: "recent service, fueling, or a prior warning light — common limp triggers"
+    confusables:
+      - vs: engine_misfire_or_bucking_feeling
+        discriminator_question: "Is it smooth but weak when you accelerate, or does it jerk and stumble?"
+      - vs: hesitation_or_lag_when_accelerating
+        discriminator_question: "Is it weak the entire time you're on the gas, or just a brief pause and then normal power?"
+      - vs: transmission_slipping
+        discriminator_question: "When you press the gas, does the engine rev way up without the car going faster, or does the engine itself refuse to rev and pull?"
+    safety_flag: none
+    notes: "Limp/reduced-power is a protective computer state, usually drivable at reduced speed [S6] — but advise against highway driving in the booking copy. 'Revs high but doesn't go' is the transmission-slip signature (cross-domain); 'won't rev past X with a message on the dash' is engine limp. Customers use 'lost power' for full stalls too — the still-running check separates it."
+
+  # ----------------------------------------------------------------- hard starting ---
+
+  - category: performance
+    subcategory: hard_to_start_when_cold
+    display: "Hard to start cold (mornings / first start)"
+    customer_voice_anchors:
+      - "cranks forever in the morning before it finally fires up"
+      - "takes 3 or 4 tries to start when its cold out"
+      - "first start of the day is a struggle, fine the rest of the day"
+      - "have to give it gas to get it going on cold mornings"
+      - "hard starting on cold mornings, once its running its fine"
+      - "turns over and over before it catches when its below freezing"
+      - "wont start on the first try after it sits overnight"
+      - "cranks a long time in the morning then runs great all day"
+      - "COLD START ISSUE, EXTENDED CRANK IN THE MORNING"
+      - "my car doesnt like to wake up in the morning, takes forever to start"
+      - "sputters and almost doesnt catch first thing in the morning"
+    required_slots:
+      - noise_descriptor: "crank character — spins at NORMAL speed but slow to fire (fuel/spark, this slug) vs slow labored rrr-rrr crank (battery/starter — electrical domain). The single most important split"
+      - weather_condition: "tied to cold temperature / overnight sit — definitional for this slug"
+      - onset_timing: "first start of day only vs every cold start vs worsening"
+      - engine_running: "does it ALWAYS eventually start — a start that never fires is no-start testing, not hard-start"
+      - warning_light_behavior: "CEL after the hard start gives the scan a head start"
+    confusables:
+      - vs: slow_crank_sluggish_start
+        discriminator_question: "When it struggles, is the cranking itself slow and labored (rrr... rrr...), or does it spin over at normal speed and just take a long time to catch?"
+      - vs: wont_start_cranks_fine
+        discriminator_question: "Does it always eventually start, or are there times it cranks and never fires at all?"
+      - vs: hard_to_start_when_hot
+        discriminator_question: "Is it hardest on cold mornings after sitting overnight, or after the engine is warmed up and parked briefly?"
+    safety_flag: none
+    notes: "Cranks-normal-but-slow-to-fire when cold (fuel pressure bleed-down, enrichment, glow-plug on diesels). Customers say 'turns over slow' loosely for BOTH crank speed and time-to-fire — always ask the crank-character question; true slow crank is the battery/starter domain. Never-fires belongs to no-start testing."
+
+  - category: performance
+    subcategory: hard_to_start_when_hot
+    display: "Hard to start hot (after driving / heat soak)"
+    customer_voice_anchors:
+      - "after getting gas i have to crank it a bunch of times to get it started"
+      - "starts fine cold but hard to start after its been driven and sits 20 minutes"
+      - "wont start right after a quick errand but fine if it sits an hour"
+      - "hard starting when the engine is hot, especially in summer"
+      - "have to hold the pedal down to get it to start when its warm"
+      - "cranks a long time after it sits in a hot parking lot"
+      - "hard to restart at the gas station every time i fill up"
+      - "runs fine in the morning but wont hardly start in the afternoon heat"
+      - "it hesitates to turn back on if i turned it off doing short errands"
+      - "HARD START WHEN HOT"
+      - "takes longer to start after the engine has gotten good and hot"
+    required_slots:
+      - onset_timing: "immediately after shutoff vs after a 15-45 min hot soak vs after refueling — the after-fill-up pattern is a classic EVAP purge cue; heat-soak timing implicates fuel pressure or heat-soaked sensors/starter [S5]"
+      - noise_descriptor: "crank character when hot — slow labored crank ONLY when hot is a heat-soaked starter (electrical domain) [S5]; normal-speed crank that won't fire stays here"
+      - engine_running: "always eventually starts vs sometimes never fires (no-start)"
+      - weather_condition: "worse in summer / hot weather — supports the heat-soak read"
+      - warning_light_behavior: "CEL present or not"
+    confusables:
+      - vs: hard_to_start_when_cold
+        discriminator_question: "Is it hardest after the engine is fully warmed up and parked briefly, or on cold mornings after sitting overnight?"
+      - vs: slow_crank_sluggish_start
+        discriminator_question: "When it's hot, does the starter crank slow and labored, or does it spin normally and just not catch?"
+      - vs: stalling_at_idle_or_when_stopping
+        discriminator_question: "Does it start and then die right away, or does it crank without firing in the first place?"
+    safety_flag: none
+    notes: "Heat-soak hard start: fuel-pressure bleed-down/vapor, heat-soaked crank sensor, coils, or starter [S5]. KEEP the 'right after filling the tank' detail when present — it points to EVAP purge flooding and is highly diagnostic. Slow-hot-crank-only is starter heat soak (electrical domain cross)."
+
+  # ------------------------------------------------------------- engine mech noise ---
+
+  - category: noise
+    subcategory: engine_ticking_or_tapping
+    display: "Ticking or tapping from the engine"
+    customer_voice_anchors:
+      - "engine sounds like a sewing machine when i first start it in the morning"
+      - "ticking noise from the engine that speeds up when i rev it"
+      - "sounds like a typewriter up top when it idles"
+      - "tick tick tick from under the hood, gets faster the faster the engine goes"
+      - "lifter tick that quiets down a little after it warms up"
+      - "tapping noise from the top of the engine, ive been having to add oil too"
+      - "started making an intermittent tapping, does it a few seconds then stops"
+      - "clicky engine noise like a diesel"
+      - "making a tikking noise when driving"
+      - "ticking thats worse when i accelerate"
+      - "ENGINE TAPPING NOISE"
+    required_slots:
+      - symptom_warmup_trend: "fades COMPLETELY once warm = exhaust manifold leak (metal expands and seals) [S2]; persists or only partly quiets = valvetrain/lifter — the decisive split"
+      - sound_or_smoke_location_zone: "top of engine / under the valve cover vs down low vs near a wheel — lifter noise sits up top [S1]"
+      - onset_timing: "cold start only, constant, intermittent, or RPM-linked — a tick that speeds up with engine revs is engine-internal, not road-speed driveline"
+      - recent_action: "oil level / time since last oil change — low oil level makes a tick urgent and shifts it toward the oil-pressure path"
+      - noise_descriptor: "light fast tick vs deep heavy knock — depth separates lifter tick from rod knock [S1]"
+    confusables:
+      - vs: exhaust_manifold_tick_or_puff
+        discriminator_question: "Does the ticking go away completely once the engine is fully warmed up, or does it keep ticking even when warm?"
+      - vs: deep_knocking_from_the_engine
+        discriminator_question: "Is it a light fast tick like a sewing machine, or a deep heavy knock from down low that gets worse when you accelerate?"
+      - vs: popping_or_clicking_when_turning
+        discriminator_question: "Do you hear it with the engine revving even sitting still, or only when the car is rolling and turning?"
+    safety_flag: none
+    notes: "Valvetrain/lifter tick: highest up top, most audible at idle, may diminish at higher RPM as oil pressure rises [S1]. Ticks synced to ENGINE speed are this domain; clicks synced to ROAD speed or turning are driveline. If the customer also mentions the oil light or very low oil, escalate — that pairs with the oil-pressure-light path, not a routine noise booking."
+
+  - category: noise
+    subcategory: deep_knocking_from_the_engine
+    display: "Deep knocking from the engine"
+    customer_voice_anchors:
+      - "deep knocking sound coming from the motor"
+      - "sounds like someone is hammering inside the engine"
+      - "heavy banging from down low that gets worse when i accelerate"
+      - "loud knock knock knock that speeds up with the rpms"
+      - "knocking got louder and now the oil light flickers"
+      - "engine is knocking, i thought it was the transmission at first"
+      - "sounds like a rock tumbling around inside the engine"
+      - "deep clunking from the engine when i rev it"
+      - "motor is knocking real bad, im scared to drive it"
+      - "ENGINE KNOCKING LOUD"
+      - "rattles like marbles in a can when i accelerate up hills"
+    required_slots:
+      - noise_descriptor: "deep/heavy vs light tick — rod knock is a deeper, heavier clacking than lifter tick [S1]"
+      - onset_timing: "worse under load/acceleration = bottom-end signature [S1]; only when accelerating uphill with a rattle = spark knock/ping (different, milder issue)"
+      - warning_light_named: "oil pressure light present = emergency, stop driving"
+      - recent_action: "oil level / recent oil change — running low is the classic precursor"
+      - drivable_state: "already at the shop question: is it still being driven — shapes tow-in advice"
+    confusables:
+      - vs: engine_ticking_or_tapping
+        discriminator_question: "Is it a deep heavy knock from low in the engine, or a light fast ticking from up top?"
+      - vs: clunking_over_bumps
+        discriminator_question: "Does it knock with the engine revving even in park, or only when you hit bumps in the road?"
+      - vs: exhaust_louder_or_rumbling
+        discriminator_question: "Is it a rhythmic metallic knock that follows engine speed, or a loud rumbling exhaust note?"
+    safety_flag: advise_immediately
+    notes: "Deep load-dependent knock = probable rod/bottom-end failure; continuing to drive risks total engine loss, especially with an oil light [S1]. Distinguish from spark knock/pinging ('marbles in a can' rattle only under load uphill — bad fuel/octane, less urgent, but same booking). Customers misattribute knock to the transmission — the revving-in-park test resolves it."
+
+  # --------------------------------------------------------------- exhaust & emissions ---
+
+  - category: noise
+    subcategory: exhaust_manifold_tick_or_puff
+    display: "Exhaust manifold tick / puffing when cold"
+    customer_voice_anchors:
+      - "fast ticking when i first start it cold, goes away after it warms up a few minutes"
+      - "ticking from the engine bay on cold mornings that stops completely after five minutes"
+      - "i think i have an exhaust manifold leak, it ticks at startup"
+      - "puffing tick sound when its cold and the exhaust sounds a little louder"
+      - "ticks the first few minutes in the morning then its quiet all day"
+      - "sounds like air puffing out with a tick tick when the engines cold"
+      - "ticking noise thats worse when i accelerate, mostly when its cold out"
+      - "hear a tick and can smell a little exhaust under the hood"
+      - "ticks on cold start, the last shop said manifold gasket"
+    required_slots:
+      - symptom_warmup_trend: "clears completely when warm — definitional; the manifold crack/gap seals as the metal expands [S2]"
+      - onset_timing: "cold start, worse under acceleration when cold [S2]"
+      - smell_descriptor: "exhaust smell under hood or in cabin alongside the tick — raises urgency (fume path)"
+      - sound_or_smoke_location_zone: "engine bay / one side of the engine vs underneath the car"
+    confusables:
+      - vs: engine_ticking_or_tapping
+        discriminator_question: "Once fully warmed up, is the tick completely gone, or still there?"
+      - vs: exhaust_louder_or_rumbling
+        discriminator_question: "Is it a rhythmic tick/puff up near the engine, or is the whole exhaust louder and deeper underneath and behind the car?"
+      - vs: exhaust_fumes_inside_the_cabin
+        discriminator_question: "Do you ever smell exhaust inside the car while driving, or is it just the noise outside?"
+    safety_flag: none
+    notes: "Cold-start tick that fully fades warm = manifold/manifold-gasket leak; the leak still exists and grows [S2]. A manifold leak under the hood is upstream of the cabin air intake — if the customer ALSO reports fumes inside, the fumes concern leads and the safety flag flips (see exhaust_fumes_inside_the_cabin)."
+
+  - category: noise
+    subcategory: exhaust_louder_or_rumbling
+    display: "Exhaust louder than normal / rumbling"
+    customer_voice_anchors:
+      - "the car got crazy loud all of a sudden, sounds like a motorcycle now"
+      - "exhaust is way louder than it used to be"
+      - "sounds like a race car when i start it, the neighbors complained"
+      - "muffler sounds loose, rumbles and rattles under the car"
+      - "deep rumble from the back of the car when i accelerate"
+      - "pretty sure the muffler rusted out, its super loud"
+      - "not sure but my car is rumbling, somethings wrong underneath"
+      - "hear a blowing sound under the car when i rev it"
+      - "sounds like a tractor all of a sudden"
+      - "woke up to it being insanely loud, someone said catalytic converter theft"
+      - "LOUDER THAN NORMAL, CLIENT THINKS EXHAUST ISSUE"
+      - "exhaust pipe is hanging down and dragging, got loud"
+    required_slots:
+      - started_when: "sudden overnight vs gradually louder — sudden extreme loudness after parking in public is the catalytic-converter-theft signature; gradual is rust-through"
+      - sound_or_smoke_location_zone: "under the middle/rear vs up at the engine — locates the leak section"
+      - smell_descriptor: "any exhaust smell inside the cabin — flips this to the fumes safety path"
+      - noise_descriptor: "louder exhaust NOTE vs a metal rattle/buzz — a rattle at certain RPMs is a heat shield, not a leak"
+      - drivable_state: "pipe dragging on the ground needs immediate advice vs just loud"
+    confusables:
+      - vs: exhaust_manifold_tick_or_puff
+        discriminator_question: "Is the whole exhaust note louder/deeper, or is it a rhythmic ticking up near the engine when cold?"
+      - vs: rattling_underneath_the_car
+        discriminator_question: "Is the exhaust sound itself louder, or is it more of a metal rattle or buzz underneath at certain engine speeds?"
+      - vs: humming_or_whirring_at_speed
+        discriminator_question: "Does the noise follow the engine when you rev it in park, or does it only change with how fast you're driving?"
+    safety_flag: none
+    notes: "Loud/rumbling exhaust from a rusted muffler, broken pipe, flange leak, or stolen catalytic converter. Escalate wording if fumes are smelled inside (CO risk [S8]) or the pipe is dragging. 'Rumbling' alone is ambiguous with tire/bearing roar — the rev-in-park vs road-speed question separates them. Inspection-style asks with no symptom ('make sure no exhaust leaks') are advisor requests, not this concern."
+
+  - category: smell
+    subcategory: rotten_egg_sulfur_smell
+    display: "Rotten-egg / sulfur smell"
+    customer_voice_anchors:
+      - "my car smells like rotten eggs when i drive it"
+      - "sulfur smell from the exhaust especially when i accelerate hard"
+      - "smells like rotten eggs out the tailpipe after its been running a while"
+      - "getting a rotten egg smell, someone said its the catalytic converter"
+      - "stinks like sulfur after driving on the highway"
+      - "smells like eggs gone bad but only when the engine is running"
+      - "rotten egg smell when i sit at idle after a long drive"
+      - "exhaust smells like a sewer"
+      - "SMELLS LIKE ROTTEN EGGS"
+      - "smells like burnt matches from the back of the car"
+    required_slots:
+      - sound_or_smoke_location_zone: "strongest at the tailpipe vs under the hood vs inside the cabin — tailpipe = cat/fuel-trim; under hood near battery = overcharging battery [S3]; inside = fumes safety path"
+      - warning_light_behavior: "CEL commonly accompanies cat/O2/rich-running faults — with a light, the scan leads"
+      - onset_timing: "under hard acceleration / after sustained driving — classic load-related cat overload [S3]"
+      - recent_action: "recent battery or charging work points at the battery look-alike [S3]"
+      - engine_running: "smell only while running vs also parked — a parked-car sulfur smell near the rear axle suggests a gear-oil leak instead"
+    confusables:
+      - vs: battery_overcharging_smell
+        discriminator_question: "Is the smell strongest at the tailpipe while driving, or under the hood near the battery?"
+      - vs: gear_oil_leak_smell
+        discriminator_question: "Have you seen any thick dark fluid leaking under the car, especially near the back axle?"
+      - vs: exhaust_fumes_inside_the_cabin
+        discriminator_question: "Do you smell it inside the car with the windows up, or mainly outside/behind the car?"
+    safety_flag: none
+    notes: "Hydrogen sulfide a failing or overloaded catalytic converter isn't converting to odorless sulfur dioxide; rich running overloads the cat [S3]. Includes 'sulfur', 'sewer', 'burnt matches', 'bad eggs' language. Does NOT include sweet syrup smell (coolant), burnt-oil, or raw-gas smell — each has its own slug. Rough idle + occasional rotten-egg smell keeps the rough-idle lead."
+
+  - category: smell
+    subcategory: exhaust_fumes_inside_the_cabin
+    display: "Exhaust smell inside the car"
+    customer_voice_anchors:
+      - "i can smell exhaust inside the car when im driving"
+      - "exhaust smell coming through the heater once its warmed up and idling"
+      - "car smells like fumes inside, gives me a headache on my commute"
+      - "smell exhaust in the cabin at stop lights with the windows up"
+      - "my kids say it smells like exhaust in the back seat"
+      - "getting gassed out inside the car, have to drive with the windows down"
+      - "smells like exhaust inside whenever the heat is on"
+      - "fumes coming in through the vents, makes me lightheaded"
+      - "EXHAUST SMELL IN CAR"
+      - "can smell fumes in the car and my eyes burn a little"
+    required_slots:
+      - sound_or_smoke_location_zone: "smelled INSIDE the cabin — definitional; outside-only exhaust smell routes to the exhaust-leak noise slugs"
+      - hvac_mode: "worse with heat/vents on vs windows-up idle — through-the-heater is a strong real-world pattern"
+      - onset_timing: "at idle/stopped vs while moving — idle accumulation is typical of rear-body leaks"
+      - smell_descriptor: "raw exhaust vs rotten-egg vs raw gasoline — each routes differently"
+    confusables:
+      - vs: rotten_egg_sulfur_smell
+        discriminator_question: "Is it a rotten-egg sulfur smell, or a regular exhaust-fume smell?"
+      - vs: gasoline_fuel_smell
+        discriminator_question: "Does it smell like raw gas, or like exhaust/burnt fumes?"
+      - vs: exhaust_louder_or_rumbling
+        discriminator_question: "Is the exhaust also louder than normal, or is it just the smell inside?"
+    safety_flag: advise_immediately
+    notes: "Exhaust in the cabin can carry carbon monoxide — colorless, odorless, potentially fatal; headache/dizziness/nausea while driving are exposure symptoms [S8]. Booking copy should advise windows down, minimize driving, and treat headache/lightheaded reports as urgent. Any anchor mentioning headaches or lightheadedness stays here regardless of other symptoms."
+
+  # ------------------------------------------------------------------- requests ---
+
+  - category: request
+    subcategory: failed_emissions_test
+    display: "Failed emissions / smog / state inspection (emissions)"
+    customer_voice_anchors:
+      - "failed emissions and i need it fixed so i can register my car"
+      - "didnt pass inspection because the check engine light is on"
+      - "failed the smog test, they said its the catalytic converter"
+      - "my car wont pass emissions and registration is due this month"
+      - "failed for monitors not ready after i got a new battery"
+      - "emissions place rejected it, said drive it more and come back"
+      - "need the check engine light fixed to pass inspection"
+      - "failed emissions twice now, sticker is expired"
+      - "gotta get the light off before inspection next week"
+      - "FAILED EMISSIONS NEED DIAGNOSIS"
+    required_slots:
+      - customer_request_type: "fix-to-pass request — definitional; this is a goal (pass the test), not a felt symptom"
+      - warning_light_behavior: "CEL on = automatic fail in OBD-based programs [S7] — and tells the shop the scan leads"
+      - recent_action: "recently cleared codes, new battery, or disconnected battery = readiness monitors reset; needs 50-100 miles of driving before retest [S7]"
+      - started_when: "what the failure report said (codes, 'not ready', tailpipe values) — the customer usually has the paper"
+      - drivable_state: "deadline pressure (registration/inspection due date) — booking urgency, not diagnosis"
+    confusables:
+      - vs: check_engine_light
+        discriminator_question: "Did the car actually fail an emissions test or inspection, or is the light on and you haven't been tested yet?"
+      - vs: state_inspection_request
+        discriminator_question: "Do you need a failed test diagnosed and fixed, or are you just booking a routine inspection?"
+    safety_flag: none
+    notes: "NEW slug — no exact fit in the live catalog (closest service: check_engine_light_testing; a 'monitors not ready' rejection is not even a fault). Distinct because the bookable outcome is diagnose-and-fix-to-pass with a deadline. Symptom-free routine inspection bookings route to the advisor/maintenance flow, not here."
+
+  - category: request
+    subcategory: tune_up_or_spark_plug_replacement
+    display: "Tune-up / spark plug replacement request"
+    customer_voice_anchors:
+      - "just want my spark plugs replaced, theyre probably due"
+      - "need a tune up, its been a while"
+      - "can i get a tuneup and an oil change"
+      - "due for spark plugs at 100k miles"
+      - "the last shop said i need plugs and coils"
+      - "want a tune up before a road trip"
+      - "how much for a tune up on a 2015 camry"
+      - "spark plugs and wires replaced please"
+      - "TUNE UP"
+    required_slots:
+      - customer_request_type: "maintenance request with no symptom — definitional; routes to advisor/maintenance quoting, not a diagnostic"
+      - onset_timing: "any CURRENT symptom mentioned alongside the request — 'tune up, its misfiring' routes by the symptom, not the request"
+      - started_when: "mileage / when plugs were last done — quoting info"
+    confusables:
+      - vs: engine_misfire_or_bucking_feeling
+        discriminator_question: "Is the car running badly right now, or is this maintenance you'd like done?"
+      - vs: failed_emissions_test
+        discriminator_question: "Are you doing this to pass an emissions test or inspection, or just as routine maintenance?"
+    safety_flag: none
+    notes: "NEW slug (currently null-routed to the advisor maintenance flow — kept as an anchor home so 'tune up' language doesn't get vacuumed into misfire). Customers use 'tune up' as a folk remedy for ANY running problem; mixed symptom+request inputs ('needs a tune up, its bucking') must route by the symptom. Pure requests carry no diagnostic fee conversation — advisor quote."

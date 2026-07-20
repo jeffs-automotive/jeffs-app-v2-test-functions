@@ -1,0 +1,881 @@
+# ============================================================================
+# Anchor knowledge — domain: fluids-cooling-fuel-intake
+# Day-one seed for the customer-concern classifier (embedding anchor bank +
+# LLM slot/confusable guidance). All anchors are CUSTOMER VOICE (vague, terse,
+# misspelled, mixed with booking requests) — never technician shorthand.
+#
+# Scope: overheating & cooling, oil (leak/smell/consumption/light), the leak
+# family by puddle color/location, fuel system & EVAP, air induction & forced
+# induction, and smoke from tailpipe / under hood.
+#
+# Factual grounding (diagnostic claims) — web sources:
+#   [S1] Fluid-by-color identification: AutoZone "How to Determine Leaking
+#        Fluid by Color" https://www.autozone.com/diy/fluids-chemicals/how-to-determine-leaking-fluid-by-color
+#        + RepairPal color-coded leak guide https://repairpal.com/symptoms/car-fluid-leaks-what-to-do
+#        (oil = brown/black petroleum-smelling; trans = red thinning to red-brown;
+#        coolant = green/orange/pink/blue, sweet, slimy; brake fluid = clear-to-
+#        light-brown, slick, DO NOT DRIVE if suspected; PS = red/red-brown thin oily)
+#   [S2] Exhaust smoke colors: Jiffy Lube https://www.jiffylube.com/resource-center/exhaust-smoke-colors-guide
+#        + AutoZone https://www.autozone.com/diy/exhaust/smoke-from-exhaust
+#        + Firestone https://www.firestonecompleteautocare.com/blog/maintenance/what-is-my-exhaust-color-telling-me/
+#        (blue/gray = burning oil — startup puff = valve seals, constant/under-load
+#        = rings; white thick + persistent + sweet = coolant into combustion /
+#        head gasket; thin white vapor that clears on cold mornings = normal
+#        condensation; black = rich mixture, gas smell + mpg drop)
+#   [S3] Overheating response: Firestone "Car Overheating? Here's Why, What To
+#        Do (& Not Do)" https://www.firestonecompleteautocare.com/blog/maintenance/when-car-overheats/
+#        (gauge to H / into red + steam from hood = pull over immediately;
+#        continuing to drive risks catastrophic engine damage)
+#   [S4] Gas cap / EVAP CEL: CarParts.com P0455 guide
+#        https://www.carparts.com/blog/p0455-code-evaporative-emission-system-large-leak-detected/
+#        (loose/cracked cap sets P0440/P0442/P0455/P0456/P0457, often right
+#        after refueling; tighten-and-retest first; light needs drive cycles or
+#        a scan tool to clear)
+#   [S5] Fuel smell safety: Firestone "Smell of Gas in Car"
+#        https://www.firestonecompleteautocare.com/blog/maintenance/smell-of-gas-in-car/
+#        + Burt Brothers https://www.burtbrothers.com/blog/gas-smell-inside-your-car-what-it-means-how-to-fix-it
+#        (strong persistent raw-gas odor = fire hazard, stop driving / tow)
+#   [S6] No-heat causes: Family Handyman https://www.familyhandyman.com/article/if-your-car-has-no-heat/
+#        + RepairPal https://repairpal.com/symptoms/car-heater-not-working
+#        + Rohnert Park Transmission https://rohnertparktransmission.com/blog/car-heater-not-working-troubleshooting-guide
+#        (low coolant is the #1 cause; stuck-open thermostat second; heater-core
+#        blockage/leak — sweet smell + fogged windshield film)
+#   [S7] Oil consumption norms: Cars.com "How Much Oil Consumption Is Normal?"
+#        https://www.cars.com/articles/how-much-oil-consumption-is-normal-1420682864535/
+#        + Consumer Reports https://www.consumerreports.org/cro/magazine/2015/06/excessive-oil-consumption/index.htm
+#        (a quart per ~1,000–1,500 mi is the worn-rings/valve-seals territory;
+#        many OEMs call 1 qt/1,500 mi "acceptable"; burned oil shows as blue smoke
+#        and can clog the catalytic converter)
+#   [S8] Turbo/boost symptoms: MAHLE MPULSE "The trouble with whistling turbos"
+#        https://workshop-heroes.mahle.com/en/article/trouble-with-whistling-turbos
+#        + Wisco Automotive https://wiscoautomotive.com/symptoms-of-bad-turbocharger-5-signs/
+#        (boost/charge-air leak = whoosh/hiss + flat power + possible limp mode
+#        capping RPM ~3k; sudden louder/siren whine = bearing or damage)
+#
+# Customer-language grounding: real Tekmetric work-order fragments + forum
+# paraphrase mined in docs/automotive-knowledge-base/ (router-leaks,
+# router-smoke-smells, cooling-system / engine-lubrication-oil /
+# fuel-system-evap / air-induction-forced-induction lexicons, 2026-07-18) +
+# forum threads surfaced in the searches above (fiestastforum.com overheating,
+# mdxers.org / impalaforums.com EVAP codes, crvownersclub.com boost/limp +
+# oil-consumption threads).
+#
+# safety_flag policy: advise_immediately = the assistant should tell the
+# customer this can be unsafe to keep driving (brake fluid loss, red temp/oil
+# light, active overheating, raw fuel smell, visible smoke/steam under hood,
+# thick persistent white exhaust smoke). Blue/black tailpipe smoke are
+# drivable-with-caution and stay `none` with an in-notes caution.
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# OVERHEATING & COOLING
+# ---------------------------------------------------------------------------
+
+- category: overheating
+  subcategory: engine_overheating_running_hot
+  display: "Engine overheating / running hot"
+  customer_voice_anchors:
+    - "my car is overheating"
+    - "temp gauge went all the way into the red and steam started coming from the hood"
+    - "temperature needle keeps creeping up when im sitting in traffic"
+    - "car got real hot going up a long hill, had to pull over and let it cool off"
+    - "engine running hot, i havent added any coolant"
+    - "OVERHEATING. HAD TO GET IT TOWED IN"
+    - "the needle jumps to H after like 10 minutes of driving"
+    - "car over heated on the highway and now theres a sweet smell"
+    - "gauge goes up and down like the thermostat is getting stuck"
+    - "running hotter than normal but it hasnt boiled over yet"
+    - "heat gauge maxed out and it was steaming when i pulled over"
+    - "it only overheats when the AC is on and im stopped"
+  required_slots:
+    - temperature_gauge_state: "what the gauge/message actually shows (in the red, past halfway, fluctuating, warning message) — confirms an overheat vs a suspicion and sets severity"
+    - steam_or_smoke_present: "visible steam/boil-over means stop-driving advice and possible tow, not a normal drop-off"
+    - drivable_now: "still being driven vs parked/towed — booking urgency and tow coordination"
+    - onset_conditions: "idle/traffic vs highway vs uphill/towing vs AC on — narrows fan/thermostat vs radiator/water-pump side"
+    - coolant_level_or_topping_off: "empty reservoir or repeated top-offs points at a leak; links to the coolant-loss path"
+  confusables:
+    - vs: engine_temperature_light
+      discriminator_question: "Is the temperature gauge itself reading hot, or is it a warning light/message on the dash that got your attention?"
+    - vs: smoke_or_steam_under_hood
+      discriminator_question: "Is the main thing the hot gauge reading, or smoke/steam you can actually see coming from the hood?"
+    - vs: coolant_loss_low_coolant
+      discriminator_question: "Has it actually read hot on the gauge, or are you just having to keep adding coolant?"
+  safety_flag: advise_immediately
+  notes: "Includes gauge-confirmed running hot, boil-over, and fluctuating-gauge overheat. Does NOT include a bare temp warning light with a normal gauge (→ engine_temperature_light) or coolant top-offs with no hot reading (→ coolant_loss_low_coolant). Customers say 'smoking' for steam — treat steam+hot gauge as overheating, not an electrical fire. Continuing to drive in the red risks engine damage [S3]."
+
+- category: warning_light
+  subcategory: engine_temperature_light
+  display: "Temperature / coolant warning light or message"
+  customer_voice_anchors:
+    - "the red thermometer light came on"
+    - "coolant temp warning popped up on the dash"
+    - "HIGH ENGINE TEMPERATURE message came up and said stop the vehicle"
+    - "little red temperature symbol keeps flashing at me"
+    - "coolant light is on but the car seems to drive fine"
+    - "temp light comes on after driving a while then goes back off"
+    - "dash said engine overheating unsafe to drive so i had it towed here"
+    - "the light that looks like a thermometer floating in water lit up"
+    - "low coolant light came on this morning"
+    - "COOLANT MESSAGE ON DASH. CHECK ENGINE LIGHT ON TOO"
+  required_slots:
+    - light_symbol_and_color: "red thermometer vs low-coolant level vs blue cold-engine icon — red means stop-drive, blue on cold start is normal"
+    - light_behavior: "steady vs flashing vs comes-and-goes — intermittent points at level/sensor, steady at real overheat"
+    - gauge_reading_if_any: "does the gauge corroborate the light — separates sensor/level warnings from an actual overheat"
+    - coolant_level_checked: "customer already checked/topped the reservoir or not"
+    - drivable_now: "still driving it vs parked/towed — urgency"
+  confusables:
+    - vs: engine_overheating_running_hot
+      discriminator_question: "Besides the light, is the temperature gauge actually reading high or is there any steam?"
+    - vs: check_engine_light_gas_cap_evap
+      discriminator_question: "Is it a thermometer/coolant symbol, or the orange engine-shaped check-engine light?"
+  safety_flag: advise_immediately
+  notes: "Light-led version of overheating: the customer leads with a dash light/message, not a gauge reading. Includes 'low coolant' level warnings. Does NOT include the blue coolant-cold icon that clears after warm-up (normal — reassure, offer inspection). Customers often call every dash icon 'the engine light' — the symbol question is load-bearing."
+
+- category: fluids
+  subcategory: coolant_loss_low_coolant
+  display: "Losing coolant / keeps needing top-offs"
+  customer_voice_anchors:
+    - "i keep having to top off the coolant every couple weeks"
+    - "coolant reservoir is bone dry but i dont see any leaks"
+    - "low coolant light keeps coming on and i keep adding antifreeze"
+    - "car keeps drinking coolant, no puddles anywhere"
+    - "have to add water to the radiator every few days"
+    - "antifreeze keeps disappearing and i cant find where its going"
+    - "coolant low again, thats the third time this month"
+    - "topped it off before a road trip and its already low again"
+    - "where is my coolant going, theres no drips on the driveway"
+    - "coolant level keeps dropping but the garage floor is clean"
+  required_slots:
+    - loss_rate: "how much how often (topping off weekly vs seasonal) — severity and internal-vs-external leak odds"
+    - puddle_present: "any drips/puddle on the ground — if yes this is the coolant-puddle leak path instead"
+    - overheating_or_temp_light: "any hot reading or warning light — escalates urgency"
+    - white_smoke_or_sweet_smell: "thick white exhaust smoke or sweet smell = coolant burning internally (head gasket cue) [S2]"
+    - heater_performance: "weak/no heat can accompany low coolant [S6]"
+  confusables:
+    - vs: coolant_puddle_green_orange_pink
+      discriminator_question: "Do you ever see a puddle or drips under the car, or does the coolant just disappear with nothing on the ground?"
+    - vs: white_smoke_from_tailpipe
+      discriminator_question: "Any thick white smoke from the exhaust, especially once the engine is warmed up?"
+    - vs: engine_overheating_running_hot
+      discriminator_question: "Has the temperature gauge actually gone hot, or has it stayed normal while the level drops?"
+  safety_flag: none
+  notes: "Level-led concern with NO visible puddle. If a puddle is named, route to the coolant-puddle leak entry. Escalate to advise_immediately when paired with a hot gauge or white smoke. Customers say 'water' for coolant ('adding water every few days') — treat as coolant."
+
+- category: hvac
+  subcategory: no_heat_from_vents
+  display: "Heater blows cold / no heat"
+  customer_voice_anchors:
+    - "my heater blows cold air"
+    - "no heat, the air never gets warm even after driving 20 minutes"
+    - "NO HEAT. GAUGE SOMETIMES GOES UP"
+    - "heat only works when im driving, goes cold at stoplights"
+    - "heater takes forever to warm up, like half an hour"
+    - "its freezing out and my car has no heat at all"
+    - "heat blows warm for a minute then turns cold"
+    - "no heat and i smell something kinda sweet in the car"
+    - "heater not working, the fan blows fine its just cold air"
+    - "no heat on the drivers side but the passenger side is warm"
+  required_slots:
+    - airflow_present: "air blows but cold vs no air at all — no airflow is a blower/HVAC problem, not cooling"
+    - temperature_gauge_state: "engine never reaching normal temp = stuck-open thermostat; normal temp + cold air = heater core / blend door [S6]"
+    - coolant_level_or_loss: "low coolant is the #1 cause of no heat [S6] — ties to the coolant-loss path"
+    - pattern: "cold at idle but warm at speed = low coolant/air pocket; one side only = blend door (HVAC)"
+    - sweet_smell_or_window_film: "sweet smell / greasy fog film on windshield = leaking heater core [S6]"
+  confusables:
+    - vs: hvac_blower_no_airflow
+      discriminator_question: "Is air coming out of the vents but it's cold, or is no air blowing out at all?"
+    - vs: engine_overheating_running_hot
+      discriminator_question: "Does the temperature gauge ever read high while the heat is out?"
+    - vs: coolant_loss_low_coolant
+      discriminator_question: "Have you had to add coolant lately or seen the level drop?"
+  safety_flag: none
+  notes: "Cooling-side no-heat (low coolant, thermostat, heater core). One-side-only or no-airflow variants belong to the HVAC domain (blend door / blower) — cross-domain pair. 'No heat + gauge goes up' is a combined cooling concern; keep the overheat lead."
+
+- category: smell_smoke
+  subcategory: sweet_antifreeze_smell
+  display: "Sweet / maple-syrup (antifreeze) smell"
+  customer_voice_anchors:
+    - "smells like maple syrup around my car after i drive it"
+    - "sweet smell coming from the vents when the heat is on"
+    - "car smells like pancake syrup when i park it"
+    - "sweet chemical smell under the hood, almost like candy"
+    - "antifreeze smell inside the car and the windows keep fogging up"
+    - "i smell coolant but i cant find a leak anywhere"
+    - "sweet smell and a little steam from the hood after long drives"
+    - "my wife says the car smells sweet like syrup, mostly after the highway"
+    - "smells sweet when the defroster is on and theres a greasy film on the windshield"
+  required_slots:
+    - smell_location: "from the vents/inside (heater core) vs outside/under hood (external coolant leak) — different services"
+    - hvac_running_when_smelled: "heat/defrost on = heater-core cue [S6]"
+    - coolant_level: "dropping level corroborates a real leak"
+    - window_fogging_or_film: "oily film on the inside of the windshield = heater core leak [S6]"
+    - temperature_gauge_state: "running hot escalates to the overheat path"
+  confusables:
+    - vs: coolant_puddle_green_orange_pink
+      discriminator_question: "Is there a colored puddle on the ground, or just the smell with nothing underneath?"
+    - vs: no_heat_from_vents
+      discriminator_question: "Is the heat still working normally? (A leaking heater core often kills the heat too.)"
+    - vs: musty_or_bad_vent_smell
+      discriminator_question: "Is it a sweet syrupy smell, or more of a musty/dirty-socks smell when the A/C first comes on?"
+  safety_flag: none
+  notes: "Smell-led, no-puddle coolant concern. Coolant is the only automotive fluid customers describe as 'sweet/syrup' [S1]. If a puddle leads, it's the leak entry; if a hot gauge leads, it's overheating. Vent-tied sweet smell = heater core (still cooling-system, but flag that in-cabin coolant vapor can cause headaches — get it looked at soon)."
+
+# ---------------------------------------------------------------------------
+# THE LEAK FAMILY (by puddle color / location / smell)
+# ---------------------------------------------------------------------------
+
+- category: leak
+  subcategory: coolant_puddle_green_orange_pink
+  display: "Coolant leak (green/orange/pink/yellow puddle)"
+  customer_voice_anchors:
+    - "bright green puddle under the front of my car"
+    - "LARGE PUDDLE OF ANTIFREEZE UNDER THE CAR"
+    - "orange fluid leaking under the radiator"
+    - "pink stuff dripping under my car, smells kind of sweet"
+    - "antifreeze leaking, i can see it dripping off a hose"
+    - "green liquid on the garage floor every morning"
+    - "coolant pours right back out the bottom when i fill it up"
+    - "neon yellow green puddle by the front bumper"
+    - "my honda is leaking some blue coolant looking stuff"
+    - "leak at the lower radiator hose, losing antifreeze"
+    - "sweet smelling wet spot under the engine"
+  required_slots:
+    - fluid_color: "green/orange/pink/yellow (occasionally blue) — the primary coolant identifier [S1]"
+    - puddle_location: "typically front/center under the radiator; elsewhere reopens the color question"
+    - smell: "sweet confirms coolant vs oily red ATF or soapy blue washer fluid [S1]"
+    - overheating_or_temp_light: "hot gauge or warning light escalates severity"
+    - leak_rate_and_drivable: "drips vs pouring out — pouring + hot means tow advice"
+  confusables:
+    - vs: red_pink_puddle_transmission_power_steering
+      discriminator_question: "Is the fluid watery and bright (maybe sweet-smelling), or is it oily and slick red?"
+    - vs: blue_puddle_washer_fluid
+      discriminator_question: "Does the blue fluid smell sweet like antifreeze, or soapy/like nothing (washer fluid)?"
+    - vs: clear_water_puddle_ac_condensation
+      discriminator_question: "Does it have a color and a sweet smell, or is it just clear plain water?"
+  safety_flag: none
+  notes: "Puddle-led coolant loss. Pink coolant vs red ATF and blue coolant vs blue washer fluid are the classic color traps — resolve on texture (watery vs oily) and smell (sweet), never color alone. Escalate to stop-driving advice if paired with an overheat. No puddle + level dropping → coolant_loss_low_coolant."
+
+- category: leak
+  subcategory: oil_puddle_brown_black
+  display: "Engine oil leak (brown/black puddle)"
+  customer_voice_anchors:
+    - "black oil spots on my driveway where i park"
+    - "oil leaking, might be the drain plug"
+    - "dark brown puddle under the engine"
+    - "theres oil dripping off the bottom of the motor"
+    - "oil leek under my car"
+    - "car keeps marking its territory, oil spots everywhere i park"
+    - "OIL LEAK. FIND AND FIX"
+    - "oil dripping onto a plastic cover under the front, spots are like 3-4 inches"
+    - "greasy black stain in my parking spot at work"
+    - "came back after a month away and theres a puddle of oil under it"
+    - "slow oil drip, i put cardboard down and theres new spots every day"
+  required_slots:
+    - fluid_color: "dark brown/black, greasy, petroleum smell — the oil identifier [S1]"
+    - puddle_location: "under the engine up front vs under the rear axle (gear oil) vs near a wheel (brake fluid — safety)"
+    - oil_level_or_light: "low dipstick or oil-pressure light events escalate — a leak that outruns the level is urgent"
+    - size_and_rate: "spots/seepage vs a 3-inch-plus puddle — severity triage [S1]"
+    - recent_service: "oil change or repair just done → likely loose filter/plug, handle as a comeback/situational"
+  confusables:
+    - vs: thick_dark_puddle_gear_diff_oil
+      discriminator_question: "Is the dark oil under the engine up front, or back by the rear axle (and does it smell like rotten eggs)?"
+    - vs: clear_yellow_light_brown_puddle_brake_fluid
+      discriminator_question: "Is the drip up front by the engine, or near a wheel — and has the brake pedal felt soft or low at all?"
+    - vs: red_pink_puddle_transmission_power_steering
+      discriminator_question: "Is it dark brown/black, or does it look red/pink when fresh?"
+  safety_flag: none
+  notes: "Fresh engine oil can look AMBER — the amber/light-brown color collides with brake fluid. A bare 'amber drips' answer must trigger the location+pedal question before settling on oil (safety). Rear-main leaks get mistaken for 'transmission leaking' — color decides. Burning-oil smell with NO puddle → burning_oil_smell."
+
+- category: leak
+  subcategory: red_pink_puddle_transmission_power_steering
+  display: "Red fluid leak (transmission / power steering)"
+  customer_voice_anchors:
+    - "bright red fluid leaking under the middle of my car"
+    - "red oily spots where i park"
+    - "i think its transmission fluid, its reddish"
+    - "power steering fluid everywhere, the pump is leaking bad"
+    - "pinkish red puddle under the front"
+    - "red fluid on the driveway and my steering whines when i turn"
+    - "TRANSMISSION COOLER LINE LEAKING"
+    - "looks like cherry kool aid but oily, under the car"
+    - "reddish brown drips under the middle of the car"
+  required_slots:
+    - fluid_color: "red/pink fresh, red-brown when old; thin and oily [S1]"
+    - puddle_location: "toward the middle/rear = transmission; up front = power steering (or trans cooler lines at the radiator)"
+    - steering_feel: "whining/heavy steering, especially when turning = power-steering side"
+    - shifting_behavior: "slipping, hard shifts, delayed engagement = transmission side"
+    - fluid_level_checked: "which reservoir is dropping, if the customer knows"
+  confusables:
+    - vs: coolant_puddle_green_orange_pink
+      discriminator_question: "Is the fluid slick and oily red, or watery bright pink with a sweet smell (coolant)?"
+    - vs: clear_yellow_light_brown_puddle_brake_fluid
+      discriminator_question: "Is it clearly red, or more clear-to-light-brown near a wheel with any change in the brake pedal?"
+    - vs: oil_puddle_brown_black
+      discriminator_question: "Fresh drips — do they look red/pink or dark brown/black?"
+  safety_flag: none
+  notes: "One puddle color, two systems: the trans-vs-PS split resolves on location (middle/rear vs front) plus the accompanying symptom (shifting vs steering whine). Old ATF darkens toward brown — 'reddish brown' still belongs here. Many newer cars have electric power steering with no PS fluid at all; red fluid there is trans/cooler-line. Escalate if the trans is slipping badly (drivability)."
+
+- category: leak
+  subcategory: clear_yellow_light_brown_puddle_brake_fluid
+  display: "Brake fluid leak (clear/yellow/light-brown, slick)"
+  customer_voice_anchors:
+    - "brake fluid leaking near my front wheel"
+    - "clear yellowish fluid dripping by the tire and my pedal feels soft"
+    - "amber colored drips near the wheel"
+    - "brake pedal goes almost to the floor and theres wet spots by the back wheel"
+    - "i added brake fluid and it leaks right back out"
+    - "light brown slippery fluid under the car by the driver side wheel"
+    - "brake fluid keeps getting low and i see drips on the inside of the tire"
+    - "wet oily streak on the inside of my rear wheel and the brakes feel weird"
+    - "TOW IN. NO BRAKES. BRAKE FLUID EMPTY"
+  required_slots:
+    - pedal_feel: "soft/spongy/sinking/goes-to-floor — confirms brake fluid AND triggers stop-driving advice [S1]"
+    - puddle_location: "near a wheel or along the firewall/master cylinder — the brake-fluid location signature"
+    - fluid_color_texture: "clear to yellow to light brown, very slick/oily feel [S1]"
+    - brake_warning_light: "red brake light on = low fluid, corroborates"
+    - drivable_now: "if pedal is compromised, advise tow — do not drive"
+  confusables:
+    - vs: oil_puddle_brown_black
+      discriminator_question: "Is the amber/light-brown drip near a wheel with any change in the brake pedal, or up front under the engine with the pedal feeling normal?"
+    - vs: clear_water_puddle_ac_condensation
+      discriminator_question: "Is the clear fluid slick/oily near a wheel, or thin plain water under the passenger side after running the A/C?"
+    - vs: red_pink_puddle_transmission_power_steering
+      discriminator_question: "Is it clear-to-light-brown near a wheel, or clearly red toward the middle/front?"
+  safety_flag: advise_immediately
+  notes: "SAFETY-CRITICAL entry. The two color collisions — amber (vs fresh engine oil) and clear (vs A/C condensation) — must NEVER be settled by color alone; location-near-a-wheel plus pedal_feel decide. Any soft/sinking pedal or brake light with a leak = advise not to drive, offer tow [S1]. A brake-fluid miss is the worst misroute in the leak family."
+
+- category: leak
+  subcategory: clear_water_puddle_ac_condensation
+  display: "Clear water under car (A/C condensation)"
+  customer_voice_anchors:
+    - "clear water dripping under my car after running the AC"
+    - "puddle of plain water under the passenger side, no smell"
+    - "water leaking under the car every time i park, is that normal?"
+    - "looks like just water, dries up and doesnt leave a stain"
+    - "water dripping under the front passenger area on hot days"
+    - "my car leaks water whenever the air conditioning is on"
+    - "clear odorless puddle, not slippery, pretty sure its just water"
+    - "small water puddle under the car in the summer only"
+  required_slots:
+    - fluid_color_texture: "clear, thin, odorless, evaporates without a stain — the water signature"
+    - ac_recently_running: "A/C or defrost use right before the puddle — condensation is normal operation"
+    - puddle_location: "passenger-side front floor area is the classic evaporator-drain spot"
+    - pedal_feel: "safety screen — clear + slick + near a wheel is brake fluid, not water"
+    - smell: "any sweetness reopens the coolant question"
+  confusables:
+    - vs: clear_yellow_light_brown_puddle_brake_fluid
+      discriminator_question: "Is it slick or oily to the touch and near a wheel, or thin plain water under the passenger side?"
+    - vs: coolant_puddle_green_orange_pink
+      discriminator_question: "Is it totally clear with no smell, or does it have color or a sweet smell?"
+  safety_flag: none
+  notes: "Usually NORMAL A/C condensation — reassure, booking optional. The job of this entry is the safety screen: the 'clear fluid' description collides with brake fluid, so the slickness/location/pedal questions must run before reassuring. Water dripping INSIDE the cabin (wet carpet) is a different concern (clogged evap drain / body leak → body/water-leak domain)."
+
+- category: leak
+  subcategory: thick_dark_puddle_gear_diff_oil
+  display: "Gear / differential oil leak (thick, dark, stinky)"
+  customer_voice_anchors:
+    - "thick black oil leaking by the rear axle"
+    - "gooey dark stuff under the back of my truck, smells awful"
+    - "rear differential is leaking"
+    - "stinky oil leak at the back, smells like rotten eggs"
+    - "heavy dark oil around the rear wheel hub"
+    - "axle seal leaking, theres thick oil slung all over the inside of the wheel"
+    - "dark sticky oil under the rear end of the car"
+    - "REAR DIFF LEAK. INSPECT AND ADVISE"
+  required_slots:
+    - puddle_location: "under the rear axle/differential (or transfer case) vs under the engine up front — the main split from engine oil"
+    - smell: "gear oil's sulfur/rotten-egg stink is distinctive"
+    - consistency: "thick, sticky, honey-to-tar consistency vs thinner engine oil"
+    - noise_from_rear: "whining/howling from the back — a diff run low makes noise before it fails"
+    - vehicle_type: "RWD/4x4/AWD (has a rear diff) vs FWD car (likely not gear oil)"
+  confusables:
+    - vs: oil_puddle_brown_black
+      discriminator_question: "Is the dark oil under the engine up front, or back by the rear axle?"
+    - vs: rotten_egg_exhaust_smell
+      discriminator_question: "Is the rotten-egg smell coming from a leaking puddle/wet axle, or from the exhaust while driving?"
+  safety_flag: none
+  notes: "Puddle-led rear-end oil. The rotten-egg descriptor collides with a failing catalytic converter (exhaust domain) — the puddle vs tailpipe question separates them. Wheel-end axle-seal leaks can also contaminate rear BRAKES (slung oil on the inside of the wheel) — capture the location and note for the advisor."
+
+- category: leak
+  subcategory: blue_puddle_washer_fluid
+  display: "Washer fluid leak (blue puddle)"
+  customer_voice_anchors:
+    - "blue fluid leaking under my car"
+    - "bright blue puddle by the front tire"
+    - "washer fluid leaks out as fast as i fill it"
+    - "windshield fluid keeps disappearing, blue drips under the front"
+    - "blue watery stuff under the car, smells kind of like soap"
+    - "WASHER FLUID LEAKING"
+    - "i fill the washer tank and the next day its empty"
+    - "sprayers stopped working and theres blue fluid on the ground"
+  required_slots:
+    - fluid_color: "blue/light blue, thin and watery"
+    - smell: "soapy/alcohol or no smell = washer; sweet = the blue-coolant trap"
+    - washer_function: "do the sprayers still work — empty-tank confirmation"
+    - puddle_location: "front corner near the washer reservoir/wheel-well"
+  confusables:
+    - vs: coolant_puddle_green_orange_pink
+      discriminator_question: "Does the blue fluid smell sweet like antifreeze, or soapy/like nothing (washer fluid)?"
+  safety_flag: none
+  notes: "Lowest-stakes leak. The one trap: some vehicles (notably Hondas and some Euro makes) run BLUE coolant — resolve on smell and which reservoir is dropping, never on 'blue' alone. Usually bundled with a visit rather than its own diagnostic."
+
+- category: leak
+  subcategory: unknown_fluid_puddle
+  display: "Fluid leak — not sure what it is"
+  customer_voice_anchors:
+    - "theres a leak under my car, not sure what it is"
+    - "something is leaking, found a wet spot in the driveway"
+    - "fluid leaking under the front of the vehicle, i dont know the cause"
+    - "my dad noticed a big fluid leak but the rain washed it away"
+    - "under vehicle leak"
+    - "car is dripping something, couldnt tell the color in the dark"
+    - "wet spot under the car, could be oil could be something else"
+    - "i have a leak but im not sure if its oil or brake fluid"
+    - "puddle under my car this morning, first time ive ever seen one"
+  required_slots:
+    - fluid_color: "the #1 discriminator across all seven fluids [S1] — ask first"
+    - puddle_location: "front/middle/rear, near a wheel — second axis of the fluid decision"
+    - smell: "sweet / burnt / rotten-egg / soapy / none — third axis"
+    - pedal_feel_and_warning_lights: "safety screen — any brake-pedal change or red light upgrades this to the brake-fluid path immediately"
+    - texture_if_known: "slick/oily vs thin/watery, does it stain or evaporate"
+  confusables:
+    - vs: oil_puddle_brown_black
+      discriminator_question: "If you can check: is the spot dark brown/black and greasy?"
+    - vs: clear_yellow_light_brown_puddle_brake_fluid
+      discriminator_question: "Has the brake pedal felt soft, low, or different at all since you noticed the leak?"
+    - vs: coolant_puddle_green_orange_pink
+      discriminator_question: "Any color to it — green, orange, or pink — or a sweet smell?"
+  safety_flag: none
+  notes: "The most common real-world leak utterance — customers frequently cannot name the fluid. Do NOT force-pick oil; ask color → location → smell in that order. If any brake cue surfaces (pedal, red light, near-wheel drip), escalate to the brake-fluid entry and advise not to drive. A leak that appeared right after service elsewhere is a situational/after-recent-service case, not a color puzzle."
+
+# ---------------------------------------------------------------------------
+# OIL (smell, light, consumption) + the oil-change request trap
+# ---------------------------------------------------------------------------
+
+- category: smell_smoke
+  subcategory: burning_oil_smell
+  display: "Burning oil smell"
+  customer_voice_anchors:
+    - "burning oil smell after i drive, especially when i get out of the car"
+    - "smells like somethings cooking on the engine"
+    - "hot oily smell under the hood after being on the highway"
+    - "burnt oil smell when im stopped at lights, worse in the summer"
+    - "greasy burning smell from the engine bay but no smoke"
+    - "i keep smelling oil burning, like its dripping on something hot"
+    - "car smells like burnt oil after long drives, no drips that i can see"
+    - "little wisps of smoke off the engine and it smells like oil frying"
+    - "burning smell under the hood, kind of greasy"
+  required_slots:
+    - smell_descriptor: "oily/greasy vs sharp plastic vs rubber vs sweet — the five-way 'burning smell' split routes to five different systems"
+    - smoke_visible: "wisps/haze under the hood upgrades urgency"
+    - smell_location: "under hood vs one wheel vs inside the cabin — wheel = brakes, cabin+plastic = electrical"
+    - oil_level_and_leaks: "low level or known seepage corroborates oil-on-exhaust"
+    - recent_oil_change: "a spill on the manifold after service burns off — common benign cause"
+  confusables:
+    - vs: burning_electrical_plastic_smell
+      discriminator_question: "Is it a greasy/oily burnt smell, or a sharp plastic/electrical burning smell?"
+    - vs: burning_rubber_hot_brake_smell
+      discriminator_question: "Is the smell coming from under the hood, or from one of the wheels (especially after braking a lot)?"
+    - vs: sweet_antifreeze_smell
+      discriminator_question: "Does it smell oily and burnt, or sweet like syrup?"
+  safety_flag: none
+  notes: "A bare 'burning smell' sets NOTHING — the descriptor question is mandatory before routing (it fans out to oil / electrical / brakes / coolant / exhaust). Classic cause is oil seeping onto the hot exhaust manifold: smell without a ground puddle. If actual under-hood smoke is visible, lead with smoke_or_steam_under_hood instead."
+
+- category: warning_light
+  subcategory: oil_pressure_light
+  display: "Oil pressure warning light"
+  customer_voice_anchors:
+    - "red oil light came on while i was driving"
+    - "the oil can light with the little drip is on"
+    - "oil pressure light flickers at stoplights once its warmed up"
+    - "oil light comes on at idle then goes off when i give it gas"
+    - "red genie lamp looking light on my dash"
+    - "oil light popped on so i shut the car off right away, now what"
+    - "OIL LIGHT ON. CHECK OIL LEVEL"
+    - "low oil pressure warning on the screen and the engine sounds louder than usual"
+    - "oil light blinked a few times on the drive home"
+  required_slots:
+    - light_behavior: "steady red vs flickering at idle vs momentary — steady red = stop the engine now"
+    - when_it_comes_on: "warm idle/low RPM flicker vs on all the time — severity gradient"
+    - oil_level_checked: "has the customer checked the dipstick / added oil — low level is the first check"
+    - engine_noise: "ticking/knocking with the light = serious, do not drive"
+    - still_driving: "driving on a red oil light risks engine failure — tow advice"
+  confusables:
+    - vs: oil_change_request
+      discriminator_question: "Is it the red oil-can warning light, or a 'maintenance due / oil life' reminder message?"
+    - vs: check_engine_light_gas_cap_evap
+      discriminator_question: "Is it the oil-can symbol, or the orange engine-shaped check-engine light?"
+    - vs: oil_consumption_burning_oil
+      discriminator_question: "Did an actual warning light come on, or have you just been finding the oil level low?"
+  safety_flag: advise_immediately
+  notes: "The single most-confused dash light: customers say 'oil light' for BOTH the red pressure warning and the oil-change/maintenance reminder. The symbol question (red oil can with a drip vs wrench/'oil life %') is load-bearing — a red pressure light means stop driving, a reminder means book an oil change. Warm-idle flicker that clears with RPM is the classic worn-engine/low-pressure pattern; still urgent to inspect."
+
+- category: fluids
+  subcategory: oil_consumption_burning_oil
+  display: "Burning / losing oil between changes"
+  customer_voice_anchors:
+    - "i have to add a quart of oil every few weeks"
+    - "car burns oil like crazy between oil changes"
+    - "oil is always low when i check it but theres no leak on the ground"
+    - "goes through a quart every 1000 miles"
+    - "dipstick was bone dry at my last oil change"
+    - "keep adding oil and theres never a drip in the driveway"
+    - "where is my oil going, no puddles and no smoke that i can see"
+    - "using oil between changes, is that normal for a car with 150k"
+    - "little puff of smoke on startup and it burns oil"
+  required_slots:
+    - consumption_rate: "quarts per miles/weeks — a quart per ~1,000–1,500 mi is the worn rings/valve-seals threshold [S7]"
+    - visible_leak: "any ground spots — routes to the oil-puddle leak entry instead"
+    - blue_smoke: "blue/gray exhaust smoke corroborates burning it (startup = valve seals, under load = rings) [S2][S7]"
+    - oil_light_events: "any pressure-light flickers — escalates"
+    - vehicle_age_miles: "consumption norms differ; some engines are known burners [S7]"
+  confusables:
+    - vs: oil_puddle_brown_black
+      discriminator_question: "Are there oil spots or a puddle where you park, or does the level just drop with a clean driveway?"
+    - vs: blue_gray_smoke_from_tailpipe
+      discriminator_question: "Is the thing you're noticing the low oil level, or visible blue/gray smoke from the exhaust?"
+  safety_flag: none
+  notes: "Level-led: leaking vs burning is the first fork (ground spots vs clean driveway). Unburned-oil symptoms can be silent — no smoke visible even when consuming. Chronic burning can clog the catalytic converter [S7]. If the customer leads with smoke, use the blue-smoke entry."
+
+- category: request
+  subcategory: oil_change_request
+  display: "Oil change / routine service request"
+  customer_voice_anchors:
+    - "need an oil change"
+    - "im due for an oil change, whats your availability"
+    - "oil change and tire rotation please"
+    - "inspection and oil change"
+    - "can i get an oil change this week, no issues with the car"
+    - "just routine maintenance, oil change"
+    - "oil life is at 5 percent, need to schedule service"
+    - "maintenance light came on, probably just needs an oil change"
+    - "full synthetic oil change for my camry"
+    - "i am in need of an oil change"
+  required_slots:
+    - service_wanted: "plain oil change vs oil change + other services — booking content"
+    - any_symptoms: "if a symptom rides along ('oil change, also a burning smell') route the SYMPTOM as the concern too"
+    - which_oil_light: "maintenance/oil-life reminder = routine; RED oil-can light = the oil_pressure_light safety path, not an oil change"
+    - timing_preference: "when they want in — this is a booking, not a diagnostic"
+  confusables:
+    - vs: oil_pressure_light
+      discriminator_question: "Just to be safe — is the light a maintenance/oil-life reminder, or a red oil-can warning light?"
+    - vs: oil_consumption_burning_oil
+      discriminator_question: "Is the car using oil between changes, or is this just the regular service coming due?"
+  safety_flag: none
+  notes: "Request, not a diagnostic concern — but it is the highest-volume utterance containing the word 'oil', so it MUST anchor here rather than bleed into oil-leak/oil-light categories. The one safety trap: 'oil light came on so i need an oil change' — always disambiguate the light before booking a routine service."
+
+# ---------------------------------------------------------------------------
+# FUEL SYSTEM & EVAP
+# ---------------------------------------------------------------------------
+
+- category: smell_smoke
+  subcategory: gasoline_fuel_smell
+  display: "Gasoline / fuel smell"
+  customer_voice_anchors:
+    - "i smell gas inside my car when im driving"
+    - "strong gas smell in the garage after i park"
+    - "smells like gasoline when i start it cold in the morning"
+    - "raw gas smell around the back of the car"
+    - "gas fumes coming through the vents, its making me lightheaded"
+    - "smell gas real strong ever since i filled up"
+    - "my car reeks of gas but i dont see anything leaking"
+    - "gasoline smell under the hood, im scared to drive it"
+    - "gas smell when the heater is running"
+  required_slots:
+    - smell_strength_persistence: "strong and persistent raw-gas odor = fire hazard, stop driving [S5]; faint whiff at cold start is a softer cue"
+    - smell_location: "inside the cabin vs outside/under hood vs rear near the tank — narrows the leak point"
+    - when_it_happens: "cold start / right after fueling / all the time — EVAP purge vs filler-neck vs line leak"
+    - visible_fuel: "wet spots or drips under the tank or engine — confirms an active leak, tow territory"
+    - check_engine_light: "EVAP leaks often set the CEL [S4]"
+  confusables:
+    - vs: exhaust_fumes_in_cabin
+      discriminator_question: "Is it a raw gasoline smell, or a smoky burnt exhaust smell inside the car?"
+    - vs: rotten_egg_exhaust_smell
+      discriminator_question: "Fresh sharp gas smell, or more like rotten eggs/sulfur?"
+    - vs: black_smoke_from_tailpipe
+      discriminator_question: "Just the smell, or is there also black smoke from the exhaust when you accelerate?"
+  safety_flag: advise_immediately
+  notes: "Gasoline vapor is flammable and inhalation causes dizziness/nausea — a strong persistent raw-gas smell means do not keep driving; advise a tow [S5]. Includes cabin, garage, under-hood, and post-fill fuel smells. Does NOT include sulfur/rotten-egg (catalytic converter, exhaust domain) or smoky exhaust-in-cabin (exhaust domain, CO risk)."
+
+- category: warning_light
+  subcategory: check_engine_light_gas_cap_evap
+  display: "Check engine light after getting gas (gas cap / EVAP)"
+  customer_voice_anchors:
+    - "check engine light came on right after i got gas"
+    - "tightened my gas cap but the light is still on"
+    - "light came on after filling up, the cap clicks fine"
+    - "check engine light on, autozone said its an evap code"
+    - "p0455 code keeps coming back"
+    - "check fuel cap message on the dash"
+    - "cel on since the gas station but the car runs fine"
+    - "replaced the gas cap and the light came back anyway"
+    - "engine light popped on the day after i filled up"
+  required_slots:
+    - recent_fueling_link: "light appeared at/after a fill-up — the defining association for cap/EVAP [S4]"
+    - light_steady_or_flashing: "FLASHING CEL = active misfire, a different and more urgent path; steady = emissions/EVAP"
+    - cap_already_retightened: "tighten-and-drive is the first fix; light needs several drive cycles or a scan to clear [S4]"
+    - code_if_scanned: "P0440/P0442/P0455/P0456/P0457 family confirms EVAP [S4]"
+    - driveability_changes: "running fine vs stumbling/stalling — a stuck purge valve adds symptoms [S4]"
+  confusables:
+    - vs: check_engine_light_general
+      discriminator_question: "Did the light come on around a fill-up or gas-cap event, or with no connection to fueling?"
+    - vs: gasoline_fuel_smell
+      discriminator_question: "Any actual gas smell along with the light? (A smell means a real vapor/fuel leak, not just the cap.)"
+  safety_flag: none
+  notes: "The fueling-linked CEL sub-case. Steady light + runs fine = book normally; FLASHING light = escalate (misfire — engine domain). Cap tightening often doesn't clear the light for days [S4] — set that expectation. Cross-domain: a generic no-fueling-link CEL belongs to the warning-light domain."
+
+- category: fuel
+  subcategory: trouble_fueling_gas_wont_go_in
+  display: "Can't fill the tank / pump keeps clicking off"
+  customer_voice_anchors:
+    - "cant fill my gas tank, the pump keeps clicking off"
+    - "gas splashes back out at me when i try to fill up"
+    - "takes 10 minutes to put gas in, the nozzle keeps shutting off"
+    - "CAN NOT FILL WITH GAS, when refueling it squirts back out"
+    - "can only pump a couple bucks at a time before it clicks off"
+    - "tank wont take gas unless i barely squeeze the nozzle"
+    - "gas comes back up the filler neck when im fueling"
+    - "every gas station pump clicks off on my car now"
+  required_slots:
+    - fill_failure_pattern: "early click-off vs fuel spit-back — both point at EVAP vent/filler-neck blockage"
+    - every_station_or_one: "one finicky pump vs every station — rules out the pump itself"
+    - check_engine_light: "EVAP vent codes often accompany"
+    - recent_service_or_recall: "fuel pump / tank work just done → situational/comeback path"
+  confusables:
+    - vs: check_engine_light_gas_cap_evap
+      discriminator_question: "Is the problem physically getting gas INTO the tank, or a warning light that came on after fueling?"
+  safety_flag: none
+  notes: "Distinct bookable EVAP-side symptom (vent valve / canister / filler neck) that customers describe entirely in gas-station terms. Not a leak, not a light — keep it from collapsing into the generic CEL entry. Spit-back that soaks the customer in fuel deserves a caution note but is not a stop-driving case."
+
+- category: fuel
+  subcategory: hard_start_after_fueling
+  display: "Hard to start right after getting gas"
+  customer_voice_anchors:
+    - "after getting gas i have to crank it a bunch of times to get it started"
+    - "car struggles to start right after i fill the tank"
+    - "stalls when i leave the gas station then runs fine"
+    - "every time i fill up it takes forever to start"
+    - "cranks a long time after a fuel stop, fine the rest of the day"
+    - "if i stop for gas after driving, it cranks and cranks before it catches"
+    - "hard start after fill up, runs rough a minute then smooths out"
+    - "wont start good after the gas station unless i hold the gas pedal down"
+    - "starts hard and idles funny right after topping off the tank"
+  required_slots:
+    - only_after_fueling: "the defining pattern — starts fine except right after a fill-up (EVAP purge flooding cue)"
+    - starts_eventually: "hard start vs true no-start — a car that never catches is the no-start path"
+    - rough_running_after: "stumble/stall right after fueling corroborates purge-valve flooding [S4]"
+    - check_engine_light: "purge faults often set codes"
+  confusables:
+    - vs: cranks_but_wont_start
+      discriminator_question: "Does it always start eventually, or has it ever cranked and never started at all?"
+    - vs: check_engine_light_gas_cap_evap
+      discriminator_question: "Is the main thing the hard starting, or a warning light after fueling?"
+  safety_flag: none
+  notes: "Fueling-linked hard start (classic stuck-open EVAP purge valve drawing raw vapor after refueling [S4]). General hot-start or cold-start difficulty with NO fueling link belongs to the performance/driveability domain — the only-after-fueling slot is what keeps this entry honest."
+
+- category: no_start
+  subcategory: cranks_but_wont_start
+  display: "Cranks but won't start (fuel suspected)"
+  customer_voice_anchors:
+    - "engine cranks and cranks but wont fire up"
+    - "turns over fine but never catches"
+    - "wont start, sounds like its trying but nothing happens"
+    - "cranks strong but wont start, tank is full"
+    - "died while i was driving and now it cranks but wont start"
+    - "ran out of gas, put gas in, still wont start"
+    - "tow in, cranks but will not start"
+    - "car just cranks, doesnt even sputter"
+    - "INTERMITENT NO START"
+    - "got gas sunday and the next day it was chugging, now it wont start at all"
+  required_slots:
+    - crank_behavior: "engine spins normally vs single click vs nothing — the fundamental fuel-vs-battery/starter split"
+    - fuel_level_and_recent_fueling: "ran dry, or symptoms started right after a fill-up (bad-fuel suspicion)"
+    - died_while_driving_or_wont_start_parked: "sudden death on the road (pump/crank sensor) vs won't start cold"
+    - any_sputter_or_partial_catch: "almost-starts vs dead-silent combustion — narrows fuel vs spark"
+    - towed_or_at_home: "logistics — most of these arrive by tow"
+  confusables:
+    - vs: wont_crank_just_clicks
+      discriminator_question: "When you turn the key, does the engine actually spin over and crank, or do you just hear a click or nothing at all?"
+    - vs: hard_start_after_fueling
+      discriminator_question: "Has it ever started eventually, or does it crank and never catch?"
+  safety_flag: none
+  notes: "The fuel-side no-start: cranks normally, won't fire (pump, pressure, contaminated fuel, or non-fuel causes — spark/crank signal — the shop sorts that). The crank-behavior question is the single most valuable no-start fact: click/silent no-starts are battery/starter (electrical domain — cross-domain pair). Car is immobile so not a driving hazard; treat as tow-in logistics."
+
+# ---------------------------------------------------------------------------
+# AIR INDUCTION & FORCED INDUCTION
+# ---------------------------------------------------------------------------
+
+- category: noise
+  subcategory: whistle_or_hiss_under_hood
+  display: "Whistling / hissing from the engine"
+  customer_voice_anchors:
+    - "high pitched whistle coming from the engine"
+    - "hissing sound under the hood when its idling"
+    - "whistling noise when i accelerate that wasnt there before"
+    - "sounds like a tea kettle under the hood"
+    - "air leaking sound, like a hiss, and it idles rough"
+    - "loud whoosh noise when i step on the gas"
+    - "whistle at idle that changes when i rev it"
+    - "sucking air sound from the engine bay"
+    - "hear a whoosh and hiss when i floor it and then it bogs down"
+  required_slots:
+    - when_it_happens: "at idle (vacuum leak) vs only under acceleration/boost (charge-air leak) [S8]"
+    - idle_quality: "rough idle + hiss = unmetered-air/vacuum-leak pattern"
+    - power_loss: "bogging/flat power with the noise = boost leak on turbo cars [S8]"
+    - turbo_equipped: "turbo/supercharged changes the suspect list entirely"
+    - constant_or_new: "some turbo whistle is normal — NEW or louder/sharper is the concern [S8]"
+  confusables:
+    - vs: belt_squeal_or_whine
+      discriminator_question: "Is it an airy whistle/hiss, or more of a squeal/chirp like a belt (especially on cold start or when turning)?"
+    - vs: turbo_low_power_limp_mode
+      discriminator_question: "Is the noise the main thing, or has the car also lost noticeable power or gone into reduced-power mode?"
+    - vs: smoke_or_steam_under_hood
+      discriminator_question: "Is it just the sound, or is there also steam/hissing WITH visible vapor from under the hood (coolant escaping)?"
+  safety_flag: none
+  notes: "Air-noise entry: vacuum leaks (idle hiss/whistle + rough idle) and boost/charge-air leaks (whoosh under load). NOT belt squeal (noise domain), NOT coolant-pressure hiss with steam (cooling). If power loss dominates, route to turbo_low_power_limp_mode instead — noise-led vs power-led decides between these siblings."
+
+- category: performance
+  subcategory: turbo_low_power_limp_mode
+  display: "Turbo/boost power loss / limp mode"
+  customer_voice_anchors:
+    - "car went into limp mode and wont go over 40"
+    - "reduced engine power light came on and it barely accelerates"
+    - "no power when i step on it, feels like the turbo isnt kicking in"
+    - "feels like it lost its turbo, super slow going uphill"
+    - "whoosh noise then it bogs down when i floor it"
+    - "wont rev past 3000 and a bunch of dash lights came on"
+    - "truck has no power all of a sudden, like its choking"
+    - "hesitates and has no boost, check engine light is on"
+    - "went into limp mode on the highway, lights came on then went off"
+  required_slots:
+    - limp_mode_or_warning: "reduced-power message / RPM or speed cap / lights — confirms the computer intervened [S8]"
+    - accompanying_noise: "whoosh/hiss (boost leak) vs siren/metallic whine (turbo bearing) [S8]"
+    - when_it_happens: "under load/uphill/passing vs all the time; intermittent vs constant"
+    - forced_induction_equipped: "turbo/supercharged vs naturally aspirated — reframes to general low power if NA"
+    - onset_and_recent_service: "sudden after a repair (clamp/hose left loose) vs gradual"
+  confusables:
+    - vs: general_low_power_hesitation
+      discriminator_question: "Is the car turbocharged, and did the power loss come with a whoosh/whistle or a reduced-power message?"
+    - vs: whistle_or_hiss_under_hood
+      discriminator_question: "Is the power loss the main problem, or mostly the new noise?"
+    - vs: multiple_warning_lights
+      discriminator_question: "Did the dash lights come with the car physically losing power/capping its speed, or on their own?"
+  safety_flag: none
+  notes: "Boost-side power loss: split intercooler hose/loose clamp, wastegate/actuator, or failing turbo — ECU limp mode capping RPM/speed is common [S8]. Advise caution about highway merging while down on power, and escalate if joined by smoke or major oil loss (turbo seals → blue smoke entry). On a non-turbo car this collapses into the performance domain's general low-power entry (cross-domain pair)."
+
+# ---------------------------------------------------------------------------
+# SMOKE — TAILPIPE & UNDER HOOD
+# ---------------------------------------------------------------------------
+
+- category: smell_smoke
+  subcategory: white_smoke_from_tailpipe
+  display: "White smoke from the exhaust"
+  customer_voice_anchors:
+    - "thick white smoke pouring out of my exhaust"
+    - "white smoke from the tailpipe even after the car is warmed up"
+    - "billowing white smoke out the back and it smells kind of sweet"
+    - "white smoke and im losing coolant"
+    - "big cloud of white smoke behind me at every stoplight"
+    - "exhaust is smoking white and the temp gauge is creeping up"
+    - "white smoke on startup that never really goes away"
+    - "smoking like a mosquito fogger out the back"
+  required_slots:
+    - persists_after_warmup: "thin vapor that clears in a minute on cold mornings is normal condensation — thick persistent smoke is the concern [S2]"
+    - smell: "sweet = coolant burning in the engine [S2]"
+    - coolant_loss: "level dropping alongside the smoke = internal coolant leak (head gasket territory) [S2]"
+    - temperature_gauge_state: "running hot alongside = escalate, stop-driving advice"
+    - thickness: "thin wispy steam vs thick billowing smoke — customer's own words matter here"
+  confusables:
+    - vs: normal_cold_start_steam
+      discriminator_question: "Does it clear up within a minute or two on cold mornings, or does it keep smoking even once the engine is fully warm?"
+    - vs: blue_gray_smoke_from_tailpipe
+      discriminator_question: "Is the smoke white and sweet-smelling, or blue-gray with a burning-oil smell?"
+    - vs: black_smoke_from_tailpipe
+      discriminator_question: "Is it white, or dark/sooty black?"
+  safety_flag: advise_immediately
+  notes: "Thick persistent white smoke = coolant entering combustion (head gasket / cracked component) [S2] — continuing to drive risks overheating and engine damage, so advise getting it in promptly and watching the temp gauge. The benign twin — wispy cold-morning steam that clears — must be REJECTED, not booked as head gasket. Customers say 'smoke' for both; the persistence question decides."
+
+- category: smell_smoke
+  subcategory: blue_gray_smoke_from_tailpipe
+  display: "Blue/gray smoke from the exhaust (burning oil)"
+  customer_voice_anchors:
+    - "puff of blue smoke when i first start it in the morning"
+    - "blueish gray smoke from the exhaust when i accelerate"
+    - "smokes when i take off from a light and it smells like burning oil"
+    - "blue smoke out the tailpipe and im adding oil every few weeks"
+    - "gray smoke that smells oily, not sweet"
+    - "smokes at startup then clears up, been adding a quart a month"
+    - "big cloud of blue smoke when i floor it onto the highway"
+    - "oil smoke out the back on my turbo car"
+  required_slots:
+    - when_it_smokes: "startup puff that clears = valve seals; constant or under acceleration = rings [S2] — the classic split"
+    - smell: "burnt oil confirms it's oil, not coolant [S2]"
+    - oil_consumption: "adding quarts corroborates — links to the consumption entry [S7]"
+    - color_as_seen: "customer's 'gray' can be oil-blue or steam — smell breaks the tie"
+    - check_engine_light: "oil fouling can set codes / damage the cat [S7]"
+  confusables:
+    - vs: white_smoke_from_tailpipe
+      discriminator_question: "Does the smoke smell like burning oil, or sweet like syrup — and is it blue-gray or pure white?"
+    - vs: black_smoke_from_tailpipe
+      discriminator_question: "Blue-gray, or sooty black with a raw-gas smell?"
+    - vs: oil_consumption_burning_oil
+      discriminator_question: "Is the visible smoke the main thing, or mostly that the oil level keeps dropping?"
+  safety_flag: none
+  notes: "Oil being burned in the engine: startup-only puff (valve seals, drivable) vs constant/under-load (rings, more serious) [S2]. Not an emergency, but advise keeping the oil level topped up — running low IS an engine killer, and chronic burning clogs the catalytic converter [S7]. On turbo cars, blue smoke can be turbo seals — capture that the car is turbocharged."
+
+- category: smell_smoke
+  subcategory: black_smoke_from_tailpipe
+  display: "Black smoke from the exhaust (running rich)"
+  customer_voice_anchors:
+    - "black smoke coming out of my exhaust"
+    - "blows black smoke when i step on the gas"
+    - "black smoke and it smells like raw gas"
+    - "my truck started blowing black smoke, not sure whats going on"
+    - "sooty black smoke and my gas mileage has tanked"
+    - "puffs black smoke at startup then kind of clears up"
+    - "my diesel is smoking black even just idling now"
+    - "dark smoke when i accelerate hard and it runs rough"
+  required_slots:
+    - when_it_smokes: "under hard acceleration vs at idle vs startup — constant black at idle is a stronger fault"
+    - fuel_smell: "strong gas smell accompanies a rich mixture [S2]"
+    - mpg_drop: "fuel economy falling corroborates running rich [S2]"
+    - diesel_or_gas: "a brief diesel puff under load can be near-normal; sustained black smoke is not"
+    - running_quality_and_cel: "rough running / check engine light alongside"
+  confusables:
+    - vs: blue_gray_smoke_from_tailpipe
+      discriminator_question: "Is it sooty black with a gas smell, or blue-gray with a burning-oil smell?"
+    - vs: white_smoke_from_tailpipe
+      discriminator_question: "Black, or thick white?"
+    - vs: rotten_egg_exhaust_smell
+      discriminator_question: "Do you see actual black smoke, or is it mainly a rotten-egg smell from the exhaust?"
+  safety_flag: none
+  notes: "Rich mixture — too much fuel or not enough air (injectors, sensors, clogged air filter) [S2]. Drivable but wastes fuel and can damage the catalytic converter; book promptly. Diesel-vs-gas matters: diesels puff black under load semi-normally, so sustained/idle black smoke is the bookable signal there."
+
+- category: smell_smoke
+  subcategory: smoke_or_steam_under_hood
+  display: "Smoke or steam from under the hood"
+  customer_voice_anchors:
+    - "smoke coming from under the hood"
+    - "steam pouring out from under the hood and it smells sweet"
+    - "SAW SMOKE COMING FROM THE GRILLE"
+    - "white steam coming out of the engine bay after i park"
+    - "smoke from under the hood and a coolant message came up"
+    - "hissing and steam from under my hood but the gauge says its not overheating"
+    - "wisps of smoke off the engine and it smells like burning oil"
+    - "hood was smoking when i pulled in, freaked me out"
+    - "something is smoking under the hood so i pulled over right away"
+  required_slots:
+    - smell: "sweet = coolant boil-over/spray; greasy burnt = oil on the manifold; sharp plastic = electrical (different domain) — the smell routes it"
+    - temperature_gauge_state: "hot gauge or overheat message = the cooling side; normal gauge shifts odds to oil/electrical"
+    - still_driving: "visible under-hood smoke warrants pull-over-and-assess advice; tow if it continues [S3]"
+    - steam_vs_smoke_as_seen: "billowing white vapor (steam) vs gray/black smoke — customers use the words interchangeably"
+    - fluid_loss: "coolant or oil level dropping ties it to the source"
+  confusables:
+    - vs: engine_overheating_running_hot
+      discriminator_question: "Is the temperature gauge reading hot along with the smoke, or is the gauge normal?"
+    - vs: burning_electrical_plastic_smell
+      discriminator_question: "Does it smell sweet or oily, or like sharp burning plastic/wiring?"
+    - vs: burning_oil_smell
+      discriminator_question: "Can you actually see smoke or steam, or is it just the smell?"
+  safety_flag: advise_immediately
+  notes: "Anything visibly smoking/steaming under the hood gets stop-and-assess advice [S3]. The smell is the router: sweet+hot = coolant (this domain), greasy = oil on the exhaust (this domain), acrid plastic = electrical (cross-domain — electrical fires escalate to 'get away from the vehicle if it worsens'). Smoke that appeared right after a repair elsewhere is also a situational/after-recent-service case."
