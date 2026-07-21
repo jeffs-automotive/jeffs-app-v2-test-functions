@@ -16,39 +16,55 @@ const log = (msg, ctx = {}) =>
 const warn = (msg, ctx = {}) =>
   console.warn(JSON.stringify({ level: "warn", surface: "scan-agent", msg, ...ctx }));
 
-// PII scrubber (sentry-compliance): the edge fns ride sentry-edge.ts's
-// beforeSend, but scan-agent events go out on its OWN DSN — raw fs error
-// messages embed C:\Scans\{profile}\{original filename} (filename = PII per
-// plan D2). Node twin of the shared scrubString: emails, +1-phones, and any
-// path component after a Scans/work/archive dir become placeholders.
+// PII scrubber (sentry-compliance + security re-review): the edge fns ride
+// sentry-edge.ts's beforeSend, but scan-agent events go out on its OWN DSN —
+// raw fs error messages embed C:\Scans\{profile}\{original filename}
+// (filename = PII per plan D2). Emails, +1-phones, and any path component
+// after a watched/work dir become placeholders. Separators match [\\/]+ so
+// JSON-escaped paths (double backslashes inside breadcrumb data) scrub too;
+// the dir alternation is built from the CONFIGURED roots at init, not
+// hardcoded names.
 const EMAIL_RE = /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g;
 const PHONE_E164_RE = /\+1\d{6}(\d{4})/g;
-// Filename = everything after the last separator, lazily through the file
-// extension (scan filenames routinely contain spaces — "jane doe 4411.pdf"
-// must redact WHOLE, caught by the test suite); extensionless fallback stops
-// at whitespace.
-const SCAN_PATH_FILE_RE =
-  /([\\/](?:Scans|ScanAgent)[\\/][^\s"']*[\\/])(?:[^"'\\/\n]+?\.[A-Za-z0-9]{2,5}|[^\s"'\\/]+)/g;
-export function scrubString(s) {
-  if (typeof s !== "string" || s.length === 0) return s;
-  return s
-    .replace(EMAIL_RE, "[email]")
-    .replace(PHONE_E164_RE, "+1******$1")
-    .replace(SCAN_PATH_FILE_RE, "$1[file]");
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+export function makeScrubString(rootNames = ["Scans", "ScanAgent"]) {
+  const roots = [...new Set(rootNames.filter(Boolean))].map(escapeRe).join("|");
+  // Filename = everything after the last separator, lazily through the file
+  // extension (scan filenames routinely contain spaces — "jane doe 4411.pdf"
+  // must redact WHOLE); extensionless fallback stops at whitespace.
+  const pathFileRe = new RegExp(
+    `([\\\\/]+(?:${roots})[\\\\/]+[^\\s"']*[\\\\/]+)(?:[^"'\\\\/\\n]+?\\.[A-Za-z0-9]{2,5}|[^\\s"'\\\\/]+)`,
+    "g",
+  );
+  return (s) => {
+    if (typeof s !== "string" || s.length === 0) return s;
+    return s
+      .replace(EMAIL_RE, "[email]")
+      .replace(PHONE_E164_RE, "+1******$1")
+      .replace(pathFileRe, "$1[file]");
+  };
 }
-function scrubEvent(event) {
-  try {
-    if (typeof event.message === "string") event.message = scrubString(event.message);
-    for (const ex of event.exception?.values ?? []) {
-      if (typeof ex.value === "string") ex.value = scrubString(ex.value);
+export const scrubString = makeScrubString();
+
+export function makeScrubEvent(scrub = scrubString) {
+  return (event) => {
+    try {
+      if (typeof event.message === "string") event.message = scrub(event.message);
+      for (const ex of event.exception?.values ?? []) {
+        if (typeof ex.value === "string") ex.value = scrub(ex.value);
+      }
+      for (const b of event.breadcrumbs ?? []) {
+        if (typeof b.message === "string") b.message = scrub(b.message);
+        // Console-integration breadcrumbs carry raw console args in data —
+        // the leak path the message-only scrub missed (security re-review).
+        if (b.data) b.data = JSON.parse(scrub(JSON.stringify(b.data)));
+      }
+      return event;
+    } catch {
+      return null; // scrubbing failed — drop rather than leak
     }
-    for (const b of event.breadcrumbs ?? []) {
-      if (typeof b.message === "string") b.message = scrubString(b.message);
-    }
-    return event;
-  } catch {
-    return null; // scrubbing failed — drop rather than leak
-  }
+  };
 }
 
 export async function main() {
@@ -60,12 +76,18 @@ export async function main() {
   // this agent only uses manual captures, so pre-init auto-instrumentation
   // has nothing to catch (intentional deviation from the ESM preload docs).
   const sentry = Sentry;
+  const scrub = makeScrubString([
+    "Scans",
+    "ScanAgent",
+    path.basename(cfg.scansRoot),
+    path.basename(cfg.workRoot),
+  ]);
   Sentry.init({
     dsn: cfg.sentryDsn,
     release: `jeffs-scan-agent@${cfg.agentVersion}`,
     environment: "production",
     initialScope: { tags: { surface: "scan-agent", module: "document-intake", host: cfg.hostname } },
-    beforeSend: scrubEvent,
+    beforeSend: makeScrubEvent(scrub),
   });
 
   const gwConfig = await fetchGatewayConfig(cfg);
@@ -114,7 +136,10 @@ export async function main() {
         profileKey,
         attempts: 0,
       });
-      log("file claimed", { id: claim.id, originalName: claim.originalName, profileKey });
+      // Job id only — the original filename is PII (plan D2) and console
+      // lines become Sentry breadcrumbs (security re-review). The name lives
+      // in the ledger + DB row, never in logs.
+      log("file claimed", { id: claim.id, profileKey });
       await runJob(job);
     } catch (e) {
       warn("candidate handling failed", { filePath, error: e instanceof Error ? e.message : String(e) });

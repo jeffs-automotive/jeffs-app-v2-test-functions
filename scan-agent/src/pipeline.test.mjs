@@ -216,6 +216,28 @@ describe("scrubString (agent Sentry beforeSend)", () => {
     expect(scrubString("moved to C:\\ScanAgent\\archive\\failed\\loaner_insurance\\abc_card.pdf"))
       .toBe("moved to C:\\ScanAgent\\archive\\failed\\loaner_insurance\\[file]");
   });
+
+  it("scrubs JSON-escaped paths (breadcrumb data) + custom roots", async () => {
+    const { makeScrubString, makeScrubEvent } = await import("./agent.mjs");
+    const scrub = makeScrubString(["Scans", "ScanAgent", "Scanned Docs"]);
+    // Double-backslash form as it appears inside JSON.stringify'd data:
+    expect(scrub('{"path":"C:\\\\Scans\\\\inspection_docs\\\\jane doe 4411.pdf"}'))
+      .toBe('{"path":"C:\\\\Scans\\\\inspection_docs\\\\[file]"}');
+    // Relocated root configured via env:
+    expect(scrub("D:\\Scanned Docs\\loaner_insurance\\card front.pdf"))
+      .toBe("D:\\Scanned Docs\\loaner_insurance\\[file]");
+
+    // Breadcrumb data.arguments (console integration) gets scrubbed too:
+    const scrubEvent = makeScrubEvent(scrub);
+    const event = scrubEvent({
+      breadcrumbs: [{
+        message: "warn C:\\Scans\\inspection_docs\\jane doe 4411.pdf",
+        data: { arguments: ["candidate failed", "C:\\Scans\\inspection_docs\\jane doe 4411.pdf"] },
+      }],
+    });
+    expect(event.breadcrumbs[0].message).toContain("[file]");
+    expect(JSON.stringify(event.breadcrumbs[0].data)).not.toContain("jane doe");
+  });
 });
 
 describe("createGateway", () => {

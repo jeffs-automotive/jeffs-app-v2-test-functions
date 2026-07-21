@@ -142,6 +142,10 @@ export async function handler(req: Request): Promise<Response> {
       // The shared unauthorizedResponse would echo first-8-chars + lengths of
       // every valid bearer to unauthenticated probers (security-review);
       // checkSchedulerBearer already logged the diagnostic server-side.
+      // But NOT silently: pg_cron's net.http_post is fire-and-forget, so a
+      // rotated/wrong bearer would otherwise disable the entire daily cycle
+      // (incl. the watchdog) with no alert (observability rule 5).
+      captureInvalidSampled("document-intake-email: cron-mode auth failure — daily cycle NOT running");
       return json(401, { ok: false, error: "unauthorized" });
     }
     if (body.mode !== "cron" && body.mode !== "bootstrap") {

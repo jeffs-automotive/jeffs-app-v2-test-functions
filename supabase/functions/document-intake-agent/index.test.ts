@@ -28,6 +28,8 @@ const SHA = "a".repeat(64);
 interface StorageStubState {
   existingBasenames: string[];
   signCalls: string[];
+  /** storage-reported size per basename (statObject verification input) */
+  sizeByBasename?: Record<string, number>;
 }
 
 function makeSb(opts: { profile?: unknown; profiles?: unknown[]; storage?: StorageStubState } = {}) {
@@ -48,7 +50,12 @@ function makeSb(opts: { profile?: unknown; profiles?: unknown[]; storage?: Stora
       list: (_dir: string, listOpts?: { search?: string }) => {
         const found = storageState.existingBasenames
           .filter((n) => !listOpts?.search || n === listOpts.search)
-          .map((n) => ({ name: n }));
+          .map((n) => ({
+            name: n,
+            metadata: storageState.sizeByBasename?.[n] !== undefined
+              ? { size: storageState.sizeByBasename[n] }
+              : null,
+          }));
         return Promise.resolve({ data: found, error: null });
       },
     }),
@@ -187,6 +194,27 @@ Deno.test("confirm: verification per plan D5 — missing object 409; shape-gate;
     assertEquals((await res.json()).error, "verification_mismatch");
     const updates = sb.callsForTable("document_intake_files").filter((c) => c.chain.some((x) => x.method === "update"));
     assertEquals(updates.length, 0, "mismatch never transitions the row");
+  }
+  { // sha/size are REQUIRED — verification cannot be switched off by omission
+    makeSb({ profile: PROFILE_ROW, storage: { existingBasenames: ["1_aaaaaaaa.pdf"], signCalls: [] } });
+    const noSha = await handler(makeRequest({ body: { op: "confirm", object_path: path, size_bytes: 100 } }));
+    assertEquals(noSha.status, 400);
+    assertEquals((await noSha.json()).error, "bad_sha256");
+    const noSize = await handler(makeRequest({ body: { op: "confirm", object_path: path, sha256: SHA } }));
+    assertEquals(noSize.status, 400);
+    assertEquals((await noSize.json()).error, "bad_size");
+  }
+  { // server-side clause: storage-reported size vs the minted row, no client input needed
+    const { sb } = makeSb({
+      profile: PROFILE_ROW,
+      storage: { existingBasenames: ["1_aaaaaaaa.pdf"], signCalls: [], sizeByBasename: { "1_aaaaaaaa.pdf": 999 } },
+    });
+    sb.onTable("document_intake_files", { data: scanRow, error: null });
+    const res = await handler(makeRequest({ body: confirmBody }));
+    assertEquals(res.status, 422);
+    const bodyJson = await res.json();
+    assertEquals(bodyJson.error, "verification_mismatch");
+    assertEquals(bodyJson.size_mismatch, true);
   }
   { // full match → pending→ready + heartbeat stamp
     const { sb } = makeSb({ profile: PROFILE_ROW, storage: { existingBasenames: ["1_aaaaaaaa.pdf"], signCalls: [] } });

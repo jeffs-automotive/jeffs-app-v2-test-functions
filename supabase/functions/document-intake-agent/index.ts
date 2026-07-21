@@ -334,6 +334,11 @@ export async function handler(req: Request): Promise<Response> {
     const sizeBytes = typeof body.size_bytes === "number" ? body.size_bytes : -1;
     const sha256 = typeof body.sha256 === "string" ? body.sha256.toLowerCase() : "";
     if (!objectPath) return json(400, { ok: false, error: "missing_object_path" });
+    // sha + size are REQUIRED — verification a client can switch off by
+    // omission is not verification (security re-review). The only production
+    // caller always sends both.
+    if (!/^[0-9a-f]{64}$/.test(sha256)) return json(400, { ok: false, error: "bad_sha256" });
+    if (sizeBytes <= 0) return json(400, { ok: false, error: "bad_size" });
     if (!MINTED_SCAN_PATH_RE.test(objectPath)) {
       return json(422, { ok: false, error: "path_not_owned" });
     }
@@ -363,10 +368,13 @@ export async function handler(req: Request): Promise<Response> {
       return json(200, { ok: true, object_path: objectPath, already_ready: true });
     }
 
-    const shaMismatch = row.sha256 !== null && sha256 !== "" && row.sha256 !== sha256;
+    const shaMismatch = row.sha256 !== null && row.sha256 !== sha256;
     const sizeMismatch =
-      (row.size_bytes !== null && sizeBytes > 0 && row.size_bytes !== sizeBytes) ||
-      (stat.size !== null && sizeBytes > 0 && stat.size !== sizeBytes);
+      (row.size_bytes !== null && row.size_bytes !== sizeBytes) ||
+      (stat.size !== null && stat.size !== sizeBytes) ||
+      // The one fully server-side clause: what storage actually holds vs what
+      // the row was minted for — needs no client input at all.
+      (stat.size !== null && row.size_bytes !== null && stat.size !== row.size_bytes);
     if (shaMismatch || sizeMismatch) {
       Sentry.captureMessage(
         `document-intake-agent: confirm mismatch (${shaMismatch ? "sha256" : "size"}) — row stays pending`,
