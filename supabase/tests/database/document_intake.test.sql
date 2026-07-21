@@ -228,5 +228,42 @@ SELECT is((SELECT status FROM public.document_intake_files
   WHERE object_path='7476/loaner_insurance/scan/2026/07/1753100003_cafe0003.pdf'),
   'ready', 'explicit rows untouched by the metadata trigger (COALESCE backfill only)');
 
+-- ─── Deploy-fixes (§1e bootstrap, migration 20260721200000) ─────────────
+-- F1: the upsert target must be a PLAIN unique constraint (functional
+-- lower(mailbox) indexes don't match ON CONFLICT (mailbox) — live failure).
+SELECT ok(EXISTS (
+  SELECT 1 FROM pg_constraint
+  WHERE conname='graph_mail_subscriptions_mailbox_key'
+    AND conrelid='public.graph_mail_subscriptions'::regclass AND contype='u'),
+  'plain UNIQUE(mailbox) constraint exists for the subscription upsert (F1)');
+
+-- F2: the orphan diff runs via SECURITY DEFINER RPC (storage schema is not
+-- exposed through the Data API on this project — live failure).
+SELECT has_function('public', 'document_intake_orphan_objects', ARRAY['text'], 'orphan-diff rpc exists');
+SELECT ok(NOT has_function_privilege('anon','public.document_intake_orphan_objects(text)','EXECUTE'),
+  'anon cannot run the orphan diff');
+SELECT ok(has_function_privilege('service_role','public.document_intake_orphan_objects(text)','EXECUTE'),
+  'service_role can run the orphan diff');
+
+-- Behavior: an object with no files row is an orphan; registering it clears it.
+DELETE FROM public.document_intake_files WHERE object_path='7476/inspection_docs/scan/2026/07/1753100009_cd34_0rphan09.pdf';
+INSERT INTO storage.objects (bucket_id, name, metadata)
+VALUES ('vehicle-docs', '7476/inspection_docs/scan/2026/07/1753100009_cd34_0rphan09.pdf',
+        '{"mimetype":"application/pdf","size":"555"}'::jsonb);
+-- (the registrar trigger auto-registers it, so first prove the rpc sees a
+-- TRUE orphan by deleting the belt row it just created)
+DELETE FROM public.document_intake_files WHERE object_path='7476/inspection_docs/scan/2026/07/1753100009_cd34_0rphan09.pdf';
+SELECT is((SELECT count(*)::int FROM public.document_intake_orphan_objects('vehicle-docs')
+  WHERE name='7476/inspection_docs/scan/2026/07/1753100009_cd34_0rphan09.pdf'),
+  1, 'rpc reports the un-registered object as an orphan');
+SELECT is((SELECT size_bytes FROM public.document_intake_orphan_objects('vehicle-docs')
+  WHERE name='7476/inspection_docs/scan/2026/07/1753100009_cd34_0rphan09.pdf'),
+  555::bigint, 'rpc surfaces storage-reported size');
+INSERT INTO public.document_intake_files (shop_id, profile_key, source, bucket, object_path, status)
+VALUES (7476, 'inspection_docs', 'scan', 'vehicle-docs', '7476/inspection_docs/scan/2026/07/1753100009_cd34_0rphan09.pdf', 'pending');
+SELECT is((SELECT count(*)::int FROM public.document_intake_orphan_objects('vehicle-docs')
+  WHERE name='7476/inspection_docs/scan/2026/07/1753100009_cd34_0rphan09.pdf'),
+  0, 'a registered object is no longer an orphan');
+
 SELECT * FROM finish();
 ROLLBACK;

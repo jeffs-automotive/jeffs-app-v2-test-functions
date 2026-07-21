@@ -24,7 +24,6 @@ const RENEWAL_MINUTES = 60 * 60; // 2.5 days
 const LEASE_TTL_MINUTES = 45;
 const PROCESSING_STALE_MINUTES = 60;
 const HEARTBEAT_STALE_HOURS = 2;
-const PAGE_SIZE = 1000;
 const INTAKE_STALE_DAYS = Number(Deno.env.get("INTAKE_STALE_DAYS") ?? "4");
 
 function log(msg: string, ctx: Record<string, unknown> = {}): void {
@@ -240,40 +239,19 @@ export async function drainEvents(sb: SupabaseClient, graph: GraphClient): Promi
   return processed;
 }
 
-async function pageAll<T>(
-  query: (from: number, to: number) => PromiseLike<{ data: unknown; error: { message: string } | null }>,
-  label: string,
-): Promise<T[]> {
-  const out: T[] = [];
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await query(from, from + PAGE_SIZE - 1);
-    if (error) throw new Error(`${label} page query failed: ${error.message}`);
-    const rows = (data ?? []) as T[];
-    out.push(...rows);
-    if (rows.length < PAGE_SIZE) break;
-  }
-  return out;
-}
-
 /** storage.objects <-> document_intake_files diff; register orphans (plan D3).
- *  Paginated past PostgREST max_rows (fix: supabase-compliance). */
+ *  The diff runs entirely in SQL via a SECURITY DEFINER RPC (deploy-fix F2:
+ *  the storage schema is NOT exposed through the Data API on this project,
+ *  so sb.schema("storage") 400s — found by the live §1e bootstrap). One
+ *  RPC call ≤ max_rows orphans per run; normally ~0, watchdog reports the
+ *  count, a larger backlog drains across daily runs. */
 export async function reconcileStorage(sb: SupabaseClient): Promise<number> {
-  const objects = await pageAll<{ name: string; metadata: Record<string, unknown> | null }>(
-    (from, to) =>
-      sb.schema("storage").from("objects").select("name, metadata")
-        .eq("bucket_id", BUCKET).order("name").range(from, to),
-    "storage.objects",
-  );
-  const files = await pageAll<{ object_path: string }>(
-    (from, to) =>
-      sb.from("document_intake_files").select("object_path").order("object_path").range(from, to),
-    "document_intake_files",
-  );
+  const { data, error } = await sb.rpc("document_intake_orphan_objects", { p_bucket: BUCKET });
+  if (error) throw new Error(`orphan diff rpc failed: ${error.message}`);
+  const objects = (data ?? []) as Array<{ name: string; mimetype: string | null; size_bytes: number | null }>;
 
-  const known = new Set(files.map((f) => f.object_path));
   let orphans = 0;
   for (const obj of objects) {
-    if (known.has(obj.name)) continue;
     const tokens = obj.name.split("/");
     const shopId = Number(tokens[0]);
     if (!Number.isFinite(shopId) || shopId <= 0) {
@@ -300,8 +278,8 @@ export async function reconcileStorage(sb: SupabaseClient): Promise<number> {
       source: ["scan", "email"].includes(tokens[2] ?? "") ? tokens[2] : "other",
       bucket: BUCKET,
       object_path: obj.name,
-      mime_type: (obj.metadata?.mimetype as string | undefined) ?? null,
-      size_bytes: obj.metadata?.size !== undefined ? Number(obj.metadata.size) : null,
+      mime_type: obj.mimetype,
+      size_bytes: obj.size_bytes,
       status: "pending",
     }, { onConflict: "object_path", ignoreDuplicates: true });
     if (insErr) throw new Error(`orphan registration failed: ${insErr.message}`);

@@ -178,10 +178,10 @@ Deno.test("bootstrap creates subscriptions: ≤2.5-day expiration, hash stored (
   });
   sb.onTable("graph_mail_events", { data: [], error: null });
   sb.onTable("document_intake_files", { data: [], error: null });
-  sb.onTable("storage.objects", { data: [], error: null });
   sb.onTable("document_intake_agent_state", { data: [], error: null });
   sb.onRpc("document_intake_claim_cron_lease", { data: true, error: null });
   sb.onRpc("document_intake_release_cron_lease", { data: true, error: null });
+  sb.onRpc("document_intake_orphan_objects", { data: [], error: null });
 
   const created: Array<Record<string, unknown>> = [];
   _setGraphClientForTesting({
