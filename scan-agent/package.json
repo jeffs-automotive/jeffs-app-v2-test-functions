@@ -1,0 +1,24 @@
+{
+  "name": "jeffs-scan-agent",
+  "version": "1.0.0",
+  "description": "Shop-PC scan intake agent: watches the ScanSnap SMB drop folders and uploads to Supabase via the document-intake-agent gateway (docs/document-intake/document-intake-plan.md D5/D12).",
+  "type": "module",
+  "private": true,
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node src/agent.mjs",
+    "test": "vitest run",
+    "check": "node --check src/agent.mjs && node --check src/pipeline.mjs && node --check src/ledger.mjs && node --check src/watcher.mjs && node --check src/config.mjs && node --check src/sniff.mjs",
+    "service:install": "node service/install-service.mjs",
+    "service:uninstall": "node service/uninstall-service.mjs"
+  },
+  "dependencies": {
+    "@sentry/node": "^10",
+    "chokidar": "^4",
+    "dotenv": "^17",
+    "node-windows": "^1.0.0-beta.8"
+  },
+  "devDependencies": {
+    "vitest": "^4"
+  }
+}
