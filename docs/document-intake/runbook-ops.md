@@ -115,8 +115,41 @@ clientState, cron) is created by the edge function bootstrap — no manual Graph
 
 ---
 
-## §2 Supabase (migrations, functions, secrets) — expanded at implement
-## §3 Sentry alert rule — expanded at implement (idempotent provisioning per `sentry_api_and_cli.md`)
-## §4 Shop-PC scan agent install — expanded at implement (mirrors `scan-agent/README.md`)
-## §5 Scanner profiles — expanded at implement
-## §6 E2E acceptance script — expanded at implement (plan §Ops step 8)
+## §2 Supabase — ✅ DONE 2026-07-21 (as-built)
+
+- Migrations `20260721180000/180500/181000/181500/190000/200000` applied to `itzdasxobllfiuolmbxu`
+  via `supabase db push`. **Standing gotcha:** the held kb-retraining migration
+  `20260719130000_kb_retrain_enrichment.sql` (untracked, fails on its own data) must be MOVED OUT
+  of `supabase/migrations/` before any `db push`/`migration up` and restored after — it belongs to
+  the paused kb-retraining feature.
+- Functions `document-intake-email` + `document-intake-agent` deployed, ACTIVE.
+- Edge-fn secrets set by Chris: `GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`, `GRAPH_CLIENT_SECRET`
+  (expires ~2028-07 — rotation reminder), `AGENT_TOKEN` (Chris holds the value for the shop-PC `.env`).
+  Vault: nothing new (the cron reuses the existing `service_role_key` entry).
+- Bootstrap: `select public.scheduler_invoke_edge_function('document-intake-email','{"mode":"bootstrap"}'::jsonb)`
+  → report `recreated: 2`, zero errors. Both subscriptions live (exp 2026-07-24; daily 10:10 UTC
+  cron renews). One orphan Graph subscription for inspection@ from the first (failed) bootstrap
+  self-expires ~2026-07-24; its deliveries are rejected+sampled — harmless.
+- §1e proof: Exchange RBAC-only grant SUFFICES for subscription creation (no Entra fallback needed);
+  `Test-ServicePrincipalAuthorization` chris@ = InScope **False** confirmed by Chris.
+
+## §3 Sentry alert rule — ⏳ DEFERRED (task list)
+
+Dashboard walk-through was skipped 2026-07-21 (guided steps didn't match the current UI). Do it via
+the Internal Integration REST API instead (idempotent provisioning per
+`.claude/memory/general/sentry_api_and_cli.md`): rule on `jeffs-app-v2-supabase` matching tag
+`module=document-intake` → email Chris; then the forced-failure proof (one unauthenticated
+`{"mode":"cron"}` POST at the fn → sampled warning → alert email arrives). **Until then, module
+failures land in Sentry but email no one** — including the watchdog's "no documents in >4 days"
+flag, which will start firing once intake goes quiet (expected while the scan channel is pending).
+
+## §4 Shop-PC scan agent install — ⏳ DEFERRED (task list; full steps in `scan-agent/README.md`)
+## §5 Scanner profiles — ⏳ DEFERRED (task list; ScanSnap Home → two network-folder profiles)
+
+## §6 E2E acceptance — email channel ✅ PROVEN 2026-07-21 / scan channel ⏳ with §4-5
+
+Chris emailed a real insurance-card photo to BOTH addresses: processed first-pass (attempts 0,
+sub-minute, webhook path), routed to the right profiles, signature logo skipped as `inline_image`,
+magic-byte-validated jpeg, `ready` rows with opaque paths + sender captured. Remaining acceptance
+when §4-5 land: scan per profile → ready rows; agent heartbeat visible; forced-failure alert email
+(§3); unrouted + junk-folder sweep cases as desired.
