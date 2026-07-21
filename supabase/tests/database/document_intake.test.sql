@@ -171,15 +171,62 @@ SELECT throws_ok($$ SELECT 1 FROM public.document_intake_profiles $$, '42501', N
 SELECT throws_ok($$ SELECT 1 FROM public.graph_mail_events $$,        '42501', NULL, 'anon cannot SELECT events');
 RESET ROLE;
 
--- ─── Cron registered + advisory-lock RPCs ───────────────────────────────
+-- ─── Cron registered + LEASE serialization (fix B1) ─────────────────────
 SELECT is((SELECT count(*)::int FROM cron.job WHERE jobname='document-intake-daily'), 1,
   'document-intake-daily cron job registered');
-SELECT has_function('public', 'document_intake_try_cron_lock', 'cron lock fn exists');
-SELECT has_function('public', 'document_intake_release_cron_lock', 'cron unlock fn exists');
-SELECT ok(NOT has_function_privilege('anon','public.document_intake_try_cron_lock()','EXECUTE'),
-  'anon cannot take the cron lock');
-SELECT ok(has_function_privilege('service_role','public.document_intake_try_cron_lock()','EXECUTE'),
-  'service_role can take the cron lock');
+SELECT hasnt_function('public', 'document_intake_try_cron_lock',
+  'session advisory-lock fn REMOVED (pooling-broken — fix B1)');
+SELECT has_function('public', 'document_intake_claim_cron_lease', ARRAY['text','integer'], 'lease claim fn exists');
+SELECT has_function('public', 'document_intake_release_cron_lease', ARRAY['text'], 'lease release fn exists');
+SELECT ok(NOT has_function_privilege('anon','public.document_intake_claim_cron_lease(text,integer)','EXECUTE'),
+  'anon cannot claim the cron lease');
+SELECT ok(has_function_privilege('service_role','public.document_intake_claim_cron_lease(text,integer)','EXECUTE'),
+  'service_role can claim the cron lease');
+SELECT is((SELECT count(*)::int FROM public.document_intake_cron_lease), 1, 'lease singleton seeded');
+
+-- Lease behavior: claim -> concurrent claim blocked -> wrong-run release
+-- no-ops -> right-run release frees -> claimable again. (Row counts /
+-- return values, not exceptions.)
+SELECT is(public.document_intake_claim_cron_lease('run-A', 45), true,  'run-A claims the lease');
+SELECT is(public.document_intake_claim_cron_lease('run-B', 45), NULL,  'run-B cannot claim while run-A holds it');
+SELECT is(public.document_intake_release_cron_lease('run-B'),   NULL,  'run-B cannot release run-A''s lease');
+SELECT is(public.document_intake_release_cron_lease('run-A'),   true,  'run-A releases its lease');
+SELECT is(public.document_intake_claim_cron_lease('run-B', 45), true,  'lease claimable again after release');
+SELECT is(public.document_intake_release_cron_lease('run-B'),   true,  'cleanup release');
+
+-- Expired lease is claimable regardless of who died holding it (crash-safe).
+UPDATE public.document_intake_cron_lease SET locked_until = now() - interval '1 minute', locked_by = 'run-crashed';
+SELECT is(public.document_intake_claim_cron_lease('run-C', 45), true, 'expired lease claimable (TTL crash-safety)');
+SELECT is(public.document_intake_release_cron_lease('run-C'),   true, 'cleanup');
+
+-- ─── Fix-round schema: tenant attribution + nullable agent shop ─────────
+SELECT has_column('public', 'graph_mail_subscriptions', 'shop_id', 'subscriptions carry tenant (fix S1)');
+SELECT is((SELECT is_nullable FROM information_schema.columns
+  WHERE table_schema='public' AND table_name='document_intake_agent_state' AND column_name='shop_id'),
+  'YES', 'agent_state.shop_id nullable (fix S2 — never misattribute a tenant)');
+
+-- ─── T1: metadata written AFTER insert still backfills the belt row ─────
+INSERT INTO storage.objects (bucket_id, name, metadata)
+VALUES ('vehicle-docs', '7476/inspection_docs/scan/2026/07/1753100004_ab12_feed0004.pdf', NULL);
+SELECT ok((SELECT mime_type IS NULL FROM public.document_intake_files
+  WHERE object_path='7476/inspection_docs/scan/2026/07/1753100004_ab12_feed0004.pdf'),
+  'belt row registered bare when storage has not yet written metadata');
+UPDATE storage.objects
+  SET metadata = '{"mimetype":"application/pdf","size":"777"}'::jsonb
+  WHERE bucket_id='vehicle-docs' AND name='7476/inspection_docs/scan/2026/07/1753100004_ab12_feed0004.pdf';
+SELECT is((SELECT mime_type FROM public.document_intake_files
+  WHERE object_path='7476/inspection_docs/scan/2026/07/1753100004_ab12_feed0004.pdf'),
+  'application/pdf', 'metadata UPDATE trigger backfills mime on the bare row');
+SELECT is((SELECT size_bytes FROM public.document_intake_files
+  WHERE object_path='7476/inspection_docs/scan/2026/07/1753100004_ab12_feed0004.pdf'),
+  777::bigint, 'metadata UPDATE trigger backfills size on the bare row');
+-- …and never clobbers an explicit rich row:
+UPDATE storage.objects
+  SET metadata = '{"mimetype":"text/plain","size":"1"}'::jsonb
+  WHERE bucket_id='vehicle-docs' AND name='7476/loaner_insurance/scan/2026/07/1753100003_cafe0003.pdf';
+SELECT is((SELECT status FROM public.document_intake_files
+  WHERE object_path='7476/loaner_insurance/scan/2026/07/1753100003_cafe0003.pdf'),
+  'ready', 'explicit rows untouched by the metadata trigger (COALESCE backfill only)');
 
 SELECT * FROM finish();
 ROLLBACK;

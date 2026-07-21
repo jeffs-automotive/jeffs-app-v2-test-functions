@@ -1,7 +1,16 @@
 // document-intake-email — daily cron: renew / sweep / drain / reconcile /
 // watchdog (plan D8 + D13). Each step is failure-isolated: one step's error
 // is captured + reported, the rest still run. The whole cycle is serialized
-// by the document_intake_try_cron_lock advisory lock (companion migration).
+// by a LEASE-ROW claim (fix B1 — session advisory locks cannot serialize
+// pooled PostgREST rpc() calls; the lease is one atomic UPDATE with a TTL,
+// crash-safe by expiry).
+//
+// Fix round 1 (verify 2026-07-21): every Supabase call checks `error`
+// (observability rule 9 — a failing watchdog query is itself a flag, never
+// an implicit all-clear); the drain reclaims stale `processing` rows (a
+// killed isolate can no longer strand an event); reconcile paginates past
+// PostgREST's max_rows cap and never guesses a tenant; a skipped run and a
+// failed lease release are Sentry events, not console whispers.
 
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { Sentry } from "../_shared/sentry-edge.ts";
@@ -12,7 +21,10 @@ const SWEEP_WINDOW_DAYS = 7;
 // ≤ 2.5 days: valid under the documented 10,080-min mail cap AND the stricter
 // 4,230-min figure one cross-verify reviewer asserted (plan D8 — neutralized).
 const RENEWAL_MINUTES = 60 * 60; // 2.5 days
+const LEASE_TTL_MINUTES = 45;
+const PROCESSING_STALE_MINUTES = 60;
 const HEARTBEAT_STALE_HOURS = 2;
+const PAGE_SIZE = 1000;
 const INTAKE_STALE_DAYS = Number(Deno.env.get("INTAKE_STALE_DAYS") ?? "4");
 
 function log(msg: string, ctx: Record<string, unknown> = {}): void {
@@ -29,6 +41,7 @@ export interface CronReport {
   renewed: number;
   recreated: number;
   swept_new: number;
+  reclaimed_processing: number;
   drained: number;
   reconciled_orphans: number;
   watchdog_flags: string[];
@@ -63,13 +76,20 @@ export async function renewSubscriptions(
   const expiration = new Date(Date.now() + RENEWAL_MINUTES * 60_000).toISOString();
   const urls = notificationUrls();
 
+  // Tenant rides with the mailbox config (fix S1) — never guessed later.
   const { data: mailboxes, error: mbErr } = await sb
     .from("document_intake_mailboxes")
-    .select("address");
+    .select("address, profile_key, document_intake_profiles(shop_id)");
   if (mbErr) throw new Error(`mailboxes query failed: ${mbErr.message}`);
 
-  for (const mb of (mailboxes ?? []) as Array<{ address: string }>) {
+  // Cast via unknown: without generated DB types the client infers the
+  // to-one join as an array; the runtime shape for this FK is an object.
+  for (const mb of (mailboxes ?? []) as unknown as Array<{
+    address: string;
+    document_intake_profiles: { shop_id: number } | null;
+  }>) {
     const mailbox = mb.address.toLowerCase();
+    const shopId = mb.document_intake_profiles?.shop_id ?? null;
     const { data: subRow, error: subErr } = await sb
       .from("graph_mail_subscriptions")
       .select("id, subscription_id, expires_at, lifecycle_state")
@@ -88,12 +108,14 @@ export async function renewSubscriptions(
     if (!needsCreate && existing?.subscription_id) {
       try {
         const sub = await graph.renewSubscription(existing.subscription_id, expiration);
-        await sb.from("graph_mail_subscriptions").update({
+        const { error } = await sb.from("graph_mail_subscriptions").update({
+          shop_id: shopId,
           expires_at: sub.expirationDateTime,
           last_renewed_at: new Date().toISOString(),
           lifecycle_state: null,
           updated_at: new Date().toISOString(),
         }).eq("mailbox", mailbox);
+        if (error) throw new Error(`renewal persist failed: ${error.message}`);
         renewed++;
         continue;
       } catch (e) {
@@ -107,8 +129,15 @@ export async function renewSubscriptions(
     if (existing?.subscription_id) {
       try {
         await graph.deleteSubscription(existing.subscription_id);
-      } catch {
-        // best effort — an orphan Graph sub with a stale clientState is rejected on delivery
+      } catch (e) {
+        // Best effort, but VISIBLE: an orphan Graph sub keeps a stale
+        // clientState that every delivery will fail against (rejected).
+        Sentry.captureMessage(
+          `document-intake: could not delete old Graph subscription (${existing.subscription_id}): ${
+            e instanceof Error ? e.message : String(e)
+          }`,
+          "warning",
+        );
       }
     }
     const clientState = newClientState();
@@ -121,6 +150,7 @@ export async function renewSubscriptions(
     });
     const { error: upErr } = await sb.from("graph_mail_subscriptions").upsert({
       mailbox,
+      shop_id: shopId,
       subscription_id: sub.id,
       client_state_hash: await sha256HexString(clientState),
       expires_at: sub.expirationDateTime,
@@ -162,11 +192,32 @@ export async function sweepMailboxes(sb: SupabaseClient, graph: GraphClient): Pr
         if (inserted) discovered++;
       }
     }
-    await sb.from("graph_mail_subscriptions")
+    const { error: sweepErr } = await sb.from("graph_mail_subscriptions")
       .update({ last_sweep_at: new Date().toISOString(), updated_at: new Date().toISOString() })
       .eq("mailbox", mailbox);
+    if (sweepErr) throw new Error(`last_sweep_at update failed: ${sweepErr.message}`);
   }
   return discovered;
+}
+
+/**
+ * Reclaim rows stranded in `processing` by a killed isolate (fix B2) —
+ * back to `retryable` so the drain below picks them up. Returns count.
+ */
+export async function reclaimStaleProcessing(sb: SupabaseClient): Promise<number> {
+  const cutoff = new Date(Date.now() - PROCESSING_STALE_MINUTES * 60_000).toISOString();
+  const { data, error } = await sb
+    .from("graph_mail_events")
+    .update({ status: "retryable", next_retry_at: null, updated_at: new Date().toISOString() })
+    .eq("status", "processing")
+    .lt("updated_at", cutoff)
+    .select("id");
+  if (error) throw new Error(`stale-processing reclaim failed: ${error.message}`);
+  const n = (data ?? []).length;
+  if (n > 0) {
+    Sentry.captureMessage(`document-intake: reclaimed ${n} stale processing event(s)`, "warning");
+  }
+  return n;
 }
 
 /** Drain every pending/retryable(due) event. */
@@ -189,38 +240,62 @@ export async function drainEvents(sb: SupabaseClient, graph: GraphClient): Promi
   return processed;
 }
 
-/** storage.objects <-> document_intake_files diff; register orphans (plan D3). */
+async function pageAll<T>(
+  query: (from: number, to: number) => PromiseLike<{ data: unknown; error: { message: string } | null }>,
+  label: string,
+): Promise<T[]> {
+  const out: T[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await query(from, from + PAGE_SIZE - 1);
+    if (error) throw new Error(`${label} page query failed: ${error.message}`);
+    const rows = (data ?? []) as T[];
+    out.push(...rows);
+    if (rows.length < PAGE_SIZE) break;
+  }
+  return out;
+}
+
+/** storage.objects <-> document_intake_files diff; register orphans (plan D3).
+ *  Paginated past PostgREST max_rows (fix: supabase-compliance). */
 export async function reconcileStorage(sb: SupabaseClient): Promise<number> {
-  const { data: objects, error: oErr } = await sb
-    .schema("storage")
-    .from("objects")
-    .select("name, metadata")
-    .eq("bucket_id", BUCKET)
-    .limit(10000);
-  if (oErr) throw new Error(`storage.objects query failed: ${oErr.message}`);
+  const objects = await pageAll<{ name: string; metadata: Record<string, unknown> | null }>(
+    (from, to) =>
+      sb.schema("storage").from("objects").select("name, metadata")
+        .eq("bucket_id", BUCKET).order("name").range(from, to),
+    "storage.objects",
+  );
+  const files = await pageAll<{ object_path: string }>(
+    (from, to) =>
+      sb.from("document_intake_files").select("object_path").order("object_path").range(from, to),
+    "document_intake_files",
+  );
 
-  const { data: files, error: fErr } = await sb
-    .from("document_intake_files")
-    .select("object_path")
-    .limit(10000);
-  if (fErr) throw new Error(`files query failed: ${fErr.message}`);
-
-  const known = new Set(((files ?? []) as Array<{ object_path: string }>).map((f) => f.object_path));
+  const known = new Set(files.map((f) => f.object_path));
   let orphans = 0;
-  for (const obj of (objects ?? []) as Array<{ name: string; metadata: Record<string, unknown> | null }>) {
+  for (const obj of objects) {
     if (known.has(obj.name)) continue;
-    orphans++;
     const tokens = obj.name.split("/");
     const shopId = Number(tokens[0]);
-    const { data: profile } = await sb
+    if (!Number.isFinite(shopId) || shopId <= 0) {
+      // NEVER guess a tenant (fix S1/shop-agnostic): park in the error log,
+      // surfaced by the watchdog's error-log flag below.
+      const { error } = await sb.from("document_intake_error_log").insert({
+        origin: "reconcile",
+        origin_id: obj.name,
+        message: "orphan object with unparseable shop segment — not registered",
+      });
+      if (error) throw new Error(`orphan error-log insert failed: ${error.message}`);
+      orphans++;
+      continue;
+    }
+    const { data: profile, error: pErr } = await sb
       .from("document_intake_profiles")
       .select("key")
       .eq("key", tokens[1] ?? "")
       .maybeSingle();
+    if (pErr) throw new Error(`orphan profile lookup failed: ${pErr.message}`);
     const { error: insErr } = await sb.from("document_intake_files").upsert({
-      shop_id: Number.isFinite(shopId) && shopId > 0
-        ? shopId
-        : Number(Deno.env.get("INTAKE_SHOP_ID") ?? "7476"),
+      shop_id: shopId,
       profile_key: (profile as { key: string } | null)?.key ?? null,
       source: ["scan", "email"].includes(tokens[2] ?? "") ? tokens[2] : "other",
       bucket: BUCKET,
@@ -230,64 +305,86 @@ export async function reconcileStorage(sb: SupabaseClient): Promise<number> {
       status: "pending",
     }, { onConflict: "object_path", ignoreDuplicates: true });
     if (insErr) throw new Error(`orphan registration failed: ${insErr.message}`);
+    orphans++;
   }
   if (orphans > 0) {
-    watchdogAlert(`${orphans} storage object(s) had no intake row (registered as pending)`);
+    watchdogAlert(`${orphans} storage object(s) had no intake row (registered/parked)`);
   }
   return orphans;
 }
 
-/** D13 silent-stall detection. Returns human-readable flags (each already Sentry'd). */
+/** D13 silent-stall detection. A FAILING check is itself a flag — the
+ *  watchdog must never report all-clear because its own query broke. */
 export async function runWatchdog(sb: SupabaseClient): Promise<string[]> {
   const flags: string[] = [];
   const now = Date.now();
 
-  const { data: agents } = await sb
-    .from("document_intake_agent_state")
-    .select("hostname, last_heartbeat_at");
-  for (const a of (agents ?? []) as Array<{ hostname: string; last_heartbeat_at: string | null }>) {
-    const age = a.last_heartbeat_at ? now - new Date(a.last_heartbeat_at).getTime() : Infinity;
-    if (age > HEARTBEAT_STALE_HOURS * 3_600_000) {
-      flags.push(`agent ${a.hostname} heartbeat stale (> ${HEARTBEAT_STALE_HOURS}h)`);
+  const check = async (label: string, fn: () => Promise<void>) => {
+    try {
+      await fn();
+    } catch (e) {
+      flags.push(`watchdog check '${label}' itself failed: ${e instanceof Error ? e.message : String(e)}`);
     }
-  }
+  };
 
-  const { data: subs } = await sb
-    .from("graph_mail_subscriptions")
-    .select("mailbox, expires_at");
-  for (const s of (subs ?? []) as Array<{ mailbox: string; expires_at: string | null }>) {
-    if (!s.expires_at || new Date(s.expires_at).getTime() < now + 12 * 3_600_000) {
-      flags.push(`subscription for ${s.mailbox} missing or expiring within 12h`);
+  await check("agent_heartbeat", async () => {
+    const { data, error } = await sb
+      .from("document_intake_agent_state")
+      .select("hostname, last_heartbeat_at");
+    if (error) throw new Error(error.message);
+    for (const a of (data ?? []) as Array<{ hostname: string; last_heartbeat_at: string | null }>) {
+      const age = a.last_heartbeat_at ? now - new Date(a.last_heartbeat_at).getTime() : Infinity;
+      if (age > HEARTBEAT_STALE_HOURS * 3_600_000) {
+        flags.push(`agent ${a.hostname} heartbeat stale (> ${HEARTBEAT_STALE_HOURS}h)`);
+      }
     }
-  }
+  });
 
-  const { data: lastFile } = await sb
-    .from("document_intake_files")
-    .select("received_at")
-    .order("received_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const lastReceived = (lastFile as { received_at?: string } | null)?.received_at;
-  if (lastReceived && now - new Date(lastReceived).getTime() > INTAKE_STALE_DAYS * 86_400_000) {
-    flags.push(`no documents received in > ${INTAKE_STALE_DAYS} days`);
-  }
+  await check("subscription_expiry", async () => {
+    const { data, error } = await sb
+      .from("graph_mail_subscriptions")
+      .select("mailbox, expires_at");
+    if (error) throw new Error(error.message);
+    for (const s of (data ?? []) as Array<{ mailbox: string; expires_at: string | null }>) {
+      if (!s.expires_at || new Date(s.expires_at).getTime() < now + 12 * 3_600_000) {
+        flags.push(`subscription for ${s.mailbox} missing or expiring within 12h`);
+      }
+    }
+  });
 
-  const { count: backlog } = await sb
-    .from("graph_mail_events")
-    .select("id", { count: "exact", head: true })
-    .in("status", ["pending", "retryable"])
-    .lt("created_at", new Date(now - 86_400_000).toISOString());
-  if ((backlog ?? 0) > 0) {
-    flags.push(`${backlog} mail event(s) stuck > 24h`);
-  }
+  await check("intake_staleness", async () => {
+    const { data, error } = await sb
+      .from("document_intake_files")
+      .select("received_at")
+      .order("received_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    const lastReceived = (data as { received_at?: string } | null)?.received_at;
+    if (lastReceived && now - new Date(lastReceived).getTime() > INTAKE_STALE_DAYS * 86_400_000) {
+      flags.push(`no documents received in > ${INTAKE_STALE_DAYS} days`);
+    }
+  });
 
-  const { count: recentErrors } = await sb
-    .from("document_intake_error_log")
-    .select("id", { count: "exact", head: true })
-    .gt("occurred_at", new Date(now - 86_400_000).toISOString());
-  if ((recentErrors ?? 0) > 0) {
-    flags.push(`${recentErrors} error-log row(s) in the last 24h`);
-  }
+  await check("event_backlog", async () => {
+    // processing included (fix B2): a stuck claim is backlog, not progress.
+    const { count, error } = await sb
+      .from("graph_mail_events")
+      .select("id", { count: "exact", head: true })
+      .in("status", ["pending", "retryable", "processing"])
+      .lt("created_at", new Date(now - 86_400_000).toISOString());
+    if (error) throw new Error(error.message);
+    if ((count ?? 0) > 0) flags.push(`${count} mail event(s) stuck > 24h`);
+  });
+
+  await check("error_log", async () => {
+    const { count, error } = await sb
+      .from("document_intake_error_log")
+      .select("id", { count: "exact", head: true })
+      .gt("occurred_at", new Date(now - 86_400_000).toISOString());
+    if (error) throw new Error(error.message);
+    if ((count ?? 0) > 0) flags.push(`${count} error-log row(s) in the last 24h`);
+  });
 
   for (const f of flags) watchdogAlert(f);
   return flags;
@@ -301,13 +398,20 @@ export async function runCron(
 ): Promise<CronReport> {
   const report: CronReport = {
     locked: false, renewed: 0, recreated: 0, swept_new: 0,
-    drained: 0, reconciled_orphans: 0, watchdog_flags: [], step_errors: [],
+    reclaimed_processing: 0, drained: 0, reconciled_orphans: 0,
+    watchdog_flags: [], step_errors: [],
   };
+  const runId = crypto.randomUUID();
 
-  const { data: gotLock, error: lockErr } = await sb.rpc("document_intake_try_cron_lock");
-  if (lockErr) throw new Error(`cron lock rpc failed: ${lockErr.message}`);
-  if (gotLock !== true) {
-    log("cron already running elsewhere — exiting", {});
+  const { data: claimed, error: leaseErr } = await sb.rpc("document_intake_claim_cron_lease", {
+    p_run_id: runId,
+    p_ttl_minutes: LEASE_TTL_MINUTES,
+  });
+  if (leaseErr) throw new Error(`cron lease rpc failed: ${leaseErr.message}`);
+  if (claimed !== true) {
+    // A second skipped run in a row would mean a wedged lease — loud, not a whisper.
+    Sentry.captureMessage("document-intake: cron run skipped — lease held by another run", "warning");
+    log("cron lease held elsewhere — exiting", {});
     return report;
   }
   report.locked = true;
@@ -319,6 +423,9 @@ export async function runCron(
       }],
       ["sweep", async () => {
         report.swept_new = await sweepMailboxes(sb, graph);
+      }],
+      ["reclaim", async () => {
+        report.reclaimed_processing = await reclaimStaleProcessing(sb);
       }],
       ["drain", async () => {
         report.drained = await drainEvents(sb, graph);
@@ -340,7 +447,16 @@ export async function runCron(
       }
     }
   } finally {
-    await sb.rpc("document_intake_release_cron_lock");
+    const { data: released, error: relErr } = await sb.rpc("document_intake_release_cron_lease", {
+      p_run_id: runId,
+    });
+    if (relErr || released !== true) {
+      // TTL will clear it, but a failed release is a real signal.
+      Sentry.captureMessage(
+        `document-intake: cron lease release failed (${relErr?.message ?? "no row matched"}) — TTL will expire it`,
+        "warning",
+      );
+    }
   }
   log("cron cycle done", { ...report });
   return report;

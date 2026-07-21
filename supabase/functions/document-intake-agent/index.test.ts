@@ -155,24 +155,60 @@ Deno.test("request_upload retry: foreign path rejected; owned+existing short-cir
   assertEquals(storageState.signCalls.length, 0, "no new signed URL when the object already exists");
 });
 
-Deno.test("confirm: missing object → 409; present → pending→ready + heartbeat", async () => {
+Deno.test("confirm: verification per plan D5 — missing object 409; shape-gate; sha/size mismatch keeps pending; match → ready", async () => {
   const path = "7476/inspection_docs/scan/2026/07/1_aaaaaaaa.pdf";
-  {
+  const scanRow = { id: "row-1", status: "pending", sha256: SHA, size_bytes: 100 };
+  const confirmBody = { op: "confirm", hostname: "SHOP-PC", object_path: path, size_bytes: 100, sha256: SHA };
+
+  { // object absent → 409, agent retries the upload
     makeSb({ profile: PROFILE_ROW });
-    const res = await handler(makeRequest({ body: { op: "confirm", object_path: path } }));
-    assertEquals(res.status, 409);
+    assertEquals((await handler(makeRequest({ body: confirmBody }))).status, 409);
   }
-  {
+  { // non-minted-shape path (e.g. an email-channel key) → rejected outright
+    makeSb({ profile: PROFILE_ROW });
+    const res = await handler(makeRequest({
+      body: { ...confirmBody, object_path: "7476/inspection_docs/email/2026/07/1_ab12_aaaaaaaa.pdf" },
+    }));
+    assertEquals(res.status, 422);
+    assertEquals((await res.json()).error, "path_not_owned");
+  }
+  { // no scan-source row behind the path → cannot be promoted
     const { sb } = makeSb({ profile: PROFILE_ROW, storage: { existingBasenames: ["1_aaaaaaaa.pdf"], signCalls: [] } });
-    sb.onTable("document_intake_files", { data: { id: "row-1" }, error: null });
-    const res = await handler(makeRequest({ body: { op: "confirm", hostname: "SHOP-PC", object_path: path, size_bytes: 100 } }));
+    sb.onTable("document_intake_files", { data: null, error: null });
+    const res = await handler(makeRequest({ body: confirmBody }));
+    assertEquals(res.status, 422);
+    assertEquals((await res.json()).error, "no_scan_row");
+  }
+  { // sha mismatch → 422, row STAYS pending (no update chain fired)
+    const { sb } = makeSb({ profile: PROFILE_ROW, storage: { existingBasenames: ["1_aaaaaaaa.pdf"], signCalls: [] } });
+    sb.onTable("document_intake_files", { data: { ...scanRow, sha256: "f".repeat(64) }, error: null });
+    const res = await handler(makeRequest({ body: confirmBody }));
+    assertEquals(res.status, 422);
+    assertEquals((await res.json()).error, "verification_mismatch");
+    const updates = sb.callsForTable("document_intake_files").filter((c) => c.chain.some((x) => x.method === "update"));
+    assertEquals(updates.length, 0, "mismatch never transitions the row");
+  }
+  { // full match → pending→ready + heartbeat stamp
+    const { sb } = makeSb({ profile: PROFILE_ROW, storage: { existingBasenames: ["1_aaaaaaaa.pdf"], signCalls: [] } });
+    sb.onTable("document_intake_files", (call) => {
+      const isUpdate = call.chain.some((c) => c.method === "update");
+      return { data: isUpdate ? { id: "row-1" } : scanRow, error: null };
+    });
+    const res = await handler(makeRequest({ body: confirmBody }));
     assertEquals(res.status, 200);
-    const update = sb.callsForTable("document_intake_files")[0];
+    const update = sb.callsForTable("document_intake_files").find((c) => c.chain.some((x) => x.method === "update"))!;
     const updateArg = update.chain.find((c) => c.method === "update")?.args[0] as Record<string, unknown>;
     assertEquals(updateArg.status, "ready");
     assert(update.chain.some((c) => c.method === "eq" && c.args[0] === "status" && c.args[1] === "pending"),
       "only pending rows transition (idempotent confirm)");
     assertEquals(sb.callsForTable("document_intake_agent_state").length, 1, "last_upload_at stamped");
+  }
+  { // already ready → idempotent 200, no re-update
+    const { sb } = makeSb({ profile: PROFILE_ROW, storage: { existingBasenames: ["1_aaaaaaaa.pdf"], signCalls: [] } });
+    sb.onTable("document_intake_files", { data: { ...scanRow, status: "ready" }, error: null });
+    const res = await handler(makeRequest({ body: confirmBody }));
+    assertEquals(res.status, 200);
+    assertEquals((await res.json()).already_ready, true);
   }
 });
 

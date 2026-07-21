@@ -110,7 +110,7 @@ export class GraphClient {
   }): Promise<GraphSubscription> {
     return await this.#json<GraphSubscription>("POST", `${GRAPH}/subscriptions`, {
       changeType: "created",
-      resource: `/users/${args.mailbox}/mailFolders('inbox')/messages`,
+      resource: `/users/${encodeURIComponent(args.mailbox)}/mailFolders('inbox')/messages`,
       notificationUrl: args.notificationUrl,
       lifecycleNotificationUrl: args.lifecycleNotificationUrl,
       clientState: args.clientState,
@@ -119,13 +119,13 @@ export class GraphClient {
   }
 
   async renewSubscription(id: string, expirationDateTime: string): Promise<GraphSubscription> {
-    return await this.#json<GraphSubscription>("PATCH", `${GRAPH}/subscriptions/${id}`, {
+    return await this.#json<GraphSubscription>("PATCH", `${GRAPH}/subscriptions/${encodeURIComponent(id)}`, {
       expirationDateTime,
     });
   }
 
   async deleteSubscription(id: string): Promise<void> {
-    const res = await this.#req("DELETE", `${GRAPH}/subscriptions/${id}`);
+    const res = await this.#req("DELETE", `${GRAPH}/subscriptions/${encodeURIComponent(id)}`);
     // 404 = already gone — fine.
     if (!res.ok && res.status !== 404) {
       throw new Error(`graph DELETE subscription ${id}: HTTP ${res.status}`);
@@ -144,7 +144,7 @@ export class GraphClient {
       hasAttachments?: boolean;
     }>(
       "GET",
-      `${GRAPH}/users/${mailbox}/messages/${messageId}?$select=id,internetMessageId,subject,from,receivedDateTime,hasAttachments`,
+      `${GRAPH}/users/${encodeURIComponent(mailbox)}/messages/${encodeURIComponent(messageId)}?$select=id,internetMessageId,subject,from,receivedDateTime,hasAttachments`,
     );
     return {
       id: raw.id,
@@ -164,7 +164,7 @@ export class GraphClient {
   ): Promise<GraphMessageMeta[]> {
     const out: GraphMessageMeta[] = [];
     let url: string | null =
-      `${GRAPH}/users/${mailbox}/mailFolders('${folder}')/messages` +
+      `${GRAPH}/users/${encodeURIComponent(mailbox)}/mailFolders('${folder}')/messages` +
       `?$filter=receivedDateTime ge ${sinceIso}` +
       `&$select=id,internetMessageId,subject,from,receivedDateTime,hasAttachments&$top=50`;
     while (url) {
@@ -192,7 +192,7 @@ export class GraphClient {
   async listAttachments(mailbox: string, messageId: string): Promise<GraphAttachmentMeta[]> {
     const out: GraphAttachmentMeta[] = [];
     let url: string | null =
-      `${GRAPH}/users/${mailbox}/messages/${messageId}/attachments` +
+      `${GRAPH}/users/${encodeURIComponent(mailbox)}/messages/${encodeURIComponent(messageId)}/attachments` +
       `?$select=id,name,contentType,size,isInline&$top=20`;
     while (url) {
       const page: {
@@ -218,7 +218,7 @@ export class GraphClient {
   async getAttachmentBytes(mailbox: string, messageId: string, attachmentId: string): Promise<Uint8Array> {
     const res = await this.#req(
       "GET",
-      `${GRAPH}/users/${mailbox}/messages/${messageId}/attachments/${attachmentId}/$value`,
+      `${GRAPH}/users/${encodeURIComponent(mailbox)}/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}/$value`,
     );
     if (!res.ok) {
       const text = await res.text();

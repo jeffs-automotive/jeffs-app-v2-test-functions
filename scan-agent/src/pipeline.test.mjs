@@ -206,6 +206,18 @@ describe("purgeUploaded", () => {
   });
 });
 
+describe("scrubString (agent Sentry beforeSend)", () => {
+  it("redacts emails, +1 phones, and scan-path filenames", async () => {
+    const { scrubString } = await import("./agent.mjs");
+    expect(scrubString("mail from jane.doe@example.com failed")).toBe("mail from [email] failed");
+    expect(scrubString("call +12155551234 back")).toBe("call +1******1234 back");
+    expect(scrubString("ENOENT: C:\\Scans\\inspection_docs\\jane doe policy 4411.pdf missing"))
+      .toBe("ENOENT: C:\\Scans\\inspection_docs\\[file] missing");
+    expect(scrubString("moved to C:\\ScanAgent\\archive\\failed\\loaner_insurance\\abc_card.pdf"))
+      .toBe("moved to C:\\ScanAgent\\archive\\failed\\loaner_insurance\\[file]");
+  });
+});
+
 describe("createGateway", () => {
   it("sends the bearer + hostname on every call", async () => {
     const seen = [];

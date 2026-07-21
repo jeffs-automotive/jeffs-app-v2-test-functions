@@ -129,6 +129,12 @@ Deno.test("valid notification → durable pending event, 202; duplicate → no-o
   assertEquals(upsertArg.status, "pending");
   assertEquals(upsertArg.mailbox, MAILBOX);
   assertEquals(upsertArg.graph_message_id, "msg-immutable-1");
+  // The plaintext clientState is a live forgery token — it must NEVER be
+  // persisted (pattern+security review): only its hash exists, on the
+  // subscription row.
+  const rawNotification = upsertArg.raw_notification as Record<string, unknown>;
+  assertEquals("clientState" in rawNotification, false, "clientState redacted from raw_notification");
+  assertEquals(rawNotification.subscriptionId, SUB_ID, "the rest of the notification is preserved");
 
   const res2 = await handler(makeRequest({ body: notification() }));
   assertEquals((await res2.json()).accepted, 0, "duplicate delivery accepted nothing (dedup)");
@@ -162,7 +168,10 @@ Deno.test("cron mode without bearer → 401", async () => {
 
 Deno.test("bootstrap creates subscriptions: ≤2.5-day expiration, hash stored (never plaintext)", async () => {
   const { sb } = makeSb();
-  sb.onTable("document_intake_mailboxes", { data: [{ address: MAILBOX }], error: null });
+  sb.onTable("document_intake_mailboxes", {
+    data: [{ address: MAILBOX, profile_key: "inspection_docs", document_intake_profiles: { shop_id: 7476 } }],
+    error: null,
+  });
   sb.onTable("graph_mail_subscriptions", (call) => {
     const isMaybeSingle = call.chain.some((c) => c.method === "maybeSingle");
     return { data: isMaybeSingle ? null : [], error: null };
@@ -171,8 +180,8 @@ Deno.test("bootstrap creates subscriptions: ≤2.5-day expiration, hash stored (
   sb.onTable("document_intake_files", { data: [], error: null });
   sb.onTable("storage.objects", { data: [], error: null });
   sb.onTable("document_intake_agent_state", { data: [], error: null });
-  sb.onRpc("document_intake_try_cron_lock", { data: true, error: null });
-  sb.onRpc("document_intake_release_cron_lock", { data: true, error: null });
+  sb.onRpc("document_intake_claim_cron_lease", { data: true, error: null });
+  sb.onRpc("document_intake_release_cron_lease", { data: true, error: null });
 
   const created: Array<Record<string, unknown>> = [];
   _setGraphClientForTesting({
@@ -191,6 +200,7 @@ Deno.test("bootstrap creates subscriptions: ≤2.5-day expiration, hash stored (
     assertEquals(report.locked, true);
     assertEquals(report.recreated, 1);
     assertEquals(report.step_errors, [], "no cron step may error in the wiring test");
+    assertEquals(report.reclaimed_processing, 0, "reclaim step ran (fix B2)");
 
     assertEquals(created.length, 1);
     const expMs = new Date(created[0].expirationDateTime as string).getTime() - Date.now();
@@ -205,9 +215,26 @@ Deno.test("bootstrap creates subscriptions: ≤2.5-day expiration, hash stored (
     assertMatch(storedHash, /^[0-9a-f]{64}$/);
     assert(storedHash !== created[0].clientState, "plaintext clientState is never stored");
     assertEquals(storedHash, await sha256HexString(created[0].clientState as string));
+    assertEquals(subUpserts[0].shop_id, 7476, "tenant captured on the subscription row (fix S1)");
   } finally {
     _setGraphClientForTesting(null);
   }
+});
+
+Deno.test("reclaimStaleProcessing: stranded claims return to retryable (fix B2)", async () => {
+  const { reclaimStaleProcessing } = await import("./cron.ts");
+  const { sb } = makeSb();
+  sb.onTable("graph_mail_events", { data: [{ id: "stuck-1" }, { id: "stuck-2" }], error: null });
+  // deno-lint-ignore no-explicit-any
+  const n = await reclaimStaleProcessing(sb as any);
+  assertEquals(n, 2);
+  const call = sb.callsForTable("graph_mail_events")[0];
+  const updateArg = call.chain.find((c) => c.method === "update")?.args[0] as Record<string, unknown>;
+  assertEquals(updateArg.status, "retryable");
+  assert(call.chain.some((c) => c.method === "eq" && c.args[0] === "status" && c.args[1] === "processing"),
+    "only processing rows are reclaimed");
+  assert(call.chain.some((c) => c.method === "lt" && c.args[0] === "updated_at"),
+    "only STALE processing rows are reclaimed");
 });
 
 // ─── Magic bytes (D9) ───────────────────────────────────────────────────

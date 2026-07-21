@@ -80,6 +80,25 @@ function log(msg: string, ctx: Record<string, unknown> = {}): void {
   console.log(JSON.stringify({ level: "info", surface: "document-intake-agent", msg, ...ctx }));
 }
 
+// Sampled Sentry for unauthenticated junk on this public endpoint (mirrors
+// document-intake-email — an internet rando must not spray the alert channel;
+// the structured console.warn stays 1:1).
+let lastInvalidCaptureAt = 0;
+const INVALID_CAPTURE_INTERVAL_MS = 5 * 60_000;
+function captureInvalidSampled(msg: string): void {
+  const now = Date.now();
+  if (now - lastInvalidCaptureAt >= INVALID_CAPTURE_INTERVAL_MS) {
+    lastInvalidCaptureAt = now;
+    Sentry.captureMessage(msg, "warning");
+  }
+  console.warn(JSON.stringify({ level: "warn", surface: "document-intake-agent", msg }));
+}
+
+// The exact minted-key grammar (plan D2). A retry may only replay a key this
+// gateway itself could have minted — full-shape validation, not just prefix
+// (security-review: everything after a prefix was PC-authored otherwise).
+const MINTED_SCAN_PATH_RE = /^\d+\/[a-z][a-z0-9_]*\/scan\/\d{4}\/\d{2}\/\d+(_[0-9a-f]{4})?_[0-9a-f]{8}\.(pdf|jpg|png|heic|heif)$/;
+
 /** {shop}/{profile}/scan/{YYYY}/{MM}/{ts}_{rand4}_{sha8}.{ext} — opaque,
  * PII-free (D2). rand4 guards same-ms same-content key collisions (two
  * identical scans enqueued back-to-back must never fight over one key —
@@ -115,14 +134,43 @@ interface AgentBody {
 }
 
 async function objectExists(client: SupabaseClient, path: string): Promise<boolean> {
+  return (await statObject(client, path)) !== null;
+}
+
+/** null = absent; otherwise the object's storage-reported size (may be null
+ * briefly while storage back-writes metadata). */
+async function statObject(
+  client: SupabaseClient,
+  path: string,
+): Promise<{ size: number | null } | null> {
   const dir = path.split("/").slice(0, -1).join("/");
   const base = path.split("/").pop() ?? "";
   const { data, error } = await client.storage.from(BUCKET).list(dir, { search: base });
   if (error) throw new Error(`storage list failed: ${error.message}`);
-  return (data ?? []).some((o: { name: string }) => o.name === base);
+  const hit = (data ?? []).find((o: { name: string }) => o.name === base) as
+    | { name: string; metadata?: { size?: number } | null }
+    | undefined;
+  if (!hit) return null;
+  const size = hit.metadata?.size;
+  return { size: typeof size === "number" ? size : null };
+}
+
+/** Tenant for the agent-state row: only when the active profiles agree on
+ * ONE shop; multi-shop → NULL (the host is infrastructure — misattributing
+ * a tenant is worse than NULL; shop-agnostic fix S2). */
+function agentShopId(rows: Array<{ shop_id: number }>): number | null {
+  const distinct = [...new Set(rows.map((r) => r.shop_id))];
+  return distinct.length === 1 ? distinct[0] : null;
 }
 
 export async function handler(req: Request): Promise<Response> {
+  // D13: every event from this surface carries module=document-intake.
+  try {
+    Sentry.getIsolationScope().setTag("module", "document-intake");
+  } catch {
+    // Sentry unconfigured (tests/local) — tagging is best-effort.
+  }
+
   if (req.method !== "POST") return json(405, { ok: false, error: "Use POST" });
 
   const agentToken = Deno.env.get("AGENT_TOKEN") ?? "";
@@ -133,7 +181,7 @@ export async function handler(req: Request): Promise<Response> {
   const auth = req.headers.get("authorization") ?? "";
   const bearer = auth.startsWith("Bearer ") ? auth.slice(7) : "";
   if (!bearersEqual(bearer, agentToken)) {
-    Sentry.captureMessage("document-intake-agent: unauthorized call rejected", "warning");
+    captureInvalidSampled("document-intake-agent: unauthorized call rejected");
     return json(401, { ok: false, error: "unauthorized" });
   }
 
@@ -160,33 +208,38 @@ export async function handler(req: Request): Promise<Response> {
     const rows = (profiles ?? []) as Array<{ key: string; shop_id: number; label: string; bucket: string }>;
     const { error: hbErr } = await client.from("document_intake_agent_state").upsert({
       hostname,
-      shop_id: rows[0]?.shop_id ?? Number(Deno.env.get("INTAKE_SHOP_ID") ?? "0") ,
+      shop_id: agentShopId(rows),
       last_config_fetch_at: new Date().toISOString(),
       agent_version: typeof body.agent_version === "string" ? body.agent_version : null,
       updated_at: new Date().toISOString(),
     }, { onConflict: "hostname" });
-    if (hbErr) log("agent_state upsert failed on config", { error: hbErr.message });
+    if (hbErr) {
+      // Config still serves (the agent must keep scanning), but a failed
+      // liveness write is a real signal, not a log whisper (silent-200 fix).
+      Sentry.captureException(new Error(`agent_state upsert failed on config: ${hbErr.message}`), {
+        tags: { module: "document-intake" },
+      });
+    }
     log("config served", { hostname, profile_count: rows.length });
     return json(200, {
       ok: true,
       profiles: rows.map((p) => ({ key: p.key, label: p.label })),
       accepted_mime: [...ACCEPTED_MIME],
       max_file_bytes: MAX_FILE_BYTES,
+      state_recorded: !hbErr,
     });
   }
 
   // ── op=heartbeat ───────────────────────────────────────────────────────
   if (op === "heartbeat") {
-    const { data: anyProfile } = await client
+    const { data: activeProfiles, error: pErr } = await client
       .from("document_intake_profiles")
       .select("shop_id")
-      .limit(1)
-      .maybeSingle();
-    const shopId = (anyProfile as { shop_id?: number } | null)?.shop_id ??
-      Number(Deno.env.get("INTAKE_SHOP_ID") ?? "0");
+      .eq("active", true);
+    if (pErr) return json(500, { ok: false, error: `profiles query failed: ${pErr.message}` });
     const { error } = await client.from("document_intake_agent_state").upsert({
       hostname,
-      shop_id: shopId,
+      shop_id: agentShopId((activeProfiles ?? []) as Array<{ shop_id: number }>),
       last_heartbeat_at: new Date().toISOString(),
       agent_version: typeof body.agent_version === "string" ? body.agent_version : null,
       details: (body.details && typeof body.details === "object") ? body.details : {},
@@ -223,11 +276,13 @@ export async function handler(req: Request): Promise<Response> {
     if (!p || !p.active) return json(422, { ok: false, error: "unknown_profile", profile_key: profileKey });
 
     // Retry path: the agent persisted its minted key — reuse it (D2). Only a
-    // path this gateway itself minted for this profile is accepted back.
+    // path this gateway itself could have minted for THIS profile is accepted
+    // back: full minted-shape validation, not just a prefix (security-review —
+    // a prefix check left the basename PC-authored).
     let objectPath: string;
     if (priorPath) {
       const expectedPrefix = `${p.shop_id}/${p.key}/scan/`;
-      if (!priorPath.startsWith(expectedPrefix)) {
+      if (!priorPath.startsWith(expectedPrefix) || !MINTED_SCAN_PATH_RE.test(priorPath)) {
         return json(422, { ok: false, error: "path_not_owned" });
       }
       objectPath = priorPath;
@@ -270,40 +325,81 @@ export async function handler(req: Request): Promise<Response> {
   }
 
   // ── op=confirm ─────────────────────────────────────────────────────────
+  // Verifies what plan D5 claims (security-review): scan-channel keys only,
+  // object present, storage-reported size matches the declared/persisted
+  // values, and the sha matches the row minted at request_upload. An
+  // AGENT_TOKEN holder can no longer promote email/trigger rows to `ready`.
   if (op === "confirm") {
     const objectPath = typeof body.object_path === "string" ? body.object_path : "";
     const sizeBytes = typeof body.size_bytes === "number" ? body.size_bytes : -1;
+    const sha256 = typeof body.sha256 === "string" ? body.sha256.toLowerCase() : "";
     if (!objectPath) return json(400, { ok: false, error: "missing_object_path" });
+    if (!MINTED_SCAN_PATH_RE.test(objectPath)) {
+      return json(422, { ok: false, error: "path_not_owned" });
+    }
 
-    let exists = false;
+    let stat: { size: number | null } | null = null;
     try {
-      exists = await objectExists(client, objectPath);
+      stat = await statObject(client, objectPath);
     } catch (e) {
       return json(500, { ok: false, error: e instanceof Error ? e.message : String(e) });
     }
-    if (!exists) {
+    if (!stat) {
       // Confirm before a successful PUT — the agent retries the upload.
       return json(409, { ok: false, error: "object_missing" });
+    }
+
+    const { data: rowRaw, error: rowErr } = await client
+      .from("document_intake_files")
+      .select("id, status, sha256, size_bytes")
+      .eq("object_path", objectPath)
+      .eq("source", "scan")
+      .maybeSingle();
+    if (rowErr) return json(500, { ok: false, error: `confirm row query failed: ${rowErr.message}` });
+    const row = rowRaw as { id: string; status: string; sha256: string | null; size_bytes: number | null } | null;
+    if (!row) return json(422, { ok: false, error: "no_scan_row" });
+    if (row.status === "ready") {
+      log("confirm: idempotent repeat", { objectPath });
+      return json(200, { ok: true, object_path: objectPath, already_ready: true });
+    }
+
+    const shaMismatch = row.sha256 !== null && sha256 !== "" && row.sha256 !== sha256;
+    const sizeMismatch =
+      (row.size_bytes !== null && sizeBytes > 0 && row.size_bytes !== sizeBytes) ||
+      (stat.size !== null && sizeBytes > 0 && stat.size !== sizeBytes);
+    if (shaMismatch || sizeMismatch) {
+      Sentry.captureMessage(
+        `document-intake-agent: confirm mismatch (${shaMismatch ? "sha256" : "size"}) — row stays pending`,
+        "warning",
+      );
+      return json(422, {
+        ok: false,
+        error: "verification_mismatch",
+        sha_mismatch: shaMismatch,
+        size_mismatch: sizeMismatch,
+      });
     }
 
     const { data: updated, error: uErr } = await client
       .from("document_intake_files")
       .update({ status: "ready", updated_at: new Date().toISOString() })
-      .eq("object_path", objectPath)
+      .eq("id", row.id)
       .eq("status", "pending")
       .select("id")
       .maybeSingle();
     if (uErr) return json(500, { ok: false, error: `confirm update failed: ${uErr.message}` });
     if (!updated) {
-      // Row already ready (double confirm) — idempotent success; anything
-      // else (row missing entirely) is registered by the trigger/reconcile.
-      log("confirm: no pending row transitioned (idempotent repeat or trigger-registered)", { objectPath });
+      log("confirm: no pending row transitioned (raced an idempotent repeat)", { objectPath });
     }
     const { error: hbErr } = await client
       .from("document_intake_agent_state")
       .update({ last_upload_at: new Date().toISOString(), updated_at: new Date().toISOString() })
       .eq("hostname", hostname);
-    if (hbErr) log("agent_state last_upload_at update failed", { error: hbErr.message });
+    if (hbErr) {
+      Sentry.captureException(new Error(`last_upload_at update failed: ${hbErr.message}`), {
+        tags: { module: "document-intake" },
+      });
+    }
     log("confirmed", { hostname, objectPath, size_bytes: sizeBytes });
     return json(200, { ok: true, object_path: objectPath });
   }

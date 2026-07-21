@@ -2,16 +2,15 @@
 //
 // One graph_mail_events row per message drives a small state machine:
 //   pending -> processing -> completed | retryable(attempts++, backoff) | failed
-// Per-attachment child rows make partial success retryable exactly-once:
-// an already-`uploaded` attachment is never re-fetched; a `skipped` one is
-// never retried; only pending/failed attachments are (re)attempted.
+// Per-attachment child rows make partial success retryable exactly-once.
 //
-// Validation (D9): magic bytes decide the real type — the sender-declared
-// contentType/extension is untrusted. Inline images + non-file attachments
-// are skipped with a reason. Oversize (>40MB) skipped. The minted object
-// path is PERSISTED on the attachment row BEFORE upload so retries reuse
-// the same key (idempotency token, D2); upload upsert:false + "already
-// exists" counts as success.
+// Fix round 1 (verify 2026-07-21): every Supabase write checks `error`
+// (rule 9 — an unrecorded state transition would silently break the
+// exactly-once/idempotency claims, so a failed write now fails the pass and
+// rides the retry/reclaim machinery); tenant attribution for unrouted mail
+// comes from graph_mail_subscriptions.shop_id captured at subscription time
+// (shop-agnostic: never an env var, never an arbitrary profile row);
+// duplicate-upload detection checks the structured 409 status first.
 
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { Sentry } from "../_shared/sentry-edge.ts";
@@ -106,16 +105,20 @@ async function resolveRoute(
   if (row && row.document_intake_profiles?.active) {
     return { profileKey: row.profile_key, shopId: row.document_intake_profiles.shop_id };
   }
-  // Unrouted: keep the doc (plan D7). Shop from config, falling back to any profile row.
-  const envShop = Number(Deno.env.get("INTAKE_SHOP_ID") ?? "0");
-  if (envShop > 0) return { profileKey: null, shopId: envShop };
-  const { data: anyProfile } = await sb
-    .from("document_intake_profiles")
+  // Unrouted: keep the doc (plan D7). Tenant comes from the subscription row
+  // captured at subscription time — NEVER an env var or arbitrary profile
+  // (shop-agnostic; fix S1). No stored shop → fail the pass (retry/alert),
+  // never guess.
+  const { data: subRow, error: subErr } = await sb
+    .from("graph_mail_subscriptions")
     .select("shop_id")
-    .limit(1)
+    .eq("mailbox", mailbox.toLowerCase())
     .maybeSingle();
-  const shopId = (anyProfile as { shop_id?: number } | null)?.shop_id ?? 0;
-  if (shopId <= 0) throw new Error("cannot resolve shop_id for unrouted mail (no profiles, no INTAKE_SHOP_ID)");
+  if (subErr) throw new Error(`subscription shop lookup failed: ${subErr.message}`);
+  const shopId = (subRow as { shop_id?: number | null } | null)?.shop_id ?? null;
+  if (!shopId || shopId <= 0) {
+    throw new Error(`cannot resolve tenant for unrouted mailbox ${mailbox} (no subscription shop_id)`);
+  }
   return { profileKey: null, shopId };
 }
 
@@ -128,6 +131,22 @@ function classifyAttachment(att: GraphAttachmentMeta): string | null {
   return null;
 }
 
+function isAlreadyExists(err: { message?: string; status?: number; statusCode?: string } | null): boolean {
+  if (!err) return false;
+  // Structured contract first (StorageApiError), message prose as fallback.
+  if (err.status === 409 || err.statusCode === "409") return true;
+  return /exists|duplicate/i.test(err.message ?? "");
+}
+
+/** Throwing wrapper: state-machine writes must never silently fail (rule 9). */
+async function mustUpdate(
+  op: PromiseLike<{ error: { message: string } | null }>,
+  label: string,
+): Promise<void> {
+  const { error } = await op;
+  if (error) throw new Error(`${label} failed: ${error.message}`);
+}
+
 /**
  * Process ONE event row end-to-end. Returns the terminal status written.
  * Never throws — failures land on the row (retryable/failed) + Sentry.
@@ -137,8 +156,8 @@ export async function processEvent(
   graph: GraphClient,
   event: EventRow,
 ): Promise<string> {
-  // Atomic claim: only one runner may move pending/retryable -> processing
-  // (webhook waitUntil vs cron drain — cross-verify concurrency finding).
+  // Atomic claim: only one runner may move pending/retryable -> processing.
+  // A claim stranded by a killed isolate is reclaimed by the cron (fix B2).
   const { data: claimed, error: claimErr } = await sb
     .from("graph_mail_events")
     .update({ status: "processing", updated_at: new Date().toISOString() })
@@ -158,19 +177,21 @@ export async function processEvent(
     const meta = await graph.getMessageMeta(event.mailbox, event.graph_message_id);
     const route = await resolveRoute(sb, event.mailbox);
 
-    await sb.from("graph_mail_events").update({
-      internet_message_id: meta.internetMessageId,
-      from_address: meta.from,
-      subject: meta.subject,
-      received_datetime: meta.receivedDateTime,
-      updated_at: new Date().toISOString(),
-    }).eq("id", event.id);
+    await mustUpdate(
+      sb.from("graph_mail_events").update({
+        internet_message_id: meta.internetMessageId,
+        from_address: meta.from,
+        subject: meta.subject,
+        received_datetime: meta.receivedDateTime,
+        updated_at: new Date().toISOString(),
+      }).eq("id", event.id),
+      "event meta update",
+    );
 
     const attachments = meta.hasAttachments
       ? await graph.listAttachments(event.mailbox, event.graph_message_id)
       : [];
 
-    // Ensure a child row per attachment (idempotent on (event_id, attachment_id)).
     for (const att of attachments) {
       const { error } = await sb.from("graph_mail_attachments").upsert({
         event_id: event.id,
@@ -205,11 +226,13 @@ export async function processEvent(
 
       const skipReason = classifyAttachment(att);
       if (skipReason) {
-        await sb.from("graph_mail_attachments").update({
-          status: "skipped",
-          skip_reason: skipReason,
-          updated_at: new Date().toISOString(),
-        }).eq("id", row.id);
+        await mustUpdate(
+          sb.from("graph_mail_attachments").update({
+            status: "skipped", skip_reason: skipReason,
+            updated_at: new Date().toISOString(),
+          }).eq("id", row.id),
+          "skip-status update",
+        );
         log("attachment skipped", { event_id: event.id, reason: skipReason });
         continue;
       }
@@ -218,19 +241,24 @@ export async function processEvent(
         const bytes = await graph.getAttachmentBytes(event.mailbox, event.graph_message_id, att.id);
         const sniffed = sniffMime(bytes);
         if (!sniffed) {
-          await sb.from("graph_mail_attachments").update({
-            status: "skipped",
-            skip_reason: "unrecognized_magic_bytes",
-            updated_at: new Date().toISOString(),
-          }).eq("id", row.id);
+          await mustUpdate(
+            sb.from("graph_mail_attachments").update({
+              status: "skipped", skip_reason: "unrecognized_magic_bytes",
+              updated_at: new Date().toISOString(),
+            }).eq("id", row.id),
+            "magic-reject update",
+          );
           Sentry.captureMessage("document-intake: attachment failed magic-byte validation", "warning");
           continue;
         }
         if (bytes.length > MAX_FILE_BYTES) {
-          await sb.from("graph_mail_attachments").update({
-            status: "skipped", skip_reason: "oversize_actual",
-            updated_at: new Date().toISOString(),
-          }).eq("id", row.id);
+          await mustUpdate(
+            sb.from("graph_mail_attachments").update({
+              status: "skipped", skip_reason: "oversize_actual",
+              updated_at: new Date().toISOString(),
+            }).eq("id", row.id),
+            "oversize-skip update",
+          );
           continue;
         }
 
@@ -244,18 +272,21 @@ export async function processEvent(
             mime: sniffed,
             sha256,
           });
-          const { error } = await sb.from("graph_mail_attachments")
-            .update({ object_path: objectPath, updated_at: new Date().toISOString() })
-            .eq("id", row.id);
-          if (error) throw new Error(`persist minted path failed: ${error.message}`);
+          await mustUpdate(
+            sb.from("graph_mail_attachments")
+              .update({ object_path: objectPath, updated_at: new Date().toISOString() })
+              .eq("id", row.id),
+            "persist minted path",
+          );
         }
 
         const { error: upErr } = await sb.storage.from(BUCKET).upload(objectPath, bytes, {
           contentType: sniffed,
           upsert: false,
         });
-        const alreadyExists = upErr && /exists|duplicate/i.test(upErr.message ?? "");
-        if (upErr && !alreadyExists) throw new Error(`storage upload failed: ${upErr.message}`);
+        if (upErr && !isAlreadyExists(upErr as { message?: string })) {
+          throw new Error(`storage upload failed: ${upErr.message}`);
+        }
 
         // Explicit rich registration (trigger's bare row converges via ON CONFLICT).
         const { error: fileErr } = await sb.from("document_intake_files").upsert({
@@ -276,18 +307,27 @@ export async function processEvent(
         }, { onConflict: "object_path", ignoreDuplicates: false });
         if (fileErr) throw new Error(`files upsert failed: ${fileErr.message}`);
 
-        await sb.from("graph_mail_attachments").update({
-          status: "uploaded", updated_at: new Date().toISOString(),
-        }).eq("id", row.id);
+        await mustUpdate(
+          sb.from("graph_mail_attachments").update({
+            status: "uploaded", updated_at: new Date().toISOString(),
+          }).eq("id", row.id),
+          "uploaded-status update",
+        );
         log("attachment uploaded", { event_id: event.id, objectPath, size: bytes.length });
       } catch (attFailure) {
         transientFailure = true;
         const msg = attFailure instanceof Error ? attFailure.message : String(attFailure);
-        await sb.from("graph_mail_attachments").update({
+        const { error } = await sb.from("graph_mail_attachments").update({
           status: "failed", last_error: msg.slice(0, 500),
           updated_at: new Date().toISOString(),
         }).eq("id", row.id);
-        // Reset to pending on the next drain via the event-level retry below.
+        if (error) {
+          // Row still says pending — the retry loop re-attempts it; log loudly.
+          console.warn(JSON.stringify({
+            level: "warn", surface: "document-intake-email",
+            msg: "failed-status write itself failed", detail: error.message,
+          }));
+        }
         Sentry.captureException(attFailure, { tags: { module: "document-intake" } });
       }
     }
@@ -296,17 +336,22 @@ export async function processEvent(
       const attempts = event.attempts + 1;
       const terminal = attempts >= MAX_ATTEMPTS;
       const backoffMin = Math.min(5 * 2 ** attempts, 360);
-      await sb.from("graph_mail_events").update({
-        status: terminal ? "failed" : "retryable",
-        attempts,
-        next_retry_at: terminal ? null : new Date(Date.now() + backoffMin * 60_000).toISOString(),
-        last_error: "one or more attachments failed",
-        updated_at: new Date().toISOString(),
-      }).eq("id", event.id);
-      // Failed attachments become retryable again with the event.
-      await sb.from("graph_mail_attachments").update({
-        status: "pending", updated_at: new Date().toISOString(),
-      }).eq("event_id", event.id).eq("status", "failed");
+      await mustUpdate(
+        sb.from("graph_mail_events").update({
+          status: terminal ? "failed" : "retryable",
+          attempts,
+          next_retry_at: terminal ? null : new Date(Date.now() + backoffMin * 60_000).toISOString(),
+          last_error: "one or more attachments failed",
+          updated_at: new Date().toISOString(),
+        }).eq("id", event.id),
+        "event retry-state update",
+      );
+      await mustUpdate(
+        sb.from("graph_mail_attachments").update({
+          status: "pending", updated_at: new Date().toISOString(),
+        }).eq("event_id", event.id).eq("status", "failed"),
+        "attachment retry reset",
+      );
       if (terminal) {
         Sentry.captureMessage(
           `document-intake: event exhausted retries (mailbox=${event.mailbox})`,
@@ -316,23 +361,35 @@ export async function processEvent(
       return terminal ? "failed" : "retryable";
     }
 
-    await sb.from("graph_mail_events").update({
-      status: "completed", updated_at: new Date().toISOString(),
-    }).eq("id", event.id);
+    await mustUpdate(
+      sb.from("graph_mail_events").update({
+        status: "completed", updated_at: new Date().toISOString(),
+      }).eq("id", event.id),
+      "completed-status update",
+    );
     return "completed";
   } catch (e) {
     // Whole-event failure (Graph meta fetch, routing, DB): schedule retry.
+    // If even THIS write fails, the row stays `processing` and the cron's
+    // stale-processing reclaim (fix B2) resurrects it — nothing strands.
     const attempts = event.attempts + 1;
     const terminal = attempts >= MAX_ATTEMPTS;
     const backoffMin = Math.min(5 * 2 ** attempts, 360);
     const msg = e instanceof Error ? e.message : String(e);
-    await sb.from("graph_mail_events").update({
+    const { error: recErr } = await sb.from("graph_mail_events").update({
       status: terminal ? "failed" : "retryable",
       attempts,
       next_retry_at: terminal ? null : new Date(Date.now() + backoffMin * 60_000).toISOString(),
       last_error: msg.slice(0, 500),
       updated_at: new Date().toISOString(),
     }).eq("id", event.id);
+    if (recErr) {
+      console.warn(JSON.stringify({
+        level: "warn", surface: "document-intake-email",
+        msg: "retry-state write failed — stale-processing reclaim will recover",
+        detail: recErr.message,
+      }));
+    }
     Sentry.captureException(e, { tags: { module: "document-intake" } });
     return terminal ? "failed" : "retryable";
   }

@@ -16,17 +16,57 @@ const log = (msg, ctx = {}) =>
 const warn = (msg, ctx = {}) =>
   console.warn(JSON.stringify({ level: "warn", surface: "scan-agent", msg, ...ctx }));
 
+// PII scrubber (sentry-compliance): the edge fns ride sentry-edge.ts's
+// beforeSend, but scan-agent events go out on its OWN DSN — raw fs error
+// messages embed C:\Scans\{profile}\{original filename} (filename = PII per
+// plan D2). Node twin of the shared scrubString: emails, +1-phones, and any
+// path component after a Scans/work/archive dir become placeholders.
+const EMAIL_RE = /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g;
+const PHONE_E164_RE = /\+1\d{6}(\d{4})/g;
+// Filename = everything after the last separator, lazily through the file
+// extension (scan filenames routinely contain spaces — "jane doe 4411.pdf"
+// must redact WHOLE, caught by the test suite); extensionless fallback stops
+// at whitespace.
+const SCAN_PATH_FILE_RE =
+  /([\\/](?:Scans|ScanAgent)[\\/][^\s"']*[\\/])(?:[^"'\\/\n]+?\.[A-Za-z0-9]{2,5}|[^\s"'\\/]+)/g;
+export function scrubString(s) {
+  if (typeof s !== "string" || s.length === 0) return s;
+  return s
+    .replace(EMAIL_RE, "[email]")
+    .replace(PHONE_E164_RE, "+1******$1")
+    .replace(SCAN_PATH_FILE_RE, "$1[file]");
+}
+function scrubEvent(event) {
+  try {
+    if (typeof event.message === "string") event.message = scrubString(event.message);
+    for (const ex of event.exception?.values ?? []) {
+      if (typeof ex.value === "string") ex.value = scrubString(ex.value);
+    }
+    for (const b of event.breadcrumbs ?? []) {
+      if (typeof b.message === "string") b.message = scrubString(b.message);
+    }
+    return event;
+  } catch {
+    return null; // scrubbing failed — drop rather than leak
+  }
+}
+
 export async function main() {
   const cfg = loadConfig();
   const dirs = layout(cfg);
 
-  const sentry = cfg.sentryDsn ? Sentry : null;
-  if (sentry) {
-    Sentry.init({
-      dsn: cfg.sentryDsn,
-      initialScope: { tags: { surface: "scan-agent", module: "document-intake", host: cfg.hostname } },
-    });
-  }
+  // DSN is required (loadConfig throws without it) — sentry is always live
+  // in production. Init happens here rather than a --import preload module:
+  // this agent only uses manual captures, so pre-init auto-instrumentation
+  // has nothing to catch (intentional deviation from the ESM preload docs).
+  const sentry = Sentry;
+  Sentry.init({
+    dsn: cfg.sentryDsn,
+    release: `jeffs-scan-agent@${cfg.agentVersion}`,
+    environment: "production",
+    initialScope: { tags: { surface: "scan-agent", module: "document-intake", host: cfg.hostname } },
+    beforeSend: scrubEvent,
+  });
 
   const gwConfig = await fetchGatewayConfig(cfg);
   const profileKeys = gwConfig.profiles.map((p) => p.key);
@@ -122,7 +162,13 @@ export async function main() {
 
   // Daily purge of archived-uploaded copies + config refresh.
   const dailyTimer = setInterval(async () => {
-    const removed = await purgeUploaded(dirs.uploadedDir, cfg.retentionDays).catch(() => 0);
+    // Purge failure = the 30-day PII-retention control silently stopping —
+    // never a bare catch (observability rule 15).
+    const removed = await purgeUploaded(dirs.uploadedDir, cfg.retentionDays).catch((e) => {
+      warn("purge failed", { error: e instanceof Error ? e.message : String(e) });
+      sentry.captureException(e);
+      return 0;
+    });
     if (removed) log("purged uploaded archives", { removed });
     try {
       const fresh = await fetchGatewayConfig(cfg);
@@ -151,8 +197,17 @@ export async function main() {
 const isDirectRun = process.argv[1] &&
   path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1"));
 if (isDirectRun) {
-  main().catch((e) => {
+  main().catch(async (e) => {
+    // A headless-service boot crash must reach Sentry (sentry-compliance):
+    // the handled rejection here bypasses onUnhandledRejection, and a crash
+    // before the first heartbeat is invisible to the server-side watchdog.
     console.error(JSON.stringify({ level: "error", surface: "scan-agent", msg: "fatal", error: e instanceof Error ? e.message : String(e) }));
+    try {
+      if (Sentry.getClient?.()) {
+        Sentry.captureException(e);
+        await Sentry.flush(2000);
+      }
+    } catch { /* Sentry itself unavailable — the console line above stands */ }
     process.exit(1);
   });
 }

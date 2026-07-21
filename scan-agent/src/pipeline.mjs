@@ -183,11 +183,12 @@ export async function processJob(job, deps) {
     ledger.append({ id: job.id, state: "minted", objectPath, sha256, size, mime });
 
     if (!mintRes.body.already_uploaded) {
+      // Signed-upload contract (supabase-compliance): the token already rides
+      // in the signed URL's ?token= query param — NO Authorization header.
       const put = await fetchImpl(mintRes.body.signed_url, {
         method: "PUT",
         headers: {
           "Content-Type": mime,
-          ...(mintRes.body.token ? { Authorization: `Bearer ${mintRes.body.token}` } : {}),
           "x-upsert": "false",
         },
         body: await fsp.readFile(job.stagedPath),

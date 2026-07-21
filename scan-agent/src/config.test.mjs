@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { fetchGatewayConfig, layout, loadConfig } from "./config.mjs";
 
-const ENV_KEYS = ["GATEWAY_URL", "AGENT_TOKEN", "WORK_ROOT"];
+const ENV_KEYS = ["GATEWAY_URL", "AGENT_TOKEN", "SENTRY_DSN", "WORK_ROOT"];
 let saved;
 
 beforeEach(() => {
@@ -20,15 +20,21 @@ afterEach(() => {
 });
 
 describe("loadConfig", () => {
-  it("fails closed without GATEWAY_URL/AGENT_TOKEN", () => {
+  it("fails closed without GATEWAY_URL/AGENT_TOKEN/SENTRY_DSN", () => {
     delete process.env.GATEWAY_URL;
     delete process.env.AGENT_TOKEN;
+    delete process.env.SENTRY_DSN;
     expect(() => loadConfig("/nonexistent/.env")).toThrow(/required/);
+    // Sentry alone missing is ALSO fatal (plan D13: unmonitored ≠ running).
+    process.env.GATEWAY_URL = "https://gw.example/fn";
+    process.env.AGENT_TOKEN = "tok";
+    expect(() => loadConfig("/nonexistent/.env")).toThrow(/SENTRY_DSN/);
   });
 
   it("loads with env set + strips trailing slash", () => {
     process.env.GATEWAY_URL = "https://gw.example/fn/";
     process.env.AGENT_TOKEN = "tok";
+    process.env.SENTRY_DSN = "https://key@o0.ingest.sentry.io/0";
     const cfg = loadConfig("/nonexistent/.env");
     expect(cfg.gatewayUrl).toBe("https://gw.example/fn");
     expect(cfg.retentionDays).toBe(30);
@@ -39,6 +45,7 @@ describe("fetchGatewayConfig", () => {
   function cfgWithTmpWork() {
     process.env.GATEWAY_URL = "https://gw.example/fn";
     process.env.AGENT_TOKEN = "tok";
+    process.env.SENTRY_DSN = "https://key@o0.ingest.sentry.io/0";
     process.env.WORK_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), "cfg-"));
     return loadConfig("/nonexistent/.env");
   }

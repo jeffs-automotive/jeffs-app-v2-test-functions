@@ -28,8 +28,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { withSentryScope, Sentry } from "../_shared/sentry-edge.ts";
-import { checkSchedulerBearer, unauthorizedResponse } from "../_shared/scheduler-auth.ts";
-import { bearersEqual } from "../_shared/scheduler-auth.ts";
+import { bearersEqual, checkSchedulerBearer } from "../_shared/scheduler-auth.ts";
 import { resolveSecretKey } from "../_shared/resolve-secret-key.ts";
 import { GraphClient } from "./graph.ts";
 import { processEvent, type EventRow } from "./process.ts";
@@ -98,6 +97,16 @@ interface GraphNotification {
 const MAX_NOTIFICATION_BODY_BYTES = 256 * 1024;
 
 export async function handler(req: Request): Promise<Response> {
+  // D13 alert-rule contract: EVERY event from this surface (captureMessage,
+  // wrapper auto-captures, explicit exceptions) must carry module=
+  // document-intake — set once on the isolation scope (sentry-compliance
+  // fix; the explicit per-capture tags remain as belt).
+  try {
+    Sentry.getIsolationScope().setTag("module", "document-intake");
+  } catch {
+    // Sentry unconfigured (tests/local) — tagging is best-effort.
+  }
+
   // ── 1. Validation handshake ────────────────────────────────────────────
   const url = new URL(req.url);
   const validationToken = url.searchParams.get("validationToken");
@@ -128,7 +137,13 @@ export async function handler(req: Request): Promise<Response> {
   // ── 3. Cron / bootstrap mode (Pattern A bearer) ────────────────────────
   if (typeof body.mode === "string") {
     const auth = checkSchedulerBearer(req, "document-intake-email");
-    if (!auth.ok) return unauthorizedResponse(auth);
+    if (!auth.ok) {
+      // This URL is internet-facing (Graph posts here) — return a BARE 401.
+      // The shared unauthorizedResponse would echo first-8-chars + lengths of
+      // every valid bearer to unauthenticated probers (security-review);
+      // checkSchedulerBearer already logged the diagnostic server-side.
+      return json(401, { ok: false, error: "unauthorized" });
+    }
     if (body.mode !== "cron" && body.mode !== "bootstrap") {
       return json(400, { ok: false, error: "unknown_mode" });
     }
@@ -189,12 +204,19 @@ export async function handler(req: Request): Promise<Response> {
     // Lifecycle events: record + alert; renewal happens on the next cron
     // (or an operator bootstrap). No message to store.
     if (typeof item.lifecycleEvent === "string" && item.lifecycleEvent.length > 0) {
-      await client.from("graph_mail_subscriptions").update({
+      const { error: lcErr } = await client.from("graph_mail_subscriptions").update({
         lifecycle_state: item.lifecycleEvent,
         updated_at: new Date().toISOString(),
       }).eq("subscription_id", subscriptionId);
+      if (lcErr) {
+        Sentry.captureException(new Error(`lifecycle-state update failed: ${lcErr.message}`), {
+          tags: { module: "document-intake" },
+        });
+      }
+      // Identify by subscription id, not mailbox — the email would be
+      // scrubbed to "[email]" anyway, making the alert non-actionable.
       Sentry.captureMessage(
-        `document-intake: subscription lifecycle event ${item.lifecycleEvent} (${sub.mailbox})`,
+        `document-intake: subscription lifecycle event ${item.lifecycleEvent} (subscription ${subscriptionId})`,
         "warning",
       );
       continue;
@@ -206,12 +228,16 @@ export async function handler(req: Request): Promise<Response> {
       continue;
     }
 
+    // NEVER persist the plaintext clientState (pattern+security review —
+    // it is a live forgery token; only its hash may exist at rest, on the
+    // subscription row).
+    const { clientState: _redacted, ...safeItem } = item as Record<string, unknown>;
     const { data: inserted, error: insErr } = await client.from("graph_mail_events").upsert({
       mailbox: sub.mailbox,
       graph_message_id: messageId,
       subscription_id: subscriptionId,
       status: "pending",
-      raw_notification: item as unknown as Record<string, unknown>,
+      raw_notification: safeItem,
     }, { onConflict: "mailbox,graph_message_id", ignoreDuplicates: true })
       .select("id, mailbox, graph_message_id, status, attempts")
       .maybeSingle();
@@ -232,12 +258,19 @@ export async function handler(req: Request): Promise<Response> {
   const graph = getGraph();
   if (graph && accepted.length > 0) {
     const work = (async () => {
-      for (const ev of accepted) {
-        await processEvent(client, graph, ev);
+      try {
+        for (const ev of accepted) {
+          await processEvent(client, graph, ev);
+        }
+      } catch (e) {
+        Sentry.captureException(e, { tags: { module: "document-intake" } });
+      } finally {
+        // withSentryScope's flush ran when the 202 returned; events captured
+        // in THIS background continuation would be dropped at isolate
+        // shutdown without their own flush (sentry-compliance).
+        await Sentry.flush(1000);
       }
-    })().catch((e) => {
-      Sentry.captureException(e, { tags: { module: "document-intake" } });
-    });
+    })();
     const runtime = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } })
       .EdgeRuntime;
     if (runtime?.waitUntil) runtime.waitUntil(work);

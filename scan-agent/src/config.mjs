@@ -13,14 +13,21 @@ export function loadConfig(envPath = path.join(process.cwd(), ".env")) {
 
   const gatewayUrl = process.env.GATEWAY_URL ?? "";
   const agentToken = process.env.AGENT_TOKEN ?? "";
-  if (!gatewayUrl || !agentToken) {
-    throw new Error("scan-agent: GATEWAY_URL and AGENT_TOKEN are required (see .env.example)");
+  const sentryDsn = process.env.SENTRY_DSN ?? "";
+  // SENTRY_DSN is REQUIRED (plan D13): an unmonitored-but-alive agent is the
+  // silent-failure mode this module exists to prevent. Fail loudly at boot
+  // like the other two — the service restarts into the same clear error
+  // until the .env is fixed.
+  if (!gatewayUrl || !agentToken || !sentryDsn) {
+    throw new Error(
+      "scan-agent: GATEWAY_URL, AGENT_TOKEN, and SENTRY_DSN are all required (see .env.example)",
+    );
   }
 
   return {
     gatewayUrl: gatewayUrl.replace(/\/+$/, ""),
     agentToken,
-    sentryDsn: process.env.SENTRY_DSN ?? "",
+    sentryDsn,
     hostname: process.env.AGENT_HOSTNAME ?? os.hostname(),
     scansRoot: process.env.SCANS_ROOT ?? "C:\\Scans",
     workRoot: process.env.WORK_ROOT ?? "C:\\ScanAgent",
