@@ -107,6 +107,10 @@ export function createMockSupabaseClient(): MockSupabaseClient {
       "order",
       "limit",
       "range",
+      "lt",
+      "lte",
+      "gt",
+      "gte",
       "single",
       "maybeSingle",
     ];

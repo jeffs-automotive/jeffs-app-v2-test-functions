@@ -729,6 +729,27 @@ verify_jwt = false
 import_map = "./functions/qbo-oauth-callback/deno.json"
 entrypoint = "./functions/qbo-oauth-callback/index.ts"
 
+[functions.document-intake-email]
+enabled = true
+# Microsoft Graph mailbox intake (document-intake plan D7/D8). Graph sends the
+# subscription-validation handshake + change/lifecycle notifications with NO
+# Supabase JWT, so verify_jwt MUST be false or the platform gateway rejects
+# them before our handler runs. Auth: per-subscription clientState verified
+# against a stored sha256 hash (bound by subscriptionId), and the cron/
+# bootstrap mode requires the Pattern A service-role bearer in-handler.
+verify_jwt = false
+import_map = "./functions/document-intake-email/deno.json"
+entrypoint = "./functions/document-intake-email/index.ts"
+
+[functions.document-intake-agent]
+enabled = true
+# Shop-PC scan agent gateway (document-intake plan D5). The agent's AGENT_TOKEN
+# is a narrow shared secret, not a Supabase JWT → verify_jwt=false with the
+# constant-time bearer check inside the handler (fail-closed 500 when unset).
+verify_jwt = false
+import_map = "./functions/document-intake-agent/deno.json"
+entrypoint = "./functions/document-intake-agent/index.ts"
+
 [functions.qbo-webhook]
 enabled = true
 # QuickBooks Online webhook receiver. Intuit POSTs an unauthenticated request whose

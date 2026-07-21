@@ -171,9 +171,15 @@ SELECT throws_ok($$ SELECT 1 FROM public.document_intake_profiles $$, '42501', N
 SELECT throws_ok($$ SELECT 1 FROM public.graph_mail_events $$,        '42501', NULL, 'anon cannot SELECT events');
 RESET ROLE;
 
--- ─── Cron registered ────────────────────────────────────────────────────
+-- ─── Cron registered + advisory-lock RPCs ───────────────────────────────
 SELECT is((SELECT count(*)::int FROM cron.job WHERE jobname='document-intake-daily'), 1,
   'document-intake-daily cron job registered');
+SELECT has_function('public', 'document_intake_try_cron_lock', 'cron lock fn exists');
+SELECT has_function('public', 'document_intake_release_cron_lock', 'cron unlock fn exists');
+SELECT ok(NOT has_function_privilege('anon','public.document_intake_try_cron_lock()','EXECUTE'),
+  'anon cannot take the cron lock');
+SELECT ok(has_function_privilege('service_role','public.document_intake_try_cron_lock()','EXECUTE'),
+  'service_role can take the cron lock');
 
 SELECT * FROM finish();
 ROLLBACK;
