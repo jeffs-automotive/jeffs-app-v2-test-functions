@@ -339,6 +339,151 @@ export type Database = {
         }
         Relationships: []
       }
+      back_office_issue_events: {
+        Row: {
+          action: string
+          actor: string | null
+          actor_app: string | null
+          email_error: string | null
+          email_sent_at: string | null
+          id: number
+          issue_id: string
+          new_status: string | null
+          note: string | null
+          occurred_at: string
+          prior_status: string | null
+        }
+        Insert: {
+          action: string
+          actor?: string | null
+          actor_app?: string | null
+          email_error?: string | null
+          email_sent_at?: string | null
+          id?: number
+          issue_id: string
+          new_status?: string | null
+          note?: string | null
+          occurred_at?: string
+          prior_status?: string | null
+        }
+        Update: {
+          action?: string
+          actor?: string | null
+          actor_app?: string | null
+          email_error?: string | null
+          email_sent_at?: string | null
+          id?: number
+          issue_id?: string
+          new_status?: string | null
+          note?: string | null
+          occurred_at?: string
+          prior_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "back_office_issue_events_issue_id_fkey"
+            columns: ["issue_id"]
+            isOneToOne: false
+            referencedRelation: "back_office_issues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      back_office_issues: {
+        Row: {
+          bill_date: string | null
+          bill_no: string | null
+          bo_notes: string | null
+          context: Json
+          created_at: string
+          created_by: string | null
+          id: string
+          kind: string
+          last_activity_at: string
+          qbo_txn_id: string | null
+          qbo_txn_type: string | null
+          realm_id: string | null
+          ro_number: string | null
+          sa_notes: string | null
+          sa_submitted_at: string | null
+          sent_to_sa_at: string | null
+          shop_id: number
+          source: string
+          status: string
+          tekmetric_ro_id: number | null
+          title: string | null
+          total_cents: number | null
+          updated_at: string
+          vendor_name: string | null
+          verified_at: string | null
+          verified_by: string | null
+        }
+        Insert: {
+          bill_date?: string | null
+          bill_no?: string | null
+          bo_notes?: string | null
+          context?: Json
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          kind: string
+          last_activity_at?: string
+          qbo_txn_id?: string | null
+          qbo_txn_type?: string | null
+          realm_id?: string | null
+          ro_number?: string | null
+          sa_notes?: string | null
+          sa_submitted_at?: string | null
+          sent_to_sa_at?: string | null
+          shop_id: number
+          source: string
+          status?: string
+          tekmetric_ro_id?: number | null
+          title?: string | null
+          total_cents?: number | null
+          updated_at?: string
+          vendor_name?: string | null
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Update: {
+          bill_date?: string | null
+          bill_no?: string | null
+          bo_notes?: string | null
+          context?: Json
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          kind?: string
+          last_activity_at?: string
+          qbo_txn_id?: string | null
+          qbo_txn_type?: string | null
+          realm_id?: string | null
+          ro_number?: string | null
+          sa_notes?: string | null
+          sa_submitted_at?: string | null
+          sent_to_sa_at?: string | null
+          shop_id?: number
+          source?: string
+          status?: string
+          tekmetric_ro_id?: number | null
+          title?: string | null
+          total_cents?: number | null
+          updated_at?: string
+          vendor_name?: string | null
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "back_office_issues_conn_fk"
+            columns: ["shop_id", "realm_id"]
+            isOneToOne: false
+            referencedRelation: "qbo_connections"
+            referencedColumns: ["shop_id", "realm_id"]
+          },
+        ]
+      }
       chat_sessions: {
         Row: {
           id: string
@@ -617,6 +762,7 @@ export type Database = {
           appointment_confirmed_at: string | null
           appointment_date: string | null
           appointment_id: number | null
+          appointment_sms_disclosure_version: string | null
           appointment_time: string | null
           appointment_type: string | null
           appointment_verification_diff: Json | null
@@ -681,6 +827,7 @@ export type Database = {
           appointment_confirmed_at?: string | null
           appointment_date?: string | null
           appointment_id?: number | null
+          appointment_sms_disclosure_version?: string | null
           appointment_time?: string | null
           appointment_type?: string | null
           appointment_verification_diff?: Json | null
@@ -745,6 +892,7 @@ export type Database = {
           appointment_confirmed_at?: string | null
           appointment_date?: string | null
           appointment_id?: number | null
+          appointment_sms_disclosure_version?: string | null
           appointment_time?: string | null
           appointment_type?: string | null
           appointment_verification_diff?: Json | null
@@ -802,6 +950,390 @@ export type Database = {
           vehicle_id?: number | null
           verified_first_name?: string | null
           verified_last_name?: string | null
+        }
+        Relationships: []
+      }
+      document_intake_agent_state: {
+        Row: {
+          agent_version: string | null
+          details: Json
+          hostname: string
+          last_config_fetch_at: string | null
+          last_heartbeat_at: string | null
+          last_upload_at: string | null
+          shop_id: number | null
+          updated_at: string
+        }
+        Insert: {
+          agent_version?: string | null
+          details?: Json
+          hostname: string
+          last_config_fetch_at?: string | null
+          last_heartbeat_at?: string | null
+          last_upload_at?: string | null
+          shop_id?: number | null
+          updated_at?: string
+        }
+        Update: {
+          agent_version?: string | null
+          details?: Json
+          hostname?: string
+          last_config_fetch_at?: string | null
+          last_heartbeat_at?: string | null
+          last_upload_at?: string | null
+          shop_id?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      document_intake_cron_lease: {
+        Row: {
+          id: boolean
+          locked_by: string | null
+          locked_until: string
+          updated_at: string
+        }
+        Insert: {
+          id?: boolean
+          locked_by?: string | null
+          locked_until?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: boolean
+          locked_by?: string | null
+          locked_until?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      document_intake_error_log: {
+        Row: {
+          detail: Json | null
+          error_code: string | null
+          id: number
+          level: string
+          message: string | null
+          occurred_at: string
+          origin: string
+          origin_id: string | null
+        }
+        Insert: {
+          detail?: Json | null
+          error_code?: string | null
+          id?: number
+          level?: string
+          message?: string | null
+          occurred_at?: string
+          origin: string
+          origin_id?: string | null
+        }
+        Update: {
+          detail?: Json | null
+          error_code?: string | null
+          id?: number
+          level?: string
+          message?: string | null
+          occurred_at?: string
+          origin?: string
+          origin_id?: string | null
+        }
+        Relationships: []
+      }
+      document_intake_files: {
+        Row: {
+          bucket: string
+          created_at: string
+          email_from: string | null
+          email_subject: string | null
+          error: string | null
+          graph_attachment_id: string | null
+          graph_message_id: string | null
+          id: string
+          linked_at: string | null
+          linked_ref: Json | null
+          mime_type: string | null
+          object_path: string
+          original_filename: string | null
+          profile_key: string | null
+          received_at: string
+          sha256: string | null
+          shop_id: number
+          size_bytes: number | null
+          source: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          bucket: string
+          created_at?: string
+          email_from?: string | null
+          email_subject?: string | null
+          error?: string | null
+          graph_attachment_id?: string | null
+          graph_message_id?: string | null
+          id?: string
+          linked_at?: string | null
+          linked_ref?: Json | null
+          mime_type?: string | null
+          object_path: string
+          original_filename?: string | null
+          profile_key?: string | null
+          received_at?: string
+          sha256?: string | null
+          shop_id: number
+          size_bytes?: number | null
+          source: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          bucket?: string
+          created_at?: string
+          email_from?: string | null
+          email_subject?: string | null
+          error?: string | null
+          graph_attachment_id?: string | null
+          graph_message_id?: string | null
+          id?: string
+          linked_at?: string | null
+          linked_ref?: Json | null
+          mime_type?: string | null
+          object_path?: string
+          original_filename?: string | null
+          profile_key?: string | null
+          received_at?: string
+          sha256?: string | null
+          shop_id?: number
+          size_bytes?: number | null
+          source?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_intake_files_profile_key_fkey"
+            columns: ["profile_key"]
+            isOneToOne: false
+            referencedRelation: "document_intake_profiles"
+            referencedColumns: ["key"]
+          },
+        ]
+      }
+      document_intake_mailboxes: {
+        Row: {
+          address: string
+          created_at: string
+          id: string
+          profile_key: string
+        }
+        Insert: {
+          address: string
+          created_at?: string
+          id?: string
+          profile_key: string
+        }
+        Update: {
+          address?: string
+          created_at?: string
+          id?: string
+          profile_key?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_intake_mailboxes_profile_key_fkey"
+            columns: ["profile_key"]
+            isOneToOne: false
+            referencedRelation: "document_intake_profiles"
+            referencedColumns: ["key"]
+          },
+        ]
+      }
+      document_intake_profiles: {
+        Row: {
+          active: boolean
+          bucket: string
+          created_at: string
+          key: string
+          label: string
+          notes: string | null
+          shop_id: number
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          bucket: string
+          created_at?: string
+          key: string
+          label: string
+          notes?: string | null
+          shop_id: number
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          bucket?: string
+          created_at?: string
+          key?: string
+          label?: string
+          notes?: string | null
+          shop_id?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      graph_mail_attachments: {
+        Row: {
+          attempts: number
+          created_at: string
+          event_id: string
+          filename: string | null
+          graph_attachment_id: string
+          id: string
+          is_inline: boolean
+          last_error: string | null
+          mime_type: string | null
+          object_path: string | null
+          size_bytes: number | null
+          skip_reason: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          event_id: string
+          filename?: string | null
+          graph_attachment_id: string
+          id?: string
+          is_inline?: boolean
+          last_error?: string | null
+          mime_type?: string | null
+          object_path?: string | null
+          size_bytes?: number | null
+          skip_reason?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          event_id?: string
+          filename?: string | null
+          graph_attachment_id?: string
+          id?: string
+          is_inline?: boolean
+          last_error?: string | null
+          mime_type?: string | null
+          object_path?: string | null
+          size_bytes?: number | null
+          skip_reason?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "graph_mail_attachments_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "graph_mail_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      graph_mail_events: {
+        Row: {
+          attempts: number
+          created_at: string
+          from_address: string | null
+          graph_message_id: string
+          id: string
+          internet_message_id: string | null
+          last_error: string | null
+          mailbox: string
+          next_retry_at: string | null
+          raw_notification: Json | null
+          received_datetime: string | null
+          status: string
+          subject: string | null
+          subscription_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          from_address?: string | null
+          graph_message_id: string
+          id?: string
+          internet_message_id?: string | null
+          last_error?: string | null
+          mailbox: string
+          next_retry_at?: string | null
+          raw_notification?: Json | null
+          received_datetime?: string | null
+          status?: string
+          subject?: string | null
+          subscription_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          from_address?: string | null
+          graph_message_id?: string
+          id?: string
+          internet_message_id?: string | null
+          last_error?: string | null
+          mailbox?: string
+          next_retry_at?: string | null
+          raw_notification?: Json | null
+          received_datetime?: string | null
+          status?: string
+          subject?: string | null
+          subscription_id?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      graph_mail_subscriptions: {
+        Row: {
+          client_state_hash: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          last_renewed_at: string | null
+          last_sweep_at: string | null
+          lifecycle_state: string | null
+          mailbox: string
+          shop_id: number | null
+          subscription_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          client_state_hash?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          last_renewed_at?: string | null
+          last_sweep_at?: string | null
+          lifecycle_state?: string | null
+          mailbox: string
+          shop_id?: number | null
+          subscription_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          client_state_hash?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          last_renewed_at?: string | null
+          last_sweep_at?: string | null
+          lifecycle_state?: string | null
+          mailbox?: string
+          shop_id?: number | null
+          subscription_id?: string | null
+          updated_at?: string
         }
         Relationships: []
       }
@@ -1124,205 +1656,6 @@ export type Database = {
           vehicle_id?: number | null
         }
         Relationships: []
-      }
-      oauth_access_tokens: {
-        Row: {
-          client_id: string
-          expires_at: string
-          family_id: string | null
-          issued_at: string
-          last_used_at: string | null
-          resource: string | null
-          revoked_at: string | null
-          scope: string
-          token_hash: string
-          user_label: string
-        }
-        Insert: {
-          client_id: string
-          expires_at: string
-          family_id?: string | null
-          issued_at?: string
-          last_used_at?: string | null
-          resource?: string | null
-          revoked_at?: string | null
-          scope: string
-          token_hash: string
-          user_label: string
-        }
-        Update: {
-          client_id?: string
-          expires_at?: string
-          family_id?: string | null
-          issued_at?: string
-          last_used_at?: string | null
-          resource?: string | null
-          revoked_at?: string | null
-          scope?: string
-          token_hash?: string
-          user_label?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "oauth_access_tokens_client_id_fkey"
-            columns: ["client_id"]
-            isOneToOne: false
-            referencedRelation: "oauth_clients"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      oauth_authorization_codes: {
-        Row: {
-          client_id: string
-          code_challenge: string
-          code_challenge_method: string
-          code_hash: string
-          created_at: string
-          expires_at: string
-          redirect_uri: string
-          resource: string | null
-          scope: string
-          used_at: string | null
-          user_label: string
-        }
-        Insert: {
-          client_id: string
-          code_challenge: string
-          code_challenge_method: string
-          code_hash: string
-          created_at?: string
-          expires_at: string
-          redirect_uri: string
-          resource?: string | null
-          scope: string
-          used_at?: string | null
-          user_label: string
-        }
-        Update: {
-          client_id?: string
-          code_challenge?: string
-          code_challenge_method?: string
-          code_hash?: string
-          created_at?: string
-          expires_at?: string
-          redirect_uri?: string
-          resource?: string | null
-          scope?: string
-          used_at?: string | null
-          user_label?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "oauth_authorization_codes_client_id_fkey"
-            columns: ["client_id"]
-            isOneToOne: false
-            referencedRelation: "oauth_clients"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      oauth_clients: {
-        Row: {
-          active: boolean
-          client_name: string
-          client_secret_hash: string | null
-          created_at: string
-          dynamically_registered: boolean
-          grant_types: string[]
-          id: string
-          redirect_uris: string[]
-          registration_access_token_hash: string | null
-          response_types: string[]
-          scope: string
-          token_endpoint_auth_method: string
-        }
-        Insert: {
-          active?: boolean
-          client_name?: string
-          client_secret_hash?: string | null
-          created_at?: string
-          dynamically_registered?: boolean
-          grant_types?: string[]
-          id: string
-          redirect_uris: string[]
-          registration_access_token_hash?: string | null
-          response_types?: string[]
-          scope?: string
-          token_endpoint_auth_method?: string
-        }
-        Update: {
-          active?: boolean
-          client_name?: string
-          client_secret_hash?: string | null
-          created_at?: string
-          dynamically_registered?: boolean
-          grant_types?: string[]
-          id?: string
-          redirect_uris?: string[]
-          registration_access_token_hash?: string | null
-          response_types?: string[]
-          scope?: string
-          token_endpoint_auth_method?: string
-        }
-        Relationships: []
-      }
-      oauth_refresh_tokens: {
-        Row: {
-          client_id: string
-          expires_at: string
-          family_id: string
-          issued_at: string
-          last_used_at: string | null
-          parent_token_hash: string | null
-          resource: string | null
-          revoked_at: string | null
-          scope: string
-          token_hash: string
-          user_label: string
-        }
-        Insert: {
-          client_id: string
-          expires_at: string
-          family_id?: string
-          issued_at?: string
-          last_used_at?: string | null
-          parent_token_hash?: string | null
-          resource?: string | null
-          revoked_at?: string | null
-          scope: string
-          token_hash: string
-          user_label: string
-        }
-        Update: {
-          client_id?: string
-          expires_at?: string
-          family_id?: string
-          issued_at?: string
-          last_used_at?: string | null
-          parent_token_hash?: string | null
-          resource?: string | null
-          revoked_at?: string | null
-          scope?: string
-          token_hash?: string
-          user_label?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "oauth_refresh_tokens_client_id_fkey"
-            columns: ["client_id"]
-            isOneToOne: false
-            referencedRelation: "oauth_clients"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "oauth_refresh_tokens_parent_token_hash_fkey"
-            columns: ["parent_token_hash"]
-            isOneToOne: false
-            referencedRelation: "oauth_refresh_tokens"
-            referencedColumns: ["token_hash"]
-          },
-        ]
       }
       orchestrator_runs: {
         Row: {
@@ -2072,50 +2405,189 @@ export type Database = {
           },
         ]
       }
+      qteklink_payroll_email_log: {
+        Row: {
+          created_at: string
+          detail: string | null
+          employee_id: string | null
+          id: string
+          kind: string
+          recipient: string
+          run_id: string | null
+          sent_at: string | null
+          shop_id: number
+          status: string
+          subject: string
+        }
+        Insert: {
+          created_at?: string
+          detail?: string | null
+          employee_id?: string | null
+          id?: string
+          kind: string
+          recipient?: string
+          run_id?: string | null
+          sent_at?: string | null
+          shop_id: number
+          status: string
+          subject?: string
+        }
+        Update: {
+          created_at?: string
+          detail?: string | null
+          employee_id?: string | null
+          id?: string
+          kind?: string
+          recipient?: string
+          run_id?: string | null
+          sent_at?: string | null
+          shop_id?: number
+          status?: string
+          subject?: string
+        }
+        Relationships: []
+      }
       qteklink_payroll_employees: {
         Row: {
+          address: string | null
           archived_at: string | null
           created_at: string
           created_by_label: string | null
           display_name: string
+          full_time: boolean
           id: string
           pay_config: Json
+          personal_email: string | null
+          personal_phone: string | null
+          pto_grandfathered: boolean
+          pto_tenure_credit_date: string | null
           role: string
           shop_id: number
+          start_date: string | null
           tekmetric_employee_id: number | null
           tekmetric_id_type: string | null
+          termination_date: string | null
           updated_at: string
           updated_by_label: string | null
+          work_email: string | null
+          work_phone: string | null
         }
         Insert: {
+          address?: string | null
           archived_at?: string | null
           created_at?: string
           created_by_label?: string | null
           display_name: string
+          full_time?: boolean
           id?: string
           pay_config: Json
+          personal_email?: string | null
+          personal_phone?: string | null
+          pto_grandfathered?: boolean
+          pto_tenure_credit_date?: string | null
           role: string
           shop_id: number
+          start_date?: string | null
           tekmetric_employee_id?: number | null
           tekmetric_id_type?: string | null
+          termination_date?: string | null
           updated_at?: string
           updated_by_label?: string | null
+          work_email?: string | null
+          work_phone?: string | null
         }
         Update: {
+          address?: string | null
           archived_at?: string | null
           created_at?: string
           created_by_label?: string | null
           display_name?: string
+          full_time?: boolean
           id?: string
           pay_config?: Json
+          personal_email?: string | null
+          personal_phone?: string | null
+          pto_grandfathered?: boolean
+          pto_tenure_credit_date?: string | null
           role?: string
           shop_id?: number
+          start_date?: string | null
           tekmetric_employee_id?: number | null
           tekmetric_id_type?: string | null
+          termination_date?: string | null
           updated_at?: string
           updated_by_label?: string | null
+          work_email?: string | null
+          work_phone?: string | null
         }
         Relationships: []
+      }
+      qteklink_payroll_pto_ledger: {
+        Row: {
+          balance_after_hours: number
+          boundary_year: number | null
+          created_at: string
+          created_by_label: string
+          employee_id: string
+          hours: number
+          id: string
+          kind: string
+          reason: string | null
+          reverses_ledger_id: string | null
+          run_id: string | null
+          shop_id: number
+        }
+        Insert: {
+          balance_after_hours: number
+          boundary_year?: number | null
+          created_at?: string
+          created_by_label: string
+          employee_id: string
+          hours: number
+          id?: string
+          kind: string
+          reason?: string | null
+          reverses_ledger_id?: string | null
+          run_id?: string | null
+          shop_id: number
+        }
+        Update: {
+          balance_after_hours?: number
+          boundary_year?: number | null
+          created_at?: string
+          created_by_label?: string
+          employee_id?: string
+          hours?: number
+          id?: string
+          kind?: string
+          reason?: string | null
+          reverses_ledger_id?: string | null
+          run_id?: string | null
+          shop_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qteklink_payroll_pto_ledger_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "qteklink_payroll_employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "qteklink_payroll_pto_ledger_reverses_ledger_id_fkey"
+            columns: ["reverses_ledger_id"]
+            isOneToOne: false
+            referencedRelation: "qteklink_payroll_pto_ledger"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "qteklink_payroll_pto_ledger_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "qteklink_payroll_runs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       qteklink_payroll_run_employees: {
         Row: {
@@ -2225,6 +2697,10 @@ export type Database = {
           completed_by_user_id: string | null
           created_at: string
           id: string
+          live_snapshot: Json | null
+          live_snapshot_at: string | null
+          live_snapshot_invalidated_at: string | null
+          live_snapshot_stale: boolean
           period_end: string
           period_start: string
           shop_id: number
@@ -2245,6 +2721,10 @@ export type Database = {
           completed_by_user_id?: string | null
           created_at?: string
           id?: string
+          live_snapshot?: Json | null
+          live_snapshot_at?: string | null
+          live_snapshot_invalidated_at?: string | null
+          live_snapshot_stale?: boolean
           period_end: string
           period_start: string
           shop_id: number
@@ -2265,6 +2745,10 @@ export type Database = {
           completed_by_user_id?: string | null
           created_at?: string
           id?: string
+          live_snapshot?: Json | null
+          live_snapshot_at?: string | null
+          live_snapshot_invalidated_at?: string | null
+          live_snapshot_stale?: boolean
           period_end?: string
           period_start?: string
           shop_id?: number
@@ -2606,6 +3090,7 @@ export type Database = {
         Row: {
           advisor_emails: string | null
           auto_post: boolean
+          back_office: Json | null
           created_at: string
           date_change_alert_emails: string | null
           day_correction_alert_emails: string | null
@@ -2622,6 +3107,7 @@ export type Database = {
         Insert: {
           advisor_emails?: string | null
           auto_post?: boolean
+          back_office?: Json | null
           created_at?: string
           date_change_alert_emails?: string | null
           day_correction_alert_emails?: string | null
@@ -2638,6 +3124,7 @@ export type Database = {
         Update: {
           advisor_emails?: string | null
           auto_post?: boolean
+          back_office?: Json | null
           created_at?: string
           date_change_alert_emails?: string | null
           day_correction_alert_emails?: string | null
@@ -2987,6 +3474,54 @@ export type Database = {
           },
         ]
       }
+      scheduler_card_text: {
+        Row: {
+          active: boolean
+          allowed_merge_fields: string[]
+          body: string
+          card_key: string
+          created_at: string
+          default_body: string
+          id: string
+          label: string
+          shop_id: number
+          slot_key: string
+          sort: number
+          updated_at: string
+          updated_by_email: string | null
+        }
+        Insert: {
+          active?: boolean
+          allowed_merge_fields?: string[]
+          body: string
+          card_key: string
+          created_at?: string
+          default_body: string
+          id?: string
+          label: string
+          shop_id: number
+          slot_key: string
+          sort?: number
+          updated_at?: string
+          updated_by_email?: string | null
+        }
+        Update: {
+          active?: boolean
+          allowed_merge_fields?: string[]
+          body?: string
+          card_key?: string
+          created_at?: string
+          default_body?: string
+          id?: string
+          label?: string
+          shop_id?: number
+          slot_key?: string
+          sort?: number
+          updated_at?: string
+          updated_by_email?: string | null
+        }
+        Relationships: []
+      }
       scheduler_error_log: {
         Row: {
           context: Json | null
@@ -3231,6 +3766,50 @@ export type Database = {
         }
         Relationships: []
       }
+      sms_appointment_opt_outs: {
+        Row: {
+          chat_session_id: string | null
+          created_at: string
+          id: string
+          opted_out_at: string
+          phone_e164: string
+          restore_source: string | null
+          restored_at: string | null
+          shop_id: number
+          source: string
+        }
+        Insert: {
+          chat_session_id?: string | null
+          created_at?: string
+          id?: string
+          opted_out_at?: string
+          phone_e164: string
+          restore_source?: string | null
+          restored_at?: string | null
+          shop_id: number
+          source: string
+        }
+        Update: {
+          chat_session_id?: string | null
+          created_at?: string
+          id?: string
+          opted_out_at?: string
+          phone_e164?: string
+          restore_source?: string | null
+          restored_at?: string | null
+          shop_id?: number
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_appointment_opt_outs_chat_session_id_fkey"
+            columns: ["chat_session_id"]
+            isOneToOne: false
+            referencedRelation: "customer_chat_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sms_consents: {
         Row: {
           acquisition_medium: string
@@ -3345,6 +3924,126 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      tekbridge_audit_log: {
+        Row: {
+          actor: string | null
+          capability: string
+          created_at: string
+          error: string | null
+          id: string
+          input_summary: Json | null
+          outcome: string
+          shop_id: number
+          tekmetric_ref: Json | null
+          verified: boolean | null
+        }
+        Insert: {
+          actor?: string | null
+          capability: string
+          created_at?: string
+          error?: string | null
+          id?: string
+          input_summary?: Json | null
+          outcome: string
+          shop_id: number
+          tekmetric_ref?: Json | null
+          verified?: boolean | null
+        }
+        Update: {
+          actor?: string | null
+          capability?: string
+          created_at?: string
+          error?: string | null
+          id?: string
+          input_summary?: Json | null
+          outcome?: string
+          shop_id?: number
+          tekmetric_ref?: Json | null
+          verified?: boolean | null
+        }
+        Relationships: []
+      }
+      tekbridge_jobs: {
+        Row: {
+          actor: string | null
+          after_snapshot: Json | null
+          attempts: number
+          before_snapshot: Json | null
+          capability: string
+          created_at: string
+          error: string | null
+          id: string
+          idempotency_key: string
+          input: Json
+          result: Json | null
+          shop_id: number
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          actor?: string | null
+          after_snapshot?: Json | null
+          attempts?: number
+          before_snapshot?: Json | null
+          capability: string
+          created_at?: string
+          error?: string | null
+          id?: string
+          idempotency_key: string
+          input: Json
+          result?: Json | null
+          shop_id: number
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          actor?: string | null
+          after_snapshot?: Json | null
+          attempts?: number
+          before_snapshot?: Json | null
+          capability?: string
+          created_at?: string
+          error?: string | null
+          id?: string
+          idempotency_key?: string
+          input?: Json
+          result?: Json | null
+          shop_id?: number
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      tekbridge_session_state: {
+        Row: {
+          expires_at: string | null
+          last_alert_at: string | null
+          last_error: string | null
+          last_refreshed_at: string | null
+          shop_id: number
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          expires_at?: string | null
+          last_alert_at?: string | null
+          last_error?: string | null
+          last_refreshed_at?: string | null
+          shop_id: number
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          expires_at?: string | null
+          last_alert_at?: string | null
+          last_error?: string | null
+          last_refreshed_at?: string | null
+          shop_id?: number
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       tekmetric_ro_customer_concerns: {
         Row: {
@@ -4396,6 +5095,76 @@ export type Database = {
         Args: { p_reason: string; p_ro_id: number; p_source?: string }
         Returns: number
       }
+      back_office_close_open_ro: {
+        Args: {
+          p_closed_at: string
+          p_ro_number: string
+          p_shop_id: number
+          p_tekmetric_ro_id: number
+        }
+        Returns: string[]
+      }
+      back_office_create_issue: {
+        Args: {
+          p_actor: string
+          p_actor_app: string
+          p_kind: string
+          p_payload: Json
+          p_shop_id: number
+          p_source: string
+        }
+        Returns: string
+      }
+      back_office_dashboard_counts: {
+        Args: {
+          p_month_start: string
+          p_shop_id: number
+          p_stale_hours: number
+        }
+        Returns: Json
+      }
+      back_office_send_to_sa: {
+        Args: {
+          p_actor: string
+          p_issue_id: string
+          p_note: string
+          p_shop_id: number
+        }
+        Returns: string
+      }
+      back_office_stamp_email: {
+        Args: { p_action: string; p_error: string; p_issue_id: string }
+        Returns: undefined
+      }
+      back_office_submit_fix: {
+        Args: {
+          p_actor: string
+          p_issue_id: string
+          p_sa_note: string
+          p_shop_id: number
+        }
+        Returns: boolean
+      }
+      back_office_upsert_reopened: {
+        Args: { p_cycle: Json; p_shop_id: number; p_tekmetric_ro_id: number }
+        Returns: {
+          issue_id: string
+          was_created: boolean
+        }[]
+      }
+      back_office_upsert_settings: {
+        Args: { p_back_office: Json; p_realm_id: string; p_shop_id: number }
+        Returns: undefined
+      }
+      back_office_verify: {
+        Args: {
+          p_actor: string
+          p_actor_app: string
+          p_issue_id: string
+          p_shop_id: number
+        }
+        Returns: boolean
+      }
       canonical_state_appointment_default_limits: {
         Args: { p_shop_id: number; p_snapshot: Json }
         Returns: string
@@ -4502,6 +5271,22 @@ export type Database = {
       cron_unschedule_if_exists: {
         Args: { p_jobname: string }
         Returns: undefined
+      }
+      document_intake_claim_cron_lease: {
+        Args: { p_run_id: string; p_ttl_minutes?: number }
+        Returns: boolean
+      }
+      document_intake_orphan_objects: {
+        Args: { p_bucket: string }
+        Returns: {
+          mimetype: string
+          name: string
+          size_bytes: number
+        }[]
+      }
+      document_intake_release_cron_lease: {
+        Args: { p_run_id: string }
+        Returns: boolean
       }
       force_assign_keytag: {
         Args: {
@@ -4625,48 +5410,7 @@ export type Database = {
         Args: { p_error?: string; p_review_id: number }
         Returns: undefined
       }
-      oauth_consume_refresh_token: {
-        Args: { p_token_hash: string }
-        Returns: {
-          client_id: string
-          family_id: string
-          resource: string
-          scope: string
-          status: string
-          user_label: string
-        }[]
-      }
-      oauth_issue_token_pair: {
-        Args: {
-          p_access_token_hash: string
-          p_access_ttl_seconds: number
-          p_client_id: string
-          p_family_id: string
-          p_parent_token_hash: string
-          p_refresh_token_hash: string
-          p_refresh_ttl_seconds: number
-          p_resource: string
-          p_scope: string
-          p_user_label: string
-        }
-        Returns: undefined
-      }
-      oauth_revoke_token_family: {
-        Args: { p_family_id: string }
-        Returns: {
-          access_revoked: number
-          refresh_revoked: number
-        }[]
-      }
-      oauth_validate_access_token: {
-        Args: { p_token_hash: string }
-        Returns: {
-          client_id: string
-          resource: string
-          scope: string
-          user_label: string
-        }[]
-      }
+      process_sms_stop: { Args: { p_phone: string }; Returns: Json }
       qbo_accounts_sync: {
         Args: { p_accounts: Json; p_realm_id: string; p_shop_id: number }
         Returns: number
@@ -4996,12 +5740,51 @@ export type Database = {
         }
         Returns: boolean
       }
+      qteklink_mirror_apply_ro: {
+        Args: {
+          p_concerns: Json
+          p_discounts: Json
+          p_fees: Json
+          p_job_discounts: Json
+          p_job_fees: Json
+          p_jobs: Json
+          p_labor: Json
+          p_parts: Json
+          p_ro: Json
+          p_sublet_items: Json
+          p_sublets: Json
+        }
+        Returns: undefined
+      }
+      qteklink_payroll_adjust_pto: {
+        Args: {
+          p_actor: string
+          p_employee: string
+          p_hours: number
+          p_kind: string
+          p_reason: string
+          p_shop: number
+        }
+        Returns: Json
+      }
+      qteklink_payroll_apply_entry_patch: {
+        Args: {
+          p_actor_label: string
+          p_actor_user_id: string
+          p_batch_id: string
+          p_fn: string
+          p_patch: Json
+          p_row: Database["public"]["Tables"]["qteklink_payroll_run_employees"]["Row"]
+        }
+        Returns: undefined
+      }
       qteklink_payroll_complete_run: {
         Args: {
           p_actor_label: string
           p_actor_user_id: string
           p_confirm_token: string
           p_dry_run: boolean
+          p_pto_entries?: Json
           p_run_id: string
           p_snapshot: Json
           p_state_hash: string
@@ -5017,6 +5800,10 @@ export type Database = {
         }
         Returns: string
       }
+      qteklink_payroll_distinct_job_categories: {
+        Args: { p_shop_id: number }
+        Returns: string[]
+      }
       qteklink_payroll_issue_confirm_token: {
         Args: {
           p_action_kind: string
@@ -5030,14 +5817,69 @@ export type Database = {
           token_id: string
         }[]
       }
+      qteklink_payroll_log_email: {
+        Args: {
+          p_detail?: string
+          p_employee?: string
+          p_kind: string
+          p_recipient: string
+          p_run?: string
+          p_shop: number
+          p_status?: string
+          p_subject: string
+        }
+        Returns: string
+      }
+      qteklink_payroll_mark_open_runs_stale: {
+        Args: { p_shop_id: number }
+        Returns: number
+      }
       qteklink_payroll_state_hash: {
         Args: { p_run_id: string }
         Returns: string
+      }
+      qteklink_payroll_store_live_snapshot: {
+        Args: {
+          p_compute_started_at: string
+          p_computed_at: string
+          p_run_id: string
+          p_snapshot: Json
+        }
+        Returns: undefined
       }
       qteklink_payroll_sync_run_roster: {
         Args: {
           p_actor_label: string
           p_actor_user_id: string
+          p_run_id: string
+        }
+        Returns: Json
+      }
+      qteklink_payroll_transition_email: {
+        Args: {
+          p_detail?: string
+          p_email_id: string
+          p_recipient?: string
+          p_subject?: string
+          p_to_status: string
+        }
+        Returns: Json
+      }
+      qteklink_payroll_update_employee_profile: {
+        Args: {
+          p_actor?: string
+          p_archived?: boolean
+          p_employee: string
+          p_patch?: Json
+          p_shop: number
+        }
+        Returns: undefined
+      }
+      qteklink_payroll_update_entries: {
+        Args: {
+          p_actor_label: string
+          p_actor_user_id: string
+          p_patches: Json
           p_run_id: string
         }
         Returns: Json
@@ -5632,12 +6474,37 @@ export type Database = {
         Args: { p_body?: Json; p_function_name: string }
         Returns: number
       }
+      scheduler_reset_card_text: {
+        Args: {
+          p_actor: string
+          p_card_key: string
+          p_expected_updated_at?: string
+          p_shop_id: number
+          p_slot_key: string
+        }
+        Returns: Json
+      }
       scheduler_set_appointment_type: {
         Args: {
           p_actor: string
           p_expected_updated_at?: string
           p_shop_id: number
           p_type: Json
+        }
+        Returns: Json
+      }
+      scheduler_set_card_text: {
+        Args: {
+          p_actor: string
+          p_allowed_merge_fields: string[]
+          p_body: string
+          p_card_key: string
+          p_default_body: string
+          p_expected_updated_at?: string
+          p_label: string
+          p_shop_id: number
+          p_slot_key: string
+          p_sort: number
         }
         Returns: Json
       }
