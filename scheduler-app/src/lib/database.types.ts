@@ -2770,86 +2770,6 @@ export type Database = {
           },
         ]
       }
-      qteklink_postings: {
-        Row: {
-          approved_at: string | null
-          approved_by: string | null
-          batch_date: string
-          created_at: string
-          id: string
-          kind: string
-          lease_until: string | null
-          payment_id: number | null
-          posting_version: number
-          proposed_je: Json
-          qbo_je_id: string | null
-          qbo_response: Json | null
-          realm_id: string
-          recon_status: string
-          requestid: string
-          shop_id: number
-          source_state_hash: string
-          status: string
-          tekmetric_ro_id: number
-          txn_date: string
-          updated_at: string
-        }
-        Insert: {
-          approved_at?: string | null
-          approved_by?: string | null
-          batch_date: string
-          created_at?: string
-          id?: string
-          kind: string
-          lease_until?: string | null
-          payment_id?: number | null
-          posting_version?: number
-          proposed_je: Json
-          qbo_je_id?: string | null
-          qbo_response?: Json | null
-          realm_id: string
-          recon_status?: string
-          requestid: string
-          shop_id: number
-          source_state_hash: string
-          status?: string
-          tekmetric_ro_id: number
-          txn_date: string
-          updated_at?: string
-        }
-        Update: {
-          approved_at?: string | null
-          approved_by?: string | null
-          batch_date?: string
-          created_at?: string
-          id?: string
-          kind?: string
-          lease_until?: string | null
-          payment_id?: number | null
-          posting_version?: number
-          proposed_je?: Json
-          qbo_je_id?: string | null
-          qbo_response?: Json | null
-          realm_id?: string
-          recon_status?: string
-          requestid?: string
-          shop_id?: number
-          source_state_hash?: string
-          status?: string
-          tekmetric_ro_id?: number
-          txn_date?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "qteklink_postings_conn_fk"
-            columns: ["shop_id", "realm_id"]
-            isOneToOne: false
-            referencedRelation: "qbo_connections"
-            referencedColumns: ["shop_id", "realm_id"]
-          },
-        ]
-      }
       qteklink_projection_state: {
         Row: {
           last_reduced_received_at: string
@@ -2993,62 +2913,6 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "qteklink_date_moves_conn_fk"
-            columns: ["shop_id", "realm_id"]
-            isOneToOne: false
-            referencedRelation: "qbo_connections"
-            referencedColumns: ["shop_id", "realm_id"]
-          },
-        ]
-      }
-      qteklink_ro_state: {
-        Row: {
-          created_at: string
-          id: string
-          last_posted_date: string | null
-          last_total_cents: number | null
-          realm_id: string
-          ro_number: string | null
-          sale_qbo_je_id: string | null
-          sale_qbo_sync_token: string | null
-          shop_id: number
-          source_snapshot_hash: string | null
-          status: string
-          tekmetric_ro_id: number
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          last_posted_date?: string | null
-          last_total_cents?: number | null
-          realm_id: string
-          ro_number?: string | null
-          sale_qbo_je_id?: string | null
-          sale_qbo_sync_token?: string | null
-          shop_id: number
-          source_snapshot_hash?: string | null
-          status?: string
-          tekmetric_ro_id: number
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          last_posted_date?: string | null
-          last_total_cents?: number | null
-          realm_id?: string
-          ro_number?: string | null
-          sale_qbo_je_id?: string | null
-          sale_qbo_sync_token?: string | null
-          shop_id?: number
-          source_snapshot_hash?: string | null
-          status?: string
-          tekmetric_ro_id?: number
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "qteklink_ro_state_conn_fk"
             columns: ["shop_id", "realm_id"]
             isOneToOne: false
             referencedRelation: "qbo_connections"
@@ -5500,15 +5364,6 @@ export type Database = {
         }
         Returns: boolean
       }
-      qteklink_approve_posting: {
-        Args: {
-          p_approved_by: string
-          p_id: string
-          p_realm_id: string
-          p_shop_id: number
-        }
-        Returns: boolean
-      }
       qteklink_auto_resolve_review_items: {
         Args: {
           p_ids: string[]
@@ -5557,75 +5412,6 @@ export type Database = {
           isSetofReturn: false
         }
       }
-      qteklink_claim_posting: {
-        Args: { p_lease_seconds: number; p_realm_id: string; p_shop_id: number }
-        Returns: {
-          approved_at: string | null
-          approved_by: string | null
-          batch_date: string
-          created_at: string
-          id: string
-          kind: string
-          lease_until: string | null
-          payment_id: number | null
-          posting_version: number
-          proposed_je: Json
-          qbo_je_id: string | null
-          qbo_response: Json | null
-          realm_id: string
-          recon_status: string
-          requestid: string
-          shop_id: number
-          source_state_hash: string
-          status: string
-          tekmetric_ro_id: number
-          txn_date: string
-          updated_at: string
-        }
-        SetofOptions: {
-          from: "*"
-          to: "qteklink_postings"
-          isOneToOne: true
-          isSetofReturn: false
-        }
-      }
-      qteklink_claim_posting_by_id: {
-        Args: {
-          p_id: string
-          p_lease_seconds: number
-          p_realm_id: string
-          p_shop_id: number
-        }
-        Returns: {
-          approved_at: string | null
-          approved_by: string | null
-          batch_date: string
-          created_at: string
-          id: string
-          kind: string
-          lease_until: string | null
-          payment_id: number | null
-          posting_version: number
-          proposed_je: Json
-          qbo_je_id: string | null
-          qbo_response: Json | null
-          realm_id: string
-          recon_status: string
-          requestid: string
-          shop_id: number
-          source_state_hash: string
-          status: string
-          tekmetric_ro_id: number
-          txn_date: string
-          updated_at: string
-        }
-        SetofOptions: {
-          from: "*"
-          to: "qteklink_postings"
-          isOneToOne: true
-          isSetofReturn: false
-        }
-      }
       qteklink_deactivate_mapping: {
         Args: { p_id: string; p_realm_id: string; p_shop_id: number }
         Returns: boolean
@@ -5659,23 +5445,6 @@ export type Database = {
           p_requestid: string
           p_shop_id: number
           p_source_state_hash: string
-        }
-        Returns: string
-      }
-      qteklink_enqueue_posting: {
-        Args: {
-          p_batch_date: string
-          p_kind: string
-          p_payment_id: number
-          p_posting_version: number
-          p_proposed_je: Json
-          p_realm_id: string
-          p_recon_status: string
-          p_requestid: string
-          p_shop_id: number
-          p_source_state_hash: string
-          p_tekmetric_ro_id: number
-          p_txn_date: string
         }
         Returns: string
       }
@@ -5716,28 +5485,8 @@ export type Database = {
         }
         Returns: boolean
       }
-      qteklink_mark_failed: {
-        Args: {
-          p_id: string
-          p_qbo_response: Json
-          p_realm_id: string
-          p_retryable: boolean
-          p_shop_id: number
-        }
-        Returns: boolean
-      }
       qteklink_mark_payment_redate_notified: {
         Args: { p_id: string; p_realm_id: string; p_shop_id: number }
-        Returns: boolean
-      }
-      qteklink_mark_posted: {
-        Args: {
-          p_id: string
-          p_qbo_je_id: string
-          p_qbo_response: Json
-          p_realm_id: string
-          p_shop_id: number
-        }
         Returns: boolean
       }
       qteklink_mirror_apply_ro: {
@@ -5977,24 +5726,11 @@ export type Database = {
         }
         Returns: boolean
       }
-      qteklink_reject_posting: {
-        Args: {
-          p_id: string
-          p_realm_id: string
-          p_rejected_by: string
-          p_shop_id: number
-        }
-        Returns: boolean
-      }
       qteklink_remove_allowed_user: {
         Args: { p_id: string; p_shop_id: number }
         Returns: boolean
       }
       qteklink_requeue_expired_daily_leases: {
-        Args: { p_realm_id: string; p_shop_id: number }
-        Returns: number
-      }
-      qteklink_requeue_expired_leases: {
         Args: { p_realm_id: string; p_shop_id: number }
         Returns: number
       }
@@ -6119,21 +5855,6 @@ export type Database = {
           p_shop_id: number
           p_subject_kind: string
           p_subject_ref: string
-        }
-        Returns: string
-      }
-      qteklink_upsert_ro_state: {
-        Args: {
-          p_last_posted_date: string
-          p_last_total_cents: number
-          p_realm_id: string
-          p_ro_number: string
-          p_sale_qbo_je_id: string
-          p_sale_qbo_sync_token: string
-          p_shop_id: number
-          p_source_snapshot_hash: string
-          p_status: string
-          p_tekmetric_ro_id: number
         }
         Returns: string
       }
