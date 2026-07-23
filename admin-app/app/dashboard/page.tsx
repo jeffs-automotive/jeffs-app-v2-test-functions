@@ -26,14 +26,14 @@ export default async function DashboardPage() {
           icon={KeyRound}
           title="Key tags"
           description="Live state, assign / release / revert, posted, bulk reconcile, manual reviews, audit history."
-          badge="6 tools"
+          badge="6 tabs"
         />
         <DashboardLinkCard
           href="/schedulerconfig"
           icon={Settings}
           title="Scheduler config"
-          description="Subcategory descriptions, routine + testing services, concerns, required facts, appointment limits, closed dates. Pattern S two-step apply with revert."
-          badge="10 surfaces"
+          description="Subcategory descriptions, routine + testing services, concerns, required facts, appointment limits, closed dates. Edited via direct webforms."
+          badge="11 tabs"
         />
       </section>
 

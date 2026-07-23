@@ -1,5 +1,5 @@
 /**
- * TypeScript shapes for the 10 keytag orchestrator MCP tools.
+ * TypeScript shapes for the keytag orchestrator tools.
  *
  * IMPORTANT — KEEP IN SYNC with the source-of-truth Zod schemas at
  * `supabase/functions/_shared/orchestrator-tools.ts` (per-tool input
