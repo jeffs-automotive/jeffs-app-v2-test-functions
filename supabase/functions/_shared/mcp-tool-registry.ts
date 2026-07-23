@@ -33,6 +33,7 @@ import {
   type ToolCallRecorder,
 } from "./orchestrator-tools.ts";
 import { getSchedulerTools } from "./scheduler-tools.ts";
+import { getTekbridgeTools } from "./tekbridge/registry.ts";
 
 // ─── Public types ───────────────────────────────────────────────────────────
 
@@ -139,10 +140,15 @@ export function buildMcpToolRegistry(args: BuildRegistryArgs): Record<string, Mc
     serviceRoleKey,
   });
 
+  // (c) tekbridge — internal-API bridge capabilities (write RO customer
+  //     concerns, etc.) the public API can't do. Same tool() shape as the
+  //     other two builders, so it drops straight into the merge. Uses the bot
+  //     session token from Vault at execute time (see _shared/tekbridge/).
+  const tekbridgeTools = getTekbridgeTools({ sb, shopId });
+
   const registry: Record<string, McpToolDef> = {};
 
-  // Merge both maps. There is currently NO name collision between
-  // orchestrator-tools and scheduler-tools — verified by name list:
+  // Merge all three maps. There is currently NO name collision:
   //   orchestrator-tools: listWipKeyTags, whoIsOnTag, assignKeytagToRo,
   //     releaseKeytagFromRo, revertKeytagToAssigned, markKeytagPosted,
   //     runBulkReconcile, lookupManualReview, resolveManualReview,
@@ -150,10 +156,12 @@ export function buildMcpToolRegistry(args: BuildRegistryArgs): Record<string, Mc
   //   scheduler-tools: lookup_customer_by_phone, ..., upload_*, export_*,
   //     patch_*, deactivate_*, upsert_*, block_*, find_orphan_customers,
   //     run_appointments_sync, etc.
+  //   tekbridge-tools: write_customer_concern, delete_customer_concern
   // If a collision is ever introduced, the loop below throws.
   for (const [name, t] of [
     ...Object.entries(orchestratorTools),
     ...Object.entries(schedulerTools),
+    ...Object.entries(tekbridgeTools),
   ]) {
     if (!isValidToolName(name)) {
       throw new Error(
@@ -161,7 +169,7 @@ export function buildMcpToolRegistry(args: BuildRegistryArgs): Record<string, Mc
       );
     }
     if (registry[name]) {
-      throw new Error(`mcp-tool-registry: duplicate tool name "${name}" across orchestrator-tools and scheduler-tools`);
+      throw new Error(`mcp-tool-registry: duplicate tool name "${name}" across orchestrator-tools, scheduler-tools, and tekbridge-tools`);
     }
     const def = extractToolDef(name, t);
     if (def) registry[name] = def;
