@@ -438,33 +438,6 @@ entrypoint = "./functions/keytag-tekmetric-webhook/index.ts"
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/keytag-tekmetric-webhook/*.html" ]
 
-[functions.tekmetric-list-wip-keytags]
-enabled = true
-# H5 fix (2026-06-26): verify_jwt=true accepted the publishable anon key (a
-# signature-valid Supabase JWT) — any browser could read the whole WIP/A-R pool.
-# Now gated by an in-handler service-role bearer check (operator-only, like bootstrap).
-verify_jwt = false
-import_map = "./functions/tekmetric-list-wip-keytags/deno.json"
-# Uncomment to specify a custom file path to the entrypoint.
-# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
-entrypoint = "./functions/tekmetric-list-wip-keytags/index.ts"
-# Specifies static files to be bundled with the function. Supports glob patterns.
-# For example, if you want to serve static HTML pages in your function:
-# static_files = [ "./functions/tekmetric-list-wip-keytags/*.html" ]
-
-[functions.tekmetric-find-ro-by-keytag]
-enabled = true
-# H5 fix (2026-06-26): verify_jwt=true accepted the publishable anon key — any
-# browser could enumerate any tag → RO/customer/vehicle. Now gated by an in-handler
-# service-role bearer check (operator-only, like bootstrap).
-verify_jwt = false
-import_map = "./functions/tekmetric-find-ro-by-keytag/deno.json"
-# Uncomment to specify a custom file path to the entrypoint.
-# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
-entrypoint = "./functions/tekmetric-find-ro-by-keytag/index.ts"
-# Specifies static files to be bundled with the function. Supports glob patterns.
-# For example, if you want to serve static HTML pages in your function:
-# static_files = [ "./functions/tekmetric-find-ro-by-keytag/*.html" ]
 
 [functions.orchestrator]
 enabled = true
@@ -681,15 +654,6 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/tekmetric-api-testing/deno.json"
 entrypoint = "./functions/tekmetric-api-testing/index.ts"
-
-[functions.llm-testing]
-enabled = true
-# Diagnostic-LLM eval probe. Operator-only; should require Pattern A bearer.
-# Currently verify_jwt=true accepts anon key — gating tightened 2026-05-22
-# as part of audit-driven hardening.
-verify_jwt = false
-import_map = "./functions/llm-testing/deno.json"
-entrypoint = "./functions/llm-testing/index.ts"
 
 [functions.sentry-webhook]
 enabled = true

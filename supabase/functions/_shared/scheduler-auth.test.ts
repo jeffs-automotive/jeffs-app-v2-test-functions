@@ -2,12 +2,13 @@ import { assertEquals } from "jsr:@std/assert@1";
 
 /**
  * scheduler-auth is the Pattern-A operator bearer gate. The H5 fix wires
- * checkSchedulerBearer as the FIRST statement of tekmetric-list-wip-keytags,
- * tekmetric-find-ro-by-keytag, and keytag-seed-from-tekmetric (previously
- * verify_jwt=true with no in-handler auth — the publishable anon key, a
- * signature-valid Supabase JWT, reached them). These tests pin the security-
- * critical behavior the gate guarantees: only the service-role/secret key passes;
- * an anon JWT (or no bearer) is rejected 401.
+ * checkSchedulerBearer as the FIRST statement of keytag-seed-from-tekmetric (and,
+ * until they were removed 2026-07-23, the retired tekmetric-list-wip-keytags /
+ * tekmetric-find-ro-by-keytag operator fns) — previously verify_jwt=true with no
+ * in-handler auth (the publishable anon key, a signature-valid Supabase JWT,
+ * reached them). These tests pin the security-critical behavior the gate
+ * guarantees: only the service-role/secret key passes; an anon JWT (or no
+ * bearer) is rejected 401.
  *
  * scheduler-auth reads the key env at MODULE LOAD, so set it BEFORE the dynamic import.
  */
