@@ -69,11 +69,6 @@ body {
   --font-heading: var(--font-sans);
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
@@ -109,7 +104,6 @@ body {
    *   --primary  = burgundy #96003c -> oklch(0.42 0.18 13)
    *   --ring     = burgundy at lighter luminance for focus rings
    *   --accent   = warm gold #D2B487  -> oklch(0.78 0.07 70) for badges/highlights
-   *   --chart-1  = burgundy primary for any future charts
    */
   /* Warm "Workshop Brass" neutral ramp — a small warm chroma (~0.006–0.014)
    * on a gold-family hue (~70–85) so every surface reads intentional and
@@ -134,11 +128,6 @@ body {
   --border: oklch(0.9 0.01 78); /* warm hairline #e7e1d8 */
   --input: oklch(0.85 0.014 76); /* darker warm edge #cdc3b4 so field outline is perceivable */
   --ring: oklch(0.42 0.18 13); /* burgundy focus ring — 8.9:1 on bg, >3:1 UI min */
-  --chart-1: oklch(0.42 0.18 13);
-  --chart-2: oklch(0.78 0.07 70);
-  --chart-3: oklch(0.5 0.012 72); /* warm-ramp tint for future charts */
-  --chart-4: oklch(0.4 0.012 72);
-  --chart-5: oklch(0.3 0.01 75);
   --radius: 0.5rem; /* 8px "engineered" base — escapes the 0.625rem shadcn default */
 }
 
@@ -170,11 +159,6 @@ body {
   --border: oklch(0.33 0.012 75); /* warm dark hairline */
   --input: oklch(0.38 0.014 74); /* warm dark field fill/edge */
   --ring: oklch(0.54 0.18 14); /* burgundy focus ring — 3.4:1 on bg, >3:1 UI min */
-  --chart-1: oklch(0.54 0.18 14);
-  --chart-2: oklch(0.78 0.07 70);
-  --chart-3: oklch(0.72 0.012 75);
-  --chart-4: oklch(0.6 0.012 75);
-  --chart-5: oklch(0.45 0.01 75);
 }
 
 /*---break---
