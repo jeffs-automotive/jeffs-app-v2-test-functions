@@ -1,6 +1,6 @@
--- pgTAP: tekbridge schema (migration 20260722010000)
+-- pgTAP: tekbridge schema (migrations 20260722010000 + 20260722011000 refresh)
 BEGIN;
-SELECT plan(20);
+SELECT plan(21);
 
 -- ── tables exist ─────────────────────────────────────────────────────────────
 SELECT has_table('public', 'tekbridge_session_state', 'session_state exists');
@@ -18,6 +18,9 @@ SELECT col_type_is('public', 'tekbridge_audit_log', 'verified', 'boolean', 'audi
 
 -- ── primary key ──────────────────────────────────────────────────────────────
 SELECT col_is_pk('public', 'tekbridge_session_state', 'shop_id', 'session_state PK is shop_id');
+
+-- ── refresh cron column (migration 20260722011000) ───────────────────────────
+SELECT col_type_is('public', 'tekbridge_session_state', 'last_alert_at', 'timestamp with time zone', 'last_alert_at is timestamptz (alert de-dup)');
 
 -- ── RLS enabled (deny-all: service-role-only surface) ────────────────────────
 SELECT ok((SELECT relrowsecurity FROM pg_class WHERE oid = 'public.tekbridge_session_state'::regclass), 'RLS on session_state');

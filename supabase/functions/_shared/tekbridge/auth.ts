@@ -69,6 +69,25 @@ export function isAllowedAdminEmail(email: string): boolean {
 }
 
 /**
+ * True if the request carries a valid SERVICE_ROLE bearer — WITHOUT requiring an
+ * X-Actor-Email. Used by system/cron-invoked endpoints (e.g. the refresh cron
+ * calls via scheduler_invoke_edge_function, which sends only the service-role
+ * bearer, no actor). `allowedBearers` is injectable for tests.
+ */
+export function hasValidServiceRoleBearer(
+  req: Request,
+  allowedBearers: string[] = getAllowedServiceRoleBearers(),
+): boolean {
+  const authHeader = req.headers.get("Authorization") ?? req.headers.get("authorization");
+  if (!authHeader) return false;
+  const m = authHeader.match(/^Bearer\s+(.+)$/i);
+  if (!m) return false;
+  const token = m[1].trim();
+  if (!token) return false;
+  return allowedBearers.some((k) => token.length === k.length && timingSafeStringEqual(token, k));
+}
+
+/**
  * Authenticate a request. `allowedBearers` is injectable for tests; defaults to
  * reading the env. Returns the lowercased actor email (audit identity) on success.
  */
