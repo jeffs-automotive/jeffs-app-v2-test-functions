@@ -364,7 +364,7 @@ export interface UnblockAppointmentCapacityResult {
 // ─── Tool-name to arg/return mapping (typed dispatch) ────────────────────
 //
 // Keys are the SNAKE_CASE wire names per scheduler-tools.ts registry. NOT
-// camelCase like the keytag map. The orchestrator-mcp's tools/call dispatch
+// camelCase like the keytag map. The orchestrator's tools/call dispatch
 // matches by exact tool name string.
 
 export interface SchedulerToolMap {

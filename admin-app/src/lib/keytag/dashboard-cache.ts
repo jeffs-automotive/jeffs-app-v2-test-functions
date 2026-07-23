@@ -12,7 +12,7 @@ import "server-only";
  *
  * The snapshot now reads DIRECTLY in-process via the keytag read-DAL
  * (`getDashboard()` → service-role client + server-resolved shop_id), dropping
- * the orchestrator-mcp HTTP hop. The data is read-only + shop-global, so the
+ * the orchestrator HTTP hop. The data is read-only + shop-global, so the
  * cache key carries no per-advisor identity — one shared 60s snapshot across all
  * advisors (shop_id is resolved server-side inside getDashboard()).
  */

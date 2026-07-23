@@ -56,7 +56,7 @@ export async function fetchTemplateFromRepo(
   try {
     resp = await fetch(url, {
       // No auth header: repo is public. Adding Authorization breaks anonymous fetches.
-      headers: { "User-Agent": "jeffs-app-v2-orchestrator-mcp" },
+      headers: { "User-Agent": "jeffs-app-v2-orchestrator" },
       // 15s deadline — large markdown files are still under a few hundred KB.
       signal: AbortSignal.timeout(15_000),
     });

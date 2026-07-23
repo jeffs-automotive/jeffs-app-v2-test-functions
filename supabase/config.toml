@@ -466,34 +466,20 @@ entrypoint = "./functions/tekmetric-find-ro-by-keytag/index.ts"
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/tekmetric-find-ro-by-keytag/*.html" ]
 
-[functions.orchestrator-mcp]
+[functions.orchestrator]
 enabled = true
-# MCP endpoint hit by Claude Desktop's Custom Connector. Claude Desktop sends a Bearer
-# token in the Authorization header but it's not a Supabase JWT — it's our shared MCP
-# token (env var MCP_BEARER_TOKEN), validated inside the function. Disabling Supabase's
-# JWT verification lets the function see the request and do its own auth check.
+# Internal JSON-RPC endpoint for admin-app Server Actions (keytag/scheduler write
+# tools). Auth is in-handler: SERVICE_ROLE bearer + X-Actor-Email (not a Supabase
+# JWT), so Supabase's JWT verification is disabled to let the function do its own
+# check. (The Claude Desktop OAuth path was removed 2026-07-23.)
 verify_jwt = false
-import_map = "./functions/orchestrator-mcp/deno.json"
+import_map = "./functions/orchestrator/deno.json"
 # Uncomment to specify a custom file path to the entrypoint.
 # Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
-entrypoint = "./functions/orchestrator-mcp/index.ts"
+entrypoint = "./functions/orchestrator/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
-# static_files = [ "./functions/orchestrator-mcp/*.html" ]
-
-[functions.mcp-auth]
-enabled = true
-# Public OAuth endpoints (discovery, register, authorize, token). Browser-driven
-# consent flow; Claude Desktop hits these without a Supabase JWT. Auth is
-# protocol-internal (PKCE + client credentials).
-verify_jwt = false
-import_map = "./functions/mcp-auth/deno.json"
-# Uncomment to specify a custom file path to the entrypoint.
-# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
-entrypoint = "./functions/mcp-auth/index.ts"
-# Specifies static files to be bundled with the function. Supports glob patterns.
-# For example, if you want to serve static HTML pages in your function:
-# static_files = [ "./functions/mcp-auth/*.html" ]
+# static_files = [ "./functions/orchestrator/*.html" ]
 
 [functions.keytag-seed-from-tekmetric]
 enabled = true

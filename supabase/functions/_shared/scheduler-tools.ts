@@ -1,11 +1,11 @@
-// AI SDK tool registry — scheduler READ/booking tools for orchestrator-mcp.
+// AI SDK tool registry — scheduler READ/booking tools for orchestrator.
 //
 // 2026-07-02 (sub-feature A + revamp Phase 0): the LLM specialist chain
 // (`_shared/orchestrator.ts` + `_shared/specialists/*`) was DELETED (zero
 // callers) and the scheduler ADMIN tool block was removed — the
 // schedulerconfig webforms call the direct RPCs instead. What remains here
 // is the deterministic wizard/advisor read + booking tool surface consumed
-// by `_shared/mcp-tool-registry.ts` (orchestrator-mcp), which stays alive
+// by `_shared/mcp-tool-registry.ts` (orchestrator), which stays alive
 // for keytag.
 //
 // Tool description guidance (read this when adding new tools):
@@ -20,7 +20,7 @@
 //
 // Admin tools (block/unblock capacity, upsert/deactivate services) are
 // gated by `includeAdminTools` flag — only the Claude Desktop path
-// (orchestrator-mcp) sets it true. The customer-facing orchestrator-direct
+// (orchestrator) sets it true. The customer-facing orchestrator-direct
 // path always passes false.
 
 // AI SDK pinned at v5 — see .claude/memory/ai_sdk_and_models.md.
@@ -127,7 +127,7 @@ export function getSchedulerTools(args: SchedulerToolsArgs) {
   void sessionId; // reserved for per-session admin-action tagging in future chunks
   // Sub-feature A (2026-07-02): admin tools removed — params accepted-but-
   // ignored so callers need no signature change while keytag keeps
-  // orchestrator-mcp alive.
+  // orchestrator alive.
   void supabaseUrl;
   void serviceRoleKey;
 
@@ -766,7 +766,7 @@ export function getSchedulerTools(args: SchedulerToolsArgs) {
   // Claude Desktop app-capabilities retired per feedback_claude_desktop_retired).
   // includeAdminTools/audit are accepted-but-ignored so existing callers and
   // the registry builder need no signature change while keytag still runs
-  // through orchestrator-mcp.
+  // through orchestrator.
   void includeAdminTools;
   void audit;
   return result;

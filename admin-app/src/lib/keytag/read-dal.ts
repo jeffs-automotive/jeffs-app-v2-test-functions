@@ -3,7 +3,7 @@ import "server-only";
 /**
  * Keytag READ DAL — direct in-process Node reads.
  *
- * Replaces the orchestrator-mcp HTTP gateway hop for the four keytag READ
+ * Replaces the orchestrator HTTP gateway hop for the four keytag READ
  * surfaces (dashboard / board WIP tags / manual-reviews list / audit history).
  * Each fn builds a service-role Supabase client (createSupabaseAdminClient),
  * resolves shop_id SERVER-SIDE (resolveAdminShopId — never from client input),

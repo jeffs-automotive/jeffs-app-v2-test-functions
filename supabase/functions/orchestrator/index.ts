@@ -1,16 +1,19 @@
-// orchestrator-mcp
+// orchestrator
 //
-// Custom MCP server hit by Claude Desktop's Custom Connector. Implements:
-//   - the MCP JSON-RPC 2.0 protocol (initialize, tools/list, tools/call,
-//     ping) over HTTP per the 2025-06-18 spec
-//   - Protected Resource Metadata discovery on
-//     GET /.well-known/oauth-protected-resource
+// Internal JSON-RPC 2.0 endpoint. Its ONE live caller is admin-app's Server
+// Actions (lib/orchestrator/client.ts), which POST `tools/call` to run keytag
+// + scheduler write tools server-side.
 //
-// Auth: OAuth 2.1 + PKCE with the mcp-auth function as the authorization
-// server. Unauthenticated calls return 401 + WWW-Authenticate header
-// pointing at our PRM endpoint, kicking off Claude Desktop's discovery /
-// DCR / PKCE flow. All MCP calls require a valid Bearer access_token
-// issued by mcp-auth and stored hashed in public.oauth_access_tokens.
+// Auth: SERVICE_ROLE bearer + X-Actor-Email header. The admin-app is a trusted
+// server-side Next.js context (gated by Microsoft Entra @jeffsautomotive.com);
+// X-Actor-Email carries the authenticated employee for the tools' audit log.
+//
+// HISTORY: this function also hosted the Claude Desktop Custom-Connector path —
+// OAuth 2.1 + PKCE via the mcp-auth authorization server, the oauth_* token
+// tables, PRM discovery, and the MCP handshake methods (initialize / tools-list
+// / ping / notifications). Claude Desktop was retired 2026-07-02, and that
+// entire half was removed 2026-07-23 (mcp-auth deleted, oauth_* tables dropped).
+// Only the admin-app SERVICE_ROLE path + the `tools/call` dispatch remain.
 //
 // Tool exposure (2026-05-20 rewrite):
 //
@@ -46,16 +49,9 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { z } from "npm:zod@^4";
 
 import { ENV_NAMES } from "../_shared/tekmetric.ts";
-import {
-  functionUrl,
-  getExpectedMcpResource,
-  type ProtectedResourceMetadata,
-  sha256Base64Url,
-  stripFunctionPrefix,
-} from "../_shared/oauth.ts";
+import { stripFunctionPrefix } from "../_shared/oauth.ts";
 import {
   buildMcpToolRegistry,
-  schemaToJsonSchema,
   validateToolInput,
   type McpToolDef,
 } from "../_shared/mcp-tool-registry.ts";
@@ -63,16 +59,14 @@ import { Sentry, withSentryScope } from "../_shared/sentry-edge.ts";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const FUNCTION_NAME = "orchestrator-mcp";
-const AUTH_FUNCTION_NAME = "mcp-auth";
+const FUNCTION_NAME = "orchestrator";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const SHOP_ID = parseInt(Deno.env.get(ENV_NAMES.TEKMETRIC_SHOP_ID) ?? "7476", 10);
 
-const PROTOCOL_VERSION = "2025-11-25"; // current MCP spec version
 const SERVER_NAME = "jeffs-app-orchestrator";
-const SERVER_VERSION = "0.4.0"; // bumped on 2026-05-25 SERVICE_ROLE+actor-email branch
+const SERVER_VERSION = "0.5.0"; // 2026-07-23: OAuth/Claude-Desktop half removed; SERVICE_ROLE-only
 
 // ─── Internal-caller auth branch (admin-app) ────────────────────────────────
 //
@@ -82,12 +76,10 @@ const SERVER_VERSION = "0.4.0"; // bumped on 2026-05-25 SERVICE_ROLE+actor-email
 // SERVICE_ROLE bearer + X-Actor-Email header carrying the authenticated
 // employee's email).
 //
-// This is an ADDITION, not a replacement of the OAuth path. The OAuth path
-// (used by Claude Desktop's Custom Connector) is completely untouched —
-// SERVICE_ROLE bearers fall through the OAuth check naturally (they have
-// no oauth_access_tokens row), so the new branch must be tried FIRST.
+// This is now the ONLY auth path (the Claude Desktop OAuth branch was removed
+// 2026-07-23). A bearer that is not the SERVICE_ROLE key is rejected outright.
 //
-// Security rules — all three must hold for the new path to accept:
+// Security rules — all three must hold for the path to accept:
 //   1. Authorization: Bearer <token> where <token> exactly matches the
 //      Supabase project's SERVICE_ROLE secret (constant-time compare to
 //      mitigate timing-attack leakage; though SERVICE_ROLE is long enough
@@ -95,15 +87,13 @@ const SERVER_VERSION = "0.4.0"; // bumped on 2026-05-25 SERVICE_ROLE+actor-email
 //   2. X-Actor-Email header is present
 //   3. Email ends with "@jeffsautomotive.com" (case-insensitive)
 //
-// If 1 holds but 2 or 3 fail, we REJECT (don't fall through to OAuth —
-// otherwise a leaked SERVICE_ROLE would be silently accepted-without-
-// audit-identity). The reject is a separate AuthErr reason so the caller
-// can fix their request.
+// If 1 holds but 2 or 3 fail, we REJECT — a leaked SERVICE_ROLE must never be
+// accepted without an audit identity. The reject is a separate AuthErr reason
+// so the caller can fix their request.
 //
 // Audit identity: the synthesized AuthOk uses actorEmail (lowercased) as
-// userLabel, matching the OAuth path's contract — every keytag/scheduler
-// tool's audit log entry will show "chris@jeffsautomotive.com" (etc.) as
-// who-did-what, indistinguishable from a Claude Desktop call by Chris.
+// userLabel — every keytag/scheduler tool's audit log entry shows
+// "chris@jeffsautomotive.com" (etc.) as who-did-what.
 const ALLOWED_ADMIN_EMAIL_DOMAIN = "@jeffsautomotive.com";
 const ADMIN_APP_CLIENT_ID = "admin-app";
 const ADMIN_APP_SCOPE = "mcp";
@@ -181,19 +171,18 @@ interface AuthOk {
   scope: string;
   clientId: string;
   /** Channel of this authenticated call → keytag_audit_log.source on write tools.
-   *  'admin_app' for the SERVICE_ROLE + X-Actor-Email branch (the dashboard),
-   *  'claude_desktop' for the OAuth branch (Claude Desktop). */
-  source: "admin_app" | "claude_desktop";
+   *  Always 'admin_app' now — the SERVICE_ROLE + X-Actor-Email dashboard path
+   *  is the only surviving auth branch (the OAuth 'claude_desktop' branch was
+   *  removed 2026-07-23). Kept as a union for the registry's source contract. */
+  source: "admin_app";
 }
 interface AuthErr {
   ok: false;
   reason:
     | "missing_token"
     | "invalid_token"
-    | "invalid_audience"
     | "missing_actor_email"
-    | "invalid_actor_email_domain"
-    | "server_error";
+    | "invalid_actor_email_domain";
 }
 
 /**
@@ -275,7 +264,7 @@ function isAllowedAdminEmail(email: string): boolean {
   return trimmed.toLowerCase().endsWith(ALLOWED_ADMIN_EMAIL_DOMAIN);
 }
 
-async function authenticateRequest(req: Request): Promise<AuthOk | AuthErr> {
+function authenticateRequest(req: Request): AuthOk | AuthErr {
   const authHeader = req.headers.get("Authorization") ?? req.headers.get("authorization");
   if (!authHeader) return { ok: false, reason: "missing_token" };
   const m = authHeader.match(/^Bearer\s+(.+)$/i);
@@ -335,102 +324,9 @@ async function authenticateRequest(req: Request): Promise<AuthOk | AuthErr> {
     };
   }
 
-  // ── BRANCH B — OAuth bearer validation (Claude Desktop path, unchanged) ──
-
-  const tokenHash = await sha256Base64Url(token);
-  const { data, error } = await sb.rpc("oauth_validate_access_token", {
-    p_token_hash: tokenHash,
-  });
-  if (error) {
-    console.error("oauth_validate_access_token RPC failed:", error.message);
-    return { ok: false, reason: "server_error" };
-  }
-  // The RPC returns a table; supabase-js gives an array
-  const row = Array.isArray(data) ? data[0] : data;
-  if (!row || !row.user_label) return { ok: false, reason: "invalid_token" };
-
-  // RFC 8707 + MCP spec 2025-11-25 "Token Handling": the resource server MUST
-  // validate the token was issued for it. mcp-auth stores the audience as
-  // `resource` (the canonical URL of the MCP server this token is bound to)
-  // on the access_token row at issue time. Compare to this server's canonical
-  // URL on every call.
-  //
-  // SEC-6 cutoff applied 2026-05-23 (immediate, vs the original 30-day plan).
-  // Tokens issued BEFORE the PLAN-03 Phase 4 migration ran have NULL resource;
-  // those are now REJECTED outright per MCP spec 2025-11-25 §"Token Audience
-  // Binding and Validation": "MCP servers MUST validate that presented tokens
-  // were issued specifically for their use." NULL resource = not bound to any
-  // audience = doesn't satisfy that contract.
-  //
-  // Impact for legitimate users: existing Claude Desktop sessions get a 401
-  // on their next request and must re-auth ONCE. The OAuth refresh-token grant
-  // already requires a `resource` parameter (Plan 03 Phase 4 `mcp-auth`
-  // changes), so the re-auth flow naturally produces a resource-bound token
-  // and subsequent requests succeed. No client-code change needed.
-  const tokenResource = (row.resource as string | null | undefined) ?? null;
-  const expectedResource = getExpectedMcpResource();
-
-  if (tokenResource === null) {
-    Sentry.captureMessage("OAuth legacy token (NULL resource) rejected at orchestrator-mcp", {
-      level: "warning",
-      tags: {
-        oauth_event: "legacy_no_resource_rejected",
-        client_id: row.client_id as string,
-      },
-      extra: {
-        user_label: row.user_label,
-        expected_resource: expectedResource,
-        sec6_cutoff_applied: "2026-05-23",
-      },
-    });
-    return { ok: false, reason: "invalid_audience" };
-  }
-  if (tokenResource !== expectedResource) {
-    Sentry.captureMessage("OAuth token audience mismatch at orchestrator-mcp", {
-      level: "warning",
-      tags: {
-        oauth_event: "token_audience_mismatch",
-        client_id: row.client_id as string,
-      },
-      extra: {
-        token_resource: tokenResource,
-        expected_resource: expectedResource,
-      },
-    });
-    return { ok: false, reason: "invalid_audience" };
-  }
-
-  return {
-    ok: true,
-    userLabel: row.user_label as string,
-    scope: row.scope as string,
-    clientId: row.client_id as string,
-    source: "claude_desktop",
-  };
-}
-
-/** Build the WWW-Authenticate header that points clients at our PRM endpoint. */
-function wwwAuthenticate(error: AuthErr["reason"]): string {
-  const prmUrl = `${functionUrl(FUNCTION_NAME)}/.well-known/oauth-protected-resource`;
-  // Map our internal reasons to OAuth 2.0 Bearer Token Usage (RFC 6750 §3.1)
-  // error codes. `invalid_token` covers missing/expired/wrong-shape tokens
-  // AND audience mismatches per OAuth 2.1 §5.2 + MCP spec "Token Handling"
-  // (audience-failure tokens MUST receive 401, and the standardised error
-  // code for them is `invalid_token` — `invalid_audience` is not a registered
-  // RFC 6750 value, so we surface the semantic in error_description instead).
-  const errorMap: Record<AuthErr["reason"], { code: string; description: string }> = {
-    missing_token:    { code: "invalid_token", description: "Bearer token required" },
-    invalid_token:    { code: "invalid_token", description: "Bearer token is invalid or expired" },
-    invalid_audience: { code: "invalid_token", description: "Bearer token was not issued for this MCP server (RFC 8707 audience mismatch)" },
-    // 2026-05-25 SERVICE_ROLE+actor-email branch additions. Both surface as
-    // invalid_request per RFC 6750 §3.1 (the bearer itself is valid, but
-    // the required X-Actor-Email companion is missing or malformed).
-    missing_actor_email:        { code: "invalid_request", description: "SERVICE_ROLE bearer requires X-Actor-Email header" },
-    invalid_actor_email_domain: { code: "invalid_request", description: "X-Actor-Email must be a @jeffsautomotive.com email" },
-    server_error:     { code: "invalid_token", description: "Token validation failed (server error)" },
-  };
-  const e = errorMap[error];
-  return `Bearer realm="MCP", error="${e.code}", error_description="${e.description}", resource_metadata="${prmUrl}"`;
+  // The OAuth bearer branch (Claude Desktop path) was removed 2026-07-23. A
+  // bearer that is not the SERVICE_ROLE key has no valid path here.
+  return { ok: false, reason: "invalid_token" };
 }
 
 function unauthorized(reason: AuthErr["reason"]): Response {
@@ -438,71 +334,13 @@ function unauthorized(reason: AuthErr["reason"]): Response {
     status: 401,
     headers: {
       "Content-Type": "application/json",
-      "WWW-Authenticate": wwwAuthenticate(reason),
+      "WWW-Authenticate": `Bearer realm="orchestrator"`,
       ...CORS_HEADERS,
     },
   });
 }
 
-// ─── Route: GET /.well-known/oauth-protected-resource ───────────────────────
-
-function handleProtectedResourceMetadata(): Response {
-  const metadata: ProtectedResourceMetadata = {
-    resource: functionUrl(FUNCTION_NAME),
-    authorization_servers: [functionUrl(AUTH_FUNCTION_NAME)],
-    scopes_supported: ["mcp"],
-    bearer_methods_supported: ["header"],
-  };
-  return json(metadata);
-}
-
-// ─── MCP method handlers ─────────────────────────────────────────────────────
-
-function handleInitialize(): unknown {
-  return {
-    protocolVersion: PROTOCOL_VERSION,
-    capabilities: { tools: {} },
-    serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
-  };
-}
-
-/**
- * tools/list — enumerate the full per-auth-session tool registry as MCP
- * tool definitions. Returns up to ~50 tools. The registry is built once
- * per request (cheap — both getOrchestratorTools and getSchedulerTools
- * are pure factory calls that just instantiate function references).
- *
- * Per MCP spec 2025-06-18: each tool MUST have name + inputSchema.
- * description and outputSchema are optional but we always emit
- * description.
- */
-function handleToolsList(
-  userLabel: string,
-  clientId: string,
-  source: "admin_app" | "claude_desktop",
-): unknown {
-  const registry = buildMcpToolRegistry({
-    sb,
-    shopId: SHOP_ID,
-    userLabel,
-    source,
-    oauthClientId: clientId,
-    supabaseUrl: SUPABASE_URL,
-    serviceRoleKey: SERVICE_ROLE_KEY,
-  });
-
-  const tools = Object.values(registry).map((t) => ({
-    name: t.name,
-    description: t.description,
-    inputSchema: schemaToJsonSchema(t.inputSchema),
-  }));
-
-  // Sort alphabetically for stable diffs across deploys + easier
-  // debugging when the registry changes.
-  tools.sort((a, b) => a.name.localeCompare(b.name));
-
-  return { tools };
-}
+// ─── MCP method handler: tools/call ──────────────────────────────────────────
 
 class RpcInvalidParams extends Error {}
 class RpcMethodNotFound extends Error {}
@@ -594,7 +432,7 @@ async function handleToolsCall(
     // an explicit capture the failure is invisible. Report it; do NOT change
     // the response shape/status.
     Sentry.captureException(e, {
-      tags: { fn: "orchestrator-mcp", mcp_method: "tools/call", tool: name },
+      tags: { fn: "orchestrator", mcp_method: "tools/call", tool: name },
     });
     return {
       content: [
@@ -615,28 +453,21 @@ async function handleToolsCall(
 // ─── Main entrypoint ─────────────────────────────────────────────────────────
 
 // PLAN-02 Phase 1 — per-request Sentry isolation scope + flush before response.
-Deno.serve((req) => withSentryScope(req, "orchestrator-mcp", async () => {
+Deno.serve((req) => withSentryScope(req, "orchestrator", async () => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: CORS_HEADERS });
   }
 
   const path = stripFunctionPrefix(req, FUNCTION_NAME);
 
-  // PRM discovery — public, no auth required (it's the lookup that tells
-  // unauthenticated clients HOW to authenticate).
-  if (req.method === "GET" && path === "/.well-known/oauth-protected-resource") {
-    return handleProtectedResourceMetadata();
-  }
-
-  // Health check via GET (Claude Desktop pings the URL when adding the
-  // connector). We respond OK without auth so the dialog can verify the
-  // URL is reachable; any actual MCP call still requires a token.
+  // Health check via GET — respond OK without auth so uptime probes can verify
+  // the URL is reachable; any actual tools/call still requires a valid bearer.
   if (req.method === "GET" && (path === "/" || path === "")) {
     return json({ ok: true, server: SERVER_NAME, version: SERVER_VERSION });
   }
 
   // Everything else requires auth
-  const auth = await authenticateRequest(req);
+  const auth = authenticateRequest(req);
   if (!auth.ok) return unauthorized(auth.reason);
 
   if (req.method !== "POST") {
@@ -664,32 +495,16 @@ Deno.serve((req) => withSentryScope(req, "orchestrator-mcp", async () => {
     );
   }
   const id = rpcReq.id ?? null;
-  const isNotification = rpcReq.id === undefined || rpcReq.id === null;
 
   try {
     switch (rpcReq.method) {
-      case "initialize":
-        return jsonRpcResponse({ jsonrpc: "2.0", id, result: handleInitialize() });
-
-      case "ping":
-        return jsonRpcResponse({ jsonrpc: "2.0", id, result: {} });
-
-      case "tools/list":
-        return jsonRpcResponse({
-          jsonrpc: "2.0",
-          id,
-          result: handleToolsList(auth.userLabel, auth.clientId, auth.source),
-        });
-
+      // tools/call is the only method admin-app's Server Actions invoke. The
+      // MCP-handshake methods (initialize / tools-list / ping / notifications)
+      // were Claude-Desktop-only and were removed 2026-07-23 with the OAuth path.
       case "tools/call": {
         const result = await handleToolsCall(rpcReq.params, auth.userLabel, auth.clientId, auth.source);
         return jsonRpcResponse({ jsonrpc: "2.0", id, result });
       }
-
-      case "notifications/initialized":
-      case "notifications/cancelled":
-        if (isNotification) return new Response(null, { status: 202 });
-        return jsonRpcResponse({ jsonrpc: "2.0", id, result: {} });
 
       default:
         return jsonRpcError(
@@ -705,12 +520,12 @@ Deno.serve((req) => withSentryScope(req, "orchestrator-mcp", async () => {
     if (e instanceof RpcInvalidParams) return jsonRpcError(id, RPC_ERR.INVALID_PARAMS, e.message);
     if (e instanceof RpcMethodNotFound) return jsonRpcError(id, RPC_ERR.METHOD_NOT_FOUND, e.message);
     const msg = e instanceof Error ? e.message : String(e);
-    console.error("orchestrator-mcp internal error:", msg);
+    console.error("orchestrator internal error:", msg);
     // M6: this catch converts a genuine internal failure into a JSON-RPC
     // INTERNAL error response (HTTP 200), so it never reaches withSentryScope's
     // captureException. Report it explicitly; the response/status is unchanged.
     Sentry.captureException(e, {
-      tags: { fn: "orchestrator-mcp", mcp_method: rpcReq.method },
+      tags: { fn: "orchestrator", mcp_method: rpcReq.method },
     });
     return jsonRpcError(id, RPC_ERR.INTERNAL, "Internal server error", { message: msg });
   }

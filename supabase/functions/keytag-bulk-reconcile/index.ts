@@ -54,7 +54,7 @@
 //                     are detected. Used for ad-hoc testing.
 //
 // Returns JSON summary of actions taken, suitable for logging in
-// orchestrator-mcp tools or pg_cron audit.
+// orchestrator tools or pg_cron audit.
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { TEKMETRIC_RO_STATUS } from "../_shared/tekmetric.ts";

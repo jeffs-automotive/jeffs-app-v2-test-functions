@@ -3,7 +3,7 @@
 // Builds a flat MCP-shaped tool registry from the existing AI-SDK tool
 // definitions in getOrchestratorTools() (keytag + manual-review tools) +
 // getSchedulerTools() (customer-wizard + admin tools). The MCP layer
-// (orchestrator-mcp/index.ts) consumes this registry to:
+// (orchestrator/index.ts) consumes this registry to:
 //
 //   1. Emit a `tools/list` response with ~50 typed tools instead of a
 //      single `run_orchestrator` tool.

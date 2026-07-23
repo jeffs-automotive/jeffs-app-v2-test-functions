@@ -1,10 +1,10 @@
 /**
  * Typed orchestrator MCP client for admin-app Server Actions.
  *
- * Calls the orchestrator-mcp edge function (deployed at the test Supabase
+ * Calls the orchestrator edge function (deployed at the test Supabase
  * project, ref `itzdasxobllfiuolmbxu`) using the SERVICE_ROLE +
  * X-Actor-Email auth branch added on 2026-05-25 (see
- * supabase/functions/orchestrator-mcp/index.ts SERVER_VERSION 0.4.0).
+ * supabase/functions/orchestrator/index.ts SERVER_VERSION 0.4.0).
  *
  * Wire format: JSON-RPC 2.0 — the orchestrator dispatches to its tool
  * registry by name. Response is `{content: [{type: "text", text:
@@ -29,7 +29,7 @@ import {
 } from "@/lib/supabase/resolve-keys";
 import type { KeytagToolMap, KeytagToolName } from "./types";
 
-const ORCHESTRATOR_FUNCTION_NAME = "orchestrator-mcp";
+const ORCHESTRATOR_FUNCTION_NAME = "orchestrator";
 const ALLOWED_HOST_SUFFIX = ".supabase.co";
 
 /**
@@ -66,7 +66,7 @@ function buildOrchestratorUrl(): string {
   // Returns BEFORE the Supabase-host validation below (the mock is localhost).
   if (process.env.KEYTAG_E2E_MOCK === "1") {
     const base = process.env.KEYTAG_E2E_MOCK_BASE_URL ?? "http://localhost:3001";
-    return `${base}/api/e2e-mock/orchestrator-mcp`;
+    return `${base}/api/e2e-mock/orchestrator`;
   }
   const supabaseUrl = resolveSupabaseUrl();
   if (!supabaseUrl) {

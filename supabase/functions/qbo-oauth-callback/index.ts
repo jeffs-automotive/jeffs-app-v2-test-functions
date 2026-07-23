@@ -13,7 +13,7 @@
 // Intuit's own login + consent for the QBO company.
 //
 // Responses are PLAIN TEXT on purpose: Supabase Edge Functions force
-// `Content-Type: text/plain` on responses (anti-phishing; documented in mcp-auth/index.ts),
+// `Content-Type: text/plain` on responses (an anti-phishing platform behavior),
 // so HTML would display as raw source. Plain text renders cleanly and the success page's
 // KEY=value lines are easy to copy. Only the start-redirect (302) and method-guard (405)
 // are non-200; every human-facing page is a 200 whose text conveys the outcome.

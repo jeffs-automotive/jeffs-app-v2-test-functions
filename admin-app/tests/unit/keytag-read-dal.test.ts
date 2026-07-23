@@ -1,7 +1,7 @@
 /**
  * Unit tests for the keytag READ DAL (admin-app direct-from-Node reads).
  *
- * The DAL replaces the orchestrator-mcp HTTP hop for the four keytag READ
+ * The DAL replaces the orchestrator HTTP hop for the four keytag READ
  * surfaces (dashboard / WIP tags / manual-reviews / audit history). Each fn:
  *   - builds a service-role client (createSupabaseAdminClient)
  *   - resolves shop_id SERVER-SIDE (resolveAdminShopId)

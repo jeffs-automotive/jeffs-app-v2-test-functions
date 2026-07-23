@@ -2,7 +2,7 @@
  * Direct-write DAL for /schedulerconfig (sub-feature A of
  * docs/scheduler/config-webforms-comms-types-plan-2026-07-02.md).
  *
- * Replaces the orchestrator-mcp transport: every mutation calls ONE
+ * Replaces the orchestrator transport: every mutation calls ONE
  * SECURITY DEFINER RPC (migration 20260702041000 / 20260702042000) that
  * commits the config change + its `manual_change` audit row atomically and
  * enforces `updated_at` staleness. The service-role client lives strictly

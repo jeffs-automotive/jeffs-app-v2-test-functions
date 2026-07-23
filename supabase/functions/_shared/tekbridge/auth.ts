@@ -2,7 +2,7 @@
 //
 // SERVICE_ROLE + X-Actor-Email authentication for the `tekbridge` gateway —
 // the same trusted-internal-caller contract admin-app already uses against
-// orchestrator-mcp. Modeled on orchestrator-mcp/index.ts's inline auth; kept
+// orchestrator. Modeled on orchestrator/index.ts's inline auth; kept
 // tekbridge-scoped so we don't refactor that critical OAuth path mid-feature.
 // (Follow-up: consolidate both into one shared helper.)
 //

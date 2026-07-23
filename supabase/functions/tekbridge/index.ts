@@ -6,7 +6,7 @@
 // (see _shared/tekbridge/registry.ts). Full design: docs/tekmetric/tekbridge-plan.md.
 //
 // Auth: SERVICE_ROLE bearer + X-Actor-Email (same trusted-internal contract as
-// orchestrator-mcp's admin-app branch). Routes:
+// orchestrator's admin-app branch). Routes:
 //   GET  /            → health (no auth)
 //   POST /            → { capability, input } → validate vs zod → execute → { ok, data }
 //   POST /session     → { jwt }  → store the bot session JWT in Vault

@@ -33,7 +33,7 @@ afterEach(() => {
 describe("bookingDirectUrl — P0.3 host validation", () => {
   it("happy path: matching project host → returns derived URL", () => {
     process.env.ORCHESTRATOR_URL =
-      "https://itzdasxobllfiuolmbxu.supabase.co/functions/v1/orchestrator-mcp";
+      "https://itzdasxobllfiuolmbxu.supabase.co/functions/v1/orchestrator";
     process.env.NEXT_PUBLIC_SUPABASE_URL =
       "https://itzdasxobllfiuolmbxu.supabase.co";
 
@@ -47,7 +47,7 @@ describe("bookingDirectUrl — P0.3 host validation", () => {
   it("Layer 1 (suffix gate): non-supabase.co host → throws BookingDirectError", () => {
     // Attacker-set ORCHESTRATOR_URL pointing to evil.com.
     process.env.ORCHESTRATOR_URL =
-      "https://evil.example.com/functions/v1/orchestrator-mcp";
+      "https://evil.example.com/functions/v1/orchestrator";
     process.env.NEXT_PUBLIC_SUPABASE_URL =
       "https://evil.example.com";
 
@@ -57,7 +57,7 @@ describe("bookingDirectUrl — P0.3 host validation", () => {
 
   it("Layer 2 (cross-env match): supabase.co host but different project → throws", () => {
     process.env.ORCHESTRATOR_URL =
-      "https://OTHERPROJECT.supabase.co/functions/v1/orchestrator-mcp";
+      "https://OTHERPROJECT.supabase.co/functions/v1/orchestrator";
     process.env.NEXT_PUBLIC_SUPABASE_URL =
       "https://itzdasxobllfiuolmbxu.supabase.co";
 
@@ -75,7 +75,7 @@ describe("bookingDirectUrl — P0.3 host validation", () => {
 
   it("missing NEXT_PUBLIC_SUPABASE_URL → throws AFTER suffix gate passes", () => {
     process.env.ORCHESTRATOR_URL =
-      "https://itzdasxobllfiuolmbxu.supabase.co/functions/v1/orchestrator-mcp";
+      "https://itzdasxobllfiuolmbxu.supabase.co/functions/v1/orchestrator";
     delete process.env.NEXT_PUBLIC_SUPABASE_URL;
 
     expect(() => _bookingDirectUrl()).toThrow(

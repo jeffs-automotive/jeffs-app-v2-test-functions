@@ -79,7 +79,7 @@ export interface CatalogSubcategory {
    *  loader falls back to concern_categories[] resolution.
    *
    *  Edited by advisors via upload_subcategory_service_map_md
-   *  (orchestrator-mcp admin tool). Added 2026-05-20 to support
+   *  (orchestrator admin tool). Added 2026-05-20 to support
    *  fine-grained routing for warning_light subcategories (CEL/ABS/
    *  traction/SRS/EPS/oil-pressure/engine-temp) to their dedicated
    *  testing services. */

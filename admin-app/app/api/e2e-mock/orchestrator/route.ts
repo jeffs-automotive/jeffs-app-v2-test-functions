@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 /**
- * E2E-ONLY deterministic mock of the `orchestrator-mcp` edge function.
+ * E2E-ONLY deterministic mock of the `orchestrator` edge function.
  *
  * Active ONLY when `KEYTAG_E2E_MOCK=1` (set by playwright.config's webServer);
  * returns 404 otherwise, so it's inert in dev/prod. `client.ts buildOrchestratorUrl`
